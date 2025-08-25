@@ -1,0 +1,15 @@
+out
+dist
+node_modules
+.vscode-test/
+*.vsix
+.DS_Store
+test_files/
+src/markdownParser.js
+src/markdownParser.js.map
+src/kanbanWebviewPanel.js.map
+src/kanbanWebviewPanel.js
+src/extension.js.map
+src/extension.js
+src/test/extension.test.js.map
+src/test/extension.test.js

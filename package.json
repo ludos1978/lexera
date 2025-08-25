@@ -1,0 +1,160 @@
+{
+  "name": "markdown-kanban-obsidian",
+  "displayName": "Markdown Kanban Obsidian",
+  "description": "Kanban board for Markdown files, compatible with obsidian kanban boards",
+  "publisher": "ludos",
+  "version": "0.9.42",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "kanban",
+    "task management",
+    "project management",
+    "todo",
+    "productivity",
+    "cursor available",
+    "obsidian"
+  ],
+  "icon": "./imgs/logo.png",
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./dist/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ludos1978/markdown-kanban-obsidian"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Markdown Kanban",
+      "properties": {
+        "markdownKanban.openLinksInNewTab": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open file links in new tabs instead of replacing the current editor"
+        },
+        "markdownKanban.whitespace": {
+          "type": "string",
+          "default": "4px",
+          "description": "Spacing between elements in the Kanban board (CSS value like '4px', '8px', '0.5rem')",
+          "pattern": "^\\d+(\\.\\d+)?(px|em|rem|pt|%)$",
+          "examples": [
+            "4px",
+            "8px",
+            "0.5rem",
+            "2px"
+          ]
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "markdown-kanban.openKanban",
+        "title": "Kanban"
+      },
+      {
+        "command": "markdown-kanban.disableFileListener",
+        "title": "Toggle Kanban Auto-switching"
+      },
+      {
+        "command": "markdown-kanban.toggleFileLock",
+        "title": "Toggle Kanban File Lock"
+      },
+      {
+        "command": "markdown-kanban.toggleFileOpening",
+        "title": "Toggle Kanban File Opening Mode",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "markdown-kanban.openKanbanFromPanel",
+        "title": "Open File in Kanban"
+      },
+      {
+        "command": "markdown-kanban.switchFile",
+        "title": "Switch Kanban File"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "markdown-kanban.openKanban",
+          "when": "resourceExtname == .md",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "markdown-kanban.openKanban",
+          "when": "resourceExtname == .md",
+          "group": "navigation"
+        }
+      ],
+      "webview/title": [
+        {
+          "command": "markdown-kanban.openKanbanFromPanel",
+          "when": "webviewId == markdownKanbanPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "markdown-kanban.toggleFileLock",
+          "when": "webviewId == markdownKanbanPanel",
+          "group": "navigation"
+        },
+        {
+          "command": "markdown-kanban.toggleFileOpening",
+          "when": "webviewId == markdownKanbanPanel",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "markdown-kanban.openKanban",
+        "key": "ctrl+k ctrl+b",
+        "mac": "cmd+k cmd+b",
+        "when": "resourceExtname == .md"
+      },
+      {
+        "command": "markdown-kanban.toggleFileOpening",
+        "key": "ctrl+k ctrl+o",
+        "mac": "cmd+k cmd+o",
+        "when": "webviewId == markdownKanbanPanel"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^4.9.4",
+    "markdown-it": "^14.0.1",
+    "@types/markdown-it": "^12.2.3"
+  },
+  "dependencies": {
+    "markdown-it": "^14.1.0"
+  },
+  "extensionDependencies": [
+    "vscode.markdown"
+  ]
+}
