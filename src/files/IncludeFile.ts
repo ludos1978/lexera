@@ -164,9 +164,6 @@ export class IncludeFile extends MarkdownFile {
         const slides = PresentationParser.parsePresentation(this._content);
         const tasks = PresentationParser.slidesToTasks(slides, this._path, mainFilePath);
 
-        // Use provided columnId for task ID generation
-        const effectiveColumnId = columnId;
-
         // CRITICAL: Match by POSITION, not title - tasks identified by position
         return tasks.map((task, index) => {
             // Get existing task at SAME POSITION to preserve ID
@@ -174,7 +171,7 @@ export class IncludeFile extends MarkdownFile {
 
             return {
                 ...task,
-                id: existingTask?.id || `task-${effectiveColumnId}-${index}`,
+                id: existingTask?.id || `task-${columnId}-${index}`,
                 includeMode: false, // Tasks from column includes are NOT individual includes
                 includeFiles: undefined, // Column has the includeFiles, not individual tasks
                 includeContext: task.includeContext // Preserve includeContext for dynamic image resolution
@@ -237,19 +234,13 @@ export class IncludeFile extends MarkdownFile {
     // ============= BASELINE CAPTURE FOR INCLUDE FILES =============
 
     /**
-     * Apply a captured edit to the baseline for include files
-     * CRITICAL: Include files need to apply edits directly to content baseline
+     * Apply a captured edit to the baseline for include files.
+     * Updates BOTH _content and _baseline so the content/baseline pair stays
+     * consistent (baseline is never newer than content).
      */
     public async applyEditToBaseline(capturedEdit: CapturedEdit): Promise<void> {
-
-        // For include files (column/task), the edit is a description edit
-        // Apply the new value directly to the baseline content
-        if (capturedEdit && capturedEdit.value !== undefined) {
-            // Update baseline with the edited content
-            this._baseline = capturedEdit.value;
-        } else {
-            console.warn(`[${this.getFileType()}] No edit value to apply to baseline`);
-        }
+        this._content = capturedEdit.value;
+        this._baseline = capturedEdit.value;
     }
 
     // ============= SIMPLIFIED CONFLICT DETECTION =============

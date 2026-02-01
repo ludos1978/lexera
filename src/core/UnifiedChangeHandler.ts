@@ -11,7 +11,7 @@ import { MainKanbanFile } from '../files/MainKanbanFile';
  * Provides consistent conflict resolution for all file types.
  *
  * NOTE: Legitimate saves (our own writes) are filtered out by _onFileSystemChange()
- * using the _skipNextReloadDetection flag (set via SaveOptions). This handler only
+ * using the _skipReloadCounter flag (set via SaveOptions). This handler only
  * receives TRUE external changes.
  *
  * NOTE: Parent notification for include files is handled by the file registry change
@@ -78,37 +78,24 @@ export class UnifiedChangeHandler {
     }
 
     /**
-     * Handle file modification - the complex conflict resolution logic
+     * Handle file modification - conflict resolution logic
+     *
+     * Only TRUE external changes reach this point (legitimate saves are
+     * filtered out by _onFileSystemChange via _skipReloadCounter).
      */
     private async handleFileModified(file: MarkdownFile): Promise<void> {
-        const hasUnsavedChanges = file.hasUnsavedChanges();
-        const hasConflict = file.hasConflict(); // Use the file's conflict detection logic
-        const hasFileSystemChanges = file.hasExternalChanges();
-
-        // For main file changes, also check if any include files have unsaved changes
+        // For main file changes, also check include files and cached board state
         const hasAnyUnsavedChanges = file.getFileType() === 'main'
             ? this.hasAnyUnsavedChangesInRegistry(file)
-            : hasUnsavedChanges;
+            : file.hasUnsavedChanges();
 
-        // NOTE: Legitimate saves are already filtered out by _onFileSystemChange()
-        // If _skipNextReloadDetection flag was set, the watcher returns early
-        // So we only reach this point for TRUE external changes
-
-        // CASE 1: Check for race condition - external save with unsaved Kanban changes
-        // This happens when user saves externally (Ctrl+S) while having Kanban UI changes
-        if (file.getFileType() === 'main' && hasAnyUnsavedChanges && hasFileSystemChanges) {
-            await this.showConflictDialog(file);
-            return;
-        }
-
-        // CASE 2: No conflict detected by file's logic (safe auto-reload)
-        if (!hasConflict) {
+        // Safe auto-reload: no local changes and no conflict detected
+        if (!hasAnyUnsavedChanges && !file.hasExternalChanges() && !file.hasConflict()) {
             await file.reload();
-            // Parent notification handled by file registry change notification system
             return;
         }
 
-        // CASE 3: Conflict detected (show dialog)
+        // Any form of conflict (unsaved + external, or file's own conflict detection)
         await this.showConflictDialog(file);
     }
 
@@ -132,31 +119,21 @@ export class UnifiedChangeHandler {
     }
 
     /**
-     * Check if any files in the registry have unsaved changes
-     * Used for main file conflict detection to include include file changes
+     * Check if any files in the registry have unsaved changes.
+     * Only called for main files - checks include files and cached board state.
      */
     private hasAnyUnsavedChangesInRegistry(file: MarkdownFile): boolean {
-        // Access the file registry through the public method
         const fileRegistry = file.getFileRegistry();
-        if (fileRegistry) {
-            // Check for files with unsaved changes via include files
-            const includeFiles = fileRegistry.getIncludeFiles();
-            const hasIncludeChanges = includeFiles.some(f => f.hasUnsavedChanges());
-
-            // CRITICAL: Also check if there's a cached board from webview (UI edits)
-            // This is essential for conflict detection when user edits in UI but hasn't saved
-            // Note: getCachedBoardFromWebview is only on MainKanbanFile
-            if (file.getFileType() === 'main') {
-                const mainFile = file as MainKanbanFile;
-                const cachedBoard = mainFile.getCachedBoardFromWebview?.();
-                const hasCachedBoardChanges = !!cachedBoard;
-                return hasIncludeChanges || hasCachedBoardChanges;
-            }
-
-            return hasIncludeChanges;
+        if (!fileRegistry) {
+            return file.hasUnsavedChanges();
         }
 
-        // Fallback: just check the file itself
-        return file.hasUnsavedChanges();
+        const hasIncludeChanges = fileRegistry.getIncludeFiles().some(f => f.hasUnsavedChanges());
+
+        // CRITICAL: Also check if there's a cached board from webview (UI edits)
+        const mainFile = file as MainKanbanFile;
+        const hasCachedBoardChanges = !!mainFile.getCachedBoardFromWebview?.();
+
+        return hasIncludeChanges || hasCachedBoardChanges;
     }
 }

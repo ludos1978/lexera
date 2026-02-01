@@ -10,6 +10,7 @@ import { ConflictResolver, ConflictContext, ConflictResolution } from '../servic
 import { BackupManager } from '../services/BackupManager';
 import { FileManager } from '../fileManager';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
+import { SaveOptions } from './SaveOptions';
 import { getFileNamingConfig } from '../constants/FileNaming';
 
 /**
@@ -361,7 +362,6 @@ export class MainKanbanFile extends MarkdownFile {
 
             this._content = content;
             this._baseline = content;
-            // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
             this._hasFileSystemChanges = false;
             this._lastModified = await this._getFileModifiedTime();
 
@@ -377,13 +377,14 @@ export class MainKanbanFile extends MarkdownFile {
     }
 
     /**
-     * Override save to validate board before saving
+     * Override save to validate board before saving.
+     * Accepts and forwards SaveOptions to base class so FileSaveService
+     * options (skipReloadDetection, force, etc.) are not silently dropped.
      */
-    public async save(): Promise<void> {
+    public async save(options?: SaveOptions): Promise<void> {
         // CRITICAL: Use cached board from webview if it exists (current UI state)
         // Otherwise fall back to parsed board
         const boardToSave = this._cachedBoardFromWebview || this._board;
-
 
         if (boardToSave) {
             // Regenerate content from board before saving
@@ -391,10 +392,10 @@ export class MainKanbanFile extends MarkdownFile {
             this._content = content;
         }
 
-        await super.save();
+        await super.save(options);
 
         // CRITICAL: Clear cached board AFTER save completes
-        // Note: save() method automatically sets instance-level skipNextReloadDetection flag
+        // Note: save() method automatically sets instance-level _skipReloadCounter
         // This prevents the file watcher from triggering unnecessary reloads
         this._cachedBoardFromWebview = undefined;
     }
@@ -444,7 +445,6 @@ export class MainKanbanFile extends MarkdownFile {
                     // Content changed on disk
                     this._content = freshContent;
                     this._baseline = freshContent;
-                    // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
                     this._lastModified = await this._getFileModifiedTime();
                     this.parseToBoard();
                     this._emitChange('reloaded');

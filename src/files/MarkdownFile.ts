@@ -46,11 +46,14 @@ export abstract class MarkdownFile implements vscode.Disposable {
     protected _hasFileSystemChanges: boolean = false;  // File changed on disk outside VS Code
 
     // ============= FRONTEND STATE (Kanban UI) =============
-    // NOTE: _hasUnsavedChanges removed - now computed from (_content !== _baseline)
     protected _isInEditMode: boolean = false;          // User actively editing in task/column editor
 
     // ============= SAVE STATE (Instance-level, no global registry!) =============
-    private _skipNextReloadDetection: boolean = false; // Skip reload for our own save
+    // Counter instead of boolean: incremented on each save, decremented on each
+    // watcher fire.  Prevents a rapid second save from having its watcher event
+    // treated as an external change when the first watcher event already consumed
+    // the flag.
+    private _skipReloadCounter: number = 0;
 
     // ============= CHANGE DETECTION =============
     protected _fileWatcher?: vscode.FileSystemWatcher;
@@ -178,9 +181,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      * @returns The sequence number for this operation
      */
     private _startNewReload(): number {
-        this._currentReloadSequence++;
-        const sequence = this._currentReloadSequence;
-        return sequence;
+        return ++this._currentReloadSequence;
     }
 
     /**
@@ -293,15 +294,10 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
         if (updateBaseline) {
             this._baseline = content;
-            // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
             // Do NOT emit 'content' event when updateBaseline=true
             // This is used after saving to update internal state - not an actual change
-        } else {
-            // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
-            // Only emit 'content' event for actual unsaved changes
-            if (oldContent !== content) {
-                this._emitChange('content');
-            }
+        } else if (oldContent !== content) {
+            this._emitChange('content');
         }
     }
 
@@ -416,7 +412,6 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
                     this._content = content;
                     this._baseline = content;
-                    // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
                     this._hasFileSystemChanges = false;
                     this._lastModified = await this._getFileModifiedTime();
 
@@ -474,9 +469,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      * @param options - Save options (skipReloadDetection, source, etc.)
      */
     public async save(options: SaveOptions = {}): Promise<void> {
-        const skipReloadDetection = options.skipReloadDetection ?? true; // Default: skip (our own save)
-        // options.source available for debugging if needed
-
+        const skipReloadDetection = options.skipReloadDetection ?? true;
 
         // PERFORMANCE: Use watcher coordinator to prevent conflicts
         await MarkdownFile._watcherCoordinator.startOperation(this._relativePath, 'save');
@@ -485,13 +478,12 @@ export abstract class MarkdownFile implements vscode.Disposable {
         const originalState = {
             content: this._content,
             baseline: this._baseline,
-            // NOTE: No need to store hasUnsavedChanges - it's computed from (content !== baseline)
             hasFileSystemChanges: this._hasFileSystemChanges,
             lastModified: this._lastModified
         };
         const transactionId = MarkdownFile._saveTransactionManager.beginTransaction(this._relativePath, originalState);
 
-        // Pause file watcher before saving to prevent our own save from triggering "external" change
+        // Pause file watcher before saving to prevent triggering "external" change
         const wasWatching = this._isWatching;
         if (wasWatching) {
             this.stopWatching();
@@ -507,15 +499,14 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
             await this.writeToDisk(this._content);
 
-            // CRITICAL: Set flag AFTER successful write (not before!)
-            // This prevents flag from lingering if write fails
+            // CRITICAL: Increment counter AFTER successful write (not before!)
+            // This prevents counter from being wrong if write fails
             if (skipReloadDetection) {
-                this._skipNextReloadDetection = true;
+                this._skipReloadCounter++;
             }
 
             // Update state after successful write
             this._baseline = this._content;
-            // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
             this._hasFileSystemChanges = false;
             this._lastModified = new Date();
 
@@ -531,7 +522,6 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // Restore original state
             this._content = originalState.content;
             this._baseline = originalState.baseline;
-            // NOTE: No need to restore hasUnsavedChanges - it's computed from (content !== baseline)
             this._hasFileSystemChanges = originalState.hasFileSystemChanges;
             this._lastModified = originalState.lastModified;
 
@@ -552,11 +542,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      */
     public discardChanges(): void {
         this._content = this._baseline;
-        // NOTE: No need to set _hasUnsavedChanges - it's now computed from (_content !== _baseline)
-
-        // NEVER emit 'content' event when discarding changes
-        // We're reverting to baseline (what's on disk) - nothing on disk changed
-        // Board was already parsed from this baseline content, no need to re-parse
+        // Do not emit 'content' event - we're reverting to baseline, nothing on disk changed
     }
 
     // ============= CONFLICT RESOLUTION =============
@@ -748,10 +734,12 @@ export abstract class MarkdownFile implements vscode.Disposable {
      */
     protected async _onFileSystemChange(changeType: 'modified' | 'deleted' | 'created'): Promise<void> {
 
-        // CRITICAL: Always reset flag when watcher fires (prevents lingering flag)
-        const hadSkipFlag = this._skipNextReloadDetection;
-        if (hadSkipFlag) {
-            this._skipNextReloadDetection = false; // Reset flag immediately
+        // CRITICAL: If our own save produced this watcher event, decrement the
+        // counter and skip external change handling.  Using a counter instead of
+        // a boolean ensures that rapid consecutive saves each consume exactly one
+        // watcher event.
+        if (this._skipReloadCounter > 0) {
+            this._skipReloadCounter--;
 
             // Only skip reload for 'modified' events (our own save)
             if (changeType === 'modified') {
@@ -759,7 +747,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
                 return; // Skip external change handling
             }
 
-            // For 'deleted' or 'created', flag was set but file state changed unexpectedly
+            // For 'deleted' or 'created', counter was set but file state changed unexpectedly
             // Continue to handle as external change (don't skip)
         }
 
@@ -845,19 +833,12 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
         const hasChanged = diskContent !== this._baseline;
         if (hasChanged) {
-            // Debug: Log why change was detected
-            const baselineLen = this._baseline?.length ?? 0;
-            const diskLen = diskContent?.length ?? 0;
-            const isEmptyBaseline = baselineLen === 0;
-            console.log(`[${this.getFileType()}] checkForExternalChanges DETECTED CHANGE: ${this._relativePath}`, {
-                baselineLength: baselineLen,
-                diskLength: diskLen,
-                isEmptyBaseline,
-                baselinePreview: this._baseline?.substring(0, 50),
-                diskPreview: diskContent?.substring(0, 50)
-            });
-            this._hasFileSystemChanges = true;
-            this._emitChange('external');
+            // Only emit if not already marked — the watcher path may have
+            // already flagged this file before the focus path runs.
+            if (!this._hasFileSystemChanges) {
+                this._hasFileSystemChanges = true;
+                this._emitChange('external');
+            }
         }
 
         return hasChanged;

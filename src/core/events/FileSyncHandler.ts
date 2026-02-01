@@ -77,7 +77,6 @@ export class FileSyncHandler {
 
         // Subscribe to focus:gained for external change detection
         this._unsubscribeFocus = scopedBus.on<Record<string, never>>('focus:gained', async () => {
-            console.log('[FileSyncHandler] focus:gained event received - calling reloadExternallyModifiedFiles');
             await this.reloadExternallyModifiedFiles({ force: false, skipDuringInitialLoad: true });
         });
     }
@@ -94,10 +93,7 @@ export class FileSyncHandler {
      * @returns Result with lists of changed files
      */
     public async reloadExternallyModifiedFiles(options: FileSyncOptions): Promise<FileSyncResult> {
-        const { force, skipDuringInitialLoad = false, skipBoardUpdate = false } = options;
-        const stack = new Error().stack?.split('\n').slice(1, 5).join('\n') || 'no stack';
-        console.log('[FileSyncHandler.reloadExternallyModifiedFiles] START', { force, skipDuringInitialLoad, skipBoardUpdate });
-        console.log('[FileSyncHandler.reloadExternallyModifiedFiles] CALLER:\n' + stack);
+        const { force, skipDuringInitialLoad = false } = options;
 
         const result: FileSyncResult = {
             includeFilesChanged: false,
@@ -127,36 +123,13 @@ export class FileSyncHandler {
             result.mediaFilesChanged = mediaResult.hasChanges;
             result.changedMediaFiles = mediaResult.changedFiles;
 
-            // Step 3: Send updates to webview
+            // Step 3: Send include content updates and emit board:loaded for media tracking
             if (result.includeFilesChanged || force) {
-                console.log('[FileSyncHandler] Sending board update', {
-                    includeFilesChanged: result.includeFilesChanged,
-                    force,
-                    skipBoardUpdate,
-                    changedFiles: result.changedIncludeFiles
-                });
-                if (skipBoardUpdate) {
-                    // During initial load, loadMarkdownFile() already sent the board update.
-                    // We only need to send include content, not another full board update.
-                    // This avoids redundant rendering while still delivering include content.
-                    this._sendIncludeContentOnly();
+                this._sendIncludeContentOnly();
 
-                    // Still emit board:loaded for media tracking
-                    const board = this._deps.getBoard();
-                    if (board) {
-                        this._deps.emitBoardLoaded(board);
-                    }
-                } else {
-                    // Use targeted include content update instead of full board refresh
-                    // The webview's updateIncludeFileCache handles re-rendering only affected tasks
-                    console.log('[FileSyncHandler] Sending targeted include content update (not full board refresh)');
-                    this._sendIncludeContentOnly();
-
-                    // Emit board:loaded to trigger media tracking update
-                    const board = this._deps.getBoard();
-                    if (board) {
-                        this._deps.emitBoardLoaded(board);
-                    }
+                const board = this._deps.getBoard();
+                if (board) {
+                    this._deps.emitBoardLoaded(board);
                 }
             }
 
@@ -202,6 +175,16 @@ export class FileSyncHandler {
                 continue;
             }
 
+            // Safety: skip include files that have unsaved in-memory edits.
+            // The focus:gained path detects baseline ≠ disk, but if the user
+            // edited via the board without saving, reloading from disk would
+            // wipe their changes. Let handleExternalChange decide via conflict
+            // detection only if the file has no local edits.
+            if (file.hasAnyUnsavedChanges()) {
+                console.log(`[FileSyncHandler] Skipping reload for ${file.getRelativePath()} - has unsaved changes`);
+                continue;
+            }
+
             changedFiles.push(file.getPath());
             await file.handleExternalChange('modified');
         }
@@ -220,21 +203,13 @@ export class FileSyncHandler {
     private _checkMediaForExternalChanges(): { hasChanges: boolean; changedFiles: string[] } {
         const mediaTracker = this._deps.getMediaTracker();
         if (!mediaTracker) {
-            console.log('[FileSyncHandler] No media tracker available - skipping media check');
             return { hasChanges: false, changedFiles: [] };
         }
 
         try {
-            const trackedFiles = mediaTracker.getTrackedFiles();
-            console.log(`[FileSyncHandler] Checking ${trackedFiles.length} tracked media files for changes`);
-
             // checkForChanges() compares mtimes and triggers callback if changes found
             // The callback (set in KanbanWebviewPanel) handles notifying the frontend
             const changedFiles = mediaTracker.checkForChanges();
-
-            if (changedFiles.length > 0) {
-                console.log('[FileSyncHandler] Media files changed:', changedFiles.map(f => `${f.path} (${f.type})`));
-            }
 
             return {
                 hasChanges: changedFiles.length > 0,

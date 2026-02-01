@@ -10,7 +10,7 @@ import { SaveOptions } from '../files/SaveOptions';
  * ARCHITECTURE:
  * - All saves go through FileSaveService.saveFile()
  * - FileSaveService calls file.save(SaveOptions)
- * - SaveOptions.skipReloadDetection (default: true) sets instance flag _skipNextReloadDetection
+ * - SaveOptions.skipReloadDetection (default: true) sets instance flag _skipReloadCounter
  * - File watcher checks instance flag and skips reload if true
  * - No global state, no timing windows, just clean parameter-based design
  *
@@ -53,10 +53,15 @@ export class FileSaveService {
         const filePath = file.getPath();
         const saveKey = `${file.getFileType()}:${filePath}`;
 
-        // Prevent concurrent saves on the same file
+        // If a save is already in-flight for this file, wait for it to finish
+        // then retry if the file still has unsaved changes (the in-flight save
+        // may not have included our newer content).
         if (this.activeSaves.has(saveKey)) {
             await this.activeSaves.get(saveKey);
-            return;
+            if (!file.hasUnsavedChanges() && content === undefined) {
+                return; // In-flight save covered our content
+            }
+            // Fall through to save again with the newer content
         }
 
         const savePromise = this.performSave(file, content, options);
@@ -73,29 +78,18 @@ export class FileSaveService {
      * Perform the actual save operation using SaveOptions
      */
     private async performSave(file: MarkdownFile, content?: string, options?: SaveOptions): Promise<void> {
-        try {
-            // If content is provided, update file content first
-            // Use updateBaseline=true to prevent emitting 'content' event and triggering save loop
-            // This is safe because we're about to save immediately anyway
-            if (content !== undefined) {
-                file.setContent(content, true);
-            }
-
-            // Use SaveOptions with defaults:
-            // - skipReloadDetection: true (our own save, don't reload)
-            // - source: 'auto-save' (unless specified otherwise)
-            const saveOptions: SaveOptions = {
-                skipReloadDetection: options?.skipReloadDetection ?? true,
-                source: options?.source ?? 'auto-save',
-                skipValidation: options?.skipValidation ?? false
-            };
-
-
-            // Perform the save using the file's save method with SaveOptions
-            await file.save(saveOptions);
-        } catch (error) {
-            console.error(`[FileSaveService] Save failed: ${file.getFileType()} - ${file.getPath()}`, error);
-            throw error;
+        // If content is provided, update file content first
+        // Use updateBaseline=true to prevent emitting 'content' event and triggering save loop
+        if (content !== undefined) {
+            file.setContent(content, true);
         }
+
+        const saveOptions: SaveOptions = {
+            skipReloadDetection: options?.skipReloadDetection ?? true,
+            source: options?.source ?? 'auto-save',
+            skipValidation: options?.skipValidation ?? false
+        };
+
+        await file.save(saveOptions);
     }
 }
