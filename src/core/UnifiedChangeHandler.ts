@@ -82,6 +82,12 @@ export class UnifiedChangeHandler {
      *
      * Only TRUE external changes reach this point (legitimate saves are
      * filtered out by _onFileSystemChange via _skipReloadCounter).
+     *
+     * NOTE: We do NOT check file.hasExternalChanges() here because:
+     * - For the watcher path, _hasFileSystemChanges is always true (set before this runs)
+     * - For the focus path, it may or may not be set
+     * - The fact that this method is called already means an external change was detected
+     * - hasConflict() catches VS Code editor dirty + external change scenarios
      */
     private async handleFileModified(file: MarkdownFile): Promise<void> {
         // For main file changes, also check include files and cached board state
@@ -90,7 +96,7 @@ export class UnifiedChangeHandler {
             : file.hasUnsavedChanges();
 
         // Safe auto-reload: no local changes and no conflict detected
-        if (!hasAnyUnsavedChanges && !file.hasExternalChanges() && !file.hasConflict()) {
+        if (!hasAnyUnsavedChanges && !file.hasConflict()) {
             await file.reload();
             return;
         }
@@ -120,12 +126,19 @@ export class UnifiedChangeHandler {
 
     /**
      * Check if any files in the registry have unsaved changes.
-     * Only called for main files - checks include files and cached board state.
+     * Only called for main files - checks the main file itself, include files, and cached board state.
      */
     private hasAnyUnsavedChangesInRegistry(file: MarkdownFile): boolean {
         const fileRegistry = file.getFileRegistry();
         if (!fileRegistry) {
             return file.hasUnsavedChanges();
+        }
+
+        // CRITICAL: Check the main file's own unsaved changes too
+        // Without this, a main file with _content !== _baseline would be
+        // auto-reloaded, silently discarding its unsaved content.
+        if (file.hasUnsavedChanges()) {
+            return true;
         }
 
         const hasIncludeChanges = fileRegistry.getIncludeFiles().some(f => f.hasUnsavedChanges());
