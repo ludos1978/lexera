@@ -200,23 +200,13 @@ export class MainKanbanFile extends MarkdownFile {
     // ============= FILE I/O =============
 
     /**
-     * Read content from VS Code document or disk
-     * CRITICAL: Normalizes CRLF to LF to ensure consistent line endings
+     * Read content from disk (ALWAYS from filesystem, never from VS Code buffer).
+     * The kanban only cares about file data on disk, not editor buffer state.
+     * CRITICAL: Normalizes CRLF to LF to ensure consistent line endings.
      */
     public async readFromDisk(): Promise<string | null> {
-
-        // Try to get from open document first
-        const document = this._fileManager.getDocument();
-        if (document && document.uri.fsPath === this._path) {
-            const text = document.getText();
-            // CRITICAL: Normalize CRLF to LF (Windows line endings to Unix)
-            return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        }
-
-        // Read from file system
         try {
             const content = await fs.promises.readFile(this._path, 'utf-8');
-            // CRITICAL: Normalize CRLF to LF (Windows line endings to Unix)
             return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         } catch (error) {
             console.error(`[MainKanbanFile] Failed to read file:`, error);
@@ -267,10 +257,8 @@ export class MainKanbanFile extends MarkdownFile {
      */
     public validate(content: string): { valid: boolean; errors?: string[] } {
         try {
-            // CRITICAL FIX: Pass basePath for resolving relative include paths
             const basePath = path.dirname(this._path);
-            const parseResult = this._parser.parseMarkdown(content, basePath, undefined, this._path);
-            const board = parseResult.board;
+            const { board } = this._parser.parseMarkdown(content, basePath, undefined, this._path);
 
             if (!board.valid) {
                 return {
@@ -279,15 +267,7 @@ export class MainKanbanFile extends MarkdownFile {
                 };
             }
 
-            // Additional validation
-            const errors: string[] = [];
-
-            // Allow saving empty boards (users may intentionally clear all columns)
-
-            return {
-                valid: errors.length === 0,
-                errors: errors.length > 0 ? errors : undefined
-            };
+            return { valid: true };
         } catch (error) {
             return {
                 valid: false,
@@ -309,15 +289,11 @@ export class MainKanbanFile extends MarkdownFile {
         const document = this._fileManager.getDocument();
         const documentIsDirty = !!(document && document.uri.fsPath === this._path && document.isDirty);
 
-        // CRITICAL: Check if there's a cached board from webview (UI edits not yet saved)
-        const cachedBoard = this.getCachedBoardFromWebview();
-        const hasCachedBoardChanges = !!cachedBoard;
-
         // Main has unsaved changes if ANY of:
-        // - Internal state flag is true (from kanban UI edits) - computed from content comparison
-        // - OR VSCode document is dirty (from text editor edits)
-        // - OR Cached board exists (UI edits not yet written to file)
-        const hasMainUnsavedChanges = this.hasUnsavedChanges() || documentIsDirty || hasCachedBoardChanges;
+        // - Internal state (kanban UI edits) - computed from content comparison
+        // - VSCode document is dirty (text editor edits)
+        // - Cached board exists (UI edits not yet written to file)
+        const hasMainUnsavedChanges = this.hasUnsavedChanges() || documentIsDirty || !!this._cachedBoardFromWebview;
 
 
         return {
@@ -341,39 +317,55 @@ export class MainKanbanFile extends MarkdownFile {
 
     /**
      * Override reload to also parse board and clear cached board.
+     * Uses base class concurrency protections (watcher coordinator + sequence counter).
      * OPTIMIZATION: Skip re-parsing if content hasn't actually changed.
      */
     public async reload(): Promise<void> {
         // Clear cached board from webview on any reload
         this._cachedBoardFromWebview = undefined;
 
-        // Read and update content WITHOUT emitting events yet
-        const content = await this._readFromDiskWithVerification();
-        if (content !== null) {
+        // Use watcher coordinator to prevent conflicts (matches base class pattern)
+        await MarkdownFile._watcherCoordinator.startOperation(this._relativePath, 'reload');
 
-            // CRITICAL OPTIMIZATION: Skip re-parse if content exactly the same
-            // This prevents infinite loops and unnecessary board regeneration
-            if (content === this._baseline) {
-                this._hasFileSystemChanges = false;
-                this._lastModified = await this._getFileModifiedTime();
+        try {
+            const mySequence = this._startNewReload();
+
+            const content = await this._readFromDiskWithVerification();
+
+            if (this._checkReloadCancelled(mySequence)) {
                 return;
             }
 
-            // Content actually changed - proceed with full reload
+            if (content !== null) {
+                // CRITICAL OPTIMIZATION: Skip re-parse if content exactly the same
+                // This prevents infinite loops and unnecessary board regeneration
+                if (content === this._baseline) {
+                    this._hasFileSystemChanges = false;
+                    this._lastModified = await this._getFileModifiedTime();
+                    return;
+                }
 
-            this._content = content;
-            this._baseline = content;
-            this._hasFileSystemChanges = false;
-            this._lastModified = await this._getFileModifiedTime();
+                if (this._checkReloadCancelled(mySequence)) {
+                    return;
+                }
 
-            // CRITICAL: Re-parse board BEFORE emitting event
-            // This ensures event handlers see the updated board
-            this.parseToBoard();
+                // Content actually changed - proceed with full reload
+                this._content = content;
+                this._baseline = content;
+                this._hasFileSystemChanges = false;
+                this._lastModified = await this._getFileModifiedTime();
 
-            // Now emit the event
-            this._emitChange('reloaded');
-        } else {
-            console.warn(`[MainKanbanFile] ⚠️ Reload failed - null content returned`);
+                // CRITICAL: Re-parse board BEFORE emitting event
+                // This ensures event handlers see the updated board
+                this.parseToBoard();
+
+                // Now emit the event
+                this._emitChange('reloaded');
+            } else {
+                console.warn(`[MainKanbanFile] ⚠️ Reload failed - null content returned`);
+            }
+        } finally {
+            MarkdownFile._watcherCoordinator.endOperation(this._relativePath, 'reload');
         }
     }
 

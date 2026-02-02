@@ -181,7 +181,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      *
      * @returns The sequence number for this operation
      */
-    private _startNewReload(): number {
+    protected _startNewReload(): number {
         return ++this._currentReloadSequence;
     }
 
@@ -192,7 +192,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      * @param mySequence - The sequence number of this operation
      * @returns true if cancelled, false if still current
      */
-    private _checkReloadCancelled(mySequence: number): boolean {
+    protected _checkReloadCancelled(mySequence: number): boolean {
         return mySequence !== this._currentReloadSequence;
     }
 
@@ -782,23 +782,9 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // Continue to handle as external change (don't skip)
         }
 
-        // If VS Code just saved this file (document is open and not dirty),
-        // AND the kanban has no unsaved in-memory changes, silently reload.
-        // This covers saves the _skipReloadCounter doesn't know about:
-        //   - User pressing Ctrl+S in VS Code editor
-        //   - VS Code auto-save (files.autoSave setting)
-        //   - Extensions that trigger document saves
-        // CRITICAL: We must check hasAnyUnsavedChanges() to avoid discarding
-        // kanban edits that haven't been saved to disk yet. If the kanban has
-        // pending changes, fall through to the conflict detection path.
-        if (changeType === 'modified') {
-            const doc = vscode.workspace.textDocuments.find(d => d.uri.fsPath === this._path);
-            if (doc && !doc.isDirty && !this.hasAnyUnsavedChanges()) {
-                // VS Code saved this file and kanban has no pending changes - safe to reload
-                await this.reload();
-                return;
-            }
-        }
+        // All external modifications go through the batched import dialog.
+        // No silent reloads — the user always decides whether to import.
+        // (Our own saves are already skipped above via _skipReloadCounter.)
 
         // CRITICAL: If user is in edit mode, stop editing IMMEDIATELY before any processing
         // This prevents board corruption when external changes occur during editing

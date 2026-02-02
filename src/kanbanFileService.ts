@@ -12,7 +12,6 @@ import { getErrorMessage, safeDecodeURIComponent } from './utils/stringUtils';
 import { logger } from './utils/logger';
 import { PanelContext, WebviewManager } from './panel';
 import { BoardStore } from './core/stores';
-import { DOCUMENT_CHANGE_DEBOUNCE_MS } from './constants/TimeoutConstants';
 import { showError, showWarning, showInfo } from './services/NotificationService';
 import { SaveOptions } from './files/SaveOptions';
 import { MarkdownFile } from './files/MarkdownFile';
@@ -80,11 +79,8 @@ export class KanbanFileService {
     private _deps: KanbanFileServiceDeps;
 
     // Debounce timer for document change reparse (prevents rapid reparses during undo/redo)
-    private _documentChangeDebounceTimer: NodeJS.Timeout | null = null;
-    // Note: Uses centralized DOCUMENT_CHANGE_DEBOUNCE_MS from TimeoutConstants
 
     // Flag to skip undo detection when we are saving the document ourselves
-    private _isSavingDocument = false;
     private _saveToMarkdownInFlight: Promise<void> | null = null;
 
     constructor(
@@ -147,10 +143,13 @@ export class KanbanFileService {
             try {
                 const document = this.fileManager.getDocument()!;
 
-                // Parse board from document
-                // Note: MainKanbanFile._cachedBoardFromWebview handles unsaved UI state for conflict detection
-                const basePath = path.dirname(document.uri.fsPath);
-                const parseResult = MarkdownKanbanParser.parseMarkdown(document.getText(), basePath, undefined, document.uri.fsPath);
+                // Parse board from file on disk (NOT VS Code buffer)
+                // The kanban only cares about file data on disk, never the editor buffer state
+                const filePath = document.uri.fsPath;
+                const basePath = path.dirname(filePath);
+                const diskContent = await fs.promises.readFile(filePath, 'utf-8');
+                const normalizedContent = diskContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                const parseResult = MarkdownKanbanParser.parseMarkdown(normalizedContent, basePath, undefined, filePath);
                 this.setBoard(parseResult.board);
 
                 const currentBoard = this.board();
@@ -262,8 +261,12 @@ export class KanbanFileService {
 
         try {
             // ALLOWED: Loading board (initial load, different document, or force reload)
-            const basePath = path.dirname(document.uri.fsPath);
-            const parseResult = MarkdownKanbanParser.parseMarkdown(document.getText(), basePath, undefined, document.uri.fsPath);
+            // Read from disk, NOT VS Code buffer — kanban only cares about file data on disk
+            const filePath = document.uri.fsPath;
+            const basePath = path.dirname(filePath);
+            const diskContent = await fs.promises.readFile(filePath, 'utf-8');
+            const normalizedContent = diskContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const parseResult = MarkdownKanbanParser.parseMarkdown(normalizedContent, basePath, undefined, filePath);
 
             // Update version tracking (in shared PanelContext)
             this._context.setLastDocumentVersion(document.version);
@@ -384,18 +387,13 @@ export class KanbanFileService {
                     mainFile.setCachedBoardFromWebview(board);
                 }
 
-                this._isSavingDocument = true;
-                try {
-                    const markdown = MarkdownKanbanParser.generateMarkdown(board!);
-                    await this._fileSaveService.saveFile(mainFile, markdown, {
-                        source,
-                        force,
-                        skipReloadDetection: true,
-                        skipValidation
-                    });
-                } finally {
-                    this._isSavingDocument = false;
-                }
+                const markdown = MarkdownKanbanParser.generateMarkdown(board!);
+                await this._fileSaveService.saveFile(mainFile, markdown, {
+                    source,
+                    force,
+                    skipReloadDetection: true,
+                    skipValidation
+                });
 
                 if (updateBaselines && board) {
                     mainFile.updateFromBoard(board, true, true);
@@ -529,6 +527,13 @@ export class KanbanFileService {
                 }
             }
         }
+        if (typeof scope === 'object' && scope.filePath) {
+            const file = this._resolveFileFromRegistry(scope.filePath);
+            if (file && file.hasExternalChanges()) {
+                const label = file.getFileType() === 'main' ? file.getFileName() : file.getRelativePath();
+                filesWithExternalChanges.push({ file, label });
+            }
+        }
 
         if (filesWithExternalChanges.length === 0) {
             return 'continue';
@@ -556,11 +561,8 @@ export class KanbanFileService {
                     this._showConflictFileNotification(conflictPath, 'External changes backed up');
                 }
             }
-            // Clear external change flags — save will proceed normally after this
-            for (const { file } of filesWithExternalChanges) {
-                // Reload baseline so save doesn't re-detect the conflict
-                // (the actual kanban content will overwrite the file)
-            }
+            // _hasFileSystemChanges is cleared by the save that follows
+            // (MarkdownFile.save() sets _hasFileSystemChanges = false after writing)
             return 'continue';
 
         } else if (resolution.shouldCreateBackup && resolution.shouldReload) {
@@ -665,8 +667,6 @@ export class KanbanFileService {
             newContent
         );
 
-        // Set flag to skip undo detection during save
-        this._isSavingDocument = true;
         try {
             await vscode.workspace.applyEdit(edit);
             await document.save();
@@ -682,24 +682,24 @@ export class KanbanFileService {
             // STATE MACHINE: Error recovery
             this._saveState = SaveState.IDLE;
             showError(`Failed to initialize file: ${error}`);
-        } finally {
-            this._isSavingDocument = false;
         }
     }
 
     /**
-     * Setup document change listener for tracking modifications
+     * Setup document change listener for tracking modifications.
+     *
+     * IMPORTANT: The kanban does NOT react to VS Code text buffer changes.
+     * The kanban only cares about FILE DATA on disk, not editor buffers.
+     * Text editor typing, undo, redo — none of these affect the kanban board.
+     * Only when a file is SAVED to disk does it matter (detected by file watcher).
+     *
+     * This listener only sends document state (dirty flag) to the debug overlay.
      */
     public setupDocumentChangeListener(disposables: vscode.Disposable[]): void {
-        // Listen for document changes
-        const changeDisposable = vscode.workspace.onDidChangeTextDocument(async (event) => {
+        const changeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
             const currentDocument = this.fileManager.getDocument();
             if (currentDocument && event.document === currentDocument) {
-                // Registry tracks editor changes automatically via file watchers
-                // NOTE: We do NOT track unsaved external changes - only SAVED external changes
-                // are tracked via file watcher. This prevents noise from user typing in text editor.
-
-                // Notify debug overlay of document state change so it can update editor state
+                // Notify debug overlay of document dirty state only
                 const currentPanel = this.panel();
                 if (currentPanel) {
                     currentPanel.webview.postMessage({
@@ -708,77 +708,9 @@ export class KanbanFileService {
                         version: event.document.version
                     });
                 }
-
-                // UNDO SUPPORT: Check if document content differs from our cache
-                // This happens when user undoes a WorkspaceEdit operation
-                // Debounced to prevent rapid reparses during multiple undo/redo operations
-                // SKIP if we are currently saving (prevents false "undo" detection during our own save)
-                if (this._isSavingDocument) {
-                    return;
-                }
-                // SKIP if webview-initiated undo/redo is in progress (UICommands handles targeted updates)
-                if (this._context.undoRedoOperation) {
-                    return;
-                }
-                const mainFile = this.fileRegistry.getMainFile();
-                if (mainFile) {
-                    const documentContent = event.document.getText();
-                    const cachedContent = mainFile.getContent();
-                    if (documentContent !== cachedContent) {
-                        // Clear any pending debounce timer
-                        if (this._documentChangeDebounceTimer) {
-                            clearTimeout(this._documentChangeDebounceTimer);
-                        }
-                        // Debounce the reparse
-                        this._documentChangeDebounceTimer = setTimeout(async () => {
-                            this._documentChangeDebounceTimer = null;
-                            // Re-check content diff (may have changed during debounce)
-                            const currentDocContent = event.document.getText();
-                            const currentCacheContent = mainFile.getContent();
-                            if (currentDocContent !== currentCacheContent) {
-                                // Diagnostic: Find first difference for debugging
-                                let diffIndex = 0;
-                                const minLen = Math.min(currentDocContent.length, currentCacheContent.length);
-                                while (diffIndex < minLen && currentDocContent[diffIndex] === currentCacheContent[diffIndex]) {
-                                    diffIndex++;
-                                }
-                                logger.debug('[KanbanFileService] Document content changed (possibly undo), syncing cache and reparsing');
-                                logger.debug('[KanbanFileService] Content diff details:',
-                                    'docLen=' + currentDocContent.length,
-                                    'cacheLen=' + currentCacheContent.length,
-                                    'diffAt=' + diffIndex,
-                                    'doc@diff=' + JSON.stringify(currentDocContent.substring(diffIndex, diffIndex + 50)),
-                                    'cache@diff=' + JSON.stringify(currentCacheContent.substring(diffIndex, diffIndex + 50)));
-                                // Sync cache from document
-                                mainFile.setContent(currentDocContent, false);
-                                // Trigger full board refresh
-                                await this.sendBoardUpdate(false, true);
-                            }
-                        }, DOCUMENT_CHANGE_DEBOUNCE_MS);
-                    }
-                }
             }
-
-            // NOTE: Document change tracking behavior
-            // =========================================
-            // We DO track unsaved changes in kanban-managed files for conflict detection:
-            // - Main kanban file: Tracked via document.isDirty check in MainKanbanFile.hasConflict()
-            // - Include files: Tracked via internal _hasUnsavedChanges flag
-            //
-            // We DO NOT track unsaved changes in external non-kanban files:
-            // - External files being edited in VSCode are not tracked
-            // - Only SAVED external changes trigger conflict detection via file watcher
-            //
-            // This ensures:
-            // - User's kanban/include edits are protected from external overwrites
-            // - External file edits don't interfere until actually saved to disk
         });
         disposables.push(changeDisposable);
-
-        // NOTE: We intentionally do NOT listen to onDidOpenTextDocument for include files.
-        // The kanban works with files on disk, not VS Code editor buffers.
-        // When a user opens an include file in VS Code, they see the disk version.
-        // Kanban changes are synced to disk via FileSaveService, not via workspace edits.
 
         // NOTE: SaveEventDispatcher registration moved to loadMarkdownFile()
         // because document is not available yet when this method is called in constructor

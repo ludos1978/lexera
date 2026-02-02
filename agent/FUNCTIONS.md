@@ -515,7 +515,7 @@ Service for converting Excel spreadsheets (.xlsx, .xls, .ods) to PNG images usin
 - `src/panel/IncludeFileCoordinator.ts` `_sendColumnIncludeUpdate()` and `_sendTaskIncludeUpdate()` now match include references against both relative and absolute paths to avoid missed updates.
 - `src/commands/UICommands.ts` `handleUndo()` and `handleRedo()` now log when they emit board:changed for undo/redo sequencing.
 - `src/services/WebviewUpdateService.ts` `sendBoardUpdate()` now logs refresh options to track post-undo full refreshes.
-- `src/kanbanFileService.ts` `setupDocumentChangeListener()` now syncs cached include-file content into newly opened include documents when they have unsaved changes (absolute/relative lookup), preventing stale disk content after undo.
+- `src/kanbanFileService.ts` `setupDocumentChangeListener()` only sends document dirty state to the debug overlay. Does NOT react to VS Code buffer changes — the kanban board only updates when file data changes on disk (detected by file watcher).
 - `src/commands/FileCommands.ts` `handleOpenFileLink()` and `handleOpenIncludeFile()` now apply cached include-file content to opened editors when the include file has unsaved changes, keeping include file views consistent after undo.
 - `src/core/events/BoardSyncHandler.ts` `_propagateEditsToIncludeFiles()` now compares include content against current cached content (not baseline) so undo restores include file content correctly, and updates open include documents to keep editors in sync.
 - `src/html/webview.js` updateColumnContent handler now logs cache/column state, task IDs, and clears stale loading/error flags when task payloads arrive (fixed switch scoping to avoid syntax errors).
@@ -944,7 +944,7 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/kanbanFileService-KanbanFileService_saveToMarkdown - Save board to markdown file
 - src/kanbanFileService-KanbanFileService_saveMainKanbanChanges - Save main kanban changes
 - src/kanbanFileService-KanbanFileService_initializeFile - Initialize a new kanban file with header
-- src/kanbanFileService-KanbanFileService_setupDocumentChangeListener - Setup document change listener for tracking modifications
+- src/kanbanFileService-KanbanFileService_setupDocumentChangeListener - Sends document dirty state to debug overlay only. Does NOT react to buffer changes — kanban only cares about file data on disk.
 - src/kanbanFileService-KanbanFileService_registerSaveHandler - Register handler with SaveEventCoordinator for version tracking
 - src/kanbanFileService-KanbanFileService_updateKnownFileContent - Update the known file content baseline
 - src/kanbanFileService-KanbanFileService_openFileWithReuseCheck - Open a file with reuse check (focus existing editor if already open)

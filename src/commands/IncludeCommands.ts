@@ -433,55 +433,31 @@ export class IncludeCommands extends SwitchBasedCommand {
         const panelAccess = panel as PanelCommandAccess;
 
         try {
-            if (isMainFile) {
-                const fileService = panelAccess._fileService;
-                if (!fileService || typeof fileService.saveUnified !== 'function') {
-                    throw new Error('File service not available');
-                }
+            const fileService = panelAccess._fileService;
+            if (!fileService || typeof fileService.saveUnified !== 'function') {
+                throw new Error('File service not available');
+            }
 
-                await fileService.saveUnified({
-                    scope: 'main',
-                    force: forceSave,
-                    source: 'ui-edit',
-                    syncIncludes: false,
-                    updateBaselines: true,
-                    updateUi: false
-                });
+            await fileService.saveUnified({
+                scope: isMainFile ? 'main' : { filePath },
+                force: forceSave,
+                source: 'ui-edit',
+                syncIncludes: !isMainFile,
+                updateBaselines: isMainFile ? true : undefined,
+                updateUi: false
+            });
 
-                await this.triggerMarpWatchExport(context, panelAccess);
+            await this.triggerMarpWatchExport(context, panelAccess);
 
-                this.postMessage({
-                    type: 'individualFileSaved',
-                    filePath: filePath,
-                    isMainFile: true,
-                    success: true,
-                    forceSave: forceSave
-                });
-            } else {
-                const fileService = panelAccess._fileService;
-                if (!fileService || typeof fileService.saveUnified !== 'function') {
-                    throw new Error('File service not available');
-                }
+            this.postMessage({
+                type: 'individualFileSaved',
+                filePath: filePath,
+                isMainFile: isMainFile,
+                success: true,
+                forceSave: forceSave
+            });
 
-                await fileService.saveUnified({
-                    scope: { filePath },
-                    force: forceSave,
-                    source: 'ui-edit',
-                    syncIncludes: true,
-                    updateUi: false
-                });
-
-                await this.triggerMarpWatchExport(context, panelAccess);
-
-                this.postMessage({
-                    type: 'individualFileSaved',
-                    filePath: filePath,
-                    isMainFile: false,
-                    success: true,
-                    forceSave: forceSave
-                });
-
-                // Trigger debug info refresh (handled by DebugCommands)
+            if (!isMainFile) {
                 this.postMessage({ type: 'refreshDebugInfo' });
             }
         } catch (error) {
@@ -509,40 +485,25 @@ export class IncludeCommands extends SwitchBasedCommand {
         const panelAccess = panel as PanelCommandAccess;
 
         try {
+            const fileRegistry = this.getFileRegistry();
+            if (!fileRegistry) {
+                throw new Error('File registry not available');
+            }
+
             if (isMainFile) {
-                const fileRegistry = this.getFileRegistry();
-                const mainFile = fileRegistry?.getMainFile();
+                const mainFile = fileRegistry.getMainFile();
                 if (!mainFile) {
                     throw new Error('Main file not found in registry');
                 }
-
-                // forceSyncBaseline reads disk, updates content+baseline, clears _hasFileSystemChanges
                 await mainFile.forceSyncBaseline();
-                mainFile.parseToBoard();
-
-                const fileService = panelAccess._fileService;
-                const freshBoard = mainFile.getBoard();
-                if (freshBoard && freshBoard.valid && fileService) {
-                    fileService.setBoard(freshBoard);
-                    await fileService.sendBoardUpdate(false, false);
-                }
-
-                this.postMessage({
-                    type: 'individualFileReloaded',
-                    filePath: filePath,
-                    isMainFile: true,
-                    success: true
-                });
             } else {
-                const fileRegistry = this.getFileRegistry();
-                if (!fileRegistry) {
-                    throw new Error('File registry not available');
-                }
-
                 const document = context.fileManager.getDocument();
+                if (!document) {
+                    throw new Error('No current document available');
+                }
                 const absolutePath = filePath.startsWith('/')
                     ? filePath
-                    : path.join(path.dirname(document!.uri.fsPath), filePath);
+                    : path.join(path.dirname(document.uri.fsPath), filePath);
 
                 const file = fileRegistry.get(absolutePath);
                 if (!file) {
@@ -555,27 +516,27 @@ export class IncludeCommands extends SwitchBasedCommand {
                     throw new Error(`Cannot reload main kanban file as include: ${absolutePath}`);
                 }
 
-                // forceSyncBaseline reads disk, updates content+baseline, clears _hasFileSystemChanges
                 await file.forceSyncBaseline();
-
-                const fileService = panelAccess._fileService;
-                const mainFileObj = fileRegistry.getMainFile();
-                if (mainFileObj) {
-                    mainFileObj.parseToBoard();
-                    const freshBoard = mainFileObj.getBoard();
-                    if (freshBoard && freshBoard.valid && fileService) {
-                        fileService.setBoard(freshBoard);
-                        await fileService.sendBoardUpdate(false, false);
-                    }
-                }
-
-                this.postMessage({
-                    type: 'individualFileReloaded',
-                    filePath: filePath,
-                    isMainFile: false,
-                    success: true
-                });
             }
+
+            // Re-parse board and refresh UI
+            const mainFile = fileRegistry.getMainFile();
+            if (mainFile) {
+                mainFile.parseToBoard();
+                const freshBoard = mainFile.getBoard();
+                const fileService = panelAccess._fileService;
+                if (freshBoard && freshBoard.valid && fileService) {
+                    fileService.setBoard(freshBoard);
+                    await fileService.sendBoardUpdate(false, false);
+                }
+            }
+
+            this.postMessage({
+                type: 'individualFileReloaded',
+                filePath: filePath,
+                isMainFile: isMainFile,
+                success: true
+            });
         } catch (error) {
             this.postMessage({
                 type: 'individualFileReloaded',

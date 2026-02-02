@@ -34,6 +34,25 @@ export interface ConflictResolution {
 }
 
 /**
+ * Create a ConflictResolution with sensible defaults.
+ * Only the action and overridden flags need to be specified.
+ */
+function resolution(
+    action: ConflictResolution['action'],
+    overrides: Partial<Omit<ConflictResolution, 'action'>> = {}
+): ConflictResolution {
+    return {
+        action,
+        shouldProceed: false,
+        shouldCreateBackup: false,
+        shouldSave: false,
+        shouldReload: false,
+        shouldIgnore: false,
+        ...overrides
+    };
+}
+
+/**
  * Centralized conflict resolution system that handles all file change protection scenarios
  * with consistent dialogs and unified logic to prevent multiple dialog appearances.
  *
@@ -79,8 +98,7 @@ export class ConflictResolver {
         this.pendingResolutions.set(dialogKey, resolutionPromise);
 
         try {
-            const resolution = await resolutionPromise;
-            return resolution;
+            return await resolutionPromise;
         } finally {
             // Clean up tracking
             this.activeDialogs.delete(dialogKey);
@@ -111,15 +129,7 @@ export class ConflictResolver {
             case 'external_main':
             case 'external_include':
                 // Handled by batched import system in UnifiedChangeHandler — ignore here
-                return {
-                    action: 'ignore',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldBackupExternal: false,
-                    shouldSave: false,
-                    shouldReload: false,
-                    shouldIgnore: true
-                };
+                return resolution('ignore', { shouldProceed: true, shouldIgnore: true });
             default:
                 throw new Error(`Unknown conflict type: ${context.type}`);
         }
@@ -144,56 +154,20 @@ export class ConflictResolver {
             message = `You have unsaved changes in column include files.${includeFilesList}\n\nDo you want to save before closing?`;
         } else {
             // No unsaved changes - allow close
-            return {
-                action: 'ignore',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldBackupExternal: false,
-                shouldSave: false,
-                shouldReload: false,
-                shouldIgnore: true
-            };
+            return resolution('ignore', { shouldProceed: true, shouldIgnore: true });
         }
 
         const choice = await confirmSaveOnClose(message);
 
         switch (choice) {
             case 'cancel':
-                return {
-                    action: 'cancel',
-                    shouldProceed: false,
-                    shouldCreateBackup: false,
-                    shouldSave: false,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
+                return resolution('cancel');
             case 'save':
-                return {
-                    action: 'save',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldSave: true,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
+                return resolution('save', { shouldProceed: true, shouldSave: true });
             case 'discard':
-                return {
-                    action: 'discard_local',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldSave: false,
-                    shouldReload: true,
-                    shouldIgnore: false
-                };
+                return resolution('discard_local', { shouldProceed: true, shouldReload: true });
             default:
-                return {
-                    action: 'cancel',
-                    shouldProceed: false,
-                    shouldCreateBackup: false,
-                    shouldSave: false,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
+                return resolution('cancel');
         }
     }
 
@@ -223,34 +197,11 @@ export class ConflictResolver {
 
         switch (choice) {
             case overwrite:
-                return {
-                    action: 'backup_external_and_save',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldBackupExternal: true,
-                    shouldSave: true,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
+                return resolution('backup_external_and_save', { shouldProceed: true, shouldBackupExternal: true, shouldSave: true });
             case loadExternal:
-                return {
-                    action: 'backup_and_reload',
-                    shouldProceed: true,
-                    shouldCreateBackup: true,
-                    shouldBackupExternal: false,
-                    shouldSave: false,
-                    shouldReload: true,
-                    shouldIgnore: false
-                };
+                return resolution('backup_and_reload', { shouldProceed: true, shouldCreateBackup: true, shouldReload: true });
             default: // Skip or ESC
-                return {
-                    action: 'cancel',
-                    shouldProceed: false,
-                    shouldCreateBackup: false,
-                    shouldSave: false,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
+                return resolution('cancel');
         }
     }
 }

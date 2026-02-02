@@ -1,3 +1,7 @@
+- [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) . also [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
+
+- [ ] i would like to be able to drop external files (desktop, vscode explorer into the editor without leaving it, it should place it directly inline). with all the features we have in the task creation pasting as well!
+
 - [ ] lets change the file save/load/reload/conflict handling like this:
   - when the main file or any imported files in the kanban have unsaved modifications:
     - and when the external file is changed
@@ -8,55 +12,6 @@
     - load the external changes and backup the internal changes (writes internal data to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file)
     - skip the saving action (and also skip loading the content from the filedata.)
   - create a dialog with all files that have differences and the actions to be taken if multiple files are affected (use the same dialogue if there is only one file).
-
-# Action Flow — Complete Decision Tree
-
-## TRIGGER: File Change Watcher fires (file modified on disk)
-
-1. Our own save? (_skipReloadCounter > 0)
-  → YES: decrement counter, DONE (no action)
-  → NO: continue
-2. VS Code just saved this file? (doc open + not dirty + no unsaved kanban changes)
-  → YES: silent reload from disk, DONE (not an "external" change)
-  → NO: continue
-3. User in edit mode?
-  → YES: capture edit value, stop editing, continue
-  → NO: continue
-4. Mark _hasFileSystemChanges = true on the file
-5. Add file to coalescing batch (500ms window per panel)
-  → Wait for more files to arrive within window
-  → After 500ms, proceed to Step 6
-6. SHOW BATCHED IMPORT/IGNORE DIALOG (see "Scenario 1
-Dialog" below)
-
-## TRIGGER: Focus gained (panel gets focus)
-
-1. Check all files for disk changes (compare disk content to
-baseline)
-2. For each file with detected changes:
-  → Already has _hasFileSystemChanges = true? SKIP (already
-detected via watcher)
-  → New change? Add to batch
-3. If any new changes collected:
-  → SHOW BATCHED IMPORT/IGNORE DIALOG (same as above)
-
-## TRIGGER: Save (Cmd+S, save button, panel close save)
-
-1. Collect all files in save scope where
-_hasFileSystemChanges = true
-2. No files with external changes?
-  → Normal save, DONE
-3. Files with external changes found?
-  → SHOW PRE-SAVE CONFLICT DIALOG (see "Scenario 2 Dialog" below)
-
-## TRIGGER: File States Overview "Reload" button
-
-1. Call file.forceSyncBaseline()
-  → Reads disk content
-  → Updates _content AND _baseline
-  → Clears _hasFileSystemChanges
-2. If main file: re-parse board, update webview
-3. If include file: propagate change through board
 
 
 

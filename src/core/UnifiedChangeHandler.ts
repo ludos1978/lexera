@@ -47,7 +47,7 @@ export class UnifiedChangeHandler {
         changeType: 'modified' | 'deleted' | 'created'
     ): Promise<void> {
         if (changeType === 'deleted') {
-            await this._handleFileDeleted(file);
+            this._handleFileDeleted(file);
             return;
         }
 
@@ -62,7 +62,7 @@ export class UnifiedChangeHandler {
 
     // ============= IMMEDIATE HANDLERS =============
 
-    private async _handleFileDeleted(file: MarkdownFile): Promise<void> {
+    private _handleFileDeleted(file: MarkdownFile): void {
         file.setExists(false);
     }
 
@@ -80,31 +80,29 @@ export class UnifiedChangeHandler {
     private _addToPending(file: MarkdownFile): void {
         const panelId = file.getConflictResolver().panelId;
 
-        if (!this._pendingFiles.has(panelId)) {
-            this._pendingFiles.set(panelId, []);
+        let pending = this._pendingFiles.get(panelId);
+        if (!pending) {
+            pending = [];
+            this._pendingFiles.set(panelId, pending);
         }
 
-        const pending = this._pendingFiles.get(panelId)!;
-
         // Avoid duplicates (same file path)
-        const alreadyPending = pending.some(f => f.getPath() === file.getPath());
-        if (!alreadyPending) {
+        if (!pending.some(f => f.getPath() === file.getPath())) {
             pending.push(file);
         }
 
         // Reset coalesce timer for this panel
-        const existingTimer = this._coalesceTimers.get(panelId);
-        if (existingTimer) {
-            clearTimeout(existingTimer);
-        }
+        clearTimeout(this._coalesceTimers.get(panelId));
 
-        this._coalesceTimers.set(panelId, setTimeout(async () => {
+        this._coalesceTimers.set(panelId, setTimeout(() => {
             const files = this._pendingFiles.get(panelId) || [];
             this._pendingFiles.delete(panelId);
             this._coalesceTimers.delete(panelId);
 
             if (files.length > 0) {
-                await this._showBatchedImportDialog(files);
+                this._showBatchedImportDialog(files).catch(error => {
+                    console.error('[UnifiedChangeHandler] Failed to show batched import dialog:', error);
+                });
             }
         }, COALESCE_WINDOW_MS));
     }

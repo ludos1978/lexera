@@ -424,6 +424,16 @@ class TaskEditor {
                 return;
             }
 
+            // Cmd+S / Ctrl+S: save board including current edit (stay in edit mode)
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof saveCachedBoard === 'function') {
+                    saveCachedBoard();
+                }
+                return;
+            }
+
             if (this._handleVSCodeShortcut(e, element)) {
                 return;
             }
