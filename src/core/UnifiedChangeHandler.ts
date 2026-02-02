@@ -1,5 +1,4 @@
 import { MarkdownFile } from '../files/MarkdownFile';
-import { ConflictDialogBridge, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { WebviewBridge } from './bridge/WebviewBridge';
 
 /**
@@ -27,7 +26,6 @@ const COALESCE_WINDOW_MS = 500;
  * Avoids circular dependency with KanbanWebviewPanel.
  */
 export interface PanelLookup {
-    getConflictDialogBridge(panelId: string): ConflictDialogBridge | undefined;
     getWebviewBridge(panelId: string): WebviewBridge | undefined;
 }
 
@@ -128,91 +126,34 @@ export class UnifiedChangeHandler {
         }, COALESCE_WINDOW_MS));
     }
 
-    // ============= BATCHED IMPORT DIALOG (Scenario 1) =============
+    // ============= EXTERNAL CHANGE NOTIFICATION =============
 
     /**
-     * Show import dialog for a batch of externally changed files.
-     * Uses the webview-based ConflictDialogBridge for per-file resolution.
+     * Send a non-blocking notification to the webview about externally changed files.
+     * The user can click "Review" to open the full file manager dialog.
+     * No auto-reload, no modal dialog — just a notification.
      */
     private async _showBatchedImportDialog(files: MarkdownFile[]): Promise<void> {
         const panelId = files[0].getConflictResolver().panelId;
 
         if (!this._panelLookup) {
-            console.warn('[UnifiedChangeHandler] Panel lookup not registered, cannot show conflict dialog');
+            console.warn('[UnifiedChangeHandler] Panel lookup not registered, cannot send notification');
             return;
         }
 
-        const bridge = this._panelLookup.getConflictDialogBridge(panelId);
         const webviewBridge = this._panelLookup.getWebviewBridge(panelId);
-
-        if (!bridge || !webviewBridge) {
-            console.warn('[UnifiedChangeHandler] Panel not found for batched import dialog, panelId:', panelId);
+        if (!webviewBridge) {
+            console.warn('[UnifiedChangeHandler] WebviewBridge not found, panelId:', panelId);
             return;
         }
 
-        // Build file info for the dialog
-        const conflictFileInfos: ConflictFileInfo[] = files.map(file => ({
-            path: file.getPath(),
-            relativePath: file.getRelativePath(),
-            fileType: file.getFileType() as ConflictFileInfo['fileType'],
-            hasExternalChanges: file.hasExternalChanges(),
-            hasUnsavedChanges: file.hasAnyUnsavedChanges(),
-            isInEditMode: file.isInEditMode()
-        }));
+        const fileNames = files.map(f => f.getRelativePath());
 
-        try {
-            const result = await bridge.showConflict(
-                (msg) => webviewBridge.send(msg),
-                {
-                    conflictType: 'external_changes',
-                    files: conflictFileInfos,
-                    openMode: 'external_change'
-                }
-            );
-
-            if (result.cancelled) {
-                return;
-            }
-
-            // Apply per-file resolutions
-            const resolutionMap = new Map(result.perFileResolutions.map(r => [r.path, r.action]));
-
-            for (const file of files) {
-                const action = resolutionMap.get(file.getPath());
-                switch (action) {
-                    case 'import':
-                    case 'load_external':
-                        await this._importFile(file);
-                        break;
-                    case 'load_external_backup_mine': {
-                        const kanbanContent = file.getContent();
-                        await file.createVisibleConflictFile(kanbanContent);
-                        await this._importFile(file);
-                        break;
-                    }
-                    case 'overwrite': {
-                        // Force save kanban content over disk (no backup)
-                        await file.save({ force: true, skipReloadDetection: true });
-                        break;
-                    }
-                    case 'overwrite_backup_external': {
-                        const diskContent = await file.readFromDisk();
-                        if (diskContent) {
-                            await file.createVisibleConflictFile(diskContent);
-                        }
-                        await file.save({ force: true, skipReloadDetection: true });
-                        break;
-                    }
-                    case 'ignore':
-                    case 'skip':
-                    default:
-                        // keep _hasFileSystemChanges = true
-                        break;
-                }
-            }
-        } catch (error) {
-            console.error('[UnifiedChangeHandler] Conflict dialog failed:', error);
-        }
+        webviewBridge.send({
+            type: 'externalChangesDetected',
+            fileCount: files.length,
+            fileNames: fileNames
+        });
     }
 
     // ============= FILE IMPORT =============

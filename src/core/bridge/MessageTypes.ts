@@ -2074,6 +2074,15 @@ export interface IframeUrlCheckResultMessage extends BaseMessage {
     blocked: boolean;
 }
 
+/**
+ * External changes notification — non-blocking banner shown in webview
+ */
+export interface ExternalChangesDetectedMessage extends BaseMessage {
+    type: 'externalChangesDetected';
+    fileCount: number;
+    fileNames: string[];
+}
+
 // ============= TYPE UNIONS =============
 
 /**
@@ -2122,7 +2131,9 @@ export type OutgoingMessage =
     | ScrollToElementByIndexMessage
     | SearchResultsMessage
     // Conflict dialog messages
-    | ShowConflictDialogMessage;
+    | ShowConflictDialogMessage
+    // External changes notification
+    | ExternalChangesDetectedMessage;
 
 /**
  * All incoming message types (Frontend → Backend)

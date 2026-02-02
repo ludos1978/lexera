@@ -695,6 +695,7 @@ function positionFileBarDropdown(triggerButton, dropdown) {
 function toggleFileBarMenu(event, button) {
     event.stopPropagation();
     const menu = button.parentElement;
+    if (!menu) return;
     const wasActive = menu.classList.contains('active');
     
     // Close all menus
@@ -836,6 +837,7 @@ function toggleFileBarMenu(event, button) {
 function toggleProcessesMenu(event, button) {
     event.stopPropagation();
     const menu = button.parentElement;
+    if (!menu) return;
     const wasActive = menu.classList.contains('active');
 
     // Close all other menus

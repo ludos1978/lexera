@@ -116,6 +116,9 @@ function getDefaultAction(file) {
  * for save_conflict, reload_request, and external_change modes.
  */
 function openUnifiedDialog(message) {
+    // Dismiss any external changes notification when dialog opens
+    dismissExternalChangesNotification();
+
     if (message.openMode === 'browse') {
         showFileManager();
         return;
@@ -170,6 +173,10 @@ function showFileManager() {
  * Shared dialog builder — creates the DOM element with unified content.
  */
 function buildAndShowDialog() {
+    // Blur before removing to prevent VS Code trackFocus classList error
+    if (document.activeElement && fileManagerElement?.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
     if (fileManagerElement) {
         fileManagerElement.remove();
     }
@@ -212,6 +219,10 @@ function hideFileManager() {
     }
 
     if (fileManagerElement) {
+        // Blur before removing to prevent VS Code trackFocus classList error
+        if (document.activeElement && fileManagerElement.contains(document.activeElement)) {
+            document.activeElement.blur();
+        }
         fileManagerElement.remove();
         fileManagerElement = null;
     }
@@ -383,23 +394,25 @@ function buildUnifiedFileList() {
 function createAllFilesArray() {
     const allFiles = [];
 
-    const mainFile = trackedFilesData.mainFile || 'Unknown';
-    const mainFileInfo = trackedFilesData.watcherDetails || {};
-
-    allFiles.push({
-        path: mainFile,
-        relativePath: mainFile ? mainFile.split('/').pop() : 'Unknown',
-        name: mainFile ? mainFile.split('/').pop() : 'Unknown',
-        type: 'main',
-        isMainFile: true,
-        exists: true,
-        hasInternalChanges: mainFileInfo.hasInternalChanges || false,
-        hasExternalChanges: mainFileInfo.hasExternalChanges || false,
-        documentVersion: mainFileInfo.documentVersion || 0,
-        lastDocumentVersion: mainFileInfo.lastDocumentVersion || -1,
-        isUnsavedInEditor: mainFileInfo.isUnsavedInEditor || false,
-        lastModified: trackedFilesData.mainFileLastModified || 'Unknown'
-    });
+    // Skip main file entry if trackedFilesData hasn't arrived yet
+    const mainFile = trackedFilesData.mainFile;
+    if (mainFile && mainFile !== 'Unknown') {
+        const mainFileInfo = trackedFilesData.watcherDetails || {};
+        allFiles.push({
+            path: mainFile,
+            relativePath: mainFile.split('/').pop(),
+            name: mainFile.split('/').pop(),
+            type: 'main',
+            isMainFile: true,
+            exists: true,
+            hasInternalChanges: mainFileInfo.hasInternalChanges || false,
+            hasExternalChanges: mainFileInfo.hasExternalChanges || false,
+            documentVersion: mainFileInfo.documentVersion || 0,
+            lastDocumentVersion: mainFileInfo.lastDocumentVersion || -1,
+            isUnsavedInEditor: mainFileInfo.isUnsavedInEditor || false,
+            lastModified: trackedFilesData.mainFileLastModified || 'Unknown'
+        });
+    }
 
     const includeFiles = trackedFilesData.includeFiles || [];
     includeFiles.forEach(file => {
@@ -772,9 +785,9 @@ function requestOpenFileDialog(mode) {
 // ============= DIALOG CONTENT UPDATE =============
 
 /**
- * Update dialog content with targeted DOM patches — never rebuilds the table.
- * Only updates cells whose data actually changes (Status, Cache, Saved, summary row).
- * Dropdowns, buttons, and file info are left untouched.
+ * Update dialog content.
+ * If the set of files changed (rows added/removed), rebuilds the table while preserving
+ * dropdown selections. Otherwise, does targeted DOM patches for Status/Cache/Saved only.
  */
 function updateDialogContent() {
     if (!fileManagerElement) return;
@@ -789,7 +802,39 @@ function updateDialogContent() {
         const tableContainer = fileManagerElement.querySelector('.unified-table-container');
         if (!tableContainer) return;
 
-        // --- Patch "All Files" summary row ---
+        // Check if the file list changed (new files appeared or files were removed)
+        const files = buildUnifiedFileList();
+        const renderedRows = tableContainer.querySelectorAll('tr.file-row');
+        const renderedPaths = new Set(Array.from(renderedRows).map(r => r.dataset.filePath));
+        const currentPaths = new Set(files.map(f => f.path));
+        const fileListChanged = renderedPaths.size !== currentPaths.size ||
+            [...currentPaths].some(p => !renderedPaths.has(p));
+
+        if (fileListChanged) {
+            // Assign default actions for newly appearing files
+            files.forEach(f => {
+                if (!perFileResolutions.has(f.path)) {
+                    const defaultAction = getDefaultAction(f);
+                    if (defaultAction) {
+                        perFileResolutions.set(f.path, defaultAction);
+                    }
+                }
+            });
+
+            // Blur any focused element before rebuild to prevent trackFocus classList error
+            const focused = tableContainer.querySelector(':focus');
+            if (focused) focused.blur();
+
+            // File list changed — full table rebuild, but preserve dropdown state
+            const savedState = saveDropdownState(tableContainer);
+            tableContainer.innerHTML = createUnifiedTable();
+            restoreDropdownState(tableContainer, savedState);
+            return;
+        }
+
+        // --- File list unchanged: targeted patches only ---
+
+        // Patch "All Files" summary row
         const summary = getFileSyncSummaryCounts();
         const summaryRow = tableContainer.querySelector('tr.files-table-actions');
         if (summaryRow) {
@@ -809,13 +854,11 @@ function updateDialogContent() {
             }
         }
 
-        // --- Patch per-file rows ---
-        const files = buildUnifiedFileList();
+        // Patch per-file rows
         files.forEach(file => {
             const row = tableContainer.querySelector(`tr.file-row[data-file-path="${CSS.escape(file.path)}"]`);
             if (!row) return;
 
-            // Patch Status column
             const statusCell = row.querySelector('.col-status');
             if (statusCell) {
                 const newStatusHTML = buildStatusBadgeHTML(file);
@@ -824,7 +867,6 @@ function updateDialogContent() {
                 }
             }
 
-            // Patch Cache column
             const cacheCell = row.querySelector('.col-frontend');
             if (cacheCell) {
                 const syncStatus = getFileSyncStatus(file.path);
@@ -834,7 +876,6 @@ function updateDialogContent() {
                 }
             }
 
-            // Patch Saved column
             const savedCell = row.querySelector('.col-saved');
             if (savedCell) {
                 const syncStatus = getFileSyncStatus(file.path);
@@ -844,6 +885,34 @@ function updateDialogContent() {
                 }
             }
         });
+    });
+}
+
+/** Save all dropdown selections in the table so they survive a rebuild. */
+function saveDropdownState(tableContainer) {
+    const state = { actions: new Map(), paths: new Map() };
+    tableContainer.querySelectorAll('.conflict-action-select').forEach(sel => {
+        if (sel.value) state.actions.set(sel.dataset.filePath, sel.value);
+    });
+    tableContainer.querySelectorAll('.paths-select').forEach(sel => {
+        if (sel.value) state.paths.set(sel.dataset.filePath, sel.value);
+    });
+    return state;
+}
+
+/** Restore dropdown selections after a table rebuild. */
+function restoreDropdownState(tableContainer, state) {
+    state.actions.forEach((value, filePath) => {
+        const sel = tableContainer.querySelector(`.conflict-action-select[data-file-path="${CSS.escape(filePath)}"]`);
+        if (sel && Array.from(sel.options).some(o => o.value === value)) {
+            sel.value = value;
+        }
+    });
+    state.paths.forEach((value, filePath) => {
+        const sel = tableContainer.querySelector(`.paths-select[data-file-path="${CSS.escape(filePath)}"]`);
+        if (sel && Array.from(sel.options).some(o => o.value === value)) {
+            sel.value = value;
+        }
     });
 }
 
@@ -1394,6 +1463,38 @@ function initializeFileManager() {
                     updateDialogContent();
                 }
                 break;
+
+            case 'externalChangesDetected':
+                showExternalChangesNotification(message.fileCount, message.fileNames);
+                break;
         }
     });
 }
+
+// ============= EXTERNAL CHANGES NOTIFICATION =============
+
+function showExternalChangesNotification(fileCount, fileNames) {
+    // Remove existing notification if present
+    const existing = document.getElementById('external-changes-notification');
+    if (existing) existing.remove();
+
+    const nameList = fileNames.slice(0, 3).join(', ');
+    const extra = fileCount > 3 ? ` and ${fileCount - 3} more` : '';
+
+    const notification = document.createElement('div');
+    notification.id = 'external-changes-notification';
+    notification.className = 'external-changes-notification';
+    notification.innerHTML = `
+        <span class="external-changes-text">External changes detected in ${fileCount} file${fileCount > 1 ? 's' : ''}: <strong>${nameList}${extra}</strong></span>
+        <button class="external-changes-review-btn" onclick="requestOpenFileDialog('external_change')">Review</button>
+        <button class="external-changes-dismiss-btn" onclick="dismissExternalChangesNotification()">✕</button>
+    `;
+    document.body.appendChild(notification);
+}
+
+function dismissExternalChangesNotification() {
+    const el = document.getElementById('external-changes-notification');
+    if (el) el.remove();
+}
+
+window.dismissExternalChangesNotification = dismissExternalChangesNotification;

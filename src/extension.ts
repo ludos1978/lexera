@@ -127,9 +127,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register panel lookup for UnifiedChangeHandler (avoids circular dependency)
 	UnifiedChangeHandler.getInstance().setPanelLookup({
-		getConflictDialogBridge(panelId: string) {
-			return KanbanWebviewPanel.getPanelById(panelId)?.getConflictDialogBridge();
-		},
 		getWebviewBridge(panelId: string) {
 			return KanbanWebviewPanel.getPanelById(panelId)?.getWebviewBridge();
 		}

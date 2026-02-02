@@ -825,6 +825,7 @@ function closeAllMenus() {
 function toggleDonutMenu(event, button) {
     event.stopPropagation();
     const menu = button.parentElement;
+    if (!menu) return;
     const wasActive = menu.classList.contains('active');
     
     // Close all menus and clean up their dropdowns (only needed here for moved dropdowns)
