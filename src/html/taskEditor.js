@@ -442,12 +442,6 @@ class TaskEditor {
                 return;
             }
 
-            // Debug: Log ALL keypresses with modifiers to diagnose Option key issue
-            if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) {
-            }
-
-            // VS Code shortcuts should be handled by VS Code, not intercepted here.
-
             // Check for other system shortcuts that might cause focus loss
             const isSystemShortcut = (e.metaKey || e.ctrlKey) && (
                 e.key === 'w' || e.key === 't' || e.key === 'n' || // Window/tab shortcuts
