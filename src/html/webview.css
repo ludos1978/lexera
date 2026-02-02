@@ -7019,9 +7019,9 @@ figcaption {
     background: rgba(0, 0, 0, 0.4);
     z-index: 2000;
     display: flex;
-    align-items: flex-start;
-    justify-content: flex-end;
-    padding: 60px 20px 20px 20px;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     pointer-events: none;
@@ -7060,18 +7060,6 @@ figcaption {
     flex-direction: column;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     pointer-events: auto;
-    animation: slideInFromRight 0.2s ease-out;
-}
-
-@keyframes slideInFromRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
 }
 
 .file-manager-header {
@@ -8017,7 +8005,7 @@ figcaption {
 
 /* ============= Conflict Mode Styles ============= */
 
-.file-manager-panel.conflict-mode {
+.file-manager-panel.resolve-mode {
     border-color: var(--vscode-gitDecoration-modifiedResourceForeground);
     border-width: 2px;
 }

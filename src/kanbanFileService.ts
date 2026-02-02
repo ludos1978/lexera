@@ -558,6 +558,11 @@ export class KanbanFileService {
             const action = resolutionMap.get(file.getPath()) || 'skip';
 
             switch (action) {
+                case 'overwrite': {
+                    // Force save kanban content (no backup)
+                    forceWritePaths.add(file.getPath());
+                    break;
+                }
                 case 'overwrite_backup_external': {
                     // Backup external version, then force save kanban content
                     const diskContent = await file.readFromDisk();
@@ -570,6 +575,15 @@ export class KanbanFileService {
                         this._showConflictFileNotification(conflictPath, 'External changes backed up');
                     }
                     forceWritePaths.add(file.getPath());
+                    break;
+                }
+                case 'load_external': {
+                    // Reload from disk (no backup)
+                    if (file.isInEditMode()) {
+                        file.setEditMode(false);
+                    }
+                    await file.reload();
+                    anyReloaded = true;
                     break;
                 }
                 case 'load_external_backup_mine': {
@@ -646,7 +660,8 @@ export class KanbanFileService {
                 },
                 {
                     conflictType: 'presave_conflict',
-                    files: conflictFileInfos
+                    files: conflictFileInfos,
+                    openMode: 'save_conflict'
                 }
             );
         } catch (error) {

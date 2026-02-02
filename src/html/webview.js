@@ -5025,6 +5025,11 @@ document.addEventListener('keydown', (e) => {
                 saveCachedBoard();
             }
         }
+        // Meta+R or Ctrl+R to open file dialog in reload mode
+        else if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+            e.preventDefault();
+            vscode.postMessage({ type: 'openFileDialog', openMode: 'reload_request' });
+        }
         // Meta+W or Ctrl+W to close window - check for unsaved changes first
         else if ((e.ctrlKey || e.metaKey) && e.key === 'w') {
             if (typeof hasUnsavedChanges === 'function' && hasUnsavedChanges()) {

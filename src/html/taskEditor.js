@@ -438,6 +438,14 @@ class TaskEditor {
                 return;
             }
 
+            // Ctrl+R / Meta+R: open file dialog in reload mode (intercept before system shortcut handling)
+            if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                e.preventDefault();
+                e.stopPropagation();
+                vscode.postMessage({ type: 'openFileDialog', openMode: 'reload_request' });
+                return;
+            }
+
             if (isInsideWysiwyg) {
                 return;
             }
@@ -445,7 +453,7 @@ class TaskEditor {
             // Check for other system shortcuts that might cause focus loss
             const isSystemShortcut = (e.metaKey || e.ctrlKey) && (
                 e.key === 'w' || e.key === 't' || e.key === 'n' || // Window/tab shortcuts
-                e.key === 'r' || e.key === 'f' || e.key === 'p' || // Reload/find/print shortcuts
+                e.key === 'f' || e.key === 'p' || // Find/print shortcuts
                 e.key === 'l' || e.key === 'd' || e.key === 'h' || // Location/bookmark shortcuts
                 e.key === '+' || e.key === '-' || e.key === '0' // Zoom shortcuts
             );

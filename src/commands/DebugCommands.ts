@@ -19,9 +19,11 @@ import { PanelCommandAccess, hasConflictService } from '../types/PanelCommandAcc
 import { MarkdownKanbanParser } from '../markdownParser';
 import { KanbanBoard } from '../board/KanbanTypes';
 import { IncludeFile } from '../files/IncludeFile';
+import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SetDebugModeMessage, ConflictResolutionMessage } from '../core/bridge/MessageTypes';
+import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage } from '../core/bridge/MessageTypes';
+import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
 
 /**
@@ -141,7 +143,8 @@ export class DebugCommands extends SwitchBasedCommand {
             'clearTrackedFilesCache',
             'setDebugMode',
             'getMediaTrackingStatus',
-            'conflictResolution'
+            'conflictResolution',
+            'openFileDialog'
         ],
         priority: 50
     };
@@ -153,7 +156,8 @@ export class DebugCommands extends SwitchBasedCommand {
         'clearTrackedFilesCache': (_msg, ctx) => this.handleClearTrackedFilesCache(ctx),
         'setDebugMode': (msg, ctx) => this.handleSetDebugMode(msg as SetDebugModeMessage, ctx),
         'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx),
-        'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx)
+        'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx),
+        'openFileDialog': (msg, ctx) => this.handleOpenFileDialog(msg as OpenFileDialogMessage, ctx)
     };
 
     private async handleSetDebugMode(message: SetDebugModeMessage, context: CommandContext): Promise<CommandResult> {
@@ -182,6 +186,138 @@ export class DebugCommands extends SwitchBasedCommand {
         });
 
         return this.success();
+    }
+
+    // ============= OPEN FILE DIALOG HANDLER =============
+
+    private async handleOpenFileDialog(message: OpenFileDialogMessage, context: CommandContext): Promise<CommandResult> {
+        const panel = context.getWebviewPanel() as PanelCommandAccess | undefined;
+        const bridge = panel?._conflictDialogBridge;
+        const webviewBridge = context.getWebviewBridge();
+
+        if (!bridge || !webviewBridge) {
+            logger.warn('[DebugCommands] No ConflictDialogBridge or WebviewBridge available for openFileDialog');
+            return this.success();
+        }
+
+        const fileRegistry = this.getFileRegistry();
+        if (!fileRegistry) {
+            logger.warn('[DebugCommands] No file registry available for openFileDialog');
+            return this.success();
+        }
+
+        // Build ConflictFileInfo[] from all registered files
+        const allFiles = fileRegistry.getAll();
+        const conflictFileInfos: ConflictFileInfo[] = allFiles.map(file => ({
+            path: file.getPath(),
+            relativePath: file.getRelativePath(),
+            fileType: file.getFileType() as ConflictFileInfo['fileType'],
+            hasExternalChanges: file.hasExternalChanges(),
+            hasUnsavedChanges: file.hasAnyUnsavedChanges(),
+            isInEditMode: file.isInEditMode()
+        }));
+
+        try {
+            const result = await bridge.showConflict(
+                (msg) => webviewBridge.send(msg),
+                {
+                    conflictType: 'external_changes',
+                    files: conflictFileInfos,
+                    openMode: message.openMode
+                }
+            );
+
+            if (result.cancelled) {
+                return this.success();
+            }
+
+            // Apply per-file resolutions
+            await this.applyFileResolutions(result, fileRegistry);
+        } catch (error) {
+            logger.warn('[DebugCommands] openFileDialog failed:', error);
+        }
+
+        return this.success();
+    }
+
+    /**
+     * Apply per-file resolutions from the unified file dialog.
+     * Handles all 5 action types: overwrite, overwrite_backup_external,
+     * load_external, load_external_backup_mine, skip.
+     */
+    private async applyFileResolutions(
+        result: ConflictDialogResult,
+        fileRegistry: MarkdownFileRegistry
+    ): Promise<void> {
+        let anyReloaded = false;
+
+        for (const resolution of result.perFileResolutions) {
+            const file = fileRegistry.get(resolution.path) || fileRegistry.findByPath(resolution.path);
+            if (!file) {
+                logger.warn(`[DebugCommands] File not found in registry for resolution: ${resolution.path}`);
+                continue;
+            }
+
+            switch (resolution.action) {
+                case 'overwrite': {
+                    // Force save file (no backup)
+                    const fileSaveService = this._context?.fileSaveService;
+                    if (fileSaveService) {
+                        await fileSaveService.saveFile(file, undefined, {
+                            source: 'ui-edit',
+                            force: true,
+                            skipReloadDetection: true
+                        });
+                    }
+                    break;
+                }
+                case 'overwrite_backup_external': {
+                    // Backup disk content, then force save
+                    const diskContent = await file.readFromDisk();
+                    if (diskContent) {
+                        await file.createVisibleConflictFile(diskContent);
+                    }
+                    const fileSaveService = this._context?.fileSaveService;
+                    if (fileSaveService) {
+                        await fileSaveService.saveFile(file, undefined, {
+                            source: 'ui-edit',
+                            force: true,
+                            skipReloadDetection: true
+                        });
+                    }
+                    break;
+                }
+                case 'load_external': {
+                    // Reload from disk (no backup)
+                    if (file.isInEditMode()) {
+                        file.setEditMode(false);
+                    }
+                    await file.reload();
+                    anyReloaded = true;
+                    break;
+                }
+                case 'load_external_backup_mine': {
+                    // Backup kanban content, then reload from disk
+                    const kanbanContent = file.getContent();
+                    await file.createVisibleConflictFile(kanbanContent);
+                    if (file.isInEditMode()) {
+                        file.setEditMode(false);
+                    }
+                    await file.reload();
+                    anyReloaded = true;
+                    break;
+                }
+                case 'skip':
+                default:
+                    // Do nothing
+                    break;
+            }
+        }
+
+        // If any files were reloaded, the board update is handled by the reload() event chain
+        if (anyReloaded) {
+            logger.debug('[DebugCommands] Files reloaded via applyFileResolutions, board update triggered by reload events');
+        }
     }
 
     // ============= FORCE WRITE / VERIFICATION HANDLERS =============

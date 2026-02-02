@@ -19,7 +19,9 @@ import { logger } from '../utils/logger';
 export type ConflictDialogType = 'external_changes' | 'presave_conflict';
 
 export type PerFileAction =
+    | 'overwrite'
     | 'overwrite_backup_external'
+    | 'load_external'
     | 'load_external_backup_mine'
     | 'import'
     | 'ignore'
@@ -35,9 +37,12 @@ export interface ConflictFileInfo {
     contentPreview?: string;
 }
 
+export type OpenMode = 'browse' | 'save_conflict' | 'reload_request' | 'external_change';
+
 export interface ConflictDialogRequest {
     conflictType: ConflictDialogType;
     files: ConflictFileInfo[];
+    openMode?: OpenMode;
 }
 
 export interface PerFileResolution {
@@ -101,7 +106,8 @@ export class ConflictDialogBridge {
                 type: 'showConflictDialog',
                 conflictId,
                 conflictType: request.conflictType,
-                files: request.files
+                files: request.files,
+                openMode: request.openMode
             });
 
             if (!sent) {

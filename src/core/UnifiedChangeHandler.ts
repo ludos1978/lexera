@@ -163,7 +163,8 @@ export class UnifiedChangeHandler {
                 (msg) => webviewBridge.send(msg),
                 {
                     conflictType: 'external_changes',
-                    files: conflictFileInfos
+                    files: conflictFileInfos,
+                    openMode: 'external_change'
                 }
             );
 
@@ -176,10 +177,36 @@ export class UnifiedChangeHandler {
 
             for (const file of files) {
                 const action = resolutionMap.get(file.getPath());
-                if (action === 'import') {
-                    await this._importFile(file);
+                switch (action) {
+                    case 'import':
+                    case 'load_external':
+                        await this._importFile(file);
+                        break;
+                    case 'load_external_backup_mine': {
+                        const kanbanContent = file.getContent();
+                        await file.createVisibleConflictFile(kanbanContent);
+                        await this._importFile(file);
+                        break;
+                    }
+                    case 'overwrite': {
+                        // Force save kanban content over disk (no backup)
+                        await file.save({ force: true, skipReloadDetection: true });
+                        break;
+                    }
+                    case 'overwrite_backup_external': {
+                        const diskContent = await file.readFromDisk();
+                        if (diskContent) {
+                            await file.createVisibleConflictFile(diskContent);
+                        }
+                        await file.save({ force: true, skipReloadDetection: true });
+                        break;
+                    }
+                    case 'ignore':
+                    case 'skip':
+                    default:
+                        // keep _hasFileSystemChanges = true
+                        break;
                 }
-                // 'ignore' or no action: keep _hasFileSystemChanges = true
             }
         } catch (error) {
             console.error('[UnifiedChangeHandler] Conflict dialog failed:', error);

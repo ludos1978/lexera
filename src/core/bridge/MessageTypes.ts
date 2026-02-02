@@ -1567,6 +1567,7 @@ export interface ShowConflictDialogMessage extends BaseMessage {
     type: 'showConflictDialog';
     conflictId: string;
     conflictType: 'external_changes' | 'presave_conflict';
+    openMode?: 'browse' | 'save_conflict' | 'reload_request' | 'external_change';
     files: Array<{
         path: string;
         relativePath: string;
@@ -1587,8 +1588,17 @@ export interface ConflictResolutionMessage extends BaseMessage {
     cancelled: boolean;
     perFileResolutions: Array<{
         path: string;
-        action: 'overwrite_backup_external' | 'load_external_backup_mine' | 'import' | 'ignore' | 'skip';
+        action: 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'import' | 'ignore' | 'skip';
     }>;
+}
+
+/**
+ * Open file dialog request (Frontend → Backend)
+ * Used for Files button (browse mode) and Ctrl+R (reload_request mode)
+ */
+export interface OpenFileDialogMessage extends BaseMessage {
+    type: 'openFileDialog';
+    openMode: 'browse' | 'reload_request';
 }
 
 // ============= UNIFIED LINK HANDLING =============
@@ -2270,7 +2280,9 @@ export type IncomingMessage =
     | SearchTextMessage
     | NavigateToElementMessage
     // Conflict dialog messages
-    | ConflictResolutionMessage;
+    | ConflictResolutionMessage
+    // File dialog messages
+    | OpenFileDialogMessage;
 
 /**
  * Message type string literals for type-safe checking

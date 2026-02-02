@@ -1,4 +1,6 @@
-- [ ] ith an included file the conflict resolution doesnt work the
+- [ ] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
+
+- [ ] with an included file the conflict resolution doesnt work the
   same as the main file!!! when i tell it to overwrite and backup
   the external changes it backups the old state and doesnt write
   the internal to the file! /refactor try to use the same conflict
