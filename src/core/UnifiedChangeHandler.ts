@@ -71,7 +71,7 @@ export class UnifiedChangeHandler {
         }
 
         if (changeType === 'created') {
-            await this._handleFileCreated(file);
+            this._handleFileCreated(file);
             return;
         }
 
@@ -85,9 +85,11 @@ export class UnifiedChangeHandler {
         file.setExists(false);
     }
 
-    private async _handleFileCreated(file: MarkdownFile): Promise<void> {
+    private _handleFileCreated(file: MarkdownFile): void {
         file.setExists(true);
-        await file.reload();
+        // Route through the same batched dialog as modified files.
+        // NEVER auto-reload — the user must always confirm.
+        this._addToPending(file);
     }
 
     // ============= COALESCING BATCH SYSTEM =============

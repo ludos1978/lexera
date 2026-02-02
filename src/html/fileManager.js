@@ -82,9 +82,6 @@ const ALL_ACTIONS = [
 function getActionsForFile(file) {
     const hasExternal = file.hasExternalChanges;
     const hasUnsaved = file.hasUnsavedChanges;
-    if (hasExternal && hasUnsaved) {
-        return ALL_ACTIONS;
-    }
     if (hasExternal) {
         return ALL_ACTIONS;
     }
@@ -438,29 +435,23 @@ function createUnifiedTable() {
     ).join('');
 
     const allFilesRow = `
-        <tr class="files-table-actions">
+        <tr class="files-table-actions" data-file-path="__all__">
             <td class="col-file all-files-label">All Files</td>
             <td class="col-status"></td>
             <td class="col-frontend sync-summary-cell">${renderSyncSummaryCompact(summary.cache)}</td>
             <td class="col-saved sync-summary-cell">${renderSyncSummaryCompact(summary.file)}</td>
             <td class="col-action">
-                <select id="conflict-apply-all-select" onchange="onConflictApplyAll(this)">
-                    <option value="">-- Apply to All --</option>
-                    ${applyAllOptions}
-                </select>
-            </td>
-            <td class="col-fileop action-cell">
                 <div class="dropdown-exec">
-                    <select id="all-fileop-select">
-                        <option value="save">Save</option>
-                        <option value="reload">Reload</option>
+                    <select class="conflict-action-select" data-file-path="__all__" data-is-main="false" onchange="onConflictApplyAll(this)">
+                        <option value="">--</option>
+                        ${applyAllOptions}
                     </select>
-                    <button onclick="executeAllFileOp()" class="action-btn exec-btn" title="Execute for all files">&#9654;</button>
+                    <button onclick="executeAllActions()" class="action-btn exec-btn" title="Execute selected action for all files">&#9654;</button>
                 </div>
             </td>
             <td class="col-paths action-cell">
                 <div class="dropdown-exec">
-                    <select id="all-paths-select">
+                    <select class="paths-select" data-file-path="__all__" data-is-main="false">
                         <option value="relative">Relative</option>
                         <option value="absolute">Absolute</option>
                     </select>
@@ -468,7 +459,7 @@ function createUnifiedTable() {
                 </div>
             </td>
             <td class="col-image action-cell">
-                <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
+                <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">&#x1F5BC;&#xFE0F;</button>
             </td>
         </tr>
     `;
@@ -590,31 +581,25 @@ function createUnifiedTable() {
                     </div>
                 </td>
                 <td class="col-action">
-                    <select class="conflict-action-select" data-file-path="${file.path}" onchange="onConflictActionChange(this)">
-                        <option value="">--</option>
-                        ${actionOptions}
-                    </select>
-                </td>
-                <td class="col-fileop action-cell">
                     <div class="dropdown-exec">
-                        <select class="fileop-select" data-file-path="${escapedPath}" data-is-main="${file.isMainFile}">
-                            <option value="save">Save</option>
-                            <option value="reload">Reload</option>
+                        <select class="conflict-action-select" data-file-path="${file.path}" data-is-main="${file.isMainFile}" onchange="onConflictActionChange(this)">
+                            <option value="">--</option>
+                            ${actionOptions}
                         </select>
-                        <button onclick="executeFileOp(this)" class="action-btn exec-btn" title="Execute">&#9654;</button>
+                        <button onclick="executeAction(this)" class="action-btn exec-btn" title="Execute action now">&#9654;</button>
                     </div>
                 </td>
                 <td class="col-paths action-cell">
                     <div class="dropdown-exec">
                         <select class="paths-select" data-file-path="${escapedPath}" data-is-main="${file.isMainFile}">
-                            <option value="relative">Rel</option>
-                            <option value="absolute">Abs</option>
+                            <option value="relative">Relative</option>
+                            <option value="absolute">Absolute</option>
                         </select>
                         <button onclick="executePathConvert(this)" class="action-btn exec-btn" title="Convert paths">&#9654;</button>
                     </div>
                 </td>
                 <td class="col-image action-cell">
-                    <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
+                    <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">&#x1F5BC;&#xFE0F;</button>
                 </td>
             </tr>
         `;
@@ -629,7 +614,6 @@ function createUnifiedTable() {
                     <th class="col-frontend" title="Frontend vs registry (non-canonical)">Cache</th>
                     <th class="col-saved" title="Saved file on disk">Saved</th>
                     <th class="col-action">Action</th>
-                    <th class="col-fileop">File Op</th>
                     <th class="col-paths">Paths</th>
                     <th class="col-image">Img</th>
                 </tr>
@@ -785,27 +769,163 @@ function requestOpenFileDialog(mode) {
 // ============= DIALOG CONTENT UPDATE =============
 
 /**
- * Update dialog content without full DOM rebuild (for auto-refresh and data updates).
+ * Update dialog content with targeted DOM patches — never rebuilds the table.
+ * Only updates cells whose data actually changes (Status, Cache, Saved, summary row).
+ * Dropdowns, buttons, and file info are left untouched.
  */
 function updateDialogContent() {
     if (!fileManagerElement) return;
 
     requestAnimationFrame(() => {
-        const now = new Date().toLocaleTimeString();
-
+        // Update timestamp
         const timestampElement = fileManagerElement.querySelector('.file-manager-timestamp');
         if (timestampElement) {
-            timestampElement.textContent = `Updated: ${now}`;
+            timestampElement.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
         }
 
         const tableContainer = fileManagerElement.querySelector('.unified-table-container');
-        if (tableContainer) {
-            const newTableHTML = createUnifiedTable();
-            if (tableContainer.innerHTML !== newTableHTML) {
-                tableContainer.innerHTML = newTableHTML;
+        if (!tableContainer) return;
+
+        // --- Patch "All Files" summary row ---
+        const summary = getFileSyncSummaryCounts();
+        const summaryRow = tableContainer.querySelector('tr.files-table-actions');
+        if (summaryRow) {
+            const cacheSummaryCell = summaryRow.querySelector('.col-frontend.sync-summary-cell');
+            if (cacheSummaryCell) {
+                const newCacheHTML = renderSyncSummaryCompact(summary.cache);
+                if (cacheSummaryCell.innerHTML !== newCacheHTML) {
+                    cacheSummaryCell.innerHTML = newCacheHTML;
+                }
+            }
+            const savedSummaryCell = summaryRow.querySelector('.col-saved.sync-summary-cell');
+            if (savedSummaryCell) {
+                const newSavedHTML = renderSyncSummaryCompact(summary.file);
+                if (savedSummaryCell.innerHTML !== newSavedHTML) {
+                    savedSummaryCell.innerHTML = newSavedHTML;
+                }
             }
         }
+
+        // --- Patch per-file rows ---
+        const files = buildUnifiedFileList();
+        files.forEach(file => {
+            const row = tableContainer.querySelector(`tr.file-row[data-file-path="${CSS.escape(file.path)}"]`);
+            if (!row) return;
+
+            // Patch Status column
+            const statusCell = row.querySelector('.col-status');
+            if (statusCell) {
+                const newStatusHTML = buildStatusBadgeHTML(file);
+                if (statusCell.innerHTML !== newStatusHTML) {
+                    statusCell.innerHTML = newStatusHTML;
+                }
+            }
+
+            // Patch Cache column
+            const cacheCell = row.querySelector('.col-frontend');
+            if (cacheCell) {
+                const syncStatus = getFileSyncStatus(file.path);
+                const newCacheHTML = buildCacheCellHTML(syncStatus);
+                if (cacheCell.innerHTML !== newCacheHTML) {
+                    cacheCell.innerHTML = newCacheHTML;
+                }
+            }
+
+            // Patch Saved column
+            const savedCell = row.querySelector('.col-saved');
+            if (savedCell) {
+                const syncStatus = getFileSyncStatus(file.path);
+                const newSavedHTML = buildSavedCellHTML(syncStatus);
+                if (savedCell.innerHTML !== newSavedHTML) {
+                    savedCell.innerHTML = newSavedHTML;
+                }
+            }
+        });
     });
+}
+
+/** Build status badge HTML for a file (extracted from createUnifiedTable). */
+function buildStatusBadgeHTML(file) {
+    const hasExternal = file.hasExternalChanges;
+    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
+    let badge = '';
+    if (hasExternal && hasUnsaved) {
+        badge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
+    } else if (hasExternal) {
+        badge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
+    } else if (hasUnsaved) {
+        badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
+    } else {
+        badge = '<span class="conflict-badge conflict-none">Clean</span>';
+    }
+    if (file.isInEditMode) {
+        badge += ' <span class="conflict-badge" title="Currently being edited">Editing</span>';
+    }
+    return badge;
+}
+
+/** Build Cache cell inner HTML from sync status. */
+function buildCacheCellHTML(syncStatus) {
+    let display = '---';
+    let cssClass = 'sync-unknown';
+    let title = '';
+
+    if (syncStatus) {
+        const registryNormalized = syncStatus.registryNormalizedHash
+            && syncStatus.registryNormalizedLength !== null
+            && syncStatus.registryNormalizedLength !== undefined;
+        const registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
+        const registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
+
+        if (syncStatus.frontendHash && syncStatus.frontendContentLength !== null && syncStatus.frontendContentLength !== undefined) {
+            if (syncStatus.frontendMatchesRaw === true) {
+                display = '\u2705'; cssClass = 'sync-good';
+            } else if (syncStatus.frontendMatchesNormalized === true) {
+                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
+            } else if (syncStatus.frontendRegistryMatch === false) {
+                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
+            }
+            title = `Frontend: ${syncStatus.frontendHash} (${syncStatus.frontendContentLength} chars)\nRegistry: ${registryHash} (${registryChars} chars)`;
+        } else if (syncStatus.frontendAvailable === false) {
+            display = '\u2753';
+            title = 'Frontend hash not available';
+        }
+    }
+
+    return `<div class="hash-display ${cssClass}" title="${title}">${display}</div>`;
+}
+
+/** Build Saved cell inner HTML from sync status. */
+function buildSavedCellHTML(syncStatus) {
+    let display = '---';
+    let cssClass = 'sync-unknown';
+    let title = '';
+
+    if (syncStatus) {
+        const registryNormalized = syncStatus.registryNormalizedHash
+            && syncStatus.registryNormalizedLength !== null
+            && syncStatus.registryNormalizedLength !== undefined;
+        const registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
+        const registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
+
+        if (syncStatus.savedHash) {
+            const savedHashValue = syncStatus.savedNormalizedHash || syncStatus.savedHash;
+            const savedCharsValue = syncStatus.savedNormalizedLength ?? (syncStatus.savedContentLength || 0);
+
+            if (syncStatus.canonicalSavedMatch) {
+                display = '\u2705'; cssClass = 'sync-good';
+            } else {
+                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
+            }
+
+            title = `Registry: ${registryHash} (${registryChars} chars)\nSaved: ${savedHashValue} (${savedCharsValue} chars)`;
+        } else {
+            display = '\u2753';
+            title = 'Saved file not available';
+        }
+    }
+
+    return `<div class="hash-display ${cssClass}" title="${title}">${display}</div>`;
 }
 
 // ============= REFRESH / AUTO-REFRESH =============
@@ -1064,15 +1184,35 @@ function convertAllPaths(direction) {
 
 // --- Dropdown+execute dispatchers ---
 
-function executeFileOp(buttonElement) {
-    const select = buttonElement.parentElement.querySelector('.fileop-select');
-    if (!select) return;
+function executeAction(buttonElement) {
+    const select = buttonElement.parentElement.querySelector('.conflict-action-select');
+    if (!select || !select.value) return;
     const filePath = select.dataset.filePath;
     const isMainFile = select.dataset.isMain === 'true';
-    if (select.value === 'save') {
-        saveIndividualFile(filePath, isMainFile, true);
-    } else if (select.value === 'reload') {
-        reloadIndividualFile(filePath, isMainFile);
+    switch (select.value) {
+        case 'overwrite':
+        case 'overwrite_backup_external':
+            saveIndividualFile(filePath, isMainFile, true);
+            break;
+        case 'load_external':
+        case 'load_external_backup_mine':
+            reloadIndividualFile(filePath, isMainFile);
+            break;
+    }
+}
+
+function executeAllActions() {
+    const select = document.querySelector('.conflict-action-select[data-file-path="__all__"]');
+    if (!select || !select.value) return;
+    switch (select.value) {
+        case 'overwrite':
+        case 'overwrite_backup_external':
+            forceWriteAllContent();
+            break;
+        case 'load_external':
+        case 'load_external_backup_mine':
+            reloadAllIncludedFiles();
+            break;
     }
 }
 
@@ -1084,18 +1224,8 @@ function executePathConvert(buttonElement) {
     convertFilePaths(filePath, isMainFile, select.value);
 }
 
-function executeAllFileOp() {
-    const select = document.getElementById('all-fileop-select');
-    if (!select) return;
-    if (select.value === 'save') {
-        forceWriteAllContent();
-    } else if (select.value === 'reload') {
-        reloadAllIncludedFiles();
-    }
-}
-
 function executeAllPaths() {
-    const select = document.getElementById('all-paths-select');
+    const select = document.querySelector('.paths-select[data-file-path="__all__"]');
     if (!select) return;
     convertAllPaths(select.value);
 }
@@ -1181,9 +1311,9 @@ function initializeFileManager() {
     window.onConflictActionChange = onConflictActionChange;
     window.onConflictApplyAll = onConflictApplyAll;
     window.closeDialog = closeDialog;
-    window.executeFileOp = executeFileOp;
+    window.executeAction = executeAction;
+    window.executeAllActions = executeAllActions;
     window.executePathConvert = executePathConvert;
-    window.executeAllFileOp = executeAllFileOp;
     window.executeAllPaths = executeAllPaths;
 
     document.addEventListener('keydown', handleFileManagerKeydown);

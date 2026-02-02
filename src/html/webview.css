@@ -7399,12 +7399,11 @@ figcaption {
 }
 
 .col-action {
-    width: 16%;
-    min-width: 140px;
+    width: 22%;
+    min-width: 180px;
     text-align: left;
 }
 
-.col-fileop,
 .col-paths {
     width: 10%;
     min-width: 90px;
@@ -8127,7 +8126,8 @@ figcaption {
     color: var(--vscode-descriptionForeground);
 }
 
-.conflict-action-select {
+.conflict-action-select,
+.col-action select {
     width: 100%;
     padding: 4px 6px;
     font-size: 11px;
