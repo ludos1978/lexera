@@ -950,6 +950,9 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/kanbanFileService-KanbanFileService_openFileWithReuseCheck - Open a file with reuse check (focus existing editor if already open)
 - src/kanbanFileService-KanbanFileService_setFileHidden - Set file as hidden on Windows using attrib command
 - src/kanbanFileService-KanbanFileService_checkForExternalUnsavedChanges - Check for external unsaved changes when about to save; shows conflict dialog if both webview and external have changes; respects user choice to proceed or abort
+- src/kanbanFileService-KanbanFileService_handlePresaveConflictCheck - Pre-save conflict check (Scenario 2): collects files with pending external changes, shows 3-option dialog (overwrite/load external/skip)
+- src/kanbanFileService-KanbanFileService_showPresaveConflictDialog - Show Scenario 2 pre-save conflict dialog via ConflictResolver
+- src/kanbanFileService-KanbanFileService_showConflictFileNotification - Show notification with link to open a conflict backup file
 
 ## src/conflictService.ts - ConflictService
 
@@ -1398,6 +1401,11 @@ All logic migrated to `src/plugins/export/MarpExportPlugin.ts`.
 
 All logic migrated to `src/plugins/export/PandocExportPlugin.ts`.
 
+## src/constants/FileNaming.ts - FileNaming
+
+- src/constants/FileNaming-generateVisibleConflictFilename - Generate VISIBLE conflict filename (no hidden dot prefix), pattern: {basename}-conflict-{timestamp}{ext}
+- src/constants/FileNaming-getVisibleConflictPath - Generate full visible conflict path from source file path, placed in same directory
+
 ## src/constants/IncludeConstants.ts
 
 **Centralized Constants** (Added 2025-11-04, Updated 2025-12-22)
@@ -1500,6 +1508,8 @@ Total functions documented: **495**
 - src/files/MarkdownFile-MarkdownFile_startWatching - Start watching file for external changes
 - src/files/MarkdownFile-MarkdownFile_stopWatching - Stop watching file
 - src/files/MarkdownFile-MarkdownFile_checkForExternalChanges - Check if content changed on disk
+- src/files/MarkdownFile-MarkdownFile_getConflictResolver - Get the conflict resolver for panel grouping in batched dialogs
+- src/files/MarkdownFile-MarkdownFile_createVisibleConflictFile - Create visible (no dot prefix) conflict backup file in same directory
 - src/files/MarkdownFile-MarkdownFile_toFileState - Convert to FileState interface (compatibility)
 - src/files/MarkdownFile-MarkdownFile_fromFileState - Update from FileState interface (compatibility)
 - src/files/MarkdownFile-MarkdownFile_dispose - Dispose all resources

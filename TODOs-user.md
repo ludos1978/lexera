@@ -1,3 +1,67 @@
+- [ ] lets change the file save/load/reload/conflict handling like this:
+  - when the main file or any imported files in the kanban have unsaved modifications:
+    - and when the external file is changed
+  - if the main file or imported file doesnt have any unsaved changes. when any external change is detected (the main or an imported file is modified, NOT A BUFFER CHANGE) the user is asked if he wants to import the changes or ignore them. the user might import them again by going into the file states overview and press reload from file.
+  -
+  - when saving the board, for any external file that is modified (the file has changed since the loading of the data). this can only happen when the user decided to ignore the change (see previous point), or its a race condition. then ask the user if he wants to:
+    - overwrite the file and backup the external changes (moves the outside file to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file )
+    - load the external changes and backup the internal changes (writes internal data to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file)
+    - skip the saving action (and also skip loading the content from the filedata.)
+  - create a dialog with all files that have differences and the actions to be taken if multiple files are affected (use the same dialogue if there is only one file).
+
+# Action Flow — Complete Decision Tree
+
+## TRIGGER: File Change Watcher fires (file modified on disk)
+
+1. Our own save? (_skipReloadCounter > 0)
+  → YES: decrement counter, DONE (no action)
+  → NO: continue
+2. VS Code just saved this file? (doc open + not dirty + no unsaved kanban changes)
+  → YES: silent reload from disk, DONE (not an "external" change)
+  → NO: continue
+3. User in edit mode?
+  → YES: capture edit value, stop editing, continue
+  → NO: continue
+4. Mark _hasFileSystemChanges = true on the file
+5. Add file to coalescing batch (500ms window per panel)
+  → Wait for more files to arrive within window
+  → After 500ms, proceed to Step 6
+6. SHOW BATCHED IMPORT/IGNORE DIALOG (see "Scenario 1
+Dialog" below)
+
+## TRIGGER: Focus gained (panel gets focus)
+
+1. Check all files for disk changes (compare disk content to
+baseline)
+2. For each file with detected changes:
+  → Already has _hasFileSystemChanges = true? SKIP (already
+detected via watcher)
+  → New change? Add to batch
+3. If any new changes collected:
+  → SHOW BATCHED IMPORT/IGNORE DIALOG (same as above)
+
+## TRIGGER: Save (Cmd+S, save button, panel close save)
+
+1. Collect all files in save scope where
+_hasFileSystemChanges = true
+2. No files with external changes?
+  → Normal save, DONE
+3. Files with external changes found?
+  → SHOW PRE-SAVE CONFLICT DIALOG (see "Scenario 2 Dialog" below)
+
+## TRIGGER: File States Overview "Reload" button
+
+1. Call file.forceSyncBaseline()
+  → Reads disk content
+  → Updates _content AND _baseline
+  → Clears _hasFileSystemChanges
+2. If main file: re-parse board, update webview
+3. If include file: propagate change through board
+
+
+
+- [ ] could we integrate a basic web viewer inline (shows the page if it's link with ![](weburl) ) . currently it shows "url.com (Alt+click to open)" but it doesnt work. as plugin
+a
 - [ ] what puppeteer features could we now implement that we have added that addon?
 
 - [ ] could we add more formats/features similar to notion?
@@ -14,7 +78,7 @@
 
 - [ ] add Excourse to the Teaching-Content  tags
 
-- [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early. 
+- [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
 
 - [ ] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
 
@@ -22,11 +86,11 @@
 
 - [ ] add a table editor that allows sorting of content by each category.
 
-- [ ] can this be integrated ? https://github.com/Skarlso/adventure-voter 
+- [ ] can this be integrated ? https://github.com/Skarlso/adventure-voter
 
 - [ ] would it be possible to take a screenshot of a webpage if a link is added to the board?
 
-  1. Open Graph images (simplest) - Fetch og:image meta tags from URLs. Most websites provide preview images. No screenshot needed, just an HTTP fetch + HTML parsing. 
+  1. Open Graph images (simplest) - Fetch og:image meta tags from URLs. Most websites provide preview images. No screenshot needed, just an HTTP fetch + HTML parsing.
   2. Puppeteer/Playwright (full screenshots) - Run headless browser in extension backend to capture actual screenshots. Heavier dependency (~100-400MB), slower, but gives real screenshots.
 
 - [ ] #### Combined Queries
@@ -90,7 +154,7 @@ i am thinking about the features:
 - "website embedding & export"
 - "alternative image search (using web)"
 - puppeteer
-- export to specific formats 
+- export to specific formats
 - integration of other markdown-it plugins
 
 where would the base sytem require modular systems that this could be integrated? my first guesses would be:
@@ -110,7 +174,7 @@ where would the base sytem require modular systems that this could be integrated
 - kanban search intergation
 - export
   - options
-  - filters 
+  - filters
   - postprocessors
 
 
@@ -151,11 +215,11 @@ but i'd rather have something like this:
 ![](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947 )
 
 and when rendering as pdf it should:
-- display a screenshot of the page 
+- display a screenshot of the page
 - just display the url
 - show a manually given image in the alt text
 
-what would you suggest how to implement it? 
+what would you suggest how to implement it?
 
 
 - [x] Dashboard fixes:
@@ -187,7 +251,7 @@ what would you suggest how to implement it?
 - [x] we need a better style for the task item "- [ ]" and "- [x]" in markdown. it should allow being toggled outside the edit mode (and modify the data)!
 
 - [x] editor view:
-  can we add a dedicated task edit view. it is added to the burger menu of a task (edit task) at the top. it opens a overlay with which fills 80% of width and height with an increased font size (configurable in a burger menu in the overlay editor). the overlay editor can only be closed by alt+enter or pressing save or escape or clicks outside the view. drop events (of external files should behave as direct link creation within the editor). the editor has 3 view modes. - markdown only mode - dual mode, where markdown is written left and the preview is on the right side. - wysiwyg mode where we re-use the wysiwyg editor, but with an additional tools pane at the top (adding image links, etc. as in a typical wysiwyg editor.) 
+  can we add a dedicated task edit view. it is added to the burger menu of a task (edit task) at the top. it opens a overlay with which fills 80% of width and height with an increased font size (configurable in a burger menu in the overlay editor). the overlay editor can only be closed by alt+enter or pressing save or escape or clicks outside the view. drop events (of external files should behave as direct link creation within the editor). the editor has 3 view modes. - markdown only mode - dual mode, where markdown is written left and the preview is on the right side. - wysiwyg mode where we re-use the wysiwyg editor, but with an additional tools pane at the top (adding image links, etc. as in a typical wysiwyg editor.)
 
 
 - [x] wysiwyg errors:
@@ -253,7 +317,7 @@ this is the task description """---:
 - [x] could we include pandoc and it's conversion methods into the kanban exporter? are there any other worthwile exporters or converters that use markdown as basic format?
 
 
-- [x] when using the search for file, could we add a checkbox to the dialogue searching for the alternative files, which would allow replacing all paths that have the same error. so it searches for the filename, the user selects the file. the path element is taken from the broken file (broken-path) and the newly found file (new-path). and all occurances of the broken-path are replaced by the new- path (if the filename exists under the new path). if we check the checkbox, then search trough the kanban board for the same (broken-path) and show the number of files that have this path. also search for the filenames in the new-path, which contain the same filename as the files in the kanban board with the broken-path. 
+- [x] when using the search for file, could we add a checkbox to the dialogue searching for the alternative files, which would allow replacing all paths that have the same error. so it searches for the filename, the user selects the file. the path element is taken from the broken file (broken-path) and the newly found file (new-path). and all occurances of the broken-path are replaced by the new- path (if the filename exists under the new path). if we check the checkbox, then search trough the kanban board for the same (broken-path) and show the number of files that have this path. also search for the filenames in the new-path, which contain the same filename as the files in the kanban board with the broken-path.
 
 - [x] the excalidraw converter doesnt show embedded images and manually drawn strokes. i need them to work!
 
@@ -283,9 +347,9 @@ this is the task description """---:
 - [x] after copying a column as markdown. i'd like to be able to drop it as a new column with content out of the copyed content.
   - if the first task only is a title without a content. it will be used as column title.\
   - othervise the title of the column is empty\
-  
+
   all other content is used to create tasks ( split by --- by the same mechanic as the column import funcitonality already uses)
-  
+
   can we reuse the task creation functionality of the column include?
 
 - [x] it seems as if the board is loaded twice, or at least the height calculation is reset again while loading the board initially. can you verify and analyze?
@@ -304,7 +368,7 @@ this is the task description """---:
 
 - [x] analyze what code design tempaltes would make sense to use in this project. analyze the high level requirements of the code and do a deep analysis of the current state and a optimal state would it have been done by an team of experts in software architecture that both make sure it's strucutred well, but also not overcomplicated!
 
-- [x] can we highlight the lines where tags are within the task description as well? also 
+- [x] can we highlight the lines where tags are within the task description as well? also
 work with the inheritance system we use. for that we should also support minutes. \
 \
 for example the task header might have:\
@@ -318,7 +382,7 @@ and the task contents might be\
 \
 which would highlight the complete line with a right border as we do with the task. \
 \
-can you integrate that into the existing system? 
+can you integrate that into the existing system?
 
 - [x] would it be possible to limit the display of active hours, days etc if the above
   timeslots (if they are added) are also active.\
@@ -351,7 +415,7 @@ keep the hashes and the last changed time in a .hash_cache file in the media fol
 - [x] the drag & drop system can copy media into the media folder if the path to the file is not found. but when the media is very large this might crash the webview. in this case the user should be prompted for the action to take instead. check if the file is larger then 10mb and then ask the user to manually copy the file into the media folder or get a path to the file to paste!
   - COMPLETED 2025-12-05: Dialogue with hash-based matching. Uses partial hash (first 1MB + size) to detect existing files in media folder. Options: Link existing file (if found), Open media folder, Cancel. Hash cache stored in .hash_cache file with mtime tracking for efficient updates.
 
-- [x] the drag & drop system is used by many components. dragging internally, draggin externally, for columns, for tasks. They can be dropped in different rows, stacks of columns and tasks into the columns themself. This system described its functionality. 
+- [x] the drag & drop system is used by many components. dragging internally, draggin externally, for columns, for tasks. They can be dropped in different rows, stacks of columns and tasks into the columns themself. This system described its functionality.
 
 The system does not use any caching!
 
@@ -364,7 +428,7 @@ when we determined the row, only check within this row for any further checks!
 the vertical dividers between stacks are the:
   kanban-container > kanban-board multi-row > kanban-row > kanban-column-stack column-drop-zone-stack
 when on top of one of those
-- drop the column into the new stack. do not add a #stack tag to it. depending on the row add a row tag. 
+- drop the column into the new stack. do not add a #stack tag to it. depending on the row add a row tag.
 - if a task is dropped here, we dont have a valid solution.
 
 if over a:
@@ -387,7 +451,7 @@ to display the position place the marker in:
   kanban-container > kanban-board multi-row > kanban-row > kanban-column-stack > kanban-full-height-column (collapsed-horizontal) > column-margin
 if it's the last position display it at the top of:
   kanban-container > kanban-board multi-row > kanban-row > kanban-column-stack > stack-bottom-drop-zone
-if it's a column we have determined for the column position here. 
+if it's a column we have determined for the column position here.
 
 if a vertically folded column is dropped into a stack it must converted to be horizontally folded. also if a column is dropped into a stack with a vertically folded column, it must be converted to horizontally folded.
 
@@ -395,12 +459,12 @@ if the column is dropped as the first column in the stack dont add a stack tag, 
 
 if we are dragging a tasks, then position must be further calculated using these two rules:
 - determine the current column by checking if we are hovering over the column-title. if this is the case we can directly put the task into at the end of the column.
-- then check if we are hovering over the "top of the column-header" and the "bottom of the column-footer" . 
+- then check if we are hovering over the "top of the column-header" and the "bottom of the column-footer" .
 only check it within the previously selected stack!
 all further calculations are only done on this column!
 when hovering over the footer or the header on a folded column, it must highlight the header and put the task as last position in the column.
 
-iteratively go over each task-item in the column and break once you found one that the task is hovered over: 
+iteratively go over each task-item in the column and break once you found one that the task is hovered over:
   kanban-container > kanban-board multi-row > kanban-row > kanban-column-stack > kanban-full-height-column (collapsed-horizontal) > column-inner > column-content > tasks-container > task-item
 if it's hovered above a gap, this is the position we want it to drop onto!
 
@@ -457,10 +521,10 @@ a template might look like:
 
 ==Deliveries==
 
-- ... 
+- ...
 """
 
-or 
+or
 
 """
 {kanbanfilename}-SemesterSchedule
@@ -478,7 +542,7 @@ or
 
 - [x] "move to column" from a task burger menu doesnt work.
 
-- [x] an #tag, @tags and .tags are only separated by spaces, tabs, newlines etc, not by any other character such as dots, commas, etc. 
+- [x] an #tag, @tags and .tags are only separated by spaces, tabs, newlines etc, not by any other character such as dots, commas, etc.
   - #tags that start with a number are allways displayed as numbers in a badge (the system is already in place, but it doesnt accept 3.1.3 indexes)
   - @tags
     - can be @w13 : week 13
@@ -489,7 +553,7 @@ or
 
     - the date and timeslots will be highlighted when they are active (already in place for dates)
 
-- [x] include in the column header is still not reliably loading the file. also the enable include isnt working properly. i tested in this logfile: @logs/vscode-app-1763916142426.log 
+- [x] include in the column header is still not reliably loading the file. also the enable include isnt working properly. i tested in this logfile: @logs/vscode-app-1763916142426.log
 
 - [x] Create a group of tags
 
@@ -607,11 +671,11 @@ absolute paths start with:
   - the keyboard shortcuts.
   all these configurations should not be loaded at any other time. verify this by checking the complete code for configuration or setting loading or api access.
 
-- [x] we have additional shortcuts defined. which seem to open a buffer (a new view). which it closes automatically. we need to remove this feature and try to implement it using the default process, as it sometimes closes the wrong view. eighter it works with the default pasting or not. 
+- [x] we have additional shortcuts defined. which seem to open a buffer (a new view). which it closes automatically. we need to remove this feature and try to implement it using the default process, as it sometimes closes the wrong view. eighter it works with the default pasting or not.
 
 - [x] the keyboard shortcuts that edit insert content using the vscode default shortcuts dont work anymore. can you verify the process that is currently running and suggest 3 solutions on solving it with a quality measurement. improve until you have 100% quality or near.
 
-- [x] the column header is still broken when it contains an !!!include(filename.md)!!! there seem to be interfering system in the code. for example it does different displays on initial load and on updating the colums. maybe because the backend does something with the !!!include()!!! title as well? 
+- [x] the column header is still broken when it contains an !!!include(filename.md)!!! there seem to be interfering system in the code. for example it does different displays on initial load and on updating the colums. maybe because the backend does something with the !!!include()!!! title as well?
 
 - [x] when creating or editing tasks or after moving them sometimes the tasks cannot be edited again or the drag button doesnt work. we need to verify and unify how tasks are created, i assume we have multiple codepaths that create tasks in different was. for example the are quite reliable after unfolding. ultrathink . create 3 suggested solutions and rate theyr quality
 
@@ -651,17 +715,17 @@ remove the marp theme and style from the column headers and task headers.
 
 
 
-- [ ] Remove the "immediate" parameter from the boardUpdate function. 
+- [ ] Remove the "immediate" parameter from the boardUpdate function.
   We should never use the feature to mark something as unsaved, but use the hash to determine wether a file needs saving to file, because the file content is different to the saved content! Remove this feature and replace it by comparing the hashes from cache and files.
   saveBoardState should not need to update cache, but only save to the files. Because the cache must be kept actual all the time!
-   So onWillSaveTextDocument is completely redundant and wrong! 
+   So onWillSaveTextDocument is completely redundant and wrong!
 
 - [ ] The shortcuts dont work properly anymore. Also the complex feature for translation does not work properly. The complexity it adds is not feasable. We could try again with the paste version which just pastes the replaced content, but using new files is too much.
 
-- [ ] add a feature to add templates for marp styles. the user would be able to defined those, but a current list would be. Each can be toggled on or off. 
+- [ ] add a feature to add templates for marp styles. the user would be able to defined those, but a current list would be. Each can be toggled on or off.
   - _class stylings which are set as <!-- class: style --> . style can be
     - fontXX : where XX is a number. the list of fonts tags are in the section.fontXX in /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/marp-engine/themes/style-roboto-light.css
-    - invert 
+    - invert
     - center
     - no_wordbreak
     - highlight
@@ -670,18 +734,18 @@ remove the marp theme and style from the column headers and task headers.
     - fontbg
     more elements should be addable by the user in the configuration. as a string list.
   - check more styles from <https://github.com/marp-team/marp/blob/ffe6cd99/website/docs/guide/directives.md>
-  - and the website: <https://deepwiki.com/marp-team/marp/3.4-theming-and-styling> 
-  
+  - and the website: <https://deepwiki.com/marp-team/marp/3.4-theming-and-styling>
 
-- [x] Can we make the sticky setting for headers (which is currently modified by the "sticky stack mode") individual for each column header, with a global sticky flag in the "file info bar". so each column gets a sticky flag (a pin icon). when the sticky flag is active, the header will stay on the screeen using the current layout settings.analyze the influence of the "sticky stack mode" on the kanban board. check if we can make each column have it's individual sticky setting . we still want the "sticky stack mode settings, but only "Full stack" and "Title only", the none feature is after this modification modified trough the "sticky flag" 
-  -> the sticky state can be saved into the kanban as #sticky, it should be 
-considered a layout tag that is filtered when displaying depending on the 
-setting, also when exporting it might get filtered! the default state should be 
-not sticky. the global setting is overriding the setting if it's pressed 
-normally (and not saved as individual setting), if alt+pressed it toggles all 
-states of each column and is saved to the files. place the icon right of the 
-column folding. make sure it's applied after the rendering in the process where 
-all the tags are processed, as the user might add it by text. 
+
+- [x] Can we make the sticky setting for headers (which is currently modified by the "sticky stack mode") individual for each column header, with a global sticky flag in the "file info bar". so each column gets a sticky flag (a pin icon). when the sticky flag is active, the header will stay on the screeen using the current layout settings.analyze the influence of the "sticky stack mode" on the kanban board. check if we can make each column have it's individual sticky setting . we still want the "sticky stack mode settings, but only "Full stack" and "Title only", the none feature is after this modification modified trough the "sticky flag"
+  -> the sticky state can be saved into the kanban as #sticky, it should be
+considered a layout tag that is filtered when displaying depending on the
+setting, also when exporting it might get filtered! the default state should be
+not sticky. the global setting is overriding the setting if it's pressed
+normally (and not saved as individual setting), if alt+pressed it toggles all
+states of each column and is saved to the files. place the icon right of the
+column folding. make sure it's applied after the rendering in the process where
+all the tags are processed, as the user might add it by text.
 
 - [x] when adding multiple files using drag & drop it randomly places them over the board. why does that
   happen?
@@ -697,7 +761,7 @@ all the tags are processed, as the user might add it by text.
   - [x] Package size: 4.2MB jar + 17MB jar.js (one-time load, then cached)
 
 - [x] Add mermaid rendering into the kanban and the export!
-- [ ] Could we add a feature that we could add full pdf files or individual pages from pdf files, where each page is a task? 
+- [ ] Could we add a feature that we could add full pdf files or individual pages from pdf files, where each page is a task?
   - the format would be something like ![](path/to/document.pdf p13)  for page 13 of the pdf.
   - best if you create a markdown-it plugin for it. as it should also work in the export.
 - [x] COMPLETED: Simplified conflict detection using 3-variant structure

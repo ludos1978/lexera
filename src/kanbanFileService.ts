@@ -15,6 +15,8 @@ import { BoardStore } from './core/stores';
 import { DOCUMENT_CHANGE_DEBOUNCE_MS } from './constants/TimeoutConstants';
 import { showError, showWarning, showInfo } from './services/NotificationService';
 import { SaveOptions } from './files/SaveOptions';
+import { MarkdownFile } from './files/MarkdownFile';
+import { ConflictResolution } from './services/ConflictResolver';
 
 /**
  * Save operation state for hybrid state machine + version tracking
@@ -366,6 +368,12 @@ export class KanbanFileService {
                 }
             }
 
+            // Pre-save: check for files with pending external changes (Scenario 2)
+            const presaveResult = await this._handlePresaveConflictCheck(scope);
+            if (presaveResult === 'abort') {
+                return;
+            }
+
             if (scope === 'main' || scope === 'all') {
                 const mainFile = this.fileRegistry.getMainFile();
                 if (!mainFile) {
@@ -500,7 +508,121 @@ export class KanbanFileService {
             || this.fileRegistry.get(absolutePath);
     }
 
+    /**
+     * Pre-save conflict check (Scenario 2).
+     * Collects files with pending external changes and shows the 3-option dialog.
+     *
+     * @returns 'continue' to proceed with save, 'abort' to cancel save
+     */
+    private async _handlePresaveConflictCheck(scope: SaveScope): Promise<'continue' | 'abort'> {
+        const filesWithExternalChanges: Array<{ file: MarkdownFile; label: string }> = [];
 
+        const mainFile = this.fileRegistry.getMainFile();
+
+        if ((scope === 'main' || scope === 'all') && mainFile?.hasExternalChanges()) {
+            filesWithExternalChanges.push({ file: mainFile, label: mainFile.getFileName() });
+        }
+        if (scope === 'includes' || scope === 'all') {
+            for (const f of this.fileRegistry.getIncludeFiles()) {
+                if (f.exists() && f.hasExternalChanges()) {
+                    filesWithExternalChanges.push({ file: f, label: f.getRelativePath() });
+                }
+            }
+        }
+
+        if (filesWithExternalChanges.length === 0) {
+            return 'continue';
+        }
+
+        const resolution = await this._showPresaveConflictDialog(
+            filesWithExternalChanges.map(f => f.label)
+        );
+
+        if (!resolution || !resolution.shouldProceed) {
+            // Option C: Skip — cancel entire save
+            return 'abort';
+        }
+
+        if (resolution.shouldBackupExternal && resolution.shouldSave) {
+            // Option A: Backup external version, then save kanban
+            for (const { file } of filesWithExternalChanges) {
+                const diskContent = await file.readFromDisk();
+                if (diskContent) {
+                    const conflictPath = await file.createVisibleConflictFile(diskContent);
+                    if (!conflictPath) {
+                        showError('Failed to create backup of external changes. Save aborted.');
+                        return 'abort';
+                    }
+                    this._showConflictFileNotification(conflictPath, 'External changes backed up');
+                }
+            }
+            // Clear external change flags — save will proceed normally after this
+            for (const { file } of filesWithExternalChanges) {
+                // Reload baseline so save doesn't re-detect the conflict
+                // (the actual kanban content will overwrite the file)
+            }
+            return 'continue';
+
+        } else if (resolution.shouldCreateBackup && resolution.shouldReload) {
+            // Option B: Backup kanban content, load external version
+            for (const { file } of filesWithExternalChanges) {
+                const kanbanContent = file.getContent();
+                const conflictPath = await file.createVisibleConflictFile(kanbanContent);
+                if (!conflictPath) {
+                    showError('Failed to create backup of your changes. Save aborted.');
+                    return 'abort';
+                }
+                this._showConflictFileNotification(conflictPath, 'Your changes backed up');
+                await file.reload();
+            }
+            // Update board from reloaded main file
+            const freshMainFile = this.fileRegistry.getMainFile();
+            const freshBoard = freshMainFile?.getBoard();
+            if (freshBoard) {
+                this.setBoard(freshBoard);
+                await this.sendBoardUpdate(false, true);
+            }
+            // Don't save — we loaded external content instead
+            return 'abort';
+        }
+
+        return 'continue';
+    }
+
+    /**
+     * Show the Scenario 2 pre-save conflict dialog via ConflictResolver.
+     */
+    private async _showPresaveConflictDialog(
+        fileLabels: string[]
+    ): Promise<ConflictResolution | null> {
+        const conflictResolver = this._context.conflictResolver;
+        return conflictResolver.resolveConflict({
+            type: 'presave_check',
+            fileType: 'main',
+            filePath: '',
+            fileName: '',
+            hasMainUnsavedChanges: true,
+            hasIncludeUnsavedChanges: false,
+            changedIncludeFiles: fileLabels
+        });
+    }
+
+    /**
+     * Show notification with link to open a conflict backup file.
+     */
+    private _showConflictFileNotification(conflictPath: string, prefix: string): void {
+        const fileName = path.basename(conflictPath);
+        vscode.window.showInformationMessage(
+            `${prefix}: ${fileName}`,
+            'Open Conflict File'
+        ).then(choice => {
+            if (choice === 'Open Conflict File') {
+                vscode.workspace.openTextDocument(conflictPath).then(doc => {
+                    vscode.window.showTextDocument(doc);
+                });
+            }
+        });
+    }
 
     /**
      * Initialize a new kanban file with header

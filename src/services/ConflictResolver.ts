@@ -20,8 +20,6 @@ export interface ConflictContext {
     changedIncludeFiles: string[];
     isClosing?: boolean;
     isInEditMode?: boolean;  // User is actively editing (cursor in editor)
-    lastExternalSaveTime?: Date;  // When external file was last legitimately saved
-    externalChangeTime?: Date;    // When current external change was detected
 }
 
 export interface ConflictResolution {
@@ -42,6 +40,11 @@ export interface ConflictResolution {
  * PANEL ISOLATION:
  * Each panel gets its own ConflictResolver instance via PanelContext.
  * This ensures conflict dialogs from one panel don't interfere with another.
+ *
+ * NOTE: External change dialogs (external_main, external_include) are now handled
+ * by the batched import system in UnifiedChangeHandler. This class only handles:
+ * - panel_close: Unsaved changes when closing panel
+ * - presave_check: Pre-save conflict dialog (Scenario 2)
  */
 export class ConflictResolver {
     private readonly _panelId: string;
@@ -94,18 +97,29 @@ export class ConflictResolver {
     }
 
     /**
-     * Show appropriate conflict dialog based on context
+     * Show appropriate conflict dialog based on context.
+     *
+     * external_main and external_include are now handled by the batched import
+     * system in UnifiedChangeHandler — they no-op here.
      */
     private async showConflictDialog(context: ConflictContext): Promise<ConflictResolution> {
         switch (context.type) {
             case 'panel_close':
                 return this.showPanelCloseDialog(context);
-            case 'external_main':
-                return this.showExternalMainFileDialog(context);
-            case 'external_include':
-                return this.showExternalIncludeFileDialog(context);
             case 'presave_check':
                 return this.showPresaveCheckDialog(context);
+            case 'external_main':
+            case 'external_include':
+                // Handled by batched import system in UnifiedChangeHandler — ignore here
+                return {
+                    action: 'ignore',
+                    shouldProceed: true,
+                    shouldCreateBackup: false,
+                    shouldBackupExternal: false,
+                    shouldSave: false,
+                    shouldReload: false,
+                    shouldIgnore: true
+                };
             default:
                 throw new Error(`Unknown conflict type: ${context.type}`);
         }
@@ -184,93 +198,31 @@ export class ConflictResolver {
     }
 
     /**
-     * External main file change dialog
+     * Pre-save check dialog (Scenario 2) — shown when saving but external changes are pending.
+     *
+     * Three options:
+     * - "Overwrite (backup external)": Save kanban, backup the external version
+     * - "Load external (backup mine)": Backup kanban content, reload from disk
+     * - "Skip": Cancel save entirely
      */
-    private async showExternalMainFileDialog(context: ConflictContext): Promise<ConflictResolution> {
-        const hasAnyUnsavedChanges = context.hasMainUnsavedChanges || context.hasIncludeUnsavedChanges;
-        const isInEditMode = context.isInEditMode || false;
+    private async showPresaveCheckDialog(context: ConflictContext): Promise<ConflictResolution> {
+        const fileList = context.changedIncludeFiles.map(f => `  • ${f}`).join('\n');
+        const message = `External changes pending in:\n${fileList}\n\nSaving will overwrite these files.`;
 
-        // Check if external change was a legitimate save operation
-        const isLegitimateExternalSave = this.isLegitimateExternalSave(context);
-
-        // If external change was a legitimate save AND we have unsaved changes,
-        // treat external save as authoritative and auto-reload (don't show dialog)
-        if (isLegitimateExternalSave && hasAnyUnsavedChanges && !isInEditMode) {
-            return {
-                action: 'discard_local',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldSave: false,
-                shouldReload: true,
-                shouldIgnore: false
-            };
-        }
-
-        // Auto-reload if no unsaved changes AND not in edit mode (no dialog)
-        if (!hasAnyUnsavedChanges && !isInEditMode) {
-            return {
-                action: 'discard_local',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldSave: false,
-                shouldReload: true,
-                shouldIgnore: false
-            };
-        }
-
-        // Has unsaved changes OR in edit mode - show full 4-option dialog
-        const includeFilesList = context.changedIncludeFiles && context.changedIncludeFiles.length > 0
-            ? '\n\nChanged include files:\n' + context.changedIncludeFiles.map(f => `  • ${f}`).join('\n')
-            : '';
-
-        let message = `"${context.fileName}"\nhas been modified externally.`;
-        if (context.hasMainUnsavedChanges && context.hasIncludeUnsavedChanges) {
-            message += ` Your current kanban changes and column include file changes may be lost if you reload.${includeFilesList}`;
-        } else if (context.hasMainUnsavedChanges) {
-            message += ` Your current kanban changes may be lost if you reload.`;
-        } else {
-            message += ` Your current column include file changes may be lost if you reload.${includeFilesList}`;
-        }
-
-        const saveAndOverwrite       = 'Save my changes (discard external changes)';
-        const backupExternalAndSave  = 'Save my changes (backup external changes)';
-        const saveAsBackupAndReload  = 'Load external changes (backup current board)';
-        const discardMyChanges       = 'Load external changes (discard current board)';
+        const overwrite = 'Overwrite (backup external)';
+        const loadExternal = 'Load external (backup mine)';
+        const skip = 'Skip';
 
         const choice = await vscode.window.showWarningMessage(
             message,
             { modal: true },
-            saveAndOverwrite,
-            backupExternalAndSave,
-            saveAsBackupAndReload,
-            discardMyChanges
+            overwrite,
+            loadExternal,
+            skip
         );
 
-        if (!choice) {
-            // Esc pressed - ignore external changes and continue
-            return {
-                action: 'ignore',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldBackupExternal: false,
-                shouldSave: false,
-                shouldReload: false,
-                shouldIgnore: true
-            };
-        }
-
         switch (choice) {
-            case saveAndOverwrite:
-                return {
-                    action: 'discard_external',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldBackupExternal: false,
-                    shouldSave: true,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
-            case backupExternalAndSave:
+            case overwrite:
                 return {
                     action: 'backup_external_and_save',
                     shouldProceed: true,
@@ -280,7 +232,7 @@ export class ConflictResolver {
                     shouldReload: false,
                     shouldIgnore: false
                 };
-            case saveAsBackupAndReload:
+            case loadExternal:
                 return {
                     action: 'backup_and_reload',
                     shouldProceed: true,
@@ -290,183 +242,15 @@ export class ConflictResolver {
                     shouldReload: true,
                     shouldIgnore: false
                 };
-            case discardMyChanges:
+            default: // Skip or ESC
                 return {
-                    action: 'discard_local',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldBackupExternal: false,
-                    shouldSave: false,
-                    shouldReload: true,
-                    shouldIgnore: false
-                };
-            default:
-                return {
-                    action: 'ignore',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldBackupExternal: false,
-                    shouldSave: false,
-                    shouldReload: false,
-                    shouldIgnore: true
-                };
-        }
-    }
-
-    /**
-     * External include file change dialog
-     */
-    private async showExternalIncludeFileDialog(context: ConflictContext): Promise<ConflictResolution> {
-        const hasIncludeChanges = context.hasIncludeUnsavedChanges;
-        const hasExternalChanges = context.hasExternalChanges ?? true;
-        const isInEditMode = context.isInEditMode || false;
-
-        if (!hasIncludeChanges && !hasExternalChanges) {
-            return {
-                action: 'ignore',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldSave: false,
-                shouldReload: false,
-                shouldIgnore: true
-            };
-        }
-
-        // Auto-reload if no unsaved changes AND not in edit mode AND has external changes
-        if (!hasIncludeChanges && !isInEditMode && hasExternalChanges) {
-            return {
-                action: 'discard_local',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldSave: false,
-                shouldReload: true,
-                shouldIgnore: false
-            };
-        }
-
-        // Has unsaved include file changes OR is in edit mode - show conflict dialog
-        const ignoreExternal = 'Ignore external changes (default)';
-        const overwriteExternal = 'Overwrite external file with kanban contents';
-        const saveAsBackup = 'Save kanban as backup and reload from external';
-        const discardMyChanges = 'Discard kanban changes and reload from external';
-
-        const message = `"${context.fileName}"\nhas been modified externally`;
-
-        const choice = await vscode.window.showWarningMessage(
-            message,
-            { modal: true },
-            discardMyChanges,
-            saveAsBackup,
-            overwriteExternal,
-            ignoreExternal
-        );
-
-        if (!choice || choice === ignoreExternal) {
-            return {
-                action: 'ignore',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldSave: false,
-                shouldReload: false,
-                shouldIgnore: true
-            };
-        }
-
-        switch (choice) {
-            case discardMyChanges:
-                return {
-                    action: 'discard_local',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldSave: false,
-                    shouldReload: true,
-                    shouldIgnore: false
-                };
-            case saveAsBackup:
-                return {
-                    action: 'backup_and_reload',
-                    shouldProceed: true,
-                    shouldCreateBackup: true,
-                    shouldSave: false,
-                    shouldReload: true,
-                    shouldIgnore: false
-                };
-            case overwriteExternal:
-                return {
-                    action: 'discard_external',
-                    shouldProceed: true,
-                    shouldCreateBackup: false,
-                    shouldSave: true,
-                    shouldReload: false,
-                    shouldIgnore: false
-                };
-            default:
-                return {
-                    action: 'ignore',
-                    shouldProceed: true,
+                    action: 'cancel',
+                    shouldProceed: false,
                     shouldCreateBackup: false,
                     shouldSave: false,
                     shouldReload: false,
-                    shouldIgnore: true
+                    shouldIgnore: false
                 };
         }
-    }
-
-    /**
-     * Pre-save check dialog - shown when about to save but external changes detected
-     */
-    private async showPresaveCheckDialog(context: ConflictContext): Promise<ConflictResolution> {
-        const overwriteExternal = 'Overwrite external changes';
-        const cancelSave = 'Cancel save';
-
-        let message: string;
-        if (context.fileType === 'include') {
-            message = `The include file "${context.fileName}" has been modified externally. Saving your kanban changes will overwrite these external changes.`;
-        } else {
-            message = `The file "${context.fileName}" has unsaved external modifications. Saving kanban changes will overwrite these external changes.`;
-        }
-
-        const choice = await vscode.window.showWarningMessage(
-            message,
-            { modal: true },
-            overwriteExternal,
-            cancelSave
-        );
-
-        if (choice === overwriteExternal) {
-            return {
-                action: 'discard_external',
-                shouldProceed: true,
-                shouldCreateBackup: false,
-                shouldSave: true,
-                shouldReload: false,
-                shouldIgnore: false
-            };
-        } else {
-            return {
-                action: 'cancel',
-                shouldProceed: false,
-                shouldCreateBackup: false,
-                shouldSave: false,
-                shouldReload: false,
-                shouldIgnore: false
-            };
-        }
-    }
-
-    /**
-     * Check if external change was a legitimate save operation
-     * that should take precedence over internal unsaved changes
-     */
-    private isLegitimateExternalSave(context: ConflictContext): boolean {
-        if (!context.lastExternalSaveTime || !context.externalChangeTime) {
-            return false;
-        }
-
-        const timeDiff = context.externalChangeTime.getTime() - context.lastExternalSaveTime.getTime();
-        const timeDiffSeconds = timeDiff / 1000;
-
-        const LEGITIMATE_SAVE_THRESHOLD_SECONDS = 30;
-        return timeDiffSeconds > LEGITIMATE_SAVE_THRESHOLD_SECONDS;
     }
 }

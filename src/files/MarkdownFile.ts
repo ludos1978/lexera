@@ -8,6 +8,7 @@ import { SaveTransactionManager } from './SaveTransactionManager';
 import { WatcherCoordinator } from './WatcherCoordinator';
 import { normalizePathForLookup, isSamePath } from '../utils/stringUtils';
 import { CapturedEdit, IMarkdownFileRegistry } from './FileInterfaces';
+import { getVisibleConflictPath } from '../constants/FileNaming';
 
 /**
  * File change event emitted when file state changes
@@ -631,6 +632,36 @@ export abstract class MarkdownFile implements vscode.Disposable {
                 });
             }
         });
+    }
+
+    // ============= CONFLICT RESOLVER ACCESS =============
+
+    /**
+     * Get the conflict resolver for this file (used for panel grouping in batched dialogs)
+     */
+    public getConflictResolver(): ConflictResolver {
+        return this._conflictResolver;
+    }
+
+    // ============= VISIBLE CONFLICT FILE =============
+
+    /**
+     * Create a visible conflict backup file in the same directory as the source file.
+     * Unlike hidden backups (dot-prefixed), these are visible to the user.
+     * Used for Scenario 2 (pre-save) conflict resolution.
+     *
+     * @param content The content to write to the conflict file
+     * @returns The conflict file path if successful, null if failed
+     */
+    public async createVisibleConflictFile(content: string): Promise<string | null> {
+        try {
+            const conflictPath = getVisibleConflictPath(this._path);
+            await fs.promises.writeFile(conflictPath, content, 'utf-8');
+            return conflictPath;
+        } catch (error) {
+            console.error(`[${this.getFileType()}] Failed to create conflict file:`, error);
+            return null;
+        }
     }
 
     // ============= FILE WATCHING & CHANGE DETECTION =============

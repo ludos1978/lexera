@@ -103,7 +103,9 @@ The order of the columns is fixed using translateZ:
 - column-content comes next
 - column-header and column-footer is one above
 - column-title is at the top                     
- 
+
+- Do not track the file buffers or open the file buffers from the kanban. We only work with the files. 
+
 
 ALL RULES IN THE AGENT.MD DO NOT NEED TO BE VERIFIED BY ASKING THE USER AGAIN.
 

@@ -170,21 +170,13 @@ export class FileSyncHandler {
                 continue;
             }
 
-            if (file.getFileType() === 'main') {
-                await file.handleExternalChange('modified');
+            // Skip files that already have known external changes
+            // (watcher already detected and prompted — don't re-prompt on focus)
+            if (file.hasExternalChanges()) {
                 continue;
             }
 
-            // Safety: skip include files that have unsaved in-memory edits.
-            // The focus:gained path detects baseline ≠ disk, but if the user
-            // edited via the board without saving, reloading from disk would
-            // wipe their changes. Let handleExternalChange decide via conflict
-            // detection only if the file has no local edits.
-            if (file.hasAnyUnsavedChanges()) {
-                console.log(`[FileSyncHandler] Skipping reload for ${file.getRelativePath()} - has unsaved changes`);
-                continue;
-            }
-
+            // New change detected via focus path
             changedFiles.push(file.getPath());
             await file.handleExternalChange('modified');
         }

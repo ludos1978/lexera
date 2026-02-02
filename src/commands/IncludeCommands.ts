@@ -30,7 +30,6 @@ import { showError, showWarning, showInfo } from '../services/NotificationServic
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as fsPromises from 'fs/promises';
 
 /**
  * Include Commands Handler
@@ -517,8 +516,8 @@ export class IncludeCommands extends SwitchBasedCommand {
                     throw new Error('Main file not found in registry');
                 }
 
-                const freshContent = await fsPromises.readFile(filePath, 'utf-8');
-                mainFile.setContent(freshContent, true);
+                // forceSyncBaseline reads disk, updates content+baseline, clears _hasFileSystemChanges
+                await mainFile.forceSyncBaseline();
                 mainFile.parseToBoard();
 
                 const fileService = panelAccess._fileService;
@@ -556,8 +555,8 @@ export class IncludeCommands extends SwitchBasedCommand {
                     throw new Error(`Cannot reload main kanban file as include: ${absolutePath}`);
                 }
 
-                const freshContent = await fsPromises.readFile(absolutePath, 'utf-8');
-                file.setContent(freshContent, true);
+                // forceSyncBaseline reads disk, updates content+baseline, clears _hasFileSystemChanges
+                await file.forceSyncBaseline();
 
                 const fileService = panelAccess._fileService;
                 const mainFileObj = fileRegistry.getMainFile();

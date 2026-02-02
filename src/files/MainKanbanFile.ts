@@ -11,7 +11,6 @@ import { BackupManager } from '../services/BackupManager';
 import { FileManager } from '../fileManager';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
 import { SaveOptions } from './SaveOptions';
-import { getFileNamingConfig } from '../constants/FileNaming';
 
 /**
  * Represents the main kanban markdown file.
@@ -341,10 +340,12 @@ export class MainKanbanFile extends MarkdownFile {
     // The base class handles VS Code document dirty checks via isDocumentDirtyInVSCode()
 
     /**
-     * Override reload to also parse board
-     * OPTIMIZATION: Skip re-parsing if content hasn't actually changed
+     * Override reload to also parse board and clear cached board.
+     * OPTIMIZATION: Skip re-parsing if content hasn't actually changed.
      */
     public async reload(): Promise<void> {
+        // Clear cached board from webview on any reload
+        this._cachedBoardFromWebview = undefined;
 
         // Read and update content WITHOUT emitting events yet
         const content = await this._readFromDiskWithVerification();
@@ -401,106 +402,38 @@ export class MainKanbanFile extends MarkdownFile {
     }
 
     /**
-     * Override to handle special reload case and clear cached board
+     * Override to handle panel_close with cached board clearing.
+     *
+     * External change dialogs are now handled by the batched import system
+     * in UnifiedChangeHandler. This override only applies to panel_close.
      */
     public async showConflictDialog(): Promise<ConflictResolution | null> {
-        const hadCachedBoard = !!this._cachedBoardFromWebview;
-
         const context = this.getConflictContext();
         const resolution = await this._conflictResolver.resolveConflict(context);
 
         if (resolution && resolution.shouldProceed) {
-            // CRITICAL: Check shouldCreateBackup FIRST because backup-and-reload sets both shouldCreateBackup AND shouldReload
             if (resolution.shouldCreateBackup) {
-                // Create backup of current content, then reload
                 const backupPath = await this.createBackup('conflict');
                 await this.reload();
                 this._emitChange('conflict');
                 this._cachedBoardFromWebview = undefined;
-                this._hasFileSystemChanges = false;
 
-                // Show notification with link to open backup file
                 if (backupPath) {
                     this._showBackupNotification(backupPath);
                 }
-            } else if (resolution.shouldBackupExternal && resolution.shouldSave) {
-                // Backup the external file first (the current file on disk), then save kanban
-                const externalBackupPath = await this.createExternalBackup(getFileNamingConfig().externalConflictLabel);
-                await this.save();  // save() already clears cached board
-                if (externalBackupPath) {
-                    this._showBackupNotification(externalBackupPath, 'External changes backed up');
-                }
             } else if (resolution.shouldSave) {
-                // save() method marks itself as legitimate automatically
-                await this.save();  // save() already clears cached board
-            } else if (resolution.shouldReload && hadCachedBoard) {
-                // SPECIAL CASE: If reloading with cached board, force reload from disk
-                // Clear cached board FIRST
-                this._cachedBoardFromWebview = undefined;
-                this._hasFileSystemChanges = false;
-
-                // CRITICAL: Actually read from disk, don't just re-parse old content
-                const freshContent = await this.readFromDisk();
-                if (freshContent !== null && freshContent !== this._baseline) {
-                    // Content changed on disk
-                    this._content = freshContent;
-                    this._baseline = freshContent;
-                    this._lastModified = await this._getFileModifiedTime();
-                    this.parseToBoard();
-                    this._emitChange('reloaded');
-                } else if (freshContent !== null) {
-                    // Content unchanged, but still re-parse to update UI (discard UI edits)
-                    this._content = freshContent;
-                    this.parseToBoard();
-                    this._emitChange('reloaded');
-                }
+                await this.save();
             } else if (resolution.shouldReload) {
+                this._cachedBoardFromWebview = undefined;
                 await this.reload();
-            } else if (resolution.shouldIgnore) {
-                // CRITICAL: Keep cached board (user wants to keep their UI edits!)
-                // Only clear the external change flag for this specific external change
-                this._hasFileSystemChanges = false;
-                // DO NOT clear cached board - user chose to ignore external, keep UI edits
             }
+            // resolution.shouldIgnore: do nothing
         }
-
 
         return resolution;
     }
 
     // ============= PRIVATE HELPERS =============
-
-    /**
-     * Create a backup of the external file (current file on disk).
-     * Used when user wants to save their kanban changes but preserve external changes as backup.
-     */
-    public async createExternalBackup(label: string = 'external'): Promise<string | null> {
-        try {
-            // Read current content from disk (the external version)
-            const diskContent = await this.readFromDisk();
-            if (diskContent === null) {
-                console.warn(`[MainKanbanFile] Cannot create external backup - file not found: ${this._relativePath}`);
-                return null;
-            }
-
-            // Create backup using BackupManager with the disk content
-            const backupManager = new BackupManager();
-            const backupPath = await backupManager.createBackupFromContent(
-                this._path,
-                diskContent,
-                { label: label, forceCreate: true }
-            );
-
-            if (!backupPath) {
-                console.warn(`[MainKanbanFile] External backup creation returned null: ${this._relativePath}`);
-            }
-
-            return backupPath;
-        } catch (error) {
-            console.error(`[MainKanbanFile] Failed to create external backup:`, error);
-            return null;
-        }
-    }
 
     /**
      * Generate markdown from board structure using the shared parser logic

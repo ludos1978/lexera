@@ -347,6 +347,37 @@ export function getConflictPath(sourcePath: string, backupDir?: string, timestam
 }
 
 // =============================================================================
+// FILENAME GENERATION - VISIBLE CONFLICT (no dot prefix, user-visible)
+// =============================================================================
+
+/**
+ * Generate a VISIBLE conflict filename (no hidden dot prefix).
+ * Pattern: {basename}-conflict-{timestamp}{ext}
+ *
+ * Used for Scenario 2 (pre-save) conflict backups that the user should see.
+ *
+ * @example
+ * generateVisibleConflictFilename('myboard', '.md') => 'myboard-conflict-20231215T143022.md'
+ */
+export function generateVisibleConflictFilename(basename: string, ext: string = '.md', timestamp?: string): string {
+    const cfg = _config;
+    const ts = timestamp || generateTimestamp();
+    return `${basename}${cfg.conflictSuffix}${ts}${ext}`;
+}
+
+/**
+ * Generate full VISIBLE conflict path from source file path.
+ * File is placed in the same directory as the source file.
+ */
+export function getVisibleConflictPath(sourcePath: string, timestamp?: string): string {
+    const ext = getExtension(sourcePath);
+    const basename = getBasename(sourcePath, ext);
+    const filename = generateVisibleConflictFilename(basename, ext, timestamp);
+    const dir = getDirectory(sourcePath);
+    return dir ? joinPath(dir, filename) : filename;
+}
+
+// =============================================================================
 // FILENAME GENERATION - LABELED BACKUP (backup, conflict, external-conflict, etc.)
 // =============================================================================
 
