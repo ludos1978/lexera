@@ -224,24 +224,6 @@ export class BoardSyncHandler {
                             });
                         }
 
-                        const includePath = includeFile.getPath();
-                        const openDoc = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === includePath);
-                        if (openDoc) {
-                            const openContent = openDoc.getText();
-                            if (openContent !== content) {
-                                if (isDebug) {
-                                    logger.debug('[kanban.BoardSyncHandler.include.openDocUpdate]', {
-                                        includePath,
-                                        isDirty: openDoc.isDirty,
-                                        contentLength: content.length
-                                    });
-                                }
-                                const edit = new vscode.WorkspaceEdit();
-                                const fullRange = new vscode.Range(0, 0, openDoc.lineCount, 0);
-                                edit.replace(openDoc.uri, fullRange, content);
-                                await vscode.workspace.applyEdit(edit);
-                            }
-                        }
                     }
                 }
             }
@@ -303,25 +285,6 @@ export class BoardSyncHandler {
                                 error: includeFile.exists() ? undefined : `File not found: ${relativePath}`
                             });
                         }
-
-                            const includePath = includeFile.getPath();
-                            const openDoc = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === includePath);
-                            if (openDoc) {
-                                const openContent = openDoc.getText();
-                                if (openContent !== fullContent) {
-                                    if (isDebug) {
-                                        logger.debug('[kanban.BoardSyncHandler.include.openDocUpdate]', {
-                                            includePath,
-                                            isDirty: openDoc.isDirty,
-                                            contentLength: fullContent.length
-                                        });
-                                    }
-                                    const edit = new vscode.WorkspaceEdit();
-                                    const fullRange = new vscode.Range(0, 0, openDoc.lineCount, 0);
-                                    edit.replace(openDoc.uri, fullRange, fullContent);
-                                    await vscode.workspace.applyEdit(edit);
-                                }
-                            }
                         }
                     }
                 }

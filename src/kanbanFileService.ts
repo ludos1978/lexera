@@ -653,41 +653,10 @@ export class KanbanFileService {
         });
         disposables.push(changeDisposable);
 
-        const openDisposable = vscode.workspace.onDidOpenTextDocument(async (document) => {
-            if (!this.fileRegistry.isReady()) {
-                return;
-            }
-
-            const includeFile = this.fileRegistry.findByPath(document.uri.fsPath);
-            if (!includeFile || includeFile.getFileType() === 'main') {
-                return;
-            }
-
-            if (!includeFile.hasUnsavedChanges()) {
-                return;
-            }
-
-            if (document.isDirty) {
-                return;
-            }
-
-            const cachedContent = includeFile.getContent();
-            if (document.getText() === cachedContent) {
-                return;
-            }
-
-            logger.debug('[KanbanFileService] Sync include file content on open', {
-                includePath: includeFile.getPath(),
-                documentPath: document.uri.fsPath,
-                contentLength: cachedContent.length
-            });
-
-            const edit = new vscode.WorkspaceEdit();
-            const fullRange = new vscode.Range(0, 0, document.lineCount, 0);
-            edit.replace(document.uri, fullRange, cachedContent);
-            await vscode.workspace.applyEdit(edit);
-        });
-        disposables.push(openDisposable);
+        // NOTE: We intentionally do NOT listen to onDidOpenTextDocument for include files.
+        // The kanban works with files on disk, not VS Code editor buffers.
+        // When a user opens an include file in VS Code, they see the disk version.
+        // Kanban changes are synced to disk via FileSaveService, not via workspace edits.
 
         // NOTE: SaveEventDispatcher registration moved to loadMarkdownFile()
         // because document is not available yet when this method is called in constructor
