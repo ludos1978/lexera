@@ -336,12 +336,15 @@ function createDialogContent() {
  */
 function buildUnifiedFileList() {
     const browseFiles = createAllFilesArray();
-    const conflictMap = new Map(conflictFiles.map(f => [f.path, f]));
-    const browseMap = new Map(browseFiles.map(f => [f.path, f]));
+
+    // Use basename for matching — conflictFiles use absolute paths, browseFiles use relative paths
+    const basename = (p) => p ? p.split('/').pop() : p;
+    const conflictMap = new Map(conflictFiles.map(f => [basename(f.path), f]));
+    const browseBasenames = new Set(browseFiles.map(f => basename(f.path)));
 
     // Start from browse files (has all tracked files with sync data)
     const unified = browseFiles.map(file => {
-        const conflict = conflictMap.get(file.path);
+        const conflict = conflictMap.get(basename(file.path));
         return {
             ...file,
             // Overlay conflict-specific fields when available
@@ -354,11 +357,11 @@ function buildUnifiedFileList() {
 
     // Add any conflict files that aren't in browse data
     conflictFiles.forEach(cf => {
-        if (!browseMap.has(cf.path)) {
+        if (!browseBasenames.has(basename(cf.path))) {
             unified.push({
                 path: cf.path,
                 relativePath: cf.relativePath || cf.path,
-                name: (cf.relativePath || cf.path).split('/').pop(),
+                name: basename(cf.path) || cf.path,
                 type: cf.fileType || 'include',
                 isMainFile: cf.fileType === 'main',
                 exists: true,
@@ -1093,16 +1096,22 @@ function forceWriteAllContent() {
 
 function showForceWriteConfirmation() {
     const allFiles = createAllFilesArray();
-    const fileCount = allFiles.length;
+    const filesWithExternalChanges = allFiles.filter(f => f.hasExternalChanges);
+    const fileCount = filesWithExternalChanges.length;
+
+    if (fileCount === 0) {
+        showFileManagerNotice('No files with external changes detected.', 'info');
+        return;
+    }
 
     const confirmHtml = `
         <div class="force-write-confirmation-overlay" id="force-write-confirmation">
             <div class="confirmation-dialog">
                 <div class="confirmation-header">
-                    <h3>Force Write All Files</h3>
+                    <h3>Force Write Files</h3>
                 </div>
                 <div class="confirmation-content">
-                    <p><strong>WARNING:</strong> This will unconditionally write ALL ${fileCount} files to disk, bypassing change detection.</p>
+                    <p><strong>WARNING:</strong> This will unconditionally write ${fileCount} file${fileCount > 1 ? 's' : ''} with external changes to disk, bypassing change detection.</p>
                     <p>Use this ONLY when:</p>
                     <ul>
                         <li>Normal save is not working</li>
@@ -1113,14 +1122,14 @@ function showForceWriteConfirmation() {
                     <div class="affected-files">
                         <strong>Files to be written (${fileCount}):</strong>
                         <ul>
-                            ${allFiles.map(f => `<li>${f.relativePath}</li>`).slice(0, 10).join('')}
+                            ${filesWithExternalChanges.map(f => `<li>${f.relativePath}</li>`).slice(0, 10).join('')}
                             ${fileCount > 10 ? `<li><em>... and ${fileCount - 10} more files</em></li>` : ''}
                         </ul>
                     </div>
                 </div>
                 <div class="confirmation-actions">
                     <button onclick="cancelForceWrite()" class="btn-cancel">Cancel</button>
-                    <button onclick="confirmForceWrite()" class="btn-confirm">Force Write All</button>
+                    <button onclick="confirmForceWrite()" class="btn-confirm">Force Write ${fileCount} File${fileCount > 1 ? 's' : ''}</button>
                 </div>
             </div>
         </div>
