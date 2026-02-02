@@ -7302,10 +7302,12 @@ figcaption {
 .detail-item.saved { color: var(--vscode-gitDecoration-addedResourceForeground); }
 
 /* Table layout styles */
-.files-table-container {
+.files-table-container,
+.unified-table-container {
     padding: var(--vscode-whitespace);
     background: var(--vscode-editor-background);
     border-radius: 4px;
+    overflow-x: auto;
 }
 
 .files-table {
@@ -7376,19 +7378,31 @@ figcaption {
 }
 
 .col-file {
-    width: 58%;
-    min-width: 200px;
+    width: 24%;
+    min-width: 160px;
+    text-align: left;
+}
+
+.col-status {
+    width: 14%;
+    min-width: 80px;
+    white-space: nowrap;
     text-align: left;
 }
 
 .col-frontend,
 .col-saved {
-    width: 12%;
-    min-width: 60px;
-    max-width: 75px;
+    width: 6%;
+    min-width: 45px;
+    max-width: 60px;
     text-align: center;
 }
 
+.col-action {
+    width: 16%;
+    min-width: 140px;
+    text-align: left;
+}
 
 .col-save,
 .col-reload,
@@ -7396,9 +7410,9 @@ figcaption {
 .col-absolute,
 .col-backend,
 .col-image {
-    width: 8%;
-    min-width: 40px;
-    max-width: 50px;
+    width: 5%;
+    min-width: 36px;
+    max-width: 46px;
     text-align: center;
 }
 

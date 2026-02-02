@@ -1,13 +1,12 @@
 /**
  * File Manager overlay — unified dialog for file states and conflict resolution
  *
- * Single dialog serves both browse mode (Files button) and resolve mode
+ * ONE dialog, ONE table for both browse mode (Files button) and resolve mode
  * (Cmd+S conflicts, Ctrl+R reload, external changes).
  *
- * Browse mode: shows detailed file states table with hashes, sync status,
- *   per-file Save/Reload/Convert/Image buttons (from trackedFilesData).
- * Resolve mode: shows conflict resolution table with per-file action dropdowns
- *   (from ConflictFileInfo[] sent by backend).
+ * Table columns: File | Status | Cache | Saved | Action | Save | Reload | Rel | Abs | Image
+ * Both modes render the same table; differences are in dialog chrome (header/footer)
+ * and action dropdown defaults.
  */
 
 // ============= STATE =============
@@ -33,7 +32,6 @@ let autoRefreshTimer = null;
 // Verification state
 let pendingForceWrite = false;
 let lastVerificationResults = null;
-let syncDetailsExpanded = false;
 
 // ============= TOAST NOTIFICATION =============
 
@@ -71,7 +69,7 @@ function showFileManagerNotice(message, type = 'info', timeoutMs = 3000) {
     }, timeoutMs);
 }
 
-// ============= RESOLVE-MODE ACTION DEFINITIONS =============
+// ============= ACTION DEFINITIONS =============
 
 const ALL_ACTIONS = [
     { value: 'overwrite', label: 'Save to disk' },
@@ -117,11 +115,10 @@ function getDefaultAction(file) {
 // ============= DIALOG ENTRY POINTS =============
 
 /**
- * Open the resolve-mode dialog. Called by showConflictDialog message handler
+ * Open the dialog in resolve mode. Called by showConflictDialog message handler
  * for save_conflict, reload_request, and external_change modes.
  */
 function openUnifiedDialog(message) {
-    // If this is a browse-mode open, use showFileManager instead
     if (message.openMode === 'browse') {
         showFileManager();
         return;
@@ -141,30 +138,22 @@ function openUnifiedDialog(message) {
         }
     });
 
-    // Build or rebuild the dialog
-    if (fileManagerElement) {
-        fileManagerElement.remove();
+    // Request tracked files data so sync columns are populated
+    if (window.vscode) {
+        window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
     }
 
-    fileManagerElement = document.createElement('div');
-    fileManagerElement.id = 'file-manager';
-    fileManagerElement.innerHTML = createResolveDialogContent();
-    document.body.appendChild(fileManagerElement);
-    fileManagerVisible = true;
+    buildAndShowDialog();
+    verifyContentSync(true);
 }
 
 /**
- * Open the file dialog in browse mode.
- * Creates the dialog directly using trackedFilesData (no backend round-trip).
+ * Open the dialog in browse mode (Files button).
  */
 function showFileManager() {
     if (typeof window.vscode === 'undefined') {
         showFileManagerNotice('File manager error: vscode API not available', 'error');
         return;
-    }
-
-    if (fileManagerElement) {
-        fileManagerElement.remove();
     }
 
     dialogMode = 'browse';
@@ -173,24 +162,33 @@ function showFileManager() {
     conflictFiles = [];
     perFileResolutions.clear();
 
-    // Request current file tracking state from backend
     window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
+
+    buildAndShowDialog();
+    startAutoRefresh();
+    verifyContentSync(true);
+}
+
+/**
+ * Shared dialog builder — creates the DOM element with unified content.
+ */
+function buildAndShowDialog() {
+    if (fileManagerElement) {
+        fileManagerElement.remove();
+    }
 
     fileManagerElement = document.createElement('div');
     fileManagerElement.id = 'file-manager';
-    fileManagerElement.innerHTML = createBrowseDialogContent();
+    fileManagerElement.innerHTML = createDialogContent();
     document.body.appendChild(fileManagerElement);
     fileManagerVisible = true;
 
-    // Click outside the panel to close
+    // Click outside panel to close (browse mode only)
     fileManagerElement.addEventListener('click', (e) => {
-        if (e.target === fileManagerElement) {
+        if (e.target === fileManagerElement && dialogMode === 'browse') {
             closeDialog();
         }
     });
-
-    startAutoRefresh();
-    verifyContentSync(true);
 }
 
 // ============= CLOSE / HIDE =============
@@ -267,217 +265,116 @@ function onConflictApplyAll(selectElement) {
     const action = selectElement.value;
     if (!action) return;
 
-    conflictFiles.forEach(file => {
-        perFileResolutions.set(file.path, action);
-    });
-
+    // Update all per-file selects in the DOM
     const selects = fileManagerElement?.querySelectorAll('.conflict-action-select');
     if (selects) {
         selects.forEach(sel => {
+            const filePath = sel.dataset.filePath;
             const optionExists = Array.from(sel.options).some(opt => opt.value === action);
             if (optionExists) {
                 sel.value = action;
+                perFileResolutions.set(filePath, action);
             }
         });
     }
 }
 
-// ============= RESOLVE-MODE DIALOG CONTENT =============
+// ============= UNIFIED DIALOG CONTENT =============
 
-function createResolveDialogContent() {
+function createDialogContent() {
     const now = new Date().toLocaleTimeString();
+    const isResolve = dialogMode === 'resolve';
 
     const subtitleMap = {
         save_conflict: 'Pre-save Conflict',
         external_change: 'External Changes Detected',
         reload_request: 'Reload Request'
     };
-    const subtitle = openMode ? subtitleMap[openMode] || '' : '';
+    const subtitle = isResolve && openMode ? subtitleMap[openMode] || '' : '';
+
+    const panelClass = isResolve ? 'file-manager-panel resolve-mode' : 'file-manager-panel';
 
     return `
-        <div class="file-manager-panel resolve-mode">
+        <div class="${panelClass}">
             <div class="file-manager-header">
                 <h3>File Manager</h3>
                 ${subtitle ? `<div class="conflict-subtitle">${subtitle}</div>` : ''}
-                <div class="file-manager-header-meta">
-                    <span class="file-manager-timestamp">Updated: ${now}</span>
-                </div>
-            </div>
-            <div class="file-manager-content">
-                ${createResolveTable()}
-            </div>
-            <div class="conflict-footer">
-                <div class="conflict-footer-content">
-                    <div class="conflict-footer-buttons">
-                        <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Cancel</button>
-                        <button onclick="submitConflictResolution()" class="conflict-btn conflict-btn-resolve">Resolve</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function createResolveTable() {
-    const files = conflictFiles;
-
-    const applyAllOptions = ALL_ACTIONS.map(a =>
-        `<option value="${a.value}">${a.label}</option>`
-    ).join('');
-
-    const allFilesRow = `
-        <tr class="files-table-actions">
-            <td class="col-file all-files-label">All Files</td>
-            <td class="col-conflict-badge"></td>
-            <td class="col-conflict-action">
-                <select id="conflict-apply-all-select" onchange="onConflictApplyAll(this)">
-                    <option value="">-- Apply to All --</option>
-                    ${applyAllOptions}
-                </select>
-            </td>
-        </tr>
-    `;
-
-    const fileRows = files.map(file => {
-        const fileName = file.relativePath.split('/').pop();
-        const dirPath = file.relativePath.includes('/')
-            ? file.relativePath.substring(0, file.relativePath.lastIndexOf('/'))
-            : '.';
-
-        const typeLabel = file.fileType === 'main' ? 'Main'
-            : file.fileType === 'include-column' ? 'Column'
-            : file.fileType === 'include-task' ? 'Task'
-            : 'Include';
-
-        let statusBadge;
-        if (file.hasExternalChanges && file.hasUnsavedChanges) {
-            statusBadge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
-        } else if (file.hasExternalChanges) {
-            statusBadge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
-        } else if (file.hasUnsavedChanges) {
-            statusBadge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
-        } else {
-            statusBadge = '<span class="conflict-badge conflict-none">Clean</span>';
-        }
-
-        if (file.isInEditMode) {
-            statusBadge += ' <span class="conflict-badge" title="Currently being edited">Editing</span>';
-        }
-
-        const actions = getActionsForFile(file);
-        const currentAction = perFileResolutions.get(file.path) || '';
-        const actionOptions = actions.map(a =>
-            `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`
-        ).join('');
-
-        return `
-            <tr class="conflict-file-row">
-                <td class="col-file">
-                    <div class="file-directory-path" title="${file.path}">
-                        ${truncatePath(dirPath, 10)}
-                        <span class="include-type-label">[${typeLabel}]</span>
-                    </div>
-                    <div class="file-name-clickable" onclick="openFile('${file.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${file.relativePath}">
-                        ${fileName}
-                    </div>
-                </td>
-                <td class="col-conflict-badge">${statusBadge}</td>
-                <td class="col-conflict-action">
-                    <select class="conflict-action-select" data-file-path="${file.path}" onchange="onConflictActionChange(this)">
-                        <option value="">--</option>
-                        ${actionOptions}
-                    </select>
-                </td>
-            </tr>
-        `;
-    }).join('');
-
-    return `
-        <div class="conflict-file-list">
-            <table class="conflict-table">
-                <thead>
-                    <tr>
-                        <th class="col-file">File</th>
-                        <th class="col-conflict-badge">Status</th>
-                        <th class="col-conflict-action">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${allFilesRow}
-                    ${fileRows}
-                </tbody>
-            </table>
-        </div>
-    `;
-}
-
-// ============= BROWSE-MODE DIALOG CONTENT =============
-
-function createBrowseDialogContent() {
-    const now = new Date().toLocaleTimeString();
-    const allFiles = createAllFilesArray();
-
-    return `
-        <div class="file-manager-panel">
-            <div class="file-manager-header">
-                <h3>File States Overview</h3>
                 <div class="file-manager-header-meta">
                     <button onclick="verifyContentSync()" class="file-manager-btn" title="Re-verify all hashes and sync status">
                         Verify Sync
                     </button>
                     <span class="file-manager-timestamp">Updated: ${now}</span>
                 </div>
-                <div class="file-manager-controls">
-                    <button onclick="closeDialog()" class="file-manager-close">
-                        ✕
-                    </button>
-                </div>
+                ${!isResolve ? `
+                    <div class="file-manager-controls">
+                        <button onclick="closeDialog()" class="file-manager-close">✕</button>
+                    </div>
+                ` : ''}
             </div>
             <div class="file-manager-content">
-                <div class="file-states-section">
-                    <div class="file-states-summary">
-                        ${createFileStatesSummary(allFiles)}
-                    </div>
-                    <div class="file-states-list">
-                        ${createFileStatesList(allFiles)}
-                    </div>
+                <div class="unified-table-container">
+                    ${createUnifiedTable()}
                 </div>
             </div>
+            ${isResolve ? `
+                <div class="conflict-footer">
+                    <div class="conflict-footer-content">
+                        <div class="conflict-footer-buttons">
+                            <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Cancel</button>
+                            <button onclick="submitConflictResolution()" class="conflict-btn conflict-btn-resolve">Resolve</button>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
         </div>
     `;
 }
 
+// ============= UNIFIED FILE LIST =============
+
 /**
- * Update only the content of browse-mode dialog without rebuilding entire DOM.
+ * Build the unified file list by merging trackedFilesData with conflictFiles overlay.
+ * In browse mode: uses trackedFilesData only (conflictFiles is empty).
+ * In resolve mode: uses conflictFiles as base, enriched with trackedFilesData sync info.
  */
-function updateFileStatesContent() {
-    if (!fileManagerElement || dialogMode !== 'browse') return;
+function buildUnifiedFileList() {
+    const browseFiles = createAllFilesArray();
+    const conflictMap = new Map(conflictFiles.map(f => [f.path, f]));
+    const browseMap = new Map(browseFiles.map(f => [f.path, f]));
 
-    requestAnimationFrame(() => {
-        const allFiles = createAllFilesArray();
-        const now = new Date().toLocaleTimeString();
+    // Start from browse files (has all tracked files with sync data)
+    const unified = browseFiles.map(file => {
+        const conflict = conflictMap.get(file.path);
+        return {
+            ...file,
+            // Overlay conflict-specific fields when available
+            hasExternalChanges: conflict ? conflict.hasExternalChanges : (file.hasExternalChanges || false),
+            hasUnsavedChanges: conflict ? conflict.hasUnsavedChanges : (file.hasInternalChanges || false),
+            isInEditMode: conflict ? conflict.isInEditMode : false,
+            fileType: conflict ? conflict.fileType : (file.isMainFile ? 'main' : file.type),
+        };
+    });
 
-        const summaryElement = fileManagerElement.querySelector('.file-states-summary');
-        if (summaryElement) {
-            const newSummaryHTML = createFileStatesSummary(allFiles);
-            if (summaryElement.innerHTML !== newSummaryHTML) {
-                summaryElement.innerHTML = newSummaryHTML;
-            }
-        }
-
-        const timestampElement = fileManagerElement.querySelector('.file-manager-header-meta .file-manager-timestamp');
-        if (timestampElement) {
-            timestampElement.textContent = `Updated: ${now}`;
-        }
-
-        const listElement = fileManagerElement.querySelector('.file-states-list');
-        if (listElement) {
-            const newListHTML = createFileStatesList(allFiles);
-            if (listElement.innerHTML !== newListHTML) {
-                listElement.innerHTML = newListHTML;
-            }
+    // Add any conflict files that aren't in browse data
+    conflictFiles.forEach(cf => {
+        if (!browseMap.has(cf.path)) {
+            unified.push({
+                path: cf.path,
+                relativePath: cf.relativePath || cf.path,
+                name: (cf.relativePath || cf.path).split('/').pop(),
+                type: cf.fileType || 'include',
+                isMainFile: cf.fileType === 'main',
+                exists: true,
+                hasExternalChanges: cf.hasExternalChanges || false,
+                hasUnsavedChanges: cf.hasUnsavedChanges || false,
+                hasInternalChanges: cf.hasUnsavedChanges || false,
+                isInEditMode: cf.isInEditMode || false,
+                fileType: cf.fileType || 'include',
+            });
         }
     });
+
+    return unified;
 }
 
 /**
@@ -525,9 +422,254 @@ function createAllFilesArray() {
     return allFiles;
 }
 
-function createFileStatesSummary(allFiles) {
-    return '';
+// ============= UNIFIED TABLE =============
+
+/**
+ * One table for all modes.
+ * Columns: File | Status | Cache | Saved | Action | Save | Reload | Rel | Abs | Image
+ */
+function createUnifiedTable() {
+    const files = buildUnifiedFileList();
+    const summary = getFileSyncSummaryCounts();
+
+    // "All Files" row
+    const applyAllOptions = ALL_ACTIONS.map(a =>
+        `<option value="${a.value}">${a.label}</option>`
+    ).join('');
+
+    const allFilesRow = `
+        <tr class="files-table-actions">
+            <td class="col-file all-files-label">All Files</td>
+            <td class="col-status"></td>
+            <td class="col-frontend sync-summary-cell">${renderSyncSummaryCompact(summary.cache)}</td>
+            <td class="col-saved sync-summary-cell">${renderSyncSummaryCompact(summary.file)}</td>
+            <td class="col-action">
+                <select id="conflict-apply-all-select" onchange="onConflictApplyAll(this)">
+                    <option value="">-- Apply to All --</option>
+                    ${applyAllOptions}
+                </select>
+            </td>
+            <td class="col-save action-cell">
+                <button onclick="forceWriteAllContent()" class="action-btn save-btn" title="Force save all files">💾</button>
+            </td>
+            <td class="col-reload action-cell">
+                <button onclick="reloadAllIncludedFiles()" class="action-btn reload-btn" title="Reload all included files from disk">↻</button>
+            </td>
+            <td class="col-relative action-cell">
+                <button onclick="convertAllPaths('relative')" class="action-btn" title="Convert all paths to relative format">Rel</button>
+            </td>
+            <td class="col-absolute action-cell">
+                <button onclick="convertAllPaths('absolute')" class="action-btn" title="Convert all paths to absolute format">Abs</button>
+            </td>
+            <td class="col-image action-cell">
+                <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
+            </td>
+        </tr>
+    `;
+
+    const fileRows = files.map(file => {
+        const mainFileClass = file.isMainFile ? 'main-file' : '';
+        const missingFileClass = file.exists === false ? ' missing-file' : '';
+
+        // --- Status column ---
+        let statusBadge = '';
+        const hasExternal = file.hasExternalChanges;
+        const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
+        if (hasExternal && hasUnsaved) {
+            statusBadge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
+        } else if (hasExternal) {
+            statusBadge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
+        } else if (hasUnsaved) {
+            statusBadge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
+        } else {
+            statusBadge = '<span class="conflict-badge conflict-none">Clean</span>';
+        }
+        if (file.isInEditMode) {
+            statusBadge += ' <span class="conflict-badge" title="Currently being edited">Editing</span>';
+        }
+
+        // --- Cache & Saved sync columns ---
+        const syncStatus = getFileSyncStatus(file.path);
+
+        let frontendDisplay = '---';
+        let frontendClass = 'sync-unknown';
+        let frontendTitle = '';
+        let registryHash = 'N/A';
+        let registryChars = '?';
+
+        let savedDisplay = '---';
+        let savedClass = 'sync-unknown';
+        let savedTitle = '';
+
+        if (syncStatus) {
+            const registryNormalized = syncStatus.registryNormalizedHash
+                && syncStatus.registryNormalizedLength !== null
+                && syncStatus.registryNormalizedLength !== undefined;
+            registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
+            registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
+
+            if (syncStatus.frontendHash && syncStatus.frontendContentLength !== null && syncStatus.frontendContentLength !== undefined) {
+                if (syncStatus.frontendMatchesRaw === true) {
+                    frontendDisplay = '✅';
+                    frontendClass = 'sync-good';
+                } else if (syncStatus.frontendMatchesNormalized === true) {
+                    frontendDisplay = '⚠️';
+                    frontendClass = 'sync-warn';
+                } else if (syncStatus.frontendRegistryMatch === false) {
+                    frontendDisplay = '⚠️';
+                    frontendClass = 'sync-warn';
+                }
+                frontendTitle = `Frontend: ${syncStatus.frontendHash} (${syncStatus.frontendContentLength} chars)\nRegistry: ${registryHash} (${registryChars} chars)`;
+            } else if (syncStatus.frontendAvailable === false) {
+                frontendDisplay = '❓';
+                frontendTitle = 'Frontend hash not available';
+            }
+
+            if (syncStatus.savedHash) {
+                const savedHashValue = syncStatus.savedNormalizedHash || syncStatus.savedHash;
+                const savedCharsValue = syncStatus.savedNormalizedLength ?? (syncStatus.savedContentLength || 0);
+
+                if (syncStatus.canonicalSavedMatch) {
+                    savedDisplay = '✅';
+                    savedClass = 'sync-good';
+                } else {
+                    savedDisplay = '⚠️';
+                    savedClass = 'sync-warn';
+                }
+
+                savedTitle = `Registry: ${registryHash} (${registryChars} chars)\nSaved: ${savedHashValue} (${savedCharsValue} chars)`;
+            } else {
+                savedDisplay = '❓';
+                savedTitle = 'Saved file not available';
+            }
+        }
+
+        // --- Action dropdown ---
+        const actions = getActionsForFile(file);
+        const currentAction = perFileResolutions.get(file.path) || '';
+        const actionOptions = actions.map(a =>
+            `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`
+        ).join('');
+
+        // --- File column ---
+        const dirPath = file.relativePath.includes('/')
+            ? file.relativePath.substring(0, file.relativePath.lastIndexOf('/'))
+            : '.';
+        const truncatedDirPath = truncatePath(dirPath, 10);
+
+        const fileType = file.fileType || file.type || 'include';
+        const typeLabel = file.isMainFile ? 'Main' : getIncludeTypeShortLabel(fileType);
+        const escapedPath = file.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+        return `
+            <tr class="file-row ${mainFileClass}${missingFileClass}" data-file-path="${file.path}">
+                <td class="col-file">
+                    <div class="file-directory-path" title="${file.path}">
+                        ${truncatedDirPath}
+                        ${!file.isMainFile ? `<span class="include-type-label ${fileType}">[${typeLabel}]</span>` : ''}
+                    </div>
+                    <div class="file-name-clickable" onclick="openFile('${escapedPath}')" title="${file.path}">
+                        ${file.isMainFile ? '📄' : '📎'} ${file.name}
+                    </div>
+                </td>
+                <td class="col-status">${statusBadge}</td>
+                <td class="col-frontend">
+                    <div class="hash-display ${frontendClass}" title="${frontendTitle}">
+                        ${frontendDisplay}
+                    </div>
+                </td>
+                <td class="col-saved">
+                    <div class="hash-display ${savedClass}" title="${savedTitle}">
+                        ${savedDisplay}
+                    </div>
+                </td>
+                <td class="col-action">
+                    <select class="conflict-action-select" data-file-path="${file.path}" onchange="onConflictActionChange(this)">
+                        <option value="">--</option>
+                        ${actionOptions}
+                    </select>
+                </td>
+                <td class="col-save action-cell">
+                    <button onclick="saveIndividualFile('${escapedPath}', ${file.isMainFile}, true)" class="action-btn save-btn" title="Force save file (writes unconditionally)">💾</button>
+                </td>
+                <td class="col-reload action-cell">
+                    <button onclick="reloadIndividualFile('${escapedPath}', ${file.isMainFile})" class="action-btn reload-btn" title="Reload file from disk">↻</button>
+                </td>
+                <td class="col-relative action-cell">
+                    <button onclick="convertFilePaths('${escapedPath}', ${file.isMainFile}, 'relative')" class="action-btn" title="Convert paths to relative format">Rel</button>
+                </td>
+                <td class="col-absolute action-cell">
+                    <button onclick="convertFilePaths('${escapedPath}', ${file.isMainFile}, 'absolute')" class="action-btn" title="Convert paths to absolute format">Abs</button>
+                </td>
+                <td class="col-image action-cell">
+                    <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <table class="files-table">
+            <thead>
+                <tr>
+                    <th class="col-file">File</th>
+                    <th class="col-status">Status</th>
+                    <th class="col-frontend" title="Frontend vs registry (non-canonical)">Cache</th>
+                    <th class="col-saved" title="Saved file on disk">Saved</th>
+                    <th class="col-action">Action</th>
+                    <th class="col-save">Save</th>
+                    <th class="col-reload">Reload</th>
+                    <th class="col-relative">Rel</th>
+                    <th class="col-absolute">Abs</th>
+                    <th class="col-image">Img</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${allFilesRow}
+                ${fileRows}
+            </tbody>
+        </table>
+
+        <div class="icon-legend">
+            <div class="legend-section">
+                <div class="legend-title">Sync Status Icons:</div>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <span class="legend-icon">✅</span>
+                        <span class="legend-text">Matches Registry</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-icon">⚠️</span>
+                        <span class="legend-text">Differs from Registry</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-icon">---</span>
+                        <span class="legend-text">Not Verified</span>
+                    </div>
+                </div>
+            </div>
+            <div class="legend-section">
+                <div class="legend-title">Include Types:</div>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <span class="include-type-label regular legend-badge">[INCLUDE]</span>
+                        <span class="legend-text">!!!include() - read-only</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="include-type-label column legend-badge">[COLINC]</span>
+                        <span class="legend-text">!!!include() in column header - bidirectional</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="include-type-label task legend-badge">[TASKINC]</span>
+                        <span class="legend-text">!!!include() in task title - bidirectional</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
+
+// ============= HELPER FUNCTIONS =============
 
 function getIncludeTypeShortLabel(fileType) {
     switch (fileType) {
@@ -607,200 +749,6 @@ function renderSyncSummaryCompact(summary) {
     `;
 }
 
-/**
- * Create the detailed file states table for browse mode.
- * Columns: File | Cache | File | Save | Reload | Relative | Absolute | Image
- */
-function createFileStatesList(allFiles) {
-    return `
-        <div class="files-table-container">
-            <table class="files-table">
-                <thead>
-                    <tr>
-                        <th class="col-file">File</th>
-                        <th class="col-frontend" title="Frontend vs registry (non-canonical)">Cache</th>
-                        <th class="col-saved" title="Saved file on disk">File</th>
-                        <th class="col-save">Save</th>
-                        <th class="col-reload">Reload</th>
-                        <th class="col-relative">Relative</th>
-                        <th class="col-absolute">Absolute</th>
-                        <th class="col-image">Image</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${(() => {
-                        const summary = getFileSyncSummaryCounts();
-                        return `
-                            <tr class="files-table-actions">
-                                <td class="col-file all-files-label">All Files</td>
-                                <td class="col-frontend sync-summary-cell">${renderSyncSummaryCompact(summary.cache)}</td>
-                                <td class="col-saved sync-summary-cell">${renderSyncSummaryCompact(summary.file)}</td>
-                                <td class="col-save action-cell">
-                                    <button onclick="forceWriteAllContent()" class="action-btn save-btn" title="Force save all files">💾</button>
-                                </td>
-                                <td class="col-reload action-cell">
-                                    <button onclick="reloadAllIncludedFiles()" class="action-btn reload-btn" title="Reload all included files from disk">↻</button>
-                                </td>
-                                <td class="col-relative action-cell">
-                                    <button onclick="convertAllPaths('relative')" class="action-btn" title="Convert all paths to relative format">Rel</button>
-                                </td>
-                                <td class="col-absolute action-cell">
-                                    <button onclick="convertAllPaths('absolute')" class="action-btn" title="Convert all paths to absolute format">Abs</button>
-                                </td>
-                                <td class="col-image action-cell">
-                                    <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
-                                </td>
-                            </tr>
-                        `;
-                    })()}
-                    ${allFiles.map(file => {
-                        const mainFileClass = file.isMainFile ? 'main-file' : '';
-                        const missingFileClass = file.exists === false ? ' missing-file' : '';
-
-                        const syncStatus = getFileSyncStatus(file.path);
-
-                        let frontendDisplay = '---';
-                        let frontendClass = 'sync-unknown';
-                        let frontendTitle = '';
-                        let registryHash = 'N/A';
-                        let registryChars = '?';
-
-                        let savedDisplay = '---';
-                        let savedClass = 'sync-unknown';
-                        let savedTitle = '';
-
-                        if (syncStatus) {
-                            const registryNormalized = syncStatus.registryNormalizedHash
-                                && syncStatus.registryNormalizedLength !== null
-                                && syncStatus.registryNormalizedLength !== undefined;
-                            registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
-                            registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
-
-                            if (syncStatus.frontendHash && syncStatus.frontendContentLength !== null && syncStatus.frontendContentLength !== undefined) {
-                                if (syncStatus.frontendMatchesRaw === true) {
-                                    frontendDisplay = '✅';
-                                    frontendClass = 'sync-good';
-                                } else if (syncStatus.frontendMatchesNormalized === true) {
-                                    frontendDisplay = '⚠️';
-                                    frontendClass = 'sync-warn';
-                                } else if (syncStatus.frontendRegistryMatch === false) {
-                                    frontendDisplay = '⚠️';
-                                    frontendClass = 'sync-warn';
-                                }
-                                frontendTitle = `Frontend: ${syncStatus.frontendHash} (${syncStatus.frontendContentLength} chars)\nRegistry: ${registryHash} (${registryChars} chars)`;
-                            } else if (syncStatus.frontendAvailable === false) {
-                                frontendDisplay = '❓';
-                                frontendTitle = 'Frontend hash not available';
-                            }
-
-                            if (syncStatus.savedHash) {
-                                const savedHashValue = syncStatus.savedNormalizedHash || syncStatus.savedHash;
-                                const savedCharsValue = syncStatus.savedNormalizedLength ?? (syncStatus.savedContentLength || 0);
-
-                                if (syncStatus.canonicalSavedMatch) {
-                                    savedDisplay = '✅';
-                                    savedClass = 'sync-good';
-                                } else {
-                                    savedDisplay = '⚠️';
-                                    savedClass = 'sync-warn';
-                                }
-
-                                savedTitle = `Registry: ${registryHash} (${registryChars} chars)\nSaved: ${savedHashValue} (${savedCharsValue} chars)`;
-                            } else {
-                                savedDisplay = '❓';
-                                savedTitle = 'Saved file not available';
-                            }
-                        }
-
-                        const dirPath = file.relativePath.includes('/')
-                            ? file.relativePath.substring(0, file.relativePath.lastIndexOf('/'))
-                            : '.';
-                        const truncatedDirPath = truncatePath(dirPath, 10);
-
-                        return `
-                            <tr class="file-row ${mainFileClass}${missingFileClass}" data-file-path="${file.path}">
-                                <td class="col-file">
-                                    <div class="file-directory-path" title="${file.path}">
-                                        ${truncatedDirPath}
-                                        ${!file.isMainFile ? `<span class="include-type-label ${file.type || 'include'}">[${getIncludeTypeShortLabel(file.type)}]</span>` : ''}
-                                    </div>
-                                    <div class="file-name-clickable" onclick="openFile('${file.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="${file.path}">
-                                        ${file.isMainFile ? '📄' : '📎'} ${file.name}
-                                    </div>
-                                </td>
-                                <td class="col-frontend">
-                                    <div class="hash-display ${frontendClass}" title="${frontendTitle}">
-                                        ${frontendDisplay}
-                                    </div>
-                                </td>
-                                <td class="col-saved">
-                                    <div class="hash-display ${savedClass}" title="${savedTitle}">
-                                        ${savedDisplay}
-                                    </div>
-                                </td>
-                                <td class="col-save action-cell">
-                                    <button onclick="saveIndividualFile('${file.path}', ${file.isMainFile}, true)" class="action-btn save-btn" title="Force save file (writes unconditionally)">💾</button>
-                                </td>
-                                <td class="col-reload action-cell">
-                                    <button onclick="reloadIndividualFile('${file.path}', ${file.isMainFile})" class="action-btn reload-btn" title="Reload file from disk">↻</button>
-                                </td>
-                                <td class="col-relative action-cell">
-                                    <button onclick="convertFilePaths('${file.path}', ${file.isMainFile}, 'relative')" class="action-btn" title="Convert paths to relative format">Rel</button>
-                                </td>
-                                <td class="col-absolute action-cell">
-                                    <button onclick="convertFilePaths('${file.path}', ${file.isMainFile}, 'absolute')" class="action-btn" title="Convert paths to absolute format">Abs</button>
-                                </td>
-                                <td class="col-image action-cell">
-                                    <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-
-            <div class="icon-legend">
-                <div class="legend-section">
-                    <div class="legend-title">Sync Status Icons:</div>
-                    <div class="legend-items">
-                        <div class="legend-item">
-                            <span class="legend-icon">✅</span>
-                            <span class="legend-text">Matches Registry</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-icon">⚠️</span>
-                            <span class="legend-text">Differs from Registry</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="legend-icon">---</span>
-                            <span class="legend-text">Not Verified</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="legend-section">
-                    <div class="legend-title">Include Types:</div>
-                    <div class="legend-items">
-                        <div class="legend-item">
-                            <span class="include-type-label regular legend-badge">[INCLUDE]</span>
-                            <span class="legend-text">!!!include() - read-only</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="include-type-label column legend-badge">[COLINC]</span>
-                            <span class="legend-text">!!!include() in column header - bidirectional</span>
-                        </div>
-                        <div class="legend-item">
-                            <span class="include-type-label task legend-badge">[TASKINC]</span>
-                            <span class="legend-text">!!!include() in task title - bidirectional</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-// ============= HELPER FUNCTIONS =============
-
 function truncatePath(path, maxLength = 10) {
     if (!path || path.length <= maxLength) return path;
     return path.substring(0, maxLength) + '...';
@@ -822,6 +770,32 @@ function requestOpenFileDialog(mode) {
     } else {
         window.vscode.postMessage({ type: 'openFileDialog', openMode: mode });
     }
+}
+
+// ============= DIALOG CONTENT UPDATE =============
+
+/**
+ * Update dialog content without full DOM rebuild (for auto-refresh and data updates).
+ */
+function updateDialogContent() {
+    if (!fileManagerElement) return;
+
+    requestAnimationFrame(() => {
+        const now = new Date().toLocaleTimeString();
+
+        const timestampElement = fileManagerElement.querySelector('.file-manager-timestamp');
+        if (timestampElement) {
+            timestampElement.textContent = `Updated: ${now}`;
+        }
+
+        const tableContainer = fileManagerElement.querySelector('.unified-table-container');
+        if (tableContainer) {
+            const newTableHTML = createUnifiedTable();
+            if (tableContainer.innerHTML !== newTableHTML) {
+                tableContainer.innerHTML = newTableHTML;
+            }
+        }
+    });
 }
 
 // ============= REFRESH / AUTO-REFRESH =============
@@ -869,8 +843,8 @@ function updateTrackedFilesData(data) {
     lastTrackedFilesDataHash = newDataHash;
     trackedFilesData = data;
 
-    if (fileManagerVisible && fileManagerElement && dialogMode === 'browse') {
-        updateFileStatesContent();
+    if (fileManagerVisible && fileManagerElement) {
+        updateDialogContent();
     }
 }
 
@@ -1160,10 +1134,8 @@ function initializeFileManager() {
     window.onConflictApplyAll = onConflictApplyAll;
     window.closeDialog = closeDialog;
 
-    // Global keydown handler for ESC
     document.addEventListener('keydown', handleFileManagerKeydown);
 
-    // Store original manual refresh function
     if (typeof window.manualRefresh === 'function') {
         originalManualRefresh = window.manualRefresh;
         window.manualRefresh = enhancedManualRefresh;
@@ -1176,7 +1148,6 @@ function initializeFileManager() {
         }, 1000);
     }
 
-    // Listen for messages from backend
     window.addEventListener('message', (event) => {
         const message = event.data;
         if (!message || !message.type) return;
@@ -1199,19 +1170,19 @@ function initializeFileManager() {
                 break;
 
             case 'saveCompleted':
-                if (fileManagerVisible && dialogMode === 'browse') {
+                if (fileManagerVisible) {
                     verifyContentSync(true);
                 }
                 break;
 
             case 'individualFileSaved':
-                if (fileManagerVisible && dialogMode === 'browse' && message.success) {
+                if (fileManagerVisible && message.success) {
                     verifyContentSync(true);
                 }
                 break;
 
             case 'individualFileReloaded':
-                if (fileManagerVisible && dialogMode === 'browse' && message.success) {
+                if (fileManagerVisible && message.success) {
                     verifyContentSync(true);
                 }
                 break;
@@ -1228,8 +1199,8 @@ function initializeFileManager() {
 
             case 'verifyContentSyncResult':
                 lastVerificationResults = message;
-                if (fileManagerVisible && fileManagerElement && dialogMode === 'browse') {
-                    updateFileStatesContent();
+                if (fileManagerVisible && fileManagerElement) {
+                    updateDialogContent();
                 }
                 break;
         }
