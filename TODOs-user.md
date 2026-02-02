@@ -1,3 +1,36 @@
+- [ ] ith an included file the conflict resolution doesnt work the
+  same as the main file!!! when i tell it to overwrite and backup
+  the external changes it backups the old state and doesnt write
+  the internal to the file! /refactor try to use the same conflict
+  resolution logic code for all files.
+  also it doesnt show a conflict handler that incoroprates all the
+  files!!! we must create a different file conflict dialogue that
+  can handle all the files. we might reuse the file states
+  overview structure or even for it to be the same dialogue! It
+  should show the states of each file, allow loading, saving,
+  backup the old state etc! also verification of the integrated
+  and tracked media / embeddings! make a plan for the view to be
+  reused for this conflict handling case!!!
+
+- [ ] i like the dialogue, but it should be centered and not moving
+  into the screen, just show it. also the action for all elements
+  should be the first and in the same column as the other actions
+  (top row). also it doesnt really use the same dialogue as the
+  File States Overview. when i save it should open the same
+  dialogue as when i click the button in the top row. integrate
+  the information of the File States Overview into the new view!
+  by pressing save it should set the overwrite action as default
+  (if needed). if i press ctrl+r or meta+r it should set load from
+  external as default. also give all options such as overwrite
+  file, overwrite file with backup of existing file, load from
+  file and discard kanban data, load from file and backup kanban
+  data, skip actions this this file, this should be selectable for
+  each of the files individually, but of course only relevant
+  features should be available!
+
+- [ ] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
+
+
 - [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) . also [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
 
 - [ ] i would like to be able to drop external files (desktop, vscode explorer into the editor without leaving it, it should place it directly inline). with all the features we have in the task creation pasting as well!

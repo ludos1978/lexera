@@ -7,7 +7,8 @@ import { BoardOperations } from './board';
 import { LinkHandler } from './services/LinkHandler';
 import { MessageHandler } from './messageHandler';
 import { BackupManager } from './services/BackupManager';
-import { ConflictResolver, ConflictContext, ConflictResolution } from './services/ConflictResolver';
+import { ConflictResolver } from './services/ConflictResolver';
+import { ConflictDialogBridge } from './services/ConflictDialogBridge';
 import { SaveEventDispatcher } from './SaveEventDispatcher';
 import { KanbanFileService } from './kanbanFileService';
 import { MediaTracker } from './services/MediaTracker';
@@ -69,6 +70,7 @@ export class KanbanWebviewPanel {
     private _includeCoordinator: IncludeFileCoordinator;
     private _webviewManager: WebviewManager;
     private _conflictResolver: ConflictResolver;
+    private _conflictDialogBridge: ConflictDialogBridge;
     private _mediaTracker: MediaTracker | null = null;
     private _boardStore: BoardStore;
     private _webviewBridge: WebviewBridge;
@@ -220,6 +222,10 @@ export class KanbanWebviewPanel {
         return Array.from(KanbanWebviewPanel.panels.values());
     }
 
+    public static getPanelById(panelId: string): KanbanWebviewPanel | undefined {
+        return KanbanWebviewPanel.panels.get(panelId);
+    }
+
     public static getActivePanel(): KanbanWebviewPanel | undefined {
         if (KanbanWebviewPanel.lastActivePanel && !KanbanWebviewPanel.lastActivePanel.isDisposed()) {
             return KanbanWebviewPanel.lastActivePanel;
@@ -231,6 +237,7 @@ export class KanbanWebviewPanel {
     public getPanelId(): string { return this._context.panelId; }
     public getPanel(): vscode.WebviewPanel { return this._panel; }
     public hasUnsavedChanges(): boolean { return this._fileRegistry.getMainFile()?.hasUnsavedChanges() || false; }
+    public getConflictDialogBridge(): ConflictDialogBridge { return this._conflictDialogBridge; }
 
     /**
      * Scroll to and highlight an element in the kanban board.
@@ -337,6 +344,7 @@ export class KanbanWebviewPanel {
         this._boardOperations = new BoardOperations();
         this._backupManager = new BackupManager();
         this._conflictResolver = this._context.conflictResolver;
+        this._conflictDialogBridge = this._context.conflictDialogBridge;
 
         this._fileRegistry = new MarkdownFileRegistry(this._context);
         this._fileFactory = new FileFactory(this._fileManager, this._conflictResolver, this._backupManager, this._fileRegistry);
@@ -925,10 +933,6 @@ export class KanbanWebviewPanel {
 
     public ensureIncludeFileRegistered(relativePath: string, type: 'regular' | 'column' | 'task'): void {
         this._fileRegistry.ensureIncludeFileRegistered(relativePath, type, this._fileFactory);
-    }
-
-    public async showConflictDialog(context: ConflictContext): Promise<ConflictResolution> {
-        return this._conflictResolver.resolveConflict(context);
     }
 
     public triggerSnippetInsertion(): void {

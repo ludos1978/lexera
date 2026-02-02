@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MarkdownFile } from './MarkdownFile';
-import { ConflictResolver, ConflictContext } from '../services/ConflictResolver';
+import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
 import { IMainKanbanFile, IMarkdownFileRegistry, CapturedEdit } from './FileInterfaces';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
@@ -247,28 +247,6 @@ export class IncludeFile extends MarkdownFile {
 
     // hasAnyUnsavedChanges() and hasConflict() are now implemented in base class MarkdownFile
     // The base class handles VS Code document dirty checks via isDocumentDirtyInVSCode()
-
-    // ============= CONFLICT CONTEXT =============
-
-    protected getConflictContext(): ConflictContext {
-        // Include has unsaved changes if either:
-        // - Internal state flag is true (from kanban UI edits) - computed from content comparison
-        // - OR VSCode document is dirty (from text editor edits)
-        const hasIncludeUnsavedChanges = this.hasUnsavedChanges() || this.isDocumentDirtyInVSCode();
-
-        return {
-            type: 'external_include',
-            fileType: 'include',
-            filePath: this._absolutePath,
-            fileName: path.basename(this._relativePath),
-            hasMainUnsavedChanges: this._parentFile.hasUnsavedChanges(),
-            hasIncludeUnsavedChanges: hasIncludeUnsavedChanges,
-            hasExternalChanges: this._hasFileSystemChanges,
-            changedIncludeFiles: [this._relativePath],
-            isClosing: false,
-            isInEditMode: this._isInEditMode
-        };
-    }
 
     // ============= VALIDATION =============
 

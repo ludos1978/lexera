@@ -1,5 +1,6 @@
-import * as vscode from 'vscode';
 import { MarkdownFile } from '../files/MarkdownFile';
+import { ConflictDialogBridge, ConflictFileInfo } from '../services/ConflictDialogBridge';
+import { WebviewBridge } from './bridge/WebviewBridge';
 
 /**
  * Unified External Change Handler — Batched import system
@@ -21,12 +22,22 @@ import { MarkdownFile } from '../files/MarkdownFile';
 
 const COALESCE_WINDOW_MS = 500;
 
+/**
+ * Interface for looking up panel resources by panelId.
+ * Avoids circular dependency with KanbanWebviewPanel.
+ */
+export interface PanelLookup {
+    getConflictDialogBridge(panelId: string): ConflictDialogBridge | undefined;
+    getWebviewBridge(panelId: string): WebviewBridge | undefined;
+}
+
 export class UnifiedChangeHandler {
     private static instance: UnifiedChangeHandler | undefined;
 
     // Coalescing state: keyed by panelId
     private _pendingFiles = new Map<string, MarkdownFile[]>();
     private _coalesceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private _panelLookup: PanelLookup | undefined;
 
     private constructor() {}
 
@@ -35,6 +46,14 @@ export class UnifiedChangeHandler {
             UnifiedChangeHandler.instance = new UnifiedChangeHandler();
         }
         return UnifiedChangeHandler.instance;
+    }
+
+    /**
+     * Register a panel lookup implementation.
+     * Called once during extension activation to avoid circular imports.
+     */
+    public setPanelLookup(lookup: PanelLookup): void {
+        this._panelLookup = lookup;
     }
 
     /**
@@ -111,98 +130,59 @@ export class UnifiedChangeHandler {
 
     /**
      * Show import dialog for a batch of externally changed files.
-     *
-     * Single file: simple showWarningMessage with Import/Ignore.
-     * Multiple files: showQuickPick with canPickMany.
-     *
-     * Files without unsaved kanban changes are pre-selected (safe to import).
-     * Files with unsaved kanban changes are unchecked by default.
+     * Uses the webview-based ConflictDialogBridge for per-file resolution.
      */
     private async _showBatchedImportDialog(files: MarkdownFile[]): Promise<void> {
-        if (files.length === 1) {
-            await this._showSingleFileImportDialog(files[0]);
+        const panelId = files[0].getConflictResolver().panelId;
+
+        if (!this._panelLookup) {
+            console.warn('[UnifiedChangeHandler] Panel lookup not registered, cannot show conflict dialog');
             return;
         }
 
-        await this._showMultiFileImportDialog(files);
-    }
+        const bridge = this._panelLookup.getConflictDialogBridge(panelId);
+        const webviewBridge = this._panelLookup.getWebviewBridge(panelId);
 
-    /**
-     * Single file: simple warning message with Import/Ignore
-     */
-    private async _showSingleFileImportDialog(file: MarkdownFile): Promise<void> {
-        const fileName = file.getFileName();
-        const hasUnsaved = file.hasAnyUnsavedChanges();
-
-        let message = `"${fileName}" has been modified externally.`;
-        if (hasUnsaved) {
-            message += `\n\n⚠️ Importing will discard your unsaved kanban edits.`;
-        }
-
-        const importChanges = 'Import changes';
-        const ignore = 'Ignore';
-
-        const choice = await vscode.window.showWarningMessage(
-            message,
-            importChanges,
-            ignore
-        );
-
-        if (choice === importChanges) {
-            await this._importFile(file);
-        }
-        // Ignore or ESC: keep _hasFileSystemChanges = true, do nothing
-    }
-
-    /**
-     * Multiple files: QuickPick with canPickMany
-     */
-    private async _showMultiFileImportDialog(files: MarkdownFile[]): Promise<void> {
-        const someHaveUnsaved = files.some(f => f.hasAnyUnsavedChanges());
-        const allHaveUnsaved = files.every(f => f.hasAnyUnsavedChanges());
-
-        // Build QuickPick items
-        const items: (vscode.QuickPickItem & { file: MarkdownFile })[] = files.map(file => {
-            const hasUnsaved = file.hasAnyUnsavedChanges();
-            const label = file.getFileType() === 'main'
-                ? file.getFileName()
-                : file.getRelativePath();
-
-            return {
-                label: hasUnsaved ? `${label}  ⚠️ unsaved edits` : label,
-                picked: !hasUnsaved, // Pre-select files without unsaved changes
-                file
-            };
-        });
-
-        let placeholder: string;
-        if (allHaveUnsaved) {
-            placeholder = 'Select files to import — ⚠️ importing will discard your unsaved kanban edits';
-        } else if (someHaveUnsaved) {
-            placeholder = 'Select files to import — ⚠️ files with unsaved edits will lose those edits';
-        } else {
-            placeholder = 'Select files to import (unselected = ignore)';
-        }
-
-        const selected = await vscode.window.showQuickPick(items, {
-            canPickMany: true,
-            title: 'External changes detected',
-            placeHolder: placeholder
-        }) as (vscode.QuickPickItem & { file: MarkdownFile })[] | undefined;
-
-        if (!selected) {
-            // Cancel / ESC: ignore all
+        if (!bridge || !webviewBridge) {
+            console.warn('[UnifiedChangeHandler] Panel not found for batched import dialog, panelId:', panelId);
             return;
         }
 
-        // Import selected files
-        const selectedPaths = new Set(selected.map(s => s.file.getPath()));
+        // Build file info for the dialog
+        const conflictFileInfos: ConflictFileInfo[] = files.map(file => ({
+            path: file.getPath(),
+            relativePath: file.getRelativePath(),
+            fileType: file.getFileType() as ConflictFileInfo['fileType'],
+            hasExternalChanges: file.hasExternalChanges(),
+            hasUnsavedChanges: file.hasAnyUnsavedChanges(),
+            isInEditMode: file.isInEditMode()
+        }));
 
-        for (const file of files) {
-            if (selectedPaths.has(file.getPath())) {
-                await this._importFile(file);
+        try {
+            const result = await bridge.showConflict(
+                (msg) => webviewBridge.send(msg),
+                {
+                    conflictType: 'external_changes',
+                    files: conflictFileInfos
+                }
+            );
+
+            if (result.cancelled) {
+                return;
             }
-            // Unselected: keep _hasFileSystemChanges = true
+
+            // Apply per-file resolutions
+            const resolutionMap = new Map(result.perFileResolutions.map(r => [r.path, r.action]));
+
+            for (const file of files) {
+                const action = resolutionMap.get(file.getPath());
+                if (action === 'import') {
+                    await this._importFile(file);
+                }
+                // 'ignore' or no action: keep _hasFileSystemChanges = true
+            }
+        } catch (error) {
+            console.error('[UnifiedChangeHandler] Conflict dialog failed:', error);
         }
     }
 

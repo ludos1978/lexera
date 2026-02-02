@@ -1558,6 +1558,39 @@ export interface ColumnsUnfoldedMessage extends ResponseMessage {
     type: 'columnsUnfolded';
 }
 
+// ============= CONFLICT DIALOG MESSAGES =============
+
+/**
+ * Show conflict dialog in webview (Backend → Frontend)
+ */
+export interface ShowConflictDialogMessage extends BaseMessage {
+    type: 'showConflictDialog';
+    conflictId: string;
+    conflictType: 'external_changes' | 'presave_conflict';
+    files: Array<{
+        path: string;
+        relativePath: string;
+        fileType: 'main' | 'include-column' | 'include-task' | 'include-regular';
+        hasExternalChanges: boolean;
+        hasUnsavedChanges: boolean;
+        isInEditMode: boolean;
+        contentPreview?: string;
+    }>;
+}
+
+/**
+ * Conflict resolution from webview (Frontend → Backend)
+ */
+export interface ConflictResolutionMessage extends BaseMessage {
+    type: 'conflictResolution';
+    conflictId: string;
+    cancelled: boolean;
+    perFileResolutions: Array<{
+        path: string;
+        action: 'overwrite_backup_external' | 'load_external_backup_mine' | 'import' | 'ignore' | 'skip';
+    }>;
+}
+
 // ============= UNIFIED LINK HANDLING =============
 
 /**
@@ -2077,7 +2110,9 @@ export type OutgoingMessage =
     // Search messages
     | ScrollToElementMessage
     | ScrollToElementByIndexMessage
-    | SearchResultsMessage;
+    | SearchResultsMessage
+    // Conflict dialog messages
+    | ShowConflictDialogMessage;
 
 /**
  * All incoming message types (Frontend → Backend)
@@ -2233,7 +2268,9 @@ export type IncomingMessage =
     // Search messages
     | SearchBrokenElementsMessage
     | SearchTextMessage
-    | NavigateToElementMessage;
+    | NavigateToElementMessage
+    // Conflict dialog messages
+    | ConflictResolutionMessage;
 
 /**
  * Message type string literals for type-safe checking

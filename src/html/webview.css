@@ -7010,7 +7010,7 @@ figcaption {
     max-width: 100%;
 }
 
-#debug-overlay {
+#file-manager {
     position: fixed;
     top: 0;
     left: 0;
@@ -7027,7 +7027,7 @@ figcaption {
     pointer-events: none;
 }
 
-#debug-toggle-toast {
+#file-manager-toggle-toast {
     position: fixed;
     top: 1rem;
     right: 1rem;
@@ -7044,12 +7044,12 @@ figcaption {
     pointer-events: none;
 }
 
-#debug-toggle-toast.visible {
+#file-manager-toggle-toast.visible {
     opacity: 1;
     transform: translateY(0);
 }
 
-.debug-panel {
+.file-manager-panel {
     background: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
@@ -7074,7 +7074,7 @@ figcaption {
     }
 }
 
-.debug-header {
+.file-manager-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -7083,12 +7083,12 @@ figcaption {
     background: var(--vscode-titleBar-activeBackground);
 }
 
-.debug-header h3 {
+.file-manager-header h3 {
     margin: 0;
     color: var(--vscode-titleBar-activeForeground);
 }
 
-.debug-header-meta {
+.file-manager-header-meta {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -7096,13 +7096,13 @@ figcaption {
     margin-right: 8px;
 }
 
-.debug-controls {
+.file-manager-controls {
     display: flex;
     gap: 4px;
     align-items: center;
 }
 
-.debug-btn, .debug-close {
+.file-manager-btn, .file-manager-close {
     background: var(--button-background);
     color: var(--button-foreground);
     border: var(--button-border);
@@ -7112,23 +7112,23 @@ figcaption {
     font-size: 12px;
 }
 
-.debug-btn:hover, .debug-close:hover {
+.file-manager-btn:hover, .file-manager-close:hover {
     background: var(--button-secondary-background-hover);
 }
 
-.debug-close {
+.file-manager-close {
     font-weight: bold;
     width: 18px;
     height: 18px;
 }
 
-.debug-content {
+.file-manager-content {
     padding: var(--vscode-whitespace);
     overflow-y: auto;
     flex: 1;
 }
 
-.debug-timestamp {
+.file-manager-timestamp {
     color: var(--vscode-descriptionForeground);
     font-size: 10px;
     white-space: nowrap;
@@ -7152,14 +7152,14 @@ figcaption {
     color: var(--vscode-foreground);
 }
 
-.debug-group {
+.file-manager-group {
     margin-bottom: 24px;
     border: 1px solid var(--vscode-panel-border);
     border-radius: 6px;
     overflow: hidden;
 }
 
-.debug-group h4 {
+.file-manager-group h4 {
     margin: 0;
     padding: 12px 16px;
     background: var(--vscode-sideBar-background);
@@ -7169,23 +7169,23 @@ figcaption {
     border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.debug-item {
+.file-manager-item {
     display: flex;
     justify-content: space-between;
     padding: 8px 16px;
     border-bottom: 1px solid var(--vscode-panel-border);
 }
 
-.debug-item:last-child {
+.file-manager-item:last-child {
     border-bottom: none;
 }
 
-.debug-label {
+.file-manager-label {
     font-weight: 500;
     color: var(--vscode-foreground);
 }
 
-.debug-value {
+.file-manager-value {
     font-family: var(--vscode-editor-font-family);
     font-size: 12px;
 }
@@ -8013,6 +8013,173 @@ figcaption {
 .baseline-stat .sync-file-stat-label {
     font-weight: 600;
     color: var(--vscode-textLink-foreground);
+}
+
+/* ============= Conflict Mode Styles ============= */
+
+.file-manager-panel.conflict-mode {
+    border-color: var(--vscode-gitDecoration-modifiedResourceForeground);
+    border-width: 2px;
+}
+
+.conflict-subtitle {
+    font-size: 12px;
+    color: var(--vscode-gitDecoration-modifiedResourceForeground);
+    font-weight: 600;
+    padding: 2px 0 0 0;
+}
+
+/* Conflict file list table */
+.conflict-file-list {
+    padding: 8px;
+}
+
+.conflict-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.conflict-table th {
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-weight: 600;
+}
+
+.conflict-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    vertical-align: middle;
+}
+
+.conflict-file-row.has-conflict {
+    background: rgba(255, 165, 0, 0.05);
+}
+
+.conflict-file-row.no-conflict {
+    opacity: 0.6;
+}
+
+.col-conflict-badge {
+    white-space: nowrap;
+}
+
+.col-conflict-action {
+    min-width: 180px;
+}
+
+.conflict-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.conflict-badge.conflict-external {
+    background: rgba(210, 153, 34, 0.2);
+    color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+
+.conflict-badge.conflict-unsaved {
+    background: rgba(47, 111, 235, 0.2);
+    color: var(--vscode-textLink-foreground);
+}
+
+.conflict-badge.conflict-both {
+    background: rgba(209, 36, 47, 0.2);
+    color: var(--vscode-gitDecoration-deletedResourceForeground);
+}
+
+.conflict-badge.conflict-none {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--vscode-descriptionForeground);
+}
+
+.conflict-action-select {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 11px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.conflict-no-action {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+}
+
+/* Conflict footer */
+.conflict-footer {
+    border-top: 2px solid var(--vscode-gitDecoration-modifiedResourceForeground);
+    padding: 12px 16px;
+    background: var(--vscode-sideBar-background);
+}
+
+.conflict-footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.conflict-apply-all {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.conflict-apply-all label {
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+.conflict-apply-all select {
+    padding: 4px 6px;
+    font-size: 11px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 3px;
+}
+
+.conflict-footer-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.conflict-btn {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.conflict-btn-cancel {
+    background: var(--button-secondary-background);
+    color: var(--button-secondary-foreground);
+}
+
+.conflict-btn-cancel:hover {
+    background: var(--button-secondary-background-hover);
+}
+
+.conflict-btn-resolve {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.conflict-btn-resolve:hover {
+    background: var(--vscode-button-hoverBackground);
 }
 
 /* Marp Global Settings Button and Menu */

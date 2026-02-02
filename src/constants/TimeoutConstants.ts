@@ -75,5 +75,5 @@ export const UI_TRANSITION_DELAY_MS = 100;
 /** Delay for submenu hide operations (ms) */
 export const SUBMENU_HIDE_DELAY_MS = 100;
 
-/** Delay for debug overlay refresh (ms) */
-export const DEBUG_REFRESH_DELAY_MS = 500;
+/** Delay for file manager refresh (ms) */
+export const FILE_MANAGER_REFRESH_DELAY_MS = 500;

@@ -1,23 +1,31 @@
 /**
- * Debug overlay system for tracking file states and conflict management
+ * File Manager overlay for tracking file states and conflict management
  */
 
-// Debug overlay state
-let debugOverlayVisible = false;
-let debugOverlayElement = null;
+// File manager state
+let fileManagerVisible = false;
+let fileManagerElement = null;
 let trackedFilesData = {};
 let lastTrackedFilesDataHash = null;
 let refreshCount = 0;
-let debugOverlaySticky = false; // New: sticky/pin state
-let debugNoticeTimer = null;
+let fileManagerSticky = false;
+let fileManagerNoticeTimer = null;
 let syncVerifyTimer = null;
 const SYNC_VERIFY_DEBOUNCE_MS = 300;
 
-function showDebugOverlayNotice(message, type = 'info', timeoutMs = 3000) {
-    const existing = document.getElementById('debug-overlay-toast');
+// Conflict mode state
+let conflictMode = false;
+let conflictId = null;
+let conflictType = null; // 'external_changes' | 'presave_conflict'
+let conflictFiles = [];  // from backend message
+let perFileResolutions = new Map(); // path -> action
+let wasOpenBeforeConflict = false;
+
+function showFileManagerNotice(message, type = 'info', timeoutMs = 3000) {
+    const existing = document.getElementById('file-manager-toast');
     const toast = existing || document.createElement('div');
     if (!existing) {
-        toast.id = 'debug-overlay-toast';
+        toast.id = 'file-manager-toast';
         toast.style.position = 'fixed';
         toast.style.top = '12px';
         toast.style.right = '12px';
@@ -39,10 +47,10 @@ function showDebugOverlayNotice(message, type = 'info', timeoutMs = 3000) {
     toast.style.color = theme.fg;
     toast.textContent = message;
     toast.style.display = 'block';
-    if (debugNoticeTimer) {
-        clearTimeout(debugNoticeTimer);
+    if (fileManagerNoticeTimer) {
+        clearTimeout(fileManagerNoticeTimer);
     }
-    debugNoticeTimer = setTimeout(() => {
+    fileManagerNoticeTimer = setTimeout(() => {
         toast.style.display = 'none';
     }, timeoutMs);
 }
@@ -55,18 +63,18 @@ const HOVER_SHOW_DELAY = 500; // ms
 const HOVER_HIDE_DELAY = 300; // ms
 
 /**
- * Create and show the debug overlay
+ * Create and show the file manager overlay
  */
-function showDebugOverlay() {
+function showFileManager() {
 
-    if (debugOverlayElement) {
-        debugOverlayElement.remove();
+    if (fileManagerElement) {
+        fileManagerElement.remove();
     }
 
     // Check if vscode is available
     if (typeof window.vscode === 'undefined') {
-        console.error('[DebugOverlay] vscode API not available, cannot request debug info');
-        showDebugOverlayNotice('Debug overlay error: vscode API not available', 'error');
+        console.error('[FileManager] vscode API not available, cannot request file info');
+        showFileManagerNotice('File manager error: vscode API not available', 'error');
         return;
     }
 
@@ -74,14 +82,14 @@ function showDebugOverlay() {
     window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
 
     // Create overlay element
-    debugOverlayElement = document.createElement('div');
-    debugOverlayElement.id = 'debug-overlay';
-    debugOverlayElement.innerHTML = createDebugOverlayContent();
+    fileManagerElement = document.createElement('div');
+    fileManagerElement.id = 'file-manager';
+    fileManagerElement.innerHTML = createFileManagerContent();
 
     // Add to DOM
-    document.body.appendChild(debugOverlayElement);
+    document.body.appendChild(fileManagerElement);
 
-    debugOverlayVisible = true;
+    fileManagerVisible = true;
 
     // Request initial data
     if (window.vscode) {
@@ -89,7 +97,7 @@ function showDebugOverlay() {
     }
 
     // Handle mouse interactions with the overlay
-    debugOverlayElement.addEventListener('mouseenter', () => {
+    fileManagerElement.addEventListener('mouseenter', () => {
         // Cancel hide timer when mouse enters overlay
         if (hoverHideTimer) {
             clearTimeout(hoverHideTimer);
@@ -97,27 +105,31 @@ function showDebugOverlay() {
         }
     });
 
-    debugOverlayElement.addEventListener('mouseleave', () => {
-        // Only hide overlay when mouse leaves if not sticky
-        if (!debugOverlaySticky) {
-            hideDebugOverlayDelayed();
+    fileManagerElement.addEventListener('mouseleave', () => {
+        // Don't auto-hide in conflict mode or sticky mode
+        if (!fileManagerSticky && !conflictMode) {
+            hideFileManagerDelayed();
         }
     });
 
-    // Close on click outside
-    debugOverlayElement.addEventListener('click', (e) => {
-        if (e.target === debugOverlayElement) {
-            hideDebugOverlay();
+    // Close on click outside (not in conflict mode)
+    fileManagerElement.addEventListener('click', (e) => {
+        if (e.target === fileManagerElement && !conflictMode) {
+            hideFileManager();
         }
     });
 
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && debugOverlayVisible) {
-            hideDebugOverlay();
+        if (e.key === 'Escape' && fileManagerVisible) {
+            if (conflictMode) {
+                cancelConflictResolution();
+            } else {
+                hideFileManager();
+            }
         }
     });
 
-    debugOverlayVisible = true;
+    fileManagerVisible = true;
 
     // Start auto-refresh when overlay is visible
     startAutoRefresh();
@@ -128,11 +140,11 @@ function showDebugOverlay() {
 }
 
 /**
- * Hide and remove the debug overlay
+ * Hide and remove the file manager overlay
  */
-function hideDebugOverlay() {
+function hideFileManager() {
     // When explicitly closed, clear sticky state too
-    debugOverlaySticky = false;
+    fileManagerSticky = false;
 
     // Stop auto-refresh
     stopAutoRefresh();
@@ -141,17 +153,17 @@ function hideDebugOverlay() {
         syncVerifyTimer = null;
     }
 
-    if (debugOverlayElement) {
-        debugOverlayElement.remove();
-        debugOverlayElement = null;
+    if (fileManagerElement) {
+        fileManagerElement.remove();
+        fileManagerElement = null;
     }
-    debugOverlayVisible = false;
+    fileManagerVisible = false;
 }
 
 /**
- * Schedule showing the debug overlay after hover delay
+ * Schedule showing the file manager after hover delay
  */
-function scheduleDebugOverlayShow() {
+function scheduleFileManagerShow() {
     // Cancel any pending hide
     if (hoverHideTimer) {
         clearTimeout(hoverHideTimer);
@@ -159,23 +171,23 @@ function scheduleDebugOverlayShow() {
     }
 
     // If already visible, don't schedule again
-    if (debugOverlayVisible) {
+    if (fileManagerVisible) {
         return;
     }
 
     // Schedule show after delay
     if (!hoverShowTimer) {
         hoverShowTimer = setTimeout(() => {
-            showDebugOverlay();
+            showFileManager();
             hoverShowTimer = null;
         }, HOVER_SHOW_DELAY);
     }
 }
 
 /**
- * Cancel scheduled debug overlay show
+ * Cancel scheduled file manager show
  */
-function cancelDebugOverlayShow() {
+function cancelFileManagerShow() {
     if (hoverShowTimer) {
         clearTimeout(hoverShowTimer);
         hoverShowTimer = null;
@@ -183,11 +195,11 @@ function cancelDebugOverlayShow() {
 }
 
 /**
- * Hide debug overlay with delay
+ * Hide file manager with delay
  */
-function hideDebugOverlayDelayed() {
+function hideFileManagerDelayed() {
     // Don't hide if sticky mode is enabled
-    if (debugOverlaySticky) {
+    if (fileManagerSticky) {
         return;
     }
 
@@ -197,17 +209,318 @@ function hideDebugOverlayDelayed() {
     }
 
     hoverHideTimer = setTimeout(() => {
-        hideDebugOverlay();
+        hideFileManager();
         hoverHideTimer = null;
     }, HOVER_HIDE_DELAY);
 }
 
-/**
- * Update the debug overlay with fresh data
- */
-function refreshDebugOverlay() {
+// ============= CONFLICT MODE =============
 
-    if (!debugOverlayVisible || !debugOverlayElement) {
+/**
+ * Enter conflict mode - triggered by backend showConflictDialog message
+ */
+function enterConflictMode(message) {
+    wasOpenBeforeConflict = fileManagerVisible;
+    conflictMode = true;
+    conflictId = message.conflictId;
+    conflictType = message.conflictType;
+    conflictFiles = message.files || [];
+    perFileResolutions = new Map();
+
+    // Set default action per file based on conflict type
+    const defaultAction = conflictType === 'presave_conflict' ? 'skip' : 'ignore';
+    conflictFiles.forEach(f => {
+        if (f.hasExternalChanges || f.hasUnsavedChanges) {
+            perFileResolutions.set(f.path, defaultAction);
+        }
+    });
+
+    // Auto-open and pin the overlay
+    if (!fileManagerVisible) {
+        showFileManager();
+    }
+    fileManagerSticky = true;
+
+    // Rebuild content to show conflict UI
+    if (fileManagerElement) {
+        const panel = fileManagerElement.querySelector('.file-manager-panel');
+        if (panel) {
+            panel.classList.add('conflict-mode');
+        }
+        updateConflictModeContent();
+    }
+}
+
+/**
+ * Exit conflict mode and return to normal
+ */
+function exitConflictMode() {
+    const panel = fileManagerElement?.querySelector('.file-manager-panel');
+    if (panel) {
+        panel.classList.remove('conflict-mode');
+    }
+
+    conflictMode = false;
+    conflictId = null;
+    conflictType = null;
+    conflictFiles = [];
+    perFileResolutions.clear();
+
+    if (!wasOpenBeforeConflict) {
+        hideFileManager();
+    } else {
+        fileManagerSticky = false;
+        // Rebuild normal content
+        if (fileManagerElement) {
+            updateFileStatesContent();
+            // Restore normal header
+            const header = fileManagerElement.querySelector('.file-manager-header');
+            if (header) {
+                const conflictSubtitle = header.querySelector('.conflict-subtitle');
+                if (conflictSubtitle) conflictSubtitle.remove();
+            }
+            // Remove conflict footer
+            const footer = fileManagerElement.querySelector('.conflict-footer');
+            if (footer) footer.remove();
+        }
+    }
+    wasOpenBeforeConflict = false;
+}
+
+/**
+ * Update the file manager content to show conflict resolution UI
+ */
+function updateConflictModeContent() {
+    if (!fileManagerElement) return;
+
+    // Update header with conflict subtitle
+    const header = fileManagerElement.querySelector('.file-manager-header h3');
+    if (header) {
+        const typeLabel = conflictType === 'presave_conflict'
+            ? 'Pre-save Conflict'
+            : 'External Changes Detected';
+        // Remove existing subtitle if any
+        const existing = fileManagerElement.querySelector('.conflict-subtitle');
+        if (existing) existing.remove();
+        const subtitle = document.createElement('div');
+        subtitle.className = 'conflict-subtitle';
+        subtitle.textContent = typeLabel;
+        header.parentNode.insertBefore(subtitle, header.nextSibling);
+    }
+
+    // Hide pin button and close button in conflict mode
+    const pinBtn = fileManagerElement.querySelector('.file-manager-pin-btn');
+    if (pinBtn) pinBtn.style.display = 'none';
+    const closeBtn = fileManagerElement.querySelector('.file-manager-close');
+    if (closeBtn) closeBtn.style.display = 'none';
+
+    // Replace content with conflict file list
+    const content = fileManagerElement.querySelector('.file-manager-content');
+    if (content) {
+        content.innerHTML = createConflictFileList();
+    }
+
+    // Add footer with action bar
+    let footer = fileManagerElement.querySelector('.conflict-footer');
+    if (!footer) {
+        footer = document.createElement('div');
+        footer.className = 'conflict-footer';
+        const panel = fileManagerElement.querySelector('.file-manager-panel');
+        if (panel) panel.appendChild(footer);
+    }
+    footer.innerHTML = createConflictFooter();
+}
+
+/**
+ * Get available actions based on conflict type
+ */
+function getConflictActions() {
+    if (conflictType === 'presave_conflict') {
+        return [
+            { value: 'overwrite_backup_external', label: 'Overwrite (backup external)' },
+            { value: 'load_external_backup_mine', label: 'Load external (backup mine)' },
+            { value: 'skip', label: 'Skip' }
+        ];
+    }
+    // external_changes
+    return [
+        { value: 'import', label: 'Import from disk' },
+        { value: 'ignore', label: 'Ignore' }
+    ];
+}
+
+/**
+ * Create the conflict file list HTML
+ */
+function createConflictFileList() {
+    const actions = getConflictActions();
+
+    const fileRows = conflictFiles.map(file => {
+        const hasConflict = file.hasExternalChanges || file.hasUnsavedChanges;
+        const currentAction = perFileResolutions.get(file.path) || actions[actions.length - 1].value;
+        const fileName = file.relativePath.split('/').pop();
+        const dirPath = file.relativePath.includes('/')
+            ? file.relativePath.substring(0, file.relativePath.lastIndexOf('/'))
+            : '.';
+
+        const conflictBadge = hasConflict
+            ? (file.hasExternalChanges && file.hasUnsavedChanges
+                ? '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>'
+                : file.hasExternalChanges
+                    ? '<span class="conflict-badge conflict-external" title="External changes detected">External</span>'
+                    : '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>')
+            : '<span class="conflict-badge conflict-none">No conflict</span>';
+
+        const typeLabel = file.fileType === 'main' ? '📄 Main'
+            : file.fileType === 'include-column' ? '📎 Column'
+            : file.fileType === 'include-task' ? '📎 Task'
+            : '📎 Include';
+
+        const actionDropdown = hasConflict
+            ? `<select class="conflict-action-select" data-file-path="${file.path}" onchange="onConflictActionChange(this)">
+                ${actions.map(a => `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`).join('')}
+               </select>`
+            : '<span class="conflict-no-action">—</span>';
+
+        return `
+            <tr class="conflict-file-row ${hasConflict ? 'has-conflict' : 'no-conflict'}">
+                <td class="col-file">
+                    <div class="file-directory-path" title="${file.path}">
+                        ${truncatePath(dirPath, 10)}
+                        <span class="include-type-label">[${typeLabel}]</span>
+                    </div>
+                    <div class="file-name-clickable" title="${file.relativePath}">
+                        ${fileName}
+                    </div>
+                </td>
+                <td class="col-conflict-badge">${conflictBadge}</td>
+                <td class="col-conflict-action">${actionDropdown}</td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <div class="conflict-file-list">
+            <table class="conflict-table">
+                <thead>
+                    <tr>
+                        <th class="col-file">File</th>
+                        <th class="col-conflict-badge">Status</th>
+                        <th class="col-conflict-action">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${fileRows}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+/**
+ * Create the conflict resolution footer HTML
+ */
+function createConflictFooter() {
+    const actions = getConflictActions();
+    const applyAllOptions = actions.map(a =>
+        `<option value="${a.value}">${a.label}</option>`
+    ).join('');
+
+    return `
+        <div class="conflict-footer-content">
+            <div class="conflict-apply-all">
+                <label>Apply to all:</label>
+                <select id="conflict-apply-all-select" onchange="onConflictApplyAll(this)">
+                    <option value="">— Select —</option>
+                    ${applyAllOptions}
+                </select>
+            </div>
+            <div class="conflict-footer-buttons">
+                <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Cancel</button>
+                <button onclick="submitConflictResolution()" class="conflict-btn conflict-btn-resolve">Resolve</button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Handle per-file action dropdown change
+ */
+function onConflictActionChange(selectElement) {
+    const filePath = selectElement.dataset.filePath;
+    const action = selectElement.value;
+    perFileResolutions.set(filePath, action);
+}
+
+/**
+ * Handle "Apply to All" dropdown
+ */
+function onConflictApplyAll(selectElement) {
+    const action = selectElement.value;
+    if (!action) return;
+
+    // Apply to all files that have conflicts
+    conflictFiles.forEach(file => {
+        if (file.hasExternalChanges || file.hasUnsavedChanges) {
+            perFileResolutions.set(file.path, action);
+        }
+    });
+
+    // Update all dropdowns in the UI
+    const selects = fileManagerElement?.querySelectorAll('.conflict-action-select');
+    if (selects) {
+        selects.forEach(sel => {
+            sel.value = action;
+        });
+    }
+}
+
+/**
+ * Submit conflict resolution to backend
+ */
+function submitConflictResolution() {
+    if (!conflictId || !window.vscode) return;
+
+    const resolutions = [];
+    perFileResolutions.forEach((action, path) => {
+        resolutions.push({ path, action });
+    });
+
+    window.vscode.postMessage({
+        type: 'conflictResolution',
+        conflictId: conflictId,
+        cancelled: false,
+        perFileResolutions: resolutions
+    });
+
+    exitConflictMode();
+}
+
+/**
+ * Cancel conflict resolution
+ */
+function cancelConflictResolution() {
+    if (!conflictId || !window.vscode) {
+        exitConflictMode();
+        return;
+    }
+
+    window.vscode.postMessage({
+        type: 'conflictResolution',
+        conflictId: conflictId,
+        cancelled: true,
+        perFileResolutions: []
+    });
+
+    exitConflictMode();
+}
+
+/**
+ * Update the file manager with fresh data
+ */
+function refreshFileManager() {
+
+    if (!fileManagerVisible || !fileManagerElement) {
         return;
     }
 
@@ -222,15 +535,15 @@ function refreshDebugOverlay() {
 }
 
 /**
- * Toggle sticky/pin state of debug overlay
+ * Toggle sticky/pin state of file manager
  */
-function toggleDebugOverlaySticky() {
-    debugOverlaySticky = !debugOverlaySticky;
+function toggleFileManagerSticky() {
+    fileManagerSticky = !fileManagerSticky;
 
     // Update the pin button appearance
-    const pinButton = debugOverlayElement?.querySelector('.debug-pin-btn');
+    const pinButton = fileManagerElement?.querySelector('.file-manager-pin-btn');
     if (pinButton) {
-        pinButton.textContent = debugOverlaySticky ? '📌 Pinned' : '📌 Pin';
+        pinButton.textContent = fileManagerSticky ? '📌 Pinned' : '📌 Pin';
     }
 }
 
@@ -242,14 +555,14 @@ function startAutoRefresh() {
     stopAutoRefresh();
 
     // Only start timer if overlay is actually visible or sticky
-    if (!debugOverlayVisible && !debugOverlaySticky) {
+    if (!fileManagerVisible && !fileManagerSticky) {
         return;
     }
 
     // Start new auto-refresh timer (refresh every 5 seconds, less frequent)
     autoRefreshTimer = setInterval(() => {
-        if (debugOverlayVisible && (debugOverlaySticky || document.querySelector('#debug-overlay:hover'))) {
-            refreshDebugOverlay();
+        if (fileManagerVisible && (fileManagerSticky || document.querySelector('#file-manager:hover'))) {
+            refreshFileManager();
         } else {
             // Stop timer if overlay is no longer visible
             stopAutoRefresh();
@@ -284,7 +597,7 @@ function createDataHash(data) {
  */
 function updateTrackedFilesData(data) {
 
-    // ENHANCED DEBUG: Show main file state specifically
+    // Show main file state specifically
     if (data && data.watcherDetails) {
     }
 
@@ -298,7 +611,7 @@ function updateTrackedFilesData(data) {
     lastTrackedFilesDataHash = newDataHash;
     trackedFilesData = data;
 
-    if (debugOverlayVisible && debugOverlayElement) {
+    if (fileManagerVisible && fileManagerElement) {
         // Only update the content, preserve scroll position
         updateFileStatesContent();
     }
@@ -309,7 +622,7 @@ function updateTrackedFilesData(data) {
  */
 function updateFileStatesContent() {
 
-    if (!debugOverlayElement) {
+    if (!fileManagerElement) {
         return;
     }
 
@@ -319,7 +632,7 @@ function updateFileStatesContent() {
         const now = new Date().toLocaleTimeString();
 
         // Update summary stats (includes timestamp now)
-        const summaryElement = debugOverlayElement.querySelector('.file-states-summary');
+        const summaryElement = fileManagerElement.querySelector('.file-states-summary');
         if (summaryElement) {
             const newSummaryHTML = createFileStatesSummary(allFiles);
             if (summaryElement.innerHTML !== newSummaryHTML) {
@@ -327,13 +640,13 @@ function updateFileStatesContent() {
             }
         }
 
-        const timestampElement = debugOverlayElement.querySelector('.debug-header-meta .debug-timestamp');
+        const timestampElement = fileManagerElement.querySelector('.file-manager-header-meta .file-manager-timestamp');
         if (timestampElement) {
             timestampElement.textContent = `Updated: ${now}`;
         }
 
         // Update file list (only if content changed)
-        const listElement = debugOverlayElement.querySelector('.file-states-list');
+        const listElement = fileManagerElement.querySelector('.file-states-list');
         if (listElement) {
             const newListHTML = createFileStatesList(allFiles);
             const htmlChanged = listElement.innerHTML !== newListHTML;
@@ -345,30 +658,30 @@ function updateFileStatesContent() {
 }
 
 /**
- * Create the HTML content for the debug overlay
+ * Create the HTML content for the file manager overlay
  */
-function createDebugOverlayContent() {
+function createFileManagerContent() {
     const now = new Date().toLocaleTimeString();
     return `
-        <div class="debug-panel">
-            <div class="debug-header">
+        <div class="file-manager-panel">
+            <div class="file-manager-header">
                 <h3>ⓘ File States Overview</h3>
-                <div class="debug-header-meta">
-                    <button onclick="verifyContentSync()" class="debug-btn" title="Re-verify all hashes and sync status">
+                <div class="file-manager-header-meta">
+                    <button onclick="verifyContentSync()" class="file-manager-btn" title="Re-verify all hashes and sync status">
                         🔍 Verify Sync
                     </button>
-                    <span class="debug-timestamp">Updated: ${now}</span>
+                    <span class="file-manager-timestamp">Updated: ${now}</span>
                 </div>
-                <div class="debug-controls">
-                    <button onclick="toggleDebugOverlaySticky()" class="debug-btn debug-pin-btn">
+                <div class="file-manager-controls">
+                    <button onclick="toggleFileManagerSticky()" class="file-manager-btn file-manager-pin-btn">
                         📌 Pin
                     </button>
-                    <button onclick="hideDebugOverlay()" class="debug-close">
+                    <button onclick="hideFileManager()" class="file-manager-close">
                         ✕
                     </button>
                 </div>
             </div>
-            <div class="debug-content">
+            <div class="file-manager-content">
                 ${createFileStatesContent()}
             </div>
         </div>
@@ -376,7 +689,7 @@ function createDebugOverlayContent() {
 }
 
 /**
- * Create the main debug content
+ * Create the main file states content
  */
 function createFileStatesContent() {
     const allFiles = createAllFilesArray();
@@ -404,41 +717,41 @@ function createFileWatcherSection() {
     const hasExternalChanges = mainFileInfo.hasExternalChanges || false;
 
     return `
-        <div class="debug-group">
+        <div class="file-manager-group">
             <h4>📄 Main File Tracking</h4>
-            <div class="debug-item">
-                <span class="debug-label">File:</span>
-                <span class="debug-value file-path" title="${mainFile}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">File:</span>
+                <span class="file-manager-value file-path" title="${mainFile}">
                     ${mainFile ? mainFile.split('/').pop() : 'None'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Watcher:</span>
-                <span class="debug-value ${watcherActive ? 'status-good' : 'status-bad'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Watcher:</span>
+                <span class="file-manager-value ${watcherActive ? 'status-good' : 'status-bad'}">
                     ${watcherActive ? '✅ Active' : '❌ Inactive'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Internal Changes:</span>
-                <span class="debug-value ${hasInternalChanges ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Internal Changes:</span>
+                <span class="file-manager-value ${hasInternalChanges ? 'status-warn' : 'status-good'}">
                     ${hasInternalChanges ? '🟡 Modified' : '🟢 Saved'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">External Changes:</span>
-                <span class="debug-value ${hasExternalChanges ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">External Changes:</span>
+                <span class="file-manager-value ${hasExternalChanges ? 'status-warn' : 'status-good'}">
                     ${hasExternalChanges ? '🔄 Externally Modified' : '🟢 In Sync'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Document Version:</span>
-                <span class="debug-value">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Document Version:</span>
+                <span class="file-manager-value">
                     ${mainFileInfo.documentVersion || 0} (Last: ${mainFileInfo.lastDocumentVersion || -1})
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Last Modified:</span>
-                <span class="debug-value">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Last Modified:</span>
+                <span class="file-manager-value">
                     ${trackedFilesData.mainFileLastModified || 'Unknown'}
                 </span>
             </div>
@@ -453,15 +766,15 @@ function createExternalFileWatcherSection() {
     const watchers = trackedFilesData.externalWatchers || [];
 
     return `
-        <div class="debug-group">
+        <div class="file-manager-group">
             <h4>🔍 External File Watchers</h4>
-            <div class="debug-item">
-                <span class="debug-label">Total Watchers:</span>
-                <span class="debug-value">${watchers.length}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Total Watchers:</span>
+                <span class="file-manager-value">${watchers.length}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Status:</span>
-                <span class="debug-value ${watchers.length > 0 ? 'status-good' : 'status-warn'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Status:</span>
+                <span class="file-manager-value ${watchers.length > 0 ? 'status-good' : 'status-warn'}">
                     ${watchers.length > 0 ? '✅ Monitoring' : '⚠️ No watchers'}
                 </span>
             </div>
@@ -487,27 +800,27 @@ function createConflictManagerSection() {
     const conflicts = trackedFilesData.conflictManager || {};
 
     return `
-        <div class="debug-group">
+        <div class="file-manager-group">
             <h4>⚡ Conflict Management</h4>
-            <div class="debug-item">
-                <span class="debug-label">System Status:</span>
-                <span class="debug-value ${conflicts.healthy ? 'status-good' : 'status-bad'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">System Status:</span>
+                <span class="file-manager-value ${conflicts.healthy ? 'status-good' : 'status-bad'}">
                     ${conflicts.healthy ? '✅ Healthy' : '❌ Issues Detected'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Tracked Files:</span>
-                <span class="debug-value">${conflicts.trackedFiles || 0}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Tracked Files:</span>
+                <span class="file-manager-value">${conflicts.trackedFiles || 0}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Pending Conflicts:</span>
-                <span class="debug-value ${(conflicts.pendingConflicts || 0) > 0 ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Pending Conflicts:</span>
+                <span class="file-manager-value ${(conflicts.pendingConflicts || 0) > 0 ? 'status-warn' : 'status-good'}">
                     ${conflicts.pendingConflicts || 0}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Watcher Failures:</span>
-                <span class="debug-value ${(conflicts.watcherFailures || 0) > 0 ? 'status-bad' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Watcher Failures:</span>
+                <span class="file-manager-value ${(conflicts.watcherFailures || 0) > 0 ? 'status-bad' : 'status-good'}">
                     ${conflicts.watcherFailures || 0}
                 </span>
             </div>
@@ -524,26 +837,26 @@ function createIncludeFilesSection() {
     const externalChangesCount = includeFiles.filter(f => f.hasExternalChanges).length;
 
     return `
-        <div class="debug-group">
+        <div class="file-manager-group">
             <h4>📎 Include Files</h4>
-            <div class="debug-item">
-                <span class="debug-label">Total Includes:</span>
-                <span class="debug-value">${includeFiles.length}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Total Includes:</span>
+                <span class="file-manager-value">${includeFiles.length}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Internal:</span>
-                <span class="debug-value ${internalChangesCount > 0 ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Internal:</span>
+                <span class="file-manager-value ${internalChangesCount > 0 ? 'status-warn' : 'status-good'}">
                     ${internalChangesCount > 0 ? `🟡 ${internalChangesCount} Modified` : '🟢 All Saved'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">External:</span>
-                <span class="debug-value ${externalChangesCount > 0 ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">External:</span>
+                <span class="file-manager-value ${externalChangesCount > 0 ? 'status-warn' : 'status-good'}">
                     ${externalChangesCount > 0 ? `🔄 ${externalChangesCount} Externally Modified` : '🟢 All In Sync'}
                 </span>
             </div>
-            <div class="debug-controls" style="margin: 8px 0;">
-                <button onclick="reloadAllIncludedFiles()" class="debug-btn" style="width: 100%;">
+            <div class="file-manager-controls" style="margin: 8px 0;">
+                <button onclick="reloadAllIncludedFiles()" class="file-manager-btn" style="width: 100%;">
                     🔄 Reload All Included Files (Images, Videos, Includes)
                 </button>
             </div>
@@ -591,25 +904,25 @@ function createPendingChangesSection() {
     const totalChanges = columnChanges + taskChanges;
 
     return `
-        <div class="debug-group">
+        <div class="file-manager-group">
             <h4>💾 Pending Changes</h4>
-            <div class="debug-item">
-                <span class="debug-label">Total Pending:</span>
-                <span class="debug-value ${totalChanges > 0 ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Total Pending:</span>
+                <span class="file-manager-value ${totalChanges > 0 ? 'status-warn' : 'status-good'}">
                     ${totalChanges}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Column Changes:</span>
-                <span class="debug-value">${columnChanges}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Column Changes:</span>
+                <span class="file-manager-value">${columnChanges}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Task Changes:</span>
-                <span class="debug-value">${taskChanges}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Task Changes:</span>
+                <span class="file-manager-value">${taskChanges}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Unsaved Status:</span>
-                <span class="debug-value ${trackedFilesData.hasUnsavedChanges ? 'status-warn' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Unsaved Status:</span>
+                <span class="file-manager-value ${trackedFilesData.hasUnsavedChanges ? 'status-warn' : 'status-good'}">
                     ${trackedFilesData.hasUnsavedChanges ? '🟡 Has Unsaved' : '🟢 All Saved'}
                 </span>
             </div>
@@ -624,27 +937,27 @@ function createSystemHealthSection() {
     const health = trackedFilesData.systemHealth || {};
 
     return `
-        <div class="debug-group">
+        <div class="file-manager-group">
             <h4>🏥 System Health</h4>
-            <div class="debug-item">
-                <span class="debug-label">Overall Status:</span>
-                <span class="debug-value ${health.overall || 'status-unknown'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Overall Status:</span>
+                <span class="file-manager-value ${health.overall || 'status-unknown'}">
                     ${health.overall === 'good' ? '✅ Good' :
                       health.overall === 'warn' ? '⚠️ Warning' :
                       health.overall === 'bad' ? '❌ Critical' : '❓ Unknown'}
                 </span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Extension State:</span>
-                <span class="debug-value">${health.extensionState || 'Unknown'}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Extension State:</span>
+                <span class="file-manager-value">${health.extensionState || 'Unknown'}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Memory Usage:</span>
-                <span class="debug-value">${health.memoryUsage || 'Unknown'}</span>
+            <div class="file-manager-item">
+                <span class="file-manager-label">Memory Usage:</span>
+                <span class="file-manager-value">${health.memoryUsage || 'Unknown'}</span>
             </div>
-            <div class="debug-item">
-                <span class="debug-label">Last Error:</span>
-                <span class="debug-value ${health.lastError ? 'status-bad' : 'status-good'}">
+            <div class="file-manager-item">
+                <span class="file-manager-label">Last Error:</span>
+                <span class="file-manager-value ${health.lastError ? 'status-bad' : 'status-good'}">
                     ${health.lastError || 'None'}
                 </span>
             </div>
@@ -1256,15 +1569,15 @@ function reloadImages() {
 }
 
 /**
- * Clear debug cache and request fresh data
+ * Clear file manager cache and request fresh data
  */
-function clearDebugCache() {
+function clearFileManagerCache() {
     trackedFilesData = {};
     refreshCount = 0;
     if (window.vscode) {
         window.vscode.postMessage({ type: 'clearTrackedFilesCache' });
     }
-    refreshDebugOverlay();
+    refreshFileManager();
 }
 
 /**
@@ -1273,9 +1586,9 @@ function clearDebugCache() {
 function reloadAllIncludedFiles() {
     if (window.vscode) {
         window.vscode.postMessage({ type: 'reloadAllIncludedFiles' });
-        // Refresh the debug overlay after a short delay to show updated data
+        // Refresh the file manager after a short delay to show updated data
         setTimeout(() => {
-            refreshDebugOverlay();
+            refreshFileManager();
         }, 500);
     }
 }
@@ -1295,7 +1608,7 @@ function forceWriteAllContent() {
     }
 
     if (!window.vscode) {
-        showDebugOverlayNotice('Error: vscode API not available', 'error');
+        showFileManagerNotice('Error: vscode API not available', 'error');
         return;
     }
 
@@ -1371,7 +1684,7 @@ function confirmForceWrite() {
     window.vscode.postMessage({ type: 'forceWriteAllContent' });
 
     // Show progress indicator
-    showDebugOverlayNotice('Force write in progress... Please wait.', 'info', 5000);
+    showFileManagerNotice('Force write in progress... Please wait.', 'info', 5000);
 }
 
 /**
@@ -1380,7 +1693,7 @@ function confirmForceWrite() {
 function verifyContentSync(silent = false) {
     if (!window.vscode) {
         if (!silent) {
-            showDebugOverlayNotice('Error: vscode API not available', 'error');
+            showFileManagerNotice('Error: vscode API not available', 'error');
         }
         return;
     }
@@ -1395,12 +1708,12 @@ function verifyContentSync(silent = false) {
 
     // Show loading indicator only if not silent
     if (!silent) {
-        showDebugOverlayNotice('Verifying content synchronization.', 'info', 500);
+        showFileManagerNotice('Verifying content synchronization.', 'info', 500);
     }
 }
 
-function requestDebugOverlaySyncRefresh() {
-    if (!debugOverlayVisible || !window.vscode) {
+function requestFileManagerSyncRefresh() {
+    if (!fileManagerVisible || !window.vscode) {
         return;
     }
     if (syncVerifyTimer) {
@@ -1504,12 +1817,12 @@ function closeVerificationResults() {
 
 
 /**
- * Enhanced manual refresh with debug overlay toggle
+ * Enhanced manual refresh with file manager toggle
  */
-function enhancedManualRefresh(showDebug = false) {
-    // Show debug overlay if requested
-    if (showDebug) {
-        showDebugOverlay();
+function enhancedManualRefresh(showFiles = false) {
+    // Show file manager if requested
+    if (showFiles) {
+        showFileManager();
         return;
     }
 
@@ -1526,23 +1839,28 @@ let originalManualRefresh = null;
 
 // Initialize on DOM ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeDebugOverlay);
+    document.addEventListener('DOMContentLoaded', initializeFileManager);
 } else {
-    initializeDebugOverlay();
+    initializeFileManager();
 }
 
-function initializeDebugOverlay() {
+function initializeFileManager() {
 
     // Make functions globally available immediately
-    window.showDebugOverlay = showDebugOverlay;
-    window.hideDebugOverlay = hideDebugOverlay;
+    window.showFileManager = showFileManager;
+    window.hideFileManager = hideFileManager;
     window.updateTrackedFilesData = updateTrackedFilesData;
-    window.clearDebugCache = clearDebugCache;
-    window.scheduleDebugOverlayShow = scheduleDebugOverlayShow;
-    window.cancelDebugOverlayShow = cancelDebugOverlayShow;
-    window.hideDebugOverlayDelayed = hideDebugOverlayDelayed;
+    window.clearFileManagerCache = clearFileManagerCache;
+    window.scheduleFileManagerShow = scheduleFileManagerShow;
+    window.cancelFileManagerShow = cancelFileManagerShow;
+    window.hideFileManagerDelayed = hideFileManagerDelayed;
     window.openFile = openFile;
-    window.requestDebugOverlaySyncRefresh = requestDebugOverlaySyncRefresh;
+    window.requestFileManagerSyncRefresh = requestFileManagerSyncRefresh;
+    window.enterConflictMode = enterConflictMode;
+    window.submitConflictResolution = submitConflictResolution;
+    window.cancelConflictResolution = cancelConflictResolution;
+    window.onConflictActionChange = onConflictActionChange;
+    window.onConflictApplyAll = onConflictApplyAll;
 
     // Store original manual refresh function
     if (typeof window.manualRefresh === 'function') {
@@ -1567,29 +1885,33 @@ function initializeDebugOverlay() {
 
 
         switch (message.type) {
+            case 'showConflictDialog':
+                enterConflictMode(message);
+                break;
+
             case 'documentStateChanged':
-                if (debugOverlayVisible) {
-                    refreshDebugOverlay();
+                if (fileManagerVisible) {
+                    refreshFileManager();
                 }
                 break;
 
             case 'saveCompleted':
                 // After save completes, automatically re-verify sync status
-                if (debugOverlayVisible) {
+                if (fileManagerVisible) {
                     verifyContentSync(true); // Silent mode
                 }
                 break;
 
             case 'individualFileSaved':
                 // After individual file save completes, automatically re-verify sync status
-                if (debugOverlayVisible && message.success) {
+                if (fileManagerVisible && message.success) {
                     verifyContentSync(true); // Silent mode
                 }
                 break;
 
             case 'individualFileReloaded':
                 // After individual file reload completes, automatically re-verify sync status
-                if (debugOverlayVisible && message.success) {
+                if (fileManagerVisible && message.success) {
                     verifyContentSync(true); // Silent mode
                 }
                 break;
@@ -1604,14 +1926,14 @@ function initializeDebugOverlay() {
                         `Files written: ${message.filesWritten}\n` +
                         `Backup created: ${message.backupCreated ? 'Yes' : 'No'}\n` +
                         `${message.backupPath ? `Backup: ${message.backupPath}` : ''}`;
-                    showDebugOverlayNotice('Force write completed successfully.', 'info', 6000);
+                    showFileManagerNotice('Force write completed successfully.', 'info', 6000);
 
                     // Refresh overlay
-                    refreshDebugOverlay();
+                    refreshFileManager();
                 } else {
                     const errorMsg = `Force write failed!\n\n` +
                         `Errors:\n${message.errors.join('\n')}`;
-                    showDebugOverlayNotice('Force write failed. Check console for details.', 'error', 6000);
+                    showFileManagerNotice('Force write failed. Check console for details.', 'error', 6000);
                 }
                 break;
 
@@ -1620,7 +1942,7 @@ function initializeDebugOverlay() {
                 lastVerificationResults = message;
 
                 // Update the file states content to show sync status
-                if (debugOverlayVisible && debugOverlayElement) {
+                if (fileManagerVisible && fileManagerElement) {
                     updateFileStatesContent();
                 }
                 break;

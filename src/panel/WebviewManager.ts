@@ -369,7 +369,7 @@ export class WebviewManager {
             'boardRenderer.js',
             'dragDrop.js',
             'menuOperations.js',
-            'debugOverlay.js',
+            'fileManager.js',
             'clipboardHandler.js',
             'navigationHandler.js',
             'foldingStateManager.js',

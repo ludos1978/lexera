@@ -10,6 +10,7 @@
 
 import * as vscode from 'vscode';
 import { ConflictResolver } from '../services/ConflictResolver';
+import { ConflictDialogBridge } from '../services/ConflictDialogBridge';
 import { MessageHandler } from '../messageHandler';
 import { EditingStoppedMessage, BoardUpdateFromFrontendMessage, HandleEditorShortcutMessage } from '../core/bridge/MessageTypes';
 
@@ -89,6 +90,7 @@ export interface PanelCommandAccess {
     // Services access - flexible types for private method access
     _fileService?: FileServiceAccess;
     _conflictResolver?: ConflictResolver;
+    _conflictDialogBridge?: ConflictDialogBridge;
     _conflictService?: {
         createUnifiedBackup(filePath: string, reason: string, includeMetadata: boolean): Promise<string>;
     };

@@ -1980,8 +1980,8 @@ class TaskEditor {
                 this._saveTaskField();
                 break;
         }
-        if (typeof window.requestDebugOverlaySyncRefresh === 'function') {
-            window.requestDebugOverlaySyncRefresh();
+        if (typeof window.requestFileManagerSyncRefresh === 'function') {
+            window.requestFileManagerSyncRefresh();
         }
     }
 

@@ -2520,8 +2520,8 @@ function markUnsavedChanges() {
             cachedBoard: boardToSend // Send the current board data
         });
     }
-    if (typeof window.requestDebugOverlaySyncRefresh === 'function') {
-        window.requestDebugOverlaySyncRefresh();
+    if (typeof window.requestFileManagerSyncRefresh === 'function') {
+        window.requestFileManagerSyncRefresh();
     }
 }
 

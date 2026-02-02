@@ -12,6 +12,7 @@
 import { ScopedEventBus } from '../core/events/ScopedEventBus';
 import { FileSaveService } from '../core/FileSaveService';
 import { ConflictResolver } from '../services/ConflictResolver';
+import { ConflictDialogBridge } from '../services/ConflictDialogBridge';
 // MermaidExportService replaced by MermaidPlugin via PluginRegistry
 import { logger } from '../utils/logger';
 
@@ -63,12 +64,16 @@ export class PanelContext {
     // ============= CONFLICT RESOLVER =============
     private _conflictResolver: ConflictResolver;
 
+    // ============= CONFLICT DIALOG BRIDGE =============
+    private _conflictDialogBridge: ConflictDialogBridge;
+
     constructor(panelId?: string, debugMode: boolean = false) {
         this._panelId = panelId || Math.random().toString(36).substr(2, 9);
         this._debugMode = debugMode;
         this._scopedEventBus = new ScopedEventBus(this._panelId);
         this._fileSaveService = new FileSaveService(this._panelId);
         this._conflictResolver = new ConflictResolver(this._panelId);
+        this._conflictDialogBridge = new ConflictDialogBridge(this._panelId);
     }
 
     // ============= SCOPED EVENT BUS GETTER =============
@@ -94,6 +99,14 @@ export class PanelContext {
      * Each panel has its own dialog tracking to prevent cross-panel interference.
      */
     get conflictResolver(): ConflictResolver { return this._conflictResolver; }
+
+    // ============= CONFLICT DIALOG BRIDGE GETTER =============
+
+    /**
+     * Get the panel's conflict dialog bridge for webview-based conflict dialogs.
+     * Each panel has its own bridge to prevent cross-panel interference.
+     */
+    get conflictDialogBridge(): ConflictDialogBridge { return this._conflictDialogBridge; }
 
     // ============= PANEL FLAG GETTERS =============
 
@@ -151,6 +164,8 @@ export class PanelContext {
             this._initialBoardLoad = false;
             this._includeSwitchInProgress = false;
             this._webviewReady = false;
+            // Cancel pending conflict dialogs
+            this._conflictDialogBridge.cancelAll();
             // Dispose the scoped event bus
             this._scopedEventBus.dispose();
         }

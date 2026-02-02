@@ -29,7 +29,7 @@ import './taskEditor.js';
 import './boardRenderer.js';
 import './dragDrop.js';
 import './menuOperations.js';
-import './debugOverlay.js';
+import './fileManager.js';
 import './clipboardHandler.js';
 import './navigationHandler.js';
 import './foldingStateManager.js';

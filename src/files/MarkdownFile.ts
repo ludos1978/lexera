@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ConflictResolver, ConflictContext, ConflictResolution } from '../services/ConflictResolver';
+import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
 import { SaveOptions } from './SaveOptions';
 import { SaveTransactionManager } from './SaveTransactionManager';
@@ -134,11 +134,6 @@ export abstract class MarkdownFile implements vscode.Disposable {
      * Validate file content (format-specific validation)
      */
     abstract validate(content: string): { valid: boolean; errors?: string[] };
-
-    /**
-     * Get conflict context for this file type
-     */
-    protected abstract getConflictContext(): ConflictContext;
 
     /**
      * Get the file registry (if accessible from this file type)
@@ -544,40 +539,6 @@ export abstract class MarkdownFile implements vscode.Disposable {
     public discardChanges(): void {
         this._content = this._baseline;
         // Do not emit 'content' event - we're reverting to baseline, nothing on disk changed
-    }
-
-    // ============= CONFLICT RESOLUTION =============
-
-    /**
-     * Show conflict dialog and resolve based on user choice
-     */
-    public async showConflictDialog(): Promise<ConflictResolution | null> {
-        const context = this.getConflictContext();
-        const resolution = await this._conflictResolver.resolveConflict(context);
-
-        if (resolution && resolution.shouldProceed) {
-            // Check shouldCreateBackup FIRST because backup-and-reload sets both flags
-            if (resolution.shouldCreateBackup) {
-                // resolveConflict('backup') creates backup AND reloads
-                // Create backup of current content, then reload
-                const backupPath = await this.createBackup('conflict');
-                await this.reload();
-                this._emitChange('conflict');
-
-                // Show notification with link to open backup file
-                if (backupPath) {
-                    this._showBackupNotification(backupPath);
-                }
-            } else if (resolution.shouldSave) {
-                // save() method marks itself as legitimate automatically
-                await this.save();
-            } else if (resolution.shouldReload) {
-                await this.reload();
-            }
-            // resolution.shouldIgnore: do nothing (user chose to ignore the conflict)
-        }
-
-        return resolution;
     }
 
     // ============= BACKUP =============

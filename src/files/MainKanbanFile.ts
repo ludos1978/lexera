@@ -6,7 +6,7 @@ import { IMarkdownFileRegistry, CapturedEdit } from './FileInterfaces';
 import { KanbanBoard, KanbanTask } from '../board/KanbanTypes';
 import { findColumn, findTaskById, findTaskInColumn } from '../actions/helpers';
 import { MarkdownKanbanParser } from '../markdownParser';
-import { ConflictResolver, ConflictContext, ConflictResolution } from '../services/ConflictResolver';
+import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
 import { FileManager } from '../fileManager';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
@@ -276,40 +276,6 @@ export class MainKanbanFile extends MarkdownFile {
         }
     }
 
-    // ============= CONFLICT CONTEXT =============
-
-    protected getConflictContext(): ConflictContext {
-        // Check if any include files have unsaved changes
-        const includeFiles = this._fileRegistry.getIncludeFiles();
-        const hasIncludeUnsavedChanges = includeFiles.some(file =>
-            file.hasUnsavedChanges()
-        );
-
-        // Check if VSCode document is dirty (text editor unsaved changes)
-        const document = this._fileManager.getDocument();
-        const documentIsDirty = !!(document && document.uri.fsPath === this._path && document.isDirty);
-
-        // Main has unsaved changes if ANY of:
-        // - Internal state (kanban UI edits) - computed from content comparison
-        // - VSCode document is dirty (text editor edits)
-        // - Cached board exists (UI edits not yet written to file)
-        const hasMainUnsavedChanges = this.hasUnsavedChanges() || documentIsDirty || !!this._cachedBoardFromWebview;
-
-
-        return {
-            type: 'external_main',
-            fileType: 'main',
-            filePath: this._path,
-            fileName: path.basename(this._path),
-            hasMainUnsavedChanges: hasMainUnsavedChanges,
-            hasIncludeUnsavedChanges: hasIncludeUnsavedChanges,
-            hasExternalChanges: this._hasFileSystemChanges,
-            changedIncludeFiles: [],
-            isClosing: false,
-            isInEditMode: this._isInEditMode
-        };
-    }
-
     // ============= SIMPLIFIED CONFLICT DETECTION =============
 
     // hasAnyUnsavedChanges() and hasConflict() are now implemented in base class MarkdownFile
@@ -391,38 +357,6 @@ export class MainKanbanFile extends MarkdownFile {
         // Note: save() method automatically sets instance-level _skipReloadCounter
         // This prevents the file watcher from triggering unnecessary reloads
         this._cachedBoardFromWebview = undefined;
-    }
-
-    /**
-     * Override to handle panel_close with cached board clearing.
-     *
-     * External change dialogs are now handled by the batched import system
-     * in UnifiedChangeHandler. This override only applies to panel_close.
-     */
-    public async showConflictDialog(): Promise<ConflictResolution | null> {
-        const context = this.getConflictContext();
-        const resolution = await this._conflictResolver.resolveConflict(context);
-
-        if (resolution && resolution.shouldProceed) {
-            if (resolution.shouldCreateBackup) {
-                const backupPath = await this.createBackup('conflict');
-                await this.reload();
-                this._emitChange('conflict');
-                this._cachedBoardFromWebview = undefined;
-
-                if (backupPath) {
-                    this._showBackupNotification(backupPath);
-                }
-            } else if (resolution.shouldSave) {
-                await this.save();
-            } else if (resolution.shouldReload) {
-                this._cachedBoardFromWebview = undefined;
-                await this.reload();
-            }
-            // resolution.shouldIgnore: do nothing
-        }
-
-        return resolution;
     }
 
     // ============= PRIVATE HELPERS =============

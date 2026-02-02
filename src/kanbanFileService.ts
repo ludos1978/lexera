@@ -15,7 +15,7 @@ import { BoardStore } from './core/stores';
 import { showError, showWarning, showInfo } from './services/NotificationService';
 import { SaveOptions } from './files/SaveOptions';
 import { MarkdownFile } from './files/MarkdownFile';
-import { ConflictResolution } from './services/ConflictResolver';
+import { ConflictDialogBridge, ConflictDialogResult, ConflictFileInfo } from './services/ConflictDialogBridge';
 
 /**
  * Save operation state for hybrid state machine + version tracking
@@ -372,10 +372,11 @@ export class KanbanFileService {
             }
 
             // Pre-save: check for files with pending external changes (Scenario 2)
-            const presaveResult = await this._handlePresaveConflictCheck(scope);
-            if (presaveResult === 'abort') {
+            const presaveCheck = await this._handlePresaveConflictCheck(scope);
+            if (presaveCheck.result === 'abort') {
                 return;
             }
+            const forceWritePaths = presaveCheck.forceWritePaths;
 
             if (scope === 'main' || scope === 'all') {
                 const mainFile = this.fileRegistry.getMainFile();
@@ -388,9 +389,10 @@ export class KanbanFileService {
                 }
 
                 const markdown = MarkdownKanbanParser.generateMarkdown(board!);
+                const forceMain = force || forceWritePaths.has(mainFile.getPath());
                 await this._fileSaveService.saveFile(mainFile, markdown, {
                     source,
-                    force,
+                    force: forceMain,
                     skipReloadDetection: true,
                     skipValidation
                 });
@@ -414,7 +416,7 @@ export class KanbanFileService {
                     const saveResults = await Promise.allSettled(
                         includeFiles.map(f => this._fileSaveService.saveFile(f, undefined, {
                             source,
-                            force: forceIncludeSave,
+                            force: forceIncludeSave || forceWritePaths.has(f.getPath()),
                             skipReloadDetection: true,
                             skipValidation
                         }))
@@ -510,9 +512,10 @@ export class KanbanFileService {
      * Pre-save conflict check (Scenario 2).
      * Collects files with pending external changes and shows the 3-option dialog.
      *
-     * @returns 'continue' to proceed with save, 'abort' to cancel save
+     * @returns result ('continue' or 'abort') plus a set of file paths that need forced writes
+     *          (e.g. after "Overwrite (backup external)" where hasUnsavedChanges() is false)
      */
-    private async _handlePresaveConflictCheck(scope: SaveScope): Promise<'continue' | 'abort'> {
+    private async _handlePresaveConflictCheck(scope: SaveScope): Promise<{ result: 'continue' | 'abort'; forceWritePaths: Set<string> }> {
         const filesWithExternalChanges: Array<{ file: MarkdownFile; label: string }> = [];
 
         const mainFile = this.fileRegistry.getMainFile();
@@ -536,77 +539,120 @@ export class KanbanFileService {
         }
 
         if (filesWithExternalChanges.length === 0) {
-            return 'continue';
+            return { result: 'continue', forceWritePaths: new Set() };
         }
 
-        const resolution = await this._showPresaveConflictDialog(
-            filesWithExternalChanges.map(f => f.label)
-        );
+        // Show conflict dialog via webview bridge
+        const dialogResult = await this._showPresaveConflictDialog(filesWithExternalChanges);
 
-        if (!resolution || !resolution.shouldProceed) {
-            // Option C: Skip — cancel entire save
-            return 'abort';
+        if (!dialogResult || dialogResult.cancelled) {
+            return { result: 'abort', forceWritePaths: new Set() };
         }
 
-        if (resolution.shouldBackupExternal && resolution.shouldSave) {
-            // Option A: Backup external version, then save kanban
-            for (const { file } of filesWithExternalChanges) {
-                const diskContent = await file.readFromDisk();
-                if (diskContent) {
-                    const conflictPath = await file.createVisibleConflictFile(diskContent);
-                    if (!conflictPath) {
-                        showError('Failed to create backup of external changes. Save aborted.');
-                        return 'abort';
+        // Build resolution map from per-file results
+        const resolutionMap = new Map(dialogResult.perFileResolutions.map(r => [r.path, r.action]));
+        const forceWritePaths = new Set<string>();
+        let anyReloaded = false;
+
+        for (const { file } of filesWithExternalChanges) {
+            const action = resolutionMap.get(file.getPath()) || 'skip';
+
+            switch (action) {
+                case 'overwrite_backup_external': {
+                    // Backup external version, then force save kanban content
+                    const diskContent = await file.readFromDisk();
+                    if (diskContent) {
+                        const conflictPath = await file.createVisibleConflictFile(diskContent);
+                        if (!conflictPath) {
+                            showError('Failed to create backup of external changes. Save aborted.');
+                            return { result: 'abort', forceWritePaths: new Set() };
+                        }
+                        this._showConflictFileNotification(conflictPath, 'External changes backed up');
                     }
-                    this._showConflictFileNotification(conflictPath, 'External changes backed up');
+                    forceWritePaths.add(file.getPath());
+                    break;
                 }
+                case 'load_external_backup_mine': {
+                    // Backup kanban content, load external version
+                    const kanbanContent = file.getContent();
+                    const conflictPath = await file.createVisibleConflictFile(kanbanContent);
+                    if (!conflictPath) {
+                        showError('Failed to create backup of your changes. Save aborted.');
+                        return { result: 'abort', forceWritePaths: new Set() };
+                    }
+                    this._showConflictFileNotification(conflictPath, 'Your changes backed up');
+                    await file.reload();
+                    anyReloaded = true;
+                    break;
+                }
+                case 'skip':
+                default:
+                    // Do nothing for this file
+                    break;
             }
-            // _hasFileSystemChanges is cleared by the save that follows
-            // (MarkdownFile.save() sets _hasFileSystemChanges = false after writing)
-            return 'continue';
+        }
 
-        } else if (resolution.shouldCreateBackup && resolution.shouldReload) {
-            // Option B: Backup kanban content, load external version
-            for (const { file } of filesWithExternalChanges) {
-                const kanbanContent = file.getContent();
-                const conflictPath = await file.createVisibleConflictFile(kanbanContent);
-                if (!conflictPath) {
-                    showError('Failed to create backup of your changes. Save aborted.');
-                    return 'abort';
-                }
-                this._showConflictFileNotification(conflictPath, 'Your changes backed up');
-                await file.reload();
-            }
-            // Update board from reloaded main file
+        // If any files were reloaded, update the board
+        if (anyReloaded) {
             const freshMainFile = this.fileRegistry.getMainFile();
             const freshBoard = freshMainFile?.getBoard();
             if (freshBoard) {
                 this.setBoard(freshBoard);
                 await this.sendBoardUpdate(false, true);
             }
-            // Don't save — we loaded external content instead
-            return 'abort';
         }
 
-        return 'continue';
+        // If we have files to force-write, continue the save
+        // If only reloads/skips, abort the save (nothing to write)
+        if (forceWritePaths.size > 0) {
+            return { result: 'continue', forceWritePaths };
+        }
+
+        // If all files were either reloaded or skipped, abort save
+        return { result: 'abort', forceWritePaths: new Set() };
     }
 
     /**
-     * Show the Scenario 2 pre-save conflict dialog via ConflictResolver.
+     * Show the pre-save conflict dialog via webview ConflictDialogBridge.
      */
     private async _showPresaveConflictDialog(
-        fileLabels: string[]
-    ): Promise<ConflictResolution | null> {
-        const conflictResolver = this._context.conflictResolver;
-        return conflictResolver.resolveConflict({
-            type: 'presave_check',
-            fileType: 'main',
-            filePath: '',
-            fileName: '',
-            hasMainUnsavedChanges: true,
-            hasIncludeUnsavedChanges: false,
-            changedIncludeFiles: fileLabels
-        });
+        filesWithChanges: Array<{ file: MarkdownFile; label: string }>
+    ): Promise<ConflictDialogResult | null> {
+        const bridge = this._context.conflictDialogBridge;
+        const panel = this.panel();
+
+        if (!panel) {
+            return null;
+        }
+
+        const conflictFileInfos: ConflictFileInfo[] = filesWithChanges.map(({ file }) => ({
+            path: file.getPath(),
+            relativePath: file.getRelativePath(),
+            fileType: file.getFileType() as ConflictFileInfo['fileType'],
+            hasExternalChanges: file.hasExternalChanges(),
+            hasUnsavedChanges: file.hasAnyUnsavedChanges(),
+            isInEditMode: file.isInEditMode()
+        }));
+
+        try {
+            return await bridge.showConflict(
+                (msg) => {
+                    try {
+                        panel.webview.postMessage(msg);
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                },
+                {
+                    conflictType: 'presave_conflict',
+                    files: conflictFileInfos
+                }
+            );
+        } catch (error) {
+            logger.warn('[KanbanFileService] Conflict dialog failed:', error);
+            return null;
+        }
     }
 
     /**
@@ -693,13 +739,13 @@ export class KanbanFileService {
      * Text editor typing, undo, redo — none of these affect the kanban board.
      * Only when a file is SAVED to disk does it matter (detected by file watcher).
      *
-     * This listener only sends document state (dirty flag) to the debug overlay.
+     * This listener only sends document state (dirty flag) to the file manager.
      */
     public setupDocumentChangeListener(disposables: vscode.Disposable[]): void {
         const changeDisposable = vscode.workspace.onDidChangeTextDocument((event) => {
             const currentDocument = this.fileManager.getDocument();
             if (currentDocument && event.document === currentDocument) {
-                // Notify debug overlay of document dirty state only
+                // Notify file manager of document dirty state only
                 const currentPanel = this.panel();
                 if (currentPanel) {
                     currentPanel.webview.postMessage({
@@ -744,7 +790,7 @@ export class KanbanFileService {
 
                         // NOTE: Watcher handles everything via SaveOptions - no manual marking needed
 
-                        // Notify debug overlay to update
+                        // Notify file manager to update
                         const currentPanel = this.panel();
                         if (currentPanel) {
                             currentPanel.webview.postMessage({

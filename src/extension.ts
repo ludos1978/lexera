@@ -12,6 +12,7 @@ import { KeybindingService } from './services/KeybindingService';
 import { showError, showWarning, showInfo } from './services/NotificationService';
 import { WorkspaceMediaIndex } from './services/WorkspaceMediaIndex';
 import { PluginConfigService } from './services/PluginConfigService';
+import { UnifiedChangeHandler } from './core/UnifiedChangeHandler';
 
 // Re-export for external access
 export { getOutputChannel } from './services/OutputChannelService';
@@ -123,6 +124,16 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		});
 	}
+
+	// Register panel lookup for UnifiedChangeHandler (avoids circular dependency)
+	UnifiedChangeHandler.getInstance().setPanelLookup({
+		getConflictDialogBridge(panelId: string) {
+			return KanbanWebviewPanel.getPanelById(panelId)?.getConflictDialogBridge();
+		},
+		getWebviewBridge(panelId: string) {
+			return KanbanWebviewPanel.getPanelById(panelId)?.getWebviewBridge();
+		}
+	});
 
 	// Force refresh all existing panels to ensure new compiled code is loaded (dev mode)
 	const isDevelopment = !context.extensionMode || context.extensionMode === vscode.ExtensionMode.Development;

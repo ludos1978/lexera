@@ -7,7 +7,7 @@
  * - getTrackedFilesDebugInfo: Get debug info about tracked files
  * - clearTrackedFilesCache: Clear tracked file caches
  *
- * These commands are used by the debug overlay UI for troubleshooting
+ * These commands are used by the file manager UI for troubleshooting
  * file synchronization issues.
  *
  * @module commands/DebugCommands
@@ -21,7 +21,8 @@ import { KanbanBoard } from '../board/KanbanTypes';
 import { IncludeFile } from '../files/IncludeFile';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SetDebugModeMessage } from '../core/bridge/MessageTypes';
+import { SetDebugModeMessage, ConflictResolutionMessage } from '../core/bridge/MessageTypes';
+import { logger } from '../utils/logger';
 
 /**
  * File verification result for content sync check
@@ -139,7 +140,8 @@ export class DebugCommands extends SwitchBasedCommand {
             'getTrackedFilesDebugInfo',
             'clearTrackedFilesCache',
             'setDebugMode',
-            'getMediaTrackingStatus'
+            'getMediaTrackingStatus',
+            'conflictResolution'
         ],
         priority: 50
     };
@@ -150,7 +152,8 @@ export class DebugCommands extends SwitchBasedCommand {
         'getTrackedFilesDebugInfo': (_msg, ctx) => this.handleGetTrackedFilesDebugInfo(ctx),
         'clearTrackedFilesCache': (_msg, ctx) => this.handleClearTrackedFilesCache(ctx),
         'setDebugMode': (msg, ctx) => this.handleSetDebugMode(msg as SetDebugModeMessage, ctx),
-        'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx)
+        'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx),
+        'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx)
     };
 
     private async handleSetDebugMode(message: SetDebugModeMessage, context: CommandContext): Promise<CommandResult> {
@@ -160,6 +163,24 @@ export class DebugCommands extends SwitchBasedCommand {
         }
 
         panel.setDebugMode(message.enabled);
+        return this.success();
+    }
+
+    // ============= CONFLICT RESOLUTION HANDLER =============
+
+    private async handleConflictResolution(message: ConflictResolutionMessage, context: CommandContext): Promise<CommandResult> {
+        const panel = context.getWebviewPanel() as PanelCommandAccess | undefined;
+        const bridge = panel?._conflictDialogBridge;
+        if (!bridge) {
+            logger.warn('[DebugCommands] No ConflictDialogBridge available for conflict resolution');
+            return this.success();
+        }
+
+        bridge.handleResolution(message.conflictId, {
+            cancelled: message.cancelled,
+            perFileResolutions: message.perFileResolutions
+        });
+
         return this.success();
     }
 

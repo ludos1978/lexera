@@ -10,7 +10,7 @@ window.cachedShortcuts = window.cachedShortcuts || {};
 // Global variables
 let currentFileInfo = null;
 let currentBoard = null;
-window.currentBoard = currentBoard; // Expose to window for debug overlay verification
+window.currentBoard = currentBoard; // Expose to window for file manager verification
 let fileContextErrorState = null;
 window.fileContextErrorActive = false;
 // Note: lastClipboardCheck, clipboardCardData, CLIPBOARD_CHECK_THROTTLE are declared in clipboardHandler.js
@@ -2351,9 +2351,9 @@ if (!webviewEventListenersInitialized) {
                 }
             }
             currentBoard = window.cachedBoard;
-            window.currentBoard = currentBoard; // Expose to window for debug overlay verification
-            if (typeof window.requestDebugOverlaySyncRefresh === 'function') {
-                window.requestDebugOverlaySyncRefresh();
+            window.currentBoard = currentBoard; // Expose to window for file manager verification
+            if (typeof window.requestFileManagerSyncRefresh === 'function') {
+                window.requestFileManagerSyncRefresh();
             }
 
             // Clean up any duplicate row tags
@@ -3877,9 +3877,9 @@ if (!webviewEventListenersInitialized) {
             // Handle individual file save confirmation
             const fileName = message.filePath.split('/').pop();
             if (message.success) {
-                // Refresh the debug overlay to show updated states
-                if (typeof window.refreshDebugOverlay === 'function') {
-                    setTimeout(() => window.refreshDebugOverlay(), 500);
+                // Refresh the file manager to show updated states
+                if (typeof window.refreshFileManager === 'function') {
+                    setTimeout(() => window.refreshFileManager(), 500);
                 }
             } else {
                 console.error(`[Debug] Failed to save ${fileName}: ${message.error}`);
@@ -3890,9 +3890,9 @@ if (!webviewEventListenersInitialized) {
             // Handle individual file reload confirmation
             const reloadedFileName = message.filePath.split('/').pop();
             if (message.success) {
-                // Refresh the debug overlay to show updated states
-                if (typeof window.refreshDebugOverlay === 'function') {
-                    setTimeout(() => window.refreshDebugOverlay(), 500);
+                // Refresh the file manager to show updated states
+                if (typeof window.refreshFileManager === 'function') {
+                    setTimeout(() => window.refreshFileManager(), 500);
                 }
             } else {
                 console.error(`[Debug] Failed to reload ${reloadedFileName}: ${message.error}`);
@@ -3904,9 +3904,9 @@ if (!webviewEventListenersInitialized) {
             {
                 const convertedFileName = message.filePath?.split('/').pop() || 'file';
                 if (message.converted > 0) {
-                    // Refresh debug overlay to show updated state
-                    if (typeof window.refreshDebugOverlay === 'function') {
-                        setTimeout(() => window.refreshDebugOverlay(), 500);
+                    // Refresh file manager to show updated state
+                    if (typeof window.refreshFileManager === 'function') {
+                        setTimeout(() => window.refreshFileManager(), 500);
                     }
                 }
             }
@@ -3915,9 +3915,9 @@ if (!webviewEventListenersInitialized) {
         case 'allPathsConverted':
             // Handle bulk path conversion result
             if (message.converted > 0) {
-                // Refresh debug overlay to show updated state
-                if (typeof window.refreshDebugOverlay === 'function') {
-                    setTimeout(() => window.refreshDebugOverlay(), 500);
+                // Refresh file manager to show updated state
+                if (typeof window.refreshFileManager === 'function') {
+                    setTimeout(() => window.refreshFileManager(), 500);
                 }
             }
             break;
@@ -3928,9 +3928,9 @@ if (!webviewEventListenersInitialized) {
                 // Update DOM elements that reference the old path
                 updatePathInDOM(message.originalPath, message.newPath, message.direction);
 
-                // Refresh debug overlay to show updated state
-                if (typeof window.refreshDebugOverlay === 'function') {
-                    setTimeout(() => window.refreshDebugOverlay(), 500);
+                // Refresh file manager to show updated state
+                if (typeof window.refreshFileManager === 'function') {
+                    setTimeout(() => window.refreshFileManager(), 500);
                 }
             }
             break;
