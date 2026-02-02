@@ -449,17 +449,23 @@ function createUnifiedTable() {
                     ${applyAllOptions}
                 </select>
             </td>
-            <td class="col-save action-cell">
-                <button onclick="forceWriteAllContent()" class="action-btn save-btn" title="Force save all files">💾</button>
+            <td class="col-fileop action-cell">
+                <div class="dropdown-exec">
+                    <select id="all-fileop-select">
+                        <option value="save">Save</option>
+                        <option value="reload">Reload</option>
+                    </select>
+                    <button onclick="executeAllFileOp()" class="action-btn exec-btn" title="Execute for all files">&#9654;</button>
+                </div>
             </td>
-            <td class="col-reload action-cell">
-                <button onclick="reloadAllIncludedFiles()" class="action-btn reload-btn" title="Reload all included files from disk">↻</button>
-            </td>
-            <td class="col-relative action-cell">
-                <button onclick="convertAllPaths('relative')" class="action-btn" title="Convert all paths to relative format">Rel</button>
-            </td>
-            <td class="col-absolute action-cell">
-                <button onclick="convertAllPaths('absolute')" class="action-btn" title="Convert all paths to absolute format">Abs</button>
+            <td class="col-paths action-cell">
+                <div class="dropdown-exec">
+                    <select id="all-paths-select">
+                        <option value="relative">Relative</option>
+                        <option value="absolute">Absolute</option>
+                    </select>
+                    <button onclick="executeAllPaths()" class="action-btn exec-btn" title="Convert all paths">&#9654;</button>
+                </div>
             </td>
             <td class="col-image action-cell">
                 <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
@@ -589,17 +595,23 @@ function createUnifiedTable() {
                         ${actionOptions}
                     </select>
                 </td>
-                <td class="col-save action-cell">
-                    <button onclick="saveIndividualFile('${escapedPath}', ${file.isMainFile}, true)" class="action-btn save-btn" title="Force save file (writes unconditionally)">💾</button>
+                <td class="col-fileop action-cell">
+                    <div class="dropdown-exec">
+                        <select class="fileop-select" data-file-path="${escapedPath}" data-is-main="${file.isMainFile}">
+                            <option value="save">Save</option>
+                            <option value="reload">Reload</option>
+                        </select>
+                        <button onclick="executeFileOp(this)" class="action-btn exec-btn" title="Execute">&#9654;</button>
+                    </div>
                 </td>
-                <td class="col-reload action-cell">
-                    <button onclick="reloadIndividualFile('${escapedPath}', ${file.isMainFile})" class="action-btn reload-btn" title="Reload file from disk">↻</button>
-                </td>
-                <td class="col-relative action-cell">
-                    <button onclick="convertFilePaths('${escapedPath}', ${file.isMainFile}, 'relative')" class="action-btn" title="Convert paths to relative format">Rel</button>
-                </td>
-                <td class="col-absolute action-cell">
-                    <button onclick="convertFilePaths('${escapedPath}', ${file.isMainFile}, 'absolute')" class="action-btn" title="Convert paths to absolute format">Abs</button>
+                <td class="col-paths action-cell">
+                    <div class="dropdown-exec">
+                        <select class="paths-select" data-file-path="${escapedPath}" data-is-main="${file.isMainFile}">
+                            <option value="relative">Rel</option>
+                            <option value="absolute">Abs</option>
+                        </select>
+                        <button onclick="executePathConvert(this)" class="action-btn exec-btn" title="Convert paths">&#9654;</button>
+                    </div>
                 </td>
                 <td class="col-image action-cell">
                     <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">🖼️</button>
@@ -617,10 +629,8 @@ function createUnifiedTable() {
                     <th class="col-frontend" title="Frontend vs registry (non-canonical)">Cache</th>
                     <th class="col-saved" title="Saved file on disk">Saved</th>
                     <th class="col-action">Action</th>
-                    <th class="col-save">Save</th>
-                    <th class="col-reload">Reload</th>
-                    <th class="col-relative">Rel</th>
-                    <th class="col-absolute">Abs</th>
+                    <th class="col-fileop">File Op</th>
+                    <th class="col-paths">Paths</th>
                     <th class="col-image">Img</th>
                 </tr>
             </thead>
@@ -1052,6 +1062,44 @@ function convertAllPaths(direction) {
     }
 }
 
+// --- Dropdown+execute dispatchers ---
+
+function executeFileOp(buttonElement) {
+    const select = buttonElement.parentElement.querySelector('.fileop-select');
+    if (!select) return;
+    const filePath = select.dataset.filePath;
+    const isMainFile = select.dataset.isMain === 'true';
+    if (select.value === 'save') {
+        saveIndividualFile(filePath, isMainFile, true);
+    } else if (select.value === 'reload') {
+        reloadIndividualFile(filePath, isMainFile);
+    }
+}
+
+function executePathConvert(buttonElement) {
+    const select = buttonElement.parentElement.querySelector('.paths-select');
+    if (!select) return;
+    const filePath = select.dataset.filePath;
+    const isMainFile = select.dataset.isMain === 'true';
+    convertFilePaths(filePath, isMainFile, select.value);
+}
+
+function executeAllFileOp() {
+    const select = document.getElementById('all-fileop-select');
+    if (!select) return;
+    if (select.value === 'save') {
+        forceWriteAllContent();
+    } else if (select.value === 'reload') {
+        reloadAllIncludedFiles();
+    }
+}
+
+function executeAllPaths() {
+    const select = document.getElementById('all-paths-select');
+    if (!select) return;
+    convertAllPaths(select.value);
+}
+
 function reloadImages() {
     const images = document.querySelectorAll('img');
     images.forEach(img => {
@@ -1133,6 +1181,10 @@ function initializeFileManager() {
     window.onConflictActionChange = onConflictActionChange;
     window.onConflictApplyAll = onConflictApplyAll;
     window.closeDialog = closeDialog;
+    window.executeFileOp = executeFileOp;
+    window.executePathConvert = executePathConvert;
+    window.executeAllFileOp = executeAllFileOp;
+    window.executeAllPaths = executeAllPaths;
 
     document.addEventListener('keydown', handleFileManagerKeydown);
 

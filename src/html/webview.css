@@ -7404,16 +7404,42 @@ figcaption {
     text-align: left;
 }
 
-.col-save,
-.col-reload,
-.col-relative,
-.col-absolute,
-.col-backend,
+.col-fileop,
+.col-paths {
+    width: 10%;
+    min-width: 90px;
+    text-align: center;
+}
+
 .col-image {
     width: 5%;
     min-width: 36px;
     max-width: 46px;
     text-align: center;
+}
+
+.dropdown-exec {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.dropdown-exec select {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 4px;
+    font-size: 11px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 3px;
+}
+
+.dropdown-exec .exec-btn {
+    flex-shrink: 0;
+    padding: 2px 5px;
+    font-size: 10px;
+    line-height: 1;
 }
 
 .action-cell {
