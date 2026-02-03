@@ -19,6 +19,7 @@ import { PanelCommandAccess, hasConflictService } from '../types/PanelCommandAcc
 import { MarkdownKanbanParser } from '../markdownParser';
 import { KanbanBoard } from '../board/KanbanTypes';
 import { IncludeFile } from '../files/IncludeFile';
+import { MarkdownFile } from '../files/MarkdownFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -331,10 +332,23 @@ export class DebugCommands extends SwitchBasedCommand {
 
     private async handleOpenVscodeDiff(message: OpenVscodeDiffMessage, context: CommandContext): Promise<CommandResult> {
         const fileRegistry = this.getFileRegistry();
-        if (!fileRegistry) return this.success();
+        if (!fileRegistry) {
+            logger.warn('[DebugCommands] openVscodeDiff: No file registry available');
+            return this.success();
+        }
 
-        const file = fileRegistry.get(message.filePath) || fileRegistry.findByPath(message.filePath);
-        if (!file) return this.success();
+        // Store original path for frontend communication (relative for includes, absolute for main)
+        const frontendPath = message.filePath;
+
+        const file = fileRegistry.get(frontendPath) || fileRegistry.findByPath(frontendPath);
+        if (!file) {
+            logger.warn(`[DebugCommands] openVscodeDiff: File not found in registry: ${frontendPath}`);
+            return this.success();
+        }
+
+        // Use absolute path for all file operations
+        const absolutePath = file.getPath();
+        logger.debug(`[DebugCommands] openVscodeDiff: frontendPath="${frontendPath}", absolutePath="${absolutePath}", type=${file.getFileType()}`);
 
         const kanbanContent = file.getContent();
         const diskContent = await file.readFromDisk() || '';
@@ -345,37 +359,148 @@ export class DebugCommands extends SwitchBasedCommand {
         // Set callback to notify webview when diff is closed externally
         const bridge = context.getWebviewBridge();
         if (bridge) {
-            diffService.setOnDiffClosedCallback((filePath) => {
+            diffService.setOnDiffClosedCallback((closedAbsPath) => {
+                // Convert absolute path back to frontend format:
+                // - Main file: uses absolute path
+                // - Include files: uses relative path
+                const closedFile = fileRegistry.get(closedAbsPath) || fileRegistry.findByPath(closedAbsPath);
+                const closedFrontendPath = closedFile?.getFileType() === 'main'
+                    ? closedAbsPath
+                    : closedFile?.getRelativePath() || closedAbsPath;
+
+                logger.debug(`[DebugCommands] vscodeDiffClosed: absolutePath="${closedAbsPath}", frontendPath="${closedFrontendPath}"`);
+
                 bridge.send({
                     type: 'vscodeDiffClosed',
-                    filePath
+                    filePath: closedFrontendPath
                 });
             });
         }
 
         // Set callback to update kanban board when content changes in diff editor
+        // NOTE: For include files, we DON'T trigger full board re-parse because that would
+        // regenerate the include content from board tasks, losing raw edits like tags.
+        // Instead, for includes we send a targeted column content update.
         const panel = context.getWebviewPanel() as PanelCommandAccess | undefined;
-        diffService.setOnContentChangedCallback(async (_filePath, _newContent) => {
-            // Re-parse board and refresh UI (same pattern as IncludeCommands)
-            const mainFile = fileRegistry.getMainFile();
-            if (mainFile && panel?._fileService) {
-                mainFile.parseToBoard();
-                const freshBoard = mainFile.getBoard();
-                if (freshBoard && freshBoard.valid) {
-                    panel._fileService.setBoard(freshBoard);
-                    await panel._fileService.sendBoardUpdate(false, false);
+
+        // NOTE: Do NOT capture isIncludeFile here! The callback is shared across all diff sessions
+        // (singleton service), so we must determine file type INSIDE the callback based on changedPath.
+        logger.debug(`[DebugCommands] openVscodeDiff: Setting content changed callback`);
+        diffService.setOnContentChangedCallback(async (changedPath, _newContent) => {
+            // Determine file type dynamically based on the changed path
+            const changedFile = fileRegistry.get(changedPath) || fileRegistry.findByPath(changedPath);
+            const changedFileType = changedFile?.getFileType() || 'unknown';
+            const isChangedIncludeFile = changedFileType !== 'main' && changedFileType !== 'unknown';
+
+            console.log(`[DebugCommands] onContentChanged: changedPath="${changedPath}", fileType="${changedFileType}", isIncludeFile=${isChangedIncludeFile}`);
+            logger.debug(`[DebugCommands] onContentChanged: CALLBACK INVOKED! changedPath="${changedPath}", fileType="${changedFileType}", isIncludeFile=${isChangedIncludeFile}`);
+
+            if (isChangedIncludeFile && changedFile) {
+                // For include files: reload from the now-updated file and send targeted update
+                // This preserves raw content without going through board regeneration
+                console.log(`[DebugCommands] onContentChanged: Processing include file change`);
+
+                // Re-parse include file to tasks
+                const mainFile = fileRegistry.getMainFile();
+                // Get board from fileService - board is a getter that returns a function
+                const fileService = panel?._fileService;
+                console.log(`[DebugCommands] onContentChanged: fileService=${!!fileService}, panel=${!!panel}`);
+
+                // Access board via the boardStore directly since 'board' is private
+                const boardStore = (fileService as any)?._deps?.boardStore;
+                const board = boardStore?.getBoard?.();
+                console.log(`[DebugCommands] onContentChanged: boardStore=${!!boardStore}, board=${!!board}, mainFile=${!!mainFile}`);
+
+                if (mainFile && board) {
+                    const incFile = changedFile as IncludeFile;
+                    const incRelPath = incFile.getRelativePath();
+                    const incAbsPath = incFile.getPath();
+                    console.log(`[DebugCommands] onContentChanged: incRelPath="${incRelPath}", incAbsPath="${incAbsPath}"`);
+
+                    // Find columns using this include file
+                    // Note: column.includeFiles may contain absolute OR relative paths depending on board state
+                    let columnsUpdated = 0;
+                    for (const column of board.columns) {
+                        const columnIncludeFiles = column.includeFiles || [];
+                        // Match against both relative and absolute paths since board may store either
+                        const matches = columnIncludeFiles.some((inc: string) =>
+                            MarkdownFile.isSameFile(inc, incRelPath) ||
+                            MarkdownFile.isSameFile(inc, incAbsPath) ||
+                            inc === incRelPath ||
+                            inc === incAbsPath);
+                        console.log(`[DebugCommands] onContentChanged: column "${column.id}" includeFiles=[${columnIncludeFiles.join(', ')}], matches=${matches}`);
+
+                        if (matches) {
+                            // Parse fresh tasks from updated content
+                            const freshTasks = incFile.parseToTasks(column.tasks, column.id, mainFile.getPath());
+                            console.log(`[DebugCommands] onContentChanged: parsed ${freshTasks.length} tasks for column "${column.id}"`);
+                            column.tasks = freshTasks;
+                            columnsUpdated++;
+                        }
+                    }
+                    console.log(`[DebugCommands] onContentChanged: columnsUpdated=${columnsUpdated}`);
+
+                    // Send targeted board update (not full refresh)
+                    if (panel?._fileService && columnsUpdated > 0) {
+                        panel._fileService.setBoard(board);
+                        await panel._fileService.sendBoardUpdate(false, false);
+                        console.log(`[DebugCommands] onContentChanged: board update sent`);
+                    }
+                } else {
+                    console.log(`[DebugCommands] onContentChanged: SKIP - mainFile=${!!mainFile}, board=${!!board}`);
                 }
+            } else if (changedFileType === 'main') {
+                // For main file: re-parse board and refresh UI
+                // CRITICAL: After parsing, must load include files to populate column tasks
+                console.log(`[DebugCommands] onContentChanged (main): re-parsing board`);
+                const mainFile = fileRegistry.getMainFile();
+                if (mainFile && panel?._fileService) {
+                    mainFile.parseToBoard();
+                    const freshBoard = mainFile.getBoard();
+                    if (freshBoard && freshBoard.valid) {
+                        // Load include file content for columns with includeFiles
+                        const mainFilePath = mainFile.getPath();
+                        for (const column of freshBoard.columns) {
+                            if (column.includeFiles && column.includeFiles.length > 0) {
+                                console.log(`[DebugCommands] onContentChanged (main): loading includes for column "${column.id}": [${column.includeFiles.join(', ')}]`);
+                                // Get include file from registry and parse to tasks
+                                for (const relPath of column.includeFiles) {
+                                    const incFile = fileRegistry.getByRelativePath(relPath);
+                                    if (incFile && incFile.getFileType() !== 'main') {
+                                        const tasks = (incFile as IncludeFile).parseToTasks(column.tasks, column.id, mainFilePath);
+                                        column.tasks = tasks;
+                                        console.log(`[DebugCommands] onContentChanged (main): parsed ${tasks.length} tasks from "${relPath}"`);
+                                    }
+                                }
+                            }
+                        }
+                        panel._fileService.setBoard(freshBoard);
+                        await panel._fileService.sendBoardUpdate(false, false);
+                        console.log(`[DebugCommands] onContentChanged (main): board update sent`);
+                    }
+                }
+            } else {
+                console.log(`[DebugCommands] onContentChanged: SKIP - unknown file type "${changedFileType}"`);
             }
         });
 
-        await diffService.openDiff(message.filePath, kanbanContent, diskContent);
+        // Use file.getPath() for absolute path - message.filePath may be relative for include files
+        await diffService.openDiff(file.getPath(), kanbanContent, diskContent);
 
         return this.success();
     }
 
     private async handleCloseVscodeDiff(message: CloseVscodeDiffMessage, _context: CommandContext): Promise<CommandResult> {
+        const fileRegistry = this.getFileRegistry();
         const diffService = KanbanDiffService.getInstance();
-        await diffService.closeDiff(message.filePath);
+
+        // Look up file to get absolute path (message.filePath may be relative for include files)
+        const file = fileRegistry?.get(message.filePath) || fileRegistry?.findByPath(message.filePath);
+        const absolutePath = file?.getPath() || message.filePath;
+
+        logger.debug(`[DebugCommands] closeVscodeDiff: frontendPath="${message.filePath}", absolutePath="${absolutePath}", fileFound=${!!file}`);
+
+        await diffService.closeDiff(absolutePath);
         return this.success();
     }
 

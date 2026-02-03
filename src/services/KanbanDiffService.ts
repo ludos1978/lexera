@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
+import { logger } from '../utils/logger';
 
 /**
  * Tracks active diff sessions and manages their lifecycle
@@ -86,6 +87,8 @@ export class KanbanDiffService implements vscode.Disposable {
      * Right side: actual file on disk
      */
     async openDiff(filePath: string, kanbanContent: string, _diskContent: string): Promise<void> {
+        logger.debug(`[KanbanDiffService] openDiff: filePath="${filePath}"`);
+
         // Close existing session for this file if any
         await this.closeDiff(filePath);
 
@@ -113,7 +116,10 @@ export class KanbanDiffService implements vscode.Disposable {
 
         // Listen for changes to the kanban temp file and sync back to registry
         const changeListener = vscode.workspace.onDidChangeTextDocument(e => {
-            if (e.document.uri.fsPath === tempFilePath) {
+            const isMatch = e.document.uri.fsPath === tempFilePath;
+            console.log(`[KanbanDiffService] onDidChangeTextDocument: match=${isMatch}, tempFilePath="${tempFilePath}"`);
+            if (isMatch) {
+                console.log(`[KanbanDiffService] onDidChangeTextDocument: calling syncKanbanChangesToRegistry for "${filePath}"`);
                 this.syncKanbanChangesToRegistry(filePath, e.document.getText());
             }
         });
@@ -141,8 +147,10 @@ export class KanbanDiffService implements vscode.Disposable {
     async closeDiff(filePath: string): Promise<void> {
         const session = this.activeSessions.get(filePath);
         if (!session) {
+            logger.debug(`[KanbanDiffService] closeDiff: No session for "${filePath}". Active sessions: [${Array.from(this.activeSessions.keys()).join(', ')}]`);
             return;
         }
+        logger.debug(`[KanbanDiffService] closeDiff: Closing session for "${filePath}"`);
 
         // Dispose listeners
         session.disposables.forEach(d => d.dispose());
@@ -190,6 +198,7 @@ export class KanbanDiffService implements vscode.Disposable {
 
     private syncKanbanChangesToRegistry(filePath: string, newContent: string): void {
         if (!this.fileRegistry) {
+            console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: No file registry`);
             return;
         }
 
@@ -197,19 +206,26 @@ export class KanbanDiffService implements vscode.Disposable {
         if (file) {
             // Update the file content in the registry (don't update baseline - keep as unsaved change)
             file.setContent(newContent, false);
+            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()})`);
+        } else {
+            console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: File not found in registry: "${filePath}"`);
         }
 
         // Notify callback with debouncing (300ms) to avoid excessive updates while typing
         if (this.onContentChangedCallback) {
+            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: scheduling callback for "${filePath}" (debounce 300ms)`);
             if (this.contentChangeDebounceTimer) {
                 clearTimeout(this.contentChangeDebounceTimer);
             }
             this.contentChangeDebounceTimer = setTimeout(() => {
                 this.contentChangeDebounceTimer = null;
                 if (this.onContentChangedCallback) {
+                    console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: invoking callback for "${filePath}"`);
                     this.onContentChangedCallback(filePath, newContent);
                 }
             }, 300);
+        } else {
+            console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: NO callback registered!`);
         }
     }
 
