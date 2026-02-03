@@ -1,3 +1,8 @@
+
+- [ ] analyze the execution flow for all possible situations where the file manager might be opened including the user opening   
+it. it should suggest actions the minimize data loss, prefering internal changes over external ones. also we might include a toggle 
+to show a diff as a preview panel. this should switch between all the files, only ever one diff view can be active. it diffs between file and kanban board content! 
+
 - [ ] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
 
 - [ ] with an included file the conflict resolution doesnt work the

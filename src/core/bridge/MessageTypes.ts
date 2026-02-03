@@ -1594,11 +1594,11 @@ export interface ConflictResolutionMessage extends BaseMessage {
 
 /**
  * Open file dialog request (Frontend → Backend)
- * Used for Files button (browse mode) and Ctrl+R (reload_request mode)
+ * Used for Files button (browse), Ctrl+R (reload_request), and external change notification (external_change)
  */
 export interface OpenFileDialogMessage extends BaseMessage {
     type: 'openFileDialog';
-    openMode: 'browse' | 'reload_request';
+    openMode: 'browse' | 'reload_request' | 'external_change';
 }
 
 // ============= UNIFIED LINK HANDLING =============

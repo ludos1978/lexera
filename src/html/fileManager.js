@@ -33,6 +33,10 @@ let autoRefreshTimer = null;
 let pendingForceWrite = false;
 let lastVerificationResults = null;
 
+// Normalize path to basename for consistent perFileResolutions keys.
+// Handles both absolute (/Users/.../file.md) and relative (file.md) paths.
+const resKey = (p) => p ? p.split('/').pop() : p;
+
 // ============= TOAST NOTIFICATION =============
 
 function showFileManagerNotice(message, type = 'info', timeoutMs = 3000) {
@@ -133,11 +137,11 @@ function openUnifiedDialog(message) {
     dialogMode = 'resolve';
     perFileResolutions = new Map();
 
-    // Set default actions per file
+    // Set default actions per file (use basename key for path-format consistency)
     conflictFiles.forEach(f => {
         const defaultAction = getDefaultAction(f);
         if (defaultAction) {
-            perFileResolutions.set(f.path, defaultAction);
+            perFileResolutions.set(resKey(f.path), defaultAction);
         }
     });
 
@@ -234,26 +238,6 @@ function hideFileManager() {
 
 // ============= CONFLICT RESOLUTION =============
 
-function submitConflictResolution() {
-    if (!conflictId || !window.vscode) return;
-
-    const resolutions = [];
-    perFileResolutions.forEach((action, path) => {
-        if (action) {
-            resolutions.push({ path, action });
-        }
-    });
-
-    window.vscode.postMessage({
-        type: 'conflictResolution',
-        conflictId: conflictId,
-        cancelled: false,
-        perFileResolutions: resolutions
-    });
-
-    hideFileManager();
-}
-
 function cancelConflictResolution() {
     if (conflictId && window.vscode) {
         window.vscode.postMessage({
@@ -268,18 +252,13 @@ function cancelConflictResolution() {
 
 function clearResolutionForFile(filePath) {
     if (!filePath) return;
-    const name = filePath.split('/').pop();
-    for (const key of perFileResolutions.keys()) {
-        if (key.split('/').pop() === name) {
-            perFileResolutions.delete(key);
-        }
-    }
+    perFileResolutions.delete(resKey(filePath));
 }
 
 function onConflictActionChange(selectElement) {
     const filePath = selectElement.dataset.filePath;
     const action = selectElement.value;
-    perFileResolutions.set(filePath, action);
+    perFileResolutions.set(resKey(filePath), action);
 }
 
 function onConflictApplyAll(selectElement) {
@@ -294,7 +273,7 @@ function onConflictApplyAll(selectElement) {
             const optionExists = Array.from(sel.options).some(opt => opt.value === action);
             if (optionExists) {
                 sel.value = action;
-                perFileResolutions.set(filePath, action);
+                perFileResolutions.set(resKey(filePath), action);
             }
         });
     }
@@ -569,7 +548,7 @@ function createUnifiedTable() {
 
         // --- Action dropdown ---
         const actions = getActionsForFile(file);
-        const currentAction = perFileResolutions.get(file.path) || '';
+        const currentAction = perFileResolutions.get(resKey(file.path)) || '';
         const actionOptions = actions.map(a =>
             `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`
         ).join('');
@@ -823,10 +802,10 @@ function updateDialogContent() {
         if (fileListChanged) {
             // Assign default actions for newly appearing files
             files.forEach(f => {
-                if (!perFileResolutions.has(f.path)) {
+                if (!perFileResolutions.has(resKey(f.path))) {
                     const defaultAction = getDefaultAction(f);
                     if (defaultAction) {
-                        perFileResolutions.set(f.path, defaultAction);
+                        perFileResolutions.set(resKey(f.path), defaultAction);
                     }
                 }
             });
@@ -1394,7 +1373,6 @@ function initializeFileManager() {
     window.requestFileManagerSyncRefresh = requestFileManagerSyncRefresh;
     window.openUnifiedDialog = openUnifiedDialog;
     window.requestOpenFileDialog = requestOpenFileDialog;
-    window.submitConflictResolution = submitConflictResolution;
     window.cancelConflictResolution = cancelConflictResolution;
     window.onConflictActionChange = onConflictActionChange;
     window.onConflictApplyAll = onConflictApplyAll;
