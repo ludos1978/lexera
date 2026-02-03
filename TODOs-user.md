@@ -117,7 +117,7 @@
 | `#change` | Handling scope creep, pivots, unexpected shifts |
 | `#lessons` | Retrospectives, continuous improvement, iteration |
 
-- [ ] /refactor make sure path handling is consistent in the whole project. especially when it comes to how files are managed, stored and compared!
+- [x] /refactor make sure path handling is consistent in the whole project. especially when it comes to how files are managed, stored and compared!
 
 - [ ] How could we combine a deadline and a task (- [ ]) with a date so the user must check the task (- [ ]) or remove it. othervise it shows in the dashboard. We show all deadlines, the ones in the past as red! Suggest a simple and well integrated solution, which likely uses the dashboard, but somehow we must activate it so it's filtered from the boards. Maybe something like:
   - [ ] !{timedate} : which will be shown while its not checked. If there is a year in the date use this exact date. If there is no year in the timedate, assume it's a date within the last {duration_of_year-6Months} .
@@ -126,7 +126,7 @@
 it. it should suggest actions the minimize data loss, prefering internal changes over external ones. also we might include a toggle
 to show a diff as a preview panel. this should switch between all the files, only ever one diff view can be active. it diffs between file and kanban board content!
 
-- [ ] add #communication to the tags, similar to the #preparation tag
+- [x] add #communication to the tags, similar to the #preparation tag
 
 - [ ] add the moscow style tags #must #should #could #wont
 

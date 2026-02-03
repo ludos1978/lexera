@@ -2577,6 +2577,24 @@
                   "backgroundDark": "#56B4E9"
                 }
               },
+              "communication": {
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "full",
+                  "color": "#4A90D9"
+                },
+                "light": {
+                  "background": "#64B5F680",
+                  "text": "#000000",
+                  "backgroundDark": "#64B5F6"
+                },
+                "dark": {
+                  "background": "#64B5F680",
+                  "text": "#ffffff",
+                  "backgroundDark": "#64B5F6"
+                }
+              },
               "presentation": {
                 "border": {
                   "style": "solid",
@@ -4366,6 +4384,25 @@
                 },
                 "cornerBadge": {
                   "label": "🔧",
+                  "position": "top-left",
+                  "style": "circle"
+                }
+              },
+              "communication": {
+                "headerBar": {
+                  "height": "20px",
+                  "label": "COMMUNICATION",
+                  "color": "#64B5F6",
+                  "labelColor": "#000000"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#64B5F6"
+                },
+                "cornerBadge": {
+                  "label": "💬",
                   "position": "top-left",
                   "style": "circle"
                 }
