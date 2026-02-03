@@ -1,9 +1,130 @@
+- [ ] if i press save in the save dialogue it reopens when i close the view.
+
+- [ ] add these type of tags!
+
+## Scope A — Project Lifecycle (Phase-Based)
+
+*"Where are we in the semester arc?"*
+
+| Tag | Scope |
+| --- | --- |
+| `#ideation` | Brainstorming course concepts, identifying themes |
+| `#acquisition` | Finding & onboarding new partner companies |
+| `#scoping` | Defining project briefs, deliverables, constraints |
+| `#preparation` | Creating lectures, slides, exercises, materials |
+| `#kickoff` | Initial meetings, student briefings, team formation |
+| `#teaching` | Live sessions — lectures, workshops, inputs |
+| `#execution` | Accompanying ongoing project work |
+| `#milestone` | Intermediate check-ins, sprint reviews |
+| `#review` | Feedback rounds with students and/or partners |
+| `#assessment` | Grading, rubrics, written evaluations |
+| `#presentation` | Final demos, showcases, pitch events |
+| `#handoff` | Delivering results to partner, knowledge transfer |
+| `#closing` | Retrospectives, wrap-up, course conclusion |
+| `#improvement` | Post-semester reflection, course redesign |
+| `#admin` | Ongoing bureaucracy, room bookings, forms |
+
+
+## Scope B — Stakeholder-Oriented
+
+*"Who am I doing this for / with?"*
+
+| Tag | Scope |
+| --- | --- |
+| `#partner` | Communication & coordination with external companies |
+| `#students` | Student-facing tasks, briefings, Q&A |
+| `#faculty` | Coordination with colleagues, co-lecturers |
+| `#department` | Institutional obligations, curriculum alignment |
+| `#mentoring` | Coaching individual student teams |
+| `#acquisition` | Prospecting, pitching to potential new partners |
+| `#relationship` | Maintaining long-term partner & alumni connections |
+| `#teaching` | Delivering content to the class |
+| `#grading` | Evaluating student work |
+| `#reporting` | Summaries for partners, faculty, or administration |
+| `#logistics` | Scheduling, rooms, tools, platforms |
+| `#conflict` | Mediating issues (team problems, partner friction) |
+| `#public` | External visibility — showcases, publications, PR |
+| `#self` | Own professional development, conference prep |
+| `#compliance` | Data protection, contracts, university regulations |
+
+## Scope C — Activity-Type (GTD / Energy-Based)
+
+*"What kind of work is this?"*
+
+| Tag | Scope |
+| --- | --- |
+| `#prepare` | Creating slides, handouts, exercises |
+| `#communicate` | Emails, calls, messages — any party |
+| `#teach` | Live delivery — lectures, workshops, critiques |
+| `#supervise` | Guiding student teams, checking progress |
+| `#evaluate` | Grading, rubrics, written feedback |
+| `#coordinate` | Aligning schedules, bridging students ↔ partners |
+| `#document` | Meeting notes, project briefs, templates |
+| `#develop` | Designing new modules, iterating on course |
+| `#research` | Exploring methods, tools, case studies, references |
+| `#present` | Giving talks, demos — internal or external |
+| `#design` | Structuring assignments, crafting project briefs |
+| `#troubleshoot` | Solving unexpected problems, tech issues |
+| `#network` | Industry events, relationship building |
+| `#reflect` | Retrospectives, journaling, lessons learned |
+| `#admin` | Forms, approvals, bureaucratic overhead |
+
+## Scope D — Deliverable / Output-Based
+
+*"What artifact am I producing?"*
+
+| Tag | Scope |
+| --- | --- |
+| `#slides` | Lecture presentations, workshop decks |
+| `#brief` | Project briefs for students and/or partners |
+| `#rubric` | Grading criteria, evaluation frameworks |
+| `#handout` | Exercise sheets, worksheets, templates |
+| `#correspondence` | Emails, formal letters, announcements |
+| `#protocol` | Meeting notes, decision logs |
+| `#report` | Semester reports, partner summaries, evaluations |
+| `#feedback` | Written feedback to students or teams |
+| `#schedule` | Timetables, milestone plans, Gantt charts |
+| `#contract` | Agreements, MOUs, NDAs with partners |
+| `#showcase` | Final presentation materials, exhibition assets |
+| `#survey` | Course evaluations, partner feedback forms |
+| `#template` | Reusable course materials for future semesters |
+| `#portfolio` | Curated student work, case study documentation |
+| `#archive` | End-of-semester documentation, file organization |
+
+**Best for:** Tracking tangible outputs. Excellent for quality control ("are all my `#brief` items done before kickoff?") and building a reusable `#template` / `#archive` library over semesters.
+
+---
+
+## Scope E — PM Knowledge Areas (PMBOK-Adapted)
+
+*"What management concern does this address?"*
+
+| Tag | Scope |
+| --- | --- |
+| `#scope` | Defining what's in/out, requirements, boundaries |
+| `#time` | Scheduling, deadlines, milestone tracking |
+| `#quality` | Standards, review criteria, expectations |
+| `#communication` | All stakeholder information flow |
+| `#risk` | Identifying & mitigating issues before they escalate |
+| `#resources` | Tools, rooms, budgets, platforms |
+| `#integration` | Aligning course goals, partner needs, student learning |
+| `#procurement` | Acquiring partners, tools, licenses, materials |
+| `#stakeholder` | Relationship management, expectation alignment |
+| `#knowledge` | Teaching, mentoring, knowledge transfer |
+| `#assessment` | Measuring outcomes — grades, partner satisfaction |
+| `#documentation` | Records, protocols, formal paperwork |
+| `#compliance` | University regs, data protection (DSGVO), contracts |
+| `#change` | Handling scope creep, pivots, unexpected shifts |
+| `#lessons` | Retrospectives, continuous improvement, iteration |
+
+- [ ] /refactor make sure path handling is consistent in the whole project. especially when it comes to how files are managed, stored and compared!
+
 - [ ] How could we combine a deadline and a task (- [ ]) with a date so the user must check the task (- [ ]) or remove it. othervise it shows in the dashboard. We show all deadlines, the ones in the past as red! Suggest a simple and well integrated solution, which likely uses the dashboard, but somehow we must activate it so it's filtered from the boards. Maybe something like:
   - [ ] !{timedate} : which will be shown while its not checked. If there is a year in the date use this exact date. If there is no year in the timedate, assume it's a date within the last {duration_of_year-6Months} .
 
-- [ ] analyze the execution flow for all possible situations where the file manager might be opened including the user opening   
-it. it should suggest actions the minimize data loss, prefering internal changes over external ones. also we might include a toggle 
-to show a diff as a preview panel. this should switch between all the files, only ever one diff view can be active. it diffs between file and kanban board content! 
+- [ ] analyze the execution flow for all possible situations where the file manager might be opened including the user opening
+it. it should suggest actions the minimize data loss, prefering internal changes over external ones. also we might include a toggle
+to show a diff as a preview panel. this should switch between all the files, only ever one diff view can be active. it diffs between file and kanban board content!
 
 - [ ] add #communication to the tags, similar to the #preparation tag
 
