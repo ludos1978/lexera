@@ -967,6 +967,10 @@ function updateDialogContent() {
             const savedState = saveDropdownState(tableContainer);
             tableContainer.innerHTML = createUnifiedTable();
             restoreDropdownState(tableContainer, savedState);
+            // Re-render diff panel if it was active (rebuild recreated the empty #diff-panel div)
+            if (diffActiveFile && diffData) {
+                renderDiffPanel();
+            }
             return;
         }
 
