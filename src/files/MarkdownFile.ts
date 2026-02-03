@@ -48,6 +48,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
     // ============= FRONTEND STATE (Kanban UI) =============
     protected _isInEditMode: boolean = false;          // User actively editing in task/column editor
+    protected _preserveRawContent: boolean = false;    // Raw content should not be regenerated (edited via diff view)
 
     // ============= SAVE STATE (Instance-level, no global registry!) =============
     // Counter instead of boolean: incremented on each save, decremented on each
@@ -317,6 +318,22 @@ export abstract class MarkdownFile implements vscode.Disposable {
         this._isInEditMode = inEditMode;
     }
 
+    /**
+     * Check if raw content should be preserved (not regenerated from tasks)
+     * Set when content is edited via diff view to prevent regeneration from overwriting raw edits
+     */
+    public shouldPreserveRawContent(): boolean {
+        return this._preserveRawContent;
+    }
+
+    /**
+     * Set whether raw content should be preserved
+     * @param value true to prevent regeneration from tasks, false to allow normal regeneration
+     */
+    public setPreserveRawContent(value: boolean): void {
+        this._preserveRawContent = value;
+    }
+
     public isDirtyInEditor(): boolean {
         // Delegates to actual VS Code document dirty check
         return this.isDocumentDirtyInVSCode();
@@ -409,12 +426,14 @@ export abstract class MarkdownFile implements vscode.Disposable {
                     this._content = content;
                     this._baseline = content;
                     this._hasFileSystemChanges = false;
+                    this._preserveRawContent = false; // Clear flag - reloaded content is fresh from disk
                     this._lastModified = await this._getFileModifiedTime();
 
                     this._emitChange('reloaded');
                 } else {
                     // Content unchanged - verification returned baseline, this is a false alarm
                     this._hasFileSystemChanges = false;
+                    this._preserveRawContent = false; // Clear flag on reload
                     this._lastModified = await this._getFileModifiedTime();
                 }
             } else {
@@ -514,6 +533,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             this._baseline = this._content;
             this._hasFileSystemChanges = false;
             this._lastModified = new Date();
+            this._preserveRawContent = false; // Clear flag after save - raw content is now the baseline
 
             // TRANSACTION: Commit the transaction
             MarkdownFile._saveTransactionManager.commitTransaction(this._relativePath, transactionId);

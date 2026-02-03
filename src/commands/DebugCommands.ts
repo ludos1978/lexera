@@ -422,13 +422,16 @@ export class DebugCommands extends SwitchBasedCommand {
                     let columnsUpdated = 0;
                     for (const column of board.columns) {
                         const columnIncludeFiles = column.includeFiles || [];
-                        // Match against both relative and absolute paths since board may store either
-                        const matches = columnIncludeFiles.some((inc: string) =>
-                            MarkdownFile.isSameFile(inc, incRelPath) ||
-                            MarkdownFile.isSameFile(inc, incAbsPath) ||
-                            inc === incRelPath ||
-                            inc === incAbsPath);
-                        console.log(`[DebugCommands] onContentChanged: column "${column.id}" includeFiles=[${columnIncludeFiles.join(', ')}], matches=${matches}`);
+                        // Debug: log detailed match results for each path comparison
+                        const matchResults = columnIncludeFiles.map((inc: string) => {
+                            const isSameFileRel = MarkdownFile.isSameFile(inc, incRelPath);
+                            const isSameFileAbs = MarkdownFile.isSameFile(inc, incAbsPath);
+                            const exactRel = inc === incRelPath;
+                            const exactAbs = inc === incAbsPath;
+                            return { inc, isSameFileRel, isSameFileAbs, exactRel, exactAbs, any: isSameFileRel || isSameFileAbs || exactRel || exactAbs };
+                        });
+                        const matches = matchResults.some((r: { any: boolean }) => r.any);
+                        console.log(`[DebugCommands] onContentChanged: column "${column.id}" matches=${matches}, matchResults=${JSON.stringify(matchResults)}`);
 
                         if (matches) {
                             // Parse fresh tasks from updated content

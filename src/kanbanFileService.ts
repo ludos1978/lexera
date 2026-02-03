@@ -408,9 +408,17 @@ export class KanbanFileService {
                     .filter(f => f.exists())
                     .filter(f => f.getFileType() !== 'include-regular');
                 const forceIncludeSave = force || syncIncludes;
+
+                // Debug logging for include file save selection
+                for (const f of includeCandidates) {
+                    console.log(`[KanbanFileService.saveUnified] Include candidate: ${f.getRelativePath()}, hasUnsavedChanges=${f.hasUnsavedChanges()}, preserveRaw=${f.shouldPreserveRawContent()}, inForceWritePaths=${forceWritePaths.has(f.getPath())}`);
+                }
+
                 const includeFiles = forceIncludeSave
                     ? includeCandidates
                     : includeCandidates.filter(f => f.hasUnsavedChanges());
+
+                console.log(`[KanbanFileService.saveUnified] Saving ${includeFiles.length} include files (forceIncludeSave=${forceIncludeSave})`);
 
                 if (includeFiles.length > 0) {
                     const saveResults = await Promise.allSettled(

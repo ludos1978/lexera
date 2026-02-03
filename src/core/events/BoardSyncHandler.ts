@@ -193,6 +193,15 @@ export class BoardSyncHandler {
                         continue;
                     }
 
+                    // CRITICAL: Skip files that were edited via diff view
+                    // These have raw content that should be preserved, not regenerated from tasks
+                    if (file.shouldPreserveRawContent()) {
+                        if (isDebug) {
+                            console.log(`[BoardSyncHandler] Skipping regeneration for "${relativePath}" - preserveRawContent=true (edited via diff view)`);
+                        }
+                        continue;
+                    }
+
                     const includeFile = file as IncludeFile;
                     const content = includeFile.generateFromTasks(column.tasks);
                     const currentContent = includeFile.getContent();
@@ -253,6 +262,15 @@ export class BoardSyncHandler {
                         // This prevents cache corruption if include path matches main file
                         if (file.getFileType() === 'main') {
                             console.error(`[BoardSyncHandler] BUG: Refusing to write task include content to MainKanbanFile: ${relativePath}`);
+                            continue;
+                        }
+
+                        // CRITICAL: Skip files that were edited via diff view
+                        // These have raw content that should be preserved, not regenerated from tasks
+                        if (file.shouldPreserveRawContent()) {
+                            if (isDebug) {
+                                console.log(`[BoardSyncHandler] Skipping regeneration for task include "${relativePath}" - preserveRawContent=true (edited via diff view)`);
+                            }
                             continue;
                         }
 

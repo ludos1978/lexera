@@ -167,6 +167,15 @@ export class KanbanDiffService implements vscode.Disposable {
             }
         }
 
+        // Clear preserveRawContent flag when diff is closed
+        // This allows normal regeneration if user didn't save
+        if (this.fileRegistry) {
+            const file = this.fileRegistry.get(filePath) || this.fileRegistry.findByPath(filePath);
+            if (file) {
+                file.setPreserveRawContent(false);
+            }
+        }
+
         this.activeSessions.delete(filePath);
     }
 
@@ -206,7 +215,9 @@ export class KanbanDiffService implements vscode.Disposable {
         if (file) {
             // Update the file content in the registry (don't update baseline - keep as unsaved change)
             file.setContent(newContent, false);
-            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()})`);
+            // CRITICAL: Mark file to preserve raw content - prevents regeneration from overwriting diff edits
+            file.setPreserveRawContent(true);
+            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()}), preserveRaw=true`);
         } else {
             console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: File not found in registry: "${filePath}"`);
         }
@@ -283,6 +294,15 @@ export class KanbanDiffService implements vscode.Disposable {
                         }
 
                         this.activeSessions.delete(filePath);
+
+                        // Clear preserveRawContent flag when diff is closed
+                        // This allows normal regeneration if user didn't save
+                        if (this.fileRegistry) {
+                            const file = this.fileRegistry.get(filePath) || this.fileRegistry.findByPath(filePath);
+                            if (file) {
+                                file.setPreserveRawContent(false);
+                            }
+                        }
 
                         // Notify callback that diff was closed externally
                         if (this.onDiffClosedCallback) {
