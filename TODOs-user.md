@@ -202,7 +202,8 @@ a
 
 - [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
 
-- [ ] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
+- [x] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
+  - ANALYSIS: Yes, 12+ inline definitions can use shared BaseIncludeContext type (4 props), LinkIncludeContext extends it (7 props)
 
 - [ ] if we replace links by using "search for file" and do multiple replacements at once, i want all of them undone in one step. not individual ones.
 
