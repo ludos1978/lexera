@@ -1,3 +1,130 @@
+
+- [ ] How could we combine a deadline and a task (- [ ]) with a date so the user must check the task (- [ ]) or remove it. othervise it shows in the dashboard. We show all deadlines, the ones in the past as red! Suggest a simple and well integrated solution, which likely uses the dashboard, but somehow we must activate it so it's filtered from the boards. Maybe something like:
+  - [ ] !{timedate} : which will be shown while its not checked. If there is a year in the date use this exact date. If there is no year in the timedate, assume it's a date within the last {duration_of_year-6Months} .
+
+- [ ] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
+
+- [ ] with an included file the conflict resolution doesnt work the
+  same as the main file!!! when i tell it to overwrite and backup
+  the external changes it backups the old state and doesnt write
+  the internal to the file! /refactor try to use the same conflict
+  resolution logic code for all files.
+  also it doesnt show a conflict handler that incoroprates all the
+  files!!! we must create a different file conflict dialogue that
+  can handle all the files. we might reuse the file states
+  overview structure or even for it to be the same dialogue! It
+  should show the states of each file, allow loading, saving,
+  backup the old state etc! also verification of the integrated
+  and tracked media / embeddings! make a plan for the view to be
+  reused for this conflict handling case!!!
+
+- [ ] i like the dialogue, but it should be centered and not moving
+  into the screen, just show it. also the action for all elements
+  should be the first and in the same column as the other actions
+  (top row). also it doesnt really use the same dialogue as the
+  File States Overview. when i save it should open the same
+  dialogue as when i click the button in the top row. integrate
+  the information of the File States Overview into the new view!
+  by pressing save it should set the overwrite action as default
+  (if needed). if i press ctrl+r or meta+r it should set load from
+  external as default. also give all options such as overwrite
+  file, overwrite file with backup of existing file, load from
+  file and discard kanban data, load from file and backup kanban
+  data, skip actions this this file, this should be selectable for
+  each of the files individually, but of course only relevant
+  features should be available!
+
+- [ ] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
+
+
+- [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) . also [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
+
+- [ ] i would like to be able to drop external files (desktop, vscode explorer into the editor without leaving it, it should place it directly inline). with all the features we have in the task creation pasting as well!
+
+- [ ] lets change the file save/load/reload/conflict handling like this:
+  - when the main file or any imported files in the kanban have unsaved modifications:
+    - and when the external file is changed
+  - if the main file or imported file doesnt have any unsaved changes. when any external change is detected (the main or an imported file is modified, NOT A BUFFER CHANGE) the user is asked if he wants to import the changes or ignore them. the user might import them again by going into the file states overview and press reload from file.
+  -
+  - when saving the board, for any external file that is modified (the file has changed since the loading of the data). this can only happen when the user decided to ignore the change (see previous point), or its a race condition. then ask the user if he wants to:
+    - overwrite the file and backup the external changes (moves the outside file to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file )
+    - load the external changes and backup the internal changes (writes internal data to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file)
+    - skip the saving action (and also skip loading the content from the filedata.)
+  - create a dialog with all files that have differences and the actions to be taken if multiple files are affected (use the same dialogue if there is only one file).
+
+
+
+- [ ] could we integrate a basic web viewer inline (shows the page if it's link with ![](weburl) ) . currently it shows "url.com (Alt+click to open)" but it doesnt work. as plugin
+a
+- [ ] what puppeteer features could we now implement that we have added that addon?
+
+- [ ] could we add more formats/features similar to notion?
+
+- [ ] i want to be able to do ![](file.csv) to import an csv.
+
+- [ ] apparently exporting is using the source data format while processing things such as tags etc. i want to use an internal format, while storing the source format (so we can export into that again)
+
+- [ ] Add some internal navigation functionality. it could use user defined tags such as #2.1 and somethink like <#2.1> or what would you suggest?
+
+- [x] add Excourse to the Teaching-Content  tags
+
+- [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
+
+- [x] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
+  - ANALYSIS: Yes, 12+ inline definitions can use shared BaseIncludeContext type (4 props), LinkIncludeContext extends it (7 props)
+
+- [ ] if we replace links by using "search for file" and do multiple replacements at once, i want all of them undone in one step. not individual ones.
+
+- [ ] add a table editor that allows sorting of content by each category.
+
+- [ ] can this be integrated ? https://github.com/Skarlso/adventure-voter
+
+- [ ] would it be possible to take a screenshot of a webpage if a link is added to the board?
+
+  1. Open Graph images (simplest) - Fetch og:image meta tags from URLs. Most websites provide preview images. No screenshot needed, just an HTTP fetch + HTML parsing.
+  2. Puppeteer/Playwright (full screenshots) - Run headless browser in extension backend to capture actual screenshots. Heavier dependency (~100-400MB), slower, but gives real screenshots.
+
+- [ ] #### Combined Queries
+
+A column can have multiple query tags:
+
+```markdown
+- Reto This Week ?@reto ?.w15
+```
+
+### Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `&` | AND | `#gather_Reto&day<3` |
+| `\|` | OR | `#gather_Reto\|Anita` |
+| `=` | EQUAL | `#gather_day=0` |
+| `!=` | NOT EQUAL | `#gather_weekday!=sat` |
+| `<` | LESS THAN | `#gather_day<7` |
+| `>` | GREATER THAN | `#gather_day>0` |
+
+### Date Properties
+
+| Property | Description | Values |
+|----------|-------------|--------|
+| `day` | Days from today | -2, -1, 0, 1, 2, ... |
+| `weekday` | Day name | mon, tue, wed, ... |
+| `weekdaynum` | Day number | 1 (Mon) to 7 (Sun) |
+| `month` | Month name | jan, feb, mar, ... |
+| `monthnum` | Month number | 1 to 12 |
+
+### ?ungathered
+
+Collects all cards that didn't match any gather rule:
+
+---
+
+# DONE
+
+- [x] the filterTagsForExport in the frontend might be obsolete. is it used?
+  - ANALYSIS: Still used - called from tagUtils.js:1435 as default fallback for export tag visibility
+
+- [x] where is the css class hidden used, is this applied in a consistent way?
 - [x] if i press save in the save dialogue it reopens when i close the view.
 
 - [x] add these type of tags!
@@ -119,9 +246,6 @@
 
 - [x] /refactor make sure path handling is consistent in the whole project. especially when it comes to how files are managed, stored and compared!
 
-- [ ] How could we combine a deadline and a task (- [ ]) with a date so the user must check the task (- [ ]) or remove it. othervise it shows in the dashboard. We show all deadlines, the ones in the past as red! Suggest a simple and well integrated solution, which likely uses the dashboard, but somehow we must activate it so it's filtered from the boards. Maybe something like:
-  - [ ] !{timedate} : which will be shown while its not checked. If there is a year in the date use this exact date. If there is no year in the timedate, assume it's a date within the last {duration_of_year-6Months} .
-
 - [x] analyze the execution flow for all possible situations where the file manager might be opened including the user opening
 it. it should suggest actions the minimize data loss, prefering internal changes over external ones. also we might include a toggle
 to show a diff as a preview panel. this should switch between all the files, only ever one diff view can be active. it diffs between file and kanban board content!
@@ -129,130 +253,6 @@ to show a diff as a preview panel. this should switch between all the files, onl
 - [x] add #communication to the tags, similar to the #preparation tag
 
 - [x] add the moscow style tags #must #should #could #wont
-
-- [ ] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
-
-- [ ] with an included file the conflict resolution doesnt work the
-  same as the main file!!! when i tell it to overwrite and backup
-  the external changes it backups the old state and doesnt write
-  the internal to the file! /refactor try to use the same conflict
-  resolution logic code for all files.
-  also it doesnt show a conflict handler that incoroprates all the
-  files!!! we must create a different file conflict dialogue that
-  can handle all the files. we might reuse the file states
-  overview structure or even for it to be the same dialogue! It
-  should show the states of each file, allow loading, saving,
-  backup the old state etc! also verification of the integrated
-  and tracked media / embeddings! make a plan for the view to be
-  reused for this conflict handling case!!!
-
-- [ ] i like the dialogue, but it should be centered and not moving
-  into the screen, just show it. also the action for all elements
-  should be the first and in the same column as the other actions
-  (top row). also it doesnt really use the same dialogue as the
-  File States Overview. when i save it should open the same
-  dialogue as when i click the button in the top row. integrate
-  the information of the File States Overview into the new view!
-  by pressing save it should set the overwrite action as default
-  (if needed). if i press ctrl+r or meta+r it should set load from
-  external as default. also give all options such as overwrite
-  file, overwrite file with backup of existing file, load from
-  file and discard kanban data, load from file and backup kanban
-  data, skip actions this this file, this should be selectable for
-  each of the files individually, but of course only relevant
-  features should be available!
-
-- [ ] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
-
-
-- [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) . also [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
-
-- [ ] i would like to be able to drop external files (desktop, vscode explorer into the editor without leaving it, it should place it directly inline). with all the features we have in the task creation pasting as well!
-
-- [ ] lets change the file save/load/reload/conflict handling like this:
-  - when the main file or any imported files in the kanban have unsaved modifications:
-    - and when the external file is changed
-  - if the main file or imported file doesnt have any unsaved changes. when any external change is detected (the main or an imported file is modified, NOT A BUFFER CHANGE) the user is asked if he wants to import the changes or ignore them. the user might import them again by going into the file states overview and press reload from file.
-  -
-  - when saving the board, for any external file that is modified (the file has changed since the loading of the data). this can only happen when the user decided to ignore the change (see previous point), or its a race condition. then ask the user if he wants to:
-    - overwrite the file and backup the external changes (moves the outside file to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file )
-    - load the external changes and backup the internal changes (writes internal data to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file)
-    - skip the saving action (and also skip loading the content from the filedata.)
-  - create a dialog with all files that have differences and the actions to be taken if multiple files are affected (use the same dialogue if there is only one file).
-
-
-
-- [ ] could we integrate a basic web viewer inline (shows the page if it's link with ![](weburl) ) . currently it shows "url.com (Alt+click to open)" but it doesnt work. as plugin
-a
-- [ ] what puppeteer features could we now implement that we have added that addon?
-
-- [ ] could we add more formats/features similar to notion?
-
-- [ ] i want to be able to do ![](file.csv) to import an csv.
-
-- [x] the filterTagsForExport in the frontend might be obsolete. is it used?
-  - ANALYSIS: Still used - called from tagUtils.js:1435 as default fallback for export tag visibility
-
-- [x] where is the css class hidden used, is this applied in a consistent way?
-
-- [ ] apparently exporting is using the source data format while processing things such as tags etc. i want to use an internal format, while storing the source format (so we can export into that again)
-
-- [ ] Add some internal navigation functionality. it could use user defined tags such as #2.1 and somethink like <#2.1> or what would you suggest?
-
-- [x] add Excourse to the Teaching-Content  tags
-
-- [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
-
-- [x] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
-  - ANALYSIS: Yes, 12+ inline definitions can use shared BaseIncludeContext type (4 props), LinkIncludeContext extends it (7 props)
-
-- [ ] if we replace links by using "search for file" and do multiple replacements at once, i want all of them undone in one step. not individual ones.
-
-- [ ] add a table editor that allows sorting of content by each category.
-
-- [ ] can this be integrated ? https://github.com/Skarlso/adventure-voter
-
-- [ ] would it be possible to take a screenshot of a webpage if a link is added to the board?
-
-  1. Open Graph images (simplest) - Fetch og:image meta tags from URLs. Most websites provide preview images. No screenshot needed, just an HTTP fetch + HTML parsing.
-  2. Puppeteer/Playwright (full screenshots) - Run headless browser in extension backend to capture actual screenshots. Heavier dependency (~100-400MB), slower, but gives real screenshots.
-
-- [ ] #### Combined Queries
-
-A column can have multiple query tags:
-
-```markdown
-- Reto This Week ?@reto ?.w15
-```
-
-### Operators
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `&` | AND | `#gather_Reto&day<3` |
-| `\|` | OR | `#gather_Reto\|Anita` |
-| `=` | EQUAL | `#gather_day=0` |
-| `!=` | NOT EQUAL | `#gather_weekday!=sat` |
-| `<` | LESS THAN | `#gather_day<7` |
-| `>` | GREATER THAN | `#gather_day>0` |
-
-### Date Properties
-
-| Property | Description | Values |
-|----------|-------------|--------|
-| `day` | Days from today | -2, -1, 0, 1, 2, ... |
-| `weekday` | Day name | mon, tue, wed, ... |
-| `weekdaynum` | Day number | 1 (Mon) to 7 (Sun) |
-| `month` | Month name | jan, feb, mar, ... |
-| `monthnum` | Month number | 1 to 12 |
-
-### ?ungathered
-
-Collects all cards that didn't match any gather rule:
-
----
-
-# DONE
 
 - [x] in the marp presentation export the video playback plugin must be modified. It should automatically stop videos when the slide is changed (it can allways stop all videos in the presentation). Also it would be nice if we could have a start time and optional end time ./filename.mp4&start=40&end=60s
 

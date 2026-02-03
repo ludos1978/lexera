@@ -649,6 +649,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-terminal-ansiYellow);
             color: var(--vscode-editor-foreground);
         }
+        /* Overdue deadline task styling */
+        .overdue .entry-title {
+            color: var(--vscode-errorForeground);
+        }
+        .overdue .entry-location {
+            color: var(--vscode-errorForeground);
+            opacity: 0.8;
+        }
         .board-config {
             display: flex;
             align-items: center;
@@ -918,7 +926,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 // Items container - level 2
                 html += '<div class="tree-group-items">';
                 groupItems.forEach(item => {
-                    html += '<div class="tree-row upcoming-item" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+                    const overdueClass = item.isOverdue ? ' overdue' : '';
+                    html += '<div class="tree-row upcoming-item' + overdueClass + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
                     html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
                     html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                     html += '<div class="tree-twistie"></div>';

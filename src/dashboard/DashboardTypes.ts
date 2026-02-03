@@ -57,6 +57,8 @@ export interface UpcomingItem {
     timeSlot?: string;
     /** Original raw title with all tags */
     rawTitle: string;
+    /** True if this is an overdue deadline task (unchecked and past date) */
+    isOverdue?: boolean;
 }
 
 /**

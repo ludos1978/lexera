@@ -2,10 +2,25 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-01
+**Last Updated:** 2026-02-03
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-02-03) - Deadline Checkbox Tasks in Dashboard
+
+### Modified: `src/dashboard/DashboardScanner.ts`
+- `DashboardScanner._extractTemporalInfo(text)` — (MODIFIED) Added `checkboxState` to return type ('unchecked' | 'checked' | 'none'). Detects if temporal tag is on a line starting with `- [ ]` or `- [x]` checkbox.
+- `DashboardScanner.scanBoard()` — (MODIFIED) Skips tasks with checked deadline checkboxes (`- [x] !date`). Includes overdue unchecked deadline tasks. Adds `isOverdue` flag to results.
+
+### Modified: `src/dashboard/DashboardTypes.ts`
+- `UpcomingItem.isOverdue` — New optional boolean field indicating overdue deadline task (unchecked checkbox with past date)
+
+### Modified: `src/kanbanDashboardProvider.ts`
+- CSS `.overdue` — Red styling for overdue deadline tasks in dashboard
+- `renderUpcomingItems()` — (MODIFIED) Adds 'overdue' class to items with `isOverdue: true`
 
 ---
 

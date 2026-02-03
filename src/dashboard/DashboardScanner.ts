@@ -163,6 +163,14 @@ export class DashboardScanner {
         boardName: string,
         timeframeDays: number
     ): { upcomingItems: UpcomingItem[]; summary: BoardTagSummary } {
+        // DEBUG: Entry point logging
+        console.log('[DashboardScanner] scanBoard CALLED:', boardName, 'columns:', board.columns?.length);
+        // Log first 3 columns with their task counts
+        board.columns?.slice(0, 3).forEach((col, i) => {
+            console.log(`[DashboardScanner] Column ${i}: "${col.title}" tasks: ${col.tasks?.length}`);
+            col.tasks?.forEach((t, j) => console.log(`  Task ${j}: "${t.title}"`));
+        });
+
         const upcomingItems: UpcomingItem[] = [];
         const tagCounts = new Map<string, { count: number; type: 'hash' | 'person' | 'temporal' }>();
         let totalTasks = 0;
@@ -195,7 +203,7 @@ export class DashboardScanner {
             let taskIndex = 0;
             for (const task of column.tasks || []) {
                 totalTasks++;
-                const taskText = (task.title || '') + ' ' + (task.description || '');
+                const taskText = (task.title || '') + '\n' + (task.description || '');
 
                 // Extract all tags from task (for tag summary)
                 const tags = TextMatcher.extractTags(taskText);
@@ -211,8 +219,26 @@ export class DashboardScanner {
                 // Check task's temporal tags (title + description)
                 const taskTemporal = this._extractTemporalInfo(taskText);
 
+                // DEBUG: Log ALL tasks in first column
+                if (columnIndex === 0) {
+                    console.log('[DashboardScanner] Col0 Task:', JSON.stringify({
+                        title: task.title,
+                        hasTemporal: !!taskTemporal,
+                        checkboxState: taskTemporal?.checkboxState,
+                        tag: taskTemporal?.tag,
+                        date: taskTemporal?.date?.toISOString()
+                    }));
+                }
+
                 if (taskTemporal) {
                     temporalTasks++;
+
+                    // Skip checked deadline tasks (- [x] !date)
+                    if (taskTemporal.checkboxState === 'checked') {
+                        logger.debug('[DashboardScanner] Skipping checked deadline');
+                        taskIndex++;
+                        continue;
+                    }
 
                     // Determine effective date for this task
                     let effectiveDate = taskTemporal.date;
@@ -240,7 +266,33 @@ export class DashboardScanner {
 
                     const withinTimeframe = effectiveDate ? isWithinTimeframe(effectiveDate, timeframeDays, effectiveDateIsWeekBased) : false;
 
-                    if (effectiveDate && withinTimeframe) {
+                    // For deadline tasks (unchecked checkbox), also include overdue items
+                    const isDeadlineTask = taskTemporal.checkboxState === 'unchecked';
+                    let isOverdue = false;
+                    if (effectiveDate) {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const checkDate = new Date(effectiveDate);
+                        checkDate.setHours(0, 0, 0, 0);
+                        isOverdue = checkDate < today;
+                    }
+
+                    // Include if within timeframe OR if it's an overdue deadline task
+                    const shouldInclude = withinTimeframe || (isDeadlineTask && isOverdue);
+
+                    // DEBUG: Log inclusion decision for first column
+                    if (columnIndex === 0) {
+                        console.log('[DashboardScanner] Col0 Inclusion:', JSON.stringify({
+                            tag: taskTemporal.tag,
+                            withinTimeframe,
+                            isDeadlineTask,
+                            isOverdue,
+                            shouldInclude,
+                            effectiveDate: effectiveDate?.toISOString()
+                        }));
+                    }
+
+                    if (effectiveDate && shouldInclude) {
                         upcomingItems.push({
                             boardUri,
                             boardName,
@@ -253,7 +305,8 @@ export class DashboardScanner {
                             week: taskTemporal.week || columnTemporal?.week,
                             year: taskTemporal.year || columnTemporal?.year,
                             timeSlot: taskTemporal.timeSlot,
-                            rawTitle: task.title || ''
+                            rawTitle: task.title || '',
+                            isOverdue: isDeadlineTask && isOverdue
                         });
                     }
                 }
@@ -263,6 +316,7 @@ export class DashboardScanner {
         }
 
         logger.debug('[DashboardScanner] END scan', { upcomingItems: upcomingItems.length });
+        console.log('[DashboardScanner] scanBoard DONE:', upcomingItems.length, 'upcoming items');
 
         // Convert tag counts to sorted array
         const tags: TagInfo[] = Array.from(tagCounts.entries())
@@ -287,6 +341,7 @@ export class DashboardScanner {
     /**
      * Extract temporal information from text
      * Now captures time slots alongside dates/weeks
+     * Also detects checkbox state for deadline tasks (- [ ] or - [x] at line start)
      */
     private static _extractTemporalInfo(text: string): {
         tag: string;
@@ -295,6 +350,7 @@ export class DashboardScanner {
         year?: number;
         timeSlot?: string;
         hasExplicitDate?: boolean;  // true if date came from explicit date/week tag
+        checkboxState?: 'unchecked' | 'checked' | 'none';  // checkbox state if temporal tag is on a checkbox line
     } | null {
         let result: {
             tag: string;
@@ -303,6 +359,7 @@ export class DashboardScanner {
             year?: number;
             timeSlot?: string;
             hasExplicitDate?: boolean;
+            checkboxState?: 'unchecked' | 'checked' | 'none';
         } | null = null;
 
         // Check for time slot first (can be combined with date/week)
@@ -392,6 +449,27 @@ export class DashboardScanner {
             result = { tag: timeSlot, date: today, timeSlot, hasExplicitDate: false };
         }
 
+        // Detect checkbox state: find which line contains the temporal tag
+        // and check if that line starts with - [ ] or - [x]
+        if (result) {
+            const lines = text.split('\n');
+            for (const line of lines) {
+                if (line.includes(result.tag)) {
+                    // Check if line starts with checkbox (allowing leading whitespace)
+                    const uncheckedMatch = line.match(/^\s*- \[ \]/);
+                    const checkedMatch = line.match(/^\s*- \[[xX]\]/);
+                    if (checkedMatch) {
+                        result.checkboxState = 'checked';
+                    } else if (uncheckedMatch) {
+                        result.checkboxState = 'unchecked';
+                    } else {
+                        result.checkboxState = 'none';
+                    }
+                    break;
+                }
+            }
+        }
+
         return result;
     }
 
@@ -425,7 +503,7 @@ export class DashboardScanner {
 
             let taskIndex = 0;
             for (const task of column.tasks || []) {
-                const taskText = (task.title || '') + ' ' + (task.description || '');
+                const taskText = (task.title || '') + '\n' + (task.description || '');
                 const tags = TextMatcher.extractTags(taskText);
 
                 // Check if any tag in task matches the search (exact match)
