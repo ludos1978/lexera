@@ -190,7 +190,8 @@ a
 
 - [ ] i want to be able to do ![](file.csv) to import an csv.
 
-- [ ] the filterTagsForExport in the frontend might be obsolete. is it used?
+- [x] the filterTagsForExport in the frontend might be obsolete. is it used?
+  - ANALYSIS: Still used - called from tagUtils.js:1435 as default fallback for export tag visibility
 
 - [x] where is the css class hidden used, is this applied in a consistent way?
 
