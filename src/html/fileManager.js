@@ -96,21 +96,20 @@ function getActionsForFile(file) {
 }
 
 function getDefaultAction(file) {
-    if (!openMode || openMode === 'browse') return '';
-    if (openMode === 'save_conflict') {
-        return file.hasExternalChanges ? 'overwrite' : '';
+    switch (openMode) {
+        case 'save_conflict':
+            return file.hasExternalChanges ? 'overwrite' : '';
+        case 'reload_request':
+            return 'load_external';
+        case 'external_change':
+            if (file.hasExternalChanges && file.hasUnsavedChanges) {
+                // Both sides changed — save kanban content but backup the external version
+                return 'overwrite_backup_external';
+            }
+            return file.hasExternalChanges ? 'load_external' : '';
+        default:
+            return '';
     }
-    if (openMode === 'reload_request') {
-        return 'load_external';
-    }
-    if (openMode === 'external_change') {
-        if (file.hasExternalChanges && file.hasUnsavedChanges) {
-            // Both sides changed — save kanban content but backup the external version
-            return 'overwrite_backup_external';
-        }
-        return file.hasExternalChanges ? 'load_external' : '';
-    }
-    return '';
 }
 
 // ============= DIALOG ENTRY POINTS =============
@@ -267,6 +266,16 @@ function cancelConflictResolution() {
     hideFileManager();
 }
 
+function clearResolutionForFile(filePath) {
+    if (!filePath) return;
+    const name = filePath.split('/').pop();
+    for (const key of perFileResolutions.keys()) {
+        if (key.split('/').pop() === name) {
+            perFileResolutions.delete(key);
+        }
+    }
+}
+
 function onConflictActionChange(selectElement) {
     const filePath = selectElement.dataset.filePath;
     const action = selectElement.value;
@@ -317,11 +326,9 @@ function createDialogContent() {
                     </button>
                     <span class="file-manager-timestamp">Updated: ${now}</span>
                 </div>
-                ${!isResolve ? `
-                    <div class="file-manager-controls">
-                        <button onclick="closeDialog()" class="file-manager-close">✕</button>
-                    </div>
-                ` : ''}
+                <div class="file-manager-controls">
+                    <button onclick="${isResolve ? 'cancelConflictResolution()' : 'closeDialog()'}" class="file-manager-close">✕</button>
+                </div>
             </div>
             <div class="file-manager-content">
                 <div class="unified-table-container">
@@ -332,8 +339,7 @@ function createDialogContent() {
                 <div class="conflict-footer">
                     <div class="conflict-footer-content">
                         <div class="conflict-footer-buttons">
-                            <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Cancel</button>
-                            <button onclick="submitConflictResolution()" class="conflict-btn conflict-btn-resolve">Resolve</button>
+                            <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Close</button>
                         </div>
                     </div>
                 </div>
@@ -1428,7 +1434,7 @@ function initializeFileManager() {
                 break;
 
             case 'documentStateChanged':
-                if (fileManagerVisible && dialogMode === 'browse') {
+                if (fileManagerVisible) {
                     refreshFileManager();
                 }
                 break;
@@ -1441,12 +1447,16 @@ function initializeFileManager() {
 
             case 'individualFileSaved':
                 if (fileManagerVisible && message.success) {
+                    clearResolutionForFile(message.filePath);
+                    refreshFileManager();
                     verifyContentSync(true);
                 }
                 break;
 
             case 'individualFileReloaded':
                 if (fileManagerVisible && message.success) {
+                    clearResolutionForFile(message.filePath);
+                    refreshFileManager();
                     verifyContentSync(true);
                 }
                 break;

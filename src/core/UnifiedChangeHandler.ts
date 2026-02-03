@@ -2,16 +2,11 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import { WebviewBridge } from './bridge/WebviewBridge';
 
 /**
- * Unified External Change Handler — Batched import system
+ * Unified External Change Handler — Batched notification system
  *
- * Replaces per-file conflict dialogs with a coalesced, batched approach:
- * - File modifications are collected per-panel in a 500ms coalescing window
- * - After the window closes, ONE dialog is shown for all changed files
- * - Single file: showWarningMessage ("Import / Ignore")
- * - Multiple files: showQuickPick with canPickMany (select files to import)
- *
- * Files with unsaved kanban changes are unchecked by default (safe default).
- * Files without unsaved changes are pre-selected for import.
+ * Coalesces external file changes per-panel in a 500ms window, then sends a
+ * non-blocking notification to the webview. The user clicks "Review" to open
+ * the file manager dialog and choose per-file actions.
  *
  * NOTE: Legitimate saves (our own writes) are filtered out by _onFileSystemChange()
  * using the _skipReloadCounter flag. This handler only receives TRUE external changes.
@@ -154,32 +149,5 @@ export class UnifiedChangeHandler {
             fileCount: files.length,
             fileNames: fileNames
         });
-    }
-
-    // ============= FILE IMPORT =============
-
-    /**
-     * Import external changes for a file:
-     * - Reload from disk (updates _content, _baseline)
-     * - Clear _hasFileSystemChanges
-     * - If main file: clear _cachedBoardFromWebview, re-parse board, emit 'reloaded'
-     * - If include file: emit 'reloaded', propagation handled by file registry
-     */
-    private async _importFile(file: MarkdownFile): Promise<void> {
-        try {
-            // Clear edit mode if active
-            if (file.isInEditMode()) {
-                file.setEditMode(false);
-            }
-
-            // Reload from disk handles everything:
-            // - Updates _content and _baseline
-            // - Clears _hasFileSystemChanges
-            // - MainKanbanFile.reload() also re-parses board and emits 'reloaded'
-            // - MarkdownFile.reload() also emits 'reloaded' for include files
-            await file.reload();
-        } catch (error) {
-            console.error(`[UnifiedChangeHandler] Failed to import file ${file.getRelativePath()}:`, error);
-        }
     }
 }
