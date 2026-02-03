@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.125.0",
+  "version": "0.125.1",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -4611,6 +4611,1060 @@
                 "opacity": 0.7,
                 "pattern": "stripes-h"
               }
+            },
+            "Project-Lifecycle": {
+              "ideation": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E8D5B780",
+                  "backgroundDark": "#E8D5B7"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E8D5B780",
+                  "backgroundDark": "#E8D5B7"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#D4A574"
+                }
+              },
+              "acquisition": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#B8E0D280",
+                  "backgroundDark": "#B8E0D2"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#B8E0D280",
+                  "backgroundDark": "#B8E0D2"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#7BC4B3"
+                }
+              },
+              "scoping": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#D4E5F780",
+                  "backgroundDark": "#D4E5F7"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#D4E5F780",
+                  "backgroundDark": "#D4E5F7"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#8BBDE0"
+                }
+              },
+              "kickoff": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFE0B280",
+                  "backgroundDark": "#FFE0B2"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFE0B280",
+                  "backgroundDark": "#FFE0B2"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FFB74D"
+                }
+              },
+              "execution": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#C8E6C980",
+                  "backgroundDark": "#C8E6C9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#C8E6C980",
+                  "backgroundDark": "#C8E6C9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#81C784"
+                }
+              },
+              "milestone": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFCC8080",
+                  "backgroundDark": "#FFCC80"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFCC8080",
+                  "backgroundDark": "#FFCC80"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FFA726"
+                }
+              },
+              "handoff": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#B3E5FC80",
+                  "backgroundDark": "#B3E5FC"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#B3E5FC80",
+                  "backgroundDark": "#B3E5FC"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#4FC3F7"
+                }
+              },
+              "closing": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#D7CCC880",
+                  "backgroundDark": "#D7CCC8"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#D7CCC880",
+                  "backgroundDark": "#D7CCC8"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#A1887F"
+                }
+              },
+              "improvement": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E1BEE780",
+                  "backgroundDark": "#E1BEE7"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E1BEE780",
+                  "backgroundDark": "#E1BEE7"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#BA68C8"
+                }
+              }
+            },
+            "Stakeholder": {
+              "partner": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#BBDEFB80",
+                  "backgroundDark": "#BBDEFB"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#BBDEFB80",
+                  "backgroundDark": "#BBDEFB"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#42A5F5"
+                }
+              },
+              "students": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#C8E6C980",
+                  "backgroundDark": "#C8E6C9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#C8E6C980",
+                  "backgroundDark": "#C8E6C9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#66BB6A"
+                }
+              },
+              "faculty": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#D1C4E980",
+                  "backgroundDark": "#D1C4E9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#D1C4E980",
+                  "backgroundDark": "#D1C4E9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#7E57C2"
+                }
+              },
+              "department": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFCCBC80",
+                  "backgroundDark": "#FFCCBC"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFCCBC80",
+                  "backgroundDark": "#FFCCBC"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FF7043"
+                }
+              },
+              "mentoring": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#B2EBF280",
+                  "backgroundDark": "#B2EBF2"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#B2EBF280",
+                  "backgroundDark": "#B2EBF2"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#26C6DA"
+                }
+              },
+              "relationship": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F8BBD080",
+                  "backgroundDark": "#F8BBD0"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F8BBD080",
+                  "backgroundDark": "#F8BBD0"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#EC407A"
+                }
+              },
+              "reporting": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#CFD8DC80",
+                  "backgroundDark": "#CFD8DC"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#CFD8DC80",
+                  "backgroundDark": "#CFD8DC"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#78909C"
+                }
+              },
+              "logistics": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFF9C480",
+                  "backgroundDark": "#FFF9C4"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFF9C480",
+                  "backgroundDark": "#FFF9C4"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FDD835"
+                }
+              },
+              "public": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFAB9180",
+                  "backgroundDark": "#FFAB91"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFAB9180",
+                  "backgroundDark": "#FFAB91"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FF5722"
+                }
+              },
+              "self": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#B0BEC580",
+                  "backgroundDark": "#B0BEC5"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#B0BEC580",
+                  "backgroundDark": "#B0BEC5"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#607D8B"
+                }
+              }
+            },
+            "Activity-Type": {
+              "prepare": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E3F2FD80",
+                  "backgroundDark": "#E3F2FD"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E3F2FD80",
+                  "backgroundDark": "#E3F2FD"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#1E88E5"
+                }
+              },
+              "communicate": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E8F5E980",
+                  "backgroundDark": "#E8F5E9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E8F5E980",
+                  "backgroundDark": "#E8F5E9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#43A047"
+                }
+              },
+              "teach": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFF3E080",
+                  "backgroundDark": "#FFF3E0"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFF3E080",
+                  "backgroundDark": "#FFF3E0"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FB8C00"
+                }
+              },
+              "supervise": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F3E5F580",
+                  "backgroundDark": "#F3E5F5"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F3E5F580",
+                  "backgroundDark": "#F3E5F5"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#8E24AA"
+                }
+              },
+              "evaluate": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFEBEE80",
+                  "backgroundDark": "#FFEBEE"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFEBEE80",
+                  "backgroundDark": "#FFEBEE"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#E53935"
+                }
+              },
+              "coordinate": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E0F7FA80",
+                  "backgroundDark": "#E0F7FA"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E0F7FA80",
+                  "backgroundDark": "#E0F7FA"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#00ACC1"
+                }
+              },
+              "document": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#ECEFF180",
+                  "backgroundDark": "#ECEFF1"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#ECEFF180",
+                  "backgroundDark": "#ECEFF1"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#546E7A"
+                }
+              },
+              "develop": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E8EAF680",
+                  "backgroundDark": "#E8EAF6"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E8EAF680",
+                  "backgroundDark": "#E8EAF6"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#3F51B5"
+                }
+              },
+              "research": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FCE4EC80",
+                  "backgroundDark": "#FCE4EC"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FCE4EC80",
+                  "backgroundDark": "#FCE4EC"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#D81B60"
+                }
+              },
+              "present": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FBE9E780",
+                  "backgroundDark": "#FBE9E7"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FBE9E780",
+                  "backgroundDark": "#FBE9E7"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#E64A19"
+                }
+              },
+              "design": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#EDE7F680",
+                  "backgroundDark": "#EDE7F6"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#EDE7F680",
+                  "backgroundDark": "#EDE7F6"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#673AB7"
+                }
+              },
+              "troubleshoot": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFF8E180",
+                  "backgroundDark": "#FFF8E1"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFF8E180",
+                  "backgroundDark": "#FFF8E1"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#F9A825"
+                }
+              },
+              "network": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E0F2F180",
+                  "backgroundDark": "#E0F2F1"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E0F2F180",
+                  "backgroundDark": "#E0F2F1"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#009688"
+                }
+              },
+              "reflect": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F5F5F580",
+                  "backgroundDark": "#F5F5F5"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F5F5F580",
+                  "backgroundDark": "#F5F5F5"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#9E9E9E"
+                }
+              }
+            },
+            "Deliverable": {
+              "slides": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#BBDEFB80",
+                  "backgroundDark": "#BBDEFB"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#BBDEFB80",
+                  "backgroundDark": "#BBDEFB"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#1976D2"
+                }
+              },
+              "brief": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#C8E6C980",
+                  "backgroundDark": "#C8E6C9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#C8E6C980",
+                  "backgroundDark": "#C8E6C9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#388E3C"
+                }
+              },
+              "rubric": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFCDD280",
+                  "backgroundDark": "#FFCDD2"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFCDD280",
+                  "backgroundDark": "#FFCDD2"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#D32F2F"
+                }
+              },
+              "correspondence": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#B2DFDB80",
+                  "backgroundDark": "#B2DFDB"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#B2DFDB80",
+                  "backgroundDark": "#B2DFDB"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#00796B"
+                }
+              },
+              "protocol": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#CFD8DC80",
+                  "backgroundDark": "#CFD8DC"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#CFD8DC80",
+                  "backgroundDark": "#CFD8DC"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#455A64"
+                }
+              },
+              "report": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#D1C4E980",
+                  "backgroundDark": "#D1C4E9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#D1C4E980",
+                  "backgroundDark": "#D1C4E9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#512DA8"
+                }
+              },
+              "survey": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#DCEDC880",
+                  "backgroundDark": "#DCEDC8"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#DCEDC880",
+                  "backgroundDark": "#DCEDC8"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#689F38"
+                }
+              },
+              "template": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFE0B280",
+                  "backgroundDark": "#FFE0B2"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFE0B280",
+                  "backgroundDark": "#FFE0B2"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#F57C00"
+                }
+              },
+              "portfolio": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F8BBD080",
+                  "backgroundDark": "#F8BBD0"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F8BBD080",
+                  "backgroundDark": "#F8BBD0"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#C2185B"
+                }
+              },
+              "archive": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#BCAAA480",
+                  "backgroundDark": "#BCAAA4"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#BCAAA480",
+                  "backgroundDark": "#BCAAA4"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#795548"
+                }
+              },
+              "showcase": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFD54F80",
+                  "backgroundDark": "#FFD54F"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFD54F80",
+                  "backgroundDark": "#FFD54F"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#FFC107"
+                }
+              },
+              "contract": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#90A4AE80",
+                  "backgroundDark": "#90A4AE"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#90A4AE80",
+                  "backgroundDark": "#90A4AE"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#37474F"
+                }
+              }
+            },
+            "PM-Knowledge": {
+              "scope": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E3F2FD80",
+                  "backgroundDark": "#E3F2FD"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E3F2FD80",
+                  "backgroundDark": "#E3F2FD"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#1565C0"
+                }
+              },
+              "time": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFF3E080",
+                  "backgroundDark": "#FFF3E0"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFF3E080",
+                  "backgroundDark": "#FFF3E0"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#EF6C00"
+                }
+              },
+              "quality": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E8F5E980",
+                  "backgroundDark": "#E8F5E9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E8F5E980",
+                  "backgroundDark": "#E8F5E9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#2E7D32"
+                }
+              },
+              "communication": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E0F7FA80",
+                  "backgroundDark": "#E0F7FA"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E0F7FA80",
+                  "backgroundDark": "#E0F7FA"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#0097A7"
+                }
+              },
+              "risk": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FFEBEE80",
+                  "backgroundDark": "#FFEBEE"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FFEBEE80",
+                  "backgroundDark": "#FFEBEE"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#C62828"
+                }
+              },
+              "resources": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F3E5F580",
+                  "backgroundDark": "#F3E5F5"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F3E5F580",
+                  "backgroundDark": "#F3E5F5"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#7B1FA2"
+                }
+              },
+              "integration": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#E8EAF680",
+                  "backgroundDark": "#E8EAF6"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#E8EAF680",
+                  "backgroundDark": "#E8EAF6"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#303F9F"
+                }
+              },
+              "procurement": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FBE9E780",
+                  "backgroundDark": "#FBE9E7"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FBE9E780",
+                  "backgroundDark": "#FBE9E7"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#D84315"
+                }
+              },
+              "stakeholder": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F1F8E980",
+                  "backgroundDark": "#F1F8E9"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F1F8E980",
+                  "backgroundDark": "#F1F8E9"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#558B2F"
+                }
+              },
+              "knowledge": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#EDE7F680",
+                  "backgroundDark": "#EDE7F6"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#EDE7F680",
+                  "backgroundDark": "#EDE7F6"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#4527A0"
+                }
+              },
+              "documentation": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#ECEFF180",
+                  "backgroundDark": "#ECEFF1"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#ECEFF180",
+                  "backgroundDark": "#ECEFF1"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#37474F"
+                }
+              },
+              "change": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#FCE4EC80",
+                  "backgroundDark": "#FCE4EC"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#FCE4EC80",
+                  "backgroundDark": "#FCE4EC"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#AD1457"
+                }
+              },
+              "lessons": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#F5F5F580",
+                  "backgroundDark": "#F5F5F5"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#F5F5F580",
+                  "backgroundDark": "#F5F5F5"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#616161"
+                }
+              }
             }
           },
           "description": "Grouped color and style configuration for tags in kanban boards. Supports: light/dark theme colors, border, headerBar, footerBar, cornerBadge, and visual effects (opacity, filter, pattern)."
@@ -4646,7 +5700,12 @@
               "Overview",
               "Example",
               "Deliveries",
-              "Export"
+              "Export",
+              "Project-Lifecycle",
+              "Stakeholder",
+              "Activity-Type",
+              "Deliverable",
+              "PM-Knowledge"
             ]
           },
           "default": [
@@ -4656,7 +5715,7 @@
             "Complexity"
           ],
           "uniqueItems": true,
-          "markdownDescription": "**Column Tag Categories** - Select which categories appear in column burger menus. All 27 categories available. See 'Tag Category Reference' above for details.\n\n**Column Defaults (4):** Workflow, Positivity, Colors, Complexity"
+          "markdownDescription": "**Column Tag Categories** - Select which categories appear in column burger menus. All 32 categories available. See 'Tag Category Reference' above for details.\n\n**Column Defaults (4):** Workflow, Positivity, Colors, Complexity"
         },
         "markdown-kanban.enabledTagCategoriesTask": {
           "type": "array",
@@ -4689,7 +5748,12 @@
               "Overview",
               "Example",
               "Deliveries",
-              "Export"
+              "Export",
+              "Project-Lifecycle",
+              "Stakeholder",
+              "Activity-Type",
+              "Deliverable",
+              "PM-Knowledge"
             ]
           },
           "default": [
@@ -4699,7 +5763,7 @@
             "Impact"
           ],
           "uniqueItems": true,
-          "markdownDescription": "**Task Tag Categories** - Select which categories appear in task burger menus. All 27 categories available. See 'Tag Category Reference' above for details.\n\n**Task Defaults (4):** Positivity, Status, Colors, Impact"
+          "markdownDescription": "**Task Tag Categories** - Select which categories appear in task burger menus. All 32 categories available. See 'Tag Category Reference' above for details.\n\n**Task Defaults (4):** Positivity, Status, Colors, Impact"
         },
         "markdown-kanban.customTagCategories": {
           "type": "object",

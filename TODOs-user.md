@@ -1,6 +1,6 @@
 - [x] if i press save in the save dialogue it reopens when i close the view.
 
-- [ ] add these type of tags!
+- [x] add these type of tags!
 
 ## Scope A — Project Lifecycle (Phase-Based)
 
