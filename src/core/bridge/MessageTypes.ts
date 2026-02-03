@@ -2083,6 +2083,27 @@ export interface ExternalChangesDetectedMessage extends BaseMessage {
     fileNames: string[];
 }
 
+// ============= DIFF MESSAGES =============
+
+/**
+ * Request file diff (Frontend → Backend)
+ */
+export interface RequestFileDiffMessage extends BaseMessage {
+    type: 'requestFileDiff';
+    filePath: string;
+}
+
+/**
+ * File diff result (Backend → Frontend)
+ */
+export interface FileDiffResultMessage extends BaseMessage {
+    type: 'fileDiffResult';
+    filePath: string;
+    kanbanContent: string;
+    diskContent: string;
+    baselineContent: string;
+}
+
 // ============= TYPE UNIONS =============
 
 /**
@@ -2133,7 +2154,9 @@ export type OutgoingMessage =
     // Conflict dialog messages
     | ShowConflictDialogMessage
     // External changes notification
-    | ExternalChangesDetectedMessage;
+    | ExternalChangesDetectedMessage
+    // Diff messages
+    | FileDiffResultMessage;
 
 /**
  * All incoming message types (Frontend → Backend)
@@ -2293,7 +2316,9 @@ export type IncomingMessage =
     // Conflict dialog messages
     | ConflictResolutionMessage
     // File dialog messages
-    | OpenFileDialogMessage;
+    | OpenFileDialogMessage
+    // Diff messages
+    | RequestFileDiffMessage;
 
 /**
  * Message type string literals for type-safe checking

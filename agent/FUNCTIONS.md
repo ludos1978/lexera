@@ -2054,3 +2054,30 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 - Added Alt+G keyboard shortcut inside the `kanbanSearch.isSearching` guard: calls `kanbanSearch.nextResult()` to cycle to next search match.
 
 ---
+
+## File Manager Diff Preview Panel (2026-02-03)
+
+### Modified: `src/core/bridge/MessageTypes.ts`
+- Added `RequestFileDiffMessage` (Frontend->Backend) and `FileDiffResultMessage` (Backend->Frontend) for requesting and receiving file content diffs.
+- Added both to respective `IncomingMessage` and `OutgoingMessage` unions.
+
+### Modified: `src/commands/DebugCommands.ts`
+- Added `requestFileDiff` to `messageTypes` array and `handlers` map.
+- `handleRequestFileDiff()` — reads kanbanContent (getContent), diskContent (readFromDisk), baselineContent (getBaseline) from file registry and sends `fileDiffResult` back to frontend.
+
+### Modified: `src/html/fileManager.js`
+- `toggleDiffForFile(filePath)` — toggles diff panel for a file; sends `requestFileDiff` message to backend.
+- `closeDiffPanel()` — clears diff state and empties diff panel DOM.
+- `updateDiffButtonStates()` — updates active class on diff toggle buttons.
+- `renderDiffPanel()` — renders side-by-side diff view (disk vs kanban) using LCS-based line diff.
+- `computeLineDiff(oldLines, newLines)` — LCS-based line diff algorithm returning unchanged/added/removed entries.
+- `escapeHtml(text)` — HTML entity escaping for diff content display.
+- Added `fileDiffResult` message handler to receive and render diffs.
+- Diff re-requested after `individualFileSaved` and `individualFileReloaded` events.
+- Diff state cleared in `hideFileManager()`.
+- Diff toggle button added to each file row in unified table.
+
+### Modified: `src/html/webview.css`
+- Added `.diff-panel`, `.diff-header`, `.diff-filename`, `.diff-close-btn`, `.diff-content`, `.diff-column`, `.diff-column-header`, `.diff-line` (with `.added`, `.removed`, `.unchanged` variants), `.diff-btn`, `.diff-btn.active` styles.
+
+---

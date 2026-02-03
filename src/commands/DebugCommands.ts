@@ -22,7 +22,7 @@ import { IncludeFile } from '../files/IncludeFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage } from '../core/bridge/MessageTypes';
+import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage, RequestFileDiffMessage } from '../core/bridge/MessageTypes';
 import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
 
@@ -144,7 +144,8 @@ export class DebugCommands extends SwitchBasedCommand {
             'setDebugMode',
             'getMediaTrackingStatus',
             'conflictResolution',
-            'openFileDialog'
+            'openFileDialog',
+            'requestFileDiff'
         ],
         priority: 50
     };
@@ -157,7 +158,8 @@ export class DebugCommands extends SwitchBasedCommand {
         'setDebugMode': (msg, ctx) => this.handleSetDebugMode(msg as SetDebugModeMessage, ctx),
         'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx),
         'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx),
-        'openFileDialog': (msg, ctx) => this.handleOpenFileDialog(msg as OpenFileDialogMessage, ctx)
+        'openFileDialog': (msg, ctx) => this.handleOpenFileDialog(msg as OpenFileDialogMessage, ctx),
+        'requestFileDiff': (msg, ctx) => this.handleRequestFileDiff(msg as RequestFileDiffMessage, ctx)
     };
 
     private async handleSetDebugMode(message: SetDebugModeMessage, context: CommandContext): Promise<CommandResult> {
@@ -318,6 +320,33 @@ export class DebugCommands extends SwitchBasedCommand {
         if (anyReloaded) {
             logger.debug('[DebugCommands] Files reloaded via applyFileResolutions, board update triggered by reload events');
         }
+    }
+
+    // ============= FILE DIFF HANDLER =============
+
+    private async handleRequestFileDiff(message: RequestFileDiffMessage, context: CommandContext): Promise<CommandResult> {
+        const fileRegistry = this.getFileRegistry();
+        if (!fileRegistry) return this.success();
+
+        const file = fileRegistry.get(message.filePath) || fileRegistry.findByPath(message.filePath);
+        if (!file) return this.success();
+
+        const kanbanContent = file.getContent();
+        const diskContent = await file.readFromDisk() || '';
+        const baselineContent = file.getBaseline();
+
+        const bridge = context.getWebviewBridge();
+        if (bridge) {
+            bridge.send({
+                type: 'fileDiffResult',
+                filePath: message.filePath,
+                kanbanContent,
+                diskContent,
+                baselineContent
+            });
+        }
+
+        return this.success();
     }
 
     // ============= FORCE WRITE / VERIFICATION HANDLERS =============

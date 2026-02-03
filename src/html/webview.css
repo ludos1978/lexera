@@ -9643,3 +9643,102 @@ body.font-size-5x .task-description-wysiwyg {
 .task-card.search-highlight {
     border-radius: 6px;
 }
+
+/* ============= Diff Panel Styles ============= */
+
+.diff-panel {
+    border-top: 1px solid var(--vscode-panel-border);
+    margin-top: 8px;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.diff-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.diff-filename {
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.diff-close-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.diff-close-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.diff-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.diff-column {
+    min-width: 0;
+    overflow-x: auto;
+}
+
+.diff-column-header {
+    padding: 4px 8px;
+    font-weight: bold;
+    font-size: 11px;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    position: sticky;
+    top: 0;
+}
+
+.diff-column.diff-disk {
+    border-right: 1px solid var(--vscode-panel-border);
+}
+
+.diff-line {
+    padding: 1px 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-height: 1.4em;
+}
+
+.diff-line.added {
+    background: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 180, 0, 0.15));
+}
+
+.diff-line.removed {
+    background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.15));
+}
+
+.diff-line.unchanged {
+    opacity: 0.6;
+}
+
+.diff-btn {
+    margin-left: 6px;
+    padding: 1px 4px;
+    font-size: 11px;
+    vertical-align: middle;
+}
+
+.diff-btn.active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}

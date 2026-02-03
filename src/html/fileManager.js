@@ -29,6 +29,10 @@ let perFileResolutions = new Map(); // path -> action
 
 let autoRefreshTimer = null;
 
+// Diff panel state
+let diffActiveFile = null;  // path of file currently showing diff, or null
+let diffData = null;        // { kanbanContent, diskContent, baselineContent } or null
+
 // Verification state
 let pendingForceWrite = false;
 let lastVerificationResults = null;
@@ -218,6 +222,8 @@ function hideFileManager() {
     conflictId = null;
     conflictFiles = [];
     perFileResolutions.clear();
+    diffActiveFile = null;
+    diffData = null;
 
     stopAutoRefresh();
     if (syncVerifyTimer) {
@@ -570,8 +576,9 @@ function createUnifiedTable() {
                         ${truncatedDirPath}
                         ${!file.isMainFile ? `<span class="include-type-label ${fileType}">[${typeLabel}]</span>` : ''}
                     </div>
-                    <div class="file-name-clickable" onclick="openFile('${escapedPath}')" title="${file.path}">
-                        ${file.isMainFile ? '📄' : '📎'} ${file.name}
+                    <div class="file-name-clickable" title="${file.path}">
+                        <span onclick="openFile('${escapedPath}')">${file.isMainFile ? '📄' : '📎'} ${file.name}</span>
+                        <button onclick="toggleDiffForFile('${escapedPath}')" class="action-btn diff-btn ${diffActiveFile === file.path ? 'active' : ''}" title="Toggle diff view">&#x21D4;</button>
                     </div>
                 </td>
                 <td class="col-status">${statusBadge}</td>
@@ -665,7 +672,158 @@ function createUnifiedTable() {
                 </div>
             </div>
         </div>
+
+        <div id="diff-panel"></div>
     `;
+}
+
+// ============= DIFF PANEL =============
+
+function toggleDiffForFile(filePath) {
+    if (diffActiveFile === filePath) {
+        closeDiffPanel();
+        return;
+    }
+    diffActiveFile = filePath;
+    diffData = null;
+
+    // Show loading state
+    const panel = document.getElementById('diff-panel');
+    if (panel) {
+        panel.innerHTML = `
+            <div class="diff-panel">
+                <div class="diff-header">
+                    <span class="diff-filename">Loading diff...</span>
+                    <button onclick="closeDiffPanel()" class="diff-close-btn">&#x2715;</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Update diff button active states
+    updateDiffButtonStates();
+
+    if (window.vscode) {
+        window.vscode.postMessage({ type: 'requestFileDiff', filePath });
+    }
+}
+
+function closeDiffPanel() {
+    diffActiveFile = null;
+    diffData = null;
+    const panel = document.getElementById('diff-panel');
+    if (panel) {
+        panel.innerHTML = '';
+    }
+    updateDiffButtonStates();
+}
+
+function updateDiffButtonStates() {
+    if (!fileManagerElement) return;
+    const buttons = fileManagerElement.querySelectorAll('.diff-btn');
+    buttons.forEach(btn => {
+        const row = btn.closest('tr.file-row');
+        if (row && row.dataset.filePath === diffActiveFile) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function renderDiffPanel() {
+    const panel = document.getElementById('diff-panel');
+    if (!panel || !diffData || !diffActiveFile) {
+        if (panel) panel.innerHTML = '';
+        return;
+    }
+
+    const fileName = diffActiveFile.split('/').pop() || diffActiveFile;
+    const diskLines = diffData.diskContent.split('\n');
+    const kanbanLines = diffData.kanbanContent.split('\n');
+    const diff = computeLineDiff(diskLines, kanbanLines);
+
+    const diskLinesHTML = diff.map(entry => {
+        const cssClass = entry.type === 'removed' ? 'removed' : (entry.type === 'added' ? 'added' : 'unchanged');
+        const text = escapeHtml(entry.left !== null ? entry.left : '');
+        return `<div class="diff-line ${cssClass}">${text || '&nbsp;'}</div>`;
+    }).join('');
+
+    const kanbanLinesHTML = diff.map(entry => {
+        const cssClass = entry.type === 'added' ? 'added' : (entry.type === 'removed' ? 'removed' : 'unchanged');
+        const text = escapeHtml(entry.right !== null ? entry.right : '');
+        return `<div class="diff-line ${cssClass}">${text || '&nbsp;'}</div>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="diff-panel">
+            <div class="diff-header">
+                <span class="diff-filename">${escapeHtml(fileName)}</span>
+                <button onclick="closeDiffPanel()" class="diff-close-btn">&#x2715;</button>
+            </div>
+            <div class="diff-content">
+                <div class="diff-column diff-disk">
+                    <div class="diff-column-header">Disk Content</div>
+                    <div class="diff-lines">${diskLinesHTML}</div>
+                </div>
+                <div class="diff-column diff-kanban">
+                    <div class="diff-column-header">Kanban Content</div>
+                    <div class="diff-lines">${kanbanLinesHTML}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Simple line-based diff using longest common subsequence (LCS).
+ * Returns array of { type: 'unchanged'|'added'|'removed', left, right }.
+ */
+function computeLineDiff(oldLines, newLines) {
+    const m = oldLines.length;
+    const n = newLines.length;
+
+    // Build LCS length table
+    const dp = new Array(m + 1);
+    for (let i = 0; i <= m; i++) {
+        dp[i] = new Array(n + 1).fill(0);
+    }
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (oldLines[i - 1] === newLines[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+
+    // Backtrack to produce diff entries
+    const result = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+            result.push({ type: 'unchanged', left: oldLines[i - 1], right: newLines[j - 1] });
+            i--; j--;
+        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+            result.push({ type: 'added', left: null, right: newLines[j - 1] });
+            j--;
+        } else {
+            result.push({ type: 'removed', left: oldLines[i - 1], right: null });
+            i--;
+        }
+    }
+    result.reverse();
+    return result;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 // ============= HELPER FUNCTIONS =============
@@ -1381,6 +1539,8 @@ function initializeFileManager() {
     window.executeAllActions = executeAllActions;
     window.executePathConvert = executePathConvert;
     window.executeAllPaths = executeAllPaths;
+    window.toggleDiffForFile = toggleDiffForFile;
+    window.closeDiffPanel = closeDiffPanel;
 
     document.addEventListener('keydown', handleFileManagerKeydown);
 
@@ -1428,6 +1588,14 @@ function initializeFileManager() {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
                     verifyContentSync(true);
+                    // Re-request diff if the saved file is currently shown in the diff panel
+                    if (diffActiveFile && message.filePath && window.vscode) {
+                        const diffBasename = diffActiveFile.split('/').pop();
+                        const savedBasename = message.filePath.split('/').pop();
+                        if (diffBasename === savedBasename || diffActiveFile === message.filePath) {
+                            window.vscode.postMessage({ type: 'requestFileDiff', filePath: diffActiveFile });
+                        }
+                    }
                 }
                 break;
 
@@ -1436,6 +1604,14 @@ function initializeFileManager() {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
                     verifyContentSync(true);
+                    // Re-request diff if the reloaded file is currently shown in the diff panel
+                    if (diffActiveFile && message.filePath && window.vscode) {
+                        const diffBasename = diffActiveFile.split('/').pop();
+                        const reloadedBasename = message.filePath.split('/').pop();
+                        if (diffBasename === reloadedBasename || diffActiveFile === message.filePath) {
+                            window.vscode.postMessage({ type: 'requestFileDiff', filePath: diffActiveFile });
+                        }
+                    }
                 }
                 break;
 
@@ -1453,6 +1629,17 @@ function initializeFileManager() {
                 lastVerificationResults = message;
                 if (fileManagerVisible && fileManagerElement) {
                     updateDialogContent();
+                }
+                break;
+
+            case 'fileDiffResult':
+                if (message.filePath === diffActiveFile) {
+                    diffData = {
+                        kanbanContent: message.kanbanContent,
+                        diskContent: message.diskContent,
+                        baselineContent: message.baselineContent
+                    };
+                    renderDiffPanel();
                 }
                 break;
 
