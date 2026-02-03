@@ -477,6 +477,7 @@ function createUnifiedTable() {
             <td class="col-image action-cell">
                 <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">&#x1F5BC;&#xFE0F;</button>
             </td>
+            <td class="col-diff"></td>
         </tr>
     `;
 
@@ -581,10 +582,7 @@ function createUnifiedTable() {
                         ${truncatedDirPath}
                         ${!file.isMainFile ? `<span class="include-type-label ${fileType}">[${typeLabel}]</span>` : ''}
                     </div>
-                    <div class="file-name-row">
-                        <span class="file-name-clickable" onclick="openFile('${escapedPath}')" title="${file.path}">${file.isMainFile ? '📄' : '📎'} ${file.name}</span>
-                        <button onclick="toggleDiffForFile('${escapedPath}')" class="action-btn diff-btn ${diffActiveFile === file.path ? 'active' : ''}" title="Toggle diff view">&#x21D4;</button>
-                    </div>
+                    <span class="file-name-clickable" onclick="openFile('${escapedPath}')" title="${file.path}">${file.isMainFile ? '📄' : '📎'} ${file.name}</span>
                 </td>
                 <td class="col-status">${statusBadge}</td>
                 <td class="col-frontend">
@@ -618,6 +616,9 @@ function createUnifiedTable() {
                 <td class="col-image action-cell">
                     <button onclick="reloadImages()" class="action-btn reload-images-btn" title="Reload all images in the board">&#x1F5BC;&#xFE0F;</button>
                 </td>
+                <td class="col-diff">
+                    <input type="checkbox" class="diff-checkbox" data-file-path="${escapedPath}" onclick="toggleDiffForFile('${escapedPath}')" ${diffActiveFile === file.path ? 'checked' : ''} title="Show diff for this file" />
+                </td>
             </tr>
         `;
     }).join('');
@@ -633,6 +634,7 @@ function createUnifiedTable() {
                     <th class="col-action">Action</th>
                     <th class="col-paths">Paths</th>
                     <th class="col-image">Img</th>
+                    <th class="col-diff">Diff</th>
                 </tr>
             </thead>
             <tbody>
@@ -738,14 +740,10 @@ function reRequestDiffIfActive(filePath) {
 
 function updateDiffButtonStates() {
     if (!fileManagerElement) return;
-    const buttons = fileManagerElement.querySelectorAll('.diff-btn');
-    buttons.forEach(btn => {
-        const row = btn.closest('tr.file-row');
-        if (row && row.dataset.filePath === diffActiveFile) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+    const checkboxes = fileManagerElement.querySelectorAll('.diff-checkbox');
+    checkboxes.forEach(cb => {
+        const filePath = cb.dataset.filePath;
+        cb.checked = (filePath === diffActiveFile);
     });
 }
 

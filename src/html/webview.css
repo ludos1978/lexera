@@ -7536,13 +7536,6 @@ figcaption {
     vertical-align: middle !important;
 }
 
-.file-name-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-}
-
 .file-name-clickable {
     display: inline-block;
     overflow: hidden;
@@ -9741,14 +9734,15 @@ body.font-size-5x .task-description-wysiwyg {
     background: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.08));
 }
 
-.diff-btn {
-    margin-left: 6px;
-    padding: 1px 4px;
-    font-size: 11px;
-    vertical-align: middle;
+.col-diff {
+    text-align: center;
+    width: 40px;
+    min-width: 40px;
 }
 
-.diff-btn.active {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
+.diff-checkbox {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--vscode-button-background);
 }
