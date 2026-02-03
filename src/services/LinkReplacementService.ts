@@ -453,8 +453,8 @@ export class LinkReplacementService {
                     : path.resolve(fileDir, decodedPath);
                 const pathDir = normalizeDirForComparison(path.dirname(absolutePath));
 
-                const matchedRelativeDir = path.dirname(decodedPath);
-                const brokenRelativeDir = path.dirname(decodedBrokenPath);
+                const matchedRelativeDir = normalizeDirForComparison(path.dirname(decodedPath));
+                const brokenRelativeDir = normalizeDirForComparison(path.dirname(decodedBrokenPath));
                 const relativeDirMatch = matchedRelativeDir === brokenRelativeDir;
 
                 if (pathDir === brokenDir || relativeDirMatch) {

@@ -67,13 +67,13 @@ export function isSamePath(path1: string, path2: string): boolean {
 /**
  * Normalize a directory path for comparison.
  * Strips leading ./ and trailing /, normalizes separators.
- * Case-sensitive (unlike normalizePathForLookup).
+ * Case-insensitive (consistent with normalizePathForLookup).
  *
  * @param dir - The directory path to normalize
  * @returns Normalized directory path for comparison
  */
 export function normalizeDirForComparison(dir: string): string {
-    let normalized = toForwardSlashes(dir);
+    let normalized = toForwardSlashes(dir).toLowerCase();
     if (normalized.startsWith('./')) {
         normalized = normalized.substring(2);
     }
