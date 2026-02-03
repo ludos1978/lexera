@@ -55,6 +55,11 @@ interface DiffSession {
 }
 
 /**
+ * Callback type for diff closed notification
+ */
+export type DiffClosedCallback = (filePath: string) => void;
+
+/**
  * Service for managing kanban diff views
  */
 export class KanbanDiffService implements vscode.Disposable {
@@ -65,6 +70,7 @@ export class KanbanDiffService implements vscode.Disposable {
     private activeSessions = new Map<string, DiffSession>();
     private fileRegistry: MarkdownFileRegistry | null = null;
     private disposables: vscode.Disposable[] = [];
+    private onDiffClosedCallback: DiffClosedCallback | null = null;
 
     private constructor() {
         this.diskContentProvider = new KanbanDiskContentProvider();
@@ -90,6 +96,13 @@ export class KanbanDiffService implements vscode.Disposable {
 
     setFileRegistry(registry: MarkdownFileRegistry): void {
         this.fileRegistry = registry;
+    }
+
+    /**
+     * Set callback to be notified when a diff is closed externally (user closes tab)
+     */
+    setOnDiffClosedCallback(callback: DiffClosedCallback | null): void {
+        this.onDiffClosedCallback = callback;
     }
 
     /**
@@ -245,6 +258,11 @@ export class KanbanDiffService implements vscode.Disposable {
                         session.disposables.forEach(d => d.dispose());
                         this.diskContentProvider.clearDiskContent(filePath);
                         this.activeSessions.delete(filePath);
+
+                        // Notify callback that diff was closed externally
+                        if (this.onDiffClosedCallback) {
+                            this.onDiffClosedCallback(filePath);
+                        }
                         break;
                     }
                 }

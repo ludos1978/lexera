@@ -329,7 +329,7 @@ export class DebugCommands extends SwitchBasedCommand {
 
     // ============= VS CODE DIFF HANDLERS =============
 
-    private async handleOpenVscodeDiff(message: OpenVscodeDiffMessage, _context: CommandContext): Promise<CommandResult> {
+    private async handleOpenVscodeDiff(message: OpenVscodeDiffMessage, context: CommandContext): Promise<CommandResult> {
         const fileRegistry = this.getFileRegistry();
         if (!fileRegistry) return this.success();
 
@@ -341,6 +341,18 @@ export class DebugCommands extends SwitchBasedCommand {
 
         const diffService = KanbanDiffService.getInstance();
         diffService.setFileRegistry(fileRegistry);
+
+        // Set callback to notify webview when diff is closed externally
+        const bridge = context.getWebviewBridge();
+        if (bridge) {
+            diffService.setOnDiffClosedCallback((filePath) => {
+                bridge.send({
+                    type: 'vscodeDiffClosed',
+                    filePath
+                });
+            });
+        }
+
         await diffService.openDiff(message.filePath, kanbanContent, diskContent);
 
         return this.success();
