@@ -167,6 +167,14 @@ export class BoardSyncHandler {
     private async _propagateEditsToIncludeFiles(board: KanbanBoard, trigger?: string): Promise<void> {
         const isDebug = this._deps.panelContext.debugMode;
         const webviewBridge = this._deps.getWebviewBridge();
+
+        // DEBUG: Log all include files' status at the start
+        console.log(`[BoardSyncHandler._propagateEditsToIncludeFiles] CALLED with trigger="${trigger}"`);
+        const allIncludeFiles = this._deps.fileRegistry.getIncludeFiles();
+        for (const f of allIncludeFiles) {
+            console.log(`[BoardSyncHandler._propagateEditsToIncludeFiles] Include file "${f.getRelativePath()}": preserveRaw=${f.shouldPreserveRawContent()}, hasUnsaved=${f.hasUnsavedChanges()}`);
+        }
+
         // Update column include files with current task content
         for (const column of board.columns) {
             if (column.includeFiles && column.includeFiles.length > 0) {
@@ -196,11 +204,12 @@ export class BoardSyncHandler {
                     // CRITICAL: Skip files that were edited via diff view
                     // These have raw content that should be preserved, not regenerated from tasks
                     if (file.shouldPreserveRawContent()) {
-                        if (isDebug) {
-                            console.log(`[BoardSyncHandler] Skipping regeneration for "${relativePath}" - preserveRawContent=true (edited via diff view)`);
-                        }
+                        console.log(`[BoardSyncHandler] Skipping regeneration for "${relativePath}" - preserveRawContent=true (edited via diff view)`);
                         continue;
                     }
+
+                    // File found but preserveRawContent is false - will regenerate
+                    console.log(`[BoardSyncHandler] Will regenerate "${relativePath}" - preserveRawContent=false`);
 
                     const includeFile = file as IncludeFile;
                     const content = includeFile.generateFromTasks(column.tasks);

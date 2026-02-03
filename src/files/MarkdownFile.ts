@@ -331,6 +331,9 @@ export abstract class MarkdownFile implements vscode.Disposable {
      * @param value true to prevent regeneration from tasks, false to allow normal regeneration
      */
     public setPreserveRawContent(value: boolean): void {
+        if (this._preserveRawContent !== value) {
+            console.log(`[MarkdownFile.setPreserveRawContent] "${this._relativePath}": ${this._preserveRawContent} → ${value}`);
+        }
         this._preserveRawContent = value;
     }
 
@@ -785,6 +788,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
         // Mark as having external changes
         this._hasFileSystemChanges = true;
+        console.log(`[MarkdownFile.handleFileSystemEvent] Setting _hasFileSystemChanges=true for "${this._relativePath}" (changeType=${changeType})`);
         this._emitChange('external');
 
         // Delegate to subclass for specific handling
@@ -862,6 +866,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // already flagged this file before the focus path runs.
             if (!this._hasFileSystemChanges) {
                 this._hasFileSystemChanges = true;
+                console.log(`[MarkdownFile.checkForExternalChanges] Setting _hasFileSystemChanges=true for "${this._relativePath}" (disk != baseline, diskLen=${diskContent.length}, baselineLen=${this._baseline.length})`);
                 this._emitChange('external');
             }
         }

@@ -167,14 +167,9 @@ export class KanbanDiffService implements vscode.Disposable {
             }
         }
 
-        // Clear preserveRawContent flag when diff is closed
-        // This allows normal regeneration if user didn't save
-        if (this.fileRegistry) {
-            const file = this.fileRegistry.get(filePath) || this.fileRegistry.findByPath(filePath);
-            if (file) {
-                file.setPreserveRawContent(false);
-            }
-        }
+        // NOTE: Do NOT clear preserveRawContent flag here!
+        // The flag should persist until the file is saved, so raw edits aren't lost
+        // when the diff view is closed before saving.
 
         this.activeSessions.delete(filePath);
     }
@@ -217,9 +212,13 @@ export class KanbanDiffService implements vscode.Disposable {
             file.setContent(newContent, false);
             // CRITICAL: Mark file to preserve raw content - prevents regeneration from overwriting diff edits
             file.setPreserveRawContent(true);
-            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()}), preserveRaw=true`);
+            const relPath = (file as any).getRelativePath?.() || filePath;
+            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()}, relPath="${relPath}"), preserveRaw=true, hasUnsaved=${file.hasUnsavedChanges()}`);
         } else {
             console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: File not found in registry: "${filePath}"`);
+            // List all registered files for debugging
+            const allFiles = this.fileRegistry.getAll();
+            console.log(`[KanbanDiffService] Registered files: [${allFiles.map((f: any) => f.getRelativePath?.() || f.getPath()).join(', ')}]`);
         }
 
         // Notify callback with debouncing (300ms) to avoid excessive updates while typing
@@ -295,14 +294,8 @@ export class KanbanDiffService implements vscode.Disposable {
 
                         this.activeSessions.delete(filePath);
 
-                        // Clear preserveRawContent flag when diff is closed
-                        // This allows normal regeneration if user didn't save
-                        if (this.fileRegistry) {
-                            const file = this.fileRegistry.get(filePath) || this.fileRegistry.findByPath(filePath);
-                            if (file) {
-                                file.setPreserveRawContent(false);
-                            }
-                        }
+                        // NOTE: Do NOT clear preserveRawContent flag here!
+                        // The flag should persist until the file is saved.
 
                         // Notify callback that diff was closed externally
                         if (this.onDiffClosedCallback) {
