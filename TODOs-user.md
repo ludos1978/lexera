@@ -192,13 +192,13 @@ a
 
 - [ ] the filterTagsForExport in the frontend might be obsolete. is it used?
 
-- [ ] where is the css class hidden used, is this applied in a consistent way?
+- [x] where is the css class hidden used, is this applied in a consistent way?
 
 - [ ] apparently exporting is using the source data format while processing things such as tags etc. i want to use an internal format, while storing the source format (so we can export into that again)
 
 - [ ] Add some internal navigation functionality. it could use user defined tags such as #2.1 and somethink like <#2.1> or what would you suggest?
 
-- [ ] add Excourse to the Teaching-Content  tags
+- [x] add Excourse to the Teaching-Content  tags
 
 - [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
 
