@@ -9731,6 +9731,10 @@ body.font-size-5x .task-description-wysiwyg {
     opacity: 0.6;
 }
 
+.diff-line.filler {
+    background: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.08));
+}
+
 .diff-btn {
     margin-left: 6px;
     padding: 1px 4px;

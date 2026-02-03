@@ -718,6 +718,19 @@ function closeDiffPanel() {
     updateDiffButtonStates();
 }
 
+/**
+ * Re-request the diff if the given file path matches the currently active diff.
+ * Uses basename comparison to handle absolute vs relative path differences.
+ */
+function reRequestDiffIfActive(filePath) {
+    if (!diffActiveFile || !filePath || !window.vscode) return;
+    const diffBasename = diffActiveFile.split('/').pop();
+    const changedBasename = filePath.split('/').pop();
+    if (diffBasename === changedBasename || diffActiveFile === filePath) {
+        window.vscode.postMessage({ type: 'requestFileDiff', filePath: diffActiveFile });
+    }
+}
+
 function updateDiffButtonStates() {
     if (!fileManagerElement) return;
     const buttons = fileManagerElement.querySelectorAll('.diff-btn');
@@ -744,15 +757,33 @@ function renderDiffPanel() {
     const diff = computeLineDiff(diskLines, kanbanLines);
 
     const diskLinesHTML = diff.map(entry => {
-        const cssClass = entry.type === 'removed' ? 'removed' : (entry.type === 'added' ? 'added' : 'unchanged');
-        const text = escapeHtml(entry.left !== null ? entry.left : '');
-        return `<div class="diff-line ${cssClass}">${text || '&nbsp;'}</div>`;
+        let cssClass, text;
+        if (entry.type === 'removed') {
+            cssClass = 'removed';
+            text = escapeHtml(entry.left) || '&nbsp;';
+        } else if (entry.type === 'added') {
+            cssClass = 'filler';
+            text = '&nbsp;';
+        } else {
+            cssClass = 'unchanged';
+            text = escapeHtml(entry.left) || '&nbsp;';
+        }
+        return `<div class="diff-line ${cssClass}">${text}</div>`;
     }).join('');
 
     const kanbanLinesHTML = diff.map(entry => {
-        const cssClass = entry.type === 'added' ? 'added' : (entry.type === 'removed' ? 'removed' : 'unchanged');
-        const text = escapeHtml(entry.right !== null ? entry.right : '');
-        return `<div class="diff-line ${cssClass}">${text || '&nbsp;'}</div>`;
+        let cssClass, text;
+        if (entry.type === 'added') {
+            cssClass = 'added';
+            text = escapeHtml(entry.right) || '&nbsp;';
+        } else if (entry.type === 'removed') {
+            cssClass = 'filler';
+            text = '&nbsp;';
+        } else {
+            cssClass = 'unchanged';
+            text = escapeHtml(entry.right) || '&nbsp;';
+        }
+        return `<div class="diff-line ${cssClass}">${text}</div>`;
     }).join('');
 
     panel.innerHTML = `
@@ -1615,14 +1646,7 @@ function initializeFileManager() {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
                     verifyContentSync(true);
-                    // Re-request diff if the saved file is currently shown in the diff panel
-                    if (diffActiveFile && message.filePath && window.vscode) {
-                        const diffBasename = diffActiveFile.split('/').pop();
-                        const savedBasename = message.filePath.split('/').pop();
-                        if (diffBasename === savedBasename || diffActiveFile === message.filePath) {
-                            window.vscode.postMessage({ type: 'requestFileDiff', filePath: diffActiveFile });
-                        }
-                    }
+                    reRequestDiffIfActive(message.filePath);
                 }
                 break;
 
@@ -1631,14 +1655,7 @@ function initializeFileManager() {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
                     verifyContentSync(true);
-                    // Re-request diff if the reloaded file is currently shown in the diff panel
-                    if (diffActiveFile && message.filePath && window.vscode) {
-                        const diffBasename = diffActiveFile.split('/').pop();
-                        const reloadedBasename = message.filePath.split('/').pop();
-                        if (diffBasename === reloadedBasename || diffActiveFile === message.filePath) {
-                            window.vscode.postMessage({ type: 'requestFileDiff', filePath: diffActiveFile });
-                        }
-                    }
+                    reRequestDiffIfActive(message.filePath);
                 }
                 break;
 
