@@ -1,4 +1,4 @@
-- [ ] if i press save in the save dialogue it reopens when i close the view.
+- [x] if i press save in the save dialogue it reopens when i close the view.
 
 - [ ] add these type of tags!
 

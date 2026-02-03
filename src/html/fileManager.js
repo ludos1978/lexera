@@ -1423,10 +1423,31 @@ let originalManualRefresh = null;
 // ============= KEYBOARD HANDLER =============
 
 function handleFileManagerKeydown(e) {
-    if (e.key === 'Escape' && fileManagerVisible) {
+    if (!fileManagerVisible) return;
+
+    // Escape to close dialog
+    if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         closeDialog();
+        return;
+    }
+
+    // Cmd+S / Ctrl+S to save and refresh the file manager
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Call the global save function if available
+        if (typeof window.saveCachedBoard === 'function') {
+            window.saveCachedBoard();
+        }
+
+        // Refresh file manager display after a short delay to allow save to complete
+        setTimeout(() => {
+            refreshFileManager();
+            verifyContentSync(true);
+        }, 200);
     }
 }
 
