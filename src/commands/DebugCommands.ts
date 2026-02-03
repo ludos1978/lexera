@@ -22,7 +22,8 @@ import { IncludeFile } from '../files/IncludeFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage, RequestFileDiffMessage } from '../core/bridge/MessageTypes';
+import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage, OpenVscodeDiffMessage, CloseVscodeDiffMessage } from '../core/bridge/MessageTypes';
+import { KanbanDiffService } from '../services/KanbanDiffService';
 import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
 
@@ -145,7 +146,9 @@ export class DebugCommands extends SwitchBasedCommand {
             'getMediaTrackingStatus',
             'conflictResolution',
             'openFileDialog',
-            'requestFileDiff'
+            'openVscodeDiff',
+            'closeVscodeDiff',
+            'closeAllVscodeDiffs'
         ],
         priority: 50
     };
@@ -159,7 +162,9 @@ export class DebugCommands extends SwitchBasedCommand {
         'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx),
         'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx),
         'openFileDialog': (msg, ctx) => this.handleOpenFileDialog(msg as OpenFileDialogMessage, ctx),
-        'requestFileDiff': (msg, ctx) => this.handleRequestFileDiff(msg as RequestFileDiffMessage, ctx)
+        'openVscodeDiff': (msg, ctx) => this.handleOpenVscodeDiff(msg as OpenVscodeDiffMessage, ctx),
+        'closeVscodeDiff': (msg, ctx) => this.handleCloseVscodeDiff(msg as CloseVscodeDiffMessage, ctx),
+        'closeAllVscodeDiffs': (_msg, _ctx) => this.handleCloseAllVscodeDiffs()
     };
 
     private async handleSetDebugMode(message: SetDebugModeMessage, context: CommandContext): Promise<CommandResult> {
@@ -322,9 +327,9 @@ export class DebugCommands extends SwitchBasedCommand {
         }
     }
 
-    // ============= FILE DIFF HANDLER =============
+    // ============= VS CODE DIFF HANDLERS =============
 
-    private async handleRequestFileDiff(message: RequestFileDiffMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleOpenVscodeDiff(message: OpenVscodeDiffMessage, _context: CommandContext): Promise<CommandResult> {
         const fileRegistry = this.getFileRegistry();
         if (!fileRegistry) return this.success();
 
@@ -333,19 +338,23 @@ export class DebugCommands extends SwitchBasedCommand {
 
         const kanbanContent = file.getContent();
         const diskContent = await file.readFromDisk() || '';
-        const baselineContent = file.getBaseline();
 
-        const bridge = context.getWebviewBridge();
-        if (bridge) {
-            bridge.send({
-                type: 'fileDiffResult',
-                filePath: message.filePath,
-                kanbanContent,
-                diskContent,
-                baselineContent
-            });
-        }
+        const diffService = KanbanDiffService.getInstance();
+        diffService.setFileRegistry(fileRegistry);
+        await diffService.openDiff(message.filePath, kanbanContent, diskContent);
 
+        return this.success();
+    }
+
+    private async handleCloseVscodeDiff(message: CloseVscodeDiffMessage, _context: CommandContext): Promise<CommandResult> {
+        const diffService = KanbanDiffService.getInstance();
+        await diffService.closeDiff(message.filePath);
+        return this.success();
+    }
+
+    private async handleCloseAllVscodeDiffs(): Promise<CommandResult> {
+        const diffService = KanbanDiffService.getInstance();
+        await diffService.closeAllDiffs();
         return this.success();
     }
 

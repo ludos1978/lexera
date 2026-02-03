@@ -198,11 +198,6 @@ function buildAndShowDialog() {
     document.body.appendChild(fileManagerElement);
     fileManagerVisible = true;
 
-    // Re-render diff panel if it was active before the dialog rebuild
-    if (diffActiveFile && diffData) {
-        renderDiffPanel();
-    }
-
     // Click outside panel to close (browse mode only)
     fileManagerElement.addEventListener('click', (e) => {
         if (e.target === fileManagerElement && dialogMode === 'browse') {
@@ -227,8 +222,9 @@ function hideFileManager() {
     conflictId = null;
     conflictFiles = [];
     perFileResolutions.clear();
-    diffActiveFile = null;
-    diffData = null;
+
+    // Close any open VS Code diff views
+    closeAllDiffs();
 
     stopAutoRefresh();
     if (syncVerifyTimer) {
@@ -680,207 +676,70 @@ function createUnifiedTable() {
             </div>
         </div>
 
-        <div id="diff-panel"></div>
     `;
 }
 
-// ============= DIFF PANEL =============
+// ============= VS CODE DIFF =============
 
+/**
+ * Toggle VS Code diff view for a file.
+ * Opens native VS Code diff editor with kanban buffer (editable) on left
+ * and disk content (read-only) on right.
+ */
 function toggleDiffForFile(filePath) {
     if (diffActiveFile === filePath) {
-        closeDiffPanel();
+        // Close the diff
+        closeDiff();
         return;
     }
-    diffActiveFile = filePath;
-    diffData = null;
 
-    // Show loading state
-    const panel = document.getElementById('diff-panel');
-    if (panel) {
-        panel.innerHTML = `
-            <div class="diff-panel">
-                <div class="diff-header">
-                    <span class="diff-filename">Loading diff...</span>
-                    <button onclick="closeDiffPanel()" class="diff-close-btn">&#x2715;</button>
-                </div>
-            </div>
-        `;
+    // Close any existing diff first
+    if (diffActiveFile && window.vscode) {
+        window.vscode.postMessage({ type: 'closeVscodeDiff', filePath: diffActiveFile });
     }
 
-    // Update diff button active states
-    updateDiffButtonStates();
+    diffActiveFile = filePath;
+    updateDiffCheckboxStates();
 
     if (window.vscode) {
-        window.vscode.postMessage({ type: 'requestFileDiff', filePath });
+        window.vscode.postMessage({ type: 'openVscodeDiff', filePath });
     }
-}
-
-function closeDiffPanel() {
-    diffActiveFile = null;
-    diffData = null;
-    const panel = document.getElementById('diff-panel');
-    if (panel) {
-        panel.innerHTML = '';
-    }
-    updateDiffButtonStates();
 }
 
 /**
- * Re-request the diff if the given file path matches the currently active diff.
- * Uses basename comparison to handle absolute vs relative path differences.
+ * Close the current VS Code diff view.
  */
-function reRequestDiffIfActive(filePath) {
-    if (!diffActiveFile || !filePath || !window.vscode) return;
-    const diffBasename = diffActiveFile.split('/').pop();
-    const changedBasename = filePath.split('/').pop();
-    if (diffBasename === changedBasename || diffActiveFile === filePath) {
-        window.vscode.postMessage({ type: 'requestFileDiff', filePath: diffActiveFile });
+function closeDiff() {
+    if (diffActiveFile && window.vscode) {
+        window.vscode.postMessage({ type: 'closeVscodeDiff', filePath: diffActiveFile });
     }
+    diffActiveFile = null;
+    diffData = null;
+    updateDiffCheckboxStates();
 }
 
-function updateDiffButtonStates() {
+/**
+ * Close all VS Code diff views.
+ */
+function closeAllDiffs() {
+    if (window.vscode) {
+        window.vscode.postMessage({ type: 'closeAllVscodeDiffs' });
+    }
+    diffActiveFile = null;
+    diffData = null;
+    updateDiffCheckboxStates();
+}
+
+/**
+ * Update checkbox states to reflect which file's diff is currently open.
+ */
+function updateDiffCheckboxStates() {
     if (!fileManagerElement) return;
     const checkboxes = fileManagerElement.querySelectorAll('.diff-checkbox');
     checkboxes.forEach(cb => {
         const filePath = cb.dataset.filePath;
         cb.checked = (filePath === diffActiveFile);
     });
-}
-
-function renderDiffPanel() {
-    const panel = document.getElementById('diff-panel');
-    if (!panel || !diffData || !diffActiveFile) {
-        if (panel) panel.innerHTML = '';
-        return;
-    }
-
-    const fileName = diffActiveFile.split('/').pop() || diffActiveFile;
-    const diskLines = diffData.diskContent.split('\n');
-    const kanbanLines = diffData.kanbanContent.split('\n');
-    const diff = computeLineDiff(diskLines, kanbanLines);
-
-    const diskLinesHTML = diff.map(entry => {
-        let cssClass, text;
-        if (entry.type === 'removed') {
-            cssClass = 'removed';
-            text = escapeHtml(entry.left) || '&nbsp;';
-        } else if (entry.type === 'added') {
-            cssClass = 'filler';
-            text = '&nbsp;';
-        } else {
-            cssClass = 'unchanged';
-            text = escapeHtml(entry.left) || '&nbsp;';
-        }
-        return `<div class="diff-line ${cssClass}">${text}</div>`;
-    }).join('');
-
-    const kanbanLinesHTML = diff.map(entry => {
-        let cssClass, text;
-        if (entry.type === 'added') {
-            cssClass = 'added';
-            text = escapeHtml(entry.right) || '&nbsp;';
-        } else if (entry.type === 'removed') {
-            cssClass = 'filler';
-            text = '&nbsp;';
-        } else {
-            cssClass = 'unchanged';
-            text = escapeHtml(entry.right) || '&nbsp;';
-        }
-        return `<div class="diff-line ${cssClass}">${text}</div>`;
-    }).join('');
-
-    panel.innerHTML = `
-        <div class="diff-panel">
-            <div class="diff-header">
-                <span class="diff-filename">${escapeHtml(fileName)}</span>
-                <button onclick="closeDiffPanel()" class="diff-close-btn">&#x2715;</button>
-            </div>
-            <div class="diff-content">
-                <div class="diff-column diff-disk">
-                    <div class="diff-column-header">Disk Content</div>
-                    <div class="diff-lines">${diskLinesHTML}</div>
-                </div>
-                <div class="diff-column diff-kanban">
-                    <div class="diff-column-header">Kanban Content</div>
-                    <div class="diff-lines">${kanbanLinesHTML}</div>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Line-based diff using LCS with fallback for large files.
- * Returns array of { type: 'unchanged'|'added'|'removed', left, right }.
- * Falls back to simple line-by-line comparison when the DP table would exceed
- * ~4M cells to avoid freezing the browser.
- */
-function computeLineDiff(oldLines, newLines) {
-    const m = oldLines.length;
-    const n = newLines.length;
-    const MAX_DP_CELLS = 4_000_000;
-
-    if (m * n > MAX_DP_CELLS) {
-        return computeSimpleLineDiff(oldLines, newLines);
-    }
-
-    // Build LCS length table
-    const dp = new Array(m + 1);
-    for (let i = 0; i <= m; i++) {
-        dp[i] = new Array(n + 1).fill(0);
-    }
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            if (oldLines[i - 1] === newLines[j - 1]) {
-                dp[i][j] = dp[i - 1][j - 1] + 1;
-            } else {
-                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-            }
-        }
-    }
-
-    // Backtrack to produce diff entries
-    const result = [];
-    let i = m, j = n;
-    while (i > 0 || j > 0) {
-        if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-            result.push({ type: 'unchanged', left: oldLines[i - 1], right: newLines[j - 1] });
-            i--; j--;
-        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-            result.push({ type: 'added', left: null, right: newLines[j - 1] });
-            j--;
-        } else {
-            result.push({ type: 'removed', left: oldLines[i - 1], right: null });
-            i--;
-        }
-    }
-    result.reverse();
-    return result;
-}
-
-/**
- * Simple line-by-line comparison fallback for large files.
- * Walks both arrays in parallel: matching lines are unchanged,
- * mismatches show the old line as removed and the new line as added.
- */
-function computeSimpleLineDiff(oldLines, newLines) {
-    const result = [];
-    const maxLen = Math.max(oldLines.length, newLines.length);
-    for (let i = 0; i < maxLen; i++) {
-        const oldLine = i < oldLines.length ? oldLines[i] : null;
-        const newLine = i < newLines.length ? newLines[i] : null;
-        if (oldLine === newLine) {
-            result.push({ type: 'unchanged', left: oldLine, right: newLine });
-        } else {
-            if (oldLine !== null) {
-                result.push({ type: 'removed', left: oldLine, right: null });
-            }
-            if (newLine !== null) {
-                result.push({ type: 'added', left: null, right: newLine });
-            }
-        }
-    }
-    return result;
 }
 
 // ============= HELPER FUNCTIONS =============
@@ -1033,10 +892,6 @@ function updateDialogContent() {
             const savedState = saveDropdownState(tableContainer);
             tableContainer.innerHTML = createUnifiedTable();
             restoreDropdownState(tableContainer, savedState);
-            // Re-render diff panel if it was active (rebuild recreated the empty #diff-panel div)
-            if (diffActiveFile && diffData) {
-                renderDiffPanel();
-            }
             return;
         }
 
@@ -1601,7 +1456,6 @@ function initializeFileManager() {
     window.executePathConvert = executePathConvert;
     window.executeAllPaths = executeAllPaths;
     window.toggleDiffForFile = toggleDiffForFile;
-    window.closeDiffPanel = closeDiffPanel;
 
     document.addEventListener('keydown', handleFileManagerKeydown);
 
@@ -1649,7 +1503,6 @@ function initializeFileManager() {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
                     verifyContentSync(true);
-                    reRequestDiffIfActive(message.filePath);
                 }
                 break;
 
@@ -1658,7 +1511,6 @@ function initializeFileManager() {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
                     verifyContentSync(true);
-                    reRequestDiffIfActive(message.filePath);
                 }
                 break;
 
@@ -1679,14 +1531,12 @@ function initializeFileManager() {
                 }
                 break;
 
-            case 'fileDiffResult':
+            case 'vscodeDiffClosed':
+                // VS Code diff was closed externally (user closed the tab)
                 if (message.filePath === diffActiveFile) {
-                    diffData = {
-                        kanbanContent: message.kanbanContent,
-                        diskContent: message.diskContent,
-                        baselineContent: message.baselineContent
-                    };
-                    renderDiffPanel();
+                    diffActiveFile = null;
+                    diffData = null;
+                    updateDiffCheckboxStates();
                 }
                 break;
 

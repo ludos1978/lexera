@@ -2086,22 +2086,37 @@ export interface ExternalChangesDetectedMessage extends BaseMessage {
 // ============= DIFF MESSAGES =============
 
 /**
- * Request file diff (Frontend → Backend)
+ * Open VS Code diff view (Frontend → Backend)
+ * Opens a native VS Code diff editor with kanban buffer on left (editable)
+ * and disk content on right (read-only)
  */
-export interface RequestFileDiffMessage extends BaseMessage {
-    type: 'requestFileDiff';
+export interface OpenVscodeDiffMessage extends BaseMessage {
+    type: 'openVscodeDiff';
     filePath: string;
 }
 
 /**
- * File diff result (Backend → Frontend)
+ * Close VS Code diff view (Frontend → Backend)
  */
-export interface FileDiffResultMessage extends BaseMessage {
-    type: 'fileDiffResult';
+export interface CloseVscodeDiffMessage extends BaseMessage {
+    type: 'closeVscodeDiff';
     filePath: string;
-    kanbanContent: string;
-    diskContent: string;
-    baselineContent: string;
+}
+
+/**
+ * Close all VS Code diff views (Frontend → Backend)
+ */
+export interface CloseAllVscodeDiffsMessage extends BaseMessage {
+    type: 'closeAllVscodeDiffs';
+}
+
+/**
+ * VS Code diff was closed externally (Backend → Frontend)
+ * Sent when user closes the diff tab manually
+ */
+export interface VscodeDiffClosedMessage extends BaseMessage {
+    type: 'vscodeDiffClosed';
+    filePath: string;
 }
 
 // ============= TYPE UNIONS =============
@@ -2156,7 +2171,7 @@ export type OutgoingMessage =
     // External changes notification
     | ExternalChangesDetectedMessage
     // Diff messages
-    | FileDiffResultMessage;
+    | VscodeDiffClosedMessage;
 
 /**
  * All incoming message types (Frontend → Backend)
@@ -2318,7 +2333,9 @@ export type IncomingMessage =
     // File dialog messages
     | OpenFileDialogMessage
     // Diff messages
-    | RequestFileDiffMessage;
+    | OpenVscodeDiffMessage
+    | CloseVscodeDiffMessage
+    | CloseAllVscodeDiffsMessage;
 
 /**
  * Message type string literals for type-safe checking
