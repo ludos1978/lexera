@@ -8,6 +8,8 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 
 /**
@@ -17,6 +19,7 @@ interface DiffSession {
     filePath: string;
     kanbanDocUri: vscode.Uri;
     diskUri: vscode.Uri;
+    tempFilePath?: string;  // Temp file for kanban content
     disposables: vscode.Disposable[];
 }
 
@@ -79,34 +82,38 @@ export class KanbanDiffService implements vscode.Disposable {
 
     /**
      * Open a diff view for the given file
-     * Left side: kanban buffer content (editable untitled document)
-     * Right side: actual file on disk (read-only in diff context)
+     * Left side: kanban buffer content (temp file, editable)
+     * Right side: actual file on disk
      */
     async openDiff(filePath: string, kanbanContent: string, _diskContent: string): Promise<void> {
         // Close existing session for this file if any
         await this.closeDiff(filePath);
 
         const fileName = path.basename(filePath);
+        const fileExt = path.extname(filePath);
 
-        // Create untitled document with kanban content (left side, editable)
-        const kanbanDoc = await vscode.workspace.openTextDocument({
-            content: kanbanContent,
-            language: 'markdown'
-        });
+        // Create temp file for kanban content (left side, editable)
+        const tempDir = os.tmpdir();
+        const tempFileName = `kanban-buffer-${Date.now()}${fileExt}`;
+        const tempFilePath = path.join(tempDir, tempFileName);
+        fs.writeFileSync(tempFilePath, kanbanContent, 'utf8');
+
+        const kanbanUri = vscode.Uri.file(tempFilePath);
 
         // Use the actual file URI for the right side (disk content)
         const diskUri = vscode.Uri.file(filePath);
 
         const session: DiffSession = {
             filePath,
-            kanbanDocUri: kanbanDoc.uri,
+            kanbanDocUri: kanbanUri,
             diskUri,
+            tempFilePath,
             disposables: []
         };
 
-        // Listen for changes to the kanban document and sync back to registry
+        // Listen for changes to the kanban temp file and sync back to registry
         const changeListener = vscode.workspace.onDidChangeTextDocument(e => {
-            if (e.document.uri.toString() === kanbanDoc.uri.toString()) {
+            if (e.document.uri.fsPath === tempFilePath) {
                 this.syncKanbanChangesToRegistry(filePath, e.document.getText());
             }
         });
@@ -118,7 +125,7 @@ export class KanbanDiffService implements vscode.Disposable {
         // Left (first arg) = kanban buffer, Right (second arg) = disk file
         await vscode.commands.executeCommand(
             'vscode.diff',
-            kanbanDoc.uri,  // Left: kanban buffer (editable)
+            kanbanUri,      // Left: kanban buffer (temp file, editable)
             diskUri,        // Right: disk file
             `${fileName}: Kanban ↔ Disk`,
             {
@@ -142,6 +149,15 @@ export class KanbanDiffService implements vscode.Disposable {
 
         // Close the diff editor tab
         await this.closeEditorByUri(session.kanbanDocUri);
+
+        // Clean up temp file
+        if (session.tempFilePath) {
+            try {
+                fs.unlinkSync(session.tempFilePath);
+            } catch {
+                // Ignore errors when cleaning up temp file
+            }
+        }
 
         this.activeSessions.delete(filePath);
     }
@@ -240,6 +256,16 @@ export class KanbanDiffService implements vscode.Disposable {
                         diffInput.modified?.toString() === session.diskUri.toString()) {
                         // Clean up the session without trying to close the tab again
                         session.disposables.forEach(d => d.dispose());
+
+                        // Clean up temp file
+                        if (session.tempFilePath) {
+                            try {
+                                fs.unlinkSync(session.tempFilePath);
+                            } catch {
+                                // Ignore errors when cleaning up temp file
+                            }
+                        }
+
                         this.activeSessions.delete(filePath);
 
                         // Notify callback that diff was closed externally
