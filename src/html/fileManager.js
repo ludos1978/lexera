@@ -776,12 +776,19 @@ function renderDiffPanel() {
 }
 
 /**
- * Simple line-based diff using longest common subsequence (LCS).
+ * Line-based diff using LCS with fallback for large files.
  * Returns array of { type: 'unchanged'|'added'|'removed', left, right }.
+ * Falls back to simple line-by-line comparison when the DP table would exceed
+ * ~4M cells to avoid freezing the browser.
  */
 function computeLineDiff(oldLines, newLines) {
     const m = oldLines.length;
     const n = newLines.length;
+    const MAX_DP_CELLS = 4_000_000;
+
+    if (m * n > MAX_DP_CELLS) {
+        return computeSimpleLineDiff(oldLines, newLines);
+    }
 
     // Build LCS length table
     const dp = new Array(m + 1);
@@ -814,6 +821,31 @@ function computeLineDiff(oldLines, newLines) {
         }
     }
     result.reverse();
+    return result;
+}
+
+/**
+ * Simple line-by-line comparison fallback for large files.
+ * Walks both arrays in parallel: matching lines are unchanged,
+ * mismatches show the old line as removed and the new line as added.
+ */
+function computeSimpleLineDiff(oldLines, newLines) {
+    const result = [];
+    const maxLen = Math.max(oldLines.length, newLines.length);
+    for (let i = 0; i < maxLen; i++) {
+        const oldLine = i < oldLines.length ? oldLines[i] : null;
+        const newLine = i < newLines.length ? newLines[i] : null;
+        if (oldLine === newLine) {
+            result.push({ type: 'unchanged', left: oldLine, right: newLine });
+        } else {
+            if (oldLine !== null) {
+                result.push({ type: 'removed', left: oldLine, right: null });
+            }
+            if (newLine !== null) {
+                result.push({ type: 'added', left: null, right: newLine });
+            }
+        }
+    }
     return result;
 }
 
