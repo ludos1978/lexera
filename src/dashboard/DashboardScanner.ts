@@ -163,14 +163,6 @@ export class DashboardScanner {
         boardName: string,
         timeframeDays: number
     ): { upcomingItems: UpcomingItem[]; summary: BoardTagSummary } {
-        // DEBUG: Entry point logging
-        console.log('[DashboardScanner] scanBoard CALLED:', boardName, 'columns:', board.columns?.length);
-        // Log first 3 columns with their task counts
-        board.columns?.slice(0, 3).forEach((col, i) => {
-            console.log(`[DashboardScanner] Column ${i}: "${col.title}" tasks: ${col.tasks?.length}`);
-            col.tasks?.forEach((t, j) => console.log(`  Task ${j}: "${t.title}"`));
-        });
-
         const upcomingItems: UpcomingItem[] = [];
         const tagCounts = new Map<string, { count: number; type: 'hash' | 'person' | 'temporal' }>();
         let totalTasks = 0;
@@ -216,58 +208,47 @@ export class DashboardScanner {
                     }
                 }
 
-                // Check task's temporal tags (title + description)
-                const taskTemporal = this._extractTemporalInfo(taskText);
+                // Process each line separately to find all temporal tags
+                const lines = taskText.split('\n');
+                let hasTemporalTag = false;
 
-                // DEBUG: Log ALL tasks in first column
-                if (columnIndex === 0) {
-                    console.log('[DashboardScanner] Col0 Task:', JSON.stringify({
-                        title: task.title,
-                        hasTemporal: !!taskTemporal,
-                        checkboxState: taskTemporal?.checkboxState,
-                        tag: taskTemporal?.tag,
-                        date: taskTemporal?.date?.toISOString()
-                    }));
-                }
+                for (const line of lines) {
+                    const lineTemporal = this._extractTemporalInfo(line);
+                    if (!lineTemporal) continue;
 
-                if (taskTemporal) {
-                    temporalTasks++;
+                    hasTemporalTag = true;
 
                     // Skip checked deadline tasks (- [x] !date)
-                    if (taskTemporal.checkboxState === 'checked') {
-                        logger.debug('[DashboardScanner] Skipping checked deadline');
-                        taskIndex++;
+                    if (lineTemporal.checkboxState === 'checked') {
                         continue;
                     }
 
-                    // Determine effective date for this task
-                    let effectiveDate = taskTemporal.date;
-                    let effectiveDateIsWeekBased = taskTemporal.week !== undefined;
+                    // Determine effective date for this line's temporal tag
+                    let effectiveDate = lineTemporal.date;
+                    let effectiveDateIsWeekBased = lineTemporal.week !== undefined;
 
                     // For time slots WITHOUT explicit date/week - can inherit from column
-                    if (taskTemporal.timeSlot && !taskTemporal.hasExplicitDate) {
+                    if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
                         if (columnTemporal && columnDate) {
                             // Column has temporal tag - time slot inherits from column
                             if (!columnWithinTimeframe) {
                                 // Column is outside timeframe - gates this time slot
-                                taskIndex++;
                                 continue;
                             }
                             effectiveDate = columnDate;
                             effectiveDateIsWeekBased = columnTemporal.week !== undefined;
                         }
                         // If no column temporal tag, time slot uses "today" (already set)
-                    } else if (taskTemporal.hasExplicitDate && columnTemporal && columnTemporal.date && !columnWithinTimeframe) {
-                        // Task has explicit date/week tag, but column has temporal tag outside timeframe
-                        // Column gates the task (hierarchical gating)
-                        taskIndex++;
+                    } else if (lineTemporal.hasExplicitDate && columnTemporal && columnTemporal.date && !columnWithinTimeframe) {
+                        // Line has explicit date/week tag, but column has temporal tag outside timeframe
+                        // Column gates the line (hierarchical gating)
                         continue;
                     }
 
                     const withinTimeframe = effectiveDate ? isWithinTimeframe(effectiveDate, timeframeDays, effectiveDateIsWeekBased) : false;
 
                     // For deadline tasks (unchecked checkbox), also include overdue items
-                    const isDeadlineTask = taskTemporal.checkboxState === 'unchecked';
+                    const isDeadlineTask = lineTemporal.checkboxState === 'unchecked';
                     let isOverdue = false;
                     if (effectiveDate) {
                         const today = new Date();
@@ -280,35 +261,29 @@ export class DashboardScanner {
                     // Include if within timeframe OR if it's an overdue deadline task
                     const shouldInclude = withinTimeframe || (isDeadlineTask && isOverdue);
 
-                    // DEBUG: Log inclusion decision for first column
-                    if (columnIndex === 0) {
-                        console.log('[DashboardScanner] Col0 Inclusion:', JSON.stringify({
-                            tag: taskTemporal.tag,
-                            withinTimeframe,
-                            isDeadlineTask,
-                            isOverdue,
-                            shouldInclude,
-                            effectiveDate: effectiveDate?.toISOString()
-                        }));
-                    }
-
                     if (effectiveDate && shouldInclude) {
+                        // Use the line content as the display title for this temporal item
+                        const lineTitle = line.trim() || task.title || '';
                         upcomingItems.push({
                             boardUri,
                             boardName,
                             columnIndex,
                             columnTitle: columnTitle,
                             taskIndex,
-                            taskTitle: task.title || '',
-                            temporalTag: taskTemporal.tag,
+                            taskTitle: lineTitle,
+                            temporalTag: lineTemporal.tag,
                             date: effectiveDate,
-                            week: taskTemporal.week || columnTemporal?.week,
-                            year: taskTemporal.year || columnTemporal?.year,
-                            timeSlot: taskTemporal.timeSlot,
+                            week: lineTemporal.week || columnTemporal?.week,
+                            year: lineTemporal.year || columnTemporal?.year,
+                            timeSlot: lineTemporal.timeSlot,
                             rawTitle: task.title || '',
                             isOverdue: isDeadlineTask && isOverdue
                         });
                     }
+                }
+
+                if (hasTemporalTag) {
+                    temporalTasks++;
                 }
                 taskIndex++;
             }
@@ -316,7 +291,6 @@ export class DashboardScanner {
         }
 
         logger.debug('[DashboardScanner] END scan', { upcomingItems: upcomingItems.length });
-        console.log('[DashboardScanner] scanBoard DONE:', upcomingItems.length, 'upcoming items');
 
         // Convert tag counts to sorted array
         const tags: TagInfo[] = Array.from(tagCounts.entries())
