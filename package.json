@@ -1053,6 +1053,104 @@
                 }
               }
             },
+            "MoSCoW": {
+              "must": {
+                "light": {
+                  "text": "#ffffff",
+                  "background": "#dc3545",
+                  "backgroundDark": "#a71d2a"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#f5535f",
+                  "backgroundDark": "#c41e3a"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "3px",
+                  "position": "left",
+                  "color": "#dc3545"
+                },
+                "footerBar": {
+                  "height": "20px",
+                  "label": "MUST",
+                  "color": "#dc3545",
+                  "labelColor": "#ffffff"
+                }
+              },
+              "should": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#fd7e14",
+                  "backgroundDark": "#c35a00"
+                },
+                "dark": {
+                  "text": "#000000",
+                  "background": "#ff9838",
+                  "backgroundDark": "#e06c00"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#fd7e14"
+                },
+                "footerBar": {
+                  "height": "20px",
+                  "label": "SHOULD",
+                  "color": "#fd7e14",
+                  "labelColor": "#000000"
+                }
+              },
+              "could": {
+                "light": {
+                  "text": "#000000",
+                  "background": "#ffc107",
+                  "backgroundDark": "#c79100"
+                },
+                "dark": {
+                  "text": "#000000",
+                  "background": "#ffcd39",
+                  "backgroundDark": "#d4a017"
+                },
+                "border": {
+                  "style": "solid",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#ffc107"
+                },
+                "footerBar": {
+                  "height": "20px",
+                  "label": "COULD",
+                  "color": "#ffc107",
+                  "labelColor": "#000000"
+                }
+              },
+              "wont": {
+                "light": {
+                  "text": "#ffffff",
+                  "background": "#6c757d",
+                  "backgroundDark": "#545b62"
+                },
+                "dark": {
+                  "text": "#ffffff",
+                  "background": "#868e96",
+                  "backgroundDark": "#6c757d"
+                },
+                "border": {
+                  "style": "dashed",
+                  "width": "2px",
+                  "position": "left",
+                  "color": "#6c757d"
+                },
+                "footerBar": {
+                  "height": "20px",
+                  "label": "WONT",
+                  "color": "#6c757d",
+                  "labelColor": "#ffffff"
+                }
+              }
+            },
             "Positivity": {
               "++": {
                 "light": {
@@ -5712,6 +5810,7 @@
             "type": "string",
             "enum": [
               "Priority",
+              "MoSCoW",
               "Positivity",
               "Status",
               "Workflow",
@@ -5752,7 +5851,7 @@
             "Complexity"
           ],
           "uniqueItems": true,
-          "markdownDescription": "**Column Tag Categories** - Select which categories appear in column burger menus. All 32 categories available. See 'Tag Category Reference' above for details.\n\n**Column Defaults (4):** Workflow, Positivity, Colors, Complexity"
+          "markdownDescription": "**Column Tag Categories** - Select which categories appear in column burger menus. All 33 categories available. See 'Tag Category Reference' above for details.\n\n**Column Defaults (4):** Workflow, Positivity, Colors, Complexity"
         },
         "markdown-kanban.enabledTagCategoriesTask": {
           "type": "array",
@@ -5760,6 +5859,7 @@
             "type": "string",
             "enum": [
               "Priority",
+              "MoSCoW",
               "Positivity",
               "Status",
               "Workflow",
@@ -5800,7 +5900,7 @@
             "Impact"
           ],
           "uniqueItems": true,
-          "markdownDescription": "**Task Tag Categories** - Select which categories appear in task burger menus. All 32 categories available. See 'Tag Category Reference' above for details.\n\n**Task Defaults (4):** Positivity, Status, Colors, Impact"
+          "markdownDescription": "**Task Tag Categories** - Select which categories appear in task burger menus. All 33 categories available. See 'Tag Category Reference' above for details.\n\n**Task Defaults (4):** Positivity, Status, Colors, Impact"
         },
         "markdown-kanban.customTagCategories": {
           "type": "object",

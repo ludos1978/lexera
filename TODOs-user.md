@@ -128,7 +128,7 @@ to show a diff as a preview panel. this should switch between all the files, onl
 
 - [x] add #communication to the tags, similar to the #preparation tag
 
-- [ ] add the moscow style tags #must #should #could #wont
+- [x] add the moscow style tags #must #should #could #wont
 
 - [ ] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
 
