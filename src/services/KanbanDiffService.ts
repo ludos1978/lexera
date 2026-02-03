@@ -14,13 +14,19 @@ import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import { logger } from '../utils/logger';
 
 /**
+ * Unique prefix for our diff temp files - used to identify tabs we opened
+ */
+const DIFF_TEMP_PREFIX = 'kanban-diff-';
+
+/**
  * Tracks active diff sessions and manages their lifecycle
  */
 interface DiffSession {
+    sessionId: string;      // Unique ID for this session
     filePath: string;
     kanbanDocUri: vscode.Uri;
     diskUri: vscode.Uri;
-    tempFilePath?: string;  // Temp file for kanban content
+    tempFilePath: string;   // Temp file for kanban content (includes sessionId)
     disposables: vscode.Disposable[];
 }
 
@@ -95,9 +101,13 @@ export class KanbanDiffService implements vscode.Disposable {
         const fileName = path.basename(filePath);
         const fileExt = path.extname(filePath);
 
+        // Generate unique session ID
+        const sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
         // Create temp file for kanban content (left side, editable)
+        // Use our unique prefix so we can identify tabs we opened
         const tempDir = os.tmpdir();
-        const tempFileName = `kanban-buffer-${Date.now()}${fileExt}`;
+        const tempFileName = `${DIFF_TEMP_PREFIX}${sessionId}${fileExt}`;
         const tempFilePath = path.join(tempDir, tempFileName);
         fs.writeFileSync(tempFilePath, kanbanContent, 'utf8');
 
@@ -107,6 +117,7 @@ export class KanbanDiffService implements vscode.Disposable {
         const diskUri = vscode.Uri.file(filePath);
 
         const session: DiffSession = {
+            sessionId,
             filePath,
             kanbanDocUri: kanbanUri,
             diskUri,
@@ -147,24 +158,22 @@ export class KanbanDiffService implements vscode.Disposable {
     async closeDiff(filePath: string): Promise<void> {
         const session = this.activeSessions.get(filePath);
         if (!session) {
-            logger.debug(`[KanbanDiffService] closeDiff: No session for "${filePath}". Active sessions: [${Array.from(this.activeSessions.keys()).join(', ')}]`);
+            console.log(`[KanbanDiffService] closeDiff: No session for "${filePath}". Active sessions: [${Array.from(this.activeSessions.keys()).join(', ')}]`);
             return;
         }
-        logger.debug(`[KanbanDiffService] closeDiff: Closing session for "${filePath}"`);
+        console.log(`[KanbanDiffService] closeDiff: Closing session ${session.sessionId} for "${filePath}"`);
 
         // Dispose listeners
         session.disposables.forEach(d => d.dispose());
 
-        // Close the diff editor tab
-        await this.closeEditorByUri(session.kanbanDocUri);
+        // Close the diff editor tab using session ID for reliable matching
+        await this.closeEditorBySession(session);
 
         // Clean up temp file
-        if (session.tempFilePath) {
-            try {
-                fs.unlinkSync(session.tempFilePath);
-            } catch {
-                // Ignore errors when cleaning up temp file
-            }
+        try {
+            fs.unlinkSync(session.tempFilePath);
+        } catch {
+            // Ignore errors when cleaning up temp file
         }
 
         // NOTE: Do NOT clear preserveRawContent flag here!
@@ -179,6 +188,7 @@ export class KanbanDiffService implements vscode.Disposable {
      */
     async closeAllDiffs(): Promise<void> {
         const filePaths = Array.from(this.activeSessions.keys());
+        console.log(`[KanbanDiffService] closeAllDiffs: Closing ${filePaths.length} diff session(s): [${filePaths.join(', ')}]`);
         for (const filePath of filePaths) {
             await this.closeDiff(filePath);
         }
@@ -239,31 +249,53 @@ export class KanbanDiffService implements vscode.Disposable {
         }
     }
 
-    private async closeEditorByUri(uri: vscode.Uri): Promise<void> {
-        const uriString = uri.toString();
+    /**
+     * Close editor tabs matching the given session
+     * Uses the unique session ID in the temp file name for reliable matching
+     */
+    private async closeEditorBySession(session: DiffSession): Promise<void> {
+        const tempFileName = path.basename(session.tempFilePath);
+        console.log(`[KanbanDiffService] closeEditorBySession: Looking for tabs with tempFile="${tempFileName}" (sessionId=${session.sessionId})`);
+
+        const tabsToClose: vscode.Tab[] = [];
 
         for (const tabGroup of vscode.window.tabGroups.all) {
             for (const tab of tabGroup.tabs) {
-                // Check if this tab contains our document
                 const tabInput = tab.input;
                 if (tabInput && typeof tabInput === 'object') {
-                    // Handle diff editor tabs
+                    // Handle diff editor tabs - check if either side contains our temp file
                     if ('original' in tabInput && 'modified' in tabInput) {
                         const diffInput = tabInput as { original: vscode.Uri; modified: vscode.Uri };
-                        if (diffInput.original?.toString() === uriString ||
-                            diffInput.modified?.toString() === uriString) {
-                            await vscode.window.tabGroups.close(tab);
-                            return;
+                        const originalPath = diffInput.original?.fsPath || '';
+                        const modifiedPath = diffInput.modified?.fsPath || '';
+
+                        // Match by our unique temp file name (contains session ID)
+                        if (originalPath.includes(tempFileName) || modifiedPath.includes(tempFileName)) {
+                            console.log(`[KanbanDiffService] closeEditorBySession: Found diff tab for session ${session.sessionId}`);
+                            tabsToClose.push(tab);
                         }
                     }
-                    // Handle regular editor tabs
+                    // Handle regular editor tabs (in case temp file was opened separately)
                     if ('uri' in tabInput) {
                         const textInput = tabInput as { uri: vscode.Uri };
-                        if (textInput.uri?.toString() === uriString) {
-                            await vscode.window.tabGroups.close(tab);
-                            return;
+                        if (textInput.uri?.fsPath?.includes(tempFileName)) {
+                            console.log(`[KanbanDiffService] closeEditorBySession: Found regular tab for session ${session.sessionId}`);
+                            tabsToClose.push(tab);
                         }
                     }
+                }
+            }
+        }
+
+        if (tabsToClose.length === 0) {
+            console.log(`[KanbanDiffService] closeEditorBySession: No matching tabs found for session ${session.sessionId}`);
+        } else {
+            console.log(`[KanbanDiffService] closeEditorBySession: Closing ${tabsToClose.length} tab(s) for session ${session.sessionId}`);
+            for (const tab of tabsToClose) {
+                try {
+                    await vscode.window.tabGroups.close(tab);
+                } catch (e) {
+                    console.warn(`[KanbanDiffService] closeEditorBySession: Error closing tab:`, e);
                 }
             }
         }
