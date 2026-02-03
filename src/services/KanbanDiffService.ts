@@ -11,40 +11,6 @@ import * as path from 'path';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 
 /**
- * Content provider for disk content (read-only right side of diff)
- */
-export class KanbanDiskContentProvider implements vscode.TextDocumentContentProvider {
-    private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
-    readonly onDidChange = this._onDidChange.event;
-
-    private diskContent = new Map<string, string>();
-
-    setDiskContent(filePath: string, content: string): void {
-        this.diskContent.set(filePath, content);
-        const uri = this.createUri(filePath);
-        this._onDidChange.fire(uri);
-    }
-
-    clearDiskContent(filePath: string): void {
-        this.diskContent.delete(filePath);
-    }
-
-    createUri(filePath: string): vscode.Uri {
-        return vscode.Uri.parse(`kanban-disk:${encodeURIComponent(filePath)}`);
-    }
-
-    provideTextDocumentContent(uri: vscode.Uri): string {
-        const filePath = decodeURIComponent(uri.path);
-        return this.diskContent.get(filePath) || '';
-    }
-
-    dispose(): void {
-        this._onDidChange.dispose();
-        this.diskContent.clear();
-    }
-}
-
-/**
  * Tracks active diff sessions and manages their lifecycle
  */
 interface DiffSession {
@@ -65,20 +31,12 @@ export type DiffClosedCallback = (filePath: string) => void;
 export class KanbanDiffService implements vscode.Disposable {
     private static instance: KanbanDiffService | null = null;
 
-    private diskContentProvider: KanbanDiskContentProvider;
-    private providerRegistration: vscode.Disposable;
     private activeSessions = new Map<string, DiffSession>();
     private fileRegistry: MarkdownFileRegistry | null = null;
     private disposables: vscode.Disposable[] = [];
     private onDiffClosedCallback: DiffClosedCallback | null = null;
 
     private constructor() {
-        this.diskContentProvider = new KanbanDiskContentProvider();
-        this.providerRegistration = vscode.workspace.registerTextDocumentContentProvider(
-            'kanban-disk',
-            this.diskContentProvider
-        );
-
         // Listen for editor tab closes to clean up sessions
         this.disposables.push(
             vscode.window.tabGroups.onDidChangeTabs(e => {
@@ -107,22 +65,23 @@ export class KanbanDiffService implements vscode.Disposable {
 
     /**
      * Open a diff view for the given file
+     * Left side: kanban buffer content (editable untitled document)
+     * Right side: actual file on disk (read-only in diff context)
      */
-    async openDiff(filePath: string, kanbanContent: string, diskContent: string): Promise<void> {
+    async openDiff(filePath: string, kanbanContent: string, _diskContent: string): Promise<void> {
         // Close existing session for this file if any
         await this.closeDiff(filePath);
 
         const fileName = path.basename(filePath);
-
-        // Set disk content in provider (right side, read-only)
-        this.diskContentProvider.setDiskContent(filePath, diskContent);
-        const diskUri = this.diskContentProvider.createUri(filePath);
 
         // Create untitled document with kanban content (left side, editable)
         const kanbanDoc = await vscode.workspace.openTextDocument({
             content: kanbanContent,
             language: 'markdown'
         });
+
+        // Use the actual file URI for the right side (disk content)
+        const diskUri = vscode.Uri.file(filePath);
 
         const session: DiffSession = {
             filePath,
@@ -142,10 +101,11 @@ export class KanbanDiffService implements vscode.Disposable {
         this.activeSessions.set(filePath, session);
 
         // Open diff view to the right of current editor
+        // Left (first arg) = kanban buffer, Right (second arg) = disk file
         await vscode.commands.executeCommand(
             'vscode.diff',
             kanbanDoc.uri,  // Left: kanban buffer (editable)
-            diskUri,        // Right: disk content (read-only)
+            diskUri,        // Right: disk file
             `${fileName}: Kanban ↔ Disk`,
             {
                 viewColumn: vscode.ViewColumn.Beside,
@@ -165,9 +125,6 @@ export class KanbanDiffService implements vscode.Disposable {
 
         // Dispose listeners
         session.disposables.forEach(d => d.dispose());
-
-        // Clear disk content
-        this.diskContentProvider.clearDiskContent(filePath);
 
         // Close the diff editor tab
         await this.closeEditorByUri(session.kanbanDocUri);
@@ -256,7 +213,6 @@ export class KanbanDiffService implements vscode.Disposable {
                         diffInput.modified?.toString() === session.diskUri.toString()) {
                         // Clean up the session without trying to close the tab again
                         session.disposables.forEach(d => d.dispose());
-                        this.diskContentProvider.clearDiskContent(filePath);
                         this.activeSessions.delete(filePath);
 
                         // Notify callback that diff was closed externally
@@ -277,8 +233,6 @@ export class KanbanDiffService implements vscode.Disposable {
         }
         this.activeSessions.clear();
 
-        this.providerRegistration.dispose();
-        this.diskContentProvider.dispose();
         this.disposables.forEach(d => d.dispose());
 
         KanbanDiffService.instance = null;
