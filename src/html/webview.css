@@ -7536,9 +7536,15 @@ figcaption {
     vertical-align: middle !important;
 }
 
+.file-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
 .file-name-clickable {
     display: inline-block;
-    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7548,6 +7554,8 @@ figcaption {
     text-decoration: underline;
     text-decoration-color: transparent;
     transition: text-decoration-color 0.2s ease;
+    flex: 1;
+    min-width: 0;
 }
 
 .file-name-clickable:hover {

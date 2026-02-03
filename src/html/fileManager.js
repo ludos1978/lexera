@@ -581,8 +581,8 @@ function createUnifiedTable() {
                         ${truncatedDirPath}
                         ${!file.isMainFile ? `<span class="include-type-label ${fileType}">[${typeLabel}]</span>` : ''}
                     </div>
-                    <div class="file-name-clickable" title="${file.path}">
-                        <span onclick="openFile('${escapedPath}')">${file.isMainFile ? '📄' : '📎'} ${file.name}</span>
+                    <div class="file-name-row">
+                        <span class="file-name-clickable" onclick="openFile('${escapedPath}')" title="${file.path}">${file.isMainFile ? '📄' : '📎'} ${file.name}</span>
                         <button onclick="toggleDiffForFile('${escapedPath}')" class="action-btn diff-btn ${diffActiveFile === file.path ? 'active' : ''}" title="Toggle diff view">&#x21D4;</button>
                     </div>
                 </td>
