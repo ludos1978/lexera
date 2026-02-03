@@ -5187,6 +5187,12 @@ document.addEventListener('visibilitychange', function() {
     } else {
         // Reset flag when page becomes visible again
         closePromptActive = false;
+
+        // Refresh file manager if it's open - file status may have changed while editing in diff view
+        if (typeof window.refreshFileManager === 'function' && typeof window.isFileManagerVisible === 'function' && window.isFileManagerVisible()) {
+            console.log('[webview] Visibility restored, refreshing file manager');
+            window.refreshFileManager();
+        }
     }
 });
 } // End of second webviewEventListenersInitialized guard

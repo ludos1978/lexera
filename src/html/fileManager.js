@@ -1438,9 +1438,14 @@ if (document.readyState === 'loading') {
     initializeFileManager();
 }
 
+function isFileManagerVisible() {
+    return fileManagerVisible;
+}
+
 function initializeFileManager() {
     window.showFileManager = showFileManager;
     window.hideFileManager = hideFileManager;
+    window.isFileManagerVisible = isFileManagerVisible;
     window.updateTrackedFilesData = updateTrackedFilesData;
     window.clearFileManagerCache = clearFileManagerCache;
     window.openFile = openFile;
