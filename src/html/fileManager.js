@@ -817,15 +817,6 @@ function computeLineDiff(oldLines, newLines) {
     return result;
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
 // ============= HELPER FUNCTIONS =============
 
 function getIncludeTypeShortLabel(fileType) {
