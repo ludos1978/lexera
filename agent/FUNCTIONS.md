@@ -2069,15 +2069,18 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 - `toggleDiffForFile(filePath)` — toggles diff panel for a file; sends `requestFileDiff` message to backend.
 - `closeDiffPanel()` — clears diff state and empties diff panel DOM.
 - `updateDiffButtonStates()` — updates active class on diff toggle buttons.
-- `renderDiffPanel()` — renders side-by-side diff view (disk vs kanban) using LCS-based line diff.
-- `computeLineDiff(oldLines, newLines)` — LCS-based line diff algorithm returning unchanged/added/removed entries.
-- `escapeHtml(text)` — HTML entity escaping for diff content display.
+- `renderDiffPanel()` — renders side-by-side diff view (disk vs kanban) using LCS-based line diff. Filler lines shown on the empty side of added/removed entries.
+- `computeLineDiff(oldLines, newLines)` — LCS-based line diff algorithm with O(4M cell) guard; falls back to `computeSimpleLineDiff` for large files.
+- `computeSimpleLineDiff(oldLines, newLines)` — simple line-by-line comparison fallback for large files.
+- `reRequestDiffIfActive(filePath)` — re-requests diff from backend if the given file matches the active diff (basename comparison).
+- Uses `window.escapeHtml` from stringUtils.js (no local duplicate).
 - Added `fileDiffResult` message handler to receive and render diffs.
-- Diff re-requested after `individualFileSaved` and `individualFileReloaded` events.
+- Diff re-requested after `individualFileSaved` and `individualFileReloaded` events via `reRequestDiffIfActive()`.
 - Diff state cleared in `hideFileManager()`.
+- Diff panel re-rendered after `buildAndShowDialog()` and `updateDialogContent()` table rebuilds.
 - Diff toggle button added to each file row in unified table.
 
 ### Modified: `src/html/webview.css`
-- Added `.diff-panel`, `.diff-header`, `.diff-filename`, `.diff-close-btn`, `.diff-content`, `.diff-column`, `.diff-column-header`, `.diff-line` (with `.added`, `.removed`, `.unchanged` variants), `.diff-btn`, `.diff-btn.active` styles.
+- Added `.diff-panel`, `.diff-header`, `.diff-filename`, `.diff-close-btn`, `.diff-content`, `.diff-column`, `.diff-column-header`, `.diff-line` (with `.added`, `.removed`, `.unchanged`, `.filler` variants), `.diff-btn`, `.diff-btn.active` styles.
 
 ---
