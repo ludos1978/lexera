@@ -9704,8 +9704,6 @@ body.font-size-5x .task-description-wysiwyg {
     font-size: 11px;
     background: var(--vscode-editorGroupHeader-tabsBackground);
     border-bottom: 1px solid var(--vscode-panel-border);
-    position: sticky;
-    top: 0;
 }
 
 .diff-column.diff-disk {

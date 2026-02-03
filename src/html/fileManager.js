@@ -198,6 +198,11 @@ function buildAndShowDialog() {
     document.body.appendChild(fileManagerElement);
     fileManagerVisible = true;
 
+    // Re-render diff panel if it was active before the dialog rebuild
+    if (diffActiveFile && diffData) {
+        renderDiffPanel();
+    }
+
     // Click outside panel to close (browse mode only)
     fileManagerElement.addEventListener('click', (e) => {
         if (e.target === fileManagerElement && dialogMode === 'browse') {
