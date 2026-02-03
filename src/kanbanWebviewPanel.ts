@@ -223,7 +223,12 @@ export class KanbanWebviewPanel {
     }
 
     public static getPanelById(panelId: string): KanbanWebviewPanel | undefined {
-        return KanbanWebviewPanel.panels.get(panelId);
+        for (const panel of KanbanWebviewPanel.panels.values()) {
+            if (panel._context.panelId === panelId) {
+                return panel;
+            }
+        }
+        return undefined;
     }
 
     public static getActivePanel(): KanbanWebviewPanel | undefined {

@@ -104,6 +104,10 @@ function getDefaultAction(file) {
         return 'load_external';
     }
     if (openMode === 'external_change') {
+        if (file.hasExternalChanges && file.hasUnsavedChanges) {
+            // Both sides changed — save kanban content but backup the external version
+            return 'overwrite_backup_external';
+        }
         return file.hasExternalChanges ? 'load_external' : '';
     }
     return '';

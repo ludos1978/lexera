@@ -496,9 +496,18 @@ export abstract class MarkdownFile implements vscode.Disposable {
             await this.writeToDisk(this._content);
 
             // CRITICAL: Increment counter AFTER successful write (not before!)
-            // This prevents counter from being wrong if write fails
+            // This prevents counter from being wrong if write fails.
+            // Safety timeout: the watcher is stopped during save, so the filesystem
+            // event may be lost (never delivered to the new watcher). If no event
+            // consumes this counter within 3s, decay it to prevent permanently
+            // blocking external change detection.
             if (skipReloadDetection) {
                 this._skipReloadCounter++;
+                setTimeout(() => {
+                    if (this._skipReloadCounter > 0) {
+                        this._skipReloadCounter--;
+                    }
+                }, 3000);
             }
 
             // Update state after successful write
