@@ -126,37 +126,6 @@ export class KanbanDiffService implements vscode.Disposable {
                 preserveFocus: false
             }
         );
-
-        // Close any standalone editor tab for the untitled document
-        // (VS Code may open it separately, but we only want it in the diff view)
-        await this.closeStandaloneUntitledTab(kanbanDoc.uri);
-    }
-
-    /**
-     * Close a standalone editor tab for the given URI (not diff tabs)
-     */
-    private async closeStandaloneUntitledTab(uri: vscode.Uri): Promise<void> {
-        const uriString = uri.toString();
-
-        for (const tabGroup of vscode.window.tabGroups.all) {
-            for (const tab of tabGroup.tabs) {
-                const tabInput = tab.input;
-                if (tabInput && typeof tabInput === 'object') {
-                    // Skip diff editor tabs
-                    if ('original' in tabInput && 'modified' in tabInput) {
-                        continue;
-                    }
-                    // Close standalone text editor tabs for our untitled doc
-                    if ('uri' in tabInput) {
-                        const textInput = tabInput as { uri: vscode.Uri };
-                        if (textInput.uri?.toString() === uriString) {
-                            await vscode.window.tabGroups.close(tab);
-                            return;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /**
