@@ -353,6 +353,21 @@ export class DebugCommands extends SwitchBasedCommand {
             });
         }
 
+        // Set callback to update kanban board when content changes in diff editor
+        const panel = context.getWebviewPanel() as PanelCommandAccess | undefined;
+        diffService.setOnContentChangedCallback(async (_filePath, _newContent) => {
+            // Re-parse board and refresh UI (same pattern as IncludeCommands)
+            const mainFile = fileRegistry.getMainFile();
+            if (mainFile && panel?._fileService) {
+                mainFile.parseToBoard();
+                const freshBoard = mainFile.getBoard();
+                if (freshBoard && freshBoard.valid) {
+                    panel._fileService.setBoard(freshBoard);
+                    await panel._fileService.sendBoardUpdate(false, false);
+                }
+            }
+        });
+
         await diffService.openDiff(message.filePath, kanbanContent, diskContent);
 
         return this.success();

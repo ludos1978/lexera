@@ -26,6 +26,11 @@ interface DiffSession {
 export type DiffClosedCallback = (filePath: string) => void;
 
 /**
+ * Callback type for kanban content changed notification
+ */
+export type KanbanContentChangedCallback = (filePath: string, newContent: string) => void;
+
+/**
  * Service for managing kanban diff views
  */
 export class KanbanDiffService implements vscode.Disposable {
@@ -35,6 +40,8 @@ export class KanbanDiffService implements vscode.Disposable {
     private fileRegistry: MarkdownFileRegistry | null = null;
     private disposables: vscode.Disposable[] = [];
     private onDiffClosedCallback: DiffClosedCallback | null = null;
+    private onContentChangedCallback: KanbanContentChangedCallback | null = null;
+    private contentChangeDebounceTimer: NodeJS.Timeout | null = null;
 
     private constructor() {
         // Listen for editor tab closes to clean up sessions
@@ -61,6 +68,13 @@ export class KanbanDiffService implements vscode.Disposable {
      */
     setOnDiffClosedCallback(callback: DiffClosedCallback | null): void {
         this.onDiffClosedCallback = callback;
+    }
+
+    /**
+     * Set callback to be notified when kanban content is changed in the diff editor
+     */
+    setOnContentChangedCallback(callback: KanbanContentChangedCallback | null): void {
+        this.onContentChangedCallback = callback;
     }
 
     /**
@@ -112,6 +126,37 @@ export class KanbanDiffService implements vscode.Disposable {
                 preserveFocus: false
             }
         );
+
+        // Close any standalone editor tab for the untitled document
+        // (VS Code may open it separately, but we only want it in the diff view)
+        await this.closeStandaloneUntitledTab(kanbanDoc.uri);
+    }
+
+    /**
+     * Close a standalone editor tab for the given URI (not diff tabs)
+     */
+    private async closeStandaloneUntitledTab(uri: vscode.Uri): Promise<void> {
+        const uriString = uri.toString();
+
+        for (const tabGroup of vscode.window.tabGroups.all) {
+            for (const tab of tabGroup.tabs) {
+                const tabInput = tab.input;
+                if (tabInput && typeof tabInput === 'object') {
+                    // Skip diff editor tabs
+                    if ('original' in tabInput && 'modified' in tabInput) {
+                        continue;
+                    }
+                    // Close standalone text editor tabs for our untitled doc
+                    if ('uri' in tabInput) {
+                        const textInput = tabInput as { uri: vscode.Uri };
+                        if (textInput.uri?.toString() === uriString) {
+                            await vscode.window.tabGroups.close(tab);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -167,6 +212,19 @@ export class KanbanDiffService implements vscode.Disposable {
         if (file) {
             // Update the file content in the registry (don't update baseline - keep as unsaved change)
             file.setContent(newContent, false);
+        }
+
+        // Notify callback with debouncing (300ms) to avoid excessive updates while typing
+        if (this.onContentChangedCallback) {
+            if (this.contentChangeDebounceTimer) {
+                clearTimeout(this.contentChangeDebounceTimer);
+            }
+            this.contentChangeDebounceTimer = setTimeout(() => {
+                this.contentChangeDebounceTimer = null;
+                if (this.onContentChangedCallback) {
+                    this.onContentChangedCallback(filePath, newContent);
+                }
+            }, 300);
         }
     }
 
