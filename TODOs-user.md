@@ -1,7 +1,7 @@
 
 - [x] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
 
-- [ ] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
+- [x] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
 
 - [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) . also [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
 
