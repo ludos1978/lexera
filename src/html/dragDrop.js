@@ -29,8 +29,6 @@
 
 const DEBUG_DROP = false;
 
-console.log('[DRAGDROP DEBUG] Script starting to load...');
-
 // Track if drag/drop is already set up to prevent multiple listeners
 let dragDropInitialized = false;
 let isProcessingDrop = false; // Prevent multiple simultaneous drops
@@ -3104,7 +3102,11 @@ function setupDragAndDrop() {
         setupGlobalDragAndDrop();
         dragDropInitialized = true;
     }
-    
+
+    // Always attach park/trash listeners (they have their own guard)
+    attachParkEventListeners();
+    attachTrashEventListeners();
+
     // Always refresh column, task, and row drag/drop since DOM changes
     setupRowDragAndDrop(); // Setup rows first
     setupColumnDragAndDrop(); // Then columns
@@ -4032,9 +4034,7 @@ window.setupDragAndDrop = setupDragAndDrop;
 // Allows users to temporarily "park" tasks and columns by dropping them onto
 // a drop target. Parked items are tagged with #hidden-internal-clipboard and
 // stored at the end of the kanban data. Users can drag them back onto the board.
-
-const PARKED_TAG = '#hidden-internal-parked';
-const DELETED_TAG = '#hidden-internal-deleted';
+// NOTE: PARKED_TAG and DELETED_TAG are declared in boardRenderer.js (loaded first)
 
 let parkedItems = [];
 let deletedItems = [];
@@ -4052,6 +4052,10 @@ function notifyBoardUpdate() {
         type: 'boardUpdate',
         board: window.cachedBoard
     });
+    // Re-render board immediately so parked/deleted items disappear from view
+    if (typeof window.renderBoard === 'function') {
+        window.renderBoard();
+    }
 }
 
 /**
@@ -4096,10 +4100,12 @@ function initializeParkedItems() {
  * Update the parked items UI in the dropdown
  */
 function updateParkedItemsUI() {
+    console.log('[Park UI] updateParkedItemsUI called, parkedItems:', parkedItems.length);
     const countElement = document.getElementById('clipboard-drop-count');
     const itemsContainer = document.getElementById('clipboard-drop-items');
     const emptyMessage = document.getElementById('clipboard-drop-empty');
 
+    console.log('[Park UI] DOM elements:', { countElement: !!countElement, itemsContainer: !!itemsContainer, emptyMessage: !!emptyMessage });
     if (!countElement || !itemsContainer || !emptyMessage) return;
 
     // Update count badge
@@ -4133,8 +4139,24 @@ function updateParkedItemsUI() {
             itemElement.innerHTML = `
                 <span class="clipboard-drop-item-icon">${icon}</span>
                 <span class="clipboard-drop-item-text" title="${escapeHtml(item.title)}">${escapeHtml(displayTitle)}</span>
-                <span class="clipboard-drop-item-remove" onclick="removeParkedItem(${index})" title="Delete permanently">✕</span>
+                <span class="clipboard-drop-item-restore" title="Restore to board">↩</span>
+                <span class="clipboard-drop-item-remove" title="Move to trash">🗑️</span>
             `;
+
+            // Add click handlers using addEventListener (more reliable than inline onclick)
+            const restoreBtn = itemElement.querySelector('.clipboard-drop-item-restore');
+            const removeBtn = itemElement.querySelector('.clipboard-drop-item-remove');
+            console.log('[Park UI] Adding click listeners for index', index, { restoreBtn: !!restoreBtn, removeBtn: !!removeBtn });
+            restoreBtn.addEventListener('click', (e) => {
+                console.log('[Park UI] Restore button clicked for index', index);
+                e.stopPropagation();
+                restoreParkedItemByIndex(index);
+            });
+            removeBtn.addEventListener('click', (e) => {
+                console.log('[Park UI] Remove button clicked for index', index);
+                e.stopPropagation();
+                removeParkedItem(index);
+            });
 
             // Add drag handlers for the parked item
             itemElement.addEventListener('dragstart', (e) => handleParkedItemDragStart(e, index));
@@ -4444,7 +4466,7 @@ function removeParkedItem(index) {
     if (index < 0 || index >= parkedItems.length) return;
 
     const item = parkedItems[index];
-    if (!confirm(`Move parked ${item.type} "${item.title}" to trash?`)) return;
+    // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -4474,6 +4496,46 @@ function removeParkedItem(index) {
 }
 
 /**
+ * Restore a parked item by index - just removes the tag (restore to board)
+ */
+function restoreParkedItemByIndex(index) {
+    if (index < 0 || index >= parkedItems.length) return;
+
+    const item = parkedItems[index];
+
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'restoreParkedItem',
+        itemType: item.type,
+        itemId: item.id,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Item is already in cachedBoard - just remove the PARKED_TAG
+    if (item.type === 'task') {
+        const task = item.data;
+        if (task) {
+            task.title = removeInternalTags(task.title);
+            if (task.description) {
+                task.description = removeInternalTags(task.description);
+            }
+        }
+    } else if (item.type === 'column') {
+        const column = item.data;
+        if (column) {
+            column.title = removeInternalTags(column.title);
+            // Also remove tags from tasks in the column
+            column.tasks?.forEach(task => {
+                if (task.title) task.title = removeInternalTags(task.title);
+                if (task.description) task.description = removeInternalTags(task.description);
+            });
+        }
+    }
+
+    notifyBoardUpdate();
+}
+
+/**
  * Get the current parked items
  */
 function getParkedItems() {
@@ -4491,7 +4553,26 @@ window.parkColumn = parkColumn;
 window.restoreParkedTask = restoreParkedTask;
 window.restoreParkedColumn = restoreParkedColumn;
 window.removeParkedItem = removeParkedItem;
+window.restoreParkedItemByIndex = restoreParkedItemByIndex;
 window.getParkedItems = getParkedItems;
+
+// Make trash functions globally available EARLY (using hoisting)
+// These functions are defined later with `function` keyword, so they're hoisted
+window.handleTrashDropTargetDragOver = handleTrashDropTargetDragOver;
+window.handleTrashDropTargetDragLeave = handleTrashDropTargetDragLeave;
+window.handleTrashDropTargetDrop = handleTrashDropTargetDrop;
+window.initializeDeletedItems = initializeDeletedItems;
+window.updateDeletedItemsUI = updateDeletedItemsUI;
+window.trashTask = trashTask;
+window.trashColumn = trashColumn;
+window.trashParkedItem = trashParkedItem;
+window.restoreDeletedTask = restoreDeletedTask;
+window.restoreDeletedColumn = restoreDeletedColumn;
+window.restoreDeletedItemByIndex = restoreDeletedItemByIndex;
+window.permanentlyRemoveDeletedItem = permanentlyRemoveDeletedItem;
+window.emptyTrash = emptyTrash;
+window.getDeletedItems = getDeletedItems;
+window.handleDeletedItemDrop = handleDeletedItemDrop;
 
 // Also attach event listeners programmatically (backup for inline handlers)
 function attachParkEventListeners() {
@@ -4561,11 +4642,13 @@ function initializeDeletedItems() {
  * Update the deleted items UI in the dropdown
  */
 function updateDeletedItemsUI() {
+    console.log('[Trash UI] updateDeletedItemsUI called, deletedItems:', deletedItems.length);
     const countElement = document.getElementById('trash-drop-count');
     const itemsContainer = document.getElementById('trash-drop-items');
     const emptyMessage = document.getElementById('trash-drop-empty');
     const dropdown = document.getElementById('trash-drop-dropdown');
 
+    console.log('[Trash UI] DOM elements:', { countElement: !!countElement, itemsContainer: !!itemsContainer, emptyMessage: !!emptyMessage, dropdown: !!dropdown });
     if (!countElement || !itemsContainer || !emptyMessage) return;
 
     // Update count badge
@@ -4605,9 +4688,24 @@ function updateDeletedItemsUI() {
             itemElement.innerHTML = `
                 <span class="trash-drop-item-icon">${icon}</span>
                 <span class="trash-drop-item-text" title="${escapeHtml(item.title)}">${escapeHtml(displayTitle)}</span>
-                <span class="trash-drop-item-restore" onclick="restoreDeletedItemByIndex(${index})" title="Restore">↩</span>
-                <span class="trash-drop-item-remove" onclick="permanentlyRemoveDeletedItem(${index})" title="Delete permanently">✕</span>
+                <span class="trash-drop-item-restore" title="Restore">↩</span>
+                <span class="trash-drop-item-remove" title="Delete permanently">✕</span>
             `;
+
+            // Add click handlers using addEventListener (more reliable than inline onclick)
+            const restoreBtn = itemElement.querySelector('.trash-drop-item-restore');
+            const removeBtn = itemElement.querySelector('.trash-drop-item-remove');
+            console.log('[Trash UI] Adding click listeners for index', index, { restoreBtn: !!restoreBtn, removeBtn: !!removeBtn });
+            restoreBtn.addEventListener('click', (e) => {
+                console.log('[Trash UI] Restore button clicked for index', index);
+                e.stopPropagation();
+                restoreDeletedItemByIndex(index);
+            });
+            removeBtn.addEventListener('click', (e) => {
+                console.log('[Trash UI] Remove button clicked for index', index);
+                e.stopPropagation();
+                permanentlyRemoveDeletedItem(index);
+            });
 
             // Add drag handlers for the deleted item
             itemElement.addEventListener('dragstart', (e) => handleDeletedItemDragStart(e, index));
@@ -4621,17 +4719,20 @@ function updateDeletedItemsUI() {
             const footer = document.createElement('div');
             footer.className = 'trash-drop-footer';
             footer.innerHTML = `
-                <button class="trash-empty-btn" onclick="emptyTrash()" title="Permanently delete all items">Empty Trash</button>
+                <button class="trash-empty-btn" title="Permanently delete all items">Empty Trash</button>
             `;
+            const emptyBtn = footer.querySelector('.trash-empty-btn');
+            console.log('[Trash UI] Adding Empty Trash button listener', { emptyBtn: !!emptyBtn });
+            emptyBtn.addEventListener('click', (e) => {
+                console.log('[Trash UI] Empty Trash button clicked');
+                e.stopPropagation();
+                emptyTrash();
+            });
             dropdown.appendChild(footer);
         }
     }
 }
 
-/**
- * Sync deleted items back to the cached board for saving
- * Deleted items are stored at the end of the board with #hidden-internal-deleted tag
- */
 /**
  * Handle drag over the trash drop target
  */
@@ -4794,7 +4895,7 @@ function trashParkedItem(parkedIndex) {
     if (parkedIndex < 0 || parkedIndex >= parkedItems.length) return;
 
     const item = parkedItems[parkedIndex];
-    if (!confirm(`Move parked ${item.type} "${item.title}" to trash? It will be removed from Park.`)) return;
+    // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -4990,10 +5091,17 @@ function restoreDeletedItemByIndex(index) {
  * Permanently remove a deleted item
  */
 function permanentlyRemoveDeletedItem(index) {
-    if (index < 0 || index >= deletedItems.length) return;
+    console.log('[permanentlyRemoveDeletedItem] Called with index:', index, 'deletedItems.length:', deletedItems.length);
+    if (index < 0 || index >= deletedItems.length) {
+        console.warn('[permanentlyRemoveDeletedItem] Invalid index');
+        return;
+    }
 
     const item = deletedItems[index];
-    if (!confirm(`Permanently delete ${item.type} "${item.title}"? This cannot be undone.`)) return;
+    console.log('[permanentlyRemoveDeletedItem] Item to delete:', item);
+    // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
+
+    console.log('[permanentlyRemoveDeletedItem] Proceeding with deletion');
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -5004,17 +5112,24 @@ function permanentlyRemoveDeletedItem(index) {
     });
 
     // Actually remove the item from cachedBoard
+    const columnsBefore = window.cachedBoard.columns.length;
+    const taskCountBefore = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
+
     if (item.type === 'column') {
         window.cachedBoard.columns = window.cachedBoard.columns.filter(c => c.id !== item.id);
+        console.log('[permanentlyRemoveDeletedItem] Removed column, columns:', columnsBefore, '->', window.cachedBoard.columns.length);
     } else if (item.type === 'task') {
         window.cachedBoard.columns.forEach(column => {
             if (column.tasks) {
                 column.tasks = column.tasks.filter(t => t.id !== item.id);
             }
         });
+        const taskCountAfter = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
+        console.log('[permanentlyRemoveDeletedItem] Removed task, tasks:', taskCountBefore, '->', taskCountAfter);
     }
 
     notifyBoardUpdate();
+    console.log('[permanentlyRemoveDeletedItem] Done');
 }
 
 /**
@@ -5049,8 +5164,14 @@ function handleDeletedItemDrop(e, dataString) {
  * Empty the trash - permanently remove all deleted items from cachedBoard
  */
 function emptyTrash() {
-    if (deletedItems.length === 0) return;
-    if (!confirm(`Permanently delete all ${deletedItems.length} item(s) from trash? This cannot be undone.`)) return;
+    console.log('[emptyTrash] Called, deletedItems.length:', deletedItems.length);
+    if (deletedItems.length === 0) {
+        console.warn('[emptyTrash] No items to delete');
+        return;
+    }
+    // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
+
+    console.log('[emptyTrash] Proceeding with deletion');
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -5058,6 +5179,9 @@ function emptyTrash() {
         itemCount: deletedItems.length,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
+
+    const columnsBefore = window.cachedBoard.columns.length;
+    const taskCountBefore = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
 
     // Actually remove all deleted items from cachedBoard
     // First, remove deleted columns
@@ -5074,34 +5198,27 @@ function emptyTrash() {
         }
     });
 
+    const columnsAfter = window.cachedBoard.columns.length;
+    const taskCountAfter = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
+    console.log('[emptyTrash] Removed columns:', columnsBefore, '->', columnsAfter, 'tasks:', taskCountBefore, '->', taskCountAfter);
+
     notifyBoardUpdate();
+    console.log('[emptyTrash] Done');
 }
 
-// Make trash functions globally available
-window.handleTrashDropTargetDragOver = handleTrashDropTargetDragOver;
-window.handleTrashDropTargetDragLeave = handleTrashDropTargetDragLeave;
-window.handleTrashDropTargetDrop = handleTrashDropTargetDrop;
-window.initializeDeletedItems = initializeDeletedItems;
-window.updateDeletedItemsUI = updateDeletedItemsUI;
-window.trashTask = trashTask;
-window.trashColumn = trashColumn;
-window.trashParkedItem = trashParkedItem;
-window.restoreDeletedTask = restoreDeletedTask;
-window.restoreDeletedColumn = restoreDeletedColumn;
-window.restoreDeletedItemByIndex = restoreDeletedItemByIndex;
-window.permanentlyRemoveDeletedItem = permanentlyRemoveDeletedItem;
-window.emptyTrash = emptyTrash;
-window.getDeletedItems = getDeletedItems;
-window.handleDeletedItemDrop = handleDeletedItemDrop;
+// Trash window assignments are done early (after Park assignments) using hoisting
+// See line ~4494 where they're assigned
 
 // Also attach event listeners programmatically (backup for inline handlers)
 function attachTrashEventListeners() {
     const trashTarget = document.getElementById('trash-drop-target');
+    console.log('[Trash Init] Attaching listeners', { found: !!trashTarget, alreadyAttached: trashTarget?._listenersAttached });
     if (trashTarget && !trashTarget._listenersAttached) {
         trashTarget.addEventListener('dragover', handleTrashDropTargetDragOver);
         trashTarget.addEventListener('dragleave', handleTrashDropTargetDragLeave);
         trashTarget.addEventListener('drop', handleTrashDropTargetDrop);
         trashTarget._listenersAttached = true;
+        console.log('[Trash Init] Listeners attached successfully');
     }
 }
 // Try to attach immediately if DOM is ready, otherwise wait

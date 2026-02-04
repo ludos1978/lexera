@@ -1,7 +1,7 @@
 - [x] lets redo the #hidden-internal-clipboard functionality.
 
-First rename #hidden-internal-clipboard to #hidden-internal-parked
-We also add #hidden-internal-deleted tag.
+First rename #hidden-internal-clipboard to
+We have the tags #hidden-internal-parked and #hidden-internal-deleted tag.
 
 We have a top element for "Park" and one for "Trash"
 

@@ -758,13 +758,28 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   min-width: 200px;
   max-width: 300px;
   max-height: 400px;
-  overflow-y: auto;
+  overflow-y: scroll; /* Always reserve scrollbar space */
+  overflow-x: hidden;
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: var(--z-dropdown);
   display: none;
+}
+
+/* Hide scrollbar but keep space reserved */
+.clipboard-drop-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+.clipboard-drop-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.clipboard-drop-dropdown::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.clipboard-drop-dropdown:hover::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
 }
 
 /* Bridge element on parent to maintain hover through gap - prevents scrollbar issues */
@@ -829,14 +844,25 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   font-size: 12px;
 }
 
+.clipboard-drop-item-restore {
+  opacity: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  transition: opacity 0.1s ease;
+  flex-shrink: 0;
+}
+
 .clipboard-drop-item-remove {
   opacity: 0;
   padding: 2px 4px;
   cursor: pointer;
   color: var(--vscode-errorForeground);
   transition: opacity 0.1s ease;
+  flex-shrink: 0;
 }
 
+.clipboard-drop-item:hover .clipboard-drop-item-restore,
 .clipboard-drop-item:hover .clipboard-drop-item-remove {
   opacity: 1;
 }
@@ -915,13 +941,28 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   min-width: 200px;
   max-width: 300px;
   max-height: 400px;
-  overflow-y: auto;
+  overflow-y: scroll; /* Always reserve scrollbar space */
+  overflow-x: hidden;
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: var(--z-dropdown);
   display: none;
+}
+
+/* Hide scrollbar but keep space reserved */
+.trash-drop-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+.trash-drop-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.trash-drop-dropdown::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.trash-drop-dropdown:hover::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
 }
 
 /* Bridge element on parent to maintain hover through gap */
@@ -992,6 +1033,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   cursor: pointer;
   color: var(--vscode-textLink-foreground);
   transition: opacity 0.1s ease;
+  flex-shrink: 0;
 }
 
 .trash-drop-item-remove {
@@ -1000,6 +1042,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   cursor: pointer;
   color: var(--vscode-errorForeground);
   transition: opacity 0.1s ease;
+  flex-shrink: 0;
 }
 
 .trash-drop-item:hover .trash-drop-item-restore,
