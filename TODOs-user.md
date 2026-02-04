@@ -34,7 +34,8 @@ a
 
 - [x] add Excourse to the Teaching-Content  tags
 
-- [ ] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
+- [x] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
+  - ALREADY IMPLEMENTED: See webview.js scrollToAndHighlight() lines 4820-4900
 
 - [x] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
   - ANALYSIS: Yes, 12+ inline definitions can use shared BaseIncludeContext type (4 props), LinkIncludeContext extends it (7 props)
