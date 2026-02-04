@@ -1,5 +1,9 @@
 let scrollPositions = new Map();
 
+// Hidden tags for filtering parked/deleted items during render
+const PARKED_TAG = '#hidden-internal-parked';
+const DELETED_TAG = '#hidden-internal-deleted';
+
 /**
  * Insert HTML nodes from a string before or after a reference element
  * @param {string} htmlString - HTML string to insert
@@ -1152,14 +1156,14 @@ function renderBoard(options = null) {
         });
     }
 
-    // Initialize parked items FIRST - removes parked-tagged items from cachedBoard
-    // This ensures parked items are never rendered on the board
+    // Initialize parked items - builds UI array for Park dropdown
+    // Items stay in cachedBoard with tags, filtering happens during render
     if (typeof window.initializeParkedItems === 'function') {
         window.initializeParkedItems();
     }
 
-    // Initialize deleted items - removes deleted-tagged items from cachedBoard
-    // This ensures deleted items are never rendered on the board
+    // Initialize deleted items - builds UI array for Trash dropdown
+    // Items stay in cachedBoard with tags, filtering happens during render
     if (typeof window.initializeDeletedItems === 'function') {
         window.initializeDeletedItems();
     }
@@ -1365,12 +1369,20 @@ function renderBoard(options = null) {
 
     // Sort columns by row first, then by their original index within each row
     // This ensures row 1 columns come before row 2 columns in the DOM
+    // Filter out parked and deleted columns - they are tagged but stay in cachedBoard
+    // IMPORTANT: Map first to preserve original indices, then filter
     const sortedColumns = window.cachedBoard.columns
         .map((column, index) => ({
             column,
             index,
             row: getColumnRow(column.title)
         }))
+        .filter(({ column }) => {
+            // Filter out columns with parked or deleted tags
+            const hasParkedTag = column.title?.includes(PARKED_TAG);
+            const hasDeletedTag = column.title?.includes(DELETED_TAG);
+            return !hasParkedTag && !hasDeletedTag;
+        })
         .sort((a, b) => {
             // First sort by row number
             if (a.row !== b.row) {
@@ -1606,6 +1618,13 @@ function createColumnElement(column, columnIndex) {
         column.tasks = [];
     }
 
+    // Filter out parked and deleted tasks - they are tagged but stay in cachedBoard
+    const visibleTasks = column.tasks.filter(task => {
+        const hasParkedTag = task.title?.includes(PARKED_TAG) || task.description?.includes(PARKED_TAG);
+        const hasDeletedTag = task.title?.includes(DELETED_TAG) || task.description?.includes(DELETED_TAG);
+        return !hasParkedTag && !hasDeletedTag;
+    });
+
     // CRITICAL: Check for pending local changes and use them instead of backend data
     // This prevents backend updates from overwriting user's immediate edits
     if (window.pendingColumnChanges && window.pendingColumnChanges.has(column.id)) {
@@ -1723,7 +1742,7 @@ function createColumnElement(column, columnIndex) {
 																data-column-id="${column.id}"
 																style="display: none;">${escapeHtml(editTitle)}</textarea>
 								</div>
-								<span class="task-count">${column.tasks.length}
+								<span class="task-count">${visibleTasks.length}
 										<button class="fold-all-btn ${foldButtonState}" onclick="toggleAllTasksInColumn('${column.id}')" title="Fold/unfold all cards">
 												<span class="fold-icon">${foldButtonState === 'fold-collapsed' ? '▶' : foldButtonState === 'fold-expanded' ? '▼' : '▽'}</span>
 										</button>
@@ -1795,12 +1814,12 @@ function createColumnElement(column, columnIndex) {
         <div class="column-content${column.isLoadingContent ? ' column-loading' : ''}" id="tasks-${column.id}">
             ${column.isLoadingContent
                 ? '<div class="column-loading-placeholder"><div class="loading-spinner"></div><div class="loading-text">Loading tasks...</div></div>'
-                : column.tasks.map((task, index) => createTaskElement(task, column.id, index, column.title)).join('')
+                : visibleTasks.map((task, index) => createTaskElement(task, column.id, index, column.title)).join('')
             }
-            ${!column.isLoadingContent && column.tasks.length === 0 && !column.includeError ? `<button class="add-task-btn" onclick="addTask('${column.id}')">
+            ${!column.isLoadingContent && visibleTasks.length === 0 && !column.includeError ? `<button class="add-task-btn" onclick="addTask('${column.id}')">
                 + Add Task
             </button>` : ''}
-            ${!column.isLoadingContent && column.tasks.length === 0 && column.includeError ? `<div class="broken-include-placeholder">
+            ${!column.isLoadingContent && visibleTasks.length === 0 && column.includeError ? `<div class="broken-include-placeholder">
                 Tasks unavailable for broken include
             </div>` : ''}
         </div>

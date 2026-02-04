@@ -785,6 +785,11 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   display: block;
 }
 
+/* Hide dropdown when receiving a drag (something being dropped INTO park) */
+.clipboard-drop-menu:has(.clipboard-drop-target.drag-over) .clipboard-drop-dropdown {
+  display: none !important;
+}
+
 .clipboard-drop-header {
   padding: 8px 12px;
   font-size: 11px;
@@ -935,6 +940,11 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 .trash-drop-dropdown.show,
 .trash-drop-menu.dragging-from .trash-drop-dropdown {
   display: block;
+}
+
+/* Hide dropdown when receiving a drag (something being dropped INTO trash) */
+.trash-drop-menu:has(.trash-drop-target.drag-over) .trash-drop-dropdown {
+  display: none !important;
 }
 
 .trash-drop-header {

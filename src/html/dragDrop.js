@@ -29,6 +29,7 @@
 
 const DEBUG_DROP = false;
 
+console.log('[DRAGDROP DEBUG] Script starting to load...');
 
 // Track if drag/drop is already set up to prevent multiple listeners
 let dragDropInitialized = false;
@@ -1731,6 +1732,8 @@ function setupGlobalDragAndDrop() {
         window._currentDragSessionLogged = false;
         window._dropAtEndLogged = false;
         window._indicatorShownLogged = false;
+        window._parkDragoverLogged = false;
+        window._trashDragoverLogged = false;
         window._externalDragLogged = false;
         window._externalInWrongHandlerLogged = false;
 
@@ -4059,21 +4062,19 @@ function initializeParkedItems() {
     parkedItems = [];
     if (!window.cachedBoard) return;
 
-    const columnsToRemove = [];
-    window.cachedBoard.columns.forEach((column, index) => {
+    // Build parkedItems array for UI - DO NOT modify cachedBoard
+    window.cachedBoard.columns.forEach((column) => {
         if (column.title?.includes(PARKED_TAG)) {
             parkedItems.push({
                 type: 'column',
                 id: column.id,
                 title: removeInternalTags(column.title),
-                data: JSON.parse(JSON.stringify(column))
+                data: column
             });
-            columnsToRemove.push(index);
             return;
         }
 
-        const tasksToRemove = [];
-        column.tasks.forEach((task, taskIndex) => {
+        column.tasks?.forEach((task) => {
             if (task.title?.includes(PARKED_TAG) || task.description?.includes(PARKED_TAG)) {
                 parkedItems.push({
                     type: 'task',
@@ -4081,21 +4082,12 @@ function initializeParkedItems() {
                     title: removeInternalTags(task.title) ||
                            removeInternalTags(task.description?.substring(0, 50)) ||
                            'Untitled Task',
-                    data: JSON.parse(JSON.stringify(task)),
+                    data: task,
                     originalColumnId: column.id
                 });
-                tasksToRemove.push(taskIndex);
             }
         });
-
-        for (let i = tasksToRemove.length - 1; i >= 0; i--) {
-            column.tasks.splice(tasksToRemove[i], 1);
-        }
     });
-
-    for (let i = columnsToRemove.length - 1; i >= 0; i--) {
-        window.cachedBoard.columns.splice(columnsToRemove[i], 1);
-    }
 
     updateParkedItemsUI();
 }
@@ -4162,68 +4154,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-/**
- * Sync parked items back to the cached board for saving
- * Parked items are stored at the end of the board with #hidden-internal-parked tag
- * This ensures they persist across saves and reloads
- */
-function syncParkedItemsToBoard() {
-    if (!window.cachedBoard) return;
-
-    // First, remove any existing items with the clipboard tag from the board
-    // (they will be re-added from the parkedItems array)
-
-    // Remove clipboard-tagged columns
-    window.cachedBoard.columns = window.cachedBoard.columns.filter(column => {
-        return !column.title || !column.title.includes(PARKED_TAG);
-    });
-
-    // Remove clipboard-tagged tasks from all columns
-    window.cachedBoard.columns.forEach(column => {
-        if (column.tasks) {
-            column.tasks = column.tasks.filter(task => {
-                const hasTagInTitle = task.title && task.title.includes(PARKED_TAG);
-                const hasTagInDesc = task.description && task.description.includes(PARKED_TAG);
-                return !hasTagInTitle && !hasTagInDesc;
-            });
-        }
-    });
-
-    // Now add parked items back to the board at the end
-    parkedItems.forEach(item => {
-        if (item.type === 'column') {
-            // Add parked column to the end of the board
-            const columnData = JSON.parse(JSON.stringify(item.data));
-            // Ensure the clipboard tag is present
-            if (!columnData.title.includes(PARKED_TAG)) {
-                columnData.title = columnData.title + ' ' + PARKED_TAG;
-            }
-            window.cachedBoard.columns.push(columnData);
-        } else if (item.type === 'task') {
-            // Create a hidden column to hold parked tasks if it doesn't exist
-            let clipboardColumn = window.cachedBoard.columns.find(c =>
-                c.title && c.title.includes(PARKED_TAG) && c.title.includes('Parked Tasks')
-            );
-
-            if (!clipboardColumn) {
-                clipboardColumn = {
-                    id: 'parked-tasks-column-' + Date.now(),
-                    title: 'Parked Tasks ' + PARKED_TAG,
-                    tasks: []
-                };
-                window.cachedBoard.columns.push(clipboardColumn);
-            }
-
-            const taskData = JSON.parse(JSON.stringify(item.data));
-            // Ensure the clipboard tag is present in the task
-            if (!taskData.title?.includes(PARKED_TAG) && !taskData.description?.includes(PARKED_TAG)) {
-                taskData.title = (taskData.title || '') + ' ' + PARKED_TAG;
-            }
-            clipboardColumn.tasks.push(taskData);
-        }
-    });
-}
-
 // Track pending Park/Trash drop to prevent mouseup interference
 let pendingParkDrop = null;
 let pendingTrashDrop = null;
@@ -4237,6 +4167,18 @@ function handleClipboardDropTargetDragOver(event) {
 
     // Only allow dropping tasks or columns (not parked items being re-parked)
     const isValidDrop = dragState.draggedTask || dragState.draggedColumn;
+
+    // Log only once per drag session to avoid flooding console
+    if (!window._parkDragoverLogged) {
+        console.log('[Park Dragover]', {
+            isValidDrop,
+            hasDraggedTask: !!dragState.draggedTask,
+            hasDraggedColumn: !!dragState.draggedColumn,
+            taskId: dragState.draggedTask?.dataset?.taskId,
+            columnId: dragState.draggedColumn?.dataset?.columnId
+        });
+        window._parkDragoverLogged = true;
+    }
 
     if (isValidDrop) {
         event.dataTransfer.dropEffect = 'move';
@@ -4273,6 +4215,15 @@ function handleClipboardDropTargetDrop(event) {
     const taskToUse = dragState.draggedTask || pendingParkDrop?.draggedTask;
     const columnToUse = dragState.draggedColumn || pendingParkDrop?.draggedColumn;
 
+    console.log('[Park Drop]', {
+        hasDragStateTask: !!dragState.draggedTask,
+        hasPendingTask: !!pendingParkDrop?.draggedTask,
+        hasDragStateColumn: !!dragState.draggedColumn,
+        hasPendingColumn: !!pendingParkDrop?.draggedColumn,
+        taskToUse: taskToUse?.dataset?.taskId,
+        columnToUse: columnToUse?.dataset?.columnId
+    });
+
     const target = document.getElementById('clipboard-drop-target');
     if (target) {
         target.classList.remove('drag-over');
@@ -4283,6 +4234,8 @@ function handleClipboardDropTargetDrop(event) {
         parkTask(taskToUse);
     } else if (columnToUse) {
         parkColumn(columnToUse);
+    } else {
+        console.warn('[Park Drop] Nothing to park - no task or column found');
     }
 
     // Clear pending drop state
@@ -4294,22 +4247,33 @@ function handleClipboardDropTargetDrop(event) {
 }
 
 /**
- * Park a task (move to parking area with clipboard tag)
+ * Park a task - just add the tag, rendering will filter it out
  */
 function parkTask(taskElement) {
     const taskId = taskElement.dataset.taskId;
     const columnElement = taskElement.closest('.kanban-full-height-column');
     const columnId = columnElement?.dataset.columnId;
 
-    if (!taskId || !columnId || !window.cachedBoard) return;
+    console.log('[parkTask] Looking for task', { taskId, columnId, hasCachedBoard: !!window.cachedBoard });
+
+    if (!taskId || !columnId || !window.cachedBoard) {
+        console.warn('[parkTask] Missing required data', { taskId, columnId, hasCachedBoard: !!window.cachedBoard });
+        return;
+    }
 
     const column = window.cachedBoard.columns.find(c => c.id === columnId);
-    if (!column) return;
+    if (!column) {
+        console.warn('[parkTask] Column not found in cachedBoard', { columnId, availableColumns: window.cachedBoard.columns.map(c => c.id) });
+        return;
+    }
 
-    const taskIndex = column.tasks.findIndex(t => t.id === taskId);
-    if (taskIndex < 0) return;
+    const task = column.tasks.find(t => t.id === taskId);
+    if (!task) {
+        console.warn('[parkTask] Task not found in column', { taskId, columnId, availableTasks: column.tasks.map(t => t.id) });
+        return;
+    }
 
-    const task = column.tasks[taskIndex];
+    console.log('[parkTask] Found task, adding tag', { taskId, currentTitle: task.title });
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -4319,43 +4283,21 @@ function parkTask(taskElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    const parkedTask = JSON.parse(JSON.stringify(task));
-    parkedTask.title = (parkedTask.title || '') + ' ' + PARKED_TAG;
+    // Just add the tag - initializeParkedItems will handle the rest during render
+    task.title = (task.title || '') + ' ' + PARKED_TAG;
 
-    parkedItems.push({
-        type: 'task',
-        id: task.id,
-        title: task.title || task.description?.substring(0, 50) || 'Untitled Task',
-        data: parkedTask,
-        originalColumnId: columnId
-    });
-
-    column.tasks.splice(taskIndex, 1);
-    taskElement.remove();
-
-    if (typeof window.updateColumnDisplay === 'function') {
-        window.updateColumnDisplay(columnId);
-    }
-    if (typeof updateColumnEmptyState === 'function') {
-        updateColumnEmptyState(columnId);
-    }
-
-    updateParkedItemsUI();
-    syncParkedItemsToBoard();
     notifyBoardUpdate();
 }
 
 /**
- * Park a column (move to parking area with clipboard tag)
+ * Park a column - just add the tag, rendering will filter it out
  */
 function parkColumn(columnElement) {
     const columnId = columnElement.dataset.columnId;
     if (!columnId || !window.cachedBoard) return;
 
-    const columnIndex = window.cachedBoard.columns.findIndex(c => c.id === columnId);
-    if (columnIndex < 0) return;
-
-    const column = window.cachedBoard.columns[columnIndex];
+    const column = window.cachedBoard.columns.find(c => c.id === columnId);
+    if (!column) return;
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -4364,33 +4306,9 @@ function parkColumn(columnElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    const parkedColumn = JSON.parse(JSON.stringify(column));
-    parkedColumn.title = (parkedColumn.title || '') + ' ' + PARKED_TAG;
+    // Just add the tag - initializeParkedItems will handle the rest during render
+    column.title = (column.title || '') + ' ' + PARKED_TAG;
 
-    parkedItems.push({
-        type: 'column',
-        id: column.id,
-        title: column.title || 'Untitled Column',
-        data: parkedColumn
-    });
-
-    window.cachedBoard.columns.splice(columnIndex, 1);
-
-    const stack = columnElement.closest('.kanban-column-stack');
-    if (stack) {
-        const columnsInStack = stack.querySelectorAll('.kanban-full-height-column');
-        if (columnsInStack.length <= 1) {
-            stack.remove();
-        } else {
-            columnElement.remove();
-            if (typeof normalizeAllStackTags === 'function') {
-                normalizeAllStackTags();
-            }
-        }
-    }
-
-    updateParkedItemsUI();
-    syncParkedItemsToBoard();
     notifyBoardUpdate();
 }
 
@@ -4471,87 +4389,62 @@ function restoreParkedTask(parkedIndex, dropPosition) {
     const item = parkedItems[parkedIndex];
     if (!item || item.type !== 'task') return;
 
-    const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
-    if (!dropResult || !dropResult.columnElement) {
-        console.warn('[Clipboard] No valid drop target for parked task');
-        return;
-    }
-
-    const columnId = dropResult.columnElement.dataset.columnId;
-    const column = window.cachedBoard?.columns.find(c => c.id === columnId);
-    if (!column) return;
-
-    const restoredTask = JSON.parse(JSON.stringify(item.data));
-    restoredTask.title = removeInternalTags(restoredTask.title);
-    if (restoredTask.description) {
-        restoredTask.description = removeInternalTags(restoredTask.description);
-    }
-    restoredTask.id = restoredTask.id || 'task-' + Date.now();
+    // Item is already in cachedBoard with tag - just remove the tag
+    const task = item.data;
+    if (!task) return;
 
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreParkedTask',
-        taskId: restoredTask.id,
-        columnId: columnId,
+        taskId: task.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    const insertIndex = dropResult.taskIndex >= 0 ? dropResult.taskIndex : column.tasks.length;
-    column.tasks.splice(insertIndex, 0, restoredTask);
-    parkedItems.splice(parkedIndex, 1);
-
-    updateParkedItemsUI();
-    if (typeof window.renderBoardFromCache === 'function') {
-        window.renderBoardFromCache();
+    // Remove the tag
+    task.title = removeInternalTags(task.title);
+    if (task.description) {
+        task.description = removeInternalTags(task.description);
     }
-    syncParkedItemsToBoard();
+
     notifyBoardUpdate();
 }
 
 /**
- * Restore a parked column to the board
+ * Restore a parked column - just remove the tag
  */
 function restoreParkedColumn(parkedIndex, dropPosition) {
     const item = parkedItems[parkedIndex];
     if (!item || item.type !== 'column') return;
 
-    const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, 'column');
-
-    const restoredColumn = JSON.parse(JSON.stringify(item.data));
-    restoredColumn.title = removeInternalTags(restoredColumn.title);
-    restoredColumn.tasks.forEach(task => {
-        if (task.title) task.title = removeInternalTags(task.title);
-        if (task.description) task.description = removeInternalTags(task.description);
-    });
-    restoredColumn.id = restoredColumn.id || 'column-' + Date.now();
+    // Item is already in cachedBoard with tag - just remove the tag
+    const column = item.data;
+    if (!column) return;
 
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreParkedColumn',
-        columnId: restoredColumn.id,
+        columnId: column.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    const insertIndex = dropResult?.columnIndex >= 0 ? dropResult.columnIndex : window.cachedBoard.columns.length;
-    window.cachedBoard.columns.splice(insertIndex, 0, restoredColumn);
-    parkedItems.splice(parkedIndex, 1);
+    // Remove the tag from column and its tasks
+    column.title = removeInternalTags(column.title);
+    column.tasks?.forEach(task => {
+        if (task.title) task.title = removeInternalTags(task.title);
+        if (task.description) task.description = removeInternalTags(task.description);
+    });
 
-    updateParkedItemsUI();
-    if (typeof window.renderBoardFromCache === 'function') {
-        window.renderBoardFromCache();
-    }
-    syncParkedItemsToBoard();
     notifyBoardUpdate();
 }
 
 /**
- * Remove a parked item permanently
+ * Remove a parked item - moves it to trash (replaces PARKED_TAG with DELETED_TAG)
  */
 function removeParkedItem(index) {
     if (index < 0 || index >= parkedItems.length) return;
 
     const item = parkedItems[index];
-    if (!confirm(`Delete parked ${item.type} "${item.title}" permanently?`)) return;
+    if (!confirm(`Move parked ${item.type} "${item.title}" to trash?`)) return;
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -4561,9 +4454,22 @@ function removeParkedItem(index) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    parkedItems.splice(index, 1);
-    updateParkedItemsUI();
-    syncParkedItemsToBoard();
+    // Item is already in cachedBoard - replace PARKED_TAG with DELETED_TAG
+    if (item.type === 'task') {
+        const task = item.data;
+        if (task) {
+            task.title = (task.title || '').replace(PARKED_TAG, DELETED_TAG);
+            if (task.description) {
+                task.description = task.description.replace(PARKED_TAG, DELETED_TAG);
+            }
+        }
+    } else if (item.type === 'column') {
+        const column = item.data;
+        if (column) {
+            column.title = (column.title || '').replace(PARKED_TAG, DELETED_TAG);
+        }
+    }
+
     notifyBoardUpdate();
 }
 
@@ -4590,11 +4496,13 @@ window.getParkedItems = getParkedItems;
 // Also attach event listeners programmatically (backup for inline handlers)
 function attachParkEventListeners() {
     const parkTarget = document.getElementById('clipboard-drop-target');
+    console.log('[Park Init] Attaching listeners', { found: !!parkTarget, alreadyAttached: parkTarget?._listenersAttached });
     if (parkTarget && !parkTarget._listenersAttached) {
         parkTarget.addEventListener('dragover', handleClipboardDropTargetDragOver);
         parkTarget.addEventListener('dragleave', handleClipboardDropTargetDragLeave);
         parkTarget.addEventListener('drop', handleClipboardDropTargetDrop);
         parkTarget._listenersAttached = true;
+        console.log('[Park Init] Listeners attached successfully');
     }
 }
 // Try to attach immediately if DOM is ready, otherwise wait
@@ -4613,28 +4521,25 @@ if (document.readyState === 'loading') {
 
 /**
  * Initialize the deleted items from the board data
- * Items with #hidden-internal-deleted tag are moved to the trash area
+ * Items with #hidden-internal-deleted tag are shown in trash UI
  */
 function initializeDeletedItems() {
     deletedItems = [];
     if (!window.cachedBoard) return;
 
-    const columnsToRemove = [];
-    window.cachedBoard.columns.forEach((column, index) => {
+    // Build deletedItems array for UI - DO NOT modify cachedBoard
+    window.cachedBoard.columns.forEach((column) => {
         if (column.title?.includes(DELETED_TAG)) {
             deletedItems.push({
                 type: 'column',
                 id: column.id,
                 title: removeInternalTags(column.title),
-                data: JSON.parse(JSON.stringify(column)),
-                deletedAt: Date.now()
+                data: column
             });
-            columnsToRemove.push(index);
             return;
         }
 
-        const tasksToRemove = [];
-        column.tasks.forEach((task, taskIndex) => {
+        column.tasks?.forEach((task) => {
             if (task.title?.includes(DELETED_TAG) || task.description?.includes(DELETED_TAG)) {
                 deletedItems.push({
                     type: 'task',
@@ -4642,22 +4547,12 @@ function initializeDeletedItems() {
                     title: removeInternalTags(task.title) ||
                            removeInternalTags(task.description?.substring(0, 50)) ||
                            'Untitled Task',
-                    data: JSON.parse(JSON.stringify(task)),
-                    originalColumnId: column.id,
-                    deletedAt: Date.now()
+                    data: task,
+                    originalColumnId: column.id
                 });
-                tasksToRemove.push(taskIndex);
             }
         });
-
-        for (let i = tasksToRemove.length - 1; i >= 0; i--) {
-            column.tasks.splice(tasksToRemove[i], 1);
-        }
     });
-
-    for (let i = columnsToRemove.length - 1; i >= 0; i--) {
-        window.cachedBoard.columns.splice(columnsToRemove[i], 1);
-    }
 
     updateDeletedItemsUI();
 }
@@ -4737,63 +4632,6 @@ function updateDeletedItemsUI() {
  * Sync deleted items back to the cached board for saving
  * Deleted items are stored at the end of the board with #hidden-internal-deleted tag
  */
-function syncDeletedItemsToBoard() {
-    if (!window.cachedBoard) return;
-
-    // First, remove any existing items with the deleted tag from the board
-    // (they will be re-added from the deletedItems array)
-
-    // Remove deleted-tagged columns
-    window.cachedBoard.columns = window.cachedBoard.columns.filter(column => {
-        return !column.title || !column.title.includes(DELETED_TAG);
-    });
-
-    // Remove deleted-tagged tasks from all columns
-    window.cachedBoard.columns.forEach(column => {
-        if (column.tasks) {
-            column.tasks = column.tasks.filter(task => {
-                const hasTagInTitle = task.title && task.title.includes(DELETED_TAG);
-                const hasTagInDesc = task.description && task.description.includes(DELETED_TAG);
-                return !hasTagInTitle && !hasTagInDesc;
-            });
-        }
-    });
-
-    // Now add deleted items back to the board at the end
-    deletedItems.forEach(item => {
-        if (item.type === 'column') {
-            // Add deleted column to the end of the board
-            const columnData = JSON.parse(JSON.stringify(item.data));
-            // Ensure the deleted tag is present
-            if (!columnData.title.includes(DELETED_TAG)) {
-                columnData.title = columnData.title + ' ' + DELETED_TAG;
-            }
-            window.cachedBoard.columns.push(columnData);
-        } else if (item.type === 'task') {
-            // Create a hidden column to hold deleted tasks if it doesn't exist
-            let trashColumn = window.cachedBoard.columns.find(c =>
-                c.title && c.title.includes(DELETED_TAG) && c.title.includes('Deleted Tasks')
-            );
-
-            if (!trashColumn) {
-                trashColumn = {
-                    id: 'deleted-tasks-column-' + Date.now(),
-                    title: 'Deleted Tasks ' + DELETED_TAG,
-                    tasks: []
-                };
-                window.cachedBoard.columns.push(trashColumn);
-            }
-
-            const taskData = JSON.parse(JSON.stringify(item.data));
-            // Ensure the deleted tag is present in the task
-            if (!taskData.title?.includes(DELETED_TAG) && !taskData.description?.includes(DELETED_TAG)) {
-                taskData.title = (taskData.title || '') + ' ' + DELETED_TAG;
-            }
-            trashColumn.tasks.push(taskData);
-        }
-    });
-}
-
 /**
  * Handle drag over the trash drop target
  */
@@ -4804,6 +4642,18 @@ function handleTrashDropTargetDragOver(event) {
     // Allow dropping tasks, columns, and parked items
     const isValidDrop = dragState.draggedTask || dragState.draggedColumn ||
                         dragState.draggedClipboardCard || dragState.draggedParkedColumn;
+
+    // Log only once per drag session to avoid flooding console
+    if (!window._trashDragoverLogged) {
+        console.log('[Trash Dragover]', {
+            isValidDrop,
+            hasDraggedTask: !!dragState.draggedTask,
+            hasDraggedColumn: !!dragState.draggedColumn,
+            hasDraggedClipboardCard: !!dragState.draggedClipboardCard,
+            hasDraggedParkedColumn: !!dragState.draggedParkedColumn
+        });
+        window._trashDragoverLogged = true;
+    }
 
     if (isValidDrop) {
         event.dataTransfer.dropEffect = 'move';
@@ -4846,6 +4696,16 @@ function handleTrashDropTargetDrop(event) {
     const parkedColumnToUse = dragState.draggedParkedColumn || pendingTrashDrop?.draggedParkedColumn;
     const parkedIndexToUse = dragState.parkedItemIndex ?? pendingTrashDrop?.parkedItemIndex;
 
+    console.log('[Trash Drop]', {
+        hasDragStateTask: !!dragState.draggedTask,
+        hasPendingTask: !!pendingTrashDrop?.draggedTask,
+        hasDragStateColumn: !!dragState.draggedColumn,
+        hasPendingColumn: !!pendingTrashDrop?.draggedColumn,
+        taskToUse: taskToUse?.dataset?.taskId,
+        columnToUse: columnToUse?.dataset?.columnId,
+        parkedIndexToUse
+    });
+
     const target = document.getElementById('trash-drop-target');
     if (target) {
         target.classList.remove('drag-over');
@@ -4862,6 +4722,8 @@ function handleTrashDropTargetDrop(event) {
     } else if (parkedColumnToUse && parkedIndexToUse !== undefined) {
         // Parked column being moved to trash
         trashParkedItem(parkedIndexToUse);
+    } else {
+        console.warn('[Trash Drop] Nothing to trash - no valid item found');
     }
 
     // Clear pending drop state
@@ -4873,7 +4735,7 @@ function handleTrashDropTargetDrop(event) {
 }
 
 /**
- * Trash a task (move to trash with deleted tag)
+ * Trash a task - just add the tag, rendering will filter it out
  */
 function trashTask(taskElement) {
     const taskId = taskElement.dataset.taskId;
@@ -4882,16 +4744,12 @@ function trashTask(taskElement) {
 
     if (!taskId || !columnId || !window.cachedBoard) return;
 
-    // Find the task in the cached board
     const column = window.cachedBoard.columns.find(c => c.id === columnId);
     if (!column) return;
 
-    const taskIndex = column.tasks.findIndex(t => t.id === taskId);
-    if (taskIndex < 0) return;
+    const task = column.tasks.find(t => t.id === taskId);
+    if (!task) return;
 
-    const task = column.tasks[taskIndex];
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'trashTask',
@@ -4900,66 +4758,22 @@ function trashTask(taskElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add deleted tag to the task data
-    const trashedTask = JSON.parse(JSON.stringify(task));
-    trashedTask.title = (trashedTask.title || '') + ' ' + DELETED_TAG;
+    // Just add the tag - initializeDeletedItems will handle the rest during render
+    task.title = (task.title || '') + ' ' + DELETED_TAG;
 
-    // Add to deleted items
-    deletedItems.push({
-        type: 'task',
-        id: task.id,
-        title: task.title || task.description?.substring(0, 50) || 'Untitled Task',
-        data: trashedTask,
-        originalColumnId: columnId,
-        deletedAt: Date.now()
-    });
-
-    // Remove from the column
-    column.tasks.splice(taskIndex, 1);
-
-    // Remove from DOM
-    taskElement.remove();
-
-    // Update column display
-    if (typeof window.updateColumnDisplay === 'function') {
-        window.updateColumnDisplay(columnId);
-    }
-    if (typeof updateColumnEmptyState === 'function') {
-        updateColumnEmptyState(columnId);
-    }
-
-    // Update deleted items UI
-    updateDeletedItemsUI();
-
-    // Sync deleted items back to cached board (at the end)
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved and notify backend
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-
-    // Send to backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    notifyBoardUpdate();
 }
 
 /**
- * Trash a column (move to trash with deleted tag)
+ * Trash a column - just add the tag, rendering will filter it out
  */
 function trashColumn(columnElement) {
     const columnId = columnElement.dataset.columnId;
-
     if (!columnId || !window.cachedBoard) return;
 
-    const columnIndex = window.cachedBoard.columns.findIndex(c => c.id === columnId);
-    if (columnIndex < 0) return;
+    const column = window.cachedBoard.columns.find(c => c.id === columnId);
+    if (!column) return;
 
-    const column = window.cachedBoard.columns[columnIndex];
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'trashColumn',
@@ -4967,70 +4781,21 @@ function trashColumn(columnElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add deleted tag to the column data
-    const trashedColumn = JSON.parse(JSON.stringify(column));
-    trashedColumn.title = (trashedColumn.title || '') + ' ' + DELETED_TAG;
+    // Just add the tag - initializeDeletedItems will handle the rest during render
+    column.title = (column.title || '') + ' ' + DELETED_TAG;
 
-    // Add to deleted items
-    deletedItems.push({
-        type: 'column',
-        id: column.id,
-        title: column.title || 'Untitled Column',
-        data: trashedColumn,
-        deletedAt: Date.now()
-    });
-
-    // Remove from the board
-    window.cachedBoard.columns.splice(columnIndex, 1);
-
-    // Remove from DOM
-    const stack = columnElement.closest('.kanban-column-stack');
-    if (stack) {
-        // Check if there are other columns in the stack
-        const columnsInStack = stack.querySelectorAll('.kanban-full-height-column');
-        if (columnsInStack.length <= 1) {
-            stack.remove();
-        } else {
-            columnElement.remove();
-            // Normalize stack tags for remaining columns
-            if (typeof normalizeAllStackTags === 'function') {
-                normalizeAllStackTags();
-            }
-        }
-    }
-
-    // Update deleted items UI
-    updateDeletedItemsUI();
-
-    // Sync deleted items back to cached board (at the end)
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-
-    // Send to backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    notifyBoardUpdate();
 }
 
 /**
- * Move a parked item to trash (with warning if it's parked)
+ * Move a parked item to trash - just replace PARKED_TAG with DELETED_TAG
  */
 function trashParkedItem(parkedIndex) {
     if (parkedIndex < 0 || parkedIndex >= parkedItems.length) return;
 
     const item = parkedItems[parkedIndex];
+    if (!confirm(`Move parked ${item.type} "${item.title}" to trash? It will be removed from Park.`)) return;
 
-    // Show confirmation since item is parked
-    if (!confirm(`Move parked ${item.type} "${item.title}" to trash? It will be removed from Park.`)) {
-        return;
-    }
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'trashParkedItem',
@@ -5039,46 +4804,23 @@ function trashParkedItem(parkedIndex) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Remove parked tag and add deleted tag
-    const trashedData = JSON.parse(JSON.stringify(item.data));
-    if (trashedData.title) {
-        trashedData.title = trashedData.title.replace(PARKED_TAG, '').trim() + ' ' + DELETED_TAG;
-    }
-    if (trashedData.description) {
-        trashedData.description = trashedData.description.replace(PARKED_TAG, '').trim();
-    }
-
-    // Add to deleted items
-    deletedItems.push({
-        type: item.type,
-        id: item.id,
-        title: item.title,
-        data: trashedData,
-        originalColumnId: item.originalColumnId,
-        deletedAt: Date.now()
-    });
-
-    // Remove from parked items
-    parkedItems.splice(parkedIndex, 1);
-
-    // Update both UIs
-    updateParkedItemsUI();
-    updateDeletedItemsUI();
-
-    // Sync both to cached board
-    syncParkedItemsToBoard();
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
+    // Item is already in cachedBoard - just replace PARKED_TAG with DELETED_TAG
+    if (item.type === 'task') {
+        const task = item.data;
+        if (task) {
+            task.title = (task.title || '').replace(PARKED_TAG, DELETED_TAG);
+            if (task.description) {
+                task.description = task.description.replace(PARKED_TAG, DELETED_TAG);
+            }
+        }
+    } else if (item.type === 'column') {
+        const column = item.data;
+        if (column) {
+            column.title = (column.title || '').replace(PARKED_TAG, DELETED_TAG);
+        }
     }
 
-    // Notify backend
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    notifyBoardUpdate();
 }
 
 /**
@@ -5157,129 +4899,52 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
     const item = deletedItems[deletedIndex];
     if (!item || item.type !== 'task') return;
 
-    // Find the drop target column
-    const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+    // Item is already in cachedBoard with tag - just remove the tag
+    const task = item.data;
+    if (!task) return;
 
-    if (!dropResult || !dropResult.columnElement) {
-        console.warn('[Trash] No valid drop target for deleted task');
-        return;
-    }
-
-    const columnId = dropResult.columnElement.dataset.columnId;
-    const column = window.cachedBoard?.columns.find(c => c.id === columnId);
-
-    if (!column) return;
-
-    // Remove deleted tag from the task
-    const restoredTask = JSON.parse(JSON.stringify(item.data));
-    restoredTask.title = (restoredTask.title || '').replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-    if (restoredTask.description) {
-        restoredTask.description = restoredTask.description.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-    }
-
-    // Generate new ID if needed
-    restoredTask.id = restoredTask.id || 'task-' + Date.now();
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreDeletedTask',
-        taskId: restoredTask.id,
-        columnId: columnId,
+        taskId: task.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add to column
-    const insertIndex = dropResult.taskIndex >= 0 ? dropResult.taskIndex : column.tasks.length;
-    column.tasks.splice(insertIndex, 0, restoredTask);
-
-    // Remove from deleted items
-    deletedItems.splice(deletedIndex, 1);
-
-    // Update UI
-    updateDeletedItemsUI();
-
-    // Re-render the board
-    if (typeof window.renderBoardFromCache === 'function') {
-        window.renderBoardFromCache();
+    // Remove the tag
+    task.title = removeInternalTags(task.title);
+    if (task.description) {
+        task.description = removeInternalTags(task.description);
     }
 
-    // Sync deleted items back to cached board (at the end)
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-
-    // Notify backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    notifyBoardUpdate();
 }
 
 /**
- * Restore a deleted column to the board
+ * Restore a deleted column - just remove the tag
  */
 function restoreDeletedColumn(deletedIndex, dropPosition) {
     const item = deletedItems[deletedIndex];
-    if (!item || item.type !== 'column') {
-        return;
-    }
+    if (!item || item.type !== 'column') return;
 
-    // Find where to insert the column
-    const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, 'column');
+    // Item is already in cachedBoard with tag - just remove the tag
+    const column = item.data;
+    if (!column) return;
 
-    // Remove deleted tag from the column
-    const restoredColumn = JSON.parse(JSON.stringify(item.data));
-    restoredColumn.title = (restoredColumn.title || '').replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-
-    // Remove deleted tag from tasks within the column
-    restoredColumn.tasks.forEach(task => {
-        if (task.title) task.title = task.title.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-        if (task.description) task.description = task.description.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-    });
-
-    // Generate new ID if needed
-    restoredColumn.id = restoredColumn.id || 'column-' + Date.now();
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreDeletedColumn',
-        columnId: restoredColumn.id,
+        columnId: column.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add to board at the appropriate position
-    const insertIndex = dropResult?.columnIndex >= 0 ? dropResult.columnIndex : window.cachedBoard.columns.length;
-    window.cachedBoard.columns.splice(insertIndex, 0, restoredColumn);
-
-    // Remove from deleted items
-    deletedItems.splice(deletedIndex, 1);
-
-    // Update UI
-    updateDeletedItemsUI();
-
-    // Re-render the board
-    if (typeof window.renderBoardFromCache === 'function') {
-        window.renderBoardFromCache();
-    }
-
-    // Sync deleted items back to cached board (at the end)
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-
-    // Notify backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
+    // Remove the tag from column and its tasks
+    column.title = removeInternalTags(column.title);
+    column.tasks?.forEach(task => {
+        if (task.title) task.title = removeInternalTags(task.title);
+        if (task.description) task.description = removeInternalTags(task.description);
     });
+
+    notifyBoardUpdate();
 }
 
 /**
@@ -5290,7 +4955,6 @@ function restoreDeletedItemByIndex(index) {
 
     const item = deletedItems[index];
 
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreDeletedItem',
@@ -5299,73 +4963,27 @@ function restoreDeletedItemByIndex(index) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
+    // Item is already in cachedBoard with tag - just remove the tag
     if (item.type === 'task') {
-        // Try to restore to original column, or first column if not found
-        let targetColumn = window.cachedBoard?.columns.find(c => c.id === item.originalColumnId);
-        if (!targetColumn && window.cachedBoard?.columns.length > 0) {
-            // Find first visible column (not parked/deleted)
-            targetColumn = window.cachedBoard.columns.find(c =>
-                !c.title?.includes(PARKED_TAG) && !c.title?.includes(DELETED_TAG)
-            );
+        const task = item.data;
+        if (task) {
+            task.title = removeInternalTags(task.title);
+            if (task.description) {
+                task.description = removeInternalTags(task.description);
+            }
         }
-
-        if (!targetColumn) {
-            alert('No column available to restore the task to.');
-            return;
-        }
-
-        // Remove deleted tag from the task
-        const restoredTask = JSON.parse(JSON.stringify(item.data));
-        restoredTask.title = (restoredTask.title || '').replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-        if (restoredTask.description) {
-            restoredTask.description = restoredTask.description.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-        }
-
-        // Add to column
-        targetColumn.tasks.push(restoredTask);
-
-        // Remove from deleted items
-        deletedItems.splice(index, 1);
-
     } else if (item.type === 'column') {
-        // Remove deleted tag from the column
-        const restoredColumn = JSON.parse(JSON.stringify(item.data));
-        restoredColumn.title = (restoredColumn.title || '').replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-
-        // Remove deleted tag from tasks within the column
-        restoredColumn.tasks.forEach(task => {
-            if (task.title) task.title = task.title.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-            if (task.description) task.description = task.description.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
-        });
-
-        // Add to board at the end
-        window.cachedBoard.columns.push(restoredColumn);
-
-        // Remove from deleted items
-        deletedItems.splice(index, 1);
+        const column = item.data;
+        if (column) {
+            column.title = removeInternalTags(column.title);
+            column.tasks?.forEach(task => {
+                if (task.title) task.title = removeInternalTags(task.title);
+                if (task.description) task.description = removeInternalTags(task.description);
+            });
+        }
     }
 
-    // Update UI
-    updateDeletedItemsUI();
-
-    // Re-render the board
-    if (typeof window.renderBoardFromCache === 'function') {
-        window.renderBoardFromCache();
-    }
-
-    // Sync deleted items back to cached board
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-
-    // Notify backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    notifyBoardUpdate();
 }
 
 /**
@@ -5375,13 +4993,8 @@ function permanentlyRemoveDeletedItem(index) {
     if (index < 0 || index >= deletedItems.length) return;
 
     const item = deletedItems[index];
+    if (!confirm(`Permanently delete ${item.type} "${item.title}"? This cannot be undone.`)) return;
 
-    // Confirm permanent deletion
-    if (!confirm(`Permanently delete ${item.type} "${item.title}"? This cannot be undone.`)) {
-        return;
-    }
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'permanentlyDeleteItem',
@@ -5390,25 +5003,18 @@ function permanentlyRemoveDeletedItem(index) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Remove from deleted items
-    deletedItems.splice(index, 1);
-
-    // Update UI
-    updateDeletedItemsUI();
-
-    // Sync deleted items back to cached board
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
+    // Actually remove the item from cachedBoard
+    if (item.type === 'column') {
+        window.cachedBoard.columns = window.cachedBoard.columns.filter(c => c.id !== item.id);
+    } else if (item.type === 'task') {
+        window.cachedBoard.columns.forEach(column => {
+            if (column.tasks) {
+                column.tasks = column.tasks.filter(t => t.id !== item.id);
+            }
+        });
     }
 
-    // Notify backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    notifyBoardUpdate();
 }
 
 /**
@@ -5440,17 +5046,12 @@ function handleDeletedItemDrop(e, dataString) {
 }
 
 /**
- * Empty the trash - permanently remove all deleted items
+ * Empty the trash - permanently remove all deleted items from cachedBoard
  */
 function emptyTrash() {
     if (deletedItems.length === 0) return;
+    if (!confirm(`Permanently delete all ${deletedItems.length} item(s) from trash? This cannot be undone.`)) return;
 
-    // Confirm empty trash
-    if (!confirm(`Permanently delete all ${deletedItems.length} item(s) from trash? This cannot be undone.`)) {
-        return;
-    }
-
-    // Save undo state
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'emptyTrash',
@@ -5458,25 +5059,22 @@ function emptyTrash() {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Clear all deleted items
-    deletedItems = [];
+    // Actually remove all deleted items from cachedBoard
+    // First, remove deleted columns
+    window.cachedBoard.columns = window.cachedBoard.columns.filter(c =>
+        !c.title?.includes(DELETED_TAG)
+    );
 
-    // Update UI
-    updateDeletedItemsUI();
-
-    // Sync deleted items back to cached board
-    syncDeletedItemsToBoard();
-
-    // Mark as unsaved
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-
-    // Notify backend via standard boardUpdate
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
+    // Then remove deleted tasks from remaining columns
+    window.cachedBoard.columns.forEach(column => {
+        if (column.tasks) {
+            column.tasks = column.tasks.filter(t =>
+                !t.title?.includes(DELETED_TAG) && !t.description?.includes(DELETED_TAG)
+            );
+        }
     });
+
+    notifyBoardUpdate();
 }
 
 // Make trash functions globally available

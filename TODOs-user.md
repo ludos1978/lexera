@@ -1,5 +1,4 @@
-- [x
-] lets redo the #hidden-internal-clipboard functionality.
+- [x] lets redo the #hidden-internal-clipboard functionality.
 
 First rename #hidden-internal-clipboard to #hidden-internal-parked
 We also add #hidden-internal-deleted tag.
