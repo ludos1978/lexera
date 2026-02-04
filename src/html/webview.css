@@ -692,6 +692,146 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   padding: 4px 4px;
 }
 
+/* ===== Clipboard Drop Target (Parking Area) ===== */
+.clipboard-drop-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.clipboard-drop-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--button-background);
+  color: var(--button-foreground);
+  border: 2px dashed var(--vscode-input-border, #444);
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 22px;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.clipboard-drop-target:hover {
+  background: var(--button-background-hover);
+  border-color: var(--vscode-focusBorder);
+}
+
+.clipboard-drop-target.drag-over {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+  border-style: solid;
+  transform: scale(1.05);
+}
+
+.clipboard-drop-icon {
+  font-size: 14px;
+}
+
+.clipboard-drop-label {
+  font-size: 12px;
+}
+
+.clipboard-drop-count {
+  display: none;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 50%;
+  min-width: 16px;
+  height: 16px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.clipboard-drop-count.has-items {
+  display: inline-block;
+}
+
+.clipboard-drop-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  max-width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: var(--z-dropdown);
+  display: none;
+  margin-top: 4px;
+}
+
+.clipboard-drop-menu:hover .clipboard-drop-dropdown,
+.clipboard-drop-dropdown.show {
+  display: block;
+}
+
+.clipboard-drop-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+}
+
+.clipboard-drop-items {
+  padding: 4px 0;
+}
+
+.clipboard-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: grab;
+  transition: background 0.1s ease;
+}
+
+.clipboard-drop-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.clipboard-drop-item-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.clipboard-drop-item-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.clipboard-drop-item-remove {
+  opacity: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--vscode-errorForeground);
+  transition: opacity 0.1s ease;
+}
+
+.clipboard-drop-item:hover .clipboard-drop-item-remove {
+  opacity: 1;
+}
+
+.clipboard-drop-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* Text styling for button labels */
 .menu-text {
   font-weight: 500;

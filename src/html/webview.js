@@ -2653,6 +2653,11 @@ if (!webviewEventListenersInitialized) {
                         window.renderBoard();
                     }
 
+                    // Initialize parked items (items with #hidden-internal-clipboard tag)
+                    if (typeof window.initializeParkedItems === 'function') {
+                        window.initializeParkedItems();
+                    }
+
                     // Cache broken element paths for re-use after include content re-renders
                     // Unified structure: { link?: string[], image?: string[], video?: string[] }
                     if (message.brokenElements) {

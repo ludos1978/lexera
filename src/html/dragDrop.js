@@ -632,7 +632,11 @@ function setupGlobalDragAndDrop() {
         const textData2 = dt.getData('text/plain');
         
         if (textData2) {
-            if (textData2.startsWith('CLIPBOARD_CARD:')) {
+            if (textData2.startsWith('PARKED_ITEM:')) {
+                // Handle parked item being restored to board
+                const parkedData = textData2.substring('PARKED_ITEM:'.length);
+                handleParkedItemDrop(e, parkedData);
+            } else if (textData2.startsWith('CLIPBOARD_CARD:')) {
                 const clipboardData = textData2.substring('CLIPBOARD_CARD:'.length);
                 handleClipboardCardDrop(e, clipboardData);
             } else if (textData2.startsWith('EMPTY_CARD:')) {
@@ -2014,6 +2018,30 @@ function handleClipboardImageDrop(e, imageData) {
     } catch (error) {
         console.error('Failed to handle clipboard image drop:', error);
         createTasksWithContent([{ title: 'Clipboard Image', description: 'Failed to process clipboard image' }], { x: e.clientX, y: e.clientY });
+    }
+}
+
+/**
+ * Handle drop of a parked item back onto the board
+ */
+function handleParkedItemDrop(e, parkedData) {
+    try {
+        const parsed = JSON.parse(parkedData);
+        const parkedIndex = parsed.index;
+        const parkedType = parsed.type;
+        const dropPosition = { x: e.clientX, y: e.clientY };
+
+        if (parkedType === 'task') {
+            if (typeof restoreParkedTask === 'function') {
+                restoreParkedTask(parkedIndex, dropPosition);
+            }
+        } else if (parkedType === 'column') {
+            if (typeof restoreParkedColumn === 'function') {
+                restoreParkedColumn(parkedIndex, dropPosition);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to handle parked item drop:', error);
     }
 }
 
@@ -3943,3 +3971,640 @@ window.handleTemplateDragLeave = handleTemplateDragLeave;
 window.templateDragState = templateDragState;
 window.normalizeAllStackTags = normalizeAllStackTags;
 window.setupDragAndDrop = setupDragAndDrop;
+
+// ============================================================================
+// INTERNAL CLIPBOARD PARKING SYSTEM
+// ============================================================================
+// Allows users to temporarily "park" tasks and columns by dropping them onto
+// a drop target. Parked items are tagged with #hidden-internal-clipboard and
+// stored at the end of the kanban data. Users can drag them back onto the board.
+
+const CLIPBOARD_TAG = '#hidden-internal-clipboard';
+
+// Storage for parked items (populated from board data on load)
+let parkedItems = [];
+
+/**
+ * Initialize the parked items from the board data
+ * Items with #hidden-internal-clipboard tag are moved to the parking area
+ */
+function initializeParkedItems() {
+    parkedItems = [];
+
+    if (!window.cachedBoard) return;
+
+    // Find columns with the clipboard tag
+    const columnsToRemove = [];
+    window.cachedBoard.columns.forEach((column, index) => {
+        if (column.title && column.title.includes(CLIPBOARD_TAG)) {
+            parkedItems.push({
+                type: 'column',
+                id: column.id,
+                title: column.title.replace(CLIPBOARD_TAG, '').trim(),
+                data: JSON.parse(JSON.stringify(column))
+            });
+            columnsToRemove.push(index);
+        } else {
+            // Check tasks within the column
+            const tasksToRemove = [];
+            column.tasks.forEach((task, taskIndex) => {
+                if ((task.title && task.title.includes(CLIPBOARD_TAG)) ||
+                    (task.description && task.description.includes(CLIPBOARD_TAG))) {
+                    parkedItems.push({
+                        type: 'task',
+                        id: task.id,
+                        title: (task.title || '').replace(CLIPBOARD_TAG, '').trim() ||
+                               (task.description || '').substring(0, 50).replace(CLIPBOARD_TAG, '').trim() ||
+                               'Untitled Task',
+                        data: JSON.parse(JSON.stringify(task)),
+                        originalColumnId: column.id
+                    });
+                    tasksToRemove.push(taskIndex);
+                }
+            });
+
+            // Remove parked tasks from the column (reverse order to maintain indices)
+            tasksToRemove.reverse().forEach(taskIndex => {
+                column.tasks.splice(taskIndex, 1);
+            });
+        }
+    });
+
+    // Remove parked columns from the board (reverse order to maintain indices)
+    columnsToRemove.reverse().forEach(index => {
+        window.cachedBoard.columns.splice(index, 1);
+    });
+
+    updateParkedItemsUI();
+}
+
+/**
+ * Update the parked items UI in the dropdown
+ */
+function updateParkedItemsUI() {
+    const countElement = document.getElementById('clipboard-drop-count');
+    const itemsContainer = document.getElementById('clipboard-drop-items');
+    const emptyMessage = document.getElementById('clipboard-drop-empty');
+
+    if (!countElement || !itemsContainer || !emptyMessage) return;
+
+    // Update count badge
+    if (parkedItems.length > 0) {
+        countElement.textContent = parkedItems.length;
+        countElement.classList.add('has-items');
+    } else {
+        countElement.textContent = '';
+        countElement.classList.remove('has-items');
+    }
+
+    // Update items list
+    itemsContainer.innerHTML = '';
+
+    if (parkedItems.length === 0) {
+        emptyMessage.style.display = 'block';
+    } else {
+        emptyMessage.style.display = 'none';
+
+        parkedItems.forEach((item, index) => {
+            const itemElement = document.createElement('div');
+            itemElement.className = 'clipboard-drop-item';
+            itemElement.draggable = true;
+            itemElement.dataset.parkedIndex = index;
+            itemElement.dataset.parkedType = item.type;
+            itemElement.dataset.parkedId = item.id;
+
+            const icon = item.type === 'column' ? '📊' : '📝';
+            const displayTitle = item.title.length > 30 ? item.title.substring(0, 30) + '...' : item.title;
+
+            itemElement.innerHTML = `
+                <span class="clipboard-drop-item-icon">${icon}</span>
+                <span class="clipboard-drop-item-text" title="${escapeHtml(item.title)}">${escapeHtml(displayTitle)}</span>
+                <span class="clipboard-drop-item-remove" onclick="removeParkedItem(${index})" title="Delete permanently">✕</span>
+            `;
+
+            // Add drag handlers for the parked item
+            itemElement.addEventListener('dragstart', (e) => handleParkedItemDragStart(e, index));
+            itemElement.addEventListener('dragend', handleParkedItemDragEnd);
+
+            itemsContainer.appendChild(itemElement);
+        });
+    }
+}
+
+/**
+ * Helper to escape HTML for display
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Sync parked items back to the cached board for saving
+ * Parked items are stored at the end of the board with #hidden-internal-clipboard tag
+ * This ensures they persist across saves and reloads
+ */
+function syncParkedItemsToBoard() {
+    if (!window.cachedBoard) return;
+
+    // First, remove any existing items with the clipboard tag from the board
+    // (they will be re-added from the parkedItems array)
+
+    // Remove clipboard-tagged columns
+    window.cachedBoard.columns = window.cachedBoard.columns.filter(column => {
+        return !column.title || !column.title.includes(CLIPBOARD_TAG);
+    });
+
+    // Remove clipboard-tagged tasks from all columns
+    window.cachedBoard.columns.forEach(column => {
+        if (column.tasks) {
+            column.tasks = column.tasks.filter(task => {
+                const hasTagInTitle = task.title && task.title.includes(CLIPBOARD_TAG);
+                const hasTagInDesc = task.description && task.description.includes(CLIPBOARD_TAG);
+                return !hasTagInTitle && !hasTagInDesc;
+            });
+        }
+    });
+
+    // Now add parked items back to the board at the end
+    parkedItems.forEach(item => {
+        if (item.type === 'column') {
+            // Add parked column to the end of the board
+            const columnData = JSON.parse(JSON.stringify(item.data));
+            // Ensure the clipboard tag is present
+            if (!columnData.title.includes(CLIPBOARD_TAG)) {
+                columnData.title = columnData.title + ' ' + CLIPBOARD_TAG;
+            }
+            window.cachedBoard.columns.push(columnData);
+        } else if (item.type === 'task') {
+            // Create a hidden column to hold parked tasks if it doesn't exist
+            let clipboardColumn = window.cachedBoard.columns.find(c =>
+                c.title && c.title.includes(CLIPBOARD_TAG) && c.title.includes('Parked Tasks')
+            );
+
+            if (!clipboardColumn) {
+                clipboardColumn = {
+                    id: 'parked-tasks-column-' + Date.now(),
+                    title: 'Parked Tasks ' + CLIPBOARD_TAG,
+                    tasks: []
+                };
+                window.cachedBoard.columns.push(clipboardColumn);
+            }
+
+            const taskData = JSON.parse(JSON.stringify(item.data));
+            // Ensure the clipboard tag is present in the task
+            if (!taskData.title?.includes(CLIPBOARD_TAG) && !taskData.description?.includes(CLIPBOARD_TAG)) {
+                taskData.title = (taskData.title || '') + ' ' + CLIPBOARD_TAG;
+            }
+            clipboardColumn.tasks.push(taskData);
+        }
+    });
+}
+
+/**
+ * Handle drag over the clipboard drop target
+ */
+function handleClipboardDropTargetDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Only allow dropping tasks or columns (not parked items being re-parked)
+    const isValidDrop = dragState.draggedTask || dragState.draggedColumn;
+
+    if (isValidDrop) {
+        event.dataTransfer.dropEffect = 'move';
+        const target = document.getElementById('clipboard-drop-target');
+        if (target) {
+            target.classList.add('drag-over');
+        }
+    }
+}
+
+/**
+ * Handle drag leave from the clipboard drop target
+ */
+function handleClipboardDropTargetDragLeave(event) {
+    const target = document.getElementById('clipboard-drop-target');
+    if (target) {
+        target.classList.remove('drag-over');
+    }
+}
+
+/**
+ * Handle drop on the clipboard drop target (park item)
+ */
+function handleClipboardDropTargetDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const target = document.getElementById('clipboard-drop-target');
+    if (target) {
+        target.classList.remove('drag-over');
+    }
+
+    // Check what's being dropped
+    if (dragState.draggedTask) {
+        parkTask(dragState.draggedTask);
+    } else if (dragState.draggedColumn) {
+        parkColumn(dragState.draggedColumn);
+    }
+
+    // Clean up drag state
+    cleanupDragVisuals();
+    resetDragState();
+}
+
+/**
+ * Park a task (move to parking area with clipboard tag)
+ */
+function parkTask(taskElement) {
+    const taskId = taskElement.dataset.taskId;
+    const columnElement = taskElement.closest('.kanban-full-height-column');
+    const columnId = columnElement?.dataset.columnId;
+
+    if (!taskId || !columnId || !window.cachedBoard) return;
+
+    // Find the task in the cached board
+    const column = window.cachedBoard.columns.find(c => c.id === columnId);
+    if (!column) return;
+
+    const taskIndex = column.tasks.findIndex(t => t.id === taskId);
+    if (taskIndex < 0) return;
+
+    const task = column.tasks[taskIndex];
+
+    // Save undo state
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'parkTask',
+        taskId: taskId,
+        columnId: columnId,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Add clipboard tag to the task data
+    const parkedTask = JSON.parse(JSON.stringify(task));
+    parkedTask.title = (parkedTask.title || '') + ' ' + CLIPBOARD_TAG;
+
+    // Add to parked items
+    parkedItems.push({
+        type: 'task',
+        id: task.id,
+        title: task.title || task.description?.substring(0, 50) || 'Untitled Task',
+        data: parkedTask,
+        originalColumnId: columnId
+    });
+
+    // Remove from the column
+    column.tasks.splice(taskIndex, 1);
+
+    // Remove from DOM
+    taskElement.remove();
+
+    // Update column display
+    if (typeof window.updateColumnDisplay === 'function') {
+        window.updateColumnDisplay(columnId);
+    }
+    if (typeof updateColumnEmptyState === 'function') {
+        updateColumnEmptyState(columnId);
+    }
+
+    // Update parked items UI
+    updateParkedItemsUI();
+
+    // Sync parked items back to cached board (at the end)
+    syncParkedItemsToBoard();
+
+    // Mark as unsaved and notify backend
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+
+    // Send to backend via standard boardUpdate
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Park a column (move to parking area with clipboard tag)
+ */
+function parkColumn(columnElement) {
+    const columnId = columnElement.dataset.columnId;
+
+    if (!columnId || !window.cachedBoard) return;
+
+    const columnIndex = window.cachedBoard.columns.findIndex(c => c.id === columnId);
+    if (columnIndex < 0) return;
+
+    const column = window.cachedBoard.columns[columnIndex];
+
+    // Save undo state
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'parkColumn',
+        columnId: columnId,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Add clipboard tag to the column data
+    const parkedColumn = JSON.parse(JSON.stringify(column));
+    parkedColumn.title = (parkedColumn.title || '') + ' ' + CLIPBOARD_TAG;
+
+    // Add to parked items
+    parkedItems.push({
+        type: 'column',
+        id: column.id,
+        title: column.title || 'Untitled Column',
+        data: parkedColumn
+    });
+
+    // Remove from the board
+    window.cachedBoard.columns.splice(columnIndex, 1);
+
+    // Remove from DOM
+    const stack = columnElement.closest('.kanban-column-stack');
+    if (stack) {
+        // Check if there are other columns in the stack
+        const columnsInStack = stack.querySelectorAll('.kanban-full-height-column');
+        if (columnsInStack.length <= 1) {
+            stack.remove();
+        } else {
+            columnElement.remove();
+            // Normalize stack tags for remaining columns
+            if (typeof normalizeAllStackTags === 'function') {
+                normalizeAllStackTags();
+            }
+        }
+    }
+
+    // Update parked items UI
+    updateParkedItemsUI();
+
+    // Sync parked items back to cached board (at the end)
+    syncParkedItemsToBoard();
+
+    // Mark as unsaved
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+
+    // Send to backend via standard boardUpdate
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Handle drag start for a parked item (dragging back to board)
+ */
+function handleParkedItemDragStart(event, index) {
+    const item = parkedItems[index];
+    if (!item) return;
+
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', 'PARKED_ITEM:' + JSON.stringify({
+        index: index,
+        type: item.type,
+        id: item.id
+    }));
+
+    // Mark the drag state
+    if (item.type === 'task') {
+        dragState.draggedClipboardCard = item.data;
+        dragDropStateMachine.start(dragDropStateMachine.states.CLIPBOARD, {
+            source: 'parked-task',
+            parkedIndex: index
+        });
+    } else {
+        // For columns, we need special handling
+        dragState.draggedParkedColumn = item;
+        dragDropStateMachine.start(dragDropStateMachine.states.EXTERNAL, {
+            source: 'parked-column',
+            parkedIndex: index
+        });
+    }
+
+    dragState.isDragging = true;
+    dragState.parkedItemIndex = index;
+
+    // Visual feedback
+    event.target.classList.add('dragging');
+}
+
+/**
+ * Handle drag end for a parked item
+ */
+function handleParkedItemDragEnd(event) {
+    event.target.classList.remove('dragging');
+
+    // Check if the item was dropped successfully
+    // If leftView flag is set, restore the item
+    if (dragState.leftView) {
+        // Item was dragged outside - keep it parked
+        dragState.leftView = false;
+    }
+
+    // Clean up
+    dragState.draggedClipboardCard = null;
+    dragState.draggedParkedColumn = null;
+    dragState.parkedItemIndex = null;
+    dragState.isDragging = false;
+    dragDropStateMachine.reset('parked-item-dragend');
+}
+
+/**
+ * Restore a parked task to the board
+ */
+function restoreParkedTask(parkedIndex, dropPosition) {
+    const item = parkedItems[parkedIndex];
+    if (!item || item.type !== 'task') return;
+
+    // Find the drop target column
+    const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+
+    if (!dropResult || !dropResult.columnElement) {
+        console.warn('[Clipboard] No valid drop target for parked task');
+        return;
+    }
+
+    const columnId = dropResult.columnElement.dataset.columnId;
+    const column = window.cachedBoard?.columns.find(c => c.id === columnId);
+
+    if (!column) return;
+
+    // Remove clipboard tag from the task
+    const restoredTask = JSON.parse(JSON.stringify(item.data));
+    restoredTask.title = (restoredTask.title || '').replace(CLIPBOARD_TAG, '').trim();
+    if (restoredTask.description) {
+        restoredTask.description = restoredTask.description.replace(CLIPBOARD_TAG, '').trim();
+    }
+
+    // Generate new ID if needed
+    restoredTask.id = restoredTask.id || 'task-' + Date.now();
+
+    // Save undo state
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'restoreParkedTask',
+        taskId: restoredTask.id,
+        columnId: columnId,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Add to column
+    const insertIndex = dropResult.taskIndex >= 0 ? dropResult.taskIndex : column.tasks.length;
+    column.tasks.splice(insertIndex, 0, restoredTask);
+
+    // Remove from parked items
+    parkedItems.splice(parkedIndex, 1);
+
+    // Update UI
+    updateParkedItemsUI();
+
+    // Re-render the column
+    if (typeof window.renderBoardFromCache === 'function') {
+        window.renderBoardFromCache();
+    }
+
+    // Sync parked items back to cached board (at the end)
+    syncParkedItemsToBoard();
+
+    // Mark as unsaved
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+
+    // Notify backend via standard boardUpdate
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Restore a parked column to the board
+ */
+function restoreParkedColumn(parkedIndex, dropPosition) {
+    const item = parkedItems[parkedIndex];
+    if (!item || item.type !== 'column') return;
+
+    // Find where to insert the column
+    const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, 'column');
+
+    // Remove clipboard tag from the column
+    const restoredColumn = JSON.parse(JSON.stringify(item.data));
+    restoredColumn.title = (restoredColumn.title || '').replace(CLIPBOARD_TAG, '').trim();
+
+    // Remove clipboard tag from tasks within the column
+    restoredColumn.tasks.forEach(task => {
+        if (task.title) task.title = task.title.replace(CLIPBOARD_TAG, '').trim();
+        if (task.description) task.description = task.description.replace(CLIPBOARD_TAG, '').trim();
+    });
+
+    // Generate new ID if needed
+    restoredColumn.id = restoredColumn.id || 'column-' + Date.now();
+
+    // Save undo state
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'restoreParkedColumn',
+        columnId: restoredColumn.id,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Add to board at the appropriate position
+    const insertIndex = dropResult?.columnIndex >= 0 ? dropResult.columnIndex : window.cachedBoard.columns.length;
+    window.cachedBoard.columns.splice(insertIndex, 0, restoredColumn);
+
+    // Remove from parked items
+    parkedItems.splice(parkedIndex, 1);
+
+    // Update UI
+    updateParkedItemsUI();
+
+    // Re-render the board
+    if (typeof window.renderBoardFromCache === 'function') {
+        window.renderBoardFromCache();
+    }
+
+    // Sync parked items back to cached board (at the end)
+    syncParkedItemsToBoard();
+
+    // Mark as unsaved
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+
+    // Notify backend via standard boardUpdate
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Remove a parked item permanently
+ */
+function removeParkedItem(index) {
+    if (index < 0 || index >= parkedItems.length) return;
+
+    const item = parkedItems[index];
+
+    // Confirm deletion
+    if (!confirm(`Delete parked ${item.type} "${item.title}" permanently?`)) {
+        return;
+    }
+
+    // Save undo state
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'deleteParkedItem',
+        itemType: item.type,
+        itemId: item.id,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Remove from parked items
+    parkedItems.splice(index, 1);
+
+    // Update UI
+    updateParkedItemsUI();
+
+    // Sync parked items back to cached board (at the end)
+    syncParkedItemsToBoard();
+
+    // Mark as unsaved
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+
+    // Notify backend via standard boardUpdate
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Get the current parked items
+ */
+function getParkedItems() {
+    return parkedItems;
+}
+
+// Make clipboard parking functions globally available
+window.handleClipboardDropTargetDragOver = handleClipboardDropTargetDragOver;
+window.handleClipboardDropTargetDragLeave = handleClipboardDropTargetDragLeave;
+window.handleClipboardDropTargetDrop = handleClipboardDropTargetDrop;
+window.initializeParkedItems = initializeParkedItems;
+window.updateParkedItemsUI = updateParkedItemsUI;
+window.parkTask = parkTask;
+window.parkColumn = parkColumn;
+window.restoreParkedTask = restoreParkedTask;
+window.restoreParkedColumn = restoreParkedColumn;
+window.removeParkedItem = removeParkedItem;
+window.getParkedItems = getParkedItems;
