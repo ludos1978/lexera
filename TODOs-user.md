@@ -32,6 +32,40 @@ a
 
 - [ ] Add some internal navigation functionality. it could use user defined tags such as #2.1 and somethink like <#2.1> or what would you suggest?
 
+  **DESIGN PROPOSAL - Internal Navigation System:**
+
+  ### Option A: Anchor Tags with Go-To Links (Recommended)
+
+  **Anchor definition** - Uses existing `#tag` syntax with a namespace:
+  - `#nav:2.1` or `#anchor:intro` - Defines a named anchor point
+  - These render as regular tags but also register as navigation targets
+
+  **Link to anchor** - Uses angle bracket syntax:
+  - `<#nav:2.1>` or `<#anchor:intro>` - Creates a clickable link
+  - Renders as: `→2.1` with a link icon, clicking scrolls to the anchor
+
+  **Why this approach:**
+  - Backwards compatible (anchors still render as tags)
+  - `<#...>` syntax doesn't conflict with existing markdown
+  - Clear visual distinction between anchor (tag style) and link (arrow style)
+  - Can reuse existing tag styling system
+
+  ### Option B: Wiki-Style Links
+
+  - `[[#2.1]]` - Both defines anchor AND creates link
+  - Simpler syntax but conflicts with Obsidian wiki links
+
+  ### Option C: Pandoc-Style Anchors
+
+  - `{#2.1}` - Defines anchor (like Pandoc header anchors)
+  - `[go to section](#2.1)` - Standard markdown anchor link
+  - Most markdown-compatible but requires two different syntaxes
+
+  **Implementation notes:**
+  - Navigation targets stored in `window.navAnchors = { 'nav:2.1': elementRef }`
+  - Click handler scrolls using existing `scrollToAndHighlight()` function
+  - Can integrate with search to show anchor names
+
 - [x] add Excourse to the Teaching-Content  tags
 
 - [x] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
@@ -40,7 +74,19 @@ a
 - [x] why does it need the includeContext in 10 places in the message types? is there possibly a opportunity for a refactor to unify this?
   - ANALYSIS: Yes, 12+ inline definitions can use shared BaseIncludeContext type (4 props), LinkIncludeContext extends it (7 props)
 
-- [ ] if we replace links by using "search for file" and do multiple replacements at once, i want all of them undone in one step. not individual ones.
+- [x] if we replace links by using "search for file" and do multiple replacements at once, i want all of them undone in one step. not individual ones.
+  - IMPLEMENTED: LinkReplacementService._createUndoEntry() now collects all affected targets in batch mode and uses UndoCapture.forMultiple() for a single batch undo entry
+
+- [x] PATH HANDLING CONSISTENCY REVIEW (from /refactor task):
+  - **Status**: Path handling is reasonably consistent across the codebase
+  - **Centralized utilities in place**:
+    - `PathResolver.resolve()` - handles decode + absolute check + resolve
+    - `PathConversionService` - converts between absolute/relative formats
+    - `normalizePathForLookup()` / `isSamePath()` / `normalizeDirForComparison()` - for comparisons
+    - `MarkdownFileRegistry` uses normalized lookups (case-insensitive)
+  - **Opportunity for improvement**: Many places manually do `safeDecodeURIComponent() + path.isAbsolute() + path.resolve()` pattern that could use `PathResolver.resolve()` instead, but this is a style improvement rather than a bug
+  - **jscpd**: No duplicate code blocks detected
+  - **knip**: Reports false positives (needs configuration)
 
 - [ ] add a table editor that allows sorting of content by each category.
 

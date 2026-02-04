@@ -19,7 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { MarkdownFile } from '../files/MarkdownFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
-import { BoardStore, UndoCapture } from '../core/stores';
+import { BoardStore, UndoCapture, ResolvedTarget } from '../core/stores';
 import { WebviewBridge } from '../core/bridge/WebviewBridge';
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
 import { LinkOperations, MARKDOWN_PATH_PATTERN, extractPathFromMatch } from '../utils/linkOperations';
@@ -134,19 +134,6 @@ export class LinkReplacementService {
         const allFiles: MarkdownFile[] = [mainFile, ...deps.fileRegistry.getIncludeFiles()];
         const board = deps.getBoard();
 
-        // Save undo entry
-        if (board) {
-            let undoEntry;
-            if (options.taskId && options.columnId) {
-                undoEntry = UndoCapture.forTask(board, options.taskId, options.columnId, 'path-replace');
-            } else if (options.columnId) {
-                undoEntry = UndoCapture.forColumn(board, options.columnId, 'path-replace');
-            } else {
-                undoEntry = UndoCapture.forFullBoard(board, 'path-replace');
-            }
-            deps.boardStore.saveUndoEntry(undoEntry);
-        }
-
         // Resolve context base path
         const contextBasePath = options.mode === 'single'
             ? this._resolveContextBasePath(board, basePath, options.taskId, options.columnId, options.isColumnTitle)
@@ -161,6 +148,12 @@ export class LinkReplacementService {
         } else {
             const newDir = path.dirname(newPath);
             replacements = this._findBatchPaths(brokenPath, contextBasePath, allFiles, newDir);
+        }
+
+        // Save undo entry AFTER we know all affected paths (for batch undo support)
+        if (board && replacements.size > 0) {
+            const undoEntry = this._createUndoEntry(board, replacements, options);
+            deps.boardStore.saveUndoEntry(undoEntry);
         }
 
         if (replacements.size === 0) {
@@ -265,6 +258,65 @@ export class LinkReplacementService {
             ? includePath
             : path.resolve(basePath, includePath);
         return path.dirname(absoluteIncludePath);
+    }
+
+    /**
+     * Create an undo entry with all affected targets for batch undo support.
+     * In batch mode, this collects all tasks/columns that contain paths being replaced.
+     * In single mode, it just captures the specified target.
+     */
+    private _createUndoEntry(
+        board: KanbanBoard,
+        replacements: Map<string, PathReplacement>,
+        options: ReplacementOptions
+    ): import('../core/stores').UndoEntry {
+        // For single mode, use the existing targeted undo capture
+        if (options.mode === 'single') {
+            if (options.taskId && options.columnId) {
+                return UndoCapture.forTask(board, options.taskId, options.columnId, 'path-replace');
+            } else if (options.columnId) {
+                return UndoCapture.forColumn(board, options.columnId, 'path-replace');
+            }
+            return UndoCapture.forFullBoard(board, 'path-replace');
+        }
+
+        // For batch mode, collect all affected targets from the board
+        const targets: ResolvedTarget[] = [];
+        const replacementPaths = Array.from(replacements.keys());
+        const seenTargets = new Set<string>(); // Deduplicate targets
+
+        for (const column of board.columns) {
+            // Check column title
+            const columnTitle = column.title || '';
+            if (replacementPaths.some(p => columnTitle.includes(p))) {
+                const key = `column:${column.id}`;
+                if (!seenTargets.has(key)) {
+                    seenTargets.add(key);
+                    targets.push({ type: 'column', id: column.id });
+                }
+            }
+
+            // Check tasks in this column
+            for (const task of column.tasks) {
+                const taskTitle = task.title || '';
+                const taskDesc = task.description || '';
+                if (replacementPaths.some(p => taskTitle.includes(p) || taskDesc.includes(p))) {
+                    const key = `task:${task.id}`;
+                    if (!seenTargets.has(key)) {
+                        seenTargets.add(key);
+                        targets.push({ type: 'task', id: task.id, columnId: column.id });
+                    }
+                }
+            }
+        }
+
+        // If we found specific targets, use forMultiple for batch undo
+        if (targets.length > 0) {
+            return UndoCapture.forMultiple(board, targets, 'path-replace-batch');
+        }
+
+        // Fallback to full board undo
+        return UndoCapture.forFullBoard(board, 'path-replace');
     }
 
     /**
