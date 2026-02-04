@@ -38,8 +38,8 @@ let pendingForceWrite = false;
 let lastVerificationResults = null;
 
 // Normalize path to basename for consistent perFileResolutions keys.
-// Handles both absolute (/Users/.../file.md) and relative (file.md) paths.
-const resKey = (p) => p ? p.split('/').pop() : p;
+// Uses shared getBasename utility which handles both / and \ separators.
+const resKey = (p) => window.getBasename ? window.getBasename(p) : (p ? p.split('/').pop() : p);
 
 // ============= TOAST NOTIFICATION =============
 
@@ -310,6 +310,9 @@ function createDialogContent() {
                     <button onclick="verifyContentSync()" class="file-manager-btn" title="Re-verify all hashes and sync status">
                         Verify Sync
                     </button>
+                    <button onclick="removeDeletedItemsFromFiles()" class="file-manager-btn file-manager-btn-danger" title="Permanently remove all deleted items from files">
+                        Remove Deleted
+                    </button>
                     <span class="file-manager-timestamp">Updated: ${now}</span>
                 </div>
                 <div class="file-manager-controls">
@@ -345,7 +348,8 @@ function buildUnifiedFileList() {
     const browseFiles = createAllFilesArray();
 
     // Use basename for matching — conflictFiles use absolute paths, browseFiles use relative paths
-    const basename = (p) => p ? p.split('/').pop() : p;
+    // Uses shared getBasename utility which handles both / and \ separators
+    const basename = (p) => window.getBasename ? window.getBasename(p) : (p ? p.split('/').pop() : p);
     const conflictMap = new Map(conflictFiles.map(f => [basename(f.path), f]));
     const browseBasenames = new Set(browseFiles.map(f => basename(f.path)));
 
@@ -394,10 +398,11 @@ function createAllFilesArray() {
     const mainFile = trackedFilesData.mainFile;
     if (mainFile && mainFile !== 'Unknown') {
         const mainFileInfo = trackedFilesData.watcherDetails || {};
+        const mainBasename = window.getBasename ? window.getBasename(mainFile) : mainFile.split('/').pop();
         allFiles.push({
             path: mainFile,
-            relativePath: mainFile.split('/').pop(),
-            name: mainFile.split('/').pop(),
+            relativePath: mainBasename,
+            name: mainBasename,
             type: 'main',
             isMainFile: true,
             exists: true,
@@ -412,10 +417,11 @@ function createAllFilesArray() {
 
     const includeFiles = trackedFilesData.includeFiles || [];
     includeFiles.forEach(file => {
+        const fileBasename = window.getBasename ? window.getBasename(file.path) : file.path.split('/').pop();
         allFiles.push({
             path: file.path,
             relativePath: file.path,
-            name: file.path.split('/').pop(),
+            name: fileBasename,
             type: file.type || 'include',
             isMainFile: false,
             exists: file.exists !== false,
@@ -765,12 +771,13 @@ function getFileSyncStatus(filePath) {
         return null;
     }
 
+    // Normalize paths for comparison using shared utilities
     const normalizedInputPath = filePath.replace(/^\.\//, '');
-    const inputBasename = filePath.split('/').pop();
+    const inputBasename = window.getBasename ? window.getBasename(filePath) : filePath.split('/').pop();
 
     return lastVerificationResults.fileResults.find(f => {
         const resultPath = f.path.replace(/^\.\//, '');
-        const resultBasename = f.path.split('/').pop();
+        const resultBasename = window.getBasename ? window.getBasename(f.path) : f.path.split('/').pop();
         return resultPath === normalizedInputPath ||
                resultBasename === inputBasename ||
                normalizedInputPath.endsWith(resultPath);
@@ -1599,4 +1606,44 @@ function dismissExternalChangesNotification() {
     if (el) el.remove();
 }
 
+/**
+ * Remove all deleted items (tagged with #hidden-internal-deleted) from files.
+ * This permanently removes them from the markdown files, not just from memory.
+ * Items with #hidden-internal-parked are NOT removed.
+ */
+function removeDeletedItemsFromFiles() {
+    // Get all file paths from the current board
+    const filePaths = [];
+    if (window.currentFileInfo?.filePath) {
+        filePaths.push(window.currentFileInfo.filePath);
+    }
+    // Also include any included files
+    if (window.cachedBoard?.includedFiles) {
+        window.cachedBoard.includedFiles.forEach(f => {
+            if (f.path && !filePaths.includes(f.path)) {
+                filePaths.push(f.path);
+            }
+        });
+    }
+
+    if (filePaths.length === 0) {
+        alert('No files to process.');
+        return;
+    }
+
+    // Confirm action
+    if (!confirm(`Permanently remove all deleted items (tagged with #hidden-internal-deleted) from ${filePaths.length} file(s)?\n\nThis cannot be undone. Items in Park will NOT be affected.`)) {
+        return;
+    }
+
+    // Send message to backend to remove deleted items from files
+    if (window.vscode) {
+        window.vscode.postMessage({
+            type: 'removeDeletedItemsFromFiles',
+            filePaths: filePaths
+        });
+    }
+}
+
 window.dismissExternalChangesNotification = dismissExternalChangesNotification;
+window.removeDeletedItemsFromFiles = removeDeletedItemsFromFiles;

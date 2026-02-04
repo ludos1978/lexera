@@ -1152,6 +1152,18 @@ function renderBoard(options = null) {
         });
     }
 
+    // Initialize parked items FIRST - removes parked-tagged items from cachedBoard
+    // This ensures parked items are never rendered on the board
+    if (typeof window.initializeParkedItems === 'function') {
+        window.initializeParkedItems();
+    }
+
+    // Initialize deleted items - removes deleted-tagged items from cachedBoard
+    // This ensures deleted items are never rendered on the board
+    if (typeof window.initializeDeletedItems === 'function') {
+        window.initializeDeletedItems();
+    }
+
     // Apply tag styles first
     applyTagStyles();
 

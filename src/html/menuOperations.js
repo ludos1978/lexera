@@ -1607,56 +1607,10 @@ function deleteColumn(columnId) {
     // Close all menus properly
     closeAllMenus();
 
-    // NEW CACHE SYSTEM: Remove column from cached board first
-    if (window.cachedBoard) {
-        const columnIndex = window.cachedBoard.columns.findIndex(col => col.id === columnId);
-        if (columnIndex >= 0) {
-            const deletedColumn = window.cachedBoard.columns.splice(columnIndex, 1)[0];
-
-            // Also update currentBoard for compatibility
-            if (window.cachedBoard !== window.cachedBoard) {
-                const currentColumnIndex = window.cachedBoard.columns.findIndex(col => col.id === columnId);
-                if (currentColumnIndex >= 0) {
-                    window.cachedBoard.columns.splice(currentColumnIndex, 1);
-                }
-            }
-
-            // Remove column from DOM immediately - use specific selector to avoid removing tasks
-            const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
-            if (columnElement) {
-                // Get the stack before removing the column
-                const stack = columnElement.closest('.kanban-column-stack');
-
-                columnElement.remove();
-
-                // Normalize stack tags - ensures first column in stack has no #stack tag
-                // This handles the case where deleting the top column makes the second column the new top
-                if (typeof window.normalizeAllStackTags === 'function') {
-                    window.normalizeAllStackTags();
-                }
-
-                // Recalculate stack heights after column deletion
-                if (stack && typeof updateStackLayoutDebounced === 'function') {
-                    updateStackLayoutDebounced(stack);
-                }
-
-                // Update drop zones after column deletion
-                if (typeof window.updateStackBottomDropZones === 'function') {
-                    window.updateStackBottomDropZones();
-                }
-            }
-
-            // NOTE: We intentionally do NOT call markUnsavedChanges() here.
-            // The deleteColumn message goes through the action system, which properly
-            // handles undo state capture BEFORE applying changes via ColumnActions.remove.
-            // Calling markUnsavedChanges() would sync the already-modified board to backend
-            // BEFORE deleteColumn is processed, causing undo to capture the wrong "before" state.
-            // See: ColumnCommands.ts handleDeleteColumn() for backend handling.
-
-            // Send message to VS Code - action system handles undo capture and board sync
-            vscode.postMessage({ type: 'deleteColumn', columnId });
-
-        }
+    // Use the trash system - column is tagged and hidden, not physically removed
+    const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
+    if (columnElement && typeof window.trashColumn === 'function') {
+        window.trashColumn(columnElement);
     }
 }
 
@@ -1926,46 +1880,10 @@ function deleteTask(taskId, columnId) {
     // Close all menus properly
     closeAllMenus();
 
-    // NEW CACHE SYSTEM: Remove task from cached board instead of sending to VS Code immediately
-    if (window.cachedBoard) {
-        // Find the task in any column (task might have been moved since the menu was generated)
-        let foundColumn = null;
-        let taskIndex = -1;
-
-        for (const column of window.cachedBoard.columns) {
-            taskIndex = column.tasks.findIndex(t => t.id === taskId);
-            if (taskIndex >= 0) {
-                foundColumn = column;
-                break;
-            }
-        }
-
-        if (foundColumn && taskIndex >= 0) {
-            const deletedTask = foundColumn.tasks.splice(taskIndex, 1)[0];
-
-            // Remove task from DOM immediately
-            const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
-            if (taskElement) {
-                // Get the column element before removing the task
-                const columnElement = taskElement.closest('.kanban-full-height-column');
-
-                taskElement.remove();
-
-                // Check if column is now empty and add placeholder button (before height recalc)
-                updateColumnEmptyState(foundColumn.id);
-
-                // Recalculate stack heights after task deletion and button restoration
-                if (columnElement) {
-                    const stack = columnElement.closest('.kanban-column-stack');
-                    if (stack && typeof updateStackLayoutDebounced === 'function') {
-                        updateStackLayoutDebounced(stack);
-                    }
-                }
-            }
-
-            // Send message to VS Code - action system handles undo capture and board sync
-            vscode.postMessage({ type: 'deleteTask', taskId, columnId: foundColumn.id });
-        }
+    // Use the trash system - task is tagged and hidden, not physically removed
+    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (taskElement && typeof window.trashTask === 'function') {
+        window.trashTask(taskElement);
     }
 }
 

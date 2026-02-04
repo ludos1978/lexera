@@ -357,14 +357,13 @@
                     </div>
                 </div>
 
-                <!-- Internal Clipboard Drop Target -->
+                <!-- Internal Clipboard Drop Target (Park) -->
                 <div class="drag-menu clipboard-drop-menu" id="clipboard-drop-menu">
                     <div class="clipboard-drop-target" id="clipboard-drop-target"
                         ondragover="handleClipboardDropTargetDragOver(event)"
                         ondragleave="handleClipboardDropTargetDragLeave(event)"
-                        ondrop="handleClipboardDropTargetDrop(event)"
-                        title="Drop tasks or columns here to store them temporarily">
-                        <span class="clipboard-drop-icon">🗑️</span>
+                        ondrop="handleClipboardDropTargetDrop(event)">
+                        <span class="clipboard-drop-icon">📦</span>
                         <span class="clipboard-drop-label">Park</span>
                         <span class="clipboard-drop-count" id="clipboard-drop-count"></span>
                     </div>
@@ -374,6 +373,25 @@
                             <!-- Parked items will be populated dynamically -->
                         </div>
                         <div class="clipboard-drop-empty" id="clipboard-drop-empty">No parked items</div>
+                    </div>
+                </div>
+
+                <!-- Trash Drop Target -->
+                <div class="drag-menu trash-drop-menu" id="trash-drop-menu">
+                    <div class="trash-drop-target" id="trash-drop-target"
+                        ondragover="handleTrashDropTargetDragOver(event)"
+                        ondragleave="handleTrashDropTargetDragLeave(event)"
+                        ondrop="handleTrashDropTargetDrop(event)">
+                        <span class="trash-drop-icon">🗑️</span>
+                        <span class="trash-drop-label">Trash</span>
+                        <span class="trash-drop-count" id="trash-drop-count"></span>
+                    </div>
+                    <div class="trash-drop-dropdown" id="trash-drop-dropdown">
+                        <div class="trash-drop-header">Deleted Items</div>
+                        <div class="trash-drop-items" id="trash-drop-items">
+                            <!-- Deleted items will be populated dynamically -->
+                        </div>
+                        <div class="trash-drop-empty" id="trash-drop-empty">No deleted items</div>
                     </div>
                 </div>
 

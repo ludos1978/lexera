@@ -753,7 +753,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 
 .clipboard-drop-dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 4px); /* Small gap below trigger */
   left: 0;
   min-width: 200px;
   max-width: 300px;
@@ -765,11 +765,23 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: var(--z-dropdown);
   display: none;
-  margin-top: 4px;
+}
+
+/* Bridge element on parent to maintain hover through gap - prevents scrollbar issues */
+.clipboard-drop-menu::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 8px; /* Bridge the gap */
+  background: transparent;
+  pointer-events: auto; /* Capture hover to keep dropdown open */
 }
 
 .clipboard-drop-menu:hover .clipboard-drop-dropdown,
-.clipboard-drop-dropdown.show {
+.clipboard-drop-dropdown.show,
+.clipboard-drop-menu.dragging-from .clipboard-drop-dropdown {
   display: block;
 }
 
@@ -830,6 +842,188 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
   font-style: italic;
+}
+
+/* ===== Trash Drop Target ===== */
+.trash-drop-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.trash-drop-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--button-background);
+  color: var(--button-foreground);
+  border: 2px dashed var(--vscode-errorBorder, #f44);
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 22px;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.trash-drop-target:hover {
+  background: var(--button-background-hover);
+  border-color: var(--vscode-errorForeground, #f66);
+}
+
+.trash-drop-target.drag-over {
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 68, 68, 0.2));
+  border-color: var(--vscode-errorForeground, #f66);
+  border-style: solid;
+  transform: scale(1.05);
+}
+
+.trash-drop-icon {
+  font-size: 14px;
+}
+
+.trash-drop-label {
+  font-size: 12px;
+}
+
+.trash-drop-count {
+  display: none;
+  background: var(--vscode-errorBackground, rgba(255, 68, 68, 0.3));
+  color: var(--vscode-errorForeground, #f66);
+  border-radius: 50%;
+  min-width: 16px;
+  height: 16px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.trash-drop-count.has-items {
+  display: inline-block;
+}
+
+.trash-drop-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  max-width: 300px;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: var(--z-dropdown);
+  display: none;
+}
+
+/* Bridge element on parent to maintain hover through gap */
+.trash-drop-menu::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.trash-drop-menu:hover .trash-drop-dropdown,
+.trash-drop-dropdown.show,
+.trash-drop-menu.dragging-from .trash-drop-dropdown {
+  display: block;
+}
+
+.trash-drop-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-errorForeground, #f66);
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+}
+
+.trash-drop-items {
+  padding: 4px 0;
+}
+
+.trash-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: grab;
+  transition: background 0.1s ease;
+}
+
+.trash-drop-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.trash-drop-item-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.trash-drop-item-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.trash-drop-item-restore {
+  opacity: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  transition: opacity 0.1s ease;
+}
+
+.trash-drop-item-remove {
+  opacity: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--vscode-errorForeground);
+  transition: opacity 0.1s ease;
+}
+
+.trash-drop-item:hover .trash-drop-item-restore,
+.trash-drop-item:hover .trash-drop-item-remove {
+  opacity: 1;
+}
+
+.trash-drop-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.trash-drop-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--vscode-dropdown-border);
+  text-align: center;
+}
+
+.trash-empty-btn {
+  background: var(--vscode-errorBackground, rgba(255, 68, 68, 0.2));
+  color: var(--vscode-errorForeground, #f66);
+  border: 1px solid var(--vscode-errorBorder, rgba(255, 68, 68, 0.4));
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.trash-empty-btn:hover {
+  background: var(--vscode-errorBackground, rgba(255, 68, 68, 0.4));
 }
 
 /* Text styling for button labels */
@@ -7295,6 +7489,15 @@ figcaption {
 
 .file-manager-btn:hover, .file-manager-close:hover {
     background: var(--button-secondary-background-hover);
+}
+
+.file-manager-btn-danger {
+    background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+    border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.file-manager-btn-danger:hover {
+    background: var(--vscode-inputValidation-errorBorder, #be1100);
 }
 
 .file-manager-close {

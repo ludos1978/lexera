@@ -1518,6 +1518,15 @@ export interface ClearTrackedFilesCacheMessage extends BaseMessage {
 }
 
 /**
+ * Remove deleted items from files
+ * Permanently removes items tagged with #hidden-internal-deleted from the markdown files
+ */
+export interface RemoveDeletedItemsFromFilesMessage extends BaseMessage {
+    type: 'removeDeletedItemsFromFiles';
+    filePaths: string[];
+}
+
+/**
  * Set debug mode
  */
 export interface SetDebugModeMessage extends BaseMessage {
@@ -2308,6 +2317,7 @@ export type IncomingMessage =
     | GetTrackedFilesDebugInfoMessage
     | GetMediaTrackingStatusMessage
     | ClearTrackedFilesCacheMessage
+    | RemoveDeletedItemsFromFilesMessage
     | SetDebugModeMessage
     // Path conversion messages
     | ConvertPathsMessage

@@ -573,14 +573,25 @@ function updateStackLayoutCore(stackElement = null) {
 
     // Count total columns across ALL stacks first for global z-index assignment
     // This ensures column-titles from earlier stacks have higher z-index than later stacks
+    // Helper to check if column is hidden (parked/deleted)
+    const isColumnHidden = (col) => {
+        const colData = window.cachedBoard?.columns?.find(c => c.id === col.dataset.columnId);
+        if (!colData) return false;
+        return colData.title?.includes('#hidden-internal-parked') ||
+               colData.title?.includes('#hidden-internal-deleted');
+    };
     let totalColumnsAcrossStacks = 0;
     stacks.forEach(stack => {
-        totalColumnsAcrossStacks += stack.querySelectorAll('.kanban-full-height-column').length;
+        const visibleCols = Array.from(stack.querySelectorAll('.kanban-full-height-column'))
+            .filter(col => !isColumnHidden(col));
+        totalColumnsAcrossStacks += visibleCols.length;
     });
     let globalColumnIndex = 0;
 
     stacks.forEach(stack => {
-        const columns = Array.from(stack.querySelectorAll('.kanban-full-height-column'));
+        // Filter out hidden columns (parked/deleted) - defensive check
+        const columns = Array.from(stack.querySelectorAll('.kanban-full-height-column'))
+            .filter(col => !isColumnHidden(col));
         columnCount += columns.length;
 
         // Check if all columns in stack are vertically folded

@@ -1,3 +1,23 @@
+- [x
+] lets redo the #hidden-internal-clipboard functionality.
+
+First rename #hidden-internal-clipboard to #hidden-internal-parked
+We also add #hidden-internal-deleted tag.
+
+We have a top element for "Park" and one for "Trash"
+
+Any content that is moved to the "Park" or "Cut" from the burger menu:
+- is tagged with #hidden-internal-parked . 
+- When it's placed from the "Park" into the board again, the tag is removed (is also removed from the "Park") and is moved to the new location.
+The same happens with deletion of colums and tasks.
+
+To cleanup #hidden-internal-deleted we add a new column "remove deleted" in the file manager for each file. 
+If something is moved to the Trash, we check if something has the tag #hidden-internal-parked and warn the user that it's removed from the "Park" when continuing (let the user abort the action). 
+
+When parsing and displaying or exporting anything in the board it hides all #hidden-internal-parked (columns and tasks) and #hidden-internal-deleted from visiblity. 
+When doing comparisons (diff in the File Manager) the tagged elements are not hidden!
+
+Do you see any conflict that could arise from this funcitonality? One problem might be the #stack tag feature if the columns with #hidden-internal-parked or #hidden-internal-deleted might interfere with it. We might move these columns to the end of the files or add a feature to the stack handling that skips there columns / tasks?
 
 - [x] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
 
@@ -7,7 +27,7 @@
 
 - [ ] i would like to be able to drop external files (desktop, vscode explorer into the editor without leaving it, it should place it directly inline). with all the features we have in the task creation pasting as well!
 
-- [ ] lets change the file save/load/reload/conflict handling like this:
+- [x] lets change the file save/load/reload/conflict handling like this:
   - when the main file or any imported files in the kanban have unsaved modifications:
     - and when the external file is changed
   - if the main file or imported file doesnt have any unsaved changes. when any external change is detected (the main or an imported file is modified, NOT A BUFFER CHANGE) the user is asked if he wants to import the changes or ignore them. the user might import them again by going into the file states overview and press reload from file.

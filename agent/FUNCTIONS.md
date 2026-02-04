@@ -2,10 +2,60 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-03
+**Last Updated:** 2026-02-04
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-02-04) - Park/Trash System with Hidden Tags
+
+Redesigned the internal clipboard/parking system to use consistent hidden tags for both parking and deletion. Items are not physically removed but tagged and hidden from view.
+
+### Modified: `src/html/dragDrop.js`
+- `PARKED_TAG` — Renamed from `CLIPBOARD_TAG`. Now `'#hidden-internal-parked'`
+- `DELETED_TAG` — New constant `'#hidden-internal-deleted'` for deleted items
+- `deletedItems` — New array to store deleted items (parallel to `parkedItems`)
+- `initializeDeletedItems()` — Extract items with #hidden-internal-deleted tag from cachedBoard into deletedItems array
+- `updateDeletedItemsUI()` — Render trash dropdown UI with item list and "Empty Trash" button
+- `syncDeletedItemsToBoard()` — Sync deleted items back to cachedBoard for persistence (at end of board, tagged)
+- `handleTrashDropTargetDragOver(event)` — Handle dragover on trash drop target
+- `handleTrashDropTargetDragLeave(event)` — Handle dragleave from trash drop target
+- `handleTrashDropTargetDrop(event)` — Handle drop on trash drop target to delete item
+- `trashTask(taskElement)` — Move task to trash (add deleted tag, remove from board, update UI)
+- `trashColumn(columnElement)` — Move column to trash (add deleted tag, remove from board, update UI)
+- `trashParkedItem(parkedIndex)` — Move parked item to trash (with confirmation dialog)
+- `handleDeletedItemDragStart(event, index)` — Handle drag start for restoring deleted item
+- `handleDeletedItemDragEnd(event)` — Handle drag end for deleted item
+- `restoreDeletedTask(deletedIndex, dropPosition)` — Restore deleted task to board at drop position
+- `restoreDeletedColumn(deletedIndex, dropPosition)` — Restore deleted column to board at drop position
+- `restoreDeletedItemByIndex(index)` — Restore deleted item to original location (or first column)
+- `permanentlyRemoveDeletedItem(index)` — Permanently delete item from trash (with confirmation)
+- `emptyTrash()` — Permanently delete all items from trash (with confirmation)
+- `handleDeletedItemDrop(e, dataString)` — Handle drop of deleted item on board
+- `getDeletedItems()` — Get current deleted items array
+
+### Modified: `src/html/menuOperations.js`
+- `deleteTask(taskId, columnId)` — (MODIFIED) Now uses trash system via `window.trashTask()` instead of physical removal
+- `deleteColumn(columnId)` — (MODIFIED) Now uses trash system via `window.trashColumn()` instead of physical removal
+
+### Modified: `src/html/boardRenderer.js`
+- `renderBoard()` — (MODIFIED) Added call to `initializeDeletedItems()` after `initializeParkedItems()` to filter deleted items
+
+### Modified: `src/html/webview.html`
+- Changed Park icon from 🗑️ to 📦
+- Added Trash drop target UI (trash-drop-menu, trash-drop-target, trash-drop-dropdown, trash-drop-items, etc.)
+
+### Modified: `src/html/webview.css`
+- Added `.trash-drop-*` styles for Trash UI (mirroring `.clipboard-drop-*` styles with error/red theme)
+- Added `.trash-drop-footer` and `.trash-empty-btn` for "Empty Trash" button
+
+### Modified: `src/html/utils/exportTreeBuilder.js`
+- `PARKED_TAG`, `DELETED_TAG` — Constants for hidden tag filtering
+- `ExportTreeBuilder.isHiddenItem(title, description)` — Check if item should be hidden from export
+- `ExportTreeBuilder.buildExportTree()` — (MODIFIED) Filters out columns with parked/deleted tags
+- `ExportTreeBuilder.getCleanColumnTitle()` — (MODIFIED) Strips hidden tags from titles
 
 ---
 

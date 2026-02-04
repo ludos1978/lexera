@@ -2649,13 +2649,9 @@ if (!webviewEventListenersInitialized) {
                 // 1. It's a full refresh (explicit reload) OR
                 // 2. No recent targeted update was done
                 if (!skipDueToRecentTargetedUpdate || message.isFullRefresh) {
+                    // renderBoard() now calls initializeParkedItems() internally
                     if (typeof window.renderBoard === 'function') {
                         window.renderBoard();
-                    }
-
-                    // Initialize parked items (items with #hidden-internal-clipboard tag)
-                    if (typeof window.initializeParkedItems === 'function') {
-                        window.initializeParkedItems();
                     }
 
                     // Cache broken element paths for re-use after include content re-renders
