@@ -163,17 +163,34 @@ window.markdownitTemporalTag = function(md, options) {
         var icon = cfg.showIcons ? (cfg.icons[tagType] || cfg.icons.generic) : '';
 
         // Check if currently active (for highlighting)
+        // Apply hierarchical gating: column temporal tags can prevent task content temporals from highlighting
         var isActive = false;
         if (typeof window !== 'undefined' && window.tagUtils) {
+            // Check if temporal gate is open (gate may be closed by column/task title temporals)
+            var gateOpen = true;
+            var gatingRank = undefined;
+            if (window.currentRenderingTemporalGate) {
+                gateOpen = window.currentRenderingTemporalGate.open;
+                gatingRank = window.currentRenderingTemporalGate.gatingRank;
+            }
+
+            // Temporal ranks: date=0, week=1, weekday=2, hour=3, timeSlot=4
+            var temporalRanks = { date: 0, week: 1, weekday: 2, time: 3, timeSlot: 4, minuteSlot: 5 };
+            var thisRank = temporalRanks[tagType];
+
+            // Higher rank temporals (lower number) can bypass gates from lower rank temporals
+            var canBypassGate = gatingRank !== undefined && thisRank < gatingRank;
+            var effectiveGateOpen = gateOpen || canBypassGate;
+
             switch (tagType) {
-                case 'date': isActive = window.tagUtils.isCurrentDate(fullTag); break;
-                case 'week': isActive = window.tagUtils.isCurrentWeek(fullTag); break;
-                case 'weekday': isActive = window.tagUtils.isCurrentWeekday(fullTag); break;
-                case 'time': isActive = window.tagUtils.isCurrentTime(fullTag); break;
-                case 'timeSlot': isActive = window.tagUtils.isCurrentTimeSlot(fullTag); break;
+                case 'date': isActive = effectiveGateOpen && window.tagUtils.isCurrentDate(fullTag); break;
+                case 'week': isActive = effectiveGateOpen && window.tagUtils.isCurrentWeek(fullTag); break;
+                case 'weekday': isActive = effectiveGateOpen && window.tagUtils.isCurrentWeekday(fullTag); break;
+                case 'time': isActive = effectiveGateOpen && window.tagUtils.isCurrentTime(fullTag); break;
+                case 'timeSlot': isActive = effectiveGateOpen && window.tagUtils.isCurrentTimeSlot(fullTag); break;
                 case 'minuteSlot':
-                    // Minute slots inherit from parent time slot context
-                    if (window.currentRenderingTimeSlot) {
+                    // Minute slots inherit from parent time slot context AND respect temporal gate
+                    if (effectiveGateOpen && window.currentRenderingTimeSlot) {
                         isActive = window.tagUtils.isCurrentMinuteSlot(fullTag, window.currentRenderingTimeSlot);
                     }
                     break;

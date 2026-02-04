@@ -993,8 +993,12 @@ function renderSingleTask(taskId, taskData, columnId) {
         });
     }
 
+    // Get column title for temporal gating
+    const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
+    const columnTitle = column?.title || '';
+
     // Create new task element HTML
-    const newTaskHtml = createTaskElement(taskData, columnId, taskIndex);
+    const newTaskHtml = createTaskElement(taskData, columnId, taskIndex, columnTitle);
     if (!newTaskHtml) {
         return false;
     }
@@ -1779,7 +1783,7 @@ function createColumnElement(column, columnIndex) {
         <div class="column-content${column.isLoadingContent ? ' column-loading' : ''}" id="tasks-${column.id}">
             ${column.isLoadingContent
                 ? '<div class="column-loading-placeholder"><div class="loading-spinner"></div><div class="loading-text">Loading tasks...</div></div>'
-                : column.tasks.map((task, index) => createTaskElement(task, column.id, index)).join('')
+                : column.tasks.map((task, index) => createTaskElement(task, column.id, index, column.title)).join('')
             }
             ${!column.isLoadingContent && column.tasks.length === 0 && !column.includeError ? `<button class="add-task-btn" onclick="addTask('${column.id}')">
                 + Add Task
@@ -1834,11 +1838,19 @@ function getTaskEditContent(task) {
  * @param {Object} task - Task data object
  * @param {string} columnId - Parent column ID
  * @param {number} taskIndex - Position in task array
+ * @param {string} [columnTitle] - Parent column title (for temporal gating)
  * @returns {string} Complete HTML for task card
  */
-function createTaskElement(task, columnId, taskIndex) {
+function createTaskElement(task, columnId, taskIndex, columnTitle) {
     if (!task) {
         return '';
+    }
+
+    // Set up hierarchical temporal gating context for content rendering
+    // This enables: column !kw13 -> task content !10:00-10:30 only highlights during week 13
+    window.currentRenderingTemporalGate = null; // Reset first
+    if (columnTitle && window.tagUtils && typeof window.tagUtils.evaluateTemporalGate === 'function') {
+        window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(columnTitle, task.title || '');
     }
 
     // Extract time slot from task title to use as parent context for minute slots in description
@@ -1853,8 +1865,9 @@ function createTaskElement(task, columnId, taskIndex) {
 
     let renderedDescription = (task.description && typeof task.description === 'string' && task.description.trim()) ? renderMarkdown(task.description, task.includeContext) : '';
 
-    // Clear the rendering context AFTER description is rendered
+    // Clear the rendering contexts AFTER description is rendered
     window.currentRenderingTimeSlot = null;
+    window.currentRenderingTemporalGate = null;
 
     // For broken task includes, show placeholder instead of empty description
     const isTaskIncludeWithError = task.includeMode === true && task.includeError === true;
@@ -3136,7 +3149,7 @@ function addSingleTaskToDOM(columnId, task, insertIndex = -1) {
     const taskIndex = insertIndex >= 0 ? insertIndex : column.tasks.length - 1;
 
     // Create the task element HTML
-    const taskHtml = createTaskElement(task, columnId, taskIndex);
+    const taskHtml = createTaskElement(task, columnId, taskIndex, column.title);
 
     // Create a temporary container to parse HTML
     const tempDiv = document.createElement('div');

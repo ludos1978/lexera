@@ -2429,13 +2429,26 @@ class TaskEditor {
                 displayValue = task.displayTitle || '';
             }
 
-            // Set time slot context for description rendering
-            if (type === 'task-description' && window.tagUtils && window.tagUtils.extractTimeSlotTag) {
-                window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '');
+            // Set temporal rendering context for description rendering
+            if (type === 'task-description' && window.tagUtils) {
+                // Set temporal gate from column context
+                if (window.tagUtils.evaluateTemporalGate) {
+                    // Find column title from cached board
+                    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                    const columnElement = taskElement?.closest('.kanban-full-height-column');
+                    const columnId = columnElement?.dataset?.columnId;
+                    const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
+                    window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', task.title || '');
+                }
+                // Set time slot context
+                if (window.tagUtils.extractTimeSlotTag) {
+                    window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '');
+                }
             }
 
             let renderedHtml = renderMarkdown(displayValue, task.includeContext);
             window.currentRenderingTimeSlot = null;
+            window.currentRenderingTemporalGate = null;
 
             // Wrap in sections for keyboard navigation
             if (type === 'task-description' && typeof window.wrapTaskSections === 'function') {

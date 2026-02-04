@@ -511,13 +511,28 @@
         const draft = state.draft || '';
         const includeContext = state.taskRef?.includeContext;
         const taskTitle = state.taskRef?.title;
-        if (taskTitle && window.tagUtils?.extractTimeSlotTag) {
-            window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(taskTitle);
+        const taskId = state.taskId;
+
+        // Set temporal rendering context
+        if (taskTitle && window.tagUtils) {
+            // Set temporal gate from column context
+            if (window.tagUtils.evaluateTemporalGate) {
+                const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                const columnElement = taskElement?.closest('.kanban-full-height-column');
+                const columnId = columnElement?.dataset?.columnId;
+                const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
+                window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', taskTitle);
+            }
+            // Set time slot context
+            if (window.tagUtils.extractTimeSlotTag) {
+                window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(taskTitle);
+            }
         }
         let rendered = typeof window.renderMarkdown === 'function'
             ? window.renderMarkdown(draft, includeContext)
             : (window.escapeHtml ? window.escapeHtml(draft) : draft);
         window.currentRenderingTimeSlot = null;
+        window.currentRenderingTemporalGate = null;
         if (typeof window.wrapTaskSections === 'function') {
             rendered = window.wrapTaskSections(rendered);
         }

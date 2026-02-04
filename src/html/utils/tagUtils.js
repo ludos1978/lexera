@@ -899,6 +899,28 @@ class TagUtils {
     }
 
     /**
+     * Evaluate the temporal gate from column and task context.
+     * Used by markdown-it plugin to determine if content-level temporal tags should highlight.
+     *
+     * @param {string} columnTitle - Column title text (may contain week/date tags)
+     * @param {string} taskTitle - Task title text (may contain week/date/time tags)
+     * @returns {Object} { open: boolean, gatingRank: number|undefined, closedBy: string|null }
+     */
+    evaluateTemporalGate(columnTitle, taskTitle) {
+        let gate = { open: true, closedBy: null, gatingRank: undefined };
+
+        // Evaluate column level
+        const columnResult = this.evaluateTemporalsAtLevel(columnTitle || '', gate, 'column');
+        gate = columnResult.gate;
+
+        // Evaluate task title level (further gates based on task title temporals)
+        const titleResult = this.evaluateTemporalsAtLevel(taskTitle || '', gate, 'taskTitle');
+        gate = titleResult.gate;
+
+        return gate;
+    }
+
+    /**
      * Check if a tag is a numeric index tag
      * @param {string} tag - Tag to check (with or without # symbol)
      * @returns {boolean} True if numeric tag
