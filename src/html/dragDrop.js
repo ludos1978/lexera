@@ -434,8 +434,6 @@ function finalizeExternalDragState() {
     dragState.draggedDiagramCard = null;
     dragState.isDragging = false;
     dragDropStateMachine.reset('external-drop');
-    // Reset debug flags for next drag
-    window._parkedColumnDragoverLogged = false;
 }
 
 /**
@@ -647,12 +645,6 @@ function setupGlobalDragAndDrop() {
             }
         }
 
-        console.log('[calculateColumnDropTarget] Calculated:', {
-            stackClass: foundStack?.className,
-            beforeColumnId: beforeColumn?.dataset?.columnId || null,
-            mouseX, mouseY
-        });
-
         return { stack: foundStack, beforeColumn };
     }
 
@@ -674,19 +666,15 @@ function setupGlobalDragAndDrop() {
         let capturedDropTargetBeforeColumn = null;
 
         if (dragState.draggedParkedColumn || dragState.draggedDeletedColumn) {
-            // Use stored coordinates (set synchronously in dragover) or event coordinates
-            const mouseX = dragState.lastParkedColumnDragX || e.clientX;
-            const mouseY = dragState.lastParkedColumnDragY || e.clientY;
-            const result = calculateColumnDropTarget(mouseX, mouseY);
+            // Calculate drop target synchronously (RAF timing means dragState may be stale)
+            const result = calculateColumnDropTarget(
+                dragState.lastParkedColumnDragX || e.clientX,
+                dragState.lastParkedColumnDragY || e.clientY
+            );
             if (result) {
                 capturedDropTargetStack = result.stack;
                 capturedDropTargetBeforeColumn = result.beforeColumn;
             }
-            console.log('[handleExternalDrop] Calculated drop target for parked/deleted column:', {
-                mouseX, mouseY,
-                stackClass: capturedDropTargetStack?.className,
-                beforeColumnId: capturedDropTargetBeforeColumn?.dataset?.columnId || null
-            });
         } else {
             // For other external drops, use the captured state
             capturedDropTargetStack = dragState.dropTargetStack;
@@ -3612,18 +3600,6 @@ function setupColumnDragAndDrop() {
             (dragState.draggedParkedColumn || dragState.draggedDeletedColumn);
 
         // DEBUG: Log parked column drag detection
-        if (dragMode === dragDropStateMachine.states.EXTERNAL) {
-            if (!window._parkedColumnDragoverLogged) {
-                window._parkedColumnDragoverLogged = true;
-                console.log('[DRAGOVER] External drag detected:', {
-                    isParkedColumnDrag,
-                    draggedParkedColumn: !!dragState.draggedParkedColumn,
-                    draggedDeletedColumn: !!dragState.draggedDeletedColumn,
-                    dragMode
-                });
-            }
-        }
-
         // Handle column drags, template drags, task drags, clipboard drags, empty card drags, parked column drags
         if (!isColumnDrag && !isTemplateDrag && !isTaskDrag && !isClipboardDrag && !isEmptyCardDrag && !isParkedColumnDrag) {return;}
 
@@ -3914,15 +3890,6 @@ function setupColumnDragAndDrop() {
             // Update drop target state
             dragState.dropTargetStack = foundStack;
             dragState.dropTargetBeforeColumn = beforeColumn;
-
-            // DEBUG: Log when drop target state is set for parked column drags
-            if (stillParkedColumnDrag) {
-                console.log('[DRAGOVER] Setting drop target state for parked column:', {
-                    dropTargetStack: !!foundStack,
-                    dropTargetBeforeColumn: beforeColumn?.dataset?.columnId || null,
-                    foundStackClass: foundStack?.className
-                });
-            }
 
             // Show line indicator for template drags and parked column drags (not regular column drags)
             if (stillTemplateDrag || stillParkedColumnDrag) {
@@ -4632,18 +4599,9 @@ function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Use captured drop target (passed in, since dragState is cleared by cleanup)
-    // Extract IDs BEFORE render (IDs survive render, element references don't)
+    // Extract IDs before render (element references become stale after render)
     const beforeColumnId = capturedDropTargetBeforeColumn?.dataset?.columnId || null;
     const targetStackFirstColId = capturedDropTargetStack?.querySelector('.kanban-full-height-column')?.dataset?.columnId || null;
-
-    console.log('[restoreParkedColumn] CAPTURED before render:', {
-        beforeColumnId,
-        targetStackFirstColId,
-        capturedDropTargetStack: !!capturedDropTargetStack,
-        capturedDropTargetBeforeColumn: !!capturedDropTargetBeforeColumn,
-        columnId: column.id
-    });
 
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
@@ -4677,29 +4635,20 @@ function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack,
  */
 function moveColumnToDropTarget(columnId, beforeColumnId, targetStackFirstColId, options = {}) {
     const { preserveStackState = false } = options;
-    console.log('[moveColumnToDropTarget] Called with:', { columnId, beforeColumnId, targetStackFirstColId, preserveStackState });
 
     const columnElement = document.querySelector(`[data-column-id="${columnId}"]`);
-    if (!columnElement) {
-        console.log('[moveColumnToDropTarget] Column element NOT FOUND for:', columnId);
-        return;
-    }
+    if (!columnElement) return;
 
-    // Find target position after render using IDs (not stale element references)
+    // Find target position using IDs (element references become stale after render)
     let targetStack = null;
     let beforeColumn = null;
 
     if (beforeColumnId) {
         beforeColumn = document.querySelector(`[data-column-id="${beforeColumnId}"]`);
         targetStack = beforeColumn?.closest('.kanban-column-stack');
-        console.log('[moveColumnToDropTarget] Using beforeColumnId:', { beforeColumn, targetStack });
     } else if (targetStackFirstColId) {
-        // Find the stack by its first column ID (captured before render)
         const firstCol = document.querySelector(`[data-column-id="${targetStackFirstColId}"]`);
         targetStack = firstCol?.closest('.kanban-column-stack');
-        console.log('[moveColumnToDropTarget] Using targetStackFirstColId:', { firstCol, targetStack });
-    } else {
-        console.log('[moveColumnToDropTarget] NO target info - both beforeColumnId and targetStackFirstColId are null/undefined');
     }
 
     // If we have a target, move the column
