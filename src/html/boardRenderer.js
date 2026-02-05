@@ -1212,15 +1212,14 @@ function renderBoard(options = null) {
     window.isBoardRendering = true;
     window.boardRenderNonce = (window.boardRenderNonce || 0) + 1;
 
-    // Debug: Show popup for full re-render (must be manually closed)
-    if (debugEnabled && window.modalUtils) {
+    // Debug: Show VS Code notification for full re-render
+    if (debugEnabled && typeof vscode !== 'undefined') {
         const caller = debugStack[0]?.replace(/^at\s+/, '') || 'unknown';
-        window.modalUtils.showConfirmModal(
-            'Debug: Full Re-render',
-            `A full board re-render was triggered.\n\nCaller: ${caller}\n\nStack:\n${debugStack.join('\n')}`,
-            [{ text: 'OK', primary: true }],
-            { closeOnOutsideClick: false }
-        );
+        vscode.postMessage({
+            type: 'showMessage',
+            text: `Debug: Full board re-render triggered by ${caller}`,
+            messageType: 'warning'
+        });
     }
 
     // Lock container dimensions during DOM manipulation to prevent scroll jumps

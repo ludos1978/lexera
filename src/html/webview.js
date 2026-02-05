@@ -478,6 +478,77 @@ function createFileMarkdownLink(filePath) {
     }
 }
 
+// Shared drop utility functions (used by overlayEditor and taskEditor)
+function isUrlString(text) {
+    return /^https?:\/\//i.test(text);
+}
+
+function normalizeUriList(uriList) {
+    if (!uriList) { return []; }
+    return uriList
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .map(line => {
+            if (line.startsWith('file://')) {
+                let filePath = line.replace('file://', '');
+                if (filePath.startsWith('/')) {
+                    filePath = filePath.replace(/^\/([A-Za-z]:\/)/, '$1');
+                }
+                try {
+                    return decodeURIComponent(filePath);
+                } catch (error) {
+                    return filePath;
+                }
+            }
+            return line;
+        });
+}
+
+function buildMarkdownLinks(paths) {
+    return paths.map(path => createFileMarkdownLink(path)).join('\n');
+}
+
+async function resolveDropContent(dataTransfer) {
+    if (!dataTransfer) { return null; }
+    const files = Array.from(dataTransfer.files || []);
+    if (files.length > 0) {
+        const paths = files.map(file => file.path || file.name).filter(Boolean);
+        if (paths.length > 0) {
+            return buildMarkdownLinks(paths);
+        }
+    }
+    const uriList = dataTransfer.getData('text/uri-list');
+    if (uriList) {
+        const uris = normalizeUriList(uriList);
+        if (uris.length > 0) {
+            return buildMarkdownLinks(uris);
+        }
+    }
+    const text = dataTransfer.getData('text/plain');
+    if (text && text.trim()) {
+        const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        if (lines.length > 1) {
+            const linkable = lines.filter(line => (window.isFilePath && window.isFilePath(line)) || isUrlString(line));
+            if (linkable.length > 0) {
+                return buildMarkdownLinks(linkable);
+            }
+        }
+        if (typeof processClipboardText === 'function') {
+            try {
+                const processed = await processClipboardText(text.trim());
+                if (processed?.content) {
+                    return processed.content;
+                }
+            } catch (error) {
+                // Fallback to raw text insert
+            }
+        }
+        return text;
+    }
+    return null;
+}
+
 async function processClipboardText(text) {
     // Handle multiple lines - check for multiple file paths first
     const lines = text.split(/\r\n|\r|\n/).map(line => line.trim()).filter(line => line.length > 0);

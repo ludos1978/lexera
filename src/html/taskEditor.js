@@ -1173,6 +1173,92 @@ class TaskEditor {
         }
         editElement._inputHandlerAttached = true;
 
+        // Setup drop handlers for external file drops
+        const self = this;
+        editElement.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        });
+
+        editElement.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const markdown = await resolveDropContent(e.dataTransfer);
+            if (!markdown) { return; }
+
+            // Determine cursor position from drop coordinates
+            let insertPosition = editElement.selectionStart;
+            if (document.caretRangeFromPoint) {
+                const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                if (range && editElement.contains(range.startContainer)) {
+                    // For textarea, we need to calculate position differently
+                    // caretRangeFromPoint works with text nodes, but textarea content isn't in the DOM
+                    // Fall back to using current selection/cursor position
+                }
+            }
+            // Use caretPositionFromPoint if available (Firefox)
+            if (document.caretPositionFromPoint) {
+                const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+                if (pos && pos.offsetNode === editElement) {
+                    insertPosition = pos.offset;
+                }
+            }
+
+            // For textareas, calculate position from mouse coordinates
+            // This is an approximation based on character/line dimensions
+            const rect = editElement.getBoundingClientRect();
+            const style = window.getComputedStyle(editElement);
+            const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+            const charWidth = parseFloat(style.fontSize) * 0.6; // Approximate for monospace
+            const paddingTop = parseFloat(style.paddingTop) || 0;
+            const paddingLeft = parseFloat(style.paddingLeft) || 0;
+
+            const relativeY = e.clientY - rect.top - paddingTop + editElement.scrollTop;
+            const relativeX = e.clientX - rect.left - paddingLeft;
+
+            const lines = editElement.value.split('\n');
+            const targetLine = Math.min(Math.floor(relativeY / lineHeight), lines.length - 1);
+
+            let charOffset = 0;
+            for (let i = 0; i < targetLine && i < lines.length; i++) {
+                charOffset += lines[i].length + 1; // +1 for newline
+            }
+
+            if (targetLine >= 0 && targetLine < lines.length) {
+                const lineText = lines[targetLine];
+                const charsInLine = Math.min(Math.floor(relativeX / charWidth), lineText.length);
+                charOffset += Math.max(0, charsInLine);
+            }
+
+            insertPosition = Math.min(Math.max(0, charOffset), editElement.value.length);
+
+            // Check if this is a title field - join with spaces instead of newlines
+            const isTitleField = editElement.classList.contains('task-title-edit') ||
+                                 editElement.classList.contains('column-title-edit');
+            const insertText = isTitleField ? markdown.replace(/\n/g, ' ') : markdown;
+
+            // Insert at calculated position
+            const currentValue = editElement.value;
+            editElement.value = currentValue.substring(0, insertPosition) + insertText + currentValue.substring(insertPosition);
+
+            // Set cursor position after inserted text
+            const newPosition = insertPosition + insertText.length;
+            editElement.selectionStart = editElement.selectionEnd = newPosition;
+            editElement.focus();
+
+            // Auto-resize textarea
+            if (editElement.tagName === 'TEXTAREA' && self.autoResize) {
+                self.autoResize(editElement);
+            }
+
+            // Trigger input event for undo stack and other handlers
+            editElement.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+
         let recalcTimeout = null;
         let lastRecalcTime = 0;
         const MIN_DELAY_BETWEEN_RECALC = 300;
@@ -1551,6 +1637,28 @@ class TaskEditor {
                     }
                 }
             }, 150);
+        });
+
+        // Setup drop handlers for external file drops into WYSIWYG
+        dom.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) {
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        });
+
+        dom.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const markdown = await resolveDropContent(e.dataTransfer);
+            if (!markdown) { return; }
+
+            // Insert at current cursor position in WYSIWYG editor
+            if (editor && typeof editor.insertText === 'function') {
+                editor.insertText(markdown);
+            }
         });
 
         this._setupMouseHandlers(dom);

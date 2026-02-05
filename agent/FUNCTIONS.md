@@ -2,10 +2,29 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-05
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-02-05) - External File Drop Support in Editors
+
+Added ability to drop external files (from desktop, VS Code explorer) into inline text editors and WYSIWYG editors. Dropped files are converted to markdown links at the cursor/drop position.
+
+### Modified: `src/html/webview.js`
+- `isUrlString(text)` — Check if text is a URL (starts with http:// or https://)
+- `normalizeUriList(uriList)` — Parse text/uri-list format from drag/drop, decode file:// URIs
+- `buildMarkdownLinks(paths)` — Convert array of file paths to markdown links joined by newlines
+- `resolveDropContent(dataTransfer)` — Extract file paths from DataTransfer object and convert to markdown links (shared utility for drop handlers)
+
+### Modified: `src/html/overlayEditor.js`
+- Removed local definitions of `isUrl`, `normalizeUriList`, `buildMarkdownLinks`, `resolveDropContent` - now uses global versions from webview.js
+
+### Modified: `src/html/taskEditor.js`
+- `_setupInputHandler()` — (MODIFIED) Added dragover/drop event handlers for textarea editing. Calculates drop position from mouse coordinates and inserts markdown links at that position. For title fields, joins multiple links with spaces instead of newlines.
+- `_setupWysiwygHandlers()` — (MODIFIED) Added dragover/drop event handlers for WYSIWYG editing. Uses editor.insertText() to insert markdown at cursor position.
 
 ---
 
