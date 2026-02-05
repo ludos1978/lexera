@@ -434,6 +434,8 @@ function finalizeExternalDragState() {
     dragState.draggedDiagramCard = null;
     dragState.isDragging = false;
     dragDropStateMachine.reset('external-drop');
+    // Reset debug flags for next drag
+    window._parkedColumnDragoverLogged = false;
 }
 
 /**
@@ -552,7 +554,108 @@ function setupGlobalDragAndDrop() {
             });
         }
     }
-    
+
+    /**
+     * Calculate column drop target from mouse coordinates (synchronous version)
+     * Used when RAF-throttled dragover state may be stale at drop time
+     * @param {number} mouseX - Client X coordinate
+     * @param {number} mouseY - Client Y coordinate
+     * @returns {{stack: HTMLElement, beforeColumn: HTMLElement|null}|null}
+     */
+    function calculateColumnDropTarget(mouseX, mouseY) {
+        const board = document.getElementById('kanban-board');
+        if (!board) return null;
+
+        // STEP 1: Find ROW by Y coordinate
+        let foundRow = null;
+        const rows = board.querySelectorAll('.kanban-row');
+        if (rows.length > 0) {
+            for (const row of rows) {
+                const rect = row.getBoundingClientRect();
+                if (mouseY >= rect.top && mouseY <= rect.bottom) {
+                    foundRow = row;
+                    break;
+                }
+            }
+        } else {
+            // Single row layout - use board as the row
+            const boardRect = board.getBoundingClientRect();
+            if (mouseY >= boardRect.top && mouseY <= boardRect.bottom) {
+                foundRow = board;
+            }
+        }
+        if (!foundRow) return null;
+
+        // STEP 2: Within that ROW, find STACK by X coordinate
+        let foundStack = null;
+        let isDropZoneStack = false;
+        const stacks = foundRow.querySelectorAll(':scope > .kanban-column-stack');
+        for (const stack of stacks) {
+            const stackRect = stack.getBoundingClientRect();
+            if (mouseX >= stackRect.left && mouseX <= stackRect.right) {
+                foundStack = stack;
+                isDropZoneStack = stack.classList.contains('column-drop-zone-stack');
+                break;
+            }
+        }
+
+        // Handle drop zone stacks (vertical dividers between stacks)
+        if (foundStack && isDropZoneStack) {
+            // Drop zone stacks have no columns - find the adjacent regular stack
+            // Look for the next stack first (insert at start of next stack)
+            const nextStack = foundStack.nextElementSibling;
+            if (nextStack && nextStack.classList.contains('kanban-column-stack') && !nextStack.classList.contains('column-drop-zone-stack')) {
+                const firstColumn = nextStack.querySelector('.kanban-full-height-column');
+                // Return next stack with its first column as beforeColumn (insert before first)
+                return { stack: nextStack, beforeColumn: firstColumn };
+            }
+            // Otherwise, find previous stack (insert at end of previous stack)
+            const prevStack = foundStack.previousElementSibling;
+            if (prevStack && prevStack.classList.contains('kanban-column-stack') && !prevStack.classList.contains('column-drop-zone-stack')) {
+                // Return previous stack with null beforeColumn (append at end)
+                return { stack: prevStack, beforeColumn: null };
+            }
+            // Fallback: return the drop zone stack itself (will create new stack)
+            return { stack: foundStack, beforeColumn: null };
+        }
+
+        if (!foundStack) return null;
+
+        // STEP 3: Within that STACK, find beforeColumn by Y coordinate
+        const columns = foundStack.querySelectorAll(':scope > .kanban-full-height-column');
+        if (columns.length === 0) return { stack: foundStack, beforeColumn: null };
+
+        let beforeColumn = null;
+        for (const col of columns) {
+            // Skip dragged columns if present
+            if (col === dragState.draggedColumn) continue;
+
+            // Get header top
+            const columnHeader = col.querySelector('.column-header');
+            const headerTop = columnHeader ? columnHeader.getBoundingClientRect().top : col.getBoundingClientRect().top;
+
+            // Get footer bottom
+            const columnFooter = col.querySelector('.column-footer');
+            const footerBottom = columnFooter ? columnFooter.getBoundingClientRect().bottom : col.getBoundingClientRect().bottom;
+
+            // Calculate midpoint
+            const midpoint = (headerTop + footerBottom) / 2;
+
+            if (mouseY < midpoint) {
+                beforeColumn = col;
+                break;
+            }
+        }
+
+        console.log('[calculateColumnDropTarget] Calculated:', {
+            stackClass: foundStack?.className,
+            beforeColumnId: beforeColumn?.dataset?.columnId || null,
+            mouseX, mouseY
+        });
+
+        return { stack: foundStack, beforeColumn };
+    }
+
     // Main drop handler function
     function handleExternalDrop(e) {
         // Handle external drop event
@@ -561,10 +664,35 @@ function setupGlobalDragAndDrop() {
         if (shouldSkipExternalDragIndicators()) {
             return;
         }
-        
+
         // Stop event propagation to prevent duplicate handling
         e.stopPropagation();
-        
+
+        // CRITICAL: For parked/deleted column drags, RAF timing means dragState values may be stale
+        // ALWAYS calculate drop target synchronously from mouse coordinates for these drags
+        let capturedDropTargetStack = null;
+        let capturedDropTargetBeforeColumn = null;
+
+        if (dragState.draggedParkedColumn || dragState.draggedDeletedColumn) {
+            // Use stored coordinates (set synchronously in dragover) or event coordinates
+            const mouseX = dragState.lastParkedColumnDragX || e.clientX;
+            const mouseY = dragState.lastParkedColumnDragY || e.clientY;
+            const result = calculateColumnDropTarget(mouseX, mouseY);
+            if (result) {
+                capturedDropTargetStack = result.stack;
+                capturedDropTargetBeforeColumn = result.beforeColumn;
+            }
+            console.log('[handleExternalDrop] Calculated drop target for parked/deleted column:', {
+                mouseX, mouseY,
+                stackClass: capturedDropTargetStack?.className,
+                beforeColumnId: capturedDropTargetBeforeColumn?.dataset?.columnId || null
+            });
+        } else {
+            // For other external drops, use the captured state
+            capturedDropTargetStack = dragState.dropTargetStack;
+            capturedDropTargetBeforeColumn = dragState.dropTargetBeforeColumn;
+        }
+
         // Always clean up visual indicators
         cleanupExternalDropIndicators();
 
@@ -573,8 +701,8 @@ function setupGlobalDragAndDrop() {
             // No dataTransfer available
             return;
         }
-        
-        
+
+
         // Priority 1: Check for clipboard images via dataTransfer (most reliable for images)
         const textData = dt.getData('text/plain');
         if (textData && textData.startsWith('CLIPBOARD_IMAGE:')) {
@@ -587,8 +715,8 @@ function setupGlobalDragAndDrop() {
         // Priority 2: Check for parked items being restored first
         if (dragState.parkedItemIndex !== undefined && dragState.parkedItemIndex !== null) {
             if (dragState.draggedParkedColumn) {
-                // Parked column being restored
-                restoreParkedColumn(dragState.parkedItemIndex, { x: e.clientX, y: e.clientY });
+                // Parked column being restored - pass captured drop target
+                restoreParkedColumn(dragState.parkedItemIndex, { x: e.clientX, y: e.clientY }, capturedDropTargetStack, capturedDropTargetBeforeColumn);
                 finalizeExternalDragState();
                 return;
             } else if (dragState.draggedClipboardCard) {
@@ -602,8 +730,8 @@ function setupGlobalDragAndDrop() {
         // Priority 2b: Check for deleted items being restored
         if (dragState.deletedItemIndex !== undefined && dragState.deletedItemIndex !== null) {
             if (dragState.draggedDeletedColumn) {
-                // Deleted column being restored
-                restoreDeletedColumn(dragState.deletedItemIndex, { x: e.clientX, y: e.clientY });
+                // Deleted column being restored - pass captured drop target
+                restoreDeletedColumn(dragState.deletedItemIndex, { x: e.clientX, y: e.clientY }, capturedDropTargetStack, capturedDropTargetBeforeColumn);
                 finalizeExternalDragState();
                 return;
             } else if (dragState.draggedClipboardCard) {
@@ -1325,6 +1453,10 @@ function setupGlobalDragAndDrop() {
             }
         }
     }
+
+    // Expose shared functions on window for use by global functions (restoreParkedColumn, etc.)
+    window.syncColumnDataToDOMOrder = syncColumnDataToDOMOrder;
+    window.finalizeColumnDrop = finalizeColumnDrop;
 
     /**
      * Insert a new column using the SAME approach as processColumnDrop:
@@ -3469,9 +3601,25 @@ function setupColumnDragAndDrop() {
         const isTaskDrag = dragMode === dragDropStateMachine.states.TASK;
         const isClipboardDrag = dragMode === dragDropStateMachine.states.CLIPBOARD;
         const isEmptyCardDrag = dragMode === dragDropStateMachine.states.EMPTY_CARD;
+        // Parked/deleted columns use EXTERNAL state but should get column-like highlighting
+        const isParkedColumnDrag = dragMode === dragDropStateMachine.states.EXTERNAL &&
+            (dragState.draggedParkedColumn || dragState.draggedDeletedColumn);
 
-        // Handle column drags, template drags, task drags, clipboard drags, empty card drags
-        if (!isColumnDrag && !isTemplateDrag && !isTaskDrag && !isClipboardDrag && !isEmptyCardDrag) {return;}
+        // DEBUG: Log parked column drag detection
+        if (dragMode === dragDropStateMachine.states.EXTERNAL) {
+            if (!window._parkedColumnDragoverLogged) {
+                window._parkedColumnDragoverLogged = true;
+                console.log('[DRAGOVER] External drag detected:', {
+                    isParkedColumnDrag,
+                    draggedParkedColumn: !!dragState.draggedParkedColumn,
+                    draggedDeletedColumn: !!dragState.draggedDeletedColumn,
+                    dragMode
+                });
+            }
+        }
+
+        // Handle column drags, template drags, task drags, clipboard drags, empty card drags, parked column drags
+        if (!isColumnDrag && !isTemplateDrag && !isTaskDrag && !isClipboardDrag && !isEmptyCardDrag && !isParkedColumnDrag) {return;}
 
         // DIAGNOSTIC: Check if this handler is processing something it shouldn't
         const hasFiles = e.dataTransfer?.types?.includes('Files');
@@ -3495,6 +3643,13 @@ function setupColumnDragAndDrop() {
         const mouseY = e.clientY;
         const capturedSessionId = dragDropStateMachine.getSessionId();
 
+        // For parked column drags: Store mouse position SYNCHRONOUSLY so drop can calculate target
+        // (RAF timing means state may not be updated before drop fires)
+        if (isParkedColumnDrag) {
+            dragState.lastParkedColumnDragX = mouseX;
+            dragState.lastParkedColumnDragY = mouseY;
+        }
+
         // RAF throttle
         if (dragState.columnDragoverPending) {return;}
 
@@ -3512,7 +3667,9 @@ function setupColumnDragAndDrop() {
             const stillTaskDrag = currentMode === dragDropStateMachine.states.TASK;
             const stillClipboardDrag = currentMode === dragDropStateMachine.states.CLIPBOARD;
             const stillEmptyCardDrag = currentMode === dragDropStateMachine.states.EMPTY_CARD;
-            if (!stillColumnDrag && !stillTemplateDrag && !stillTaskDrag && !stillClipboardDrag && !stillEmptyCardDrag) {
+            const stillParkedColumnDrag = currentMode === dragDropStateMachine.states.EXTERNAL &&
+                (dragState.draggedParkedColumn || dragState.draggedDeletedColumn);
+            if (!stillColumnDrag && !stillTemplateDrag && !stillTaskDrag && !stillClipboardDrag && !stillEmptyCardDrag && !stillParkedColumnDrag) {
                 return;
             }
 
@@ -3565,9 +3722,9 @@ function setupColumnDragAndDrop() {
                 }
             }
 
-            // Handle drop zone stacks (vertical dividers between stacks) - only for column/template drags
+            // Handle drop zone stacks (vertical dividers between stacks) - only for column/template/parked-column drags
             // Task/clipboard/emptycard drags skip drop zones - they go INTO columns
-            if (foundStack && isDropZoneStack && !stillTaskDrag && !stillClipboardDrag && !stillEmptyCardDrag) {
+            if (foundStack && isDropZoneStack && (stillColumnDrag || stillTemplateDrag || stillParkedColumnDrag)) {
                 const dropZone = foundStack.querySelector('.column-drop-zone');
                 if (dropZone) {
                     addHighlight(dropZone, 'drag-over');
@@ -3752,8 +3909,17 @@ function setupColumnDragAndDrop() {
             dragState.dropTargetStack = foundStack;
             dragState.dropTargetBeforeColumn = beforeColumn;
 
-            // Only show line indicator for template drags, not column drags
-            if (!stillColumnDrag) {
+            // DEBUG: Log when drop target state is set for parked column drags
+            if (stillParkedColumnDrag) {
+                console.log('[DRAGOVER] Setting drop target state for parked column:', {
+                    dropTargetStack: !!foundStack,
+                    dropTargetBeforeColumn: beforeColumn?.dataset?.columnId || null,
+                    foundStackClass: foundStack?.className
+                });
+            }
+
+            // Show line indicator for template drags and parked column drags (not regular column drags)
+            if (stillTemplateDrag || stillParkedColumnDrag) {
                 showColumnDropIndicatorWithState(foundStack, beforeColumn);
             }
 
@@ -4435,9 +4601,18 @@ function restoreParkedTask(parkedIndex, dropPosition) {
 }
 
 /**
- * Restore a parked column to the board at the drop position
+ * Restore a parked column to the board at the drop position.
+ * Uses the same approach as insertColumnAtPosition/processColumnDrop:
+ * 1. Remove tag and render (column appears)
+ * 2. Move DOM element to target position
+ * 3. syncColumnDataToDOMOrder() + finalizeColumnDrop()
+ *
+ * @param {number} parkedIndex - Index in parkedItems array
+ * @param {Object} dropPosition - {x, y} mouse coordinates
+ * @param {Element|null} capturedDropTargetStack - Drop target stack captured before cleanup
+ * @param {Element|null} capturedDropTargetBeforeColumn - Before column captured before cleanup
  */
-function restoreParkedColumn(parkedIndex, dropPosition) {
+function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack, capturedDropTargetBeforeColumn) {
     const item = parkedItems[parkedIndex];
     if (!item || item.type !== 'column') return;
 
@@ -4451,6 +4626,19 @@ function restoreParkedColumn(parkedIndex, dropPosition) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
+    // Use captured drop target (passed in, since dragState is cleared by cleanup)
+    // Extract IDs BEFORE render (IDs survive render, element references don't)
+    const beforeColumnId = capturedDropTargetBeforeColumn?.dataset?.columnId || null;
+    const targetStackFirstColId = capturedDropTargetStack?.querySelector('.kanban-full-height-column')?.dataset?.columnId || null;
+
+    console.log('[restoreParkedColumn] CAPTURED before render:', {
+        beforeColumnId,
+        targetStackFirstColId,
+        capturedDropTargetStack: !!capturedDropTargetStack,
+        capturedDropTargetBeforeColumn: !!capturedDropTargetBeforeColumn,
+        columnId: column.id
+    });
+
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
@@ -4458,25 +4646,110 @@ function restoreParkedColumn(parkedIndex, dropPosition) {
         if (task.description) task.description = removeInternalTags(task.description);
     });
 
-    // Find target position from drop coordinates
-    if (dropPosition) {
-        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
-        if (dropResult && dropResult.columnId) {
-            // Find current index of restored column
-            const currentIndex = window.cachedBoard.columns.findIndex(c => c.id === column.id);
-            // Find target column index
-            const targetIndex = window.cachedBoard.columns.findIndex(c => c.id === dropResult.columnId);
+    // Render board - column will appear in its data position
+    if (typeof window.renderBoard === 'function') {
+        window.renderBoard();
+    }
 
-            if (currentIndex >= 0 && targetIndex >= 0 && currentIndex !== targetIndex) {
-                // Remove from current position
-                const [movedColumn] = window.cachedBoard.columns.splice(currentIndex, 1);
-                // Insert at target position (adjusting for removal)
-                const insertIndex = targetIndex > currentIndex ? targetIndex : targetIndex;
-                window.cachedBoard.columns.splice(insertIndex, 0, movedColumn);
+    // Move column to drop target position (preserve original stack state - don't add #stack tag)
+    moveColumnToDropTarget(column.id, beforeColumnId, targetStackFirstColId, { preserveStackState: true });
+}
+
+/**
+ * SHARED: Move a column to the drop target position after render.
+ * Reuses the same logic as processColumnDrop and insertColumnAtPosition:
+ * 1. Find column element after render
+ * 2. Move to target stack/position
+ * 3. Sync data to DOM order
+ * 4. Finalize (normalize tags, update UI)
+ *
+ * @param {string} columnId - The column to move
+ * @param {string|null} beforeColumnId - Column to insert before (or null for end)
+ * @param {string|null} targetStackFirstColId - ID of first column in target stack (for finding stack after render)
+ * @param {Object} options - Optional settings
+ * @param {boolean} options.preserveStackState - If true, don't normalize stack tags (for restored columns)
+ */
+function moveColumnToDropTarget(columnId, beforeColumnId, targetStackFirstColId, options = {}) {
+    const { preserveStackState = false } = options;
+    console.log('[moveColumnToDropTarget] Called with:', { columnId, beforeColumnId, targetStackFirstColId, preserveStackState });
+
+    const columnElement = document.querySelector(`[data-column-id="${columnId}"]`);
+    if (!columnElement) {
+        console.log('[moveColumnToDropTarget] Column element NOT FOUND for:', columnId);
+        return;
+    }
+
+    // Find target position after render using IDs (not stale element references)
+    let targetStack = null;
+    let beforeColumn = null;
+
+    if (beforeColumnId) {
+        beforeColumn = document.querySelector(`[data-column-id="${beforeColumnId}"]`);
+        targetStack = beforeColumn?.closest('.kanban-column-stack');
+        console.log('[moveColumnToDropTarget] Using beforeColumnId:', { beforeColumn, targetStack });
+    } else if (targetStackFirstColId) {
+        // Find the stack by its first column ID (captured before render)
+        const firstCol = document.querySelector(`[data-column-id="${targetStackFirstColId}"]`);
+        targetStack = firstCol?.closest('.kanban-column-stack');
+        console.log('[moveColumnToDropTarget] Using targetStackFirstColId:', { firstCol, targetStack });
+    } else {
+        console.log('[moveColumnToDropTarget] NO target info - both beforeColumnId and targetStackFirstColId are null/undefined');
+    }
+
+    // If we have a target, move the column
+    if (targetStack || beforeColumn) {
+        const sourceStack = columnElement.closest('.kanban-column-stack');
+        const actualTargetStack = targetStack || beforeColumn?.closest('.kanban-column-stack');
+
+        if (actualTargetStack) {
+            if (beforeColumn) {
+                actualTargetStack.insertBefore(columnElement, beforeColumn);
+            } else {
+                actualTargetStack.appendChild(columnElement);
+            }
+
+            // Clean up empty source stack
+            if (sourceStack && sourceStack !== actualTargetStack && !sourceStack.querySelector('.kanban-full-height-column')) {
+                sourceStack.remove();
             }
         }
     }
 
+    // Sync data to DOM order
+    if (typeof window.syncColumnDataToDOMOrder === 'function') {
+        window.syncColumnDataToDOMOrder();
+    }
+
+    // Finalize - but skip stack tag normalization if preserving state
+    if (preserveStackState) {
+        // Skip normalizeAllStackTags - just do the other finalization steps
+        if (typeof markUnsavedChanges === 'function') {
+            markUnsavedChanges();
+        }
+        if (typeof window.recalculateAllStackHeights === 'function') {
+            window.recalculateAllStackHeights();
+        }
+        if (typeof window.updateStackBottomDropZones === 'function') {
+            window.updateStackBottomDropZones();
+        }
+        // Recreate drop zone stacks
+        const boardElement = document.getElementById('kanban-board');
+        if (boardElement) {
+            const rows = boardElement.querySelectorAll('.kanban-row');
+            rows.forEach(row => {
+                if (typeof window.cleanupAndRecreateDropZones === 'function') {
+                    window.cleanupAndRecreateDropZones(row);
+                }
+            });
+            if (rows.length === 0 && typeof window.cleanupAndRecreateDropZones === 'function') {
+                window.cleanupAndRecreateDropZones(boardElement);
+            }
+        }
+    } else if (typeof window.finalizeColumnDrop === 'function') {
+        window.finalizeColumnDrop();
+    }
+
+    // Notify about the change
     notifyBoardUpdate();
 }
 
@@ -5040,9 +5313,15 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
 }
 
 /**
- * Restore a deleted column to the board at the drop position
+ * Restore a deleted column to the board at the drop position.
+ * Uses the same approach as restoreParkedColumn/insertColumnAtPosition.
+ *
+ * @param {number} deletedIndex - Index in deletedItems array
+ * @param {Object} dropPosition - {x, y} mouse coordinates
+ * @param {Element|null} capturedDropTargetStack - Drop target stack captured before cleanup
+ * @param {Element|null} capturedDropTargetBeforeColumn - Before column captured before cleanup
  */
-function restoreDeletedColumn(deletedIndex, dropPosition) {
+function restoreDeletedColumn(deletedIndex, dropPosition, capturedDropTargetStack, capturedDropTargetBeforeColumn) {
     const item = deletedItems[deletedIndex];
     if (!item || item.type !== 'column') return;
 
@@ -5056,6 +5335,11 @@ function restoreDeletedColumn(deletedIndex, dropPosition) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
+    // Use captured drop target (passed in, since dragState is cleared by cleanup)
+    // Extract IDs BEFORE render (IDs survive render, element references don't)
+    const beforeColumnId = capturedDropTargetBeforeColumn?.dataset?.columnId || null;
+    const targetStackFirstColId = capturedDropTargetStack?.querySelector('.kanban-full-height-column')?.dataset?.columnId || null;
+
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
@@ -5063,26 +5347,13 @@ function restoreDeletedColumn(deletedIndex, dropPosition) {
         if (task.description) task.description = removeInternalTags(task.description);
     });
 
-    // Find target position from drop coordinates
-    if (dropPosition) {
-        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
-        if (dropResult && dropResult.columnId) {
-            // Find current index of restored column
-            const currentIndex = window.cachedBoard.columns.findIndex(c => c.id === column.id);
-            // Find target column index
-            const targetIndex = window.cachedBoard.columns.findIndex(c => c.id === dropResult.columnId);
-
-            if (currentIndex >= 0 && targetIndex >= 0 && currentIndex !== targetIndex) {
-                // Remove from current position
-                const [movedColumn] = window.cachedBoard.columns.splice(currentIndex, 1);
-                // Insert at target position
-                const insertIndex = targetIndex > currentIndex ? targetIndex : targetIndex;
-                window.cachedBoard.columns.splice(insertIndex, 0, movedColumn);
-            }
-        }
+    // Render board - column will appear in its data position
+    if (typeof window.renderBoard === 'function') {
+        window.renderBoard();
     }
 
-    notifyBoardUpdate();
+    // Move column to drop target position (preserve original stack state - don't add #stack tag)
+    moveColumnToDropTarget(column.id, beforeColumnId, targetStackFirstColId, { preserveStackState: true });
 }
 
 /**
