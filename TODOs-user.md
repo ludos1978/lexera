@@ -22,9 +22,9 @@ Do you see any conflict that could arise from this funcitonality? One problem mi
 
 - [x] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
 
-- [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) . also [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
+- [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) link . also alt+clicking [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
 
-- [ ] i would like to be able to drop external files (desktop, vscode explorer into the editor without leaving it, it should place it directly inline). with all the features we have in the task creation pasting as well!
+- [ ] i would like to be able to drop external files (desktop, vscode explorer into the inline text editor without leaving it (formost the inline text editor, but also the overlay text editor and the wysiwyg editor), at a specific cursor position it drop it at. if multiple files are dropped they are placed on individual lines for each one. it should place the link directly inline with the same rules and features as if it's creating a new task.
 
 - [x] lets change the file save/load/reload/conflict handling like this:
   - when the main file or any imported files in the kanban have unsaved modifications:

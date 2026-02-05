@@ -1138,14 +1138,17 @@ window.updateTemplates = function(templates, showBar = true) {
  * Performance: Debounced to prevent rapid re-renders
  */
 function renderBoard(options = null) {
+    // Capture debug info once for reuse
+    const debugEnabled = window.kanbanDebug?.enabled;
+    const debugStack = debugEnabled ? new Error().stack?.split('\n').slice(2, 6).map(s => s.trim()) || [] : null;
+
     // Debug: Log who called renderBoard with stack trace
-    if (window.kanbanDebug?.enabled) {
-        const stack = new Error().stack?.split('\n').slice(2, 6).map(s => s.trim()).join(' <- ');
+    if (debugEnabled) {
         console.log('[RENDER-DEBUG] renderBoard called', {
             options: options ? JSON.stringify(options) : 'full',
             columns: window.cachedBoard?.columns?.length ?? 0,
             editing: Boolean(window.taskEditor?.currentEditor),
-            caller: stack
+            caller: debugStack.join(' <- ')
         });
     }
     if (typeof window.logViewMovement === 'function') {
@@ -1208,6 +1211,15 @@ function renderBoard(options = null) {
     // Full board render (default behavior)
     window.isBoardRendering = true;
     window.boardRenderNonce = (window.boardRenderNonce || 0) + 1;
+
+    // Debug: Show warning popup for full re-render
+    if (debugEnabled && window.modalUtils) {
+        const caller = debugStack[0]?.replace(/^at\s+/, '') || 'unknown';
+        window.modalUtils.showAlert(
+            'Debug: Full Re-render',
+            `A full board re-render was triggered.\n\nCaller: ${caller}\n\nStack:\n${debugStack.join('\n')}`
+        );
+    }
 
     // Lock container dimensions during DOM manipulation to prevent scroll jumps
     if (typeof window.lockContainerDimensions === 'function') {
