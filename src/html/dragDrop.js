@@ -5058,6 +5058,43 @@ function trashTask(taskElement) {
 }
 
 /**
+ * Find parked tasks in a column's task list
+ */
+function findParkedTasksInColumn(tasks) {
+    return (tasks || []).filter(task => {
+        const title = task.title || '';
+        const desc = task.description || '';
+        return title.includes(PARKED_TAG) || desc.includes(PARKED_TAG);
+    });
+}
+
+/**
+ * Format parked task names for display in warning dialog
+ */
+function formatParkedTaskNames(parkedTasks) {
+    const names = parkedTasks.slice(0, 3).map(t =>
+        `"${(t.title || '').replace(PARKED_TAG, '').trim().substring(0, 30)}"`
+    ).join(', ');
+    const more = parkedTasks.length > 3 ? ` and ${parkedTasks.length - 3} more` : '';
+    return names + more;
+}
+
+/**
+ * Show warning dialog if parked tasks will be deleted, then execute action
+ */
+function warnIfParkedTasksWillBeDeleted(parkedTasks, title, message, confirmText, onConfirm) {
+    if (parkedTasks.length === 0) {
+        onConfirm();
+        return;
+    }
+
+    window.modalUtils.showConfirmModal(title, message, [
+        { text: 'Cancel', action: () => {} },
+        { text: confirmText, variant: 'danger', action: onConfirm }
+    ]);
+}
+
+/**
  * Trash a column - just add the tag, rendering will filter it out
  */
 function trashColumn(columnElement) {
@@ -5067,6 +5104,17 @@ function trashColumn(columnElement) {
     const column = window.cachedBoard.columns.find(c => c.id === columnId);
     if (!column) return;
 
+    const parkedTasks = findParkedTasksInColumn(column.tasks);
+    warnIfParkedTasksWillBeDeleted(
+        parkedTasks,
+        'Warning: Parked Tasks Will Be Deleted',
+        `This column contains ${parkedTasks.length} parked task(s): ${formatParkedTaskNames(parkedTasks)}. Trashing this column will also delete these parked tasks. Continue?`,
+        'Delete Anyway',
+        () => doTrashColumn(column, columnId)
+    );
+}
+
+function doTrashColumn(column, columnId) {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'trashColumn',
@@ -5333,8 +5381,18 @@ function permanentlyRemoveDeletedItem(index) {
     if (index < 0 || index >= deletedItems.length) return;
 
     const item = deletedItems[index];
-    // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
+    const parkedTasks = item.type === 'column' ? findParkedTasksInColumn(item.data?.tasks) : [];
 
+    warnIfParkedTasksWillBeDeleted(
+        parkedTasks,
+        'Warning: Parked Tasks Will Be Permanently Deleted',
+        `This column contains ${parkedTasks.length} parked task(s): ${formatParkedTaskNames(parkedTasks)}. Permanently deleting this column will also delete these parked tasks. Continue?`,
+        'Delete Permanently',
+        () => doPermanentlyRemoveDeletedItem(item)
+    );
+}
+
+function doPermanentlyRemoveDeletedItem(item) {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'permanentlyDeleteItem',
@@ -5389,10 +5447,23 @@ function handleDeletedItemDrop(e, dataString) {
  * Empty the trash - permanently remove all deleted items from cachedBoard
  */
 function emptyTrash() {
-    if (deletedItems.length === 0) {
-        return;
-    }
+    if (deletedItems.length === 0) return;
 
+    // Collect parked tasks from all deleted columns
+    const allParkedTasks = deletedItems
+        .filter(item => item.type === 'column')
+        .flatMap(item => findParkedTasksInColumn(item.data?.tasks));
+
+    warnIfParkedTasksWillBeDeleted(
+        allParkedTasks,
+        'Warning: Parked Tasks Will Be Permanently Deleted',
+        `The trash contains columns with ${allParkedTasks.length} parked task(s): ${formatParkedTaskNames(allParkedTasks)}. Emptying the trash will also delete these parked tasks. Continue?`,
+        'Empty Trash',
+        doEmptyTrash
+    );
+}
+
+function doEmptyTrash() {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'emptyTrash',
