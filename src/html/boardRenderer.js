@@ -1138,17 +1138,14 @@ window.updateTemplates = function(templates, showBar = true) {
  * Performance: Debounced to prevent rapid re-renders
  */
 function renderBoard(options = null) {
-    // Capture debug info once for reuse
-    const debugEnabled = window.kanbanDebug?.enabled;
-    const debugStack = debugEnabled ? new Error().stack?.split('\n').slice(2, 6).map(s => s.trim()) || [] : null;
-
     // Debug: Log who called renderBoard with stack trace
-    if (debugEnabled) {
+    if (window.kanbanDebug?.enabled) {
+        const stack = new Error().stack?.split('\n').slice(2, 6).map(s => s.trim()).join(' <- ');
         console.log('[RENDER-DEBUG] renderBoard called', {
             options: options ? JSON.stringify(options) : 'full',
             columns: window.cachedBoard?.columns?.length ?? 0,
             editing: Boolean(window.taskEditor?.currentEditor),
-            caller: debugStack.join(' <- ')
+            caller: stack
         });
     }
     if (typeof window.logViewMovement === 'function') {
@@ -1211,16 +1208,6 @@ function renderBoard(options = null) {
     // Full board render (default behavior)
     window.isBoardRendering = true;
     window.boardRenderNonce = (window.boardRenderNonce || 0) + 1;
-
-    // Debug: Show VS Code notification for full re-render
-    if (debugEnabled && typeof vscode !== 'undefined') {
-        const caller = debugStack[0]?.replace(/^at\s+/, '') || 'unknown';
-        vscode.postMessage({
-            type: 'showMessage',
-            text: `Debug: Full board re-render triggered by ${caller}`,
-            messageType: 'warning'
-        });
-    }
 
     // Lock container dimensions during DOM manipulation to prevent scroll jumps
     if (typeof window.lockContainerDimensions === 'function') {
@@ -3159,7 +3146,6 @@ window.updateColumnDisplay = updateColumnDisplay;
 
 // Expose rendering functions for include file updates
 window.renderSingleColumn = renderSingleColumn;
-window.createColumnElement = createColumnElement;
 window.injectStackableBars = injectStackableBars;
 // isDarkTheme now provided by utils/tagStyleManager.js
 

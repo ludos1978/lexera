@@ -1399,7 +1399,12 @@ function setupGlobalDragAndDrop() {
             window.cachedBoard.columns.find(col => col.id === colId)
         ).filter(Boolean);
 
-        window.cachedBoard.columns = reorderedColumns;
+        // Preserve hidden columns (parked/deleted) at the end - they're not in DOM
+        const hiddenColumns = window.cachedBoard.columns.filter(col =>
+            col.title?.includes(PARKED_TAG) || col.title?.includes(DELETED_TAG)
+        );
+
+        window.cachedBoard.columns = [...reorderedColumns, ...hiddenColumns];
     }
 
     /**
@@ -4197,18 +4202,6 @@ function notifyBoardUpdate() {
     }
 }
 
-// Notify backend of board changes without triggering full re-render
-// Used when DOM has already been updated manually (e.g., column/task restore)
-function notifyBoardUpdateNoRender() {
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
-}
-
 /**
  * Initialize the parked items from the board data
  * Items with #hidden-internal-parked tag are moved to the parking area
@@ -4428,33 +4421,14 @@ function parkTask(taskElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add the tag to data
+    // Just add the tag - initializeParkedItems will handle the rest during render
     task.title = (task.title || '') + ' ' + PARKED_TAG;
 
-    // Remove task element from DOM directly (no full render)
-    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
-    if (taskElement) {
-        const parentStack = taskElement.closest('.kanban-column-stack');
-        taskElement.remove();
-
-        // Recalculate stack layout after removal
-        if (parentStack && typeof window.updateStackLayoutDebounced === 'function') {
-            window.updateStackLayoutDebounced(parentStack);
-        }
-    }
-
-    // Reinitialize parked items UI
-    if (typeof initializeParkedItems === 'function') {
-        initializeParkedItems();
-    }
-    updateParkedItemsUI();
-
-    // Notify backend without full re-render
-    notifyBoardUpdateNoRender();
+    notifyBoardUpdate();
 }
 
 /**
- * Park a column - add tag and remove from DOM (no full render)
+ * Park a column - just add the tag, rendering will filter it out
  */
 function parkColumn(columnElement) {
     const columnId = columnElement.dataset.columnId;
@@ -4470,26 +4444,10 @@ function parkColumn(columnElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add the tag to data
+    // Just add the tag - initializeParkedItems will handle the rest during render
     column.title = (column.title || '') + ' ' + PARKED_TAG;
 
-    // Remove column element from DOM directly (no full render)
-    const parentStack = columnElement.closest('.kanban-column-stack');
-    columnElement.remove();
-
-    // Clean up empty stack if needed
-    if (parentStack && !parentStack.querySelector('.kanban-full-height-column')) {
-        parentStack.remove();
-    }
-
-    // Reinitialize parked items UI
-    if (typeof initializeParkedItems === 'function') {
-        initializeParkedItems();
-    }
-    updateParkedItemsUI();
-
-    // Notify backend without full re-render
-    notifyBoardUpdateNoRender();
+    notifyBoardUpdate();
 }
 
 /**
@@ -4563,7 +4521,7 @@ function handleParkedItemDragEnd(event) {
 }
 
 /**
- * Restore a parked task to the board at the drop position (no full render)
+ * Restore a parked task to the board at the drop position
  */
 function restoreParkedTask(parkedIndex, dropPosition) {
     const item = parkedItems[parkedIndex];
@@ -4585,10 +4543,11 @@ function restoreParkedTask(parkedIndex, dropPosition) {
         task.description = removeInternalTags(task.description);
     }
 
-    // Find target position from drop coordinates
+    // Track target for incremental DOM update
     let targetColumnId = null;
     let insertIndex = -1;
 
+    // Find target position from drop coordinates
     if (dropPosition) {
         const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
         if (dropResult && dropResult.columnId) {
@@ -4621,29 +4580,28 @@ function restoreParkedTask(parkedIndex, dropPosition) {
         }
     }
 
-    // Create task DOM element directly (no full render)
+    // Use incremental rendering instead of full board re-render
     if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
         window.addSingleTaskToDOM(targetColumnId, task, insertIndex);
-
-        // Recalculate stack layout after adding task
-        const targetColumnElement = document.querySelector(`[data-column-id="${targetColumnId}"]`);
-        const targetStack = targetColumnElement?.closest('.kanban-column-stack');
-        if (targetStack && typeof window.updateStackLayoutDebounced === 'function') {
-            window.updateStackLayoutDebounced(targetStack);
-        }
     } else {
         // Fallback to full render if addSingleTaskToDOM not available
         if (typeof window.renderBoard === 'function') {
             window.renderBoard();
         }
-        return;
     }
 
-    // Update parked items UI
+    // Update parked items UI (task is no longer parked)
+    initializeParkedItems();
     updateParkedItemsUI();
 
-    // Notify backend without full re-render
-    notifyBoardUpdateNoRender();
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
 }
 
 /**
@@ -4672,6 +4630,10 @@ function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
+    // Extract IDs before render (element references become stale after render)
+    const beforeColumnId = capturedDropTargetBeforeColumn?.dataset?.columnId || null;
+    const targetStackFirstColId = capturedDropTargetStack?.querySelector('.kanban-full-height-column')?.dataset?.columnId || null;
+
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
@@ -4679,58 +4641,23 @@ function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack,
         if (task.description) task.description = removeInternalTags(task.description);
     });
 
-    // Create column element directly (no full render)
-    if (typeof window.createColumnElement !== 'function') {
-        // Fallback to full render if createColumnElement not available
+    // Use incremental rendering instead of full board re-render
+    // addSingleColumnToDOM creates just this column element with proper drag handlers
+    if (typeof window.addSingleColumnToDOM === 'function') {
+        window.addSingleColumnToDOM(column);
+    } else {
+        // Fallback to full render if addSingleColumnToDOM not available
         if (typeof window.renderBoard === 'function') {
             window.renderBoard();
         }
-        return;
     }
 
-    const columnIndex = window.cachedBoard.columns.indexOf(column);
-    const columnElement = window.createColumnElement(column, columnIndex >= 0 ? columnIndex : 0);
-
-    // Find target position using captured references
-    let targetStack = capturedDropTargetStack;
-    let beforeColumn = capturedDropTargetBeforeColumn;
-
-    // If no captured target, find a default position (first stack, end)
-    if (!targetStack) {
-        targetStack = document.querySelector('.kanban-column-stack');
-    }
-
-    // Insert column element into DOM
-    if (targetStack) {
-        if (beforeColumn && targetStack.contains(beforeColumn)) {
-            targetStack.insertBefore(columnElement, beforeColumn);
-        } else {
-            targetStack.appendChild(columnElement);
-        }
-    } else {
-        // No stack found - append to board directly (shouldn't happen normally)
-        const board = document.getElementById('kanban-board');
-        if (board) {
-            board.appendChild(columnElement);
-        }
-    }
-
-    // Sync data order to match DOM order
-    if (typeof window.syncColumnDataToDOMOrder === 'function') {
-        window.syncColumnDataToDOMOrder();
-    }
-
-    // Finalize (normalize tags, recalc heights, update drop zones)
-    // Skip stack tag normalization to preserve original stack state
-    if (typeof window.finalizeColumnDrop === 'function') {
-        window.finalizeColumnDrop({ skipStackTagNormalization: true });
-    }
-
-    // Update parked items UI
+    // Update parked items UI (column is no longer parked)
+    initializeParkedItems();
     updateParkedItemsUI();
 
-    // Notify backend without triggering full re-render
-    notifyBoardUpdateNoRender();
+    // Move column to drop target position (preserve original stack state - don't add #stack tag)
+    moveColumnToDropTarget(column.id, beforeColumnId, targetStackFirstColId, { preserveStackState: true });
 }
 
 /**
@@ -4831,7 +4758,25 @@ function removeParkedItem(index) {
         }
     }
 
-    notifyBoardUpdate();
+    // Item moves from parked to deleted - both stay hidden, no render needed
+    // Just update the parking/trash UI
+    initializeParkedItems();
+    updateParkedItemsUI();
+    if (typeof initializeDeletedItems === 'function') {
+        initializeDeletedItems();
+    }
+    if (typeof updateDeletedItemsUI === 'function') {
+        updateDeletedItemsUI();
+    }
+
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
 }
 
 /**
@@ -4858,6 +4803,28 @@ function restoreParkedItemByIndex(index) {
             if (task.description) {
                 task.description = removeInternalTags(task.description);
             }
+
+            // Find the column containing this task and its index
+            let targetColumnId = null;
+            let taskIndex = -1;
+            for (const col of window.cachedBoard.columns) {
+                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                if (idx !== undefined && idx >= 0) {
+                    targetColumnId = col.id;
+                    taskIndex = idx;
+                    break;
+                }
+            }
+
+            // Use incremental rendering instead of full board re-render
+            if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
+                window.addSingleTaskToDOM(targetColumnId, task, taskIndex);
+            } else {
+                // Fallback to full render
+                if (typeof window.renderBoard === 'function') {
+                    window.renderBoard();
+                }
+            }
         }
     } else if (item.type === 'column') {
         const column = item.data;
@@ -4868,10 +4835,31 @@ function restoreParkedItemByIndex(index) {
                 if (task.title) task.title = removeInternalTags(task.title);
                 if (task.description) task.description = removeInternalTags(task.description);
             });
+
+            // Use incremental rendering instead of full board re-render
+            if (typeof window.addSingleColumnToDOM === 'function') {
+                window.addSingleColumnToDOM(column);
+            } else {
+                // Fallback to full render
+                if (typeof window.renderBoard === 'function') {
+                    window.renderBoard();
+                }
+            }
         }
     }
 
-    notifyBoardUpdate();
+    // Update parked items UI
+    initializeParkedItems();
+    updateParkedItemsUI();
+
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
 }
 
 /**
@@ -5142,7 +5130,7 @@ function handleTrashDropTargetDrop(event) {
 }
 
 /**
- * Trash a task - add tag and remove from DOM (no full render)
+ * Trash a task - just add the tag, rendering will filter it out
  */
 function trashTask(taskElement) {
     const taskId = taskElement.dataset.taskId;
@@ -5165,26 +5153,10 @@ function trashTask(taskElement) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add the tag to data
+    // Just add the tag - initializeDeletedItems will handle the rest during render
     task.title = (task.title || '') + ' ' + DELETED_TAG;
 
-    // Remove task element from DOM directly (no full render)
-    const parentStack = taskElement.closest('.kanban-column-stack');
-    taskElement.remove();
-
-    // Recalculate stack layout after removal
-    if (parentStack && typeof window.updateStackLayoutDebounced === 'function') {
-        window.updateStackLayoutDebounced(parentStack);
-    }
-
-    // Reinitialize deleted items UI
-    if (typeof initializeDeletedItems === 'function') {
-        initializeDeletedItems();
-    }
-    updateDeletedItemsUI();
-
-    // Notify backend without full re-render
-    notifyBoardUpdateNoRender();
+    notifyBoardUpdate();
 }
 
 /**
@@ -5252,33 +5224,14 @@ function doTrashColumn(column, columnId) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Add the tag to data
+    // Just add the tag - initializeDeletedItems will handle the rest during render
     column.title = (column.title || '') + ' ' + DELETED_TAG;
 
-    // Remove column element from DOM directly (no full render)
-    const columnElement = document.querySelector(`[data-column-id="${columnId}"]`);
-    if (columnElement) {
-        const parentStack = columnElement.closest('.kanban-column-stack');
-        columnElement.remove();
-
-        // Clean up empty stack if needed
-        if (parentStack && !parentStack.querySelector('.kanban-full-height-column')) {
-            parentStack.remove();
-        }
-    }
-
-    // Reinitialize deleted items UI
-    if (typeof initializeDeletedItems === 'function') {
-        initializeDeletedItems();
-    }
-    updateDeletedItemsUI();
-
-    // Notify backend without full re-render
-    notifyBoardUpdateNoRender();
+    notifyBoardUpdate();
 }
 
 /**
- * Move a parked item to trash - just replace PARKED_TAG with DELETED_TAG (no render needed)
+ * Move a parked item to trash - just replace PARKED_TAG with DELETED_TAG
  */
 function trashParkedItem(parkedIndex) {
     if (parkedIndex < 0 || parkedIndex >= parkedItems.length) return;
@@ -5310,18 +5263,7 @@ function trashParkedItem(parkedIndex) {
         }
     }
 
-    // Reinitialize both UI lists (item moves from parked to deleted)
-    if (typeof initializeParkedItems === 'function') {
-        initializeParkedItems();
-    }
-    updateParkedItemsUI();
-    if (typeof initializeDeletedItems === 'function') {
-        initializeDeletedItems();
-    }
-    updateDeletedItemsUI();
-
-    // Notify backend without full re-render (no DOM changes needed)
-    notifyBoardUpdateNoRender();
+    notifyBoardUpdate();
 }
 
 /**
@@ -5394,7 +5336,7 @@ function handleDeletedItemDragEnd(event) {
 }
 
 /**
- * Restore a deleted task to the board at the drop position (no full render)
+ * Restore a deleted task to the board at the drop position
  */
 function restoreDeletedTask(deletedIndex, dropPosition) {
     const item = deletedItems[deletedIndex];
@@ -5416,10 +5358,11 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
         task.description = removeInternalTags(task.description);
     }
 
-    // Find target position from drop coordinates
+    // Track target for incremental DOM update
     let targetColumnId = null;
     let insertIndex = -1;
 
+    // Find target position from drop coordinates
     if (dropPosition) {
         const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
         if (dropResult && dropResult.columnId) {
@@ -5452,29 +5395,32 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
         }
     }
 
-    // Create task DOM element directly (no full render)
+    // Use incremental rendering instead of full board re-render
     if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
         window.addSingleTaskToDOM(targetColumnId, task, insertIndex);
-
-        // Recalculate stack layout after adding task
-        const targetColumnElement = document.querySelector(`[data-column-id="${targetColumnId}"]`);
-        const targetStack = targetColumnElement?.closest('.kanban-column-stack');
-        if (targetStack && typeof window.updateStackLayoutDebounced === 'function') {
-            window.updateStackLayoutDebounced(targetStack);
-        }
     } else {
         // Fallback to full render if addSingleTaskToDOM not available
         if (typeof window.renderBoard === 'function') {
             window.renderBoard();
         }
-        return;
     }
 
-    // Update deleted items UI
-    updateDeletedItemsUI();
+    // Update deleted items UI (task is no longer deleted)
+    if (typeof initializeDeletedItems === 'function') {
+        initializeDeletedItems();
+    }
+    if (typeof updateDeletedItemsUI === 'function') {
+        updateDeletedItemsUI();
+    }
 
-    // Notify backend without full re-render
-    notifyBoardUpdateNoRender();
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
 }
 
 /**
@@ -5500,6 +5446,11 @@ function restoreDeletedColumn(deletedIndex, dropPosition, capturedDropTargetStac
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
+    // Use captured drop target (passed in, since dragState is cleared by cleanup)
+    // Extract IDs BEFORE render (IDs survive render, element references don't)
+    const beforeColumnId = capturedDropTargetBeforeColumn?.dataset?.columnId || null;
+    const targetStackFirstColId = capturedDropTargetStack?.querySelector('.kanban-full-height-column')?.dataset?.columnId || null;
+
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
@@ -5507,58 +5458,27 @@ function restoreDeletedColumn(deletedIndex, dropPosition, capturedDropTargetStac
         if (task.description) task.description = removeInternalTags(task.description);
     });
 
-    // Create column element directly (no full render)
-    if (typeof window.createColumnElement !== 'function') {
-        // Fallback to full render if createColumnElement not available
+    // Use incremental rendering instead of full board re-render
+    // addSingleColumnToDOM creates just this column element with proper drag handlers
+    if (typeof window.addSingleColumnToDOM === 'function') {
+        window.addSingleColumnToDOM(column);
+    } else {
+        // Fallback to full render if addSingleColumnToDOM not available
         if (typeof window.renderBoard === 'function') {
             window.renderBoard();
         }
-        return;
     }
 
-    const columnIndex = window.cachedBoard.columns.indexOf(column);
-    const columnElement = window.createColumnElement(column, columnIndex >= 0 ? columnIndex : 0);
-
-    // Find target position using captured references
-    let targetStack = capturedDropTargetStack;
-    let beforeColumn = capturedDropTargetBeforeColumn;
-
-    // If no captured target, find a default position (first stack, end)
-    if (!targetStack) {
-        targetStack = document.querySelector('.kanban-column-stack');
+    // Update deleted items UI (column is no longer deleted)
+    if (typeof initializeDeletedItems === 'function') {
+        initializeDeletedItems();
+    }
+    if (typeof updateDeletedItemsUI === 'function') {
+        updateDeletedItemsUI();
     }
 
-    // Insert column element into DOM
-    if (targetStack) {
-        if (beforeColumn && targetStack.contains(beforeColumn)) {
-            targetStack.insertBefore(columnElement, beforeColumn);
-        } else {
-            targetStack.appendChild(columnElement);
-        }
-    } else {
-        // No stack found - append to board directly (shouldn't happen normally)
-        const board = document.getElementById('kanban-board');
-        if (board) {
-            board.appendChild(columnElement);
-        }
-    }
-
-    // Sync data order to match DOM order
-    if (typeof window.syncColumnDataToDOMOrder === 'function') {
-        window.syncColumnDataToDOMOrder();
-    }
-
-    // Finalize (normalize tags, recalc heights, update drop zones)
-    // Skip stack tag normalization to preserve original stack state
-    if (typeof window.finalizeColumnDrop === 'function') {
-        window.finalizeColumnDrop({ skipStackTagNormalization: true });
-    }
-
-    // Update deleted items UI
-    updateDeletedItemsUI();
-
-    // Notify backend without triggering full re-render
-    notifyBoardUpdateNoRender();
+    // Move column to drop target position (preserve original stack state - don't add #stack tag)
+    moveColumnToDropTarget(column.id, beforeColumnId, targetStackFirstColId, { preserveStackState: true });
 }
 
 /**
@@ -5585,6 +5505,28 @@ function restoreDeletedItemByIndex(index) {
             if (task.description) {
                 task.description = removeInternalTags(task.description);
             }
+
+            // Find the column containing this task and its index
+            let targetColumnId = null;
+            let taskIndex = -1;
+            for (const col of window.cachedBoard.columns) {
+                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                if (idx !== undefined && idx >= 0) {
+                    targetColumnId = col.id;
+                    taskIndex = idx;
+                    break;
+                }
+            }
+
+            // Use incremental rendering instead of full board re-render
+            if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
+                window.addSingleTaskToDOM(targetColumnId, task, taskIndex);
+            } else {
+                // Fallback to full render
+                if (typeof window.renderBoard === 'function') {
+                    window.renderBoard();
+                }
+            }
         }
     } else if (item.type === 'column') {
         const column = item.data;
@@ -5594,10 +5536,35 @@ function restoreDeletedItemByIndex(index) {
                 if (task.title) task.title = removeInternalTags(task.title);
                 if (task.description) task.description = removeInternalTags(task.description);
             });
+
+            // Use incremental rendering instead of full board re-render
+            if (typeof window.addSingleColumnToDOM === 'function') {
+                window.addSingleColumnToDOM(column);
+            } else {
+                // Fallback to full render
+                if (typeof window.renderBoard === 'function') {
+                    window.renderBoard();
+                }
+            }
         }
     }
 
-    notifyBoardUpdate();
+    // Update deleted items UI
+    if (typeof initializeDeletedItems === 'function') {
+        initializeDeletedItems();
+    }
+    if (typeof updateDeletedItemsUI === 'function') {
+        updateDeletedItemsUI();
+    }
+
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
 }
 
 /**
