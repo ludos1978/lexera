@@ -9,6 +9,75 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-05) - Archive System
+
+Added Archive functionality similar to Park/Trash that allows users to archive tasks and columns. Archived items are hidden from the board but visible in the Archive panel. Users can restore items to the board or export them to a separate archive file.
+
+### Modified: `src/html/boardRenderer.js`
+- `ARCHIVED_TAG` — New constant `'#hidden-internal-archived'` for archived items
+- `renderBoard()` — (MODIFIED) Added call to `initializeArchivedItems()` after deleted items initialization
+- Column and task filters now also exclude items with ARCHIVED_TAG
+
+### Modified: `src/html/dragDrop.js`
+- `archivedItems` — Array to store archived items for UI display
+- `pendingArchiveDrop` — Track pending archive drop to prevent mouseup interference
+- `initializeArchivedItems()` — Extract items with #hidden-internal-archived tag from cachedBoard
+- `updateArchivedItemsUI()` — Render archive dropdown UI with item list and export buttons
+- `handleArchiveDropTargetDragOver(event)` — Handle dragover on archive drop target
+- `handleArchiveDropTargetDragLeave(event)` — Handle dragleave from archive drop target
+- `handleArchiveDropTargetDrop(event)` — Handle drop on archive drop target to archive item
+- `archiveTask(taskElement)` — Move task to archive (add archived tag, update UI)
+- `archiveColumn(columnElement)` — Move column to archive (add archived tag, update UI)
+- `handleArchivedItemDragStart(event, index)` — Handle drag start for restoring archived item
+- `handleArchivedItemDragEnd(event)` — Handle drag end for archived item
+- `restoreArchivedTask(archivedIndex, dropPosition)` — Restore archived task to board at drop position
+- `restoreArchivedColumn(archivedIndex, dropPosition, capturedStack, capturedBeforeCol)` — Restore archived column to board
+- `restoreArchivedItemByIndex(index)` — Restore archived item to original location
+- `exportArchivedItem(index)` — Export single archived item to archive file
+- `exportAllArchivedItems()` — Export all archived items to archive file
+- `handleArchivedItemsExported(message)` — Handle response from backend after export
+- `handleArchivedItemDrop(e, dataString)` — Handle drop of archived item on board
+- `getArchivedItems()` — Get current archived items array
+- `attachArchiveEventListeners()` — Setup archive panel event listeners
+- `removeInternalTags(text)` — (MODIFIED) Now also removes ARCHIVED_TAG
+
+### New File: `src/commands/ArchiveCommands.ts`
+- `ArchiveCommands` — Command handler for archive operations
+- `handleExportArchivedItems(message, context)` — Export archived items to {filename}-archive.md file
+- `getArchiveHeader()` — Generate frontmatter header for new archive files
+- `generateArchiveContent(items, timestamp)` — Convert archived items to markdown format
+- `formatTaskForExport(task)` — Format single task as markdown checkbox
+- `removeInternalTags(text)` — Remove all internal hidden tags from text
+
+### Modified: `src/constants/FileNaming.ts`
+- `archiveSuffix` — New config property for archive file suffix (`-archive`)
+- `generateArchiveFilename(basename, ext)` — Generate archive filename pattern
+- `getArchivePath(sourcePath)` — Generate full archive file path from source kanban path
+- `isArchiveFile(filePath)` — Check if path is an archive file
+
+### Modified: `src/core/bridge/MessageTypes.ts`
+- `ExportArchivedItemsMessage` — Incoming message for exporting archived items
+- `ArchivedItemsExportedMessage` — Outgoing message with export result
+
+### Modified: `src/html/webview.html`
+- Added Archive drop target UI (archive-drop-menu, archive-drop-target, archive-drop-dropdown, etc.)
+- Archive header includes export-all button
+
+### Modified: `src/html/webview.css`
+- Added `.archive-drop-*` styles for Archive UI (blue theme, similar to clipboard/trash patterns)
+- Added `.archive-export-all-btn` styles
+
+### Modified: `src/html/webview.js`
+- Added `archivedItemsExported` message handler to call `handleArchivedItemsExported()`
+
+### Modified: `src/messageHandler.ts`
+- Registered `ArchiveCommands` in command registry
+
+### Modified: `src/commands/index.ts`
+- Export `ArchiveCommands` class
+
+---
+
 ## Recent Updates (2026-02-05) - External File Drop Support in Editors
 
 Added ability to drop external files (from desktop, VS Code explorer) into inline text editors and WYSIWYG editors. Dropped files are converted to markdown links at the cursor/drop position.

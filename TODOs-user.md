@@ -1,3 +1,7 @@
+- [ ] can we have a 10px wide image for H1, H2 is 10px wide with 2 vertical lines, H3 is 3 lines in 10px, H4 4 lines, h5 is 5 lines (1px white, 1px black, etc. )
+
+- [ ] if i poste a [[#1]] from the clipboard it inteprets it as a file link and adds a path to it. which breaks it by adding a relative path.
+
 - [x] lets redo the #hidden-internal-clipboard functionality.
 
 First rename #hidden-internal-clipboard to

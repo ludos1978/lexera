@@ -32,3 +32,4 @@ export { TemplateCommands } from './TemplateCommands';
 export { DebugCommands } from './DebugCommands';
 export { PathCommands } from './PathCommands';
 export { ProcessCommands } from './ProcessCommands';
+export { ArchiveCommands } from './ArchiveCommands';

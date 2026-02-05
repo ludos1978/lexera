@@ -3234,9 +3234,10 @@ function setupDragAndDrop() {
         dragDropInitialized = true;
     }
 
-    // Always attach park/trash listeners (they have their own guard)
+    // Always attach park/trash/archive listeners (they have their own guard)
     attachParkEventListeners();
     attachTrashEventListeners();
+    attachArchiveEventListeners();
 
     // Always refresh column, task, and row drag/drop since DOM changes
     setupRowDragAndDrop(); // Setup rows first
@@ -4185,7 +4186,7 @@ let deletedItems = [];
 
 function removeInternalTags(text) {
     if (!text) return '';
-    return text.replace(DELETED_TAG, '').replace(PARKED_TAG, '').trim();
+    return text.replace(DELETED_TAG, '').replace(PARKED_TAG, '').replace(ARCHIVED_TAG, '').trim();
 }
 
 function notifyBoardUpdate() {
@@ -5699,4 +5700,682 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', attachTrashEventListeners);
 } else {
     attachTrashEventListeners();
+}
+
+// ============================================================================
+// INTERNAL ARCHIVE SYSTEM
+// ============================================================================
+// Allows users to "archive" tasks and columns by tagging them with #hidden-internal-archived.
+// Archived items are hidden from view but stored in the board data.
+// Users can restore them from the archive dropdown or export them to a separate archive file.
+
+let archivedItems = [];
+
+// Track pending Archive drop to prevent mouseup interference
+let pendingArchiveDrop = null;
+
+/**
+ * Initialize the archived items from the board data
+ * Items with #hidden-internal-archived tag are shown in archive UI
+ */
+function initializeArchivedItems() {
+    archivedItems = [];
+    if (!window.cachedBoard) return;
+
+    // Build archivedItems array for UI - DO NOT modify cachedBoard
+    window.cachedBoard.columns.forEach((column) => {
+        if (column.title?.includes(ARCHIVED_TAG)) {
+            archivedItems.push({
+                type: 'column',
+                id: column.id,
+                title: removeInternalTags(column.title),
+                data: column
+            });
+            return;
+        }
+
+        column.tasks?.forEach((task) => {
+            if (task.title?.includes(ARCHIVED_TAG) || task.description?.includes(ARCHIVED_TAG)) {
+                archivedItems.push({
+                    type: 'task',
+                    id: task.id,
+                    title: removeInternalTags(task.title) ||
+                           removeInternalTags(task.description?.substring(0, 50)) ||
+                           'Untitled Task',
+                    data: task,
+                    originalColumnId: column.id
+                });
+            }
+        });
+    });
+
+    updateArchivedItemsUI();
+}
+
+/**
+ * Update the archived items UI in the dropdown
+ */
+function updateArchivedItemsUI() {
+    const countElement = document.getElementById('archive-drop-count');
+    const itemsContainer = document.getElementById('archive-drop-items');
+    const emptyMessage = document.getElementById('archive-drop-empty');
+    const exportAllBtn = document.getElementById('archive-export-all-btn');
+
+    if (!countElement || !itemsContainer || !emptyMessage) return;
+
+    // Update count badge
+    if (archivedItems.length > 0) {
+        countElement.textContent = archivedItems.length;
+        countElement.classList.add('has-items');
+    } else {
+        countElement.textContent = '';
+        countElement.classList.remove('has-items');
+    }
+
+    // Show/hide export all button
+    if (exportAllBtn) {
+        exportAllBtn.style.display = archivedItems.length > 0 ? 'inline-block' : 'none';
+    }
+
+    // Update items list
+    itemsContainer.innerHTML = '';
+
+    if (archivedItems.length === 0) {
+        emptyMessage.style.display = 'block';
+    } else {
+        emptyMessage.style.display = 'none';
+
+        archivedItems.forEach((item, index) => {
+            const itemElement = document.createElement('div');
+            itemElement.className = 'archive-drop-item';
+            itemElement.draggable = true;
+            itemElement.dataset.archivedIndex = index;
+            itemElement.dataset.archivedType = item.type;
+            itemElement.dataset.archivedId = item.id;
+
+            const icon = item.type === 'column' ? '📊' : '📝';
+            const displayTitle = item.title.length > 30 ? item.title.substring(0, 30) + '...' : item.title;
+
+            itemElement.innerHTML = `
+                <span class="archive-drop-item-icon">${icon}</span>
+                <span class="archive-drop-item-text" title="${escapeHtml(item.title)}">${escapeHtml(displayTitle)}</span>
+                <span class="archive-drop-item-restore" title="Restore to board">↩</span>
+                <span class="archive-drop-item-export" title="Export to archive file">📤</span>
+            `;
+
+            // Add click handlers
+            const restoreBtn = itemElement.querySelector('.archive-drop-item-restore');
+            const exportBtn = itemElement.querySelector('.archive-drop-item-export');
+            restoreBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                restoreArchivedItemByIndex(index);
+            });
+            exportBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                exportArchivedItem(index);
+            });
+
+            // Add drag handlers for the archived item
+            itemElement.addEventListener('dragstart', (e) => handleArchivedItemDragStart(e, index));
+            itemElement.addEventListener('dragend', handleArchivedItemDragEnd);
+
+            itemsContainer.appendChild(itemElement);
+        });
+    }
+}
+
+/**
+ * Handle drag over the archive drop target
+ */
+function handleArchiveDropTargetDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Only allow dropping tasks or columns (not archived items being re-archived)
+    const isValidDrop = dragState.draggedTask || dragState.draggedColumn;
+
+    if (isValidDrop) {
+        event.dataTransfer.dropEffect = 'move';
+        const target = document.getElementById('archive-drop-target');
+        if (target) {
+            target.classList.add('drag-over');
+        }
+        // Capture the drag state NOW in case mouseup fires before drop
+        pendingArchiveDrop = {
+            draggedTask: dragState.draggedTask,
+            draggedColumn: dragState.draggedColumn
+        };
+    }
+}
+
+/**
+ * Handle drag leave from the archive drop target
+ */
+function handleArchiveDropTargetDragLeave(event) {
+    const target = document.getElementById('archive-drop-target');
+    if (target) {
+        target.classList.remove('drag-over');
+    }
+}
+
+/**
+ * Handle drop on the archive drop target (archive item)
+ */
+function handleArchiveDropTargetDrop(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Use captured state from dragover if live state was cleared by mouseup
+    const taskToUse = dragState.draggedTask || pendingArchiveDrop?.draggedTask;
+    const columnToUse = dragState.draggedColumn || pendingArchiveDrop?.draggedColumn;
+
+    const target = document.getElementById('archive-drop-target');
+    if (target) {
+        target.classList.remove('drag-over');
+    }
+
+    // Check what's being dropped
+    if (taskToUse) {
+        archiveTask(taskToUse);
+    } else if (columnToUse) {
+        archiveColumn(columnToUse);
+    }
+
+    // Clear pending drop state
+    pendingArchiveDrop = null;
+
+    // Clean up drag state
+    cleanupDragVisuals();
+    resetDragState();
+}
+
+/**
+ * Archive a task - just add the tag, rendering will filter it out
+ */
+function archiveTask(taskElement) {
+    const taskId = taskElement.dataset.taskId;
+    const columnElement = taskElement.closest('.kanban-full-height-column');
+    const columnId = columnElement?.dataset.columnId;
+
+    if (!taskId || !columnId || !window.cachedBoard) {
+        return;
+    }
+
+    const column = window.cachedBoard.columns.find(c => c.id === columnId);
+    if (!column) {
+        return;
+    }
+
+    const task = column.tasks.find(t => t.id === taskId);
+    if (!task) {
+        return;
+    }
+
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'archiveTask',
+        taskId: taskId,
+        columnId: columnId,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Just add the tag - initializeArchivedItems will handle the rest during render
+    task.title = (task.title || '') + ' ' + ARCHIVED_TAG;
+
+    notifyBoardUpdate();
+}
+
+/**
+ * Archive a column - just add the tag, rendering will filter it out
+ */
+function archiveColumn(columnElement) {
+    const columnId = columnElement.dataset.columnId;
+    if (!columnId || !window.cachedBoard) return;
+
+    const column = window.cachedBoard.columns.find(c => c.id === columnId);
+    if (!column) return;
+
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'archiveColumn',
+        columnId: columnId,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Just add the tag - initializeArchivedItems will handle the rest during render
+    column.title = (column.title || '') + ' ' + ARCHIVED_TAG;
+
+    notifyBoardUpdate();
+}
+
+/**
+ * Handle drag start for an archived item (dragging back to board)
+ */
+function handleArchivedItemDragStart(event, index) {
+    const item = archivedItems[index];
+    if (!item) return;
+
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', 'ARCHIVED_ITEM:' + JSON.stringify({
+        index: index,
+        type: item.type,
+        id: item.id
+    }));
+
+    // Mark the drag state
+    if (item.type === 'task') {
+        dragState.draggedClipboardCard = item.data;
+        dragDropStateMachine.start(dragDropStateMachine.states.CLIPBOARD, {
+            source: 'archived-task',
+            archivedIndex: index
+        });
+    } else {
+        // For columns, we need special handling
+        dragState.draggedArchivedColumn = item;
+        dragDropStateMachine.start(dragDropStateMachine.states.EXTERNAL, {
+            source: 'archived-column',
+            archivedIndex: index
+        });
+    }
+
+    dragState.isDragging = true;
+    dragState.archivedItemIndex = index;
+
+    // Visual feedback
+    event.target.classList.add('dragging');
+
+    // Keep dropdown open during drag
+    const dropMenu = document.getElementById('archive-drop-menu');
+    if (dropMenu) {
+        dropMenu.classList.add('dragging-from');
+    }
+}
+
+/**
+ * Handle drag end for an archived item
+ */
+function handleArchivedItemDragEnd(event) {
+    event.target.classList.remove('dragging');
+
+    // Remove dropdown keep-open class
+    const dropMenu = document.getElementById('archive-drop-menu');
+    if (dropMenu) {
+        dropMenu.classList.remove('dragging-from');
+    }
+
+    // Check if the item was dropped successfully
+    // If leftView flag is set, restore the item
+    if (dragState.leftView) {
+        // Item was dragged outside - keep it archived
+        dragState.leftView = false;
+    }
+
+    // Clean up
+    dragState.draggedClipboardCard = null;
+    dragState.draggedArchivedColumn = null;
+    dragState.archivedItemIndex = null;
+    dragState.isDragging = false;
+    dragDropStateMachine.reset('archived-item-dragend');
+}
+
+/**
+ * Restore an archived task to the board at the drop position
+ */
+function restoreArchivedTask(archivedIndex, dropPosition) {
+    const item = archivedItems[archivedIndex];
+    if (!item || item.type !== 'task') return;
+
+    const task = item.data;
+    if (!task) return;
+
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'restoreArchivedTask',
+        taskId: task.id,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Remove the tag first
+    task.title = removeInternalTags(task.title);
+    if (task.description) {
+        task.description = removeInternalTags(task.description);
+    }
+
+    // Track target for incremental DOM update
+    let targetColumnId = null;
+    let insertIndex = -1;
+
+    // Find target position from drop coordinates
+    if (dropPosition) {
+        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+        if (dropResult && dropResult.columnId) {
+            // Find current column containing this task
+            let sourceColumn = null;
+            let sourceTaskIndex = -1;
+            for (const col of window.cachedBoard.columns) {
+                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                if (idx !== undefined && idx >= 0) {
+                    sourceColumn = col;
+                    sourceTaskIndex = idx;
+                    break;
+                }
+            }
+
+            const targetColumn = window.cachedBoard.columns.find(c => c.id === dropResult.columnId);
+
+            if (sourceColumn && targetColumn && sourceTaskIndex >= 0) {
+                // Remove from source column
+                const [movedTask] = sourceColumn.tasks.splice(sourceTaskIndex, 1);
+
+                // Insert at target position
+                insertIndex = dropResult.insertionIndex;
+                if (insertIndex < 0 || insertIndex > targetColumn.tasks.length) {
+                    insertIndex = targetColumn.tasks.length;
+                }
+                targetColumn.tasks.splice(insertIndex, 0, movedTask);
+                targetColumnId = dropResult.columnId;
+            }
+        }
+    }
+
+    // Use incremental rendering instead of full board re-render
+    if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
+        window.addSingleTaskToDOM(targetColumnId, task, insertIndex);
+    } else {
+        // Fallback to full render if addSingleTaskToDOM not available
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
+    }
+
+    // Update archived items UI (task is no longer archived)
+    initializeArchivedItems();
+    updateArchivedItemsUI();
+
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Restore an archived column to the board at the drop position.
+ */
+function restoreArchivedColumn(archivedIndex, dropPosition, capturedDropTargetStack, capturedDropTargetBeforeColumn) {
+    const item = archivedItems[archivedIndex];
+    if (!item || item.type !== 'column') return;
+
+    const column = item.data;
+    if (!column) return;
+
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'restoreArchivedColumn',
+        columnId: column.id,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Extract IDs before render (element references become stale after render)
+    const beforeColumnId = capturedDropTargetBeforeColumn?.dataset?.columnId || null;
+    const targetStackFirstColId = capturedDropTargetStack?.querySelector('.kanban-full-height-column')?.dataset?.columnId || null;
+
+    // Remove the tag from column and its tasks
+    column.title = removeInternalTags(column.title);
+    column.tasks?.forEach(task => {
+        if (task.title) task.title = removeInternalTags(task.title);
+        if (task.description) task.description = removeInternalTags(task.description);
+    });
+
+    // Use incremental rendering instead of full board re-render
+    if (typeof window.addSingleColumnToDOM === 'function') {
+        window.addSingleColumnToDOM(column);
+    } else {
+        // Fallback to full render if addSingleColumnToDOM not available
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
+    }
+
+    // Update archived items UI (column is no longer archived)
+    initializeArchivedItems();
+    updateArchivedItemsUI();
+
+    // Move column to drop target position (preserve original stack state - don't add #stack tag)
+    moveColumnToDropTarget(column.id, beforeColumnId, targetStackFirstColId, { preserveStackState: true });
+}
+
+/**
+ * Restore an archived item by index - just removes the tag (restore to board)
+ */
+function restoreArchivedItemByIndex(index) {
+    if (index < 0 || index >= archivedItems.length) return;
+
+    const item = archivedItems[index];
+
+    vscode.postMessage({
+        type: 'saveUndoState',
+        operation: 'restoreArchivedItem',
+        itemType: item.type,
+        itemId: item.id,
+        currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
+    });
+
+    // Item is already in cachedBoard - just remove the ARCHIVED_TAG
+    if (item.type === 'task') {
+        const task = item.data;
+        if (task) {
+            task.title = removeInternalTags(task.title);
+            if (task.description) {
+                task.description = removeInternalTags(task.description);
+            }
+
+            // Find the column containing this task and its index
+            let targetColumnId = null;
+            let taskIndex = -1;
+            for (const col of window.cachedBoard.columns) {
+                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                if (idx !== undefined && idx >= 0) {
+                    targetColumnId = col.id;
+                    taskIndex = idx;
+                    break;
+                }
+            }
+
+            // Use incremental rendering instead of full board re-render
+            if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
+                window.addSingleTaskToDOM(targetColumnId, task, taskIndex);
+            } else {
+                // Fallback to full render
+                if (typeof window.renderBoard === 'function') {
+                    window.renderBoard();
+                }
+            }
+        }
+    } else if (item.type === 'column') {
+        const column = item.data;
+        if (column) {
+            column.title = removeInternalTags(column.title);
+            // Also remove tags from tasks in the column
+            column.tasks?.forEach(task => {
+                if (task.title) task.title = removeInternalTags(task.title);
+                if (task.description) task.description = removeInternalTags(task.description);
+            });
+
+            // Use incremental rendering instead of full board re-render
+            if (typeof window.addSingleColumnToDOM === 'function') {
+                window.addSingleColumnToDOM(column);
+            } else {
+                // Fallback to full render
+                if (typeof window.renderBoard === 'function') {
+                    window.renderBoard();
+                }
+            }
+        }
+    }
+
+    // Update archived items UI
+    initializeArchivedItems();
+    updateArchivedItemsUI();
+
+    // Notify backend and mark as unsaved (without re-render)
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({
+        type: 'boardUpdate',
+        board: window.cachedBoard
+    });
+}
+
+/**
+ * Export a single archived item to the archive file
+ */
+function exportArchivedItem(index) {
+    if (index < 0 || index >= archivedItems.length) return;
+
+    const item = archivedItems[index];
+
+    // Send to backend for file export
+    vscode.postMessage({
+        type: 'exportArchivedItems',
+        items: [{
+            type: item.type,
+            id: item.id,
+            title: item.title,
+            data: item.data
+        }]
+    });
+}
+
+/**
+ * Export all archived items to the archive file
+ */
+function exportAllArchivedItems() {
+    if (archivedItems.length === 0) return;
+
+    // Prepare all items for export
+    const itemsToExport = archivedItems.map(item => ({
+        type: item.type,
+        id: item.id,
+        title: item.title,
+        data: item.data
+    }));
+
+    // Send to backend for file export
+    vscode.postMessage({
+        type: 'exportArchivedItems',
+        items: itemsToExport
+    });
+}
+
+/**
+ * Handle the response from backend after export
+ * Called when archivedItemsExported message is received
+ */
+function handleArchivedItemsExported(message) {
+    if (message.success) {
+        // Remove exported items from cachedBoard
+        const exportedIds = message.exportedIds || [];
+
+        // Remove exported columns
+        window.cachedBoard.columns = window.cachedBoard.columns.filter(c =>
+            !exportedIds.includes(c.id)
+        );
+
+        // Remove exported tasks from remaining columns
+        window.cachedBoard.columns.forEach(column => {
+            if (column.tasks) {
+                column.tasks = column.tasks.filter(t => !exportedIds.includes(t.id));
+            }
+        });
+
+        // Update UI
+        initializeArchivedItems();
+        updateArchivedItemsUI();
+
+        // Notify backend and mark as unsaved
+        if (typeof markUnsavedChanges === 'function') {
+            markUnsavedChanges();
+        }
+        vscode.postMessage({
+            type: 'boardUpdate',
+            board: window.cachedBoard
+        });
+    }
+}
+
+/**
+ * Handle drop of archived item on the board
+ */
+function handleArchivedItemDrop(e, dataString) {
+    const data = JSON.parse(dataString);
+    const archivedIndex = data.index;
+
+    if (archivedIndex === undefined || archivedIndex < 0 || archivedIndex >= archivedItems.length) {
+        return;
+    }
+
+    const item = archivedItems[archivedIndex];
+    const dropPosition = { x: e.clientX, y: e.clientY };
+
+    if (item.type === 'task') {
+        restoreArchivedTask(archivedIndex, dropPosition);
+    } else if (item.type === 'column') {
+        restoreArchivedColumn(archivedIndex, dropPosition);
+    }
+}
+
+/**
+ * Get the current archived items
+ */
+function getArchivedItems() {
+    return archivedItems;
+}
+
+// Make archive functions globally available
+window.handleArchiveDropTargetDragOver = handleArchiveDropTargetDragOver;
+window.handleArchiveDropTargetDragLeave = handleArchiveDropTargetDragLeave;
+window.handleArchiveDropTargetDrop = handleArchiveDropTargetDrop;
+window.initializeArchivedItems = initializeArchivedItems;
+window.updateArchivedItemsUI = updateArchivedItemsUI;
+window.archiveTask = archiveTask;
+window.archiveColumn = archiveColumn;
+window.restoreArchivedTask = restoreArchivedTask;
+window.restoreArchivedColumn = restoreArchivedColumn;
+window.restoreArchivedItemByIndex = restoreArchivedItemByIndex;
+window.exportArchivedItem = exportArchivedItem;
+window.exportAllArchivedItems = exportAllArchivedItems;
+window.handleArchivedItemsExported = handleArchivedItemsExported;
+window.handleArchivedItemDrop = handleArchivedItemDrop;
+window.getArchivedItems = getArchivedItems;
+
+// Attach event listeners programmatically
+function attachArchiveEventListeners() {
+    const archiveTarget = document.getElementById('archive-drop-target');
+    if (archiveTarget && !archiveTarget._listenersAttached) {
+        archiveTarget.addEventListener('dragover', handleArchiveDropTargetDragOver);
+        archiveTarget.addEventListener('dragleave', handleArchiveDropTargetDragLeave);
+        archiveTarget.addEventListener('drop', handleArchiveDropTargetDrop);
+        archiveTarget._listenersAttached = true;
+    }
+
+    // Attach export all button handler
+    const exportAllBtn = document.getElementById('archive-export-all-btn');
+    if (exportAllBtn && !exportAllBtn._listenersAttached) {
+        exportAllBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exportAllArchivedItems();
+        });
+        exportAllBtn._listenersAttached = true;
+    }
+}
+// Try to attach immediately if DOM is ready, otherwise wait
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachArchiveEventListeners);
+} else {
+    attachArchiveEventListeners();
 }

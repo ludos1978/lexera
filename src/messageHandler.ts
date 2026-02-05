@@ -10,7 +10,7 @@ import { NewExportOptions } from './services/export/ExportService';
 import { BoardChangeTrigger } from './core/events';
 import { PanelContext } from './panel/PanelContext';
 // Command Pattern: Registry and commands for message handling
-import { CommandRegistry, CommandContext, TaskCommands, ColumnCommands, UICommands, FileCommands, ClipboardCommands, ExportCommands, DiagramCommands, IncludeCommands, EditModeCommands, TemplateCommands, DebugCommands, PathCommands, ProcessCommands } from './commands';
+import { CommandRegistry, CommandContext, TaskCommands, ColumnCommands, UICommands, FileCommands, ClipboardCommands, ExportCommands, DiagramCommands, IncludeCommands, EditModeCommands, TemplateCommands, DebugCommands, PathCommands, ProcessCommands, ArchiveCommands } from './commands';
 import * as vscode from 'vscode';
 import { EditingStoppedMessage, BoardUpdateFromFrontendMessage, IncomingMessage, HandleEditorShortcutMessage } from './core/bridge/MessageTypes';
 import { CapturedEdit } from './files/FileInterfaces';
@@ -128,6 +128,7 @@ export class MessageHandler {
         this._commandRegistry.register(new DebugCommands());
         this._commandRegistry.register(new PathCommands());
         this._commandRegistry.register(new ProcessCommands());
+        this._commandRegistry.register(new ArchiveCommands());
 
         // Initialize the registry with context
         if (this._commandContext) {

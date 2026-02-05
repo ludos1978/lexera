@@ -1089,6 +1089,211 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   background: var(--vscode-errorBackground, rgba(255, 68, 68, 0.4));
 }
 
+/* ===== Archive Drop Target ===== */
+.archive-drop-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.archive-drop-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  gap: 4px;
+  padding: 2px 6px;
+  margin: 0;
+  background: var(--button-background);
+  color: var(--button-foreground);
+  border: 1px dashed var(--vscode-textLink-foreground, #3794ff);
+  border-radius: 3px;
+  cursor: pointer;
+  height: 22px;
+  min-height: 22px;
+  font-size: 12px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.archive-drop-target:hover {
+  background: var(--button-background-hover);
+  border-color: var(--vscode-textLink-activeForeground, #58a6ff);
+}
+
+.archive-drop-target.drag-over {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-textLink-activeForeground, #58a6ff);
+  border-style: solid;
+  transform: scale(1.05);
+}
+
+.archive-drop-icon {
+  font-size: 14px;
+}
+
+.archive-drop-label {
+  font-size: 12px;
+}
+
+.archive-drop-count {
+  display: none;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 50%;
+  min-width: 16px;
+  height: 16px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.archive-drop-count.has-items {
+  display: inline-block;
+}
+
+.archive-drop-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  max-width: 300px;
+  max-height: 400px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: var(--z-dropdown);
+  display: none;
+}
+
+/* Hide scrollbar but keep space reserved */
+.archive-drop-dropdown::-webkit-scrollbar {
+  width: 8px;
+}
+.archive-drop-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.archive-drop-dropdown::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+.archive-drop-dropdown:hover::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+}
+
+/* Bridge element on parent to maintain hover through gap */
+.archive-drop-menu::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.archive-drop-menu:hover .archive-drop-dropdown,
+.archive-drop-dropdown.show,
+.archive-drop-menu.dragging-from .archive-drop-dropdown {
+  display: block;
+}
+
+/* Hide dropdown when receiving a drag (something being dropped INTO archive) */
+.archive-drop-menu:has(.archive-drop-target.drag-over) .archive-drop-dropdown {
+  display: none !important;
+}
+
+.archive-drop-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  border-bottom: 1px solid var(--vscode-dropdown-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.archive-export-all-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.archive-export-all-btn:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.archive-drop-items {
+  padding: 4px 0;
+}
+
+.archive-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: grab;
+  transition: background 0.1s ease;
+}
+
+.archive-drop-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.archive-drop-item-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.archive-drop-item-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.archive-drop-item-restore {
+  opacity: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  transition: opacity 0.1s ease;
+  flex-shrink: 0;
+}
+
+.archive-drop-item-export {
+  opacity: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground);
+  transition: opacity 0.1s ease;
+  flex-shrink: 0;
+}
+
+.archive-drop-item:hover .archive-drop-item-restore,
+.archive-drop-item:hover .archive-drop-item-export {
+  opacity: 1;
+}
+
+.archive-drop-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* Text styling for button labels */
 .menu-text {
   font-weight: 500;

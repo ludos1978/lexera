@@ -1,8 +1,9 @@
 let scrollPositions = new Map();
 
-// Hidden tags for filtering parked/deleted items during render
+// Hidden tags for filtering parked/deleted/archived items during render
 const PARKED_TAG = '#hidden-internal-parked';
 const DELETED_TAG = '#hidden-internal-deleted';
+const ARCHIVED_TAG = '#hidden-internal-archived';
 
 /**
  * Insert HTML nodes from a string before or after a reference element
@@ -1168,6 +1169,12 @@ function renderBoard(options = null) {
         window.initializeDeletedItems();
     }
 
+    // Initialize archived items - builds UI array for Archive dropdown
+    // Items stay in cachedBoard with tags, filtering happens during render
+    if (typeof window.initializeArchivedItems === 'function') {
+        window.initializeArchivedItems();
+    }
+
     // Apply tag styles first
     applyTagStyles();
 
@@ -1378,10 +1385,11 @@ function renderBoard(options = null) {
             row: getColumnRow(column.title)
         }))
         .filter(({ column }) => {
-            // Filter out columns with parked or deleted tags
+            // Filter out columns with parked, deleted, or archived tags
             const hasParkedTag = column.title?.includes(PARKED_TAG);
             const hasDeletedTag = column.title?.includes(DELETED_TAG);
-            return !hasParkedTag && !hasDeletedTag;
+            const hasArchivedTag = column.title?.includes(ARCHIVED_TAG);
+            return !hasParkedTag && !hasDeletedTag && !hasArchivedTag;
         })
         .sort((a, b) => {
             // First sort by row number
@@ -1618,11 +1626,12 @@ function createColumnElement(column, columnIndex) {
         column.tasks = [];
     }
 
-    // Filter out parked and deleted tasks - they are tagged but stay in cachedBoard
+    // Filter out parked, deleted, and archived tasks - they are tagged but stay in cachedBoard
     const visibleTasks = column.tasks.filter(task => {
         const hasParkedTag = task.title?.includes(PARKED_TAG) || task.description?.includes(PARKED_TAG);
         const hasDeletedTag = task.title?.includes(DELETED_TAG) || task.description?.includes(DELETED_TAG);
-        return !hasParkedTag && !hasDeletedTag;
+        const hasArchivedTag = task.title?.includes(ARCHIVED_TAG) || task.description?.includes(ARCHIVED_TAG);
+        return !hasParkedTag && !hasDeletedTag && !hasArchivedTag;
     });
 
     // CRITICAL: Check for pending local changes and use them instead of backend data

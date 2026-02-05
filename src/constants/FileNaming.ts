@@ -30,6 +30,9 @@ export interface FileNamingConfig {
     // Cache file suffix
     mediaCacheSuffix: string;
 
+    // Archive file suffix
+    archiveSuffix: string;
+
     // Folder names
     backupsFolder: string;
     exportFolder: string;
@@ -67,6 +70,9 @@ export const DEFAULT_FILE_NAMING_CONFIG: FileNamingConfig = {
 
     // Cache file suffix
     mediaCacheSuffix: '.mediacache.json',
+
+    // Archive file suffix
+    archiveSuffix: '-archive',
 
     // Folder names
     backupsFolder: '.kanban-backups',
@@ -566,6 +572,45 @@ export function createBackupPattern(basename: string): RegExp {
     return new RegExp(
         `^\\${cfg.hiddenFilePrefix}${escapeRegex(basename)}${escapeRegex(cfg.backupSuffix)}${TIMESTAMP_PATTERN}\\.[^.]+$`
     );
+}
+
+// =============================================================================
+// FILENAME GENERATION - ARCHIVE
+// =============================================================================
+
+/**
+ * Generate archive filename
+ * Pattern: {basename}-archive{ext}
+ *
+ * @example
+ * generateArchiveFilename('myboard', '.md') => 'myboard-archive.md'
+ */
+export function generateArchiveFilename(basename: string, ext: string = '.md'): string {
+    const cfg = _config;
+    return `${basename}${cfg.archiveSuffix}${ext}`;
+}
+
+/**
+ * Generate full archive path from source file path
+ * Archive file is placed in the same directory as the source file.
+ *
+ * @example
+ * getArchivePath('/path/to/myboard.md') => '/path/to/myboard-archive.md'
+ */
+export function getArchivePath(sourcePath: string): string {
+    const ext = getExtension(sourcePath);
+    const basename = getBasename(sourcePath, ext);
+    const dir = getDirectory(sourcePath);
+    const filename = generateArchiveFilename(basename, ext);
+    return dir ? joinPath(dir, filename) : filename;
+}
+
+/**
+ * Check if a path/filename is an archive file
+ */
+export function isArchiveFile(filePath: string): boolean {
+    const cfg = _config;
+    return filePath.includes(cfg.archiveSuffix);
 }
 
 // =============================================================================

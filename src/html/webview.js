@@ -4079,6 +4079,13 @@ if (!webviewEventListenersInitialized) {
             }
             break;
 
+        case 'archivedItemsExported':
+            // Handle response from archive export operation
+            if (typeof window.handleArchivedItemsExported === 'function') {
+                window.handleArchivedItemsExported(message);
+            }
+            break;
+
         case 'plantUMLConvertSuccess':
             // File will reload automatically, which will show the updated content
             break;

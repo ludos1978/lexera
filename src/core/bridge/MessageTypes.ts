@@ -446,6 +446,18 @@ export interface IncludesUpdatedMessage extends BaseMessage {
     type: 'includesUpdated';
 }
 
+/**
+ * Archived items export result - sent after items are exported to archive file
+ */
+export interface ArchivedItemsExportedMessage extends BaseMessage {
+    type: 'archivedItemsExported';
+    success: boolean;
+    exportedCount?: number;
+    exportedIds?: string[];
+    archivePath?: string;
+    error?: string;
+}
+
 // ============= INCOMING MESSAGES (Frontend → Backend) =============
 
 /**
@@ -1535,6 +1547,20 @@ export interface SetDebugModeMessage extends BaseMessage {
 }
 
 /**
+ * Export archived items to archive file
+ * Items are exported to {filename}-archive.md and removed from main board
+ */
+export interface ExportArchivedItemsMessage extends BaseMessage {
+    type: 'exportArchivedItems';
+    items: Array<{
+        type: 'task' | 'column';
+        id: string;
+        title: string;
+        data: object;
+    }>;
+}
+
+/**
  * Edit mode start notification
  */
 export interface EditModeStartMessage extends BaseMessage {
@@ -2165,6 +2191,8 @@ export type OutgoingMessage =
     | ConfigurationUpdateMessage
     | TriggerSnippetMessage
     | IncludesUpdatedMessage
+    // Archive messages
+    | ArchivedItemsExportedMessage
     // Processes messages
     | ProcessesStatusMessage
     | MediaIndexScanStartedMessage
@@ -2319,6 +2347,8 @@ export type IncomingMessage =
     | ClearTrackedFilesCacheMessage
     | RemoveDeletedItemsFromFilesMessage
     | SetDebugModeMessage
+    // Archive messages
+    | ExportArchivedItemsMessage
     // Path conversion messages
     | ConvertPathsMessage
     | ConvertAllPathsMessage
