@@ -3159,6 +3159,7 @@ window.updateColumnDisplay = updateColumnDisplay;
 
 // Expose rendering functions for include file updates
 window.renderSingleColumn = renderSingleColumn;
+window.createColumnElement = createColumnElement;
 window.injectStackableBars = injectStackableBars;
 // isDarkTheme now provided by utils/tagStyleManager.js
 

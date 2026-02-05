@@ -28,6 +28,27 @@ Added ability to drop external files (from desktop, VS Code explorer) into inlin
 
 ---
 
+## Recent Updates (2026-02-05) - Optimize Column Restore (No Full Redraw)
+
+Refactored `restoreParkedColumn` and `restoreDeletedColumn` to avoid full board re-renders. Now creates column element directly and inserts into DOM, similar to normal column drag-drop.
+
+### Modified: `src/html/boardRenderer.js`
+- `window.createColumnElement` — Now exposed globally for creating column DOM elements without full render
+
+### Modified: `src/html/dragDrop.js`
+- `notifyBoardUpdateNoRender()` — New function to notify backend of changes without triggering full re-render
+- `restoreParkedColumn()` — (MODIFIED) Now creates column element via createColumnElement and inserts directly into DOM instead of calling renderBoard. Uses syncColumnDataToDOMOrder + finalizeColumnDrop pattern like normal column drops.
+- `restoreDeletedColumn()` — (MODIFIED) Same optimization as restoreParkedColumn - direct DOM manipulation instead of full render.
+- `restoreParkedTask()` — (MODIFIED) Now creates task element via addSingleTaskToDOM instead of full render.
+- `restoreDeletedTask()` — (MODIFIED) Same optimization as restoreParkedTask.
+- `parkTask()` — (MODIFIED) Now removes task DOM element directly instead of full render.
+- `parkColumn()` — (MODIFIED) Now removes column DOM element directly instead of full render.
+- `trashTask()` — (MODIFIED) Now removes task DOM element directly instead of full render.
+- `doTrashColumn()` — (MODIFIED) Now removes column DOM element directly instead of full render.
+- `trashParkedItem()` — (MODIFIED) Now updates both UI lists without full render (item moves from parked to deleted, no DOM changes needed).
+
+---
+
 ## Recent Updates (2026-02-04) - Park/Trash System with Hidden Tags
 
 Redesigned the internal clipboard/parking system to use consistent hidden tags for both parking and deletion. Items are not physically removed but tagged and hidden from view.
