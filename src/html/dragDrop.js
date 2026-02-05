@@ -4100,12 +4100,10 @@ function initializeParkedItems() {
  * Update the parked items UI in the dropdown
  */
 function updateParkedItemsUI() {
-    console.log('[Park UI] updateParkedItemsUI called, parkedItems:', parkedItems.length);
     const countElement = document.getElementById('clipboard-drop-count');
     const itemsContainer = document.getElementById('clipboard-drop-items');
     const emptyMessage = document.getElementById('clipboard-drop-empty');
 
-    console.log('[Park UI] DOM elements:', { countElement: !!countElement, itemsContainer: !!itemsContainer, emptyMessage: !!emptyMessage });
     if (!countElement || !itemsContainer || !emptyMessage) return;
 
     // Update count badge
@@ -4146,14 +4144,11 @@ function updateParkedItemsUI() {
             // Add click handlers using addEventListener (more reliable than inline onclick)
             const restoreBtn = itemElement.querySelector('.clipboard-drop-item-restore');
             const removeBtn = itemElement.querySelector('.clipboard-drop-item-remove');
-            console.log('[Park UI] Adding click listeners for index', index, { restoreBtn: !!restoreBtn, removeBtn: !!removeBtn });
             restoreBtn.addEventListener('click', (e) => {
-                console.log('[Park UI] Restore button clicked for index', index);
                 e.stopPropagation();
                 restoreParkedItemByIndex(index);
             });
             removeBtn.addEventListener('click', (e) => {
-                console.log('[Park UI] Remove button clicked for index', index);
                 e.stopPropagation();
                 removeParkedItem(index);
             });
@@ -4190,18 +4185,6 @@ function handleClipboardDropTargetDragOver(event) {
     // Only allow dropping tasks or columns (not parked items being re-parked)
     const isValidDrop = dragState.draggedTask || dragState.draggedColumn;
 
-    // Log only once per drag session to avoid flooding console
-    if (!window._parkDragoverLogged) {
-        console.log('[Park Dragover]', {
-            isValidDrop,
-            hasDraggedTask: !!dragState.draggedTask,
-            hasDraggedColumn: !!dragState.draggedColumn,
-            taskId: dragState.draggedTask?.dataset?.taskId,
-            columnId: dragState.draggedColumn?.dataset?.columnId
-        });
-        window._parkDragoverLogged = true;
-    }
-
     if (isValidDrop) {
         event.dataTransfer.dropEffect = 'move';
         const target = document.getElementById('clipboard-drop-target');
@@ -4237,15 +4220,6 @@ function handleClipboardDropTargetDrop(event) {
     const taskToUse = dragState.draggedTask || pendingParkDrop?.draggedTask;
     const columnToUse = dragState.draggedColumn || pendingParkDrop?.draggedColumn;
 
-    console.log('[Park Drop]', {
-        hasDragStateTask: !!dragState.draggedTask,
-        hasPendingTask: !!pendingParkDrop?.draggedTask,
-        hasDragStateColumn: !!dragState.draggedColumn,
-        hasPendingColumn: !!pendingParkDrop?.draggedColumn,
-        taskToUse: taskToUse?.dataset?.taskId,
-        columnToUse: columnToUse?.dataset?.columnId
-    });
-
     const target = document.getElementById('clipboard-drop-target');
     if (target) {
         target.classList.remove('drag-over');
@@ -4256,8 +4230,6 @@ function handleClipboardDropTargetDrop(event) {
         parkTask(taskToUse);
     } else if (columnToUse) {
         parkColumn(columnToUse);
-    } else {
-        console.warn('[Park Drop] Nothing to park - no task or column found');
     }
 
     // Clear pending drop state
@@ -4405,13 +4377,12 @@ function handleParkedItemDragEnd(event) {
 }
 
 /**
- * Restore a parked task to the board
+ * Restore a parked task to the board at the drop position
  */
 function restoreParkedTask(parkedIndex, dropPosition) {
     const item = parkedItems[parkedIndex];
     if (!item || item.type !== 'task') return;
 
-    // Item is already in cachedBoard with tag - just remove the tag
     const task = item.data;
     if (!task) return;
 
@@ -4422,23 +4393,54 @@ function restoreParkedTask(parkedIndex, dropPosition) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Remove the tag
+    // Remove the tag first
     task.title = removeInternalTags(task.title);
     if (task.description) {
         task.description = removeInternalTags(task.description);
+    }
+
+    // Find target position from drop coordinates
+    if (dropPosition) {
+        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+        if (dropResult && dropResult.columnId) {
+            // Find current column containing this task
+            let sourceColumn = null;
+            let sourceTaskIndex = -1;
+            for (const col of window.cachedBoard.columns) {
+                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                if (idx !== undefined && idx >= 0) {
+                    sourceColumn = col;
+                    sourceTaskIndex = idx;
+                    break;
+                }
+            }
+
+            const targetColumn = window.cachedBoard.columns.find(c => c.id === dropResult.columnId);
+
+            if (sourceColumn && targetColumn && sourceTaskIndex >= 0) {
+                // Remove from source column
+                const [movedTask] = sourceColumn.tasks.splice(sourceTaskIndex, 1);
+
+                // Insert at target position
+                let insertIndex = dropResult.insertionIndex;
+                if (insertIndex < 0 || insertIndex > targetColumn.tasks.length) {
+                    insertIndex = targetColumn.tasks.length;
+                }
+                targetColumn.tasks.splice(insertIndex, 0, movedTask);
+            }
+        }
     }
 
     notifyBoardUpdate();
 }
 
 /**
- * Restore a parked column - just remove the tag
+ * Restore a parked column to the board at the drop position
  */
 function restoreParkedColumn(parkedIndex, dropPosition) {
     const item = parkedItems[parkedIndex];
     if (!item || item.type !== 'column') return;
 
-    // Item is already in cachedBoard with tag - just remove the tag
     const column = item.data;
     if (!column) return;
 
@@ -4455,6 +4457,25 @@ function restoreParkedColumn(parkedIndex, dropPosition) {
         if (task.title) task.title = removeInternalTags(task.title);
         if (task.description) task.description = removeInternalTags(task.description);
     });
+
+    // Find target position from drop coordinates
+    if (dropPosition) {
+        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+        if (dropResult && dropResult.columnId) {
+            // Find current index of restored column
+            const currentIndex = window.cachedBoard.columns.findIndex(c => c.id === column.id);
+            // Find target column index
+            const targetIndex = window.cachedBoard.columns.findIndex(c => c.id === dropResult.columnId);
+
+            if (currentIndex >= 0 && targetIndex >= 0 && currentIndex !== targetIndex) {
+                // Remove from current position
+                const [movedColumn] = window.cachedBoard.columns.splice(currentIndex, 1);
+                // Insert at target position (adjusting for removal)
+                const insertIndex = targetIndex > currentIndex ? targetIndex : targetIndex;
+                window.cachedBoard.columns.splice(insertIndex, 0, movedColumn);
+            }
+        }
+    }
 
     notifyBoardUpdate();
 }
@@ -4577,13 +4598,11 @@ window.handleDeletedItemDrop = handleDeletedItemDrop;
 // Also attach event listeners programmatically (backup for inline handlers)
 function attachParkEventListeners() {
     const parkTarget = document.getElementById('clipboard-drop-target');
-    console.log('[Park Init] Attaching listeners', { found: !!parkTarget, alreadyAttached: parkTarget?._listenersAttached });
     if (parkTarget && !parkTarget._listenersAttached) {
         parkTarget.addEventListener('dragover', handleClipboardDropTargetDragOver);
         parkTarget.addEventListener('dragleave', handleClipboardDropTargetDragLeave);
         parkTarget.addEventListener('drop', handleClipboardDropTargetDrop);
         parkTarget._listenersAttached = true;
-        console.log('[Park Init] Listeners attached successfully');
     }
 }
 // Try to attach immediately if DOM is ready, otherwise wait
@@ -4642,13 +4661,11 @@ function initializeDeletedItems() {
  * Update the deleted items UI in the dropdown
  */
 function updateDeletedItemsUI() {
-    console.log('[Trash UI] updateDeletedItemsUI called, deletedItems:', deletedItems.length);
     const countElement = document.getElementById('trash-drop-count');
     const itemsContainer = document.getElementById('trash-drop-items');
     const emptyMessage = document.getElementById('trash-drop-empty');
     const dropdown = document.getElementById('trash-drop-dropdown');
 
-    console.log('[Trash UI] DOM elements:', { countElement: !!countElement, itemsContainer: !!itemsContainer, emptyMessage: !!emptyMessage, dropdown: !!dropdown });
     if (!countElement || !itemsContainer || !emptyMessage) return;
 
     // Update count badge
@@ -4695,14 +4712,11 @@ function updateDeletedItemsUI() {
             // Add click handlers using addEventListener (more reliable than inline onclick)
             const restoreBtn = itemElement.querySelector('.trash-drop-item-restore');
             const removeBtn = itemElement.querySelector('.trash-drop-item-remove');
-            console.log('[Trash UI] Adding click listeners for index', index, { restoreBtn: !!restoreBtn, removeBtn: !!removeBtn });
             restoreBtn.addEventListener('click', (e) => {
-                console.log('[Trash UI] Restore button clicked for index', index);
                 e.stopPropagation();
                 restoreDeletedItemByIndex(index);
             });
             removeBtn.addEventListener('click', (e) => {
-                console.log('[Trash UI] Remove button clicked for index', index);
                 e.stopPropagation();
                 permanentlyRemoveDeletedItem(index);
             });
@@ -4722,9 +4736,7 @@ function updateDeletedItemsUI() {
                 <button class="trash-empty-btn" title="Permanently delete all items">Empty Trash</button>
             `;
             const emptyBtn = footer.querySelector('.trash-empty-btn');
-            console.log('[Trash UI] Adding Empty Trash button listener', { emptyBtn: !!emptyBtn });
             emptyBtn.addEventListener('click', (e) => {
-                console.log('[Trash UI] Empty Trash button clicked');
                 e.stopPropagation();
                 emptyTrash();
             });
@@ -4743,18 +4755,6 @@ function handleTrashDropTargetDragOver(event) {
     // Allow dropping tasks, columns, and parked items
     const isValidDrop = dragState.draggedTask || dragState.draggedColumn ||
                         dragState.draggedClipboardCard || dragState.draggedParkedColumn;
-
-    // Log only once per drag session to avoid flooding console
-    if (!window._trashDragoverLogged) {
-        console.log('[Trash Dragover]', {
-            isValidDrop,
-            hasDraggedTask: !!dragState.draggedTask,
-            hasDraggedColumn: !!dragState.draggedColumn,
-            hasDraggedClipboardCard: !!dragState.draggedClipboardCard,
-            hasDraggedParkedColumn: !!dragState.draggedParkedColumn
-        });
-        window._trashDragoverLogged = true;
-    }
 
     if (isValidDrop) {
         event.dataTransfer.dropEffect = 'move';
@@ -4797,16 +4797,6 @@ function handleTrashDropTargetDrop(event) {
     const parkedColumnToUse = dragState.draggedParkedColumn || pendingTrashDrop?.draggedParkedColumn;
     const parkedIndexToUse = dragState.parkedItemIndex ?? pendingTrashDrop?.parkedItemIndex;
 
-    console.log('[Trash Drop]', {
-        hasDragStateTask: !!dragState.draggedTask,
-        hasPendingTask: !!pendingTrashDrop?.draggedTask,
-        hasDragStateColumn: !!dragState.draggedColumn,
-        hasPendingColumn: !!pendingTrashDrop?.draggedColumn,
-        taskToUse: taskToUse?.dataset?.taskId,
-        columnToUse: columnToUse?.dataset?.columnId,
-        parkedIndexToUse
-    });
-
     const target = document.getElementById('trash-drop-target');
     if (target) {
         target.classList.remove('drag-over');
@@ -4823,8 +4813,6 @@ function handleTrashDropTargetDrop(event) {
     } else if (parkedColumnToUse && parkedIndexToUse !== undefined) {
         // Parked column being moved to trash
         trashParkedItem(parkedIndexToUse);
-    } else {
-        console.warn('[Trash Drop] Nothing to trash - no valid item found');
     }
 
     // Clear pending drop state
@@ -4994,13 +4982,12 @@ function handleDeletedItemDragEnd(event) {
 }
 
 /**
- * Restore a deleted task to the board
+ * Restore a deleted task to the board at the drop position
  */
 function restoreDeletedTask(deletedIndex, dropPosition) {
     const item = deletedItems[deletedIndex];
     if (!item || item.type !== 'task') return;
 
-    // Item is already in cachedBoard with tag - just remove the tag
     const task = item.data;
     if (!task) return;
 
@@ -5011,10 +4998,42 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    // Remove the tag
+    // Remove the tag first
     task.title = removeInternalTags(task.title);
     if (task.description) {
         task.description = removeInternalTags(task.description);
+    }
+
+    // Find target position from drop coordinates
+    if (dropPosition) {
+        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+        if (dropResult && dropResult.columnId) {
+            // Find current column containing this task
+            let sourceColumn = null;
+            let sourceTaskIndex = -1;
+            for (const col of window.cachedBoard.columns) {
+                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                if (idx !== undefined && idx >= 0) {
+                    sourceColumn = col;
+                    sourceTaskIndex = idx;
+                    break;
+                }
+            }
+
+            const targetColumn = window.cachedBoard.columns.find(c => c.id === dropResult.columnId);
+
+            if (sourceColumn && targetColumn && sourceTaskIndex >= 0) {
+                // Remove from source column
+                const [movedTask] = sourceColumn.tasks.splice(sourceTaskIndex, 1);
+
+                // Insert at target position
+                let insertIndex = dropResult.insertionIndex;
+                if (insertIndex < 0 || insertIndex > targetColumn.tasks.length) {
+                    insertIndex = targetColumn.tasks.length;
+                }
+                targetColumn.tasks.splice(insertIndex, 0, movedTask);
+            }
+        }
     }
 
     notifyBoardUpdate();
@@ -5091,17 +5110,10 @@ function restoreDeletedItemByIndex(index) {
  * Permanently remove a deleted item
  */
 function permanentlyRemoveDeletedItem(index) {
-    console.log('[permanentlyRemoveDeletedItem] Called with index:', index, 'deletedItems.length:', deletedItems.length);
-    if (index < 0 || index >= deletedItems.length) {
-        console.warn('[permanentlyRemoveDeletedItem] Invalid index');
-        return;
-    }
+    if (index < 0 || index >= deletedItems.length) return;
 
     const item = deletedItems[index];
-    console.log('[permanentlyRemoveDeletedItem] Item to delete:', item);
     // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
-
-    console.log('[permanentlyRemoveDeletedItem] Proceeding with deletion');
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -5112,24 +5124,17 @@ function permanentlyRemoveDeletedItem(index) {
     });
 
     // Actually remove the item from cachedBoard
-    const columnsBefore = window.cachedBoard.columns.length;
-    const taskCountBefore = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
-
     if (item.type === 'column') {
         window.cachedBoard.columns = window.cachedBoard.columns.filter(c => c.id !== item.id);
-        console.log('[permanentlyRemoveDeletedItem] Removed column, columns:', columnsBefore, '->', window.cachedBoard.columns.length);
     } else if (item.type === 'task') {
         window.cachedBoard.columns.forEach(column => {
             if (column.tasks) {
                 column.tasks = column.tasks.filter(t => t.id !== item.id);
             }
         });
-        const taskCountAfter = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
-        console.log('[permanentlyRemoveDeletedItem] Removed task, tasks:', taskCountBefore, '->', taskCountAfter);
     }
 
     notifyBoardUpdate();
-    console.log('[permanentlyRemoveDeletedItem] Done');
 }
 
 /**
@@ -5164,14 +5169,9 @@ function handleDeletedItemDrop(e, dataString) {
  * Empty the trash - permanently remove all deleted items from cachedBoard
  */
 function emptyTrash() {
-    console.log('[emptyTrash] Called, deletedItems.length:', deletedItems.length);
     if (deletedItems.length === 0) {
-        console.warn('[emptyTrash] No items to delete');
         return;
     }
-    // Note: confirm() doesn't work in VS Code webviews (sandboxed), using undo instead
-
-    console.log('[emptyTrash] Proceeding with deletion');
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -5180,16 +5180,12 @@ function emptyTrash() {
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
-    const columnsBefore = window.cachedBoard.columns.length;
-    const taskCountBefore = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
-
-    // Actually remove all deleted items from cachedBoard
-    // First, remove deleted columns
+    // Remove deleted columns
     window.cachedBoard.columns = window.cachedBoard.columns.filter(c =>
         !c.title?.includes(DELETED_TAG)
     );
 
-    // Then remove deleted tasks from remaining columns
+    // Remove deleted tasks from remaining columns
     window.cachedBoard.columns.forEach(column => {
         if (column.tasks) {
             column.tasks = column.tasks.filter(t =>
@@ -5198,12 +5194,7 @@ function emptyTrash() {
         }
     });
 
-    const columnsAfter = window.cachedBoard.columns.length;
-    const taskCountAfter = window.cachedBoard.columns.reduce((sum, c) => sum + (c.tasks?.length || 0), 0);
-    console.log('[emptyTrash] Removed columns:', columnsBefore, '->', columnsAfter, 'tasks:', taskCountBefore, '->', taskCountAfter);
-
     notifyBoardUpdate();
-    console.log('[emptyTrash] Done');
 }
 
 // Trash window assignments are done early (after Park assignments) using hoisting
@@ -5212,13 +5203,11 @@ function emptyTrash() {
 // Also attach event listeners programmatically (backup for inline handlers)
 function attachTrashEventListeners() {
     const trashTarget = document.getElementById('trash-drop-target');
-    console.log('[Trash Init] Attaching listeners', { found: !!trashTarget, alreadyAttached: trashTarget?._listenersAttached });
     if (trashTarget && !trashTarget._listenersAttached) {
         trashTarget.addEventListener('dragover', handleTrashDropTargetDragOver);
         trashTarget.addEventListener('dragleave', handleTrashDropTargetDragLeave);
         trashTarget.addEventListener('drop', handleTrashDropTargetDrop);
         trashTarget._listenersAttached = true;
-        console.log('[Trash Init] Listeners attached successfully');
     }
 }
 // Try to attach immediately if DOM is ready, otherwise wait
