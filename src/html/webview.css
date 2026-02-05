@@ -702,15 +702,20 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 .clipboard-drop-target {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 2px 6px;
+  margin: 0;
   background: var(--button-background);
   color: var(--button-foreground);
-  border: 2px dashed var(--vscode-input-border, #444);
-  border-radius: 4px;
+  border: 1px dashed var(--vscode-input-border, #444);
+  border-radius: 3px;
   cursor: pointer;
+  height: 22px;
   min-height: 22px;
   font-size: 12px;
+  line-height: 1;
   transition: all 0.15s ease;
 }
 
@@ -885,15 +890,20 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 .trash-drop-target {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 2px 6px;
+  margin: 0;
   background: var(--button-background);
   color: var(--button-foreground);
-  border: 2px dashed var(--vscode-errorBorder, #f44);
-  border-radius: 4px;
+  border: 1px dashed var(--vscode-errorBorder, #f44);
+  border-radius: 3px;
   cursor: pointer;
+  height: 22px;
   min-height: 22px;
   font-size: 12px;
+  line-height: 1;
   transition: all 0.15s ease;
 }
 
@@ -1275,13 +1285,21 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 }
 
 .processes-action-btn {
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  margin: 0;
   font-size: 12px;
+  line-height: 1;
   background: var(--vscode-button-secondaryBackground);
   color: var(--vscode-button-secondaryForeground);
   border: 1px solid var(--vscode-button-border, transparent);
-  border-radius: 4px;
+  border-radius: 3px;
   cursor: pointer;
+  height: 22px;
+  min-height: 22px;
 }
 
 .processes-action-btn:hover {
@@ -7531,13 +7549,23 @@ figcaption {
 }
 
 .file-manager-btn, .file-manager-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    gap: 4px;
+    margin: 0;
     background: var(--button-background);
     color: var(--button-foreground);
     border: var(--button-border);
-    padding: 2px 4px 2px 4px;
-    border-radius: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
     cursor: pointer;
+    height: 22px;
+    min-height: 22px;
+    min-width: 22px;
     font-size: 12px;
+    line-height: 1;
 }
 
 .file-manager-btn:hover, .file-manager-close:hover {
@@ -7555,8 +7583,9 @@ figcaption {
 
 .file-manager-close {
     font-weight: bold;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    min-width: 22px;
+    padding: 2px;
 }
 
 .file-manager-content {
@@ -7971,20 +8000,23 @@ figcaption {
 }
 
 .action-btn {
-    background: var(--button-background);
-    border: var(--button-border);
-    color: var(--button-foreground);
-    /* padding: 4px 8px; */
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 0;
-    height: 24px;
-    width: 30px;
+    box-sizing: border-box;
+    background: var(--button-background);
+    border: var(--button-border);
+    color: var(--button-foreground);
+    padding: 2px 4px;
+    margin: 0;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    height: 22px;
+    min-height: 22px;
+    min-width: 22px;
     transition: opacity 0.15s ease;
 }
 

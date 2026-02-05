@@ -34,3 +34,7 @@ tests/kanban-presentation-tests/Media/Proteus-Nodeland_preview-[h2OqQ6-ESp4]-480
 *.zip
 *-EXPORT-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]/
 tests/marp-engine-test
+plantuml-cache/
+mermaid-cache/
+xlsx-cache/
+excalidraw-cache/

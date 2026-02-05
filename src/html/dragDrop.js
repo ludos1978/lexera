@@ -5040,13 +5040,12 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
 }
 
 /**
- * Restore a deleted column - just remove the tag
+ * Restore a deleted column to the board at the drop position
  */
 function restoreDeletedColumn(deletedIndex, dropPosition) {
     const item = deletedItems[deletedIndex];
     if (!item || item.type !== 'column') return;
 
-    // Item is already in cachedBoard with tag - just remove the tag
     const column = item.data;
     if (!column) return;
 
@@ -5063,6 +5062,25 @@ function restoreDeletedColumn(deletedIndex, dropPosition) {
         if (task.title) task.title = removeInternalTags(task.title);
         if (task.description) task.description = removeInternalTags(task.description);
     });
+
+    // Find target position from drop coordinates
+    if (dropPosition) {
+        const dropResult = findDropPositionHierarchical(dropPosition.x, dropPosition.y, null);
+        if (dropResult && dropResult.columnId) {
+            // Find current index of restored column
+            const currentIndex = window.cachedBoard.columns.findIndex(c => c.id === column.id);
+            // Find target column index
+            const targetIndex = window.cachedBoard.columns.findIndex(c => c.id === dropResult.columnId);
+
+            if (currentIndex >= 0 && targetIndex >= 0 && currentIndex !== targetIndex) {
+                // Remove from current position
+                const [movedColumn] = window.cachedBoard.columns.splice(currentIndex, 1);
+                // Insert at target position
+                const insertIndex = targetIndex > currentIndex ? targetIndex : targetIndex;
+                window.cachedBoard.columns.splice(insertIndex, 0, movedColumn);
+            }
+        }
+    }
 
     notifyBoardUpdate();
 }
