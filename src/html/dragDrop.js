@@ -1417,10 +1417,16 @@ function setupGlobalDragAndDrop() {
     /**
      * SHARED: Finalize column drop - normalize tags, recalc heights, update drop zones.
      * Called after any column position change (move or insert).
+     * @param {Object} options - Optional settings
+     * @param {boolean} options.skipStackTagNormalization - If true, skip normalizing stack tags (for restored columns)
      */
-    function finalizeColumnDrop() {
-        // Normalize stack tags based on DOM structure
-        normalizeAllStackTags();
+    function finalizeColumnDrop(options = {}) {
+        const { skipStackTagNormalization = false } = options;
+
+        // Normalize stack tags based on DOM structure (unless skipped for restored columns)
+        if (!skipStackTagNormalization) {
+            normalizeAllStackTags();
+        }
 
         // Mark as unsaved
         if (typeof markUnsavedChanges === 'function') {
@@ -4720,33 +4726,9 @@ function moveColumnToDropTarget(columnId, beforeColumnId, targetStackFirstColId,
         window.syncColumnDataToDOMOrder();
     }
 
-    // Finalize - but skip stack tag normalization if preserving state
-    if (preserveStackState) {
-        // Skip normalizeAllStackTags - just do the other finalization steps
-        if (typeof markUnsavedChanges === 'function') {
-            markUnsavedChanges();
-        }
-        if (typeof window.recalculateAllStackHeights === 'function') {
-            window.recalculateAllStackHeights();
-        }
-        if (typeof window.updateStackBottomDropZones === 'function') {
-            window.updateStackBottomDropZones();
-        }
-        // Recreate drop zone stacks
-        const boardElement = document.getElementById('kanban-board');
-        if (boardElement) {
-            const rows = boardElement.querySelectorAll('.kanban-row');
-            rows.forEach(row => {
-                if (typeof window.cleanupAndRecreateDropZones === 'function') {
-                    window.cleanupAndRecreateDropZones(row);
-                }
-            });
-            if (rows.length === 0 && typeof window.cleanupAndRecreateDropZones === 'function') {
-                window.cleanupAndRecreateDropZones(boardElement);
-            }
-        }
-    } else if (typeof window.finalizeColumnDrop === 'function') {
-        window.finalizeColumnDrop();
+    // Finalize (pass option to skip stack tag normalization for restored columns)
+    if (typeof window.finalizeColumnDrop === 'function') {
+        window.finalizeColumnDrop({ skipStackTagNormalization: preserveStackState });
     }
 
     // Notify about the change
