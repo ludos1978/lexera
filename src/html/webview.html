@@ -417,7 +417,7 @@
 
                 <button id="global-fold-btn" class="global-fold-btn fold-mixed" onmousedown="event.preventDefault();" onclick="toggleAllColumns()" title="Fold/unfold all columns">
                     <span id="global-fold-icon" class="global-fold-icon">▽</span>
-                    <span class="global-fold-text">Columns</span>
+                    <span class="global-fold-text">Fold</span>
                 </button>
                 <button id="sort-btn" class="sort-btn" onmousedown="event.preventDefault();" onclick="performSort()" title="Sort cards based on column tags">
                     <span class="sort-icon">⇅</span>
@@ -426,12 +426,14 @@
 
                 <button id="global-sticky-btn" class="global-sticky-btn" onmousedown="event.preventDefault();" onclick="toggleGlobalSticky(event)" title="Toggle sticky headers (Alt+Click: save to all columns)">
                     <span id="global-sticky-icon" class="global-sticky-icon">📌</span>
+                    <span class="global-sticky-text">Sticky</span>
                 </button>
 
                 <!-- Processes Dropdown Menu -->
                 <div class="processes-menu" id="processes-menu">
                     <button class="processes-menu-btn" onclick="toggleProcessesMenu(event, this)" title="Background Processes">
                         <span class="processes-icon">⚙</span>
+                        <span class="processes-text">Processes</span>
                         <span class="processes-indicator hidden" id="processes-indicator"></span>
                     </button>
                     <div class="processes-menu-dropdown">

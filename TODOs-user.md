@@ -1,3 +1,10 @@
+- [ ] fix the icons according to these changes:
+- in top row columns use the same triangle as in all other folding icons. 
+- for background processes use a gear wheel
+- for style presets use a typical font size icon.
+- for files use a floppy disc icon
+- the column icon must be aligned at the top with different length lines downwards.
+
 - [ ] suggest a way how to combine all kinds of tasks. i think of something such as
 #tag & !2025.10.13
 !2025.09.12 | !2025.09.15 

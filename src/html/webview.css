@@ -349,8 +349,13 @@ body {
 /* Text elements that can be hidden - base styles */
 .global-fold-text,
 .sort-text,
+.global-sticky-text,
+.processes-text,
 .refresh-text,
-.layout-presets-text {
+.layout-presets-text,
+.clipboard-drop-label,
+.trash-drop-label,
+.archive-drop-label {
   display: inline;
   overflow: hidden;
   white-space: nowrap;
@@ -360,8 +365,13 @@ body {
 @container file-info-bar (max-width: 1000px) {
   .global-fold-text,
   .sort-text,
+  .global-sticky-text,
+  .processes-text,
   .refresh-text,
-  .layout-presets-text {
+  .layout-presets-text,
+  .clipboard-drop-label,
+  .trash-drop-label,
+  .archive-drop-label {
     display: none !important;
   }
 
@@ -435,8 +445,13 @@ body {
   @media (max-width: 1000px) {
     .global-fold-text,
     .sort-text,
+    .global-sticky-text,
+    .processes-text,
     .refresh-text,
-    .layout-presets-text {
+    .layout-presets-text,
+    .clipboard-drop-label,
+    .trash-drop-label,
+    .archive-drop-label {
       display: none !important;
     }
 
@@ -555,6 +570,222 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   font-size: 14px;
   line-height: 1;
 }
+
+/* ============================================================================
+   CSS ICONS - Replace emojis with geometric CSS shapes
+   All icons: 12x12px, inline-flex centered, no overflow
+   ============================================================================ */
+
+/* Base icon style for drag menu icons */
+.cards-menu .drag-menu-icon,
+.columns-menu .drag-menu-icon,
+.clipboard-drop-menu .clipboard-drop-icon,
+.trash-drop-menu .trash-drop-icon,
+.archive-drop-menu .archive-drop-icon {
+  font-size: 0;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  position: relative;
+}
+
+/* Card icon - rectangle with lines */
+.cards-menu .drag-menu-icon::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  box-sizing: border-box;
+}
+
+/* Column icon - 3 bars aligned at top, different heights going down */
+.columns-menu .drag-menu-icon::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Crect x='1' y='0' width='2' height='12'/%3E%3Crect x='5' y='0' width='2' height='7'/%3E%3Crect x='9' y='0' width='2' height='9'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Crect x='1' y='0' width='2' height='12'/%3E%3Crect x='5' y='0' width='2' height='7'/%3E%3Crect x='9' y='0' width='2' height='9'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Park icon - folder with documents (outline) */
+.clipboard-drop-menu .clipboard-drop-icon::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3H13.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2zm1.46.13V13a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H9.828a3 3 0 0 1-2.12-.879l-.83-.828A1 1 0 0 0 6.173 2H2.5a1 1 0 0 0-1 1z'/%3E%3Crect x='4' y='6' width='8' height='1' rx='.5'/%3E%3Crect x='4' y='8.5' width='6' height='1' rx='.5'/%3E%3Crect x='4' y='11' width='7' height='1' rx='.5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3H13.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2zm1.46.13V13a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H9.828a3 3 0 0 1-2.12-.879l-.83-.828A1 1 0 0 0 6.173 2H2.5a1 1 0 0 0-1 1z'/%3E%3Crect x='4' y='6' width='8' height='1' rx='.5'/%3E%3Crect x='4' y='8.5' width='6' height='1' rx='.5'/%3E%3Crect x='4' y='11' width='7' height='1' rx='.5'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Trash icon - litter bin */
+.trash-drop-menu .trash-drop-icon::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z'/%3E%3Cpath d='M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z'/%3E%3Cpath d='M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Archive icon - archive box (outline) */
+.archive-drop-menu .archive-drop-icon::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5zm13-3H1v2h14z'/%3E%3Cpath d='M5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5zm13-3H1v2h14z'/%3E%3Cpath d='M5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Right section icons - same base */
+.global-fold-icon,
+.sort-icon,
+.global-sticky-icon,
+.processes-icon,
+.refresh-icon,
+.layout-presets-icon {
+  font-size: 0 !important;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  position: relative;
+}
+
+/* Pin icon in column headers - smaller to match other column header icons */
+.pin-icon {
+  font-size: 0 !important;
+  width: 10px;
+  height: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  position: relative;
+  color: inherit;
+}
+
+/* Columns fold - chevron */
+.global-fold-icon {
+  transform-origin: center;
+  transition: transform 0.2s;
+}
+.global-fold-icon::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+}
+.global-fold-btn.fold-all .global-fold-icon::before {
+  border-top: none;
+  border-bottom: 5px solid currentColor;
+}
+
+/* Sort - arrows */
+.sort-icon {
+  flex-direction: column;
+  gap: 2px;
+}
+.sort-icon::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-bottom: 4px solid currentColor;
+}
+.sort-icon::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid currentColor;
+}
+
+/* Pushpin icon - unified for all sticky buttons */
+.global-sticky-icon::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Pin icon in column headers - smaller */
+.pin-icon::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Gear wheel icon using SVG */
+.processes-icon::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 1h2v2.05a5 5 0 0 1 1.95.8l1.45-1.45 1.4 1.4-1.45 1.45a5 5 0 0 1 .8 1.95H15v2h-2.05a5 5 0 0 1-.8 1.95l1.45 1.45-1.4 1.4-1.45-1.45a5 5 0 0 1-1.95.8V15H7v-2.05a5 5 0 0 1-1.95-.8l-1.45 1.45-1.4-1.4 1.45-1.45a5 5 0 0 1-.8-1.95H1V7h2.05a5 5 0 0 1 .8-1.95L2.4 3.6l1.4-1.4 1.45 1.45a5 5 0 0 1 1.95-.8V1zM8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7 1h2v2.05a5 5 0 0 1 1.95.8l1.45-1.45 1.4 1.4-1.45 1.45a5 5 0 0 1 .8 1.95H15v2h-2.05a5 5 0 0 1-.8 1.95l1.45 1.45-1.4 1.4-1.45-1.45a5 5 0 0 1-1.95.8V15H7v-2.05a5 5 0 0 1-1.95-.8l-1.45 1.45-1.4-1.4 1.45-1.45a5 5 0 0 1-.8-1.95H1V7h2.05a5 5 0 0 1 .8-1.95L2.4 3.6l1.4-1.4 1.45 1.45a5 5 0 0 1 1.95-.8V1zM8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Floppy disc icon for files */
+.refresh-icon::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  box-sizing: border-box;
+}
+.refresh-icon::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  width: 6px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 0 0 1px 1px;
+}
+
+/* Font size icon - "A" letter */
+.layout-presets-icon::before {
+  content: "A";
+  font-size: 11px;
+  font-weight: bold;
+  font-family: sans-serif;
+  line-height: 1;
+}
+
+/* ============================================================================ */
 
 .drag-menu-label {
   font-size: 12px;
@@ -713,7 +944,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   margin: 0;
   background: var(--button-background);
   color: var(--button-foreground);
-  border: 1px dashed var(--vscode-input-border, #444);
+  /* border: 1px dashed var(--vscode-input-border, #444); */
   border-radius: 3px;
   cursor: pointer;
   height: 22px;
@@ -735,9 +966,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   transform: scale(1.05);
 }
 
-.clipboard-drop-icon {
-  font-size: 14px;
-}
+/* .clipboard-drop-icon font-size moved to CSS icons section */
 
 .clipboard-drop-label {
   font-size: 12px;
@@ -901,7 +1130,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   margin: 0;
   background: var(--button-background);
   color: var(--button-foreground);
-  border: 1px dashed var(--vscode-errorBorder, #f44);
+  /* border: 1px dashed var(--vscode-errorBorder, #f44); */
   border-radius: 3px;
   cursor: pointer;
   height: 22px;
@@ -923,9 +1152,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   transform: scale(1.05);
 }
 
-.trash-drop-icon {
-  font-size: 14px;
-}
+/* .trash-drop-icon font-size moved to CSS icons section */
 
 .trash-drop-label {
   font-size: 12px;
@@ -3444,18 +3671,14 @@ body.vscode-high-contrast-light .task-count {
   margin-left: 8px;
 }
 
-.fold-icon,
-.global-fold-icon {
+.fold-icon {
   display: block;
   line-height: 1;
   transform-origin: center;
   transition: transform 0.2s;
 }
 
-.global-fold-icon {
-  font-size: 10px;
-  padding: 2px;
-}
+/* .global-fold-icon styles moved to CSS icons section */
 
 .fold-all-btn.fold-collapsed .fold-icon,
 .global-fold-btn.fold-collapsed .global-fold-icon {
