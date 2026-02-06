@@ -355,7 +355,9 @@ body {
 .layout-presets-text,
 .clipboard-drop-label,
 .trash-drop-label,
-.archive-drop-label {
+.archive-drop-label,
+.marp-menu-text,
+.file-bar-menu-text {
   display: inline;
   overflow: hidden;
   white-space: nowrap;
@@ -371,7 +373,9 @@ body {
   .layout-presets-text,
   .clipboard-drop-label,
   .trash-drop-label,
-  .archive-drop-label {
+  .archive-drop-label,
+  .marp-menu-text,
+  .file-bar-menu-text {
     display: none !important;
   }
 
@@ -451,7 +455,9 @@ body {
     .layout-presets-text,
     .clipboard-drop-label,
     .trash-drop-label,
-    .archive-drop-label {
+    .archive-drop-label,
+    .marp-menu-text,
+    .file-bar-menu-text {
       display: none !important;
     }
 
@@ -544,6 +550,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   display: inline-block;
 }
 
+/* Base styles now in unified header buttons section - these are fallback defaults */
 .drag-menu-trigger {
   display: flex;
   align-items: center;
@@ -551,8 +558,8 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   padding: 2px 6px;
   height: 22px;
   min-height: 22px;
-  background: var(--button-alternative-background);
-  color: var(--button-alternative-foreground);
+  background: var(--button-background);
+  color: var(--button-foreground);
   border: var(--button-border);
   border-radius: 3px;
   cursor: pointer;
@@ -562,8 +569,8 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 }
 
 .drag-menu-trigger:hover {
-  background: var(--button-alternative-background-hover);
-  color: var(--button-alternative-foreground-hover);
+  background: var(--button-background-hover);
+  color: var(--button-foreground-hover);
 }
 
 .drag-menu-icon {
@@ -667,16 +674,16 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   position: relative;
 }
 
-/* Pin icon in column headers - match collapse-toggle size and color */
+/* Pin icon in column headers - same as global-sticky-icon */
 .pin-icon {
   font-size: 0 !important;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  vertical-align: middle;
   position: relative;
+  color: var(--button-foreground);
 }
 
 /* Columns fold - chevron */
@@ -731,11 +738,11 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   mask-size: contain;
 }
 
-/* Pin icon in column headers - match collapse-toggle */
+/* Pin icon in column headers - same SVG as global-sticky-icon, smaller size */
 .pin-icon::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   background: var(--button-foreground);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
@@ -873,10 +880,13 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   display: none;
 }
 
-/* Consistent styling for all file-info header buttons */
+/* Consistent styling for all file-info header buttons and menu triggers */
 .file-info-left .marp-global-menu-btn,
 .file-info-center .drag-menu-trigger,
 .file-info-center .template-source,
+.file-info-center .clipboard-drop-target,
+.file-info-center .trash-drop-target,
+.file-info-center .archive-drop-target,
 .file-info-left .global-fold-btn,
 .file-info-left .sort-btn,
 .file-info-right .global-fold-btn,
@@ -894,7 +904,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  padding: 2px 4px;
+  padding: 2px 6px;
   margin: 0;
   height: 22px;
   min-height: 22px;
@@ -905,11 +915,17 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   font-size: 12px;
   line-height: 1;
   border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
 }
 
 .file-info-left .marp-global-menu-btn:hover,
 .file-info-center .drag-menu-trigger:hover,
 .file-info-center .template-source:hover,
+.file-info-center .clipboard-drop-target:hover,
+.file-info-center .trash-drop-target:hover,
+.file-info-center .archive-drop-target:hover,
 .file-info-left .global-fold-btn:hover,
 .file-info-left .sort-btn:hover,
 .file-info-right .global-fold-btn:hover,
@@ -933,28 +949,9 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   align-items: center;
 }
 
-.clipboard-drop-target {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  gap: 4px;
-  padding: 2px 6px;
-  margin: 0;
-  background: var(--button-background);
-  color: var(--button-foreground);
-  /* border: 1px dashed var(--vscode-input-border, #444); */
-  border-radius: 3px;
-  cursor: pointer;
-  height: 22px;
-  min-height: 22px;
-  font-size: 12px;
-  line-height: 1;
-  transition: all 0.15s ease;
-}
+/* Base styles now in unified header buttons section above */
 
 .clipboard-drop-target:hover {
-  background: var(--button-background-hover);
   border-color: var(--vscode-focusBorder);
 }
 
@@ -1119,28 +1116,9 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   align-items: center;
 }
 
-.trash-drop-target {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  gap: 4px;
-  padding: 2px 6px;
-  margin: 0;
-  background: var(--button-background);
-  color: var(--button-foreground);
-  /* border: 1px dashed var(--vscode-errorBorder, #f44); */
-  border-radius: 3px;
-  cursor: pointer;
-  height: 22px;
-  min-height: 22px;
-  font-size: 12px;
-  line-height: 1;
-  transition: all 0.15s ease;
-}
+/* Base styles now in unified header buttons section above */
 
 .trash-drop-target:hover {
-  background: var(--button-background-hover);
   border-color: var(--vscode-errorForeground, #f66);
 }
 
@@ -1326,28 +1304,9 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   align-items: center;
 }
 
-.archive-drop-target {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  gap: 4px;
-  padding: 2px 6px;
-  margin: 0;
-  background: var(--button-background);
-  color: var(--button-foreground);
-  border: 1px dashed var(--vscode-textLink-foreground, #3794ff);
-  border-radius: 3px;
-  cursor: pointer;
-  height: 22px;
-  min-height: 22px;
-  font-size: 12px;
-  line-height: 1;
-  transition: all 0.15s ease;
-}
+/* Base styles now in unified header buttons section above */
 
 .archive-drop-target:hover {
-  background: var(--button-background-hover);
   border-color: var(--vscode-textLink-activeForeground, #58a6ff);
 }
 
@@ -3612,8 +3571,10 @@ body.vscode-high-contrast-light .task-count {
   transition: all 0.2s;
   user-select: none;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
   border-radius: 3px;
   display: flex;
   align-items: center;
@@ -3625,7 +3586,7 @@ body.vscode-high-contrast-light .task-count {
   background: var(--button-secondary-background-hover);
 }
 
-.pin-btn.unpinned {
+.pin-btn.unpinned .pin-icon {
   opacity: 0.5;
 }
 
