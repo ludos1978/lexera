@@ -73,10 +73,24 @@ export class ArchiveCommands extends SwitchBasedCommand {
                 // File doesn't exist yet, that's fine
             }
 
-            // Prepend new content (newest at top)
-            const finalContent = existingContent
-                ? archiveContent + '\n\n' + existingContent
-                : this.getArchiveHeader() + archiveContent;
+            // Append new content after YAML header
+            let finalContent: string;
+            if (existingContent) {
+                // Find end of YAML frontmatter (if present)
+                const yamlMatch = existingContent.match(/^---\n[\s\S]*?\n---\n?/);
+                if (yamlMatch) {
+                    const yamlHeader = yamlMatch[0];
+                    const restOfContent = existingContent.slice(yamlHeader.length);
+                    // Append new content at the end
+                    finalContent = yamlHeader + restOfContent.trimEnd() + '\n\n' + archiveContent;
+                } else {
+                    // No YAML header, just append
+                    finalContent = existingContent.trimEnd() + '\n\n' + archiveContent;
+                }
+            } else {
+                // New file - add header and content
+                finalContent = this.getArchiveHeader() + archiveContent;
+            }
 
             // Write the archive file
             await fs.promises.writeFile(archivePath, finalContent, 'utf8');
