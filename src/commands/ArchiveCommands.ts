@@ -13,7 +13,7 @@ import { getErrorMessage } from '../utils/stringUtils';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ExportArchivedItemsMessage } from '../core/bridge/MessageTypes';
+import { ExportArchivedItemsMessage, OpenArchiveFileMessage } from '../core/bridge/MessageTypes';
 
 /**
  * Archive Commands Handler
@@ -26,13 +26,15 @@ export class ArchiveCommands extends SwitchBasedCommand {
         name: 'Archive Commands',
         description: 'Handles archive export operations',
         messageTypes: [
-            'exportArchivedItems'
+            'exportArchivedItems',
+            'openArchiveFile'
         ],
         priority: 100
     };
 
     protected handlers: Record<string, MessageHandler> = {
-        'exportArchivedItems': (msg, ctx) => this.handleExportArchivedItems(msg as ExportArchivedItemsMessage, ctx)
+        'exportArchivedItems': (msg, ctx) => this.handleExportArchivedItems(msg as ExportArchivedItemsMessage, ctx),
+        'openArchiveFile': (_msg, ctx) => this.handleOpenArchiveFile(ctx)
     };
 
     /**
@@ -113,6 +115,51 @@ export class ArchiveCommands extends SwitchBasedCommand {
     }
 
     /**
+     * Handle openArchiveFile command - opens the archive file in VS Code editor
+     */
+    private async handleOpenArchiveFile(context: CommandContext): Promise<CommandResult> {
+        try {
+            // Get the main file path
+            const fileRegistry = context.getFileRegistry();
+            if (!fileRegistry) {
+                return this.failure('File registry not available');
+            }
+
+            const mainFile = fileRegistry.getMainFile();
+            if (!mainFile) {
+                return this.failure('Main file not found');
+            }
+
+            const mainFilePath = mainFile.getPath();
+            const archivePath = getArchivePath(mainFilePath);
+
+            // Check if archive file exists
+            try {
+                await fs.promises.access(archivePath, fs.constants.F_OK);
+            } catch {
+                // File doesn't exist, show message
+                vscode.window.showInformationMessage(
+                    'Archive file does not exist yet. Export some items first.'
+                );
+                return this.success({ exists: false });
+            }
+
+            // Open the file in VS Code
+            const document = await vscode.workspace.openTextDocument(archivePath);
+            await vscode.window.showTextDocument(document, {
+                preserveFocus: false,
+                preview: false
+            });
+
+            return this.success({ archivePath });
+        } catch (error) {
+            const errorMessage = getErrorMessage(error);
+            console.error('[ArchiveCommands] Error opening archive file:', error);
+            return this.failure(errorMessage);
+        }
+    }
+
+    /**
      * Generate the archive file header (only used for new files)
      */
     private getArchiveHeader(): string {
@@ -124,10 +171,27 @@ archived: true
     }
 
     /**
+     * Generate archive tag with formatted date/time
+     * Format: #archived !YYYY.MM.DD !HH:MM:SS
+     */
+    private generateArchiveTag(): string {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+
+        return `#archived !${year}.${month}.${day} !${hours}:${minutes}:${seconds}`;
+    }
+
+    /**
      * Generate markdown content for archived items
      */
-    private generateArchiveContent(items: ExportArchivedItemsMessage['items'], timestamp: string): string {
+    private generateArchiveContent(items: ExportArchivedItemsMessage['items'], _timestamp: string): string {
         const lines: string[] = [];
+        const archiveTag = this.generateArchiveTag();
 
         // Group items by type
         const tasks = items.filter(item => item.type === 'task');
@@ -137,13 +201,13 @@ archived: true
         for (const column of columns) {
             const columnData = column.data as { title?: string; tasks?: Array<{ title?: string; description?: string; completed?: boolean }> };
             const cleanTitle = this.removeInternalTags(columnData.title || 'Untitled Column');
-            lines.push(`## Archived Column: ${cleanTitle} ${timestamp}`);
+            lines.push(`## Archived Column: ${cleanTitle} ${archiveTag}`);
             lines.push('');
 
             // Add tasks from the column
             if (columnData.tasks && columnData.tasks.length > 0) {
                 for (const task of columnData.tasks) {
-                    lines.push(this.formatTaskForExport(task));
+                    lines.push(this.formatTaskForExport(task, archiveTag));
                 }
             }
             lines.push('');
@@ -151,12 +215,12 @@ archived: true
 
         // Generate section for individual tasks (if any)
         if (tasks.length > 0) {
-            lines.push(`## Archived ${timestamp}`);
+            lines.push(`## Archived Tasks`);
             lines.push('');
 
             for (const taskItem of tasks) {
                 const taskData = taskItem.data as { title?: string; description?: string; completed?: boolean };
-                lines.push(this.formatTaskForExport(taskData));
+                lines.push(this.formatTaskForExport(taskData, archiveTag));
             }
             lines.push('');
         }
@@ -166,13 +230,14 @@ archived: true
 
     /**
      * Format a single task for export
+     * Format: - [ ] Task title #archived !YYYY.MM.DD !HH:MM:SS
      */
-    private formatTaskForExport(task: { title?: string; description?: string; completed?: boolean }): string {
+    private formatTaskForExport(task: { title?: string; description?: string; completed?: boolean }, archiveTag: string): string {
         const checkbox = task.completed ? '- [x]' : '- [ ]';
         const cleanTitle = this.removeInternalTags(task.title || '');
         const cleanDescription = this.removeInternalTags(task.description || '');
 
-        let result = `${checkbox} ${cleanTitle}`;
+        let result = `${checkbox} ${cleanTitle} ${archiveTag}`;
 
         // Add description as indented content if present
         if (cleanDescription) {

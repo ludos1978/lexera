@@ -1614,6 +1614,28 @@ function deleteColumn(columnId) {
     }
 }
 
+function parkColumnFromMenu(columnId) {
+    // Close all menus properly
+    closeAllMenus();
+
+    // Use the park system - column is tagged and hidden
+    const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
+    if (columnElement && typeof window.parkColumn === 'function') {
+        window.parkColumn(columnElement);
+    }
+}
+
+function archiveColumnFromMenu(columnId) {
+    // Close all menus properly
+    closeAllMenus();
+
+    // Use the archive system - column is tagged and hidden
+    const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
+    if (columnElement && typeof window.archiveColumn === 'function') {
+        window.archiveColumn(columnElement);
+    }
+}
+
 function sortColumn(columnId, sortType) {
     closeAllMenus();
     vscode.postMessage({ type: 'sortColumn', columnId, sortType });
@@ -1884,6 +1906,28 @@ function deleteTask(taskId, columnId) {
     const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
     if (taskElement && typeof window.trashTask === 'function') {
         window.trashTask(taskElement);
+    }
+}
+
+function parkTaskFromMenu(taskId, columnId) {
+    // Close all menus properly
+    closeAllMenus();
+
+    // Use the park system - task is tagged and hidden
+    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (taskElement && typeof window.parkTask === 'function') {
+        window.parkTask(taskElement);
+    }
+}
+
+function archiveTaskFromMenu(taskId, columnId) {
+    // Close all menus properly
+    closeAllMenus();
+
+    // Use the archive system - task is tagged and hidden
+    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (taskElement && typeof window.archiveTask === 'function') {
+        window.archiveTask(taskElement);
     }
 }
 
@@ -3285,6 +3329,10 @@ window.moveTaskUp = moveTaskUp;
 window.moveTaskDown = moveTaskDown;
 window.moveTaskToBottom = moveTaskToBottom;
 window.deleteTask = deleteTask;
+window.parkTaskFromMenu = parkTaskFromMenu;
+window.archiveTaskFromMenu = archiveTaskFromMenu;
+window.parkColumnFromMenu = parkColumnFromMenu;
+window.archiveColumnFromMenu = archiveColumnFromMenu;
 
 // Update visual tag state - handles borders and other tag-based styling
 function updateVisualTagState(element, allTags, elementType, isCollapsed) {

@@ -1763,10 +1763,15 @@ function createColumnElement(column, columnIndex) {
 												<button class="donut-menu-item" onclick="insertColumnBefore('${column.id}')">Insert column before</button>
 												<button class="donut-menu-item" onclick="insertColumnAfter('${column.id}')">Insert column after</button>
 												<button class="donut-menu-item" onclick="duplicateColumn('${column.id}')">Duplicate column</button>
+												<div class="donut-menu-divider"></div>
+												<button class="donut-menu-item" onclick="parkColumnFromMenu('${column.id}')">Park column</button>
+												<button class="donut-menu-item" onclick="archiveColumnFromMenu('${column.id}')">Archive column</button>
 												<button class="donut-menu-item danger" onclick="deleteColumn('${column.id}')">Delete column</button>
+												<!-- Move options commented out - use drag & drop instead
 												<div class="donut-menu-divider"></div>
 												<button class="donut-menu-item" onclick="moveColumnLeft('${column.id}')">Move column left</button>
 												<button class="donut-menu-item" onclick="moveColumnRight('${column.id}')">Move column right</button>
+												-->
 												<div class="donut-menu-divider"></div>
 												${generateTagMenuItems(column.id, 'column', null)}
 												<div class="donut-menu-divider"></div>
@@ -2049,7 +2054,11 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                             <button class="donut-menu-item" onclick="insertTaskBefore('${task.id}', '${columnId}')">Insert card before</button>
                             <button class="donut-menu-item" onclick="insertTaskAfter('${task.id}', '${columnId}')">Insert card after</button>
                             <button class="donut-menu-item" onclick="duplicateTask('${task.id}', '${columnId}')">Duplicate card</button>
+                            <div class="donut-menu-divider"></div>
+                            <button class="donut-menu-item" onclick="parkTaskFromMenu('${task.id}', '${columnId}')">Park card</button>
+                            <button class="donut-menu-item" onclick="archiveTaskFromMenu('${task.id}', '${columnId}')">Archive card</button>
                             <button class="donut-menu-item danger" onclick="deleteTask('${task.id}', '${columnId}')">Delete card</button>
+                            <!-- Move options commented out - use drag & drop instead
                             <div class="donut-menu-divider"></div>
                             <div class="donut-menu-item has-submenu" data-submenu-type="move" data-id="${task.id}" data-type="task" data-column-id="${columnId}">
                                 Move
@@ -2057,6 +2066,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                             <div class="donut-menu-item has-submenu" data-submenu-type="move-to-list" data-id="${task.id}" data-type="task" data-column-id="${columnId}">
                                 Move to list
                             </div>
+                            -->
                             <div class="donut-menu-divider"></div>
                             ${generateTagMenuItems(task.id, 'task', columnId)}
                             <div class="donut-menu-divider"></div>

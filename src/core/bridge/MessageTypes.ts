@@ -1561,6 +1561,13 @@ export interface ExportArchivedItemsMessage extends BaseMessage {
 }
 
 /**
+ * Open the archive file in VS Code editor
+ */
+export interface OpenArchiveFileMessage extends BaseMessage {
+    type: 'openArchiveFile';
+}
+
+/**
  * Edit mode start notification
  */
 export interface EditModeStartMessage extends BaseMessage {
@@ -2349,6 +2356,7 @@ export type IncomingMessage =
     | SetDebugModeMessage
     // Archive messages
     | ExportArchivedItemsMessage
+    | OpenArchiveFileMessage
     // Path conversion messages
     | ConvertPathsMessage
     | ConvertAllPathsMessage

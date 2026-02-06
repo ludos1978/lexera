@@ -1,4 +1,10 @@
-- [ ] can we have a 10px wide image for H1, H2 is 10px wide with 2 vertical lines, H3 is 3 lines in 10px, H4 4 lines, h5 is 5 lines (1px white, 1px black, etc. )
+- [ ] suggest a way how to combine all kinds of tasks. i think of something such as
+#tag & !2025.10.13
+!2025.09.12 | !2025.09.15 
+!2025.09.12 - 2025.10.1
+
+
+- [ ] can we have a 10px wide line in front of H1, H2 is 10px wide with 2 vertical lines, H3 is 3 lines in 10px, H4 4 lines, h5 is 5 lines (1px white, 1px black, etc. )
 
 - [ ] if i poste a [[#1]] from the clipboard it inteprets it as a file link and adds a path to it. which breaks it by adding a relative path.
 

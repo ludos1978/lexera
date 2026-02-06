@@ -293,6 +293,14 @@ body {
   flex-shrink: 1;
 }
 
+.file-bar-spacer {
+  width: 1px;
+  height: 16px;
+  background: var(--vscode-panel-border, #444);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
 .file-info-center {
   display: flex;
   align-items: center;
@@ -1219,6 +1227,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   align-items: center;
 }
 
+.archive-open-file-btn,
 .archive-export-all-btn {
   background: transparent;
   border: none;
@@ -1229,6 +1238,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   transition: background 0.15s ease;
 }
 
+.archive-open-file-btn:hover,
 .archive-export-all-btn:hover {
   background: var(--vscode-list-hoverBackground);
 }

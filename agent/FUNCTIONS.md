@@ -70,6 +70,16 @@ Added Archive functionality similar to Park/Trash that allows users to archive t
 ### Modified: `src/html/webview.js`
 - Added `archivedItemsExported` message handler to call `handleArchivedItemsExported()`
 
+### Modified: `src/html/menuOperations.js`
+- `parkTaskFromMenu(taskId, columnId)` — Menu handler to park a task (finds element and calls parkTask)
+- `archiveTaskFromMenu(taskId, columnId)` — Menu handler to archive a task (finds element and calls archiveTask)
+- `parkColumnFromMenu(columnId)` — Menu handler to park a column (finds element and calls parkColumn)
+- `archiveColumnFromMenu(columnId)` — Menu handler to archive a column (finds element and calls archiveColumn)
+
+### Modified: `src/html/boardRenderer.js`
+- Task burger menu now includes "Park card" and "Archive card" options before "Delete card"
+- Column burger menu now includes "Park column" and "Archive column" options before "Delete column"
+
 ### Modified: `src/messageHandler.ts`
 - Registered `ArchiveCommands` in command registry
 

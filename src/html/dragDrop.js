@@ -6336,6 +6336,15 @@ function getArchivedItems() {
     return archivedItems;
 }
 
+/**
+ * Open the archive file in VS Code editor
+ */
+function openArchiveFile() {
+    vscode.postMessage({
+        type: 'openArchiveFile'
+    });
+}
+
 // Make archive functions globally available
 window.handleArchiveDropTargetDragOver = handleArchiveDropTargetDragOver;
 window.handleArchiveDropTargetDragLeave = handleArchiveDropTargetDragLeave;
@@ -6352,6 +6361,7 @@ window.exportAllArchivedItems = exportAllArchivedItems;
 window.handleArchivedItemsExported = handleArchivedItemsExported;
 window.handleArchivedItemDrop = handleArchivedItemDrop;
 window.getArchivedItems = getArchivedItems;
+window.openArchiveFile = openArchiveFile;
 
 // Attach event listeners programmatically
 function attachArchiveEventListeners() {
@@ -6371,6 +6381,16 @@ function attachArchiveEventListeners() {
             exportAllArchivedItems();
         });
         exportAllBtn._listenersAttached = true;
+    }
+
+    // Attach open archive file button handler
+    const openFileBtn = document.getElementById('archive-open-file-btn');
+    if (openFileBtn && !openFileBtn._listenersAttached) {
+        openFileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openArchiveFile();
+        });
+        openFileBtn._listenersAttached = true;
     }
 }
 // Try to attach immediately if DOM is ready, otherwise wait
