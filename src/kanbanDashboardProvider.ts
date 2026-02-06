@@ -490,22 +490,42 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     <link href="${codiconsUri}" rel="stylesheet" />
     <title>Kanban Dashboard</title>
     <style>
+        /* ===========================================
+           CSS Custom Properties
+           =========================================== */
+        :root {
+            --dashboard-font-size: 13px;
+            --dashboard-font-size-small: 0.9em;
+            --dashboard-line-height: 1.3;
+            --dashboard-row-height: 22px;
+            --dashboard-row-height-2line: 36px;
+            --dashboard-indent-width: 8px;
+            --dashboard-twistie-width: 8px;
+            --dashboard-twistie-width-collapsible: 16px;
+        }
+
+        /* ===========================================
+           Base Styles
+           =========================================== */
         body {
             padding: 0;
             font-family: var(--vscode-font-family);
-            font-size: 13px;
+            font-size: var(--dashboard-font-size);
             color: var(--vscode-foreground);
         }
         .dashboard-container {
             display: flex;
             flex-direction: column;
         }
-        /* Tree row base styles - matches VS Code monaco-tl-row */
+
+        /* ===========================================
+           Tree Structure
+           =========================================== */
         .tree-row {
             display: flex;
             align-items: center;
-            min-height: 22px;
-            line-height: 22px;
+            min-height: var(--dashboard-row-height);
+            line-height: var(--dashboard-line-height);
             cursor: pointer;
             box-sizing: border-box;
             overflow: hidden;
@@ -515,24 +535,35 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         .tree-row:hover {
             background: var(--vscode-list-hoverBackground);
         }
-        /* Indent guides - matches VS Code monaco-tl-indent */
+        .tree-row:has(.tree-label-2line) {
+            min-height: var(--dashboard-row-height-2line);
+        }
+        .tree-row:has(.tree-label-2line) .tree-contents {
+            padding: 2px 0;
+        }
+
+        /* Indent guides */
         .tree-indent {
             display: flex;
             flex-shrink: 0;
             align-self: stretch;
         }
         .indent-guide {
-            width: 8px;
+            width: var(--dashboard-indent-width);
             box-sizing: border-box;
             border-right: 1px solid var(--vscode-tree-indentGuidesStroke, rgba(128, 128, 128, 0.4));
         }
-        /* Twistie - matches VS Code monaco-tl-twistie */
+
+        /* Twistie (expand/collapse icon) */
         .tree-twistie {
-            width: 16px;
+            width: var(--dashboard-twistie-width);
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+        }
+        .tree-twistie.collapsible {
+            width: var(--dashboard-twistie-width-collapsible);
         }
         .tree-twistie.collapsible::before {
             font-family: codicon;
@@ -545,16 +576,20 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         .tree-twistie.collapsible.expanded::before {
             transform: rotate(90deg);
         }
-        /* Contents - matches VS Code monaco-tl-contents */
+
+        /* Tree contents */
         .tree-contents {
             flex: 1;
             overflow: hidden;
-            min-height: 22px;
+            min-height: var(--dashboard-row-height);
             display: flex;
             flex-direction: column;
             justify-content: center;
         }
-        /* Label - matches VS Code monaco-icon-label */
+
+        /* ===========================================
+           Labels & Text
+           =========================================== */
         .tree-label {
             display: flex;
             align-items: baseline;
@@ -571,23 +606,18 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         .tree-label-description {
             opacity: 0.6;
             margin-left: 0.5em;
-            font-size: 0.9em;
+            font-size: var(--dashboard-font-size-small);
             white-space: nowrap;
             flex-shrink: 0;
         }
+
         /* Two-line entry layout */
-        .tree-row:has(.tree-label-2line) {
-            min-height: 36px;
-        }
-        .tree-row:has(.tree-label-2line) .tree-contents {
-            padding: 2px 0;
-        }
         .tree-label-2line {
             display: flex;
             flex-direction: column;
             overflow: hidden;
             width: 100%;
-            line-height: 1.3;
+            line-height: var(--dashboard-line-height);
         }
         .tree-label-2line .entry-title {
             overflow: hidden;
@@ -596,12 +626,29 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
         .tree-label-2line .entry-location {
             opacity: 0.6;
-            font-size: 0.9em;
+            font-size: var(--dashboard-font-size-small);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        /* Section headers - matches VS Code pane-header */
+
+        /* Column match indicator */
+        .column-match .tree-label-name {
+            font-style: italic;
+        }
+
+        /* Overdue styling */
+        .overdue .entry-title {
+            color: var(--vscode-errorForeground);
+        }
+        .overdue .entry-location {
+            color: var(--vscode-errorForeground);
+            opacity: 0.8;
+        }
+
+        /* ===========================================
+           Sections
+           =========================================== */
         .section {
             overflow: hidden;
         }
@@ -610,7 +657,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
         .section-header h3 {
             margin: 0;
-            font-size: 13px;
+            font-size: var(--dashboard-font-size);
             font-weight: normal;
             color: var(--vscode-foreground);
         }
@@ -621,10 +668,72 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         .section-content.collapsed {
             display: none;
         }
-        /* Column match indicator */
-        .column-match .tree-label-name {
-            font-style: italic;
+
+        /* Tree group for foldable sections */
+        .tree-group-items {
+            /* Container for child items */
         }
+
+        /* ===========================================
+           Board Configuration
+           =========================================== */
+        .board-config-item {
+            display: contents;
+        }
+        .board-config-body {
+            display: none;
+        }
+        .board-config-body.expanded {
+            display: contents;
+        }
+        .board-config-row .tree-contents {
+            display: flex;
+            margin-right: 8px;
+            gap: 2px;
+            padding: 2px 0;
+        }
+        .board-config-label {
+            color: var(--vscode-descriptionForeground);
+            font-size: var(--dashboard-font-size-small);
+            min-width: 70px;
+        }
+
+        /* ===========================================
+           Form Controls
+           =========================================== */
+        .timeframe-select,
+        .board-tag-input,
+        .tag-search-input {
+            font-size: var(--dashboard-font-size-small);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            padding: 1px 2px;
+        }
+        .timeframe-select {
+            width: 100px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border-color: var(--vscode-dropdown-border);
+        }
+        .board-tag-input {
+            flex: 1;
+            width: 100px;
+        }
+        .tag-search-input {
+            width: 100%;
+            padding: 6px 8px;
+            box-sizing: border-box;
+        }
+        .tag-search-input:focus {
+            outline: 1px solid var(--vscode-focusBorder);
+            border-color: var(--vscode-focusBorder);
+        }
+
+        /* ===========================================
+           Tags & Badges
+           =========================================== */
         .tag-cloud {
             display: flex;
             flex-wrap: wrap;
@@ -643,47 +752,54 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-terminal-ansiYellow);
             color: var(--vscode-editor-foreground);
         }
-        /* Overdue deadline task styling */
-        .overdue .entry-title {
-            color: var(--vscode-errorForeground);
-        }
-        .overdue .entry-location {
-            color: var(--vscode-errorForeground);
-            opacity: 0.8;
-        }
-        .board-config {
+        .board-tag-filters {
             display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 0;
-            border-bottom: 1px solid var(--vscode-panel-border);
+            flex-wrap: wrap;
+            gap: 4px;
         }
-        .board-config:last-child {
-            border-bottom: none;
-        }
-        .board-name {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .timeframe-select {
-            padding: 2px 4px;
-            background: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border: 1px solid var(--vscode-dropdown-border);
+        .board-tag-filter {
+            padding: 1px 3px;
+            background: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
             border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.9em;
+            gap: 4px;
         }
-        .remove-btn {
+        .board-tag-filter-remove {
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        .board-tag-filter-remove:hover {
+            opacity: 1;
+        }
+
+        /* ===========================================
+           Buttons
+           =========================================== */
+        .remove-btn,
+        .refresh-btn {
             background: none;
             border: none;
-            color: var(--vscode-errorForeground);
             cursor: pointer;
             padding: 2px 4px;
         }
-        .remove-btn:hover {
+        .remove-btn {
+            color: var(--vscode-errorForeground);
+        }
+        .refresh-btn {
+            color: var(--vscode-foreground);
+            padding: 4px;
+        }
+        .remove-btn:hover,
+        .refresh-btn:hover {
             background: var(--vscode-list-hoverBackground);
         }
+
+        /* ===========================================
+           Messages & Hints
+           =========================================== */
         .empty-message {
             text-align: center;
             padding: 20px;
@@ -697,94 +813,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             border: 1px dashed var(--vscode-panel-border);
             border-radius: 4px;
         }
-        .refresh-btn {
-            background: none;
-            border: none;
-            color: var(--vscode-foreground);
-            cursor: pointer;
-            padding: 4px;
-        }
-        .refresh-btn:hover {
-            background: var(--vscode-list-hoverBackground);
-        }
         .tag-search-container {
             margin-bottom: 8px;
-        }
-        .tag-search-input {
-            width: 100%;
-            padding: 6px 8px;
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 3px;
-            box-sizing: border-box;
-        }
-        .tag-search-input:focus {
-            outline: 1px solid var(--vscode-focusBorder);
-            border-color: var(--vscode-focusBorder);
-        }
-        /* Column match indicator - italic for column-level matches */
-        .column-match .tree-label-name {
-            font-style: italic;
         }
         .tag-search-header {
             color: var(--vscode-descriptionForeground);
             margin-bottom: 8px;
             padding-bottom: 4px;
             border-bottom: 1px solid var(--vscode-panel-border);
-        }
-        /* Board config submenu */
-        .board-config-item {
-            display: contents;
-        }
-        .board-config-body {
-            display: none;
-        }
-        .board-config-body.expanded {
-            display: contents;
-        }
-        .board-config-row .tree-contents {
-            display: flex;
-            margin-right: 8px;
-            gap: 4px;
-        }
-        .board-config-label {
-            color: var(--vscode-descriptionForeground);
-            min-width: 70px;
-        }
-        .board-tag-filters {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-            margin-top: 4px;
-        }
-        .board-tag-filter {
-            padding: 2px 6px;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            border-radius: 3px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .board-tag-filter-remove {
-            cursor: pointer;
-            opacity: 0.7;
-        }
-        .board-tag-filter-remove:hover {
-            opacity: 1;
-        }
-        .board-tag-input {
-            flex: 1;
-            padding: 4px 6px;
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 3px;
-        }
-        /* Tree group for foldable sections */
-        .tree-group-items {
-            /* Prepare for 2-line entries if needed */
         }
     </style>
 </head>
