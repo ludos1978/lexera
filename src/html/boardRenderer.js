@@ -2217,6 +2217,9 @@ function setupColumnResizeObserver() {
     }
 
     columnResizeObserver = new ResizeObserver((entries) => {
+        // Guard against callbacks firing after disposal
+        if (!document.getElementById('kanban-board')) return;
+
         // If we're currently recalculating, just mark that another recalc is needed
         if (isRecalculatingHeights) {
             pendingRecalcNeeded = true;
@@ -2277,6 +2280,9 @@ function setupColumnResizeObserver() {
     }
 
     columnMutationObserver = new MutationObserver((mutations) => {
+        // Guard against callbacks firing after disposal
+        if (!document.getElementById('kanban-board')) return;
+
         // Check for structural changes OR class changes
         const hasRelevantChanges = mutations.some(m => {
             if (m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0)) {

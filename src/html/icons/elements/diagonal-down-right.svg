@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 16">
+  <!-- Diagonal line from top-left to bottom-right, 1px stroke -->
+  <line x1="2" y1="0" x2="18" y2="16" stroke="#333" stroke-width="1"/>
+</svg>

@@ -1572,6 +1572,8 @@ function setupImageNotFoundObserver() {
     }
 
     const imageNotFoundObserver = new MutationObserver((mutations) => {
+        // Guard against callbacks firing after disposal
+        if (!document.getElementById('kanban-board')) return;
         for (const mutation of mutations) {
             if (mutation.type === 'childList') {
                 mutation.addedNodes.forEach(node => {

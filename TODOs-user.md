@@ -4,9 +4,17 @@
 !2025.09.12 - 2025.10.1
 
 
-- [ ] can we have a 10px wide line in front of H1, H2 is 10px wide with 2 vertical lines, H3 is 3 lines in 10px, H4 4 lines, h5 is 5 lines (1px white, 1px black, etc. )
+- [ ] can we have vertical lines of these sizes in front of the Headings?
+- H1 = 5px (1*7px)
+- H2 = 2 * 3px (2*4px + 1*1px = 7px)
+- H3 = 3 * 2px (3*3px + 2*1px = 8px)
+- H4 = 4 * 1.5px (4*2.5px + 3*1px = 13px)
+- h5 = 5 * 1px (5*2px + 4 * 1px = 14px)
+- h6 = 6 * 1px (6*1.5px + 5 * 1px = 14px)
 
-- [ ] if i poste a [[#1]] from the clipboard it inteprets it as a file link and adds a path to it. which breaks it by adding a relative path.
+REDO IT: make them have the same full width use something more similar to roman numbers. I , II, III, IV, V, VI but clearly graphics not using a font! so only using lines! 
+
+- [ ] if i paste a [[#1]] (or crate the clipboard content from a card / column from the clipboard it inteprets it as a file link and adds a path to it. which breaks it by adding a relative path.
 
 - [x] lets redo the #hidden-internal-clipboard functionality.
 
@@ -34,7 +42,7 @@ Do you see any conflict that could arise from this funcitonality? One problem mi
 
 - [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) link . also alt+clicking [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
 
-- [ ] i would like to be able to drop external files (desktop, vscode explorer into the inline text editor without leaving it (formost the inline text editor, but also the overlay text editor and the wysiwyg editor), at a specific cursor position it drop it at. if multiple files are dropped they are placed on individual lines for each one. it should place the link directly inline with the same rules and features as if it's creating a new task.
+- [x] i would like to be able to drop external files (desktop, vscode explorer into the inline text editor without leaving it (formost the inline text editor, but also the overlay text editor and the wysiwyg editor), at a specific cursor position it drop it at. if multiple files are dropped they are placed on individual lines for each one. it should place the link directly inline with the same rules and features as if it's creating a new task.
 
 - [x] lets change the file save/load/reload/conflict handling like this:
   - when the main file or any imported files in the kanban have unsaved modifications:

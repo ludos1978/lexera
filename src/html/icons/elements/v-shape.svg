@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 16">
+  <!-- V shape (two diagonals meeting at bottom center), 1px stroke -->
+  <line x1="2" y1="0" x2="10" y2="16" stroke="#333" stroke-width="1"/>
+  <line x1="18" y1="0" x2="10" y2="16" stroke="#333" stroke-width="1"/>
+</svg>

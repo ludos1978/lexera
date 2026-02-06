@@ -5004,6 +5004,8 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
 // Watch for theme changes and update styles
 if (typeof MutationObserver !== 'undefined') {
     const themeObserver = new MutationObserver((mutations) => {
+        // Guard against callbacks firing after disposal
+        if (!document.body) return;
         mutations.forEach((mutation) => {
             if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                 // Check if the body class actually changed (theme change)
@@ -5783,6 +5785,8 @@ function initializeVideoLazyLoading() {
 
     // Re-observe videos after board renders (use MutationObserver to catch new videos)
     const boardObserver = new MutationObserver(() => {
+        // Guard against callbacks firing after disposal
+        if (!document.getElementById('kanban-board')) return;
         observeVideos();
     });
 

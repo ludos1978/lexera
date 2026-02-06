@@ -6267,32 +6267,50 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 
 /* Auto-insert compact style indicators - only within .markdown-content */
 
-/* Headings - only before */
+/* Headings - Roman numeral style indicators (I, II, III, IV, V, VI) */
+/* Edit SVGs in src/html/icons/, then run: node src/html/icons/generate-css.js */
 .markdown-content h1::before,
 .markdown-content h2::before,
 .markdown-content h3::before,
 .markdown-content h4::before,
 .markdown-content h5::before,
 .markdown-content h6::before {
-  display: inline-block; text-align: center;
-  width: 14px !important; min-width: 14px !important; max-width: 14px !important;
-  height: 14px !important; min-height: 14px !important; max-height: 14px !important;
-  margin-right: 1px; padding: 0 !important;
-  border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
-  font-family: monospace !important; font-size: 8px !important; 
-  font-weight: bold !important; font-style: normal !important;
-  background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
-  line-height: 14px !important; vertical-align: middle; opacity: 0.7;
-  box-sizing: border-box !important; overflow: hidden !important;
-  letter-spacing: normal !important; word-spacing: normal !important;
-  text-transform: none !important; white-space: nowrap !important;
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 1cap;
+  margin-right: 2px;
+  vertical-align: middle;
+  margin-block-start: calc(1ex - 1cap);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.6;
 }
-.markdown-content h1::before { content: "H1"; }
-.markdown-content h2::before { content: "H2"; }
-.markdown-content h3::before { content: "H3"; }
-.markdown-content h4::before { content: "H4"; }
-.markdown-content h5::before { content: "H5"; }
-.markdown-content h6::before { content: "H6"; }
+/* H1 */
+.markdown-content h1::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cline x1='8' y1='1' x2='8' y2='15' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='1' y1='1' x2='15' y2='1' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='1' y1='15' x2='15' y2='15' stroke='%23333333' stroke-width='2'/%3E%3C/svg%3E");
+}
+/* H2 */
+.markdown-content h2::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cline x1='5.5' y1='1' x2='5.5' y2='15' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='10.5' y1='1' x2='10.5' y2='15' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='1' y1='1' x2='15' y2='1' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='1' y1='15' x2='15' y2='15' stroke='%23333333' stroke-width='2'/%3E%3C/svg%3E");
+}
+/* H3 */
+.markdown-content h3::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cline x1='3' y1='1' x2='3' y2='15' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='8' y1='1' x2='8' y2='15' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='13' y1='1' x2='13' y2='15' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='1' y1='1' x2='15' y2='1' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='1' y1='15' x2='15' y2='15' stroke='%23333333' stroke-width='2'/%3E%3C/svg%3E");
+}
+/* H4 */
+.markdown-content h4::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cline x1='1' y1='0' x2='1' y2='16' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='6' y1='0' x2='6' y2='16' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='6' y1='16' x2='15' y2='0' stroke='%23333333' stroke-width='2'/%3E%3C/svg%3E");
+}
+/* H5 */
+.markdown-content h5::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cline x1='3' y1='0' x2='8' y2='16' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='13' y1='0' x2='8' y2='16' stroke='%23333333' stroke-width='2'/%3E%3C/svg%3E");
+}
+/* H6 */
+.markdown-content h6::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='16' height='16'%3E%3Cline x1='1' y1='0' x2='10' y2='16' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='10' y1='0' x2='10' y2='16' stroke='%23333333' stroke-width='2'/%3E%3Cline x1='15' y1='0' x2='15' y2='16' stroke='%23333333' stroke-width='2'/%3E%3C/svg%3E");
+}
 
 /* Bold - before and after */
 .markdown-content strong::before, .markdown-content strong::after,
