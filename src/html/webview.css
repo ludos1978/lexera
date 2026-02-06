@@ -3579,7 +3579,6 @@ body.vscode-high-contrast-light .task-count {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 2px;
 }
 
 .pin-btn:hover {
@@ -3590,9 +3589,10 @@ body.vscode-high-contrast-light .task-count {
   opacity: 0.5;
 }
 
-.pin-btn.global-override {
-  outline: 2px dashed var(--vscode-errorBorder, #cc007aff);
-  outline-offset: -2px;
+.pin-btn.global-override .pin-icon {
+  outline: 3px solid #ff0000;
+  outline-offset: -1px;
+  border-radius: 3px;
 }
 
 .fold-all-btn:hover,
