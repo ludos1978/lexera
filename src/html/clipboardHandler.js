@@ -373,8 +373,8 @@ window.handleEmptyColumnDragEnd = function(e) {
 
 // Clipboard column drag handlers - Creates column with tasks from clipboard content
 window.handleClipboardColumnDragStart = function(e) {
-    // Check if we have presentation format content
-    if (!window.clipboardCardData || !window.clipboardCardData.isPresentationFormat) {
+    // Check if we have clipboard content
+    if (!window.clipboardCardData || !window.clipboardCardData.content) {
         e.preventDefault();
         return;
     }

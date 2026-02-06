@@ -605,24 +605,26 @@ async function processClipboardText(text) {
         };
     }
     
+    // Check if content looks like presentation format (has --- slide separators)
+    // Look for --- on its own line (with optional whitespace), more permissive than parser
+    // This allows pasting as a column with multiple tasks
+    // Use multiline mode to match --- at start of any line
+    const isPresentationFormat = /^---[ \t]*$/m.test(text);
+
     // Check if it contains a URL within text
     const urlInTextRegex = /https?:\/\/[^\s]+/g;
     if (urlInTextRegex.test(text)) {
         // Extract title from first line if available
         const lines = text.split('\n');
         const title = lines[0].length > 50 ? lines[0].substring(0, 50) + '...' : lines[0];
-        
+
         return {
             title: title || 'Clipboard Content',
             content: text,
-            isLink: false
+            isLink: false,
+            isPresentationFormat: isPresentationFormat
         };
     }
-    
-    // Check if content looks like presentation format (has --- slide separators)
-    // Look for --- on its own line (with optional whitespace), more permissive than parser
-    // This allows pasting as a column with multiple tasks
-    const isPresentationFormat = /\n---[ \t]*\n/.test(text);
 
     // Regular text content
     const textLines = text.split('\n');
@@ -733,12 +735,16 @@ async function refreshClipboardUI(force = false) {
     const clipboardColumnSource = document.getElementById('clipboard-column-source');
     const clipboardColumnText = document.getElementById('clipboard-column-text');
     if (clipboardColumnSource) {
-        if (clipboardCardData && clipboardCardData.isPresentationFormat) {
+        if (clipboardCardData && clipboardCardData.content) {
             clipboardColumnSource.classList.remove('faded');
             if (clipboardColumnText) {
-                // Count slides in the content
-                const slideCount = (clipboardCardData.content.match(/\n\n---\s*\n\n/g) || []).length + 1;
-                clipboardColumnText.textContent = `Clipboard Column (${slideCount} tasks)`;
+                // Count tasks - if has --- separators, count slides; otherwise it's 1 task
+                if (clipboardCardData.isPresentationFormat) {
+                    const slideCount = (clipboardCardData.content.match(/^---[ \t]*$/gm) || []).length + 1;
+                    clipboardColumnText.textContent = `Clipboard Column (${slideCount} tasks)`;
+                } else {
+                    clipboardColumnText.textContent = 'Clipboard Column (1 task)';
+                }
             }
         } else {
             clipboardColumnSource.classList.add('faded');

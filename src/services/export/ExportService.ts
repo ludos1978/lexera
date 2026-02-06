@@ -559,8 +559,9 @@ export class ExportService {
         result = this.applyMediaCaptionTransform(result);
 
         // 5. Embed handling - different behavior based on output format
+        // SKIP for copy mode - keep original markdown syntax
         const embedPlugin = PluginRegistry.getInstance().getEmbedPlugin();
-        if (embedPlugin) {
+        if (embedPlugin && options.mode !== 'copy') {
             const marpFormat = options.marpFormat || 'html';
             if (marpFormat === 'html') {
                 // HTML output: Convert embeds to actual iframe tags
