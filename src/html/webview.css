@@ -667,17 +667,16 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   position: relative;
 }
 
-/* Pin icon in column headers - smaller to match other column header icons */
+/* Pin icon in column headers - match collapse-toggle size and color */
 .pin-icon {
   font-size: 0 !important;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   vertical-align: middle;
   position: relative;
-  color: inherit;
 }
 
 /* Columns fold - chevron */
@@ -732,12 +731,12 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   mask-size: contain;
 }
 
-/* Pin icon in column headers - smaller */
+/* Pin icon in column headers - match collapse-toggle */
 .pin-icon::before {
   content: "";
-  width: 10px;
-  height: 10px;
-  background: currentColor;
+  width: 8px;
+  height: 8px;
+  background: var(--button-foreground);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a6 6 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182a.5.5 0 0 1-.707-.707l3.182-3.182-2.829-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a6 6 0 0 1 1.013.16l3.134-3.133a3 3 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146'/%3E%3C/svg%3E");
   -webkit-mask-size: contain;
@@ -3602,59 +3601,37 @@ body.vscode-high-contrast-light .task-count {
   width: 18px;
 }
 
-/* Pin button (sticky toggle) */
+/* Pin button (sticky toggle) - matches collapse-toggle styling */
 .pin-btn {
-  padding: 2px 4px;
+  background: var(--button-background);
+  color: var(--button-foreground);
+  border: var(--button-border);
+  cursor: pointer;
   font-size: 10px;
   line-height: 1;
-  height: 16px;
-  width: 16px;
-  background: transparent; /* Keep commented */
-  color: var(--button-foreground);
-  /* border: var(--button-border); */
-  cursor: pointer;
   transition: all 0.2s;
+  user-select: none;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-left: 2px;
-  position: relative;
+}
 
-  border-radius: 2px;
+.pin-btn:hover {
+  background: var(--button-secondary-background-hover);
+}
 
-  outline: 2px solid transparent;
-  outline-offset: 0px;
-  border: none;
+.pin-btn.unpinned {
+  opacity: 0.5;
 }
 
 .pin-btn.global-override {
   outline: 2px dashed var(--vscode-errorBorder, #cc007aff);
   outline-offset: -2px;
-  border: none;
-}
-
-/* do the background using :before */
-.pin-btn:before {
-  content: ''; /* REQUIRED for :before to show */
-  position: absolute; /* REQUIRED */
-  inset: 0; /* Fill the button */
-  z-index: -1;
-  border-radius: 3px;
-}
-
-.pin-btn:hover:before {
-  background: var(--button-background-hover);
-  opacity: 1;
-}
-
-.pin-btn.pinned:before {
-  background: var(--button-background);
-  opacity: 1;
-}
-
-.pin-btn.unpinned:before {
-  background: var(--button-background);
-  opacity: 0.4;
 }
 
 .fold-all-btn:hover,
