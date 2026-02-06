@@ -695,10 +695,6 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   color: var(--button-foreground-hover);
 }
 
-/* Keep file-bar menu button padding consistent with icon size */
-.file-info-right .file-bar-menu-btn {
-  padding: 4px 4px;
-}
 
 /* ===== Clipboard Drop Target (Parking Area) ===== */
 .clipboard-drop-menu {
@@ -1311,6 +1307,8 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 
 .menu-icon {
   font-size: 14px;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 /* ============================================================================
@@ -3474,11 +3472,9 @@ body.vscode-high-contrast-light .task-count {
 .donut-menu,
 .file-bar-menu {
   position: relative;
-  z-index: 100;
-}
-
-.file-bar-menu {
   z-index: 200;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* All active menus need maximum z-index to appear above all interface elements */
@@ -3498,9 +3494,20 @@ body.vscode-high-contrast-light .task-count {
   border-radius: 3px;
   width: 18px;
   height: 18px;
-  font-size: 14px;
-  text-align: center;
-  line-height: 16px;
+  font-size: 0; /* Hide the ☰ text */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* CSS hamburger icon - three horizontal lines */
+.donut-menu-btn::before {
+  content: "";
+  width: 7px;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 -3px 0 currentColor, 0 3px 0 currentColor;
 }
 
 .donut-menu-btn:hover {
@@ -3510,10 +3517,22 @@ body.vscode-high-contrast-light .task-count {
 .file-bar-menu-btn {
   cursor: pointer;
   padding: 4px 8px;
-  font-size: 16px;
-  line-height: 1;
   transition: all 0.2s;
   border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 22px;
+}
+
+/* Hide the ☰ text in file-bar burger button and use CSS icon */
+.file-bar-menu-btn .menu-icon {
+  font-size: 0;
+  width: 7px;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 -3px 0 currentColor, 0 3px 0 currentColor;
 }
 
 .donut-menu-dropdown,
@@ -6420,16 +6439,6 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 .markdown-content a::before { content: "["; margin-right: 2px; }
 .markdown-content a::after { content: "]"; margin-left: 2px; }
 
-/* Tables - only before */
-.markdown-content table::before {
-  content: "⊞"; display: inline-block;
-  width: 20px; height: 16px; margin-right: 6px; margin-bottom: 4px;
-  border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
-  font-family: monospace; font-size: 12px !important; font-weight: bold;
-  background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
-  text-align: center; line-height: 16px !important; opacity: 0.7;
-}
-
 /* Superscript/Subscript - before and after */
 .markdown-content sup::before, .markdown-content sup::after,
 .markdown-content sub::before, .markdown-content sub::after {
@@ -9024,11 +9033,19 @@ figcaption {
   min-width: 22px;
   justify-content: center;
   gap: 4px;
-  font-size: 12px;
   border-radius: 3px;
   display: flex;
   align-items: center;
   transition: all 0.2s;
+}
+
+/* Hide the ☰ text in marp burger button and use CSS icon */
+.marp-global-menu-btn .menu-icon {
+  font-size: 0;
+  width: 7px;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 -3px 0 currentColor, 0 3px 0 currentColor;
 }
 
 .marp-global-menu-dropdown {
