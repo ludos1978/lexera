@@ -1525,6 +1525,22 @@ function renderBoard(options = null) {
             window.onBoardRenderingComplete();
         }
 
+        // CONSISTENCY CHECK: Verify all DOM columns exist in cachedBoard
+        if (window.kanbanDebug?.enabled && window.cachedBoard?.columns) {
+            const domColumns = document.querySelectorAll('.kanban-full-height-column[data-column-id]');
+            const cachedIds = new Set(window.cachedBoard.columns.map(c => c.id));
+            const missingInCache = [];
+            domColumns.forEach(el => {
+                const id = el.dataset.columnId;
+                if (!cachedIds.has(id)) {
+                    missingInCache.push(id);
+                }
+            });
+            if (missingInCache.length > 0) {
+                console.error('[CONSISTENCY] DOM columns not in cachedBoard:', missingInCache);
+            }
+        }
+
         // Recalculate task description heights after board renders
         if (window.calculateTaskDescriptionHeight) {
             window.calculateTaskDescriptionHeight();

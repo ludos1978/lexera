@@ -2398,6 +2398,15 @@ if (!webviewEventListenersInitialized) {
                 window.savedBoardState = JSON.parse(JSON.stringify(message.board)); // Reference for unsaved detection
                 window.hasUnsavedChanges = false;
 
+                // CONSISTENCY CHECK: Validate column IDs are unique
+                if (window.cachedBoard?.columns) {
+                    const ids = window.cachedBoard.columns.map(c => c.id);
+                    const duplicates = ids.filter((id, idx) => ids.indexOf(id) !== idx);
+                    if (duplicates.length > 0) {
+                        console.error('[CONSISTENCY] Duplicate column IDs detected:', duplicates);
+                    }
+                }
+
                 // Pre-populate broken includes cache from board data for initial render
                 if (typeof window.populateBrokenIncludesFromBoard === 'function') {
                     window.populateBrokenIncludesFromBoard(message.board);

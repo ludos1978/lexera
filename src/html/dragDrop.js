@@ -5202,10 +5202,49 @@ function warnIfParkedTasksWillBeDeleted(parkedTasks, title, message, confirmText
  */
 function trashColumn(columnElement) {
     const columnId = columnElement.dataset.columnId;
-    if (!columnId || !window.cachedBoard) return;
+    if (!columnId || !window.cachedBoard) {
+        window.kanbanDebug?.warn('[trashColumn] ABORTED: No columnId or cachedBoard', { columnId, hasCachedBoard: !!window.cachedBoard });
+        return;
+    }
 
-    const column = window.cachedBoard.columns.find(c => c.id === columnId);
-    if (!column) return;
+    let column = window.cachedBoard.columns.find(c => c.id === columnId);
+
+    // CONSISTENCY FIX: If column not in cachedBoard but exists in DOM, try to sync
+    if (!column) {
+        window.kanbanDebug?.warn('[trashColumn] Column not in cachedBoard, requesting sync', { columnId });
+
+        // Request a board refresh to ensure consistency
+        if (typeof vscode !== 'undefined') {
+            vscode.postMessage({ type: 'requestBoardUpdate' });
+        }
+
+        // Try to find by matching title from DOM as fallback
+        const titleElement = columnElement.querySelector('.column-title-text');
+        const domTitle = titleElement?.textContent?.trim();
+        if (domTitle) {
+            column = window.cachedBoard.columns.find(c =>
+                c.title?.trim() === domTitle ||
+                c.title?.includes(domTitle) ||
+                domTitle.includes(c.title?.trim() || '')
+            );
+            if (column) {
+                window.kanbanDebug?.warn('[trashColumn] Found column by title match', {
+                    columnId,
+                    matchedId: column.id,
+                    domTitle
+                });
+            }
+        }
+
+        if (!column) {
+            console.error('[trashColumn] CRITICAL: Column exists in DOM but not in data model. Board may be out of sync.', {
+                columnId,
+                domTitle,
+                cachedColumnCount: window.cachedBoard.columns.length
+            });
+            return;
+        }
+    }
 
     const parkedTasks = findParkedTasksInColumn(column.tasks);
     warnIfParkedTasksWillBeDeleted(

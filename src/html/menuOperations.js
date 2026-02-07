@@ -1609,9 +1609,15 @@ function deleteColumn(columnId) {
 
     // Use the trash system - column is tagged and hidden, not physically removed
     const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
-    if (columnElement && typeof window.trashColumn === 'function') {
-        window.trashColumn(columnElement);
+    if (!columnElement) {
+        window.kanbanDebug?.warn('[deleteColumn] ABORTED: Column element not found in DOM', { columnId });
+        return;
     }
+    if (typeof window.trashColumn !== 'function') {
+        window.kanbanDebug?.warn('[deleteColumn] ABORTED: window.trashColumn is not a function');
+        return;
+    }
+    window.trashColumn(columnElement);
 }
 
 function parkColumnFromMenu(columnId) {
