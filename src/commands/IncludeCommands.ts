@@ -426,8 +426,10 @@ export class IncludeCommands extends SwitchBasedCommand {
         forceSave: boolean = false,
         context: CommandContext
     ): Promise<CommandResult> {
+        console.log(`[IncludeCommands] handleSaveIndividualFile: file="${filePath}" isMain=${isMainFile} force=${forceSave}`);
         const panel = context.getWebviewPanel();
         if (!panel) {
+            console.warn('[IncludeCommands] handleSaveIndividualFile: No panel available');
             return this.failure('No panel available');
         }
         const panelAccess = panel as PanelCommandAccess;
@@ -438,6 +440,7 @@ export class IncludeCommands extends SwitchBasedCommand {
                 throw new Error('File service not available');
             }
 
+            console.log(`[IncludeCommands] handleSaveIndividualFile: calling saveUnified...`);
             await fileService.saveUnified({
                 scope: isMainFile ? 'main' : { filePath },
                 force: forceSave,
@@ -446,9 +449,12 @@ export class IncludeCommands extends SwitchBasedCommand {
                 updateBaselines: isMainFile ? true : undefined,
                 updateUi: false
             });
+            console.log(`[IncludeCommands] handleSaveIndividualFile: saveUnified completed`);
 
             await this.triggerMarpWatchExport(context, panelAccess);
+            console.log(`[IncludeCommands] handleSaveIndividualFile: marp export triggered`);
 
+            console.log(`[IncludeCommands] handleSaveIndividualFile: save successful, posting individualFileSaved message`);
             this.postMessage({
                 type: 'individualFileSaved',
                 filePath: filePath,
@@ -461,6 +467,7 @@ export class IncludeCommands extends SwitchBasedCommand {
                 this.postMessage({ type: 'refreshDebugInfo' });
             }
         } catch (error) {
+            console.error(`[IncludeCommands] handleSaveIndividualFile: FAILED -`, error);
             this.postMessage({
                 type: 'individualFileSaved',
                 filePath: filePath,

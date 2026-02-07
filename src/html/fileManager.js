@@ -1086,8 +1086,12 @@ function buildSavedCellHTML(syncStatus) {
 // ============= REFRESH / AUTO-REFRESH =============
 
 function refreshFileManager() {
-    if (!fileManagerVisible || !fileManagerElement) return;
+    if (!fileManagerVisible || !fileManagerElement) {
+        console.log('[FileManager] refreshFileManager: skipped (not visible or no element)');
+        return;
+    }
     refreshCount++;
+    console.log(`[FileManager] refreshFileManager: requesting data refresh #${refreshCount}`);
     if (window.vscode) {
         window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
     }
@@ -1124,7 +1128,11 @@ function createDataHash(data) {
 
 function updateTrackedFilesData(data) {
     const newDataHash = createDataHash(data);
-    if (newDataHash === lastTrackedFilesDataHash) return;
+    if (newDataHash === lastTrackedFilesDataHash) {
+        console.log('[FileManager] updateTrackedFilesData: skipped (same hash)');
+        return;
+    }
+    console.log('[FileManager] updateTrackedFilesData: updating UI with new data');
     lastTrackedFilesDataHash = newDataHash;
     trackedFilesData = data;
 
@@ -1306,6 +1314,7 @@ function confirmForceWrite() {
 // ============= FILE OPERATIONS =============
 
 function saveIndividualFile(filePath, isMainFile, forceSave = true) {
+    console.log(`[FileManager] saveIndividualFile: sending message for file="${filePath}" isMain=${isMainFile} force=${forceSave}`);
     if (window.vscode) {
         window.vscode.postMessage({
             type: 'saveIndividualFile',
@@ -1313,6 +1322,8 @@ function saveIndividualFile(filePath, isMainFile, forceSave = true) {
             isMainFile: isMainFile,
             forceSave: forceSave
         });
+    } else {
+        console.warn('[FileManager] saveIndividualFile: window.vscode not available!');
     }
 }
 
@@ -1346,11 +1357,24 @@ function convertAllPaths(direction) {
 // --- Dropdown+execute dispatchers ---
 
 function executeAction(buttonElement) {
-    const select = buttonElement.parentElement.querySelector('.conflict-action-select');
-    if (!select || !select.value) return;
+    if (!buttonElement) {
+        console.warn('[FileManager.executeAction] No button element provided');
+        return;
+    }
+    const select = buttonElement.parentElement?.querySelector('.conflict-action-select');
+    if (!select) {
+        console.warn('[FileManager.executeAction] No select element found in parent');
+        return;
+    }
+    if (!select.value) {
+        console.warn('[FileManager.executeAction] No action selected in dropdown');
+        return;
+    }
     const filePath = select.dataset.filePath;
     const isMainFile = select.dataset.isMain === 'true';
     const action = select.value;
+
+    console.log(`[FileManager.executeAction] Executing action="${action}" for file="${filePath}" isMain=${isMainFile}`);
 
     // Track executed file and its action
     const pathKey = resKey(filePath);
@@ -1366,13 +1390,24 @@ function executeAction(buttonElement) {
         case 'load_external_backup_mine':
             reloadIndividualFile(filePath, isMainFile);
             break;
+        default:
+            console.warn(`[FileManager.executeAction] Unknown action: ${action}`);
     }
 }
 
 function executeAllActions() {
     const select = document.querySelector('.conflict-action-select[data-file-path="__all__"]');
-    if (!select || !select.value) return;
+    if (!select) {
+        console.warn('[FileManager.executeAllActions] No "apply all" select element found');
+        return;
+    }
+    if (!select.value) {
+        console.warn('[FileManager.executeAllActions] No action selected in "apply all" dropdown');
+        return;
+    }
     const action = select.value;
+
+    console.log(`[FileManager.executeAllActions] Executing action="${action}" for ${conflictFiles.length} files`);
 
     // Track all conflict files as executed with this action
     for (const file of conflictFiles) {
@@ -1390,6 +1425,8 @@ function executeAllActions() {
         case 'load_external_backup_mine':
             reloadAllIncludedFiles();
             break;
+        default:
+            console.warn(`[FileManager.executeAllActions] Unknown action: ${action}`);
     }
 }
 
@@ -1561,6 +1598,7 @@ function initializeFileManager() {
                 break;
 
             case 'individualFileSaved':
+                console.log(`[FileManager] individualFileSaved received: path=${message.filePath}, success=${message.success}, visible=${fileManagerVisible}`);
                 if (fileManagerVisible && message.success) {
                     clearResolutionForFile(message.filePath);
                     refreshFileManager();
