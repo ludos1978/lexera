@@ -281,17 +281,7 @@ export class IncludeFile extends MarkdownFile {
                 errors.push('Column include must have at least one slide (task)');
             }
 
-            // Check if slides have at least a title or content
-            // A slide with just a title is valid (represents a task with no description)
-            for (let i = 0; i < slides.length; i++) {
-                const slide = slides[i];
-                const hasTitle = slide.title && slide.title.trim().length > 0;
-                const hasContent = slide.content && slide.content.trim().length > 0;
-
-                if (!hasTitle && !hasContent) {
-                    errors.push(`Slide ${i + 1} is empty (no title or content)`);
-                }
-            }
+            // Empty slides are allowed (placeholders, separators, etc.)
         } catch (error) {
             errors.push(`Failed to parse presentation: ${error}`);
         }

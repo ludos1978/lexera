@@ -168,13 +168,6 @@ export class BoardSyncHandler {
         const isDebug = this._deps.panelContext.debugMode;
         const webviewBridge = this._deps.getWebviewBridge();
 
-        // DEBUG: Log all include files' status at the start
-        console.log(`[BoardSyncHandler._propagateEditsToIncludeFiles] CALLED with trigger="${trigger}"`);
-        const allIncludeFiles = this._deps.fileRegistry.getIncludeFiles();
-        for (const f of allIncludeFiles) {
-            console.log(`[BoardSyncHandler._propagateEditsToIncludeFiles] Include file "${f.getRelativePath()}": preserveRaw=${f.shouldPreserveRawContent()}, hasUnsaved=${f.hasUnsavedChanges()}`);
-        }
-
         // Update column include files with current task content
         for (const column of board.columns) {
             if (column.includeFiles && column.includeFiles.length > 0) {

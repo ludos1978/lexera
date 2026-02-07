@@ -1086,12 +1086,8 @@ function buildSavedCellHTML(syncStatus) {
 // ============= REFRESH / AUTO-REFRESH =============
 
 function refreshFileManager() {
-    if (!fileManagerVisible || !fileManagerElement) {
-        console.log('[FileManager] refreshFileManager: skipped (not visible or no element)');
-        return;
-    }
+    if (!fileManagerVisible || !fileManagerElement) return;
     refreshCount++;
-    console.log(`[FileManager] refreshFileManager: requesting data refresh #${refreshCount}`);
     if (window.vscode) {
         window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
     }
@@ -1128,11 +1124,7 @@ function createDataHash(data) {
 
 function updateTrackedFilesData(data) {
     const newDataHash = createDataHash(data);
-    if (newDataHash === lastTrackedFilesDataHash) {
-        console.log('[FileManager] updateTrackedFilesData: skipped (same hash)');
-        return;
-    }
-    console.log('[FileManager] updateTrackedFilesData: updating UI with new data');
+    if (newDataHash === lastTrackedFilesDataHash) return;
     lastTrackedFilesDataHash = newDataHash;
     trackedFilesData = data;
 
@@ -1314,7 +1306,6 @@ function confirmForceWrite() {
 // ============= FILE OPERATIONS =============
 
 function saveIndividualFile(filePath, isMainFile, forceSave = true) {
-    console.log(`[FileManager] saveIndividualFile: sending message for file="${filePath}" isMain=${isMainFile} force=${forceSave}`);
     if (window.vscode) {
         window.vscode.postMessage({
             type: 'saveIndividualFile',
@@ -1322,8 +1313,6 @@ function saveIndividualFile(filePath, isMainFile, forceSave = true) {
             isMainFile: isMainFile,
             forceSave: forceSave
         });
-    } else {
-        console.warn('[FileManager] saveIndividualFile: window.vscode not available!');
     }
 }
 
@@ -1598,17 +1587,24 @@ function initializeFileManager() {
                 break;
 
             case 'individualFileSaved':
-                console.log(`[FileManager] individualFileSaved received: path=${message.filePath}, success=${message.success}, visible=${fileManagerVisible}`);
-                if (fileManagerVisible && message.success) {
-                    clearResolutionForFile(message.filePath);
+                if (fileManagerVisible) {
+                    if (message.success) {
+                        clearResolutionForFile(message.filePath);
+                    } else {
+                        showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
+                    }
                     refreshFileManager();
                     verifyContentSync(true);
                 }
                 break;
 
             case 'individualFileReloaded':
-                if (fileManagerVisible && message.success) {
-                    clearResolutionForFile(message.filePath);
+                if (fileManagerVisible) {
+                    if (message.success) {
+                        clearResolutionForFile(message.filePath);
+                    } else {
+                        showFileManagerNotice(`Reload failed: ${message.error || 'Unknown error'}`, 'error', 5000);
+                    }
                     refreshFileManager();
                     verifyContentSync(true);
                 }
@@ -1618,10 +1614,13 @@ function initializeFileManager() {
                 pendingForceWrite = false;
                 if (message.success) {
                     showFileManagerNotice('Force write completed successfully.', 'info', 6000);
-                    refreshFileManager();
                 } else {
-                    showFileManagerNotice('Force write failed. Check console for details.', 'error', 6000);
+                    const errorCount = message.errors?.length || 0;
+                    const written = message.filesWritten || 0;
+                    showFileManagerNotice(`Force write: ${written} saved, ${errorCount} failed. Check console.`, 'error', 6000);
                 }
+                refreshFileManager();
+                verifyContentSync(true);
                 break;
 
             case 'verifyContentSyncResult':
