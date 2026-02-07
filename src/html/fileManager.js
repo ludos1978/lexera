@@ -26,6 +26,7 @@ let openMode = null;     // null | 'browse' | 'save_conflict' | 'reload_request'
 let conflictId = null;
 let conflictFiles = [];  // from backend message (resolve mode)
 let perFileResolutions = new Map(); // path -> action
+let executedFiles = new Set();      // paths of files that have been executed (saved/reloaded)
 
 let autoRefreshTimer = null;
 
@@ -140,6 +141,7 @@ function openUnifiedDialog(message) {
     openMode = message.openMode || 'external_change';
     dialogMode = 'resolve';
     perFileResolutions = new Map();
+    executedFiles = new Set();
 
     // Set default actions per file (use basename key for path-format consistency)
     conflictFiles.forEach(f => {
@@ -222,6 +224,7 @@ function hideFileManager() {
     conflictId = null;
     conflictFiles = [];
     perFileResolutions.clear();
+    executedFiles.clear();
 
     // Close any open VS Code diff views
     closeAllDiffs();
@@ -247,11 +250,21 @@ function hideFileManager() {
 
 function cancelConflictResolution() {
     if (conflictId && window.vscode) {
+        // If any files were executed (saved/reloaded), send as completed, not cancelled
+        // This allows the backend workflow to continue properly
+        const hasExecutedFiles = executedFiles.size > 0;
+
+        // Build resolutions array - use 'skip' for executed files since they're already handled
+        const resolutions = [];
+        for (const [pathKey, action] of perFileResolutions) {
+            resolutions.push({ path: pathKey, action: executedFiles.has(pathKey) ? 'skip' : action });
+        }
+
         window.vscode.postMessage({
             type: 'conflictResolution',
             conflictId: conflictId,
-            cancelled: true,
-            perFileResolutions: []
+            cancelled: !hasExecutedFiles,
+            perFileResolutions: resolutions
         });
     }
     hideFileManager();
@@ -1337,7 +1350,14 @@ function executeAction(buttonElement) {
     if (!select || !select.value) return;
     const filePath = select.dataset.filePath;
     const isMainFile = select.dataset.isMain === 'true';
-    switch (select.value) {
+    const action = select.value;
+
+    // Track executed file and its action
+    const pathKey = resKey(filePath);
+    executedFiles.add(pathKey);
+    perFileResolutions.set(pathKey, action);
+
+    switch (action) {
         case 'overwrite':
         case 'overwrite_backup_external':
             saveIndividualFile(filePath, isMainFile, true);
@@ -1352,7 +1372,16 @@ function executeAction(buttonElement) {
 function executeAllActions() {
     const select = document.querySelector('.conflict-action-select[data-file-path="__all__"]');
     if (!select || !select.value) return;
-    switch (select.value) {
+    const action = select.value;
+
+    // Track all conflict files as executed with this action
+    for (const file of conflictFiles) {
+        const pathKey = resKey(file.path);
+        executedFiles.add(pathKey);
+        perFileResolutions.set(pathKey, action);
+    }
+
+    switch (action) {
         case 'overwrite':
         case 'overwrite_backup_external':
             forceWriteAllContent();

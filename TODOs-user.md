@@ -1,4 +1,4 @@
-- [ ] fix the icons according to these changes:
+- [x] fix the icons according to these changes:
 - in top row columns use the same triangle as in all other folding icons. 
 - for background processes use a gear wheel
 - for style presets use a typical font size icon.
@@ -8,7 +8,11 @@
 - [ ] suggest a way how to combine all kinds of tasks. i think of something such as
 #tag & !2025.10.13
 !2025.09.12 | !2025.09.15 
-!2025.09.12 - 2025.10.1
+!2025.09.12-2025.10.1 (from .. to)
+!2025.13.05 !10:30 is also considered "&" combined
+
+the order of structure is column-title > task-title > task-content
+if any date or time or tag is within a higher order element, then lower order elements are considered combined with & with the upper ones. the interpretation and highlighing is done on each level individually!
 
 
 - [ ] can we have vertical lines of these sizes in front of the Headings?
