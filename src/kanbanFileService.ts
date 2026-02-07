@@ -534,15 +534,6 @@ export class KanbanFileService {
 
         const mainFile = this.fileRegistry.getMainFile();
 
-        // Debug: Log all files' external change status
-        console.log(`[KanbanFileService._handlePresaveConflictCheck] Checking files for external changes (scope=${typeof scope === 'object' ? JSON.stringify(scope) : scope})`);
-        if (mainFile) {
-            console.log(`[KanbanFileService._handlePresaveConflictCheck] Main file: hasExternalChanges=${mainFile.hasExternalChanges()}, hasUnsavedChanges=${mainFile.hasUnsavedChanges()}, preserveRaw=${mainFile.shouldPreserveRawContent()}`);
-        }
-        for (const f of this.fileRegistry.getIncludeFiles()) {
-            console.log(`[KanbanFileService._handlePresaveConflictCheck] Include file "${f.getRelativePath()}": exists=${f.exists()}, hasExternalChanges=${f.hasExternalChanges()}, hasUnsavedChanges=${f.hasUnsavedChanges()}, preserveRaw=${f.shouldPreserveRawContent()}`);
-        }
-
         // CRITICAL: Skip files with preserveRawContent=true from conflict check
         // These were edited via diff view and user explicitly wants to save their version
         if ((scope === 'main' || scope === 'all') && mainFile?.hasExternalChanges() && !mainFile.shouldPreserveRawContent()) {
@@ -553,8 +544,6 @@ export class KanbanFileService {
                 // Skip files edited via diff view - user wants to save their version
                 if (f.exists() && f.hasExternalChanges() && !f.shouldPreserveRawContent()) {
                     filesWithExternalChanges.push({ file: f, label: f.getRelativePath() });
-                } else if (f.exists() && f.hasExternalChanges() && f.shouldPreserveRawContent()) {
-                    console.log(`[KanbanFileService._handlePresaveConflictCheck] Skipping conflict check for "${f.getRelativePath()}" - preserveRawContent=true (edited via diff view)`);
                 }
             }
         }
@@ -567,11 +556,10 @@ export class KanbanFileService {
         }
 
         if (filesWithExternalChanges.length === 0) {
-            console.log(`[KanbanFileService._handlePresaveConflictCheck] No files with external changes, continuing save`);
             return { result: 'continue', forceWritePaths: new Set() };
         }
 
-        console.log(`[KanbanFileService._handlePresaveConflictCheck] ${filesWithExternalChanges.length} files have external changes: [${filesWithExternalChanges.map(f => f.label).join(', ')}]`);
+        console.warn(`[KanbanFileService] ${filesWithExternalChanges.length} file(s) have external changes: ${filesWithExternalChanges.map(f => f.label).join(', ')}`);
 
         // Show conflict dialog via webview bridge
         const dialogResult = await this._showPresaveConflictDialog(filesWithExternalChanges);

@@ -1363,8 +1363,6 @@ function executeAction(buttonElement) {
     const isMainFile = select.dataset.isMain === 'true';
     const action = select.value;
 
-    console.log(`[FileManager.executeAction] Executing action="${action}" for file="${filePath}" isMain=${isMainFile}`);
-
     // Track executed file and its action
     const pathKey = resKey(filePath);
     executedFiles.add(pathKey);
@@ -1395,8 +1393,6 @@ function executeAllActions() {
         return;
     }
     const action = select.value;
-
-    console.log(`[FileManager.executeAllActions] Executing action="${action}" for ${conflictFiles.length} files`);
 
     // Track all conflict files as executed with this action
     for (const file of conflictFiles) {
