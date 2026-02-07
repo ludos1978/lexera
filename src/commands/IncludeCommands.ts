@@ -428,6 +428,15 @@ export class IncludeCommands extends SwitchBasedCommand {
     ): Promise<CommandResult> {
         const panel = context.getWebviewPanel();
         if (!panel) {
+            // Still try to send failure message if possible
+            this.postMessage({
+                type: 'individualFileSaved',
+                filePath: filePath,
+                isMainFile: isMainFile,
+                success: false,
+                forceSave: forceSave,
+                error: 'No panel available'
+            });
             return this.failure('No panel available');
         }
         const panelAccess = panel as PanelCommandAccess;
@@ -481,7 +490,15 @@ export class IncludeCommands extends SwitchBasedCommand {
     ): Promise<CommandResult> {
         const panel = context.getWebviewPanel();
         if (!panel) {
-            return this.success();
+            // Still try to send failure message if possible
+            this.postMessage({
+                type: 'individualFileReloaded',
+                filePath: filePath,
+                isMainFile: isMainFile,
+                success: false,
+                error: 'No panel available'
+            });
+            return this.failure('No panel available');
         }
         const panelAccess = panel as PanelCommandAccess;
 

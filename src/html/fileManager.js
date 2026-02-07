@@ -1306,67 +1306,84 @@ function confirmForceWrite() {
 // ============= FILE OPERATIONS =============
 
 function saveIndividualFile(filePath, isMainFile, forceSave = true) {
-    if (window.vscode) {
-        window.vscode.postMessage({
-            type: 'saveIndividualFile',
-            filePath: filePath,
-            isMainFile: isMainFile,
-            forceSave: forceSave
-        });
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.saveIndividualFile] ABORTED: window.vscode undefined');
+        return;
     }
+    window.kanbanDebug?.warn('[FileManager.saveIndividualFile] Sending save request', { filePath, isMainFile, forceSave });
+    window.vscode.postMessage({
+        type: 'saveIndividualFile',
+        filePath: filePath,
+        isMainFile: isMainFile,
+        forceSave: forceSave
+    });
 }
 
 function reloadIndividualFile(filePath, isMainFile) {
-    if (window.vscode) {
-        window.vscode.postMessage({
-            type: 'reloadIndividualFile',
-            filePath: filePath,
-            isMainFile: isMainFile
-        });
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] ABORTED: window.vscode undefined');
+        return;
     }
+    window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] Sending reload request', { filePath, isMainFile });
+    window.vscode.postMessage({
+        type: 'reloadIndividualFile',
+        filePath: filePath,
+        isMainFile: isMainFile
+    });
 }
 
 function convertFilePaths(filePath, isMainFile, direction) {
-    if (window.vscode) {
-        window.vscode.postMessage({
-            type: 'convertPaths',
-            filePath: filePath,
-            isMainFile: isMainFile,
-            direction: direction
-        });
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.convertFilePaths] ABORTED: window.vscode undefined');
+        return;
     }
+    window.vscode.postMessage({
+        type: 'convertPaths',
+        filePath: filePath,
+        isMainFile: isMainFile,
+        direction: direction
+    });
 }
 
 function convertAllPaths(direction) {
-    if (window.vscode) {
-        window.vscode.postMessage({ type: 'convertAllPaths', direction: direction });
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.convertAllPaths] ABORTED: window.vscode undefined');
+        return;
     }
+    window.vscode.postMessage({ type: 'convertAllPaths', direction: direction });
 }
 
 // --- Dropdown+execute dispatchers ---
 
 function executeAction(buttonElement) {
     if (!buttonElement) {
-        console.warn('[FileManager.executeAction] No button element provided');
+        window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: No button element provided');
         return;
     }
     const select = buttonElement.parentElement?.querySelector('.conflict-action-select');
     if (!select) {
-        console.warn('[FileManager.executeAction] No select element found in parent');
+        window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: No select element found in parent');
         return;
     }
     if (!select.value) {
-        console.warn('[FileManager.executeAction] No action selected in dropdown');
+        window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: No action selected in dropdown');
         return;
     }
     const filePath = select.dataset.filePath;
     const isMainFile = select.dataset.isMain === 'true';
     const action = select.value;
 
+    if (!filePath) {
+        window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: No file path in select dataset');
+        return;
+    }
+
     // Track executed file and its action
     const pathKey = resKey(filePath);
     executedFiles.add(pathKey);
     perFileResolutions.set(pathKey, action);
+
+    window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, isMainFile, action });
 
     switch (action) {
         case 'overwrite':
@@ -1378,18 +1395,18 @@ function executeAction(buttonElement) {
             reloadIndividualFile(filePath, isMainFile);
             break;
         default:
-            console.warn(`[FileManager.executeAction] Unknown action: ${action}`);
+            window.kanbanDebug?.warn(`[FileManager.executeAction] ABORTED: Unknown action: ${action}`);
     }
 }
 
 function executeAllActions() {
     const select = document.querySelector('.conflict-action-select[data-file-path="__all__"]');
     if (!select) {
-        console.warn('[FileManager.executeAllActions] No "apply all" select element found');
+        window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: No "apply all" select element found');
         return;
     }
     if (!select.value) {
-        console.warn('[FileManager.executeAllActions] No action selected in "apply all" dropdown');
+        window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: No action selected in "apply all" dropdown');
         return;
     }
     const action = select.value;
@@ -1401,6 +1418,8 @@ function executeAllActions() {
         perFileResolutions.set(pathKey, action);
     }
 
+    window.kanbanDebug?.warn('[FileManager.executeAllActions] Dispatching action', { action, fileCount: conflictFiles.length });
+
     switch (action) {
         case 'overwrite':
         case 'overwrite_backup_external':
@@ -1411,7 +1430,7 @@ function executeAllActions() {
             reloadAllIncludedFiles();
             break;
         default:
-            console.warn(`[FileManager.executeAllActions] Unknown action: ${action}`);
+            window.kanbanDebug?.warn(`[FileManager.executeAllActions] ABORTED: Unknown action: ${action}`);
     }
 }
 
@@ -1458,10 +1477,12 @@ function clearFileManagerCache() {
 }
 
 function reloadAllIncludedFiles() {
-    if (window.vscode) {
-        window.vscode.postMessage({ type: 'reloadAllIncludedFiles' });
-        setTimeout(() => { refreshFileManager(); }, 500);
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.reloadAllIncludedFiles] ABORTED: window.vscode undefined');
+        return;
     }
+    window.vscode.postMessage({ type: 'reloadAllIncludedFiles' });
+    setTimeout(() => { refreshFileManager(); }, 500);
 }
 
 // ============= ENHANCED MANUAL REFRESH =============
