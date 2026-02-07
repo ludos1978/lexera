@@ -372,7 +372,10 @@ export class KanbanFileService {
             }
 
             // Pre-save: check for files with pending external changes (Scenario 2)
-            const presaveCheck = await this._handlePresaveConflictCheck(scope);
+            // Skip conflict check if force=true (user already resolved via file manager)
+            const presaveCheck = force
+                ? { result: 'continue' as const, forceWritePaths: new Set<string>() }
+                : await this._handlePresaveConflictCheck(scope);
             if (presaveCheck.result === 'abort') {
                 return;
             }
