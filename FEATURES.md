@@ -170,12 +170,37 @@ The include statement can be added to the Column Header (best for large presenta
 - HTML comment handling
 - Markdown-it extensions for kanban rendering
 
-### Tags
+### Hash-Tags (#)
 
 - Tags are written as #tag in titles or descriptions.
 - Tags can be colorized and categorized.
 - Tag visibility can be toggled (show all, hide, or only show for layout tags).
 - Tag configuration can be used in templates and formatting.
+- Can be used for users as well (#reto)
+
+- Tags and with a empty character (space, tab) or any of the reserved Characters (& | ! - ..)
+
+### Date-Tags (@)
+
+- @Tags are used for Dates, Times, Weekdays
+
+### Reserved Characters in Hash and Date Tags
+
+- AND &
+- OR |
+- NOT !
+- RANGE - or ..
+
+### REQUEST TAGS (?)
+
+Used in Column Headers, they gather all elements that have match the request in this column!
+
+Examples:
+- ?@MON will gather all events on mondays
+- ?@DAYS+1..@DAYS+3 will gather all date tags that tomorrow until in 3 days.
+- ?#green will gather all tags with #green
+- ?#green&bright will gather all tasks with #green AND #bright
+- ?#green|bright will gather all tasks with #green AND #bright
 
 ### Export
 

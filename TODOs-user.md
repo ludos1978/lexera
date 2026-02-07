@@ -14,6 +14,9 @@
 the order of structure is column-title > task-title > task-content
 if any date or time or tag is within a higher order element, then lower order elements are considered combined with & with the upper ones. the interpretation and highlighing is done on each level individually!
 
+analyze what is currently implemented  regarding all tag parsing searching and sorting systems first. then make a suggestion on how to improve the current situation!
+
+DO A VERY DETAILED ANALYSIS
 
 - [ ] can we have vertical lines of these sizes in front of the Headings?
 - H1 = 5px (1*7px)
