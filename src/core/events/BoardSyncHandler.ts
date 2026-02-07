@@ -197,12 +197,8 @@ export class BoardSyncHandler {
                     // CRITICAL: Skip files that were edited via diff view
                     // These have raw content that should be preserved, not regenerated from tasks
                     if (file.shouldPreserveRawContent()) {
-                        console.log(`[BoardSyncHandler] Skipping regeneration for "${relativePath}" - preserveRawContent=true (edited via diff view)`);
                         continue;
                     }
-
-                    // File found but preserveRawContent is false - will regenerate
-                    console.log(`[BoardSyncHandler] Will regenerate "${relativePath}" - preserveRawContent=false`);
 
                     const includeFile = file as IncludeFile;
                     const content = includeFile.generateFromTasks(column.tasks);
