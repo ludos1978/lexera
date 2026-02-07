@@ -14,17 +14,21 @@ import markdownItImageFigures from 'markdown-it-image-figures';
 import {
     wikiLinksPlugin,
     tagPlugin,
-    datePersonTagPlugin,
     temporalTagPlugin,
     speakerNotePlugin,
     htmlCommentPlugin,
     includePlugin
 } from './markdownItPlugins';
 
+/**
+ * Options for WYSIWYG markdown-it configuration
+ * NEW SYSTEM:
+ * - tagPrefix (#): handles all tags including people (people are just tags)
+ * - temporalPrefix (@): handles all temporal (dates, times, weeks, weekdays)
+ */
 export type WysiwygMarkdownItOptions = {
     temporalPrefix?: string;
     tagPrefix?: string;
-    personPrefix?: string;
 };
 
 export function createWysiwygMarkdownIt(options: WysiwygMarkdownItOptions = {}): MarkdownIt {
@@ -37,8 +41,7 @@ export function createWysiwygMarkdownIt(options: WysiwygMarkdownItOptions = {}):
 
     md.use(wikiLinksPlugin, { className: 'wiki-link' })
         .use(tagPlugin, { prefix: options.tagPrefix ?? '#' })
-        .use(datePersonTagPlugin, { prefix: options.personPrefix ?? '@' })
-        .use(temporalTagPlugin, { prefix: options.temporalPrefix ?? '!' })
+        .use(temporalTagPlugin, { prefix: options.temporalPrefix ?? '@' })
         .use(speakerNotePlugin)
         .use(htmlCommentPlugin)
         .use(includePlugin)

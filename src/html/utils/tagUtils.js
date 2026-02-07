@@ -6,11 +6,15 @@
 // ============================================================================
 // TAG PREFIX CONFIGURATION - Change these to modify tag prefixes globally
 // ============================================================================
+// NEW TAG SYSTEM:
+// - # prefix: all tags INCLUDING people (people are just tags)
+// - @ prefix: all temporal (dates, times, weeks, weekdays)
+// - PERSON is now merged with HASH (kept for backwards compatibility during transition)
 const TAG_PREFIXES = {
-    HASH: '#',      // Regular tags: #todo, #urgent, #row2
-    PERSON: '@',    // Person/mention tags: @john, @team-alpha
-    TEMPORAL: '!',  // Temporal tags: !2025.01.28, !w15, !mon, !15:30
-    QUERY: '$'      // Query tags: $#tag, $@person, $!today (queries cards with matching tags)
+    HASH: '#',      // Regular tags AND people: #todo, #urgent, #john, #team-alpha
+    PERSON: '#',    // DEPRECATED: Now same as HASH - people are just tags
+    TEMPORAL: '@',  // Temporal tags: @2025.01.28, @w15, @mon, @15:30
+    QUERY: '$'      // Query tags: $#tag, $@date (queries cards with matching tags)
 };
 
 // Helper to escape special regex characters in prefixes
@@ -43,8 +47,9 @@ class TagUtils {
             // Supports: #tag, #1, #1.5, #++, etc.
             basicTags: new RegExp(`${P.H}([^\\s]+)`, 'g'),
 
-            // PERSON/MENTION TAGS - everything until whitespace
-            // @johnson, @Johnson&johnson, @team-alpha, etc.
+            // PERSON/MENTION TAGS - DEPRECATED: now uses # like hash tags
+            // NEW: #johnson, #team-alpha (people are just tags)
+            // This pattern now matches the same as basicTags since PERSON prefix = HASH prefix
             personTags: new RegExp(`${P.P}([^\\s]+)`, 'g'),
 
             // Special positivity tags (#++, #+, #ø, #-, #--)
@@ -60,37 +65,37 @@ class TagUtils {
             stickyTag: new RegExp(`${P.H}sticky(?=\\s|$)`, 'gi'),
             includeTag: new RegExp(`${P.H}include:([^\\s]+)`, 'i'),
 
-            // QUERY TAGS - start with ? followed by tag type prefix (#, @, !)
-            // Examples: ?#tag, ?@person, ?!today, ?#tag1&tag2, ?@reto|bruno
+            // QUERY TAGS - start with ? followed by tag type prefix (# or @)
+            // Examples: ?#tag, ?#person, ?@today, ?#tag1&tag2, ?#reto|bruno
             // Captures: type prefix and the query content
             queryTags: new RegExp(`${P.Q}([${P.H}${P.P}${P.T}])([^\\s]+)`, 'g'),
 
-            // TEMPORAL TAGS - all start with ! and capture everything until whitespace
+            // TEMPORAL TAGS - NEW: all start with @ and capture everything until whitespace
             // Date patterns - supports multiple formats:
-            // - ISO: !2025.01.28, !2025-01-05, !2025/01/05 (YYYY.MM.DD)
-            // - European: !28.01.2025, !28-01-2025, !28/01/2025 (DD.MM.YYYY)
-            // - European short: !28.01.25, !28-01-25, !28/01/25 (DD.MM.YY)
-            // - Day-month only: !28.01, !28-01, !28/01 (DD.MM - current year assumed)
+            // - ISO: @2025.01.28, @2025-01-05, @2025/01/05 (YYYY.MM.DD)
+            // - European: @28.01.2025, @28-01-2025, @28/01/2025 (DD.MM.YYYY)
+            // - European short: @28.01.25, @28-01-25, @28/01/25 (DD.MM.YY)
+            // - Day-month only: @28.01, @28-01, @28/01 (DD.MM - current year assumed)
             // Combined pattern matches all formats, parsing logic determines interpretation
             dateTags: new RegExp(`${P.T}(\\d{1,4}[-./]\\d{1,2}(?:[-./]\\d{2,4})?)(?=\\s|$)`, 'g'),
 
-            // Week patterns (.w15, .W15, .kw15, .KW15, .2025.w15, .2025-w15, .2025.kw15)
+            // Week patterns (@w15, @W15, @kw15, @KW15, @2025.w15, @2025-w15, @2025.kw15)
             // Supports both English 'w/W' and German 'kw/KW' (Kalenderwoche) prefixes
             weekTags: new RegExp(`${P.T}(?:(\\d{4})[-.]?)?(?:[wW]|[kK][wW])(\\d{1,2})(?=\\s|$)`, 'g'),
 
-            // Weekday patterns (.mon, .monday, .tue, .tuesday, etc.)
+            // Weekday patterns (@mon, @monday, @tue, @tuesday, etc.)
             weekdayTags: new RegExp(`${P.T}(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\\s|$)`, 'gi'),
 
-            // Time patterns (.15:30, .9am, .10pm, .22:00)
+            // Time patterns (@15:30, @9am, @10pm, @22:00)
             timeTags: new RegExp(`${P.T}(\\d{1,2}(?::\\d{2})?(?:am|pm)?)(?=\\s|$)`, 'gi'),
 
-            // Time slot patterns (.15:30-17:00, .9am-5pm)
+            // Time slot patterns (@15:30-17:00, @9am-5pm)
             timeSlotTags: new RegExp(`${P.T}(\\d{1,2}(?::\\d{2})?(?:am|pm)?)-(\\d{1,2}(?::\\d{2})?(?:am|pm)?)(?=\\s|$)`, 'gi'),
 
-            // Minute slot patterns (!:15-:30, !:00-:15) - inherit hour from parent time slot
+            // Minute slot patterns (@:15-:30, @:00-:15) - inherit hour from parent time slot
             minuteSlotTags: new RegExp(`${P.T}:(\\d{1,2})-:(\\d{1,2})(?=\\s|$)`, 'gi'),
 
-            // Generic temporal tag - captures everything after . until whitespace (for future extensions)
+            // Generic temporal tag - captures everything after @ until whitespace (for future extensions)
             temporalTag: new RegExp(`${P.T}([^\\s]+)`, 'g'),
 
             // Priority/state tags
@@ -679,7 +684,7 @@ class TagUtils {
 
             if (start === null || end === null) continue;
 
-            // Handle slots that cross midnight (e.g., !22:00-02:00)
+            // Handle slots that cross midnight (e.g., @22:00-02:00)
             if (end < start) {
                 if (currentMinutes >= start || currentMinutes <= end) {
                     return true;
@@ -742,7 +747,7 @@ class TagUtils {
      * Check if current time falls within a minute slot, given a parent hour context.
      * The minute slot inherits the hour from the parent time slot.
      *
-     * Example: Parent has !15:00-16:00, line has !:15-:30
+     * Example: Parent has @15:00-16:00, line has @:15-:30
      * If current time is 15:20 → highlighted (within 15:15-15:30)
      * If current time is 15:40 → not highlighted (outside 15:15-15:30)
      *
@@ -861,7 +866,7 @@ class TagUtils {
      * A temporal tag at a lower structural level is only highlighted if ALL temporal tags
      * at higher structural levels are currently active.
      *
-     * Example: Column has !W49, Task has !09:00-12:00
+     * Example: Column has @W49, Task has @09:00-12:00
      * - If current week is 49 AND current time is in 09:00-12:00 → task highlights
      * - If current week is NOT 49 → task does NOT highlight (gate closed by column)
      * - If column has NO week tag → task highlights whenever time matches
@@ -990,9 +995,10 @@ class TagUtils {
             const typePrefix = match[1];
             const queryContent = match[2];
 
+            // NEW TAG SYSTEM: Since PERSON and HASH now use the same prefix (#),
+            // both will be detected as 'hash' type. People are just tags.
             let type;
-            if (typePrefix === H) type = 'hash';
-            else if (typePrefix === P) type = 'person';
+            if (typePrefix === H || typePrefix === P) type = 'hash';
             else if (typePrefix === T) type = 'temporal';
             else type = 'unknown';
 

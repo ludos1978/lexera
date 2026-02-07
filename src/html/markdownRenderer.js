@@ -642,7 +642,7 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode) 
         md.use(window.markdownitDatePersonTag);
     }
 
-    // Temporal tags: !w49, !2025.12.05, !mon, !15:30, !09:00-17:00
+    // Temporal tags: @w49, @2025.12.05, @mon, @15:30, @09:00-17:00
     if (typeof window.markdownitTemporalTag !== 'undefined') {
         md.use(window.markdownitTemporalTag);
     }

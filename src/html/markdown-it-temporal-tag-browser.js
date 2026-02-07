@@ -2,8 +2,10 @@
 
 /**
  * Temporal Tag Plugin for markdown-it (browser version)
- * Handles temporal prefix tags: !2025.01.28, !w49, !mon, !15:30, !09:00-17:00, etc.
- * Extracted from markdownRenderer.js — Phase 5.
+ * NEW TAG SYSTEM: Handles @ prefix for all temporal tags:
+ * @2025.01.28, @w49, @mon, @15:30, @09:00-17:00, etc.
+ * - # prefix: tags AND people (people are just tags)
+ * - @ prefix: all temporal (dates, times, weeks, weekdays)
  */
 
 // =============================================================================
@@ -12,12 +14,12 @@
 var TEMPORAL_TAG_CONFIG = {
     // Icons for different temporal tag types (can be emoji or text)
     icons: {
-        date: '\u{1F4C5}',      // Date tags: !2025.01.28
-        week: '\u{1F4C6}',      // Week tags: !w49, !2025.w49
-        weekday: '\u{1F4C5}',   // Weekday tags: !mon, !friday
-        time: '\u{1F550}',      // Time tags: !15:30, !9am
-        timeSlot: '\u{23F1}\uFE0F',  // Time slot tags: !09:00-17:00
-        minuteSlot: '\u{23F1}\uFE0F', // Minute slot tags: !:15-:30
+        date: '\u{1F4C5}',      // Date tags: @2025.01.28
+        week: '\u{1F4C6}',      // Week tags: @w49, @2025.w49
+        weekday: '\u{1F4C5}',   // Weekday tags: @mon, @friday
+        time: '\u{1F550}',      // Time tags: @15:30, @9am
+        timeSlot: '\u{23F1}\uFE0F',  // Time slot tags: @09:00-17:00
+        minuteSlot: '\u{23F1}\uFE0F', // Minute slot tags: @:15-:30
         generic: '\u{1F550}'    // Generic temporal: fallback
     },
     // Whether to show icons (set to false to hide all icons)
@@ -37,10 +39,10 @@ window.markdownitTemporalTag = function(md, options) {
         config[key] = options[key];
     }
 
-    // Get temporal prefix from centralized config (defaults to '!' if not available)
+    // Get temporal prefix from centralized config (NEW: defaults to '@' for temporal)
     var TEMPORAL_PREFIX = (typeof window !== 'undefined' && window.TAG_PREFIXES)
         ? window.TAG_PREFIXES.TEMPORAL
-        : '!';
+        : '@';
     var TEMPORAL_CHAR_CODE = TEMPORAL_PREFIX.charCodeAt(0);
 
     function parseTemporalTag(state, silent) {

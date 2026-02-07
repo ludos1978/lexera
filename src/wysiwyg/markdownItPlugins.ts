@@ -64,6 +64,11 @@ export type TagPluginOptions = {
     prefix?: string;
 };
 
+/**
+ * Tag plugin - handles # prefix for all hash tags including people
+ * NEW SYSTEM: # prefix handles tags AND people (people are just tags)
+ * Examples: #urgent, #todo, #john, #team-lead
+ */
 export function tagPlugin(md: MarkdownIt, options: TagPluginOptions = {}): void {
     const prefix = options.prefix ?? '#';
     const prefixCode = prefix.charCodeAt(0);
@@ -137,85 +142,24 @@ export function tagPlugin(md: MarkdownIt, options: TagPluginOptions = {}): void 
     md.inline.ruler.before('emphasis', 'tag', parseTag);
 }
 
-export type DatePersonTagOptions = {
-    prefix?: string;
-};
-
-export function datePersonTagPlugin(md: MarkdownIt, options: DatePersonTagOptions = {}): void {
-    const prefix = options.prefix ?? '@';
-    const prefixCode = prefix.charCodeAt(0);
-
-    function parseDatePersonTag(state: any, silent: boolean): boolean {
-        let pos = state.pos;
-
-        if (state.src.charCodeAt(pos) !== prefixCode) { return false; }
-        if (pos > 0 && state.src.charCodeAt(pos - 1) !== 0x20 /* space */ &&
-            state.src.charCodeAt(pos - 1) !== 0x0A /* newline */ &&
-            state.src.charCodeAt(pos - 1) !== 0x09 /* tab */ &&
-            pos !== 0) { return false; }
-
-        pos += 1;
-        if (pos >= state.posMax) { return false; }
-
-        const tagStart = pos;
-        let tagContent = '';
-        let tagType = '';
-
-        const remaining = state.src.slice(pos);
-        const weekMatch = remaining.match(/^(\d{4}-?W\d{1,2}|W\d{1,2})/i);
-
-        if (weekMatch) {
-            tagContent = weekMatch[1];
-            tagType = 'week';
-            pos += tagContent.length;
-        } else {
-            const dateMatch = remaining.match(/^(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})/);
-            if (dateMatch) {
-                tagContent = dateMatch[1];
-                tagType = 'date';
-                pos += tagContent.length;
-            } else {
-                while (pos < state.posMax) {
-                    const char = state.src.charCodeAt(pos);
-                    if ((char >= 0x30 && char <= 0x39) ||
-                        (char >= 0x41 && char <= 0x5A) ||
-                        (char >= 0x61 && char <= 0x7A) ||
-                        char === 0x5F ||
-                        char === 0x2D) {
-                        pos += 1;
-                    } else {
-                        break;
-                    }
-                }
-
-                if (pos === tagStart) { return false; }
-
-                tagContent = state.src.slice(tagStart, pos);
-                tagType = 'person';
-            }
-        }
-
-        state.pos = pos;
-
-        if (silent) { return true; }
-
-        const token = state.push('date_person_tag', 'span', 0);
-        token.content = tagContent;
-        token.markup = prefix;
-        token.meta = { type: tagType };
-
-        return true;
-    }
-
-    md.inline.ruler.before('emphasis', 'date_person_tag', parseDatePersonTag);
-}
+// NOTE: datePersonTagPlugin has been removed
+// In the new tag system:
+// - # prefix handles all tags including people (people are just tags)
+// - @ prefix handles all temporal (dates, times, weeks, weekdays)
+// The old @person syntax is now #person, handled by tagPlugin
+// The old @date syntax is now handled by temporalTagPlugin with @ prefix
 
 export type TemporalTagOptions = {
     prefix?: string;
 };
 
+/**
+ * Temporal tag plugin - handles @ prefix for all date/time formats
+ * NEW SYSTEM: @ prefix handles all temporal (dates, times, weeks, weekdays)
+ * Examples: @2025-03-27, @10:30, @W12, @monday, @10am-2pm
+ */
 export function temporalTagPlugin(md: MarkdownIt, options: TemporalTagOptions = {}): void {
-    const prefix = options.prefix ?? '!';
+    const prefix = options.prefix ?? '@';
     const prefixCode = prefix.charCodeAt(0);
 
     function parseTemporalTag(state: any, silent: boolean): boolean {
@@ -237,47 +181,62 @@ export function temporalTagPlugin(md: MarkdownIt, options: TemporalTagOptions = 
         let tagContent = '';
         let tagType = '';
 
+        // Time slot: @10am-2pm, @9:30-17:00
         const timeSlotMatch = remaining.match(/^(\d{1,2}(?::\d{2})?(?:am|pm)?)-(\d{1,2}(?::\d{2})?(?:am|pm)?)(?=\s|$)/i);
         if (timeSlotMatch) {
             tagContent = timeSlotMatch[0];
             tagType = 'timeSlot';
             pos += tagContent.length;
         } else {
+            // Year-week: @2025W12, @2025-W12, @2025.W12
             const weekYearMatch = remaining.match(/^(\d{4})[-.]?[wW](\d{1,2})(?=\s|$)/);
             if (weekYearMatch) {
                 tagContent = weekYearMatch[0];
                 tagType = 'week';
                 pos += tagContent.length;
             } else {
+                // Week only: @W12
                 const weekMatch = remaining.match(/^[wW](\d{1,2})(?=\s|$)/);
                 if (weekMatch) {
                     tagContent = weekMatch[0];
                     tagType = 'week';
                     pos += tagContent.length;
                 } else {
+                    // Date with separators: @2025-03-27, @2025/03/27, @2025.03.27
                     const dateMatch = remaining.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?=\s|$)/);
                     if (dateMatch) {
                         tagContent = dateMatch[0];
                         tagType = 'date';
                         pos += tagContent.length;
                     } else {
-                        const weekdayMatch = remaining.match(/^(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/i);
-                        if (weekdayMatch) {
-                            tagContent = weekdayMatch[0];
-                            tagType = 'weekday';
+                        // Date in DD-MM-YYYY format: @27-03-2025
+                        const dateDMYMatch = remaining.match(/^(\d{2})-(\d{2})-(\d{4})(?=\s|$)/);
+                        if (dateDMYMatch) {
+                            tagContent = dateDMYMatch[0];
+                            tagType = 'date';
                             pos += tagContent.length;
                         } else {
-                            const minuteSlotMatch = remaining.match(/^:(\d{1,2})-:(\d{1,2})(?=\s|$)/i);
-                            if (minuteSlotMatch) {
-                                tagContent = minuteSlotMatch[0];
-                                tagType = 'minuteSlot';
+                            // Weekday: @monday, @mon, @tue, etc.
+                            const weekdayMatch = remaining.match(/^(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/i);
+                            if (weekdayMatch) {
+                                tagContent = weekdayMatch[0];
+                                tagType = 'weekday';
                                 pos += tagContent.length;
                             } else {
-                                const timeMatch = remaining.match(/^(\d{1,2}(?::\d{2})?(?:am|pm)?)(?=\s|$)/i);
-                                if (timeMatch) {
-                                    tagContent = timeMatch[0];
-                                    tagType = 'time';
+                                // Minute slot: @:15-:45
+                                const minuteSlotMatch = remaining.match(/^:(\d{1,2})-:(\d{1,2})(?=\s|$)/i);
+                                if (minuteSlotMatch) {
+                                    tagContent = minuteSlotMatch[0];
+                                    tagType = 'minuteSlot';
                                     pos += tagContent.length;
+                                } else {
+                                    // Time only: @10:30, @2pm, @14
+                                    const timeMatch = remaining.match(/^(\d{1,2}(?::\d{2})?(?:am|pm)?)(?=\s|$)/i);
+                                    if (timeMatch) {
+                                        tagContent = timeMatch[0];
+                                        tagType = 'time';
+                                        pos += tagContent.length;
+                                    }
                                 }
                             }
                         }

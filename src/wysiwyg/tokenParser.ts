@@ -173,28 +173,17 @@ function createIncludeBlockNode(token: MarkdownItToken): WysiwygNode {
     };
 }
 
+/**
+ * NEW TAG SYSTEM:
+ * - # prefix handles all tags including people (people are just tags)
+ * - @ prefix handles all temporal (dates, times, weeks, weekdays)
+ * Note: createDatePersonNode has been removed - the old @person is now #person
+ */
 function createTagNode(token: MarkdownItToken): WysiwygNode {
     const value = token.content || '';
     return {
         type: 'tag',
         attrs: { value, flavor: getTagFlavor(value) }
-    };
-}
-
-function createDatePersonNode(token: MarkdownItToken): WysiwygNode {
-    const value = token.content || '';
-    const metaType = typeof token.meta?.type === 'string' ? token.meta.type : '';
-
-    if (metaType === 'person') {
-        return {
-            type: 'person_tag',
-            attrs: { value }
-        };
-    }
-
-    return {
-        type: 'date_tag',
-        attrs: { value, kind: metaType || 'date' }
     };
 }
 
@@ -390,11 +379,6 @@ function parseInlineTokens(tokens: MarkdownItToken[], activeMarks: WysiwygMark[]
             continue;
         }
 
-        if (token.type === 'date_person_tag') {
-            nodes.push(createDatePersonNode(token));
-            continue;
-        }
-
         if (token.type === 'temporal_tag') {
             nodes.push(createTemporalNode(token));
             continue;
@@ -519,8 +503,6 @@ function createBlockLeafNode(token: MarkdownItToken): WysiwygNode | null {
             return createIncludeInlineNode(token);
         case 'tag':
             return createTagNode(token);
-        case 'date_person_tag':
-            return createDatePersonNode(token);
         case 'temporal_tag':
             return createTemporalNode(token);
         case 'html_comment':

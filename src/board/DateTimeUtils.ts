@@ -51,12 +51,19 @@ export function hasSticky(text: string): boolean {
 }
 
 /**
- * Extract person names from text (@ prefix, everything until whitespace)
+ * Extract person names from text (# prefix, everything until whitespace)
+ * NEW TAG SYSTEM: People are now tags with # prefix (people are just tags)
+ * This function extracts potential person names from hash tags.
+ * Note: Since people are now just regular tags, this function returns
+ * all hash tag values that could be person names (excludes layout tags).
  */
 export function extractPersonNames(text: string): string[] {
     if (!text) { return []; }
-    const matches = text.match(/@([^\s]+)/g) || [];
-    return matches.map(m => m.substring(1));
+    const matches = text.match(/#([^\s]+)/g) || [];
+    // Filter out layout tags and return the tag values
+    return matches
+        .map(m => m.substring(1))
+        .filter(tag => !/^(row\d*|span\d*|stack|sticky|fold|archive|hidden|include:|sort-|ungathered|gather_)/i.test(tag));
 }
 
 /**

@@ -132,14 +132,11 @@ function buildNodeToDOM(name: string, spec: WysiwygNodeSpec): NodeSpec['toDOM'] 
             ];
         case 'wiki_link':
             return (node) => ['span', { class: 'wysiwyg-wiki-link', 'data-document': node.attrs.document || '' }, node.attrs.title || node.attrs.document || ''];
+        // NEW TAG SYSTEM: # for tags (including people), @ for temporal
         case 'tag':
             return (node) => ['span', { class: 'wysiwyg-tag', 'data-value': node.attrs.value || '' }, `#${node.attrs.value || ''}`];
-        case 'date_tag':
-            return (node) => ['span', { class: 'wysiwyg-date-tag', 'data-value': node.attrs.value || '' }, `@${node.attrs.value || ''}`];
-        case 'person_tag':
-            return (node) => ['span', { class: 'wysiwyg-person-tag', 'data-value': node.attrs.value || '' }, `@${node.attrs.value || ''}`];
         case 'temporal_tag':
-            return (node) => ['span', { class: 'wysiwyg-temporal-tag', 'data-value': node.attrs.value || '' }, `!${node.attrs.value || ''}`];
+            return (node) => ['span', { class: 'wysiwyg-temporal-tag', 'data-value': node.attrs.value || '' }, `@${node.attrs.value || ''}`];
         case 'media_inline':
             return (node) => (
                 (node.attrs.mediaType || 'image') === 'image'

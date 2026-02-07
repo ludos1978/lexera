@@ -150,13 +150,16 @@ export class TextMatcher {
     /**
      * Canonical tag extraction matching the frontend tagUtils.js patterns.
      *
-     * Extracts #tags, @mentions, and !temporal tags from text.
+     * NEW TAG SYSTEM:
+     * - #tags: all hash tags including people (people are just tags)
+     * - @temporal: all temporal (dates, times, weeks, weekdays)
+     *
      * Layout tags are excluded by default (row, span, stack, sticky, fold, archive, hidden, include:).
      */
-    static extractTags(text: string): { name: string; type: 'hash' | 'person' | 'temporal' }[] {
-        const tags: { name: string; type: 'hash' | 'person' | 'temporal' }[] = [];
+    static extractTags(text: string): { name: string; type: 'hash' | 'temporal' }[] {
+        const tags: { name: string; type: 'hash' | 'temporal' }[] = [];
 
-        // Hash tags: #tag (everything after # until whitespace) - matches frontend basicTags pattern
+        // Hash tags: #tag (everything after # until whitespace) - includes people since people are now tags
         const hashMatches = text.matchAll(/#([^\s]+)/g);
         for (const match of hashMatches) {
             const tag = match[1].toLowerCase();
@@ -167,16 +170,10 @@ export class TextMatcher {
             tags.push({ name: '#' + tag, type: 'hash' });
         }
 
-        // Person tags: @person
-        const personMatches = text.matchAll(/@([^\s]+)/g);
-        for (const match of personMatches) {
-            tags.push({ name: '@' + match[1].toLowerCase(), type: 'person' });
-        }
-
-        // Temporal tags: !date, !week, !time
-        const temporalMatches = text.matchAll(/!([^\s]+)/g);
+        // Temporal tags: @date, @week, @time (@ prefix is now for all temporal)
+        const temporalMatches = text.matchAll(/@([^\s]+)/g);
         for (const match of temporalMatches) {
-            tags.push({ name: '!' + match[1], type: 'temporal' });
+            tags.push({ name: '@' + match[1], type: 'temporal' });
         }
 
         return tags;

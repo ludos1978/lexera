@@ -229,34 +229,68 @@ If your markdown file lacks the required YAML header:
 
 ## Tag System & Auto-Sorting
 
-### Person Tags (@tags)
+### Tag Prefixes
 
-Assign people to tasks using `@` tags:
+The plugin uses two tag prefixes:
+
+- **`#` (Hash tags)**: Regular tags AND people (people are just tags)
+- **`@` (Temporal tags)**: Dates, times, weeks, weekdays
+
+### Hash Tags (#tags)
+
+Use `#` for regular tags and to assign people to tasks:
 
 ```markdown
-- [ ] Review design @Reto @Anita
+- [ ] Review design #Reto #Anita
+- [ ] Backend work #backend #urgent
+- [ ] Team task #team-alpha #priority
 ```
 
 **Features:**
-- Multiple people per task
+- Multiple tags per task
 - Works in title or description
 - Used for gather rules and filtering
+- People are just regular tags with #
 
-### Date Tags
+### Temporal Tags (@)
 
-**Shorthand Format:**
+Use `@` for all time-related tags:
+
+**Date Formats:**
 ```markdown
 - [ ] Complete by @2025-03-27
 - [ ] Due @27-03-2025
+- [ ] European format @27.03.2025
 ```
 
-**Typed Format:**
+**Typed Date Format:**
 ```markdown
 - [ ] @due:2025-03-27
 - [ ] @done:2025-03-26
 - [ ] @start:2025-03-20
 - [ ] @end:2025-03-30
 - [ ] @modified:2025-03-25
+```
+
+**Week Tags:**
+```markdown
+- [ ] @W12
+- [ ] @KW15
+- [ ] @2025-W12
+```
+
+**Time Tags:**
+```markdown
+- [ ] Meeting @10:30
+- [ ] Call @9am
+- [ ] Slot @09:00-17:00
+```
+
+**Weekday Tags:**
+```markdown
+- [ ] @monday
+- [ ] @tue
+- [ ] @wed
 ```
 
 **Supported Date Types:**
@@ -271,9 +305,9 @@ Assign people to tasks using `@` tags:
 Prevent tasks from moving during auto-sorting:
 
 ```markdown
-## Important #gather_@sticky
+## Important #gather_#sticky
 
-- [ ] Critical task @sticky
+- [ ] Critical task #sticky
 ```
 
 **Sticky tasks:**
@@ -285,9 +319,9 @@ Prevent tasks from moving during auto-sorting:
 
 Automatically collect cards matching criteria into columns:
 
-**Basic Gather:**
+**Basic Gather (People use # now):**
 ```markdown
-## Reto's Tasks #gather_@Reto
+## Reto's Tasks #gather_#Reto
 ## This Week #gather_@due:day<7
 ## Overdue #gather_@due:day<0
 ```
@@ -303,9 +337,9 @@ Automatically collect cards matching criteria into columns:
 
 **Complex Examples:**
 ```markdown
-## Urgent Frontend #gather_@priority=urgent&@category=frontend
-## Reto or Anita #gather_@Reto|@Anita
-## Not Backend #gather_!@category=backend
+## Urgent Frontend #gather_#priority=urgent&#category=frontend
+## Reto or Anita #gather_#Reto|#Anita
+## Not Backend #gather_!#category=backend
 ```
 
 ### Date Properties for Gather
@@ -953,7 +987,7 @@ When external changes conflict with your edits:
 
 **Solutions:**
 1. Verify gather rule syntax: `#gather_<rule>`
-2. Check tags exist on cards: `@tag`
+2. Check tags exist on cards: `#tag` for regular tags/people, `@temporal` for dates/times
 3. Click "Sort" button to execute gather
 4. Review operator syntax (`&`, `|`, `=`, etc.)
 
@@ -998,6 +1032,13 @@ A: Yes! All features work offline except external link opening.
 
 ## Appendix: Tag Reference
 
+### Tag Prefixes
+
+| Prefix | Purpose | Examples |
+|--------|---------|----------|
+| `#` | Tags and people | `#urgent`, `#Reto`, `#backend` |
+| `@` | Temporal (dates, times, weeks) | `@2025-03-27`, `@W12`, `@10:30`, `@monday` |
+
 ### Date Tag Format
 
 ```
@@ -1008,17 +1049,27 @@ A: Yes! All features work offline except external link opening.
 @modified:YYYY-MM-DD
 ```
 
+### Temporal Tag Formats
+
+| Type | Examples |
+|------|----------|
+| Dates | `@2025-03-27`, `@27-03-2025`, `@27.03.2025` |
+| Weeks | `@W12`, `@KW15`, `@2025-W12` |
+| Times | `@10:30`, `@9am`, `@10pm` |
+| Time slots | `@09:00-17:00`, `@9am-5pm` |
+| Weekdays | `@monday`, `@tue`, `@wed` |
+
 ### Gather Rule Operators
 
 | Operator | Meaning | Example |
 |----------|---------|---------|
-| `=` | Equal | `@priority=high` |
-| `!=` | Not equal | `@status!=done` |
+| `=` | Equal | `#priority=high` |
+| `!=` | Not equal | `#status!=done` |
 | `<` | Less than | `@due:day<7` |
 | `>` | Greater than | `@due:day>0` |
-| `&` | AND | `@Reto&@urgent` |
-| `|` | OR | `@Reto|@Anita` |
-| `!` | NOT | `!@done` |
+| `&` | AND | `#Reto&#urgent` |
+| `|` | OR | `#Reto|#Anita` |
+| `!` | NOT | `!#done` |
 
 ### Date Properties
 

@@ -30,10 +30,11 @@ function isLocaleDayFirst(): boolean {
 /**
  * Parse a date tag string into a Date object
  * Supports: DD.MM.YYYY, DD.MM.YY, DD.MM, YYYY-MM-DD, YYYY.MM.DD
+ * NEW TAG SYSTEM: @ prefix for temporal (dates, times, weeks)
  */
 function parseDateTag(tagContent: string): Date | null {
-    // Remove the ! prefix if present
-    const content = tagContent.startsWith('!') ? tagContent.slice(1) : tagContent;
+    // Remove the @ prefix if present (NEW: @ is temporal prefix)
+    const content = tagContent.startsWith('@') ? tagContent.slice(1) : tagContent;
 
     // Try to match date patterns
     const dateMatch = content.match(/^(\d{1,4})[-./](\d{1,2})(?:[-./](\d{2,4}))?$/);
@@ -82,10 +83,10 @@ function parseDateTag(tagContent: string): Date | null {
 
 /**
  * Parse a week tag and return the Monday of that week
- * Supports: !W4, !KW4, !w4, !kw4, !2025-W4, !2025.W4
+ * NEW TAG SYSTEM: Supports @W4, @KW4, @w4, @kw4, @2025-W4, @2025.W4
  */
 function parseWeekTag(tagContent: string): Date | null {
-    const content = tagContent.startsWith('!') ? tagContent.slice(1) : tagContent;
+    const content = tagContent.startsWith('@') ? tagContent.slice(1) : tagContent;
 
     // Try week with year: 2025-W4, 2025.W4, 2025-KW4
     const weekYearMatch = content.match(/^(\d{4})[-.]?(?:[wW]|[kK][wW])(\d{1,2})$/);
@@ -164,7 +165,8 @@ export class DashboardScanner {
         timeframeDays: number
     ): { upcomingItems: UpcomingItem[]; summary: BoardTagSummary } {
         const upcomingItems: UpcomingItem[] = [];
-        const tagCounts = new Map<string, { count: number; type: 'hash' | 'person' | 'temporal' }>();
+        // NEW TAG SYSTEM: hash (#) for tags including people, temporal (@) for dates/times
+        const tagCounts = new Map<string, { count: number; type: 'hash' | 'temporal' }>();
         let totalTasks = 0;
         let temporalTasks = 0;
 
@@ -337,18 +339,18 @@ export class DashboardScanner {
         } | null = null;
 
         // Check for time slot first (can be combined with date/week)
-        // Supports: !HH:MM-HH:MM, !HHMM-HHMM, !HHMM, !HHam/pm
+        // NEW TAG SYSTEM: Supports @HH:MM-HH:MM, @HHMM-HHMM, @HHMM, @HHam/pm
         let timeSlot: string | undefined;
 
-        // Time range with colons: !09:00-17:00
-        const timeRangeColonMatch = text.match(/!(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/);
+        // Time range with colons: @09:00-17:00
+        const timeRangeColonMatch = text.match(/@(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/);
         if (timeRangeColonMatch) {
             timeSlot = timeRangeColonMatch[0];
         }
 
-        // Time range without colons: !1200-1400
+        // Time range without colons: @1200-1400
         if (!timeSlot) {
-            const timeRangeNoColonMatch = text.match(/!(\d{4})-(\d{4})/);
+            const timeRangeNoColonMatch = text.match(/@(\d{4})-(\d{4})/);
             if (timeRangeNoColonMatch) {
                 const start = timeRangeNoColonMatch[1];
                 const end = timeRangeNoColonMatch[2];
@@ -363,9 +365,9 @@ export class DashboardScanner {
             }
         }
 
-        // 4-digit time: !1230 (not matching years like !2026 which are handled separately)
+        // 4-digit time: @1230 (not matching years like @2026 which are handled separately)
         if (!timeSlot) {
-            const time4DigitMatch = text.match(/!(\d{4})(?![-./\d])/);
+            const time4DigitMatch = text.match(/@(\d{4})(?![-./\d])/);
             if (time4DigitMatch) {
                 const digits = time4DigitMatch[1];
                 const hours = parseInt(digits.substring(0, 2), 10);
@@ -377,16 +379,16 @@ export class DashboardScanner {
             }
         }
 
-        // AM/PM time: !12pm, !9am (US locale)
+        // AM/PM time: @12pm, @9am (US locale)
         if (!timeSlot && !isLocaleDayFirst()) {
-            const ampmMatch = text.match(/!(\d{1,2})(am|pm)/i);
+            const ampmMatch = text.match(/@(\d{1,2})(am|pm)/i);
             if (ampmMatch) {
                 timeSlot = ampmMatch[0];
             }
         }
 
-        // Try to find year tag: !Y2026 or !J2026 (German "Jahr")
-        const yearTagMatch = text.match(/![YyJj](\d{4})/);
+        // Try to find year tag: @Y2026 or @J2026 (German "Jahr")
+        const yearTagMatch = text.match(/@[YyJj](\d{4})/);
         if (yearTagMatch) {
             const year = parseInt(yearTagMatch[1], 10);
             // Year tag represents Jan 1 of that year
@@ -394,9 +396,9 @@ export class DashboardScanner {
             result = { tag: yearTagMatch[0], date, year, timeSlot, hasExplicitDate: true };
         }
 
-        // Try to find date tag (most specific)
+        // Try to find date tag (most specific) - NEW: @ prefix
         if (!result) {
-            const dateMatch = text.match(/!(\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?)/);
+            const dateMatch = text.match(/@(\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?)/);
             if (dateMatch) {
                 const date = parseDateTag(dateMatch[0]);
                 if (date) {
@@ -405,9 +407,9 @@ export class DashboardScanner {
             }
         }
 
-        // If no date, try to find week tag
+        // If no date, try to find week tag - NEW: @ prefix
         if (!result) {
-            const weekMatch = text.match(/!(?:(\d{4})[-.]?)?(?:[wW]|[kK][wW])(\d{1,2})/);
+            const weekMatch = text.match(/@(?:(\d{4})[-.]?)?(?:[wW]|[kK][wW])(\d{1,2})/);
             if (weekMatch) {
                 const year = weekMatch[1] ? parseInt(weekMatch[1], 10) : new Date().getFullYear();
                 const week = parseInt(weekMatch[2], 10);
@@ -452,7 +454,8 @@ export class DashboardScanner {
      * @param board - The parsed kanban board
      * @param boardUri - URI of the board file
      * @param boardName - Display name of the board
-     * @param searchTag - The tag to search for (e.g., "#project", "@person", "!date")
+     * @param searchTag - The tag to search for (e.g., "#project", "#person", "@date")
+     *                    NEW TAG SYSTEM: # for tags including people, @ for temporal
      * @returns Array of matching tasks
      */
     static searchByTag(

@@ -162,14 +162,13 @@ comment^\[comment\]
 
 ## Tag features
 
-The Kanban board uses a flexible tag system with four distinct tag types, each with its own prefix character. Tags capture everything after the prefix until whitespace (space, tab, or newline).
+The Kanban board uses a flexible tag system with three distinct tag types, each with its own prefix character. Tags capture everything after the prefix until whitespace (space, tab, or newline).
 
 | Prefix | Type | Description | Examples |
 |--------|------|-------------|----------|
-| # | Hash tags | Regular tags for categorization | #todo , #urgent , #feature |
-| @ | Person tags | Assign people/mentions | @john , @team-alpha |
-| ! | Temporal tags | Dates, times, weeks, weekdays | !2025.01.28 , !w15 , !mon |
-| ? | Query tags | Gather cards matching criteria by putting it into a column header | ?#todo , ?@reto , ?!today |
+| # | Hash tags | Regular tags AND people (people are just tags) | #todo , #urgent , #reto , #team-alpha |
+| @ | Temporal tags | Dates, times, weeks, weekdays | @2025.01.28 , @W15 , @mon , @10:30 |
+| ? | Query tags | Gather cards matching criteria by putting it into a column header | ?#todo , ?#reto , ?@today |
 
 ---
 
@@ -186,36 +185,37 @@ some tags are used to save some of the special settings of the kanban such as:
 
 ---
 
-## Temporal Tags (!)
+## Temporal Tags (@)
 
-Date and time tags for scheduling. The ! prefix is followed by various time formats.
+Date and time tags for scheduling. The @ prefix is followed by various time formats.
 
 - Date Formats
-  - !2025.01.28      # Date with dots
-  - !2025-01-28      # Date with dashes
-  - !2025/01/28      # Date with slashes
+  - @2025.01.28      # Date with dots
+  - @2025-01-28      # Date with dashes
+  - @2025/01/28      # Date with slashes
+  - @28.01.2025      # European format (DD.MM.YYYY)
 - Week Tags
-  - !w15             # Week 15 (current year)
-  - !W15             # Case insensitive
-  - !2025.w15        # Week 15 of 2025
-  - !2025-w15        # Alternative format
+  - @W15             # Week 15 (current year)
+  - @KW15            # German format (Kalenderwoche)
+  - @2025.W15        # Week 15 of 2025
+  - @2025-W15        # Alternative format
 - Weekday Tags
-  - !mon !monday     # Monday
-  - !tue !tuesday    # Tuesday
-  - !wed !wednesday  # Wednesday
-  - !thu !thursday   # Thursday
-  - !fri !friday     # Friday
-  - !sat !saturday   # Saturday
-  - !sun !sunday     # Sunday
+  - @mon @monday     # Monday
+  - @tue @tuesday    # Tuesday
+  - @wed @wednesday  # Wednesday
+  - @thu @thursday   # Thursday
+  - @fri @friday     # Friday
+  - @sat @saturday   # Saturday
+  - @sun @sunday     # Sunday
 - Time Tags
-  - !15:30           # 24-hour format
-  - !9am             # 12-hour format
-  - !10pm            # Evening
-  - !22:00           # 24-hour evening
+  - @15:30           # 24-hour format
+  - @9am             # 12-hour format
+  - @10pm            # Evening
+  - @22:00           # 24-hour evening
 - Time Slot Tags
-  - !9am-5pm         # Work hours
-  - !15:30-17:00     # Meeting slot
-  - !10am-12pm       # Morning block
+  - @9am-5pm         # Work hours
+  - @15:30-17:00     # Meeting slot
+  - @10am-12pm       # Morning block
 
 ### Temporal Highlighting
 
@@ -225,75 +225,75 @@ Cards and columns with temporal tags matching the current date/time are automati
 
 ## Query Tags (?)
 
-Query tags gather/collect cards matching specific criteria into a column. The \? is followed by a tag type prefix (\#, \@, or \!) and the query content.
+Query tags gather/collect cards matching specific criteria into a column. The \? is followed by a tag type prefix (\# or \@) and the query content.
 
 ### Basic Syntax
 
-Reto's Tasks ?@reto
+Reto's Tasks ?#reto
 Todo Items ?#todo
-Today ?!today
+Today ?@today
 
 ### Query Operators
 
 | Operator | Description | Example |
 |----------|-------------|---------|
 | \& | AND - all conditions must match | \?#urgent&important |
-| \| | OR - any condition matches | \?@reto\|bruno |
+| \| | OR - any condition matches | \?#reto\|bruno |
 | \! | NOT - exclude matches | \?#todo!done |
 
 ### Query Examples
 
-- Gather by Person
-  - Reto's Tasks ?@reto
-  - Team Work ?@reto|bruno|anna
+- Gather by Person (use # for people)
+  - Reto's Tasks ?#reto
+  - Team Work ?#reto|bruno|anna
 
 - Gather by Hash Tag
   - Urgent ?#urgent
   - Features ?#feature&frontend
   - Not Done ?#todo!completed
 
-- Gather by Temporal
-  - Today ?!today
-  - Today (alternate) ?!day=0
-  - This Week ?!w15
-  - Monday Tasks ?!mon
+- Gather by Temporal (use @ for dates/times)
+  - Today ?@today
+  - Today (alternate) ?@day=0
+  - This Week ?@W15
+  - Monday Tasks ?@mon
 
 - Gather by Day Offset
   * Use comparison operators with *day* to gather cards relative to today. The *day* property represents the number of days from today (negative = past, positive = future).
-  - Past Due ?!day<0
-  - Today ?!day=0
-  - Tomorrow ?!day=1
-  - Next 7 Days ?!day<7
-  - Next 3 Days ?!day>0&day<4
-  - Past Week ?!day>-7&day<0
+  - Past Due ?@day<0
+  - Today ?@day=0
+  - Tomorrow ?@day=1
+  - Next 7 Days ?@day<7
+  - Next 3 Days ?@day>0&day<4
+  - Past Week ?@day>-7&day<0
 
 | Expression | Description |
 |------------|-------------|
-| ?!day<0 | Cards with dates before today (overdue) |
-| ?!day=0 | Cards with today's date |
-| ?!day>0 | Cards with future dates |
-| ?!day=1 | Cards with tomorrow's date |
-| ?!day<7 | Cards within the next 7 days (including today) |
-| ?!day>0&day<4 | Cards 1-3 days from now (tomorrow to 3 days out) |
-| ?!day>-7&day<0 | Cards from the past 7 days (not including today) |
-| ?!day>-7&day<7 | Cards within ±7 days of today |
+| ?@day<0 | Cards with dates before today (overdue) |
+| ?@day=0 | Cards with today's date |
+| ?@day>0 | Cards with future dates |
+| ?@day=1 | Cards with tomorrow's date |
+| ?@day<7 | Cards within the next 7 days (including today) |
+| ?@day>0&day<4 | Cards 1-3 days from now (tomorrow to 3 days out) |
+| ?@day>-7&day<0 | Cards from the past 7 days (not including today) |
+| ?@day>-7&day<7 | Cards within ±7 days of today |
 
 #### Combined Queries
 
 A column can have multiple query tags:
 
-- Reto This Week ?@reto ?!w15
+- Reto This Week ?#reto ?@W15
 
 ### Operators
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| & | AND | \#gather_Reto&day<3 |
-| \| | OR | \#gather_Reto\|Anita |
-| = | EQUAL | \#gather_day=0 |
-| != | NOT EQUAL | \#gather_weekday!=sat |
-| < | LESS THAN | \#gather_day<7 |
-| > | GREATER THAN | \#gather_day>0 |
+| & | AND | \#gather_#Reto&@day<3 |
+| \| | OR | \#gather_#Reto\|#Anita |
+| = | EQUAL | \#gather_@day=0 |
+| != | NOT EQUAL | \#gather_@weekday!=sat |
+| < | LESS THAN | \#gather_@day<7 |
+| > | GREATER THAN | \#gather_@day>0 |
 
 ### Date Properties
 

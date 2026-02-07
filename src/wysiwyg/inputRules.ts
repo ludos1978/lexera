@@ -1,7 +1,7 @@
 import { EditorState, TextSelection, Transaction } from 'prosemirror-state';
 import type { Node as ProseMirrorNode, Schema } from 'prosemirror-model';
 import { InputRule, wrappingInputRule, textblockTypeInputRule } from 'prosemirror-inputrules';
-import { inferMediaTypeFromSrc, getTagFlavor, isDateLike } from './utils';
+import { inferMediaTypeFromSrc, getTagFlavor } from './utils';
 
 function replaceInlineWithNodePreserveSpace(state: EditorState, match: RegExpMatchArray, start: number, end: number, node: ProseMirrorNode): Transaction | null {
     const full = match[0];
@@ -266,31 +266,13 @@ export function buildMarkdownInputRules(schema: Schema): InputRule[] {
         }));
     }
 
-    if (schema.nodes.person_tag || schema.nodes.date_tag) {
+    // NEW TAG SYSTEM: # for tags (including people), @ for temporal
+    // People are now handled by the tag input rule above with # prefix
+    // @ prefix is now for temporal (dates, times, weeks, weekdays)
+    if (schema.nodes.temporal_tag) {
         rules.push(new InputRule(/(?:^|\s)(@([^\s@]+))\s$/, (state, match, start, end) => {
             const raw = match[1] || '';
             const value = raw.startsWith('@') ? raw.slice(1) : raw;
-            if (!value) {
-                return null;
-            }
-            const dateLike = isDateLike(value);
-            if (dateLike && schema.nodes.date_tag) {
-                return replaceInlineWithNodePreserveSpace(state, match, start, end, schema.nodes.date_tag.create({ value, kind: 'date' }));
-            }
-            if (schema.nodes.person_tag) {
-                return replaceInlineWithNodePreserveSpace(state, match, start, end, schema.nodes.person_tag.create({ value }));
-            }
-            if (schema.nodes.date_tag) {
-                return replaceInlineWithNodePreserveSpace(state, match, start, end, schema.nodes.date_tag.create({ value, kind: 'date' }));
-            }
-            return null;
-        }));
-    }
-
-    if (schema.nodes.temporal_tag) {
-        rules.push(new InputRule(/(?:^|\s)(!([^\s!]+))\s$/, (state, match, start, end) => {
-            const raw = match[1] || '';
-            const value = raw.startsWith('!') ? raw.slice(1) : raw;
             if (!value) {
                 return null;
             }

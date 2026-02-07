@@ -7,8 +7,8 @@ function getInlineTypes(doc: any) {
 
 describe('WYSIWYG markdown-it adapter', () => {
     it('parses custom tag, temporal, wiki link, and include syntax', () => {
-        const md = createWysiwygMarkdownIt({ temporalPrefix: '!' });
-        const markdown = 'Hello #todo !w12 [[Doc|Title]] and !!!include(inline.md)!!!';
+        const md = createWysiwygMarkdownIt({ temporalPrefix: '@' });
+        const markdown = 'Hello #todo @w12 [[Doc|Title]] and !!!include(inline.md)!!!';
 
         const doc = parseMarkdownToWysiwygDoc(markdown, md);
         const inlineTypes = getInlineTypes(doc);
@@ -20,7 +20,7 @@ describe('WYSIWYG markdown-it adapter', () => {
     });
 
     it('parses include blocks as include_block nodes', () => {
-        const md = createWysiwygMarkdownIt({ temporalPrefix: '!' });
+        const md = createWysiwygMarkdownIt({ temporalPrefix: '@' });
         const markdown = '!!!include(block.md)!!!\n\nNext paragraph';
 
         const doc = parseMarkdownToWysiwygDoc(markdown, md);

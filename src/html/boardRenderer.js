@@ -1892,14 +1892,14 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     }
 
     // Set up hierarchical temporal gating context for content rendering
-    // This enables: column !kw13 -> task content !10:00-10:30 only highlights during week 13
+    // This enables: column @kw13 -> task content @10:00-10:30 only highlights during week 13
     window.currentRenderingTemporalGate = null; // Reset first
     if (columnTitle && window.tagUtils && typeof window.tagUtils.evaluateTemporalGate === 'function') {
         window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(columnTitle, task.title || '');
     }
 
     // Extract time slot from task title to use as parent context for minute slots in description
-    // This enables hierarchical temporal inheritance: task title !15:00-16:00 -> content !:15-:30
+    // This enables hierarchical temporal inheritance: task title @15:00-16:00 -> content @:15-:30
     window.currentRenderingTimeSlot = null; // Reset first
     if (task.title && window.tagUtils && typeof window.tagUtils.extractTimeSlotTag === 'function') {
         const extracted = window.tagUtils.extractTimeSlotTag(task.title);

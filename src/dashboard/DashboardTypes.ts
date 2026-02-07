@@ -45,7 +45,7 @@ export interface UpcomingItem {
     taskIndex: number;
     /** Task title (may include tags) */
     taskTitle: string;
-    /** The temporal tag that matched (e.g., "!20.1.2026") */
+    /** The temporal tag that matched (e.g., "@2026.1.20" - NEW: @ prefix for temporal) */
     temporalTag: string;
     /** Parsed date for sorting (may be undefined for week/weekday tags) */
     date?: Date;
@@ -53,7 +53,7 @@ export interface UpcomingItem {
     week?: number;
     /** Year for week tag */
     year?: number;
-    /** Time slot if this is a time tag (e.g., "!06:00-12:00") */
+    /** Time slot if this is a time tag (e.g., "@06:00-12:00") */
     timeSlot?: string;
     /** Original raw title with all tags */
     rawTitle: string;
@@ -63,14 +63,18 @@ export interface UpcomingItem {
 
 /**
  * Tag information with usage count
+ *
+ * NEW TAG SYSTEM:
+ * - hash (#): all tags including people (people are just tags)
+ * - temporal (@): all temporal (dates, times, weeks, weekdays)
  */
 export interface TagInfo {
     /** Tag name (without prefix) */
     name: string;
     /** Number of occurrences in the board */
     count: number;
-    /** Tag type: hash (#), person (@), or temporal (!) */
-    type: 'hash' | 'person' | 'temporal';
+    /** Tag type: hash (#) for tags including people, temporal (@) for dates/times */
+    type: 'hash' | 'temporal';
 }
 
 /**

@@ -108,23 +108,15 @@ export const wysiwygSchemaSpec: WysiwygSchemaSpec = {
             atom: true,
             attrs: { document: { default: '' }, title: { default: '' } }
         },
+        // NEW TAG SYSTEM:
+        // - tag: handles # prefix for all tags including people (people are just tags)
+        // - temporal_tag: handles @ prefix for all temporal (dates, times, weeks, weekdays)
+        // Note: person_tag has been removed - people are now just tags with # prefix
         tag: {
             inline: true,
             group: 'inline',
             atom: true,
             attrs: { value: { default: '' }, flavor: { default: 'tag' } }
-        },
-        date_tag: {
-            inline: true,
-            group: 'inline',
-            atom: true,
-            attrs: { value: { default: '' }, kind: { default: 'date' } }
-        },
-        person_tag: {
-            inline: true,
-            group: 'inline',
-            atom: true,
-            attrs: { value: { default: '' } }
         },
         temporal_tag: {
             inline: true,
@@ -210,8 +202,8 @@ export const tokenMappings: TokenMapping[] = [
     { tokens: ['html_comment'], node: 'html_block', attrs: ['raw', 'mode'] },
     { tokens: ['speaker_note'], node: 'speaker_note', attrs: ['raw'] },
     { tokens: ['wiki_link_open', 'wiki_link_close'], node: 'wiki_link', attrs: ['document', 'title'] },
+    // NEW TAG SYSTEM: # for tags (including people), @ for temporal
     { tokens: ['tag'], node: 'tag', attrs: ['value', 'flavor'] },
-    { tokens: ['date_person_tag'], node: 'date_tag', attrs: ['value', 'kind'] },
     { tokens: ['temporal_tag'], node: 'temporal_tag', attrs: ['value', 'kind'] },
     { tokens: ['em_open', 'em_close'], mark: 'em' },
     { tokens: ['strong_open', 'strong_close'], mark: 'strong' },

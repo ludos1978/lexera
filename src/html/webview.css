@@ -6284,7 +6284,13 @@ body.vscode-high-contrast-light .collapsed-add-task-btn:hover {
     border: 1px solid var(--vscode-descriptionForeground);
 }
 
-/* Date and person tags */
+/* =============================================================================
+   DATE AND PERSON TAGS - DEPRECATED
+   NEW TAG SYSTEM:
+   - # prefix: all tags INCLUDING people (kanban-person-tag is now obsolete)
+   - @ prefix: all temporal (kanban-date-tag merged with kanban-temporal-tag)
+   These styles are kept for backwards compatibility during transition.
+   ============================================================================= */
 .kanban-date-tag {
     color: var(--vscode-charts-blue);
     background-color: rgba(0, 122, 204, 0.1);

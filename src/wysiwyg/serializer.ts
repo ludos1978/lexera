@@ -4,13 +4,12 @@ export type WysiwygSerializerOptions = {
     temporalPrefix?: string;
 };
 
+// NEW TAG SYSTEM: # for tags (including people), @ for temporal
 const inlineNodeTypes = new Set([
     'text',
     'include_inline',
     'wiki_link',
     'tag',
-    'date_tag',
-    'person_tag',
     'temporal_tag',
     'media_inline',
     'task_checkbox',
@@ -38,7 +37,7 @@ export function serializeWysiwygDoc(doc: WysiwygDoc, options: WysiwygSerializerO
     }
 
     const config = {
-        temporalPrefix: options.temporalPrefix ?? '!'
+        temporalPrefix: options.temporalPrefix ?? '@'
     };
 
     const blocks = doc.content
@@ -127,10 +126,6 @@ function serializeInlineNode(node: WysiwygNode, config: Required<WysiwygSerializ
                 return serializeWikiLink(node);
             case 'tag':
                 return `#${node.attrs?.value ?? ''}`;
-            case 'date_tag':
-                return `@${node.attrs?.value ?? ''}`;
-            case 'person_tag':
-                return `@${node.attrs?.value ?? ''}`;
             case 'temporal_tag':
                 return `${config.temporalPrefix}${node.attrs?.value ?? ''}`;
             case 'media_inline':

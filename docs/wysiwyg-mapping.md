@@ -36,9 +36,8 @@ Plugins:
 - Image figures (figure + figcaption from title)
 - Media (audio/video with <source> handling)
 - Wiki links ([[file|title]])
-- Tags (#tag, #gather_*, #++/#--/#ø)
-- Date/person tags (@2025-01-28, @W12, @name)
-- Temporal tags (!2025.12.05, !w49, !mon, !15:30, !09:00-17:00)
+- Hash tags (#tag, #gather_*, #++/#--/#ø, #person)
+- Temporal tags (@2025-01-28, @W12, @mon, @15:30, @09:00-17:00)
 - Speaker notes (;; lines)
 - HTML comments + HTML blocks (configurable show/hide)
 - Diagram fences (```plantuml, ```mermaid)
@@ -66,10 +65,8 @@ Inline nodes:
 - text
 - include_inline { path, includeType }
 - wiki_link { document, title }
-- tag { value, flavor }
-- date_tag { value, kind }
-- person_tag { value }
-- temporal_tag { value, kind }
+- tag { value, flavor } (# prefix - regular tags AND people)
+- temporal_tag { value, kind } (@ prefix - dates, times, weeks, weekdays)
 - media_inline { src, mediaType, alt, title } (optional if needed)
 - footnote { id, block } (inline atom)
 
@@ -112,9 +109,8 @@ This table ties current markdown-it token names to editor nodes/marks and the re
 | html_comment | html_comment | inline node or mark |
 | speaker_note | speaker_note | raw content |
 | wiki_link_open/close + text | wiki_link | document from data-document, title from text |
-| tag | tag | value from token.content |
-| date_person_tag | date_tag/person_tag | type from token.meta.type |
-| temporal_tag | temporal_tag | type from token.meta.type |
+| tag | tag | value from token.content (# prefix - includes people) |
+| temporal_tag | temporal_tag | value from token.content (@ prefix - dates, times, weeks, weekdays) |
 | em_open/close | em | Standard mark |
 | strong_open/close | strong | Standard mark |
 | s_open/close | strike | must track style (~~ vs --) |
@@ -140,7 +136,8 @@ High-level rules for converting editor nodes/marks back to Markdown.
 - html_block/html_inline/html_comment: preserve raw content.\n
 - speaker_note: prefix each line with ;;.\n
 - wiki_link: [[doc|title]] or [[doc]] if title equals doc.\n
-- tag/date/person/temporal: serialize with #, @, . prefixes and original content.\n
+- tag: serialize with # prefix (regular tags and people).\n
+- temporal_tag: serialize with @ prefix (dates, times, weeks, weekdays).\n
 - strike: preserve delimiter style (~~ or --).\n
 - underline: serialize with _underline_ (not emphasis).\n
 - mark/sub/sup/ins: use ==, ~, ^, ++.\n
@@ -183,8 +180,10 @@ High-level rules for converting editor nodes/marks back to Markdown.
 - Wiki links:
   - Serialize as [[doc|title]] or [[doc]]
 
-- Tags / Dates / Temporal:
-  - Serialize with exact prefix (#, @, !) and original content
+- Tags:
+  - Serialize with # prefix (regular tags and people)
+- Temporal:
+  - Serialize with @ prefix (dates, times, weeks, weekdays)
 
 - Speaker notes:
   - Serialize with ;; prefix per line

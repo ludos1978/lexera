@@ -1,6 +1,15 @@
 /**
  * Gather Query Engine for Kanban board
  * Handles automatic task sorting based on gather rules and query tags
+ *
+ * NEW TAG SYSTEM:
+ * - # prefix: tags AND people (people are just tags)
+ * - @ prefix: all temporal (dates, times, weeks, weekdays)
+ *
+ * Query syntax in column titles:
+ * - ?#tagname - Match hash tag (includes people since people are now tags)
+ * - ?@temporal - Match temporal query (dates, times, etc.)
+ * - ?.today, ?.day>0 - Legacy temporal query syntax (still supported)
  */
 
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
@@ -72,20 +81,18 @@ export class GatherQueryEngine {
                 ungatheredRules.push({ column: column });
             }
 
-            // Extract query tags: ?. (temporal), ?@ (person), ?# (hash tag)
+            // Extract query tags: ?. (temporal shorthand), ?@ (temporal), ?# (hash tag including people)
+            // NEW TAG SYSTEM: ?@ is now for temporal (dates, times, weeks), ?# handles tags AND people
             const queryMatches = column.title.match(/\?([.@#])([^\s]+)/g) || [];
             queryMatches.forEach(match => {
                 const typePrefix = match[1]; // . @ or #
                 const queryContent = match.substring(2);
 
-                if (typePrefix === '.') {
-                    // Temporal query (?.)
+                if (typePrefix === '.' || typePrefix === '@') {
+                    // Temporal query (?. or ?@) - both now work for temporal
                     this._processTemporalQuery(queryContent, column, gatherRules);
-                } else if (typePrefix === '@') {
-                    // Person query (?@)
-                    gatherRules.push({ column, expression: queryContent });
                 } else if (typePrefix === '#') {
-                    // Hash tag query (?#)
+                    // Hash tag query (?#) - includes people since people are now just tags
                     gatherRules.push({ column, expression: `tag_${queryContent}` });
                 }
             });
@@ -117,6 +124,7 @@ export class GatherQueryEngine {
         });
 
         // SECOND PASS: Process ungathered rules
+        // NEW TAG SYSTEM: Check for @ temporal tags or # tags (which now include people)
         if (ungatheredRules.length > 0) {
             board.columns.forEach(sourceColumn => {
                 sourceColumn.tasks.forEach(task => {
@@ -125,9 +133,10 @@ export class GatherQueryEngine {
                     const taskText = `${task.title || ''} ${task.description || ''}`;
                     const taskDate = extractDate(taskText);
                     const personNames = extractPersonNames(taskText);
-                    const hasAnyAtTag = taskDate !== null || personNames.length > 0;
+                    // Has any temporal tag (@date) or person-like tag (#person)
+                    const hasAnyRelevantTag = taskDate !== null || personNames.length > 0;
 
-                    if (hasAnyAtTag) {
+                    if (hasAnyRelevantTag) {
                         cardDestinations.set(task.id, ungatheredRules[0].column);
                     }
                 });
@@ -257,7 +266,7 @@ export class GatherQueryEngine {
             };
         }
 
-        // Default: treat as person name
+        // Default: treat as person/tag name (NEW: people are now # tags)
         return (_taskText, _taskDate, personNames) => {
             return personNames.map(p => p.toLowerCase()).includes(expr.toLowerCase());
         };

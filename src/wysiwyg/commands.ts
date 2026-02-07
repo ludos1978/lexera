@@ -234,14 +234,10 @@ export function inlineNodeToMarkdown(node: ProseMirrorNode, temporalPrefix: stri
             }
             return title && title !== document ? `[[${document}|${title}]]` : `[[${document}]]`;
         }
+        // NEW TAG SYSTEM: # for tags (including people), @ for temporal
         case 'tag': {
             const value = node.attrs.value || '';
             return value ? `#${value}` : null;
-        }
-        case 'date_tag':
-        case 'person_tag': {
-            const value = node.attrs.value || '';
-            return value ? `@${value}` : null;
         }
         case 'temporal_tag': {
             const value = node.attrs.value || '';
