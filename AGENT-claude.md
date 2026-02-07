@@ -18,6 +18,8 @@
 - if a thought is a result of unfounded and illogical reasoning, then trash it. Only consider thoughts that are helping towards a good product.
 - When refactoring multiple classes or functions together into one, do not use wrappers. Instead fix he callers!
 
+- use the logger for any debug output.
+
 ## General rules about handling data:
 - use relative paths, relative to the main kanban file for all data storage, except for included files, they use relative paths to theyr own location.
 - use the data chache to store modifications unless the user saves the data.

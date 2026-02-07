@@ -164,7 +164,7 @@ let canRedo = false;
 window.currentImageMappings = {};
 
 // Layout preferences
-let currentColumnWidth = '350px';
+let currentColumnWidth = '450px';
 let currentWhitespace = '8px';
 let currentTaskMinHeight = 'auto';
 let currentLayoutRows = 1;
@@ -2580,7 +2580,7 @@ if (!webviewEventListenersInitialized) {
                     }
                     applyColumnWidth(columnWidth);
                 } else {
-                    applyColumnWidth('350px'); // Default fallback
+                    applyColumnWidth('450px'); // Default fallback
                 }
             }
             

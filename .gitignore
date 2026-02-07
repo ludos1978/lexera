@@ -38,3 +38,4 @@ plantuml-cache/
 mermaid-cache/
 xlsx-cache/
 excalidraw-cache/
+__pycache__

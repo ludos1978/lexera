@@ -228,7 +228,7 @@ const menuConfig = {
 function getCurrentSettingValue(configKey) {
     switch (configKey) {
         case 'columnWidth':
-            return window.currentColumnWidth || '350px';
+            return window.currentColumnWidth || '450px';
         case 'cardHeight':
             return window.currentTaskMinHeight || 'auto';
         case 'sectionHeight':

@@ -105,7 +105,7 @@ export class ConfigurationService {
         taskSectionHeight: 'auto',
         fontSize: '1x',
         fontFamily: 'system',
-        columnWidth: 'medium',
+        columnWidth: 'wide',
         columnBorder: '1px solid var(--vscode-panel-border)',
         taskBorder: '1px solid var(--vscode-panel-border)',
         layoutRows: 1,

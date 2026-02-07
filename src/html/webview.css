@@ -6,7 +6,7 @@
   --task-height: auto;
   --task-section-min-height: auto;
   --task-section-max-height: auto;
-  --column-width: 350px;
+  --column-width: 450px;
   --collapsed-column-width: 40px;
 
   /* Z-index layers for consistent stacking */
