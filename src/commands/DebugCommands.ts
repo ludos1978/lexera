@@ -67,12 +67,10 @@ interface IncludeFileDebugInfo {
     hasInternalChanges: boolean;
     hasExternalChanges: boolean;
     isUnsavedInEditor: boolean;
-    baseline: string;
-    content: string;
-    externalContent: string;
     contentLength: number;
     baselineLength: number;
-    externalContentLength: number;
+    contentHash: string;
+    baselineHash: string;
 }
 
 /**
@@ -110,7 +108,8 @@ interface TrackedFilesDebugInfo {
         documentVersion: number;
         lastDocumentVersion: number;
         isUnsavedInEditor: boolean;
-        baseline: string;
+        baselineLength: number;
+        baselineHash: string;
     };
 }
 
@@ -1093,6 +1092,7 @@ export class DebugCommands extends SwitchBasedCommand {
         const mainFile = fileRegistry?.getMainFile();
 
         const mainFilePath = panel?.getCanonicalMainFilePath?.() || mainFile?.getPath() || 'Unknown';
+        const mainBaseline = mainFile?.getBaseline() || '';
 
         const mainFileInfo = {
             path: mainFilePath,
@@ -1104,13 +1104,16 @@ export class DebugCommands extends SwitchBasedCommand {
             documentVersion: document?.version ?? 0,
             lastDocumentVersion: document ? document.version - 1 : -1,
             isUnsavedInEditor: document?.isDirty ?? false,
-            baseline: mainFile?.getBaseline() || ''
+            baselineLength: mainBaseline.length,
+            baselineHash: this.computeHash(mainBaseline).substring(0, 8)
         };
 
         const includeFiles: IncludeFileDebugInfo[] = [];
         const allIncludeFiles = fileRegistry?.getIncludeFiles() || [];
 
         for (const file of allIncludeFiles) {
+            const fileContent = file.getContent();
+            const fileBaseline = file.getBaseline();
             includeFiles.push({
                 path: file.getRelativePath(),
                 type: file.getFileType(),
@@ -1120,12 +1123,10 @@ export class DebugCommands extends SwitchBasedCommand {
                 hasInternalChanges: file.hasUnsavedChanges(),
                 hasExternalChanges: file.hasExternalChanges(),
                 isUnsavedInEditor: file.isDirtyInEditor(),
-                baseline: file.getBaseline(),
-                content: file.getContent(),
-                externalContent: '',
-                contentLength: file.getContent().length,
-                baselineLength: file.getBaseline().length,
-                externalContentLength: 0
+                contentLength: fileContent.length,
+                baselineLength: fileBaseline.length,
+                contentHash: this.computeHash(fileContent).substring(0, 8),
+                baselineHash: this.computeHash(fileBaseline).substring(0, 8)
             });
         }
 

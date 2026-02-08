@@ -1400,6 +1400,7 @@ export interface SaveIndividualFileMessage extends BaseMessage {
     filePath: string;
     isMainFile: boolean;
     forceSave: boolean;
+    action?: 'overwrite' | 'overwrite_backup_external';
 }
 
 /**
@@ -1409,6 +1410,7 @@ export interface ReloadIndividualFileMessage extends BaseMessage {
     type: 'reloadIndividualFile';
     filePath: string;
     isMainFile: boolean;
+    action?: 'load_external' | 'load_external_backup_mine';
 }
 
 // ============= EDIT MODE MESSAGES =============

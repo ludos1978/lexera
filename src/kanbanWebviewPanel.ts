@@ -423,7 +423,7 @@ export class KanbanWebviewPanel {
     private _registerHandlers(): void {
         this._boardSyncHandler = new BoardSyncHandler({
             boardStore: this._boardStore, fileRegistry: this._fileRegistry, getMediaTracker: () => this._mediaTracker,
-            backupManager: this._backupManager, getDocument: () => this._fileManager.getDocument(), panelContext: this._context,
+            panelContext: this._context,
             getWebviewBridge: () => this._webviewBridge
         });
         this._fileSyncHandler = new FileSyncHandler({
@@ -801,7 +801,7 @@ export class KanbanWebviewPanel {
         return board;
     }
 
-    /** Emit board:changed event - triggers BoardSyncHandler for sync/save/backup */
+    /** Emit board:changed event - triggers BoardSyncHandler for in-memory sync only */
     public emitBoardChanged(board: KanbanBoard, trigger: BoardChangeTrigger = 'edit'): void {
         this._context.scopedEventBus.emit('board:changed', { board, trigger });
     }

@@ -11,17 +11,15 @@
  * 4. Update include file content from board
  * 5. Generate markdown and update main file content
  * 6. Update media tracking
- * 7. Create auto-backup
+ * 7. No implicit writes to disk (save remains explicit user action)
  */
 
-import * as vscode from 'vscode';
 import { eventBus, BoardChangedEvent, BoardLoadedEvent, BoardChangeTrigger, createEvent } from './index';
 import { KanbanBoard, MarkdownKanbanParser } from '../../markdownParser';
 import { BoardStore } from '../stores';
 import { MarkdownFileRegistry } from '../../files/MarkdownFileRegistry';
 import { IncludeFile } from '../../files/IncludeFile';
 import { MediaTracker } from '../../services/MediaTracker';
-import { BackupManager } from '../../services/BackupManager';
 import { sortColumnsByRow } from '../../utils/columnUtils';
 import { safeDecodeURIComponent } from '../../utils/stringUtils';
 import { PanelContext } from '../../panel/PanelContext';
@@ -35,8 +33,6 @@ export interface BoardSyncDependencies {
     boardStore: BoardStore;
     fileRegistry: MarkdownFileRegistry;
     getMediaTracker: () => MediaTracker | null;  // Getter because MediaTracker is created lazily
-    backupManager: BackupManager;
-    getDocument: () => vscode.TextDocument | undefined;
     panelContext: PanelContext;  // Panel context for scoped event bus
     getWebviewBridge: () => WebviewBridge | null;
 }
@@ -142,12 +138,6 @@ export class BoardSyncHandler {
             }));
         }
 
-        // 7. Create auto-backup if minimum interval has passed
-        const document = this._deps.getDocument();
-        if (document) {
-            this._deps.backupManager.createBackup(document, { label: 'auto' })
-                .catch(error => console.error('[BoardSyncHandler] Backup failed:', error));
-        }
     }
 
     /**

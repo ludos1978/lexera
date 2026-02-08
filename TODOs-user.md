@@ -1,3 +1,11 @@
+- [ ] add comment and note as tags 
+
+- [ ] when deleting the top column of a  stack, sometimes the other columns get merged with the previous stack. there seem to be inconsistencies how #stack's tags are analyzed and applied. 
+
+- [ ] i cant open the files from the file manager. clicking on a filename should open the file in question.
+
+- [ ] when enabling include mode on a task (using the burger menu) the overlay menu doesnt close.
+
 - [ ] can we add some checking mechanism that compares the frontend data with the caches and alerts the user immediately if there are differences which should have been synchronized already? maybe have it active in debug mode only!
 
 - [x] fix the icons according to these changes:
@@ -20,7 +28,7 @@ analyze what is currently implemented  regarding all tag parsing searching and s
 
 DO A VERY DETAILED ANALYSIS
 
-- [ ] can we have vertical lines of these sizes in front of the Headings?
+- [x] can we have vertical lines of these sizes in front of the Headings?
 - H1 = 5px (1*7px)
 - H2 = 2 * 3px (2*4px + 1*1px = 7px)
 - H3 = 3 * 2px (3*3px + 2*1px = 8px)

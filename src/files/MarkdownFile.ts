@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
 import { SaveOptions } from './SaveOptions';
@@ -501,6 +502,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             lastModified: this._lastModified
         };
         const transactionId = MarkdownFile._saveTransactionManager.beginTransaction(this._relativePath, originalState);
+        const attemptedContent = this._content;
 
         // Pause file watcher before saving to prevent triggering "external" change
         const wasWatching = this._isWatching;
@@ -516,7 +518,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
                 throw new Error(`Cannot save ${this._relativePath}: ${errors}`);
             }
 
-            const expectedContent = this._content;
+            const expectedContent = attemptedContent;
             await this.writeToDisk(expectedContent);
             await this._verifyContentWasPersisted(expectedContent);
 
@@ -555,8 +557,35 @@ export abstract class MarkdownFile implements vscode.Disposable {
             this._baseline = originalState.baseline;
             this._hasFileSystemChanges = originalState.hasFileSystemChanges;
             this._lastModified = originalState.lastModified;
+            const saveErrorMessage = getErrorMessage(error);
+            let emergencyBackupPath: string | null = null;
+            let emergencyBackupError: string | null = null;
 
-            throw error; // Re-throw the error
+            try {
+                emergencyBackupPath = await this._persistEmergencyBackup(attemptedContent);
+            } catch (backupError) {
+                emergencyBackupError = getErrorMessage(backupError);
+            }
+
+            if (emergencyBackupPath) {
+                this._showBackupNotification(
+                    emergencyBackupPath,
+                    `Save failed for "${this._relativePath}". Emergency backup created: ${path.basename(emergencyBackupPath)}`
+                );
+                throw new Error(
+                    `Failed to save "${this._relativePath}" to the main file. `
+                    + `Emergency backup created at "${emergencyBackupPath}". `
+                    + `Original error: ${saveErrorMessage}`
+                );
+            }
+
+            const backupFailureDetail = emergencyBackupError
+                ? ` Backup error: ${emergencyBackupError}`
+                : ' Backup creation returned no file path.';
+            throw new Error(
+                `Failed to save "${this._relativePath}" and failed to create an emergency backup. `
+                + `Original error: ${saveErrorMessage}.${backupFailureDetail}`
+            );
         } finally {
             // Resume file watcher after save
             if (wasWatching) {
@@ -618,16 +647,63 @@ export abstract class MarkdownFile implements vscode.Disposable {
     protected _showBackupNotification(backupPath: string, message?: string): void {
         const fileName = path.basename(backupPath);
         const displayMessage = message || `Your changes have been saved to backup: ${fileName}`;
-        vscode.window.showInformationMessage(
+        const result = vscode.window.showInformationMessage(
             displayMessage,
             'Open Backup'
-        ).then(choice => {
-            if (choice === 'Open Backup') {
-                vscode.workspace.openTextDocument(backupPath).then(doc => {
-                    vscode.window.showTextDocument(doc);
-                });
+        );
+
+        if (result && typeof (result as PromiseLike<string | undefined>).then === 'function') {
+            result.then(choice => {
+                if (choice === 'Open Backup') {
+                    vscode.workspace.openTextDocument(backupPath).then(doc => {
+                        vscode.window.showTextDocument(doc);
+                    });
+                }
+            });
+        }
+    }
+
+    /**
+     * Persist emergency backup content when a normal save fails.
+     * Attempts configured backup location first, then falls back to OS temp.
+     */
+    protected async _persistEmergencyBackup(content: string): Promise<string | null> {
+        const managedBackupPath = await this._backupManager.createBackupFromContent(
+            this._path,
+            content,
+            {
+                label: 'save-failed',
+                forceCreate: true
             }
-        });
+        );
+        if (managedBackupPath) {
+            return managedBackupPath;
+        }
+
+        return await this._writeEmergencyBackupToTemp(content);
+    }
+
+    private async _writeEmergencyBackupToTemp(content: string): Promise<string | null> {
+        try {
+            const emergencyDir = path.join(os.tmpdir(), 'markdown-kanban-emergency-backups');
+            await fs.promises.mkdir(emergencyDir, { recursive: true });
+            const backupPath = path.join(emergencyDir, this._buildEmergencyBackupFileName());
+            await fs.promises.writeFile(backupPath, content, 'utf-8');
+            return backupPath;
+        } catch (error) {
+            console.error(`[${this.getFileType()}] Failed to write emergency backup to temp:`, error);
+            return null;
+        }
+    }
+
+    private _buildEmergencyBackupFileName(): string {
+        const originalName = path.basename(this._path) || 'kanban.md';
+        const sanitizedName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const extension = path.extname(sanitizedName) || '.md';
+        const baseName = extension ? sanitizedName.slice(0, -extension.length) : sanitizedName;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const randomSuffix = Math.random().toString(36).slice(2, 8);
+        return `${baseName}-save-failed-${timestamp}-${randomSuffix}${extension}`;
     }
 
     // ============= CONFLICT RESOLVER ACCESS =============

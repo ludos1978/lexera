@@ -249,14 +249,12 @@ export class KanbanFileService {
         // Register save handler now that document is available
         this.registerSaveHandler();
 
+        // Hard requirement: no background/automatic writes.
+        // Backups are created only via explicit user-triggered conflict/save actions.
+        this.backupManager.stopPeriodicBackup();
+
         if (documentChanged) {
             this.updateWebviewPermissions();
-
-            // Create initial backup
-            await this.backupManager.createBackup(document);
-
-            // Start periodic backup timer
-            this.backupManager.startPeriodicBackup(document);
         }
 
         try {

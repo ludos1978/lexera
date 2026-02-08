@@ -79,9 +79,10 @@ export class FileSaveService {
      */
     private async performSave(file: MarkdownFile, content?: string, options?: SaveOptions): Promise<void> {
         // If content is provided, update file content first
-        // Use updateBaseline=true to prevent emitting 'content' event and triggering save loop
+        // IMPORTANT: Never update baseline before a successful disk write.
+        // Otherwise failed writes can be misreported as saved.
         if (content !== undefined) {
-            file.setContent(content, true);
+            file.setContent(content, false);
         }
 
         const saveOptions: SaveOptions = {

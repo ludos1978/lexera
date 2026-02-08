@@ -2761,6 +2761,17 @@ function handleSaveError(errorMessage) {
     
     // Update UI to show error state
     updateRefreshButtonState('error');
+
+    // Always surface save failures to the user, even when the file manager is closed.
+    if (typeof window.showFileManagerNotice === 'function') {
+        window.showFileManagerNotice(`Save failed: ${safeError}`, 'error', 6000);
+    }
+    if (typeof vscode !== 'undefined' && vscode?.postMessage) {
+        vscode.postMessage({
+            type: 'showError',
+            text: `Save failed: ${safeError}`
+        });
+    }
     
     // Show user-friendly error message
     if (safeError.includes('workspace edit')) {

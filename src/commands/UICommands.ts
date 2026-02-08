@@ -117,7 +117,7 @@ export class UICommands extends SwitchBasedCommand {
         const panel = context.getWebviewPanel();
         if (panel?.webview) {
             this.postMessage({
-                type: 'undoRedoState',
+                type: 'undoRedoStatus',
                 canUndo: context.boardStore.canUndo(),
                 canRedo: context.boardStore.canRedo()
             });

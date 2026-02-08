@@ -2583,7 +2583,11 @@ if (!webviewEventListenersInitialized) {
                     };
                     updateBorderStyles();
                 }
+            }
 
+            // Column width: apply on initial load OR full refresh
+            // This is a per-board setting stored in YAML, so it must be applied whenever board is loaded/refreshed
+            if (isInitialLoad || isFullRefresh) {
                 // Update column width with the value from configuration
                 if (message.columnWidth) {
                     // Normalize old column width values to current options

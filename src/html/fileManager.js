@@ -37,6 +37,7 @@ let diffData = null;        // { kanbanContent, diskContent, baselineContent } o
 // Verification state
 let pendingForceWrite = false;
 let lastVerificationResults = null;
+let lastMismatchCount = null;
 
 function normalizeResolutionPath(pathValue) {
     if (!pathValue || typeof pathValue !== 'string') {
@@ -1368,30 +1369,32 @@ function confirmForceWrite() {
 
 // ============= FILE OPERATIONS =============
 
-function saveIndividualFile(filePath, isMainFile, forceSave = true) {
+function saveIndividualFile(filePath, isMainFile, action = 'overwrite', forceSave = true) {
     if (!window.vscode) {
         window.kanbanDebug?.warn('[FileManager.saveIndividualFile] ABORTED: window.vscode undefined');
         return;
     }
-    window.kanbanDebug?.warn('[FileManager.saveIndividualFile] Sending save request', { filePath, isMainFile, forceSave });
+    window.kanbanDebug?.warn('[FileManager.saveIndividualFile] Sending save request', { filePath, isMainFile, action, forceSave });
     window.vscode.postMessage({
         type: 'saveIndividualFile',
         filePath: filePath,
         isMainFile: isMainFile,
-        forceSave: forceSave
+        forceSave: forceSave,
+        action: action
     });
 }
 
-function reloadIndividualFile(filePath, isMainFile) {
+function reloadIndividualFile(filePath, isMainFile, action = 'load_external') {
     if (!window.vscode) {
         window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] ABORTED: window.vscode undefined');
         return;
     }
-    window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] Sending reload request', { filePath, isMainFile });
+    window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] Sending reload request', { filePath, isMainFile, action });
     window.vscode.postMessage({
         type: 'reloadIndividualFile',
         filePath: filePath,
-        isMainFile: isMainFile
+        isMainFile: isMainFile,
+        action: action
     });
 }
 
@@ -1450,11 +1453,11 @@ function executeAction(buttonElement) {
     switch (action) {
         case 'overwrite':
         case 'overwrite_backup_external':
-            saveIndividualFile(filePath, isMainFile, true);
+            saveIndividualFile(filePath, isMainFile, action, true);
             break;
         case 'load_external':
         case 'load_external_backup_mine':
-            reloadIndividualFile(filePath, isMainFile);
+            reloadIndividualFile(filePath, isMainFile, action);
             break;
         default:
             window.kanbanDebug?.warn(`[FileManager.executeAction] ABORTED: Unknown action: ${action}`);
@@ -1479,20 +1482,36 @@ function executeAllActions() {
         setResolution(file.path, action);
     }
 
-    window.kanbanDebug?.warn('[FileManager.executeAllActions] Dispatching action', { action, fileCount: conflictFiles.length });
+    const targetFiles = dialogMode === 'resolve'
+        ? conflictFiles
+        : buildUnifiedFileList();
 
-    switch (action) {
-        case 'overwrite':
-        case 'overwrite_backup_external':
-            forceWriteAllContent();
-            break;
-        case 'load_external':
-        case 'load_external_backup_mine':
-            reloadAllIncludedFiles();
-            break;
-        default:
-            window.kanbanDebug?.warn(`[FileManager.executeAllActions] ABORTED: Unknown action: ${action}`);
+    window.kanbanDebug?.warn('[FileManager.executeAllActions] Dispatching action', { action, fileCount: targetFiles.length });
+
+    if (!targetFiles || targetFiles.length === 0) {
+        window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: No files available for apply-all action');
+        return;
     }
+
+    targetFiles.forEach(file => {
+        const filePath = file.path;
+        const isMainFile = file.fileType === 'main' || file.isMainFile === true;
+        if (!filePath) {
+            return;
+        }
+        switch (action) {
+            case 'overwrite':
+            case 'overwrite_backup_external':
+                saveIndividualFile(filePath, isMainFile, action, true);
+                break;
+            case 'load_external':
+            case 'load_external_backup_mine':
+                reloadIndividualFile(filePath, isMainFile, action);
+                break;
+            default:
+                window.kanbanDebug?.warn(`[FileManager.executeAllActions] ABORTED: Unknown action: ${action}`);
+        }
+    });
 }
 
 function executePathConvert(buttonElement) {
@@ -1622,6 +1641,7 @@ function initializeFileManager() {
     window.executePathConvert = executePathConvert;
     window.executeAllPaths = executeAllPaths;
     window.toggleDiffForFile = toggleDiffForFile;
+    window.showFileManagerNotice = showFileManagerNotice;
 
     document.addEventListener('keydown', handleFileManagerKeydown);
 
@@ -1678,6 +1698,9 @@ function initializeFileManager() {
                 if (fileManagerVisible) {
                     if (message.success) {
                         clearResolutionForFile(message.filePath);
+                        if (message.backupPath) {
+                            showFileManagerNotice('Backup created before overwrite.', 'info', 4000);
+                        }
                     } else {
                         showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
                     }
@@ -1690,6 +1713,9 @@ function initializeFileManager() {
                 if (fileManagerVisible) {
                     if (message.success) {
                         clearResolutionForFile(message.filePath);
+                        if (message.backupPath) {
+                            showFileManagerNotice('Backup created before reload.', 'info', 4000);
+                        }
                     } else {
                         showFileManagerNotice(`Reload failed: ${message.error || 'Unknown error'}`, 'error', 5000);
                     }
@@ -1713,6 +1739,15 @@ function initializeFileManager() {
 
             case 'verifyContentSyncResult':
                 lastVerificationResults = message;
+                if (typeof message.mismatchedFiles === 'number') {
+                    const mismatchCount = message.mismatchedFiles;
+                    if (mismatchCount > 0 && mismatchCount !== lastMismatchCount) {
+                        showFileManagerNotice(`Consistency warning: ${mismatchCount} file(s) differ from registry.`, 'warn', 6000);
+                    } else if (mismatchCount === 0 && (lastMismatchCount || 0) > 0) {
+                        showFileManagerNotice('Consistency restored: all tracked files are synchronized.', 'info', 3000);
+                    }
+                    lastMismatchCount = mismatchCount;
+                }
                 if (fileManagerVisible && fileManagerElement) {
                     updateDialogContent();
                 }
