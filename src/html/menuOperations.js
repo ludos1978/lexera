@@ -5,6 +5,9 @@ if (typeof window !== 'undefined') {
     window._lastFlushedChanges = null;
     window.handleColumnTagClick = null;
     window.handleTaskTagClick = null;
+    window._saveInFlight = false;
+    window._saveAckTimeout = null;
+    window._pendingPostSaveEditorSync = false;
 }
 
 // Global state
@@ -2625,6 +2628,10 @@ function saveCachedBoard() {
     if (!window.cachedBoard) {
         return;
     }
+    if (window._saveInFlight) {
+        updateRefreshButtonState('pending');
+        return;
+    }
     if (window.fileContextErrorActive) {
         if (typeof window.showFileContextErrorOverlay === 'function') {
             window.showFileContextErrorOverlay();
@@ -2652,28 +2659,33 @@ function saveCachedBoard() {
 
     // Send the complete board state to VS Code using a simple message
     // This avoids complex sequential processing that might cause issues
+    window._saveInFlight = true;
+    if (window._saveAckTimeout) {
+        clearTimeout(window._saveAckTimeout);
+        window._saveAckTimeout = null;
+    }
+    window._pendingPostSaveEditorSync = hadInProgressEdits;
+    window._saveAckTimeout = setTimeout(() => {
+        window._saveInFlight = false;
+        window._pendingPostSaveEditorSync = false;
+        handleSaveError('Save timed out waiting for backend confirmation.');
+    }, 30000);
+
     vscode.postMessage({
         type: 'saveBoardState',
         board: boardToSave
     });
     
     
-    // Mark as saved and notify backend
+    // Update cached board immediately so in-progress edits are not lost locally
     if (boardToSave) {
-        // Update our cached state to include the in-progress edits
+        // Update in-memory board state to include in-progress edits
         window.cachedBoard = JSON.parse(JSON.stringify(boardToSave));
         window.currentBoard = window.cachedBoard;
-        window.savedBoardState = JSON.parse(JSON.stringify(boardToSave));
-
-        // Update editor state if we had in-progress edits
-        if (hadInProgressEdits && window.taskEditor) {
-            window.taskEditor.handlePostSaveUpdate();
-        }
     }
-    markSavedChanges();
-    
-    // Update UI to show saved state
-    updateRefreshButtonState('saved');
+
+    // Wait for backend saveCompleted/saveError before marking state as saved.
+    updateRefreshButtonState('pending');
     
     // Clear any old pending changes (obsolete system cleanup)
     if (window.pendingColumnChanges) {window.pendingColumnChanges.clear();}
@@ -2735,13 +2747,23 @@ function retryLastFlushedChanges() {
 
 // Function to handle save errors from the backend
 function handleSaveError(errorMessage) {
-    console.error('❌ Save error from backend:', errorMessage);
+    const safeError = typeof errorMessage === 'string' && errorMessage.trim().length > 0
+        ? errorMessage
+        : 'Unknown save error';
+    console.error('❌ Save error from backend:', safeError);
+
+    window._saveInFlight = false;
+    window._pendingPostSaveEditorSync = false;
+    if (window._saveAckTimeout) {
+        clearTimeout(window._saveAckTimeout);
+        window._saveAckTimeout = null;
+    }
     
     // Update UI to show error state
     updateRefreshButtonState('error');
     
     // Show user-friendly error message
-    if (errorMessage.includes('workspace edit')) {
+    if (safeError.includes('workspace edit')) {
         // Attempt to retry after a delay
         setTimeout(() => {
             if (retryLastFlushedChanges()) {

@@ -245,6 +245,22 @@ export class MessageHandler {
             if (result !== null) {
                 if (!result.success) {
                     console.error(`[MessageHandler] Command failed for ${message.type}:`, result.error);
+                    if (message.type === 'saveBoardState') {
+                        const bridge = this._deps.getWebviewBridge?.() ?? this._deps.getWebviewPanel()?.getWebviewBridge?.();
+                        const payload = {
+                            type: 'saveError',
+                            error: result.error || 'Save failed'
+                        };
+                        if (bridge) {
+                            bridge.send(payload as any);
+                        } else {
+                            try {
+                                this._deps.getWebviewPanel()?.webview?.postMessage(payload);
+                            } catch {
+                                // Ignore postMessage failures - panel may be disposed
+                            }
+                        }
+                    }
                 }
                 return;
             }

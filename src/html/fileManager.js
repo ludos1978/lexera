@@ -25,7 +25,7 @@ let dialogMode = null;   // null | 'browse' | 'resolve'
 let openMode = null;     // null | 'browse' | 'save_conflict' | 'reload_request' | 'external_change'
 let conflictId = null;
 let conflictFiles = [];  // from backend message (resolve mode)
-let perFileResolutions = new Map(); // path -> action
+let perFileResolutions = new Map(); // normalizedPath -> { path, action }
 let executedFiles = new Set();      // paths of files that have been executed (saved/reloaded)
 
 let autoRefreshTimer = null;
@@ -38,9 +38,44 @@ let diffData = null;        // { kanbanContent, diskContent, baselineContent } o
 let pendingForceWrite = false;
 let lastVerificationResults = null;
 
-// Normalize path to basename for consistent perFileResolutions keys.
-// Uses shared getBasename utility which handles both / and \ separators.
-const resKey = (p) => window.getBasename ? window.getBasename(p) : (p ? p.split('/').pop() : p);
+function normalizeResolutionPath(pathValue) {
+    if (!pathValue || typeof pathValue !== 'string') {
+        return '';
+    }
+    return pathValue.replace(/\\/g, '/').replace(/^\.\/+/, '').trim();
+}
+
+function resolutionKey(pathValue) {
+    return normalizeResolutionPath(pathValue);
+}
+
+function setResolution(pathValue, action) {
+    if (!pathValue) return;
+    const key = resolutionKey(pathValue);
+    if (!key) return;
+    const existing = perFileResolutions.get(key);
+    perFileResolutions.set(key, {
+        path: existing?.path || pathValue,
+        action
+    });
+}
+
+function getResolutionAction(pathValue) {
+    const key = resolutionKey(pathValue);
+    return perFileResolutions.get(key)?.action || '';
+}
+
+function markExecuted(pathValue) {
+    const key = resolutionKey(pathValue);
+    if (key) {
+        executedFiles.add(key);
+    }
+}
+
+function isExecuted(pathValue) {
+    const key = resolutionKey(pathValue);
+    return key ? executedFiles.has(key) : false;
+}
 
 // ============= TOAST NOTIFICATION =============
 
@@ -143,11 +178,11 @@ function openUnifiedDialog(message) {
     perFileResolutions = new Map();
     executedFiles = new Set();
 
-    // Set default actions per file (use basename key for path-format consistency)
+    // Set default actions per file using canonical path keys
     conflictFiles.forEach(f => {
         const defaultAction = getDefaultAction(f);
         if (defaultAction) {
-            perFileResolutions.set(resKey(f.path), defaultAction);
+            setResolution(f.path, defaultAction);
         }
     });
 
@@ -256,8 +291,11 @@ function cancelConflictResolution() {
 
         // Build resolutions array - use 'skip' for executed files since they're already handled
         const resolutions = [];
-        for (const [pathKey, action] of perFileResolutions) {
-            resolutions.push({ path: pathKey, action: executedFiles.has(pathKey) ? 'skip' : action });
+        for (const resolution of perFileResolutions.values()) {
+            resolutions.push({
+                path: resolution.path,
+                action: isExecuted(resolution.path) ? 'skip' : resolution.action
+            });
         }
 
         window.vscode.postMessage({
@@ -272,13 +310,14 @@ function cancelConflictResolution() {
 
 function clearResolutionForFile(filePath) {
     if (!filePath) return;
-    perFileResolutions.delete(resKey(filePath));
+    perFileResolutions.delete(resolutionKey(filePath));
 }
 
 function onConflictActionChange(selectElement) {
     const filePath = selectElement.dataset.filePath;
     const action = selectElement.value;
-    perFileResolutions.set(resKey(filePath), action);
+    if (filePath === '__all__') return;
+    setResolution(filePath, action);
 }
 
 function onConflictApplyAll(selectElement) {
@@ -290,10 +329,11 @@ function onConflictApplyAll(selectElement) {
     if (selects) {
         selects.forEach(sel => {
             const filePath = sel.dataset.filePath;
+            if (filePath === '__all__') return;
             const optionExists = Array.from(sel.options).some(opt => opt.value === action);
             if (optionExists) {
                 sel.value = action;
-                perFileResolutions.set(resKey(filePath), action);
+                setResolution(filePath, action);
             }
         });
     }
@@ -360,17 +400,40 @@ function createDialogContent() {
 function buildUnifiedFileList() {
     const browseFiles = createAllFilesArray();
 
-    // Use basename for matching — conflictFiles use absolute paths, browseFiles use relative paths
-    // Uses shared getBasename utility which handles both / and \ separators
-    const basename = (p) => window.getBasename ? window.getBasename(p) : (p ? p.split('/').pop() : p);
-    const conflictMap = new Map(conflictFiles.map(f => [basename(f.path), f]));
-    const browseBasenames = new Set(browseFiles.map(f => basename(f.path)));
+    // Match files by normalized full/relative paths (never by basename only)
+    const conflictMap = new Map();
+    const registerConflict = (candidatePath, conflictFile) => {
+        const key = normalizeResolutionPath(candidatePath);
+        if (!key || conflictMap.has(key)) {
+            return;
+        }
+        conflictMap.set(key, conflictFile);
+    };
+    conflictFiles.forEach(conflictFile => {
+        registerConflict(conflictFile.path, conflictFile);
+        registerConflict(conflictFile.relativePath, conflictFile);
+    });
+
+    const browsePathKeys = new Set();
+    browseFiles.forEach(file => {
+        browsePathKeys.add(normalizeResolutionPath(file.path));
+        browsePathKeys.add(normalizeResolutionPath(file.relativePath || file.path));
+    });
 
     // Start from browse files (has all tracked files with sync data)
     const unified = browseFiles.map(file => {
-        const conflict = conflictMap.get(basename(file.path));
+        const conflict = conflictMap.get(normalizeResolutionPath(file.path))
+            || conflictMap.get(normalizeResolutionPath(file.relativePath || file.path));
+        const mergedPath = conflict?.path || file.path;
+        const mergedRelativePath = conflict?.relativePath || file.relativePath || file.path;
+        const mergedName = window.getBasename
+            ? window.getBasename(mergedRelativePath || mergedPath)
+            : (mergedRelativePath || mergedPath);
         return {
             ...file,
+            path: mergedPath,
+            relativePath: mergedRelativePath,
+            name: mergedName,
             // Overlay conflict-specific fields when available
             hasExternalChanges: conflict ? conflict.hasExternalChanges : (file.hasExternalChanges || false),
             hasUnsavedChanges: conflict ? conflict.hasUnsavedChanges : (file.hasInternalChanges || false),
@@ -381,11 +444,15 @@ function buildUnifiedFileList() {
 
     // Add any conflict files that aren't in browse data
     conflictFiles.forEach(cf => {
-        if (!browseBasenames.has(basename(cf.path))) {
+        const conflictPathKey = normalizeResolutionPath(cf.path);
+        const conflictRelativeKey = normalizeResolutionPath(cf.relativePath || cf.path);
+        if (!browsePathKeys.has(conflictPathKey) && !browsePathKeys.has(conflictRelativeKey)) {
+            const displayPath = cf.relativePath || cf.path;
+            const displayName = window.getBasename ? window.getBasename(displayPath) : displayPath;
             unified.push({
                 path: cf.path,
-                relativePath: cf.relativePath || cf.path,
-                name: basename(cf.path) || cf.path,
+                relativePath: displayPath,
+                name: displayName || cf.path,
                 type: cf.fileType || 'include',
                 isMainFile: cf.fileType === 'main',
                 exists: true,
@@ -575,7 +642,7 @@ function createUnifiedTable() {
 
         // --- Action dropdown ---
         const actions = getActionsForFile(file);
-        const currentAction = perFileResolutions.get(resKey(file.path)) || '';
+        const currentAction = getResolutionAction(file.path);
         const actionOptions = actions.map(a =>
             `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`
         ).join('');
@@ -784,16 +851,12 @@ function getFileSyncStatus(filePath) {
         return null;
     }
 
-    // Normalize paths for comparison using shared utilities
-    const normalizedInputPath = filePath.replace(/^\.\//, '');
-    const inputBasename = window.getBasename ? window.getBasename(filePath) : filePath.split('/').pop();
+    const normalizedInputPath = normalizeResolutionPath(filePath);
 
     return lastVerificationResults.fileResults.find(f => {
-        const resultPath = f.path.replace(/^\.\//, '');
-        const resultBasename = window.getBasename ? window.getBasename(f.path) : f.path.split('/').pop();
-        return resultPath === normalizedInputPath ||
-               resultBasename === inputBasename ||
-               normalizedInputPath.endsWith(resultPath);
+        const resultPath = normalizeResolutionPath(f.path);
+        const resultRelativePath = normalizeResolutionPath(f.relativePath || '');
+        return resultPath === normalizedInputPath || resultRelativePath === normalizedInputPath;
     });
 }
 
@@ -896,10 +959,10 @@ function updateDialogContent() {
         if (fileListChanged) {
             // Assign default actions for newly appearing files
             files.forEach(f => {
-                if (!perFileResolutions.has(resKey(f.path))) {
+                if (!perFileResolutions.has(resolutionKey(f.path))) {
                     const defaultAction = getDefaultAction(f);
                     if (defaultAction) {
-                        perFileResolutions.set(resKey(f.path), defaultAction);
+                        setResolution(f.path, defaultAction);
                     }
                 }
             });
@@ -1379,9 +1442,8 @@ function executeAction(buttonElement) {
     }
 
     // Track executed file and its action
-    const pathKey = resKey(filePath);
-    executedFiles.add(pathKey);
-    perFileResolutions.set(pathKey, action);
+    markExecuted(filePath);
+    setResolution(filePath, action);
 
     window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, isMainFile, action });
 
@@ -1413,9 +1475,8 @@ function executeAllActions() {
 
     // Track all conflict files as executed with this action
     for (const file of conflictFiles) {
-        const pathKey = resKey(file.path);
-        executedFiles.add(pathKey);
-        perFileResolutions.set(pathKey, action);
+        markExecuted(file.path);
+        setResolution(file.path, action);
     }
 
     window.kanbanDebug?.warn('[FileManager.executeAllActions] Dispatching action', { action, fileCount: conflictFiles.length });
@@ -1599,6 +1660,16 @@ function initializeFileManager() {
 
             case 'saveCompleted':
                 if (fileManagerVisible) {
+                    if (message.success === false) {
+                        showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
+                    }
+                    verifyContentSync(true);
+                }
+                break;
+
+            case 'saveError':
+                if (fileManagerVisible) {
+                    showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
                     verifyContentSync(true);
                 }
                 break;

@@ -14,7 +14,12 @@ jest.mock('vscode', () => ({
             get: () => undefined,
             update: () => Promise.resolve()
         }),
+        onDidChangeConfiguration: jest.fn(() => ({
+            dispose: jest.fn()
+        })),
+        getWorkspaceFolder: jest.fn(() => undefined),
         workspaceFolders: [],
+        textDocuments: [],
         fs: {
             readFile: () => Promise.resolve(Buffer.from('')),
             writeFile: () => Promise.resolve(),

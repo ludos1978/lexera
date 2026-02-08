@@ -354,10 +354,31 @@ export class KanbanFileService {
             const updateUi = options.updateUi ?? true;
             const skipValidation = options.skipValidation ?? false;
             let savedMainFile = false;
+            const includeSaveErrors: string[] = [];
+
+            const postSaveResult = (success: boolean, error?: string): void => {
+                if (!updateUi) {
+                    return;
+                }
+                const panelInstance = this.panel();
+                if (!panelInstance) {
+                    return;
+                }
+                try {
+                    panelInstance.webview.postMessage({
+                        type: 'saveCompleted',
+                        success,
+                        error
+                    });
+                } catch {
+                    // Webview may be disposed during panel close
+                }
+            };
 
             const needsBoard = scope === 'main' || scope === 'all' || syncIncludes;
             if (needsBoard && (!board || !board.valid)) {
                 console.warn(`[KanbanFileService.saveUnified] Cannot save - board missing or invalid (scope=${typeof scope === 'string' ? scope : 'file'})`);
+                postSaveResult(false, 'Save aborted: board is missing or invalid.');
                 return;
             }
 
@@ -377,6 +398,7 @@ export class KanbanFileService {
                 ? { result: 'continue' as const, forceWritePaths: new Set<string>() }
                 : await this._handlePresaveConflictCheck(scope);
             if (presaveCheck.result === 'abort') {
+                postSaveResult(false, 'Save cancelled due to unresolved external file changes.');
                 return;
             }
             const forceWritePaths = presaveCheck.forceWritePaths;
@@ -385,6 +407,7 @@ export class KanbanFileService {
                 const mainFile = this.fileRegistry.getMainFile();
                 if (!mainFile) {
                     console.warn('[KanbanFileService.saveUnified] No main file registered');
+                    postSaveResult(false, 'Save aborted: no main file is registered.');
                     return;
                 }
                 if (board) {
@@ -433,7 +456,9 @@ export class KanbanFileService {
                     if (failures.length > 0) {
                         failures.forEach(({ result, file }) => {
                             const error = (result as PromiseRejectedResult).reason;
-                            console.warn(`[KanbanFileService] Skipping save for ${file.getPath()}: ${error.message || error}`);
+                            const errorMessage = `[KanbanFileService] Failed to save include file ${file.getPath()}: ${error?.message || error}`;
+                            console.warn(errorMessage);
+                            includeSaveErrors.push(errorMessage);
                         });
                     }
                 }
@@ -467,17 +492,13 @@ export class KanbanFileService {
                 });
             }
 
-            if (updateUi && savedMainFile) {
-                const panelInstance = this.panel();
-                if (panelInstance) {
-                    try {
-                        panelInstance.webview.postMessage({
-                            type: 'saveCompleted',
-                            success: true
-                        });
-                    } catch (e) {
-                        // Webview may be disposed during panel close - save already succeeded
-                    }
+            if (updateUi) {
+                if (!savedMainFile) {
+                    postSaveResult(false, 'Save aborted: main file was not saved.');
+                } else if (includeSaveErrors.length > 0) {
+                    postSaveResult(false, `Saved main file, but ${includeSaveErrors.length} include file(s) failed.`);
+                } else {
+                    postSaveResult(true);
                 }
             }
         };

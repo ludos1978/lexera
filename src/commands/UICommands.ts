@@ -234,7 +234,7 @@ export class UICommands extends SwitchBasedCommand {
         const board = message.board;
         if (!board) {
             console.warn('[UICommands.saveBoardState] No board data received');
-            return this.success();
+            return this.failure('No board data received for save');
         }
 
         // NOTE: Do not save undo state here - individual operations already saved their undo states

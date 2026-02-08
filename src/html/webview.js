@@ -2819,9 +2819,35 @@ if (!webviewEventListenersInitialized) {
             closePromptActive = false;
             break;
         case 'saveCompleted':
-            // Backend has confirmed save is complete, update frontend UI
+            // Backend has confirmed save request was processed
+            if (window._saveAckTimeout) {
+                clearTimeout(window._saveAckTimeout);
+                window._saveAckTimeout = null;
+            }
+            window._saveInFlight = false;
+
+            if (message.success === false) {
+                if (typeof handleSaveError === 'function') {
+                    handleSaveError(message.error || 'Save was cancelled or could not be completed.');
+                } else {
+                    console.error('❌ Save failed:', message.error || 'Unknown error');
+                }
+                window._pendingPostSaveEditorSync = false;
+                break;
+            }
+
             if (typeof markSavedChanges === 'function') {
                 markSavedChanges();
+            }
+            if (window.cachedBoard) {
+                window.savedBoardState = JSON.parse(JSON.stringify(window.cachedBoard));
+            }
+            if (window._pendingPostSaveEditorSync && window.taskEditor && typeof window.taskEditor.handlePostSaveUpdate === 'function') {
+                window.taskEditor.handlePostSaveUpdate();
+            }
+            window._pendingPostSaveEditorSync = false;
+            if (typeof updateRefreshButtonState === 'function') {
+                updateRefreshButtonState('saved');
             }
             break;
         case 'undoRedoStatus':
@@ -2833,6 +2859,12 @@ if (!webviewEventListenersInitialized) {
             insertFileLink(message.fileInfo);
             break;
         case 'saveError':
+            if (window._saveAckTimeout) {
+                clearTimeout(window._saveAckTimeout);
+                window._saveAckTimeout = null;
+            }
+            window._saveInFlight = false;
+            window._pendingPostSaveEditorSync = false;
             if (typeof handleSaveError === 'function') {
                 handleSaveError(message.error);
             } else {

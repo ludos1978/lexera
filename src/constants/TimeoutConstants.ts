@@ -55,6 +55,12 @@ export const WATCHER_TIMEOUT_MS = 5000;
 /** Timeout for save transactions (ms) */
 export const TRANSACTION_TIMEOUT_MS = 30000;
 
+/** Maximum verification attempts after writing a file to disk */
+export const SAVE_VERIFICATION_MAX_ATTEMPTS = 5;
+
+/** Delay between post-write verification attempts (ms) */
+export const SAVE_VERIFICATION_RETRY_DELAY_MS = 120;
+
 // =============================================================================
 // EXTERNAL PROCESS TIMEOUTS
 // =============================================================================

@@ -6,9 +6,10 @@ import { BackupManager } from '../services/BackupManager';
 import { SaveOptions } from './SaveOptions';
 import { SaveTransactionManager } from './SaveTransactionManager';
 import { WatcherCoordinator } from './WatcherCoordinator';
-import { normalizePathForLookup, isSamePath } from '../utils/stringUtils';
+import { normalizePathForLookup, isSamePath, getErrorMessage } from '../utils/stringUtils';
 import { CapturedEdit, IMarkdownFileRegistry } from './FileInterfaces';
 import { getVisibleConflictPath } from '../constants/FileNaming';
+import { SAVE_VERIFICATION_MAX_ATTEMPTS, SAVE_VERIFICATION_RETRY_DELAY_MS } from '../constants/TimeoutConstants';
 
 /**
  * File change event emitted when file state changes
@@ -515,7 +516,9 @@ export abstract class MarkdownFile implements vscode.Disposable {
                 throw new Error(`Cannot save ${this._relativePath}: ${errors}`);
             }
 
-            await this.writeToDisk(this._content);
+            const expectedContent = this._content;
+            await this.writeToDisk(expectedContent);
+            await this._verifyContentWasPersisted(expectedContent);
 
             // CRITICAL: Increment counter AFTER successful write (not before!)
             // This prevents counter from being wrong if write fails.
@@ -535,7 +538,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // Update state after successful write
             this._baseline = this._content;
             this._hasFileSystemChanges = false;
-            this._lastModified = new Date();
+            this._lastModified = await this._getFileModifiedTime() ?? new Date();
             this._preserveRawContent = false; // Clear flag after save - raw content is now the baseline
 
             // TRANSACTION: Commit the transaction
@@ -849,6 +852,55 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // File might not exist, which is OK
             return null;
         }
+    }
+
+    /**
+     * Verify that the most recent write was actually persisted to disk.
+     * Retries briefly to handle file-system propagation delays.
+     */
+    private async _verifyContentWasPersisted(expectedContent: string): Promise<void> {
+        const normalizedExpected = this._normalizeLineEndings(expectedContent);
+
+        let lastObservedContent: string | null = null;
+        let lastReadError: string | null = null;
+
+        for (let attempt = 1; attempt <= SAVE_VERIFICATION_MAX_ATTEMPTS; attempt++) {
+            try {
+                lastObservedContent = await this.readFromDisk();
+                lastReadError = null;
+            } catch (error) {
+                lastReadError = getErrorMessage(error);
+                lastObservedContent = null;
+            }
+
+            if (lastObservedContent !== null) {
+                const normalizedObserved = this._normalizeLineEndings(lastObservedContent);
+                if (normalizedObserved === normalizedExpected) {
+                    return;
+                }
+            }
+
+            if (attempt < SAVE_VERIFICATION_MAX_ATTEMPTS) {
+                await this._delay(SAVE_VERIFICATION_RETRY_DELAY_MS);
+            }
+        }
+
+        const observedLength = lastObservedContent === null ? 'null' : String(lastObservedContent.length);
+        const expectedLength = String(normalizedExpected.length);
+        const readSuffix = lastReadError ? `; lastReadError="${lastReadError}"` : '';
+
+        throw new Error(
+            `[${this.getFileType()}] Post-save verification failed for "${this._relativePath}" `
+            + `(expectedLength=${expectedLength}, observedLength=${observedLength}${readSuffix})`
+        );
+    }
+
+    private _normalizeLineEndings(content: string): string {
+        return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+
+    private async _delay(ms: number): Promise<void> {
+        await new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
