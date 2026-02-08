@@ -43,6 +43,7 @@ export interface ConflictDialogRequest {
     conflictType: ConflictDialogType;
     files: ConflictFileInfo[];
     openMode?: OpenMode;
+    snapshotToken?: string;
 }
 
 export interface PerFileResolution {
@@ -53,18 +54,20 @@ export interface PerFileResolution {
 export interface ConflictDialogResult {
     cancelled: boolean;
     perFileResolutions: PerFileResolution[];
+    snapshotToken?: string;
 }
 
 interface PendingConflict {
     resolve: (result: ConflictDialogResult) => void;
     reject: (error: Error) => void;
     timeout: ReturnType<typeof setTimeout>;
+    snapshotToken?: string;
 }
 
 // ============= MAIN CLASS =============
 
-/** Timeout for conflict dialog response (2 minutes) */
-const CONFLICT_DIALOG_TIMEOUT_MS = 120_000;
+/** Timeout for conflict dialog response (15 minutes). */
+const CONFLICT_DIALOG_TIMEOUT_MS = 900_000;
 
 /**
  * ConflictDialogBridge
@@ -100,14 +103,20 @@ export class ConflictDialogBridge {
                 reject(new Error(`[ConflictDialogBridge] Conflict dialog timed out: ${conflictId}`));
             }, CONFLICT_DIALOG_TIMEOUT_MS);
 
-            this._pending.set(conflictId, { resolve, reject, timeout });
+            this._pending.set(conflictId, {
+                resolve,
+                reject,
+                timeout,
+                snapshotToken: request.snapshotToken
+            });
 
             const sent = postMessage({
                 type: 'showConflictDialog',
                 conflictId,
                 conflictType: request.conflictType,
                 files: request.files,
-                openMode: request.openMode
+                openMode: request.openMode,
+                snapshotToken: request.snapshotToken
             });
 
             if (!sent) {
@@ -122,16 +131,35 @@ export class ConflictDialogBridge {
      * Handle a resolution message from the webview.
      * Called by the message handler when the frontend sends 'conflictResolution'.
      */
-    handleResolution(conflictId: string, result: ConflictDialogResult): void {
+    handleResolution(conflictId: string, result: ConflictDialogResult, snapshotToken?: string): void {
         const pending = this._pending.get(conflictId);
         if (!pending) {
             logger.warn(`[ConflictDialogBridge] No pending conflict for ID: ${conflictId}`);
             return;
         }
 
+        const expectedToken = pending.snapshotToken;
+        if (expectedToken && snapshotToken !== expectedToken) {
+            logger.warn(
+                `[ConflictDialogBridge] Snapshot token mismatch for ${conflictId}; ` +
+                `expected=${expectedToken}, received=${snapshotToken ?? 'missing'}; resolving as cancelled`
+            );
+            clearTimeout(pending.timeout);
+            this._pending.delete(conflictId);
+            pending.resolve({
+                cancelled: true,
+                perFileResolutions: [],
+                snapshotToken
+            });
+            return;
+        }
+
         clearTimeout(pending.timeout);
         this._pending.delete(conflictId);
-        pending.resolve(result);
+        pending.resolve({
+            ...result,
+            snapshotToken
+        });
     }
 
     /**

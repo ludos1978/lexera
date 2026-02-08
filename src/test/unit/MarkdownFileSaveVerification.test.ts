@@ -2,8 +2,11 @@ import { MarkdownFile } from '../../files/MarkdownFile';
 import { ConflictResolver } from '../../services/ConflictResolver';
 import { CapturedEdit, IMarkdownFileRegistry } from '../../files/FileInterfaces';
 import { FileSaveService } from '../../core/FileSaveService';
+import { SaveTransactionManager } from '../../files/SaveTransactionManager';
+import { WatcherCoordinator } from '../../files/WatcherCoordinator';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
 
 class TestMarkdownFile extends MarkdownFile {
     public diskContent: string;
@@ -111,6 +114,7 @@ describe('MarkdownFile.save post-write verification', () => {
         expect(file.getBaseline()).toBe('before');
         expect(file.hasUnsavedChanges()).toBe(true);
         expect(file.diskContent).toBe('corrupted:after');
+        expect(file.hasExternalChanges()).toBe(true);
         expect(file.emergencyBackupRequests).toEqual(['after']);
     });
 
@@ -125,7 +129,22 @@ describe('MarkdownFile.save post-write verification', () => {
         expect(file.getContent()).toBe('after');
         expect(file.getBaseline()).toBe('before');
         expect(file.hasUnsavedChanges()).toBe(true);
+        expect(file.hasExternalChanges()).toBe(true);
         expect(file.emergencyBackupRequests).toEqual(['after']);
+    });
+
+    it('recovers as saved when verification reads stale data but disk has expected content', async () => {
+        const file = new TestMarkdownFile('before');
+        file.setContent('after');
+        file.queuedReadResponses = ['before', 'before', 'before', 'before', 'before'];
+
+        await expect(file.save({ skipReloadDetection: false })).resolves.toBeUndefined();
+
+        expect(file.getContent()).toBe('after');
+        expect(file.getBaseline()).toBe('after');
+        expect(file.hasUnsavedChanges()).toBe(false);
+        expect(file.hasExternalChanges()).toBe(false);
+        expect(file.emergencyBackupRequests).toEqual([]);
     });
 
     it('retries verification and succeeds when read-after-write is eventually consistent', async () => {
@@ -210,5 +229,66 @@ describe('FileSaveService.saveFile with provided content', () => {
 
         expect(file.writeCount).toBe(1);
         expect(file.getBaseline()).toBe('after');
+    });
+});
+
+describe('MarkdownFile.getContentForBackup', () => {
+    afterEach(() => {
+        (vscode.workspace as any).textDocuments = [];
+    });
+
+    it('prefers dirty editor buffer content when available', () => {
+        const file = new TestMarkdownFile('before');
+        file.setContent('kanban-state');
+
+        (vscode.workspace as any).textDocuments = [{
+            uri: { fsPath: file.getPath() },
+            isDirty: true,
+            getText: () => 'editor-buffer'
+        }];
+
+        expect(file.getContentForBackup()).toBe('editor-buffer');
+    });
+
+    it('falls back to tracked file content when no dirty editor buffer exists', () => {
+        const file = new TestMarkdownFile('before');
+        file.setContent('kanban-state');
+
+        (vscode.workspace as any).textDocuments = [{
+            uri: { fsPath: file.getPath() },
+            isDirty: false,
+            getText: () => 'editor-buffer'
+        }];
+
+        expect(file.getContentForBackup()).toBe('kanban-state');
+    });
+});
+
+describe('MarkdownFile operation keying', () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('uses absolute file paths for operation coordination and save transactions', async () => {
+        const file = new TestMarkdownFile('before');
+        const expectedPath = file.getPath();
+
+        const coordinator = WatcherCoordinator.getInstance();
+        const transactionManager = SaveTransactionManager.getInstance();
+        const startSpy = jest.spyOn(coordinator, 'startOperation');
+        const endSpy = jest.spyOn(coordinator, 'endOperation');
+        const beginSpy = jest.spyOn(transactionManager, 'beginTransaction');
+        const commitSpy = jest.spyOn(transactionManager, 'commitTransaction');
+
+        file.setContent('after');
+        await file.save({ skipReloadDetection: false });
+        await file.reload();
+
+        expect(startSpy).toHaveBeenCalledWith(expectedPath, 'save');
+        expect(startSpy).toHaveBeenCalledWith(expectedPath, 'reload');
+        expect(endSpy).toHaveBeenCalledWith(expectedPath, 'save');
+        expect(endSpy).toHaveBeenCalledWith(expectedPath, 'reload');
+        expect(beginSpy).toHaveBeenCalledWith(expectedPath, expect.any(Object));
+        expect(commitSpy).toHaveBeenCalledWith(expectedPath, expect.any(String));
     });
 });

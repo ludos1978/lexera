@@ -30,6 +30,12 @@ export interface UnsavedChangesInfo {
     changedIncludeFiles: string[];
 }
 
+export interface UnsavedBackupResult {
+    created: number;
+    failed: number;
+    errors: string[];
+}
+
 export class UnsavedChangesService {
     private _fileRegistry: MarkdownFileRegistry;
 
@@ -42,7 +48,7 @@ export class UnsavedChangesService {
      */
     public checkForUnsavedChanges(): UnsavedChangesInfo {
         const mainFile = this._fileRegistry.getMainFile();
-        const hasMainFileChanges = mainFile?.hasUnsavedChanges() || false;
+        const hasMainFileChanges = mainFile?.hasAnyUnsavedChanges() || false;
 
         const includeStatus = this._fileRegistry.getIncludeFilesUnsavedStatus();
 
@@ -88,12 +94,11 @@ export class UnsavedChangesService {
      * Discard all unsaved changes
      */
     public discardAllChanges(): void {
-        const mainFile = this._fileRegistry.getMainFile();
-        if (mainFile) {
-            mainFile.discardChanges();
+        for (const file of this._fileRegistry.getAll()) {
+            if (file.hasUnsavedChanges()) {
+                file.discardChanges();
+            }
         }
-
-        // Include files handle their own discard logic when their parent is disposed
     }
 
     /**
@@ -102,38 +107,53 @@ export class UnsavedChangesService {
      *
      * @param mainFileUri - URI of the main kanban file
      */
-    public async saveBackups(mainFileUri: vscode.Uri | undefined): Promise<void> {
-        try {
-            // Save main file backup
-            const mainFile = this._fileRegistry.getMainFile();
-            if (mainFile && mainFile.hasUnsavedChanges() && mainFileUri) {
-                const filePath = mainFileUri.fsPath;
-                const content = mainFile.getContent();
+    public async saveBackups(mainFileUri: vscode.Uri | undefined): Promise<UnsavedBackupResult> {
+        const result: UnsavedBackupResult = {
+            created: 0,
+            failed: 0,
+            errors: []
+        };
 
-                // Create backup filename: "file.md" -> ".file-unsavedchanges.md" (hidden)
+        const writeBackup = async (filePath: string, content: string): Promise<void> => {
+            try {
                 const backupPath = this._createBackupPath(filePath);
-                fs.writeFileSync(backupPath, content, 'utf8');
+                await fs.promises.writeFile(backupPath, content, 'utf8');
+                result.created++;
+            } catch (error) {
+                result.failed++;
+                const errorText = error instanceof Error ? error.message : String(error);
+                result.errors.push(`Failed backup for "${filePath}": ${errorText}`);
             }
+        };
 
-            // Save include files backups
-            const includeStatus = this._fileRegistry.getIncludeFilesUnsavedStatus();
-            if (includeStatus.hasChanges) {
-                for (const fileWithChanges of includeStatus.changedFiles) {
-                    const includeFile = this._fileRegistry.getIncludeFile(fileWithChanges);
-                    if (includeFile && includeFile.hasUnsavedChanges()) {
-                        const filePath = includeFile.getPath();
-                        if (filePath) {
-                            const content = includeFile.getContent();
-                            const backupPath = this._createBackupPath(filePath);
-                            fs.writeFileSync(backupPath, content, 'utf8');
-                        }
+        // Save main file backup
+        const mainFile = this._fileRegistry.getMainFile();
+        if (mainFile && mainFile.hasAnyUnsavedChanges()) {
+            const filePath = mainFileUri?.fsPath || mainFile.getPath();
+            const content = await this._resolveBackupContent(mainFile.getPath(), mainFile.getContent());
+            await writeBackup(filePath, content);
+        }
+
+        // Save include files backups
+        const includeStatus = this._fileRegistry.getIncludeFilesUnsavedStatus();
+        if (includeStatus.hasChanges) {
+            for (const fileWithChanges of includeStatus.changedFiles) {
+                const includeFile = this._fileRegistry.getIncludeFile(fileWithChanges);
+                if (includeFile && includeFile.hasAnyUnsavedChanges()) {
+                    const filePath = includeFile.getPath();
+                    if (filePath) {
+                        const content = await this._resolveBackupContent(filePath, includeFile.getContent());
+                        await writeBackup(filePath, content);
                     }
                 }
             }
-        } catch (error) {
-            console.error('[UnsavedChangesService] Failed to save unsaved changes backup:', error);
-            // Don't throw - we want to continue with the close process even if backup fails
         }
+
+        if (result.failed > 0) {
+            console.error('[UnsavedChangesService] Failed to save some unsaved changes backups:', result.errors.join('; '));
+        }
+
+        return result;
     }
 
     /**
@@ -142,5 +162,13 @@ export class UnsavedChangesService {
      */
     private _createBackupPath(filePath: string): string {
         return getUnsavedChangesPath(filePath);
+    }
+
+    private async _resolveBackupContent(filePath: string, fallbackContent: string): Promise<string> {
+        const openDocument = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === filePath);
+        if (openDocument?.isDirty) {
+            return openDocument.getText();
+        }
+        return fallbackContent;
     }
 }

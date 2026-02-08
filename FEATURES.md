@@ -186,10 +186,10 @@ The include statement can be added to the Column Header (best for large presenta
 
 ### Reserved Characters in Hash and Date Tags
 
-- AND &
-- OR |
-- NOT !
-- RANGE - or ..
+- AND     &
+- OR      |
+- NOT     !
+- RANGE   - or ..
 
 ### REQUEST TAGS (?)
 

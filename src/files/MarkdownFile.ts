@@ -291,6 +291,18 @@ export abstract class MarkdownFile implements vscode.Disposable {
         return this._content;
     }
 
+    /**
+     * Return the safest "my version" content for backup operations.
+     * Prefers dirty VS Code editor buffer text when available.
+     */
+    public getContentForBackup(): string {
+        const openDocument = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === this._path);
+        if (openDocument?.isDirty) {
+            return openDocument.getText();
+        }
+        return this._content;
+    }
+
     public getBaseline(): string {
         return this._baseline;
     }
@@ -422,7 +434,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
     public async reload(): Promise<void> {
 
         // PERFORMANCE: Use watcher coordinator to prevent conflicts
-        await MarkdownFile._watcherCoordinator.startOperation(this._relativePath, 'reload');
+        await MarkdownFile._watcherCoordinator.startOperation(this._path, 'reload');
 
         try {
             // FOUNDATION-2: Start new reload sequence, invalidating previous operations
@@ -461,7 +473,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             }
         } finally {
             // PERFORMANCE: End operation in coordinator
-            MarkdownFile._watcherCoordinator.endOperation(this._relativePath, 'reload');
+            MarkdownFile._watcherCoordinator.endOperation(this._path, 'reload');
         }
     }
 
@@ -508,7 +520,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
         const skipValidation = options.skipValidation ?? false;
 
         // PERFORMANCE: Use watcher coordinator to prevent conflicts
-        await MarkdownFile._watcherCoordinator.startOperation(this._relativePath, 'save');
+        await MarkdownFile._watcherCoordinator.startOperation(this._path, 'save');
 
         // TRANSACTION: Begin save transaction for rollback capability
         const originalState = {
@@ -517,9 +529,10 @@ export abstract class MarkdownFile implements vscode.Disposable {
             hasFileSystemChanges: this._hasFileSystemChanges,
             lastModified: this._lastModified
         };
-        const transactionId = MarkdownFile._saveTransactionManager.beginTransaction(this._relativePath, originalState);
+        const transactionId = MarkdownFile._saveTransactionManager.beginTransaction(this._path, originalState);
         const attemptedContent = this._content;
         let selfSaveMarkerId: string | null = null;
+        let writeAttempted = false;
 
         try {
             // Validate before saving unless explicitly skipped.
@@ -535,6 +548,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             if (skipReloadDetection) {
                 selfSaveMarkerId = this._registerPendingSelfSaveMarker(expectedContent);
             }
+            writeAttempted = true;
             await this.writeToDisk(expectedContent);
             await this._verifyContentWasPersisted(expectedContent);
 
@@ -545,22 +559,34 @@ export abstract class MarkdownFile implements vscode.Disposable {
             this._preserveRawContent = false; // Clear flag after save - raw content is now the baseline
 
             // TRANSACTION: Commit the transaction
-            MarkdownFile._saveTransactionManager.commitTransaction(this._relativePath, transactionId);
+            MarkdownFile._saveTransactionManager.commitTransaction(this._path, transactionId);
 
             this._emitChange('saved');
         } catch (error) {
             // TRANSACTION: Rollback on failure
             console.error(`[${this.getFileType()}] Save failed, rolling back:`, error);
-            MarkdownFile._saveTransactionManager.rollbackTransaction(this._relativePath, transactionId);
-            if (selfSaveMarkerId) {
-                this._removePendingSelfSaveMarker(selfSaveMarkerId);
-            }
+            MarkdownFile._saveTransactionManager.rollbackTransaction(this._path, transactionId);
 
             // Restore original state
             this._content = originalState.content;
             this._baseline = originalState.baseline;
             this._hasFileSystemChanges = originalState.hasFileSystemChanges;
             this._lastModified = originalState.lastModified;
+
+            let reconciliationResult: 'saved' | 'unchanged' | 'diverged' | 'unknown' = 'unchanged';
+            if (writeAttempted) {
+                reconciliationResult = await this._reconcileDiskStateAfterFailedSave(
+                    attemptedContent,
+                    originalState.baseline
+                );
+                if (reconciliationResult === 'saved') {
+                    return;
+                }
+            }
+            if (selfSaveMarkerId) {
+                this._removePendingSelfSaveMarker(selfSaveMarkerId);
+            }
+
             const saveErrorMessage = getErrorMessage(error);
             let emergencyBackupPath: string | null = null;
             let emergencyBackupError: string | null = null;
@@ -592,8 +618,50 @@ export abstract class MarkdownFile implements vscode.Disposable {
             );
         } finally {
             // PERFORMANCE: End operation in coordinator
-            MarkdownFile._watcherCoordinator.endOperation(this._relativePath, 'save');
+            MarkdownFile._watcherCoordinator.endOperation(this._path, 'save');
         }
+    }
+
+    private async _reconcileDiskStateAfterFailedSave(
+        expectedContent: string,
+        originalBaseline: string
+    ): Promise<'saved' | 'unchanged' | 'diverged' | 'unknown'> {
+        let diskContent: string | null = null;
+        try {
+            diskContent = await this.readFromDisk();
+        } catch {
+            diskContent = null;
+        }
+
+        if (diskContent === null) {
+            this._hasFileSystemChanges = true;
+            return 'unknown';
+        }
+
+        const normalizedDisk = this._normalizeLineEndings(diskContent);
+        const normalizedExpected = this._normalizeLineEndings(expectedContent);
+        if (normalizedDisk === normalizedExpected) {
+            this._content = expectedContent;
+            this._baseline = expectedContent;
+            this._hasFileSystemChanges = false;
+            this._lastModified = await this._getFileModifiedTime() ?? new Date();
+            this._preserveRawContent = false;
+            this._emitChange('saved');
+            return 'saved';
+        }
+
+        const normalizedOriginalBaseline = this._normalizeLineEndings(originalBaseline);
+        if (normalizedDisk === normalizedOriginalBaseline) {
+            return 'unchanged';
+        }
+
+        const wasExternal = this._hasFileSystemChanges;
+        this._hasFileSystemChanges = true;
+        this._lastModified = await this._getFileModifiedTime() ?? this._lastModified;
+        if (!wasExternal) {
+            this._emitChange('external');
+        }
+        return 'diverged';
     }
 
     /**

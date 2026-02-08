@@ -325,19 +325,17 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         const errors: string[] = [];
         let filesWritten = 0;
 
-        // Write all files in parallel with force: true to bypass hash check
-        await Promise.all(
-            allFiles.map(async (file) => {
-                try {
-                    await this._fileSaveService.saveFile(file, undefined, { force: true });
-                    filesWritten++;
-                } catch (error) {
-                    const errorMsg = `Failed to write ${file.getRelativePath()}: ${error}`;
-                    console.error(`[MarkdownFileRegistry] ${errorMsg}`);
-                    errors.push(errorMsg);
-                }
-            })
-        );
+        // Write sequentially for deterministic recovery and clearer failure attribution.
+        for (const file of allFiles) {
+            try {
+                await this._fileSaveService.saveFile(file, undefined, { force: true });
+                filesWritten++;
+            } catch (error) {
+                const errorMsg = `Failed to write ${file.getRelativePath()}: ${error}`;
+                console.error(`[MarkdownFileRegistry] ${errorMsg}`);
+                errors.push(errorMsg);
+            }
+        }
 
         return { filesWritten, errors };
     }
@@ -385,7 +383,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
     public getIncludeFilesUnsavedStatus(): { hasChanges: boolean; changedFiles: string[] } {
         const includeFiles = this.getAll().filter(f => f.getFileType() !== 'main');
         const changedFiles = includeFiles
-            .filter(f => f.hasUnsavedChanges())
+            .filter(f => f.hasAnyUnsavedChanges())
             .map(f => f.getRelativePath());
 
         return {
@@ -399,7 +397,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      */
     public hasAnyUnsavedChanges(): boolean {
         const mainFile = this.getMainFile();
-        const mainHasChanges = mainFile?.hasUnsavedChanges() || false;
+        const mainHasChanges = mainFile?.hasAnyUnsavedChanges() || false;
         const includeStatus = this.getIncludeFilesUnsavedStatus();
 
         return mainHasChanges || includeStatus.hasChanges;

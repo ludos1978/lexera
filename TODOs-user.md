@@ -1,3 +1,5 @@
+- verify the saving system with the file manager at it's core. what could be improved to make sure all data is consistent and can allways be saved. never ever might anything get lost by not being able to save, overwriting content without user intent or trough data inconsistencies. how can we be 100% sure nothing like this occurs? analyze deeply and all involved systems!!! the file manager ist the hub for the user to verify this and must be very clear in it's explanation of the file(s) states! make sure it is only as complex as absolutely required and remove complexity where you encounter it. Make sure the structure is simple to make debugging easy!
+
 - DO NOT DO ANY AUTOMATIC TEXT CONVERSION! I saw -> get an  arrow!!!
 
 - [ ] add comment and note as tags 

@@ -1400,6 +1400,7 @@ export interface SaveIndividualFileMessage extends BaseMessage {
     filePath: string;
     isMainFile: boolean;
     forceSave: boolean;
+    snapshotToken?: string;
     action?: 'overwrite' | 'overwrite_backup_external';
 }
 
@@ -1410,6 +1411,7 @@ export interface ReloadIndividualFileMessage extends BaseMessage {
     type: 'reloadIndividualFile';
     filePath: string;
     isMainFile: boolean;
+    snapshotToken?: string;
     action?: 'load_external' | 'load_external_backup_mine';
 }
 
@@ -1621,6 +1623,7 @@ export interface ShowConflictDialogMessage extends BaseMessage {
     conflictId: string;
     conflictType: 'external_changes' | 'presave_conflict';
     openMode?: 'browse' | 'save_conflict' | 'reload_request' | 'external_change';
+    snapshotToken?: string;
     files: Array<{
         path: string;
         relativePath: string;
@@ -1639,6 +1642,7 @@ export interface ConflictResolutionMessage extends BaseMessage {
     type: 'conflictResolution';
     conflictId: string;
     cancelled: boolean;
+    snapshotToken?: string;
     perFileResolutions: Array<{
         path: string;
         action: 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'import' | 'ignore' | 'skip';

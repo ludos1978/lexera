@@ -480,7 +480,10 @@ export async function deactivate(): Promise<void> {
 			if (choice === saveAndClose) {
 				// Save changes before closing
 				try {
-					await panel.saveToMarkdown(true, true);
+					const saveResult = await panel.saveToMarkdown(true, true);
+					if (!saveResult.success) {
+						console.warn('[Extension] Save aborted during deactivation:', saveResult.error || 'Unknown save result');
+					}
 				} catch (error) {
 					console.error('[Extension] Save failed during deactivation:', error);
 					// Continue anyway - VSCode is closing

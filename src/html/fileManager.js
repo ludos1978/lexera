@@ -14,6 +14,8 @@
 let fileManagerVisible = false;
 let fileManagerElement = null;
 let trackedFilesData = {};
+let trackedFilesSnapshotToken = null;
+let conflictSnapshotToken = null;
 let lastTrackedFilesDataHash = null;
 let refreshCount = 0;
 let fileManagerNoticeTimer = null;
@@ -27,6 +29,11 @@ let conflictId = null;
 let conflictFiles = [];  // from backend message (resolve mode)
 let perFileResolutions = new Map(); // normalizedPath -> { path, action }
 let executedFiles = new Set();      // paths of files that have been executed (saved/reloaded)
+let inFlightFiles = new Set();      // paths currently executing save/reload in backend
+let inFlightTimeouts = new Map();   // normalizedPath -> timeout handle for action acknowledgement watchdog
+let staleActionFiles = new Set();   // paths with timed-out actions; require fresh state sync before new actions
+
+const FILE_ACTION_RESPONSE_TIMEOUT_MS = 45_000;
 
 let autoRefreshTimer = null;
 
@@ -78,6 +85,69 @@ function isExecuted(pathValue) {
     return key ? executedFiles.has(key) : false;
 }
 
+function markInFlight(pathValue) {
+    const key = resolutionKey(pathValue);
+    if (key) {
+        inFlightFiles.add(key);
+        staleActionFiles.delete(key);
+        const existingTimeout = inFlightTimeouts.get(key);
+        if (existingTimeout) {
+            clearTimeout(existingTimeout);
+        }
+        const timeoutHandle = setTimeout(() => {
+            if (!inFlightFiles.has(key)) {
+                inFlightTimeouts.delete(key);
+                return;
+            }
+            inFlightFiles.delete(key);
+            inFlightTimeouts.delete(key);
+            staleActionFiles.add(key);
+            trackedFilesSnapshotToken = null;
+            const displayPath = pathValue || key;
+            showFileManagerNotice(
+                `File action timed out for "${displayPath}". Refresh states before retrying.`,
+                'error',
+                7000
+            );
+            refreshFileManager();
+            updateDialogContent(true);
+        }, FILE_ACTION_RESPONSE_TIMEOUT_MS);
+        inFlightTimeouts.set(key, timeoutHandle);
+    }
+}
+
+function clearInFlight(pathValue) {
+    const key = resolutionKey(pathValue);
+    if (key) {
+        const timeoutHandle = inFlightTimeouts.get(key);
+        if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+            inFlightTimeouts.delete(key);
+        }
+        inFlightFiles.delete(key);
+        staleActionFiles.delete(key);
+    }
+}
+
+function isInFlight(pathValue) {
+    const key = resolutionKey(pathValue);
+    return key ? inFlightFiles.has(key) : false;
+}
+
+function isStaleAction(pathValue) {
+    const key = resolutionKey(pathValue);
+    return key ? staleActionFiles.has(key) : false;
+}
+
+function clearAllInFlightState() {
+    for (const timeoutHandle of inFlightTimeouts.values()) {
+        clearTimeout(timeoutHandle);
+    }
+    inFlightTimeouts.clear();
+    inFlightFiles.clear();
+    staleActionFiles.clear();
+}
+
 // ============= TOAST NOTIFICATION =============
 
 function showFileManagerNotice(message, type = 'info', timeoutMs = 3000) {
@@ -126,11 +196,25 @@ const ALL_ACTIONS = [
 
 function getActionsForFile(file) {
     const hasExternal = file.hasExternalChanges;
-    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || file.isUnsavedInEditor;
+    const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
+    const hasEditorUnsaved = !!file.isUnsavedInEditor;
+
+    if (hasExternal && hasEditorUnsaved) {
+        return ALL_ACTIONS.filter(a =>
+            a.value === 'load_external' || a.value === 'load_external_backup_mine' || a.value === 'skip'
+        );
+    }
+
+    if (hasEditorUnsaved) {
+        return ALL_ACTIONS.filter(a =>
+            a.value === 'load_external' || a.value === 'load_external_backup_mine' || a.value === 'skip'
+        );
+    }
+
     if (hasExternal) {
         return ALL_ACTIONS;
     }
-    if (hasUnsaved) {
+    if (hasKanbanUnsaved) {
         return ALL_ACTIONS.filter(a =>
             a.value === 'overwrite' || a.value === 'overwrite_backup_external' || a.value === 'skip'
         );
@@ -141,13 +225,24 @@ function getActionsForFile(file) {
 }
 
 function getDefaultAction(file) {
-    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || file.isUnsavedInEditor;
+    const hasEditorUnsaved = !!file.isUnsavedInEditor;
+    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || hasEditorUnsaved;
     switch (openMode) {
         case 'save_conflict':
-            return file.hasExternalChanges ? 'overwrite' : '';
+            // Safety default: preserve disk version in a visible backup before overwrite.
+            if (file.hasExternalChanges && hasEditorUnsaved) {
+                return 'load_external_backup_mine';
+            }
+            return file.hasExternalChanges ? 'overwrite_backup_external' : '';
         case 'reload_request':
+            if (hasEditorUnsaved) {
+                return 'load_external_backup_mine';
+            }
             return 'load_external';
         case 'external_change':
+            if (file.hasExternalChanges && hasEditorUnsaved) {
+                return 'load_external_backup_mine';
+            }
             if (file.hasExternalChanges && hasUnsaved) {
                 // Both sides changed — save kanban content but backup the external version
                 return 'overwrite_backup_external';
@@ -174,11 +269,13 @@ function openUnifiedDialog(message) {
     }
 
     conflictId = message.conflictId;
+    conflictSnapshotToken = message.snapshotToken || null;
     conflictFiles = message.files || [];
     openMode = message.openMode || 'external_change';
     dialogMode = 'resolve';
     perFileResolutions = new Map();
-    executedFiles = new Set();
+    executedFiles.clear();
+    clearAllInFlightState();
 
     // Set default actions per file using canonical path keys
     conflictFiles.forEach(f => {
@@ -191,6 +288,10 @@ function openUnifiedDialog(message) {
     // Request tracked files data so sync columns are populated
     if (window.vscode) {
         window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
+    }
+
+    if (!conflictSnapshotToken) {
+        showFileManagerNotice('Conflict snapshot missing. Refresh and re-open the dialog if actions are blocked.', 'warn', 5000);
     }
 
     buildAndShowDialog();
@@ -209,8 +310,11 @@ function showFileManager() {
     dialogMode = 'browse';
     openMode = 'browse';
     conflictId = null;
+    conflictSnapshotToken = null;
     conflictFiles = [];
     perFileResolutions.clear();
+    executedFiles.clear();
+    clearAllInFlightState();
 
     window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
 
@@ -259,9 +363,12 @@ function hideFileManager() {
     dialogMode = null;
     openMode = null;
     conflictId = null;
+    conflictSnapshotToken = null;
     conflictFiles = [];
+    trackedFilesSnapshotToken = null;
     perFileResolutions.clear();
     executedFiles.clear();
+    clearAllInFlightState();
 
     // Close any open VS Code diff views
     closeAllDiffs();
@@ -286,17 +393,27 @@ function hideFileManager() {
 // ============= CONFLICT RESOLUTION =============
 
 function cancelConflictResolution() {
+    if (inFlightFiles.size > 0) {
+        showFileManagerNotice('Wait for running file actions to finish before closing the conflict dialog.', 'warn', 5000);
+        return;
+    }
+    if (staleActionFiles.size > 0) {
+        showFileManagerNotice('Some actions timed out. Refresh file states before closing the conflict dialog.', 'warn', 5000);
+        refreshFileManager();
+        return;
+    }
+
     if (conflictId && window.vscode) {
-        // If any files were executed (saved/reloaded), send as completed, not cancelled
-        // This allows the backend workflow to continue properly
+        // Close must never execute new actions implicitly.
+        // If some actions already ran, report completion with all remaining actions skipped.
         const hasExecutedFiles = executedFiles.size > 0;
 
-        // Build resolutions array - use 'skip' for executed files since they're already handled
+        // Force all unresolved entries to skip on close.
         const resolutions = [];
         for (const resolution of perFileResolutions.values()) {
             resolutions.push({
                 path: resolution.path,
-                action: isExecuted(resolution.path) ? 'skip' : resolution.action
+                action: 'skip'
             });
         }
 
@@ -304,6 +421,7 @@ function cancelConflictResolution() {
             type: 'conflictResolution',
             conflictId: conflictId,
             cancelled: !hasExecutedFiles,
+            snapshotToken: conflictSnapshotToken || undefined,
             perFileResolutions: resolutions
         });
     }
@@ -332,6 +450,8 @@ function onConflictApplyAll(selectElement) {
         selects.forEach(sel => {
             const filePath = sel.dataset.filePath;
             if (filePath === '__all__') return;
+            if (dialogMode === 'resolve' && isExecuted(filePath)) return;
+            if (isStaleAction(filePath)) return;
             const optionExists = Array.from(sel.options).some(opt => opt.value === action);
             if (optionExists) {
                 sel.value = action;
@@ -339,6 +459,35 @@ function onConflictApplyAll(selectElement) {
             }
         });
     }
+}
+
+function getSnapshotStatus() {
+    const actionSnapshotReady = !!trackedFilesSnapshotToken;
+    const resolveMode = dialogMode === 'resolve';
+
+    if (resolveMode && !conflictSnapshotToken) {
+        return {
+            label: 'Snapshot: missing',
+            cssClass: 'snapshot-stale',
+            title: 'Conflict snapshot is missing. Refresh and re-open the dialog.'
+        };
+    }
+
+    if (!actionSnapshotReady) {
+        return {
+            label: resolveMode ? 'Snapshot: locked, refreshing' : 'Snapshot: refreshing',
+            cssClass: 'snapshot-stale',
+            title: 'Action snapshot is stale. Refresh File Manager before running save/reload actions.'
+        };
+    }
+
+    return {
+        label: resolveMode ? 'Snapshot: locked, ready' : 'Snapshot: ready',
+        cssClass: 'snapshot-ready',
+        title: resolveMode
+            ? 'Conflict snapshot is locked for this dialog and action snapshot is ready.'
+            : 'Action snapshot is ready.'
+    };
 }
 
 // ============= UNIFIED DIALOG CONTENT =============
@@ -353,6 +502,7 @@ function createDialogContent() {
         reload_request: 'Reload Request'
     };
     const subtitle = isResolve && openMode ? subtitleMap[openMode] || '' : '';
+    const snapshotStatus = getSnapshotStatus();
 
     const panelClass = isResolve ? 'file-manager-panel resolve-mode' : 'file-manager-panel';
 
@@ -368,6 +518,9 @@ function createDialogContent() {
                     <button onclick="removeDeletedItemsFromFiles()" class="file-manager-btn file-manager-btn-danger" title="Permanently remove all deleted items from files">
                         Remove Deleted
                     </button>
+                    <span class="file-manager-snapshot-status ${snapshotStatus.cssClass}" title="${snapshotStatus.title}">
+                        ${snapshotStatus.label}
+                    </span>
                     <span class="file-manager-timestamp">Updated: ${now}</span>
                 </div>
                 <div class="file-manager-controls">
@@ -530,6 +683,8 @@ function createAllFilesArray() {
 function createUnifiedTable() {
     const files = buildUnifiedFileList();
     const summary = getFileSyncSummaryCounts();
+    const hasInFlight = files.some(file => isInFlight(file.path));
+    const hasStaleActions = files.some(file => isStaleAction(file.path));
 
     // "All Files" row
     const applyAllOptions = ALL_ACTIONS.map(a =>
@@ -544,11 +699,11 @@ function createUnifiedTable() {
             <td class="col-saved sync-summary-cell">${renderSyncSummaryCompact(summary.file)}</td>
             <td class="col-action">
                 <div class="dropdown-exec">
-                    <select class="conflict-action-select" data-file-path="__all__" data-is-main="false" onchange="onConflictApplyAll(this)">
+                    <select class="conflict-action-select" data-file-path="__all__" data-is-main="false" onchange="onConflictApplyAll(this)" ${(hasInFlight || hasStaleActions) ? 'disabled' : ''}>
                         <option value="">--</option>
                         ${applyAllOptions}
                     </select>
-                    <button onclick="executeAllActions()" class="action-btn exec-btn" title="Execute selected action for all files">&#9654;</button>
+                    <button onclick="executeAllActions()" class="action-btn exec-btn" title="Execute selected action for all files" ${(hasInFlight || hasStaleActions) ? 'disabled' : ''}>&#9654;</button>
                 </div>
             </td>
             <td class="col-paths action-cell">
@@ -570,6 +725,10 @@ function createUnifiedTable() {
     const fileRows = files.map(file => {
         const mainFileClass = file.isMainFile ? 'main-file' : '';
         const missingFileClass = file.exists === false ? ' missing-file' : '';
+        const rowInFlight = isInFlight(file.path);
+        const rowStale = isStaleAction(file.path);
+        const rowResolved = dialogMode === 'resolve' && isExecuted(file.path) && !rowInFlight;
+        const rowActionDisabled = rowInFlight || rowResolved || rowStale;
 
         // --- Status column ---
         const statusBadge = buildStatusBadgeHTML(file);
@@ -669,11 +828,11 @@ function createUnifiedTable() {
                 </td>
                 <td class="col-action">
                     <div class="dropdown-exec">
-                        <select class="conflict-action-select" data-file-path="${file.path}" data-is-main="${file.isMainFile}" onchange="onConflictActionChange(this)">
+                        <select class="conflict-action-select" data-file-path="${file.path}" data-is-main="${file.isMainFile}" onchange="onConflictActionChange(this)" ${rowActionDisabled ? 'disabled' : ''}>
                             <option value="">--</option>
                             ${actionOptions}
                         </select>
-                        <button onclick="executeAction(this)" class="action-btn exec-btn" title="Execute action now">&#9654;</button>
+                        <button onclick="executeAction(this)" class="action-btn exec-btn" title="Execute action now" ${rowActionDisabled ? 'disabled' : ''}>&#9654;</button>
                     </div>
                 </td>
                 <td class="col-paths action-cell">
@@ -747,6 +906,19 @@ function createUnifiedTable() {
                     <div class="legend-item">
                         <span class="include-type-label task legend-badge">[TASKINC]</span>
                         <span class="legend-text">!!!include() in task title - bidirectional</span>
+                    </div>
+                </div>
+            </div>
+            <div class="legend-section">
+                <div class="legend-title">Safety Rules:</div>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <span class="legend-icon">Editor Unsaved</span>
+                        <span class="legend-text">Overwrite actions are blocked while a text editor buffer is dirty.</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-icon">Running</span>
+                        <span class="legend-text">Wait for backend completion before closing or re-running file actions.</span>
                     </div>
                 </div>
             </div>
@@ -925,7 +1097,7 @@ function requestOpenFileDialog(mode) {
  * If the set of files changed (rows added/removed), rebuilds the table while preserving
  * dropdown selections. Otherwise, does targeted DOM patches for Status/Cache/Saved only.
  */
-function updateDialogContent() {
+function updateDialogContent(forceRebuild = false) {
     if (!fileManagerElement) return;
 
     requestAnimationFrame(() => {
@@ -933,6 +1105,14 @@ function updateDialogContent() {
         const timestampElement = fileManagerElement.querySelector('.file-manager-timestamp');
         if (timestampElement) {
             timestampElement.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+        }
+        const snapshotElement = fileManagerElement.querySelector('.file-manager-snapshot-status');
+        if (snapshotElement) {
+            const snapshotStatus = getSnapshotStatus();
+            snapshotElement.textContent = snapshotStatus.label;
+            snapshotElement.title = snapshotStatus.title;
+            snapshotElement.classList.remove('snapshot-ready', 'snapshot-stale');
+            snapshotElement.classList.add(snapshotStatus.cssClass);
         }
 
         const tableContainer = fileManagerElement.querySelector('.unified-table-container');
@@ -946,7 +1126,7 @@ function updateDialogContent() {
         const fileListChanged = renderedPaths.size !== currentPaths.size ||
             [...currentPaths].some(p => !renderedPaths.has(p));
 
-        if (fileListChanged) {
+        if (forceRebuild || fileListChanged) {
             // Assign default actions for newly appearing files
             files.forEach(f => {
                 if (!perFileResolutions.has(resolutionKey(f.path))) {
@@ -1054,6 +1234,9 @@ function restoreDropdownState(tableContainer, state) {
 
 /** Build status badge HTML for a file (extracted from createUnifiedTable). */
 function buildStatusBadgeHTML(file) {
+    const running = isInFlight(file.path);
+    const staleAction = isStaleAction(file.path);
+    const applied = dialogMode === 'resolve' && isExecuted(file.path) && !running;
     const hasExternal = file.hasExternalChanges;
     const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
     const hasEditorUnsaved = !!file.isUnsavedInEditor;
@@ -1064,7 +1247,7 @@ function buildStatusBadgeHTML(file) {
     } else if (hasExternal) {
         badge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
     } else if (hasEditorUnsaved && !hasKanbanUnsaved) {
-        badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved text editor changes">Editor Unsaved</span>';
+        badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved text editor changes. Overwrite is blocked until the editor buffer is saved or discarded.">Editor Unsaved</span>';
     } else if (hasUnsaved) {
         badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
     } else {
@@ -1072,6 +1255,15 @@ function buildStatusBadgeHTML(file) {
     }
     if (file.isInEditMode) {
         badge += ' <span class="conflict-badge" title="Currently being edited">Editing</span>';
+    }
+    if (running) {
+        badge += ' <span class="conflict-badge conflict-running" title="Action is currently running">Running</span>';
+    }
+    if (staleAction) {
+        badge += ' <span class="conflict-badge conflict-stale-action" title="Action response timed out. Refresh file states before retrying.">Needs Refresh</span>';
+    }
+    if (applied) {
+        badge += ' <span class="conflict-badge conflict-resolved" title="Action already applied in this dialog">Applied</span>';
     }
     return badge;
 }
@@ -1180,10 +1372,12 @@ function createDataHash(data) {
 }
 
 function updateTrackedFilesData(data) {
+    staleActionFiles.clear();
     const newDataHash = createDataHash(data);
     if (newDataHash === lastTrackedFilesDataHash) return;
     lastTrackedFilesDataHash = newDataHash;
     trackedFilesData = data;
+    trackedFilesSnapshotToken = data?.snapshotToken || null;
 
     if (fileManagerVisible && fileManagerElement) {
         updateDialogContent();
@@ -1362,10 +1556,15 @@ function confirmForceWrite() {
 
 // ============= FILE OPERATIONS =============
 
-function saveIndividualFile(filePath, isMainFile, action = 'overwrite', forceSave = true) {
+function saveIndividualFile(filePath, isMainFile, action = 'overwrite', forceSave = false) {
     if (!window.vscode) {
         window.kanbanDebug?.warn('[FileManager.saveIndividualFile] ABORTED: window.vscode undefined');
-        return;
+        return false;
+    }
+    if (!trackedFilesSnapshotToken) {
+        showFileManagerNotice('File state snapshot missing. Refresh File Manager before saving.', 'warn', 4000);
+        refreshFileManager();
+        return false;
     }
     window.kanbanDebug?.warn('[FileManager.saveIndividualFile] Sending save request', { filePath, isMainFile, action, forceSave });
     window.vscode.postMessage({
@@ -1373,22 +1572,42 @@ function saveIndividualFile(filePath, isMainFile, action = 'overwrite', forceSav
         filePath: filePath,
         isMainFile: isMainFile,
         forceSave: forceSave,
+        snapshotToken: trackedFilesSnapshotToken,
         action: action
     });
+    return true;
+}
+
+function findUnifiedFileByPath(filePath) {
+    const key = resolutionKey(filePath);
+    if (!key) return null;
+    const files = buildUnifiedFileList();
+    return files.find(file => {
+        const pathKey = resolutionKey(file.path);
+        const relativeKey = resolutionKey(file.relativePath || file.path);
+        return pathKey === key || relativeKey === key;
+    }) || null;
 }
 
 function reloadIndividualFile(filePath, isMainFile, action = 'load_external') {
     if (!window.vscode) {
         window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] ABORTED: window.vscode undefined');
-        return;
+        return false;
+    }
+    if (!trackedFilesSnapshotToken) {
+        showFileManagerNotice('File state snapshot missing. Refresh File Manager before reloading.', 'warn', 4000);
+        refreshFileManager();
+        return false;
     }
     window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] Sending reload request', { filePath, isMainFile, action });
     window.vscode.postMessage({
         type: 'reloadIndividualFile',
         filePath: filePath,
         isMainFile: isMainFile,
+        snapshotToken: trackedFilesSnapshotToken,
         action: action
     });
+    return true;
 }
 
 function convertFilePaths(filePath, isMainFile, direction) {
@@ -1436,9 +1655,30 @@ function executeAction(buttonElement) {
         window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: No file path in select dataset');
         return;
     }
+    if (isStaleAction(filePath)) {
+        showFileManagerNotice('File action state is stale. Refresh File Manager before retrying.', 'warn', 5000);
+        refreshFileManager();
+        return;
+    }
+    if (dialogMode === 'resolve' && isExecuted(filePath)) {
+        showFileManagerNotice('Action already applied for this file in this conflict dialog.', 'info', 3500);
+        return;
+    }
+    if (isInFlight(filePath)) {
+        showFileManagerNotice('Action already running for this file. Wait for completion before retrying.', 'warn', 4000);
+        return;
+    }
 
-    // Track executed file and its action
-    markExecuted(filePath);
+    const targetFile = findUnifiedFileByPath(filePath);
+    if (targetFile) {
+        const actionAllowed = getActionsForFile(targetFile).some(item => item.value === action);
+        if (!actionAllowed) {
+            window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: Action not allowed for file state', { filePath, action });
+            showFileManagerNotice('Selected action is not valid for this file state.', 'warn', 4000);
+            return;
+        }
+    }
+
     setResolution(filePath, action);
 
     window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, isMainFile, action });
@@ -1446,18 +1686,35 @@ function executeAction(buttonElement) {
     switch (action) {
         case 'overwrite':
         case 'overwrite_backup_external':
-            saveIndividualFile(filePath, isMainFile, action, true);
+            if (saveIndividualFile(filePath, isMainFile, action, false)) {
+                markInFlight(filePath);
+            }
             break;
         case 'load_external':
         case 'load_external_backup_mine':
-            reloadIndividualFile(filePath, isMainFile, action);
+            if (reloadIndividualFile(filePath, isMainFile, action)) {
+                markInFlight(filePath);
+            }
             break;
         default:
             window.kanbanDebug?.warn(`[FileManager.executeAction] ABORTED: Unknown action: ${action}`);
     }
+
+    updateDialogContent(true);
 }
 
 function executeAllActions() {
+    const files = buildUnifiedFileList();
+    if (files.some(file => isStaleAction(file.path))) {
+        showFileManagerNotice('One or more file actions timed out. Refresh File Manager before applying all.', 'warn', 5000);
+        refreshFileManager();
+        return;
+    }
+    if (files.some(file => isInFlight(file.path))) {
+        showFileManagerNotice('Wait for running file actions to finish before applying all.', 'warn', 4000);
+        return;
+    }
+
     const select = document.querySelector('.conflict-action-select[data-file-path="__all__"]');
     if (!select) {
         window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: No "apply all" select element found');
@@ -1468,12 +1725,6 @@ function executeAllActions() {
         return;
     }
     const action = select.value;
-
-    // Track all conflict files as executed with this action
-    for (const file of conflictFiles) {
-        markExecuted(file.path);
-        setResolution(file.path, action);
-    }
 
     const targetFiles = dialogMode === 'resolve'
         ? conflictFiles
@@ -1486,25 +1737,84 @@ function executeAllActions() {
         return;
     }
 
+    if (dialogMode === 'resolve') {
+        if (!window.vscode) {
+            window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: window.vscode undefined (resolve mode)');
+            return;
+        }
+        if (!conflictId) {
+            showFileManagerNotice('Conflict context missing. Close and reopen the dialog.', 'error', 5000);
+            return;
+        }
+        if (!conflictSnapshotToken) {
+            showFileManagerNotice('Conflict snapshot missing. Reopen the conflict dialog before applying all.', 'warn', 5000);
+            return;
+        }
+
+        const resolutions = targetFiles.map(file => {
+            if (isExecuted(file.path)) {
+                return {
+                    path: file.path,
+                    action: 'skip'
+                };
+            }
+            const allowed = getActionsForFile(file).some(item => item.value === action);
+            return {
+                path: file.path,
+                action: allowed ? action : 'skip'
+            };
+        });
+
+        if (!resolutions.some(resolution => resolution.action !== 'skip')) {
+            showFileManagerNotice('Selected action is not valid for the current file states.', 'warn', 4000);
+            return;
+        }
+
+        window.vscode.postMessage({
+            type: 'conflictResolution',
+            conflictId: conflictId,
+            cancelled: false,
+            snapshotToken: conflictSnapshotToken,
+            perFileResolutions: resolutions
+        });
+
+        hideFileManager();
+        return;
+    }
+
     targetFiles.forEach(file => {
+        const actionAllowed = getActionsForFile(file).some(item => item.value === action);
+        if (!actionAllowed) {
+            return;
+        }
         const filePath = file.path;
         const isMainFile = file.fileType === 'main' || file.isMainFile === true;
         if (!filePath) {
             return;
         }
+        if (isInFlight(filePath)) {
+            return;
+        }
+        setResolution(filePath, action);
         switch (action) {
             case 'overwrite':
             case 'overwrite_backup_external':
-                saveIndividualFile(filePath, isMainFile, action, true);
+                if (saveIndividualFile(filePath, isMainFile, action, false)) {
+                    markInFlight(filePath);
+                }
                 break;
             case 'load_external':
             case 'load_external_backup_mine':
-                reloadIndividualFile(filePath, isMainFile, action);
+                if (reloadIndividualFile(filePath, isMainFile, action)) {
+                    markInFlight(filePath);
+                }
                 break;
             default:
                 window.kanbanDebug?.warn(`[FileManager.executeAllActions] ABORTED: Unknown action: ${action}`);
         }
     });
+
+    updateDialogContent(true);
 }
 
 function executePathConvert(buttonElement) {
@@ -1542,6 +1852,7 @@ function reloadImages() {
 
 function clearFileManagerCache() {
     trackedFilesData = {};
+    trackedFilesSnapshotToken = null;
     refreshCount = 0;
     if (window.vscode) {
         window.vscode.postMessage({ type: 'clearTrackedFilesCache' });
@@ -1667,12 +1978,14 @@ function initializeFileManager() {
 
             case 'documentStateChanged':
                 if (fileManagerVisible) {
+                    trackedFilesSnapshotToken = null;
                     refreshFileManager();
                 }
                 break;
 
             case 'saveCompleted':
                 if (fileManagerVisible) {
+                    trackedFilesSnapshotToken = null;
                     if (message.success === false) {
                         showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
                     }
@@ -1682,14 +1995,19 @@ function initializeFileManager() {
 
             case 'saveError':
                 if (fileManagerVisible) {
+                    trackedFilesSnapshotToken = null;
                     showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
                     verifyContentSync(true);
                 }
                 break;
 
             case 'individualFileSaved':
+                clearInFlight(message.filePath);
                 if (fileManagerVisible) {
+                    updateDialogContent(true);
+                    trackedFilesSnapshotToken = null;
                     if (message.success) {
+                        markExecuted(message.filePath);
                         clearResolutionForFile(message.filePath);
                         if (message.backupPath) {
                             showFileManagerNotice('Backup created before overwrite.', 'info', 4000);
@@ -1703,8 +2021,12 @@ function initializeFileManager() {
                 break;
 
             case 'individualFileReloaded':
+                clearInFlight(message.filePath);
                 if (fileManagerVisible) {
+                    updateDialogContent(true);
+                    trackedFilesSnapshotToken = null;
                     if (message.success) {
+                        markExecuted(message.filePath);
                         clearResolutionForFile(message.filePath);
                         if (message.backupPath) {
                             showFileManagerNotice('Backup created before reload.', 'info', 4000);

@@ -62,7 +62,7 @@ export interface FileContext {
     fileManager: FileManager;
     fileSaveService: FileSaveService;
     getFileRegistry: () => MarkdownFileRegistry | undefined;
-    onSaveToMarkdown: () => Promise<void>;
+    onSaveToMarkdown: () => Promise<unknown>;
     onInitializeFile: () => Promise<void>;
 }
 

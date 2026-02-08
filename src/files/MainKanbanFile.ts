@@ -287,7 +287,7 @@ export class MainKanbanFile extends MarkdownFile {
         this._cachedBoardFromWebview = undefined;
 
         // Use watcher coordinator to prevent conflicts (matches base class pattern)
-        await MarkdownFile._watcherCoordinator.startOperation(this._relativePath, 'reload');
+        await MarkdownFile._watcherCoordinator.startOperation(this._path, 'reload');
 
         try {
             const mySequence = this._startNewReload();
@@ -327,7 +327,7 @@ export class MainKanbanFile extends MarkdownFile {
                 console.warn(`[MainKanbanFile] ⚠️ Reload failed - null content returned`);
             }
         } finally {
-            MarkdownFile._watcherCoordinator.endOperation(this._relativePath, 'reload');
+            MarkdownFile._watcherCoordinator.endOperation(this._path, 'reload');
         }
     }
 

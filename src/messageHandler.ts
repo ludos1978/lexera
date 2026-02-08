@@ -22,7 +22,7 @@ import { KeybindingService } from './services/KeybindingService';
  */
 export interface MessageHandlerDeps {
     onBoardUpdate: () => Promise<void>;
-    onSaveToMarkdown: () => Promise<void>;
+    onSaveToMarkdown: () => Promise<unknown>;
     onInitializeFile: () => Promise<void>;
     getWebviewPanel: () => any;
     getWebviewBridge?: () => any;

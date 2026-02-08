@@ -10,7 +10,7 @@ import { BackupManager } from './services/BackupManager';
 import { ConflictResolver } from './services/ConflictResolver';
 import { ConflictDialogBridge } from './services/ConflictDialogBridge';
 import { SaveEventDispatcher } from './SaveEventDispatcher';
-import { KanbanFileService } from './kanbanFileService';
+import { KanbanFileService, SaveUnifiedResult } from './kanbanFileService';
 import { MediaTracker } from './services/MediaTracker';
 import { getErrorMessage } from './utils/stringUtils';
 import {
@@ -665,12 +665,18 @@ export class KanbanWebviewPanel {
         await this._webviewUpdateService?.sendBoardUpdate({ applyDefaultFolding, isFullRefresh });
     }
 
-    public async saveToMarkdown(_updateVersionTracking: boolean = true, _triggerSave: boolean = true) {
+    public async saveToMarkdown(_updateVersionTracking: boolean = true, _triggerSave: boolean = true): Promise<SaveUnifiedResult> {
         const hasMainFile = await this._ensureMainFileContext('save');
         if (!hasMainFile) {
-            return;
+            return {
+                success: false,
+                aborted: true,
+                savedMainFile: false,
+                includeSaveErrors: [],
+                error: 'Save aborted: no main file context is available.'
+            };
         }
-        await this._fileService.saveUnified({
+        const result = await this._fileService.saveUnified({
             scope: 'all',
             source: 'ui-edit',
             syncIncludes: true,
@@ -678,6 +684,7 @@ export class KanbanWebviewPanel {
             updateUi: true
         });
         this._restoreStateFromFileService();
+        return result;
     }
 
     private async initializeFile() {
@@ -840,12 +847,38 @@ export class KanbanWebviewPanel {
         const unsavedInfo = this._unsavedChangesService.checkForUnsavedChanges();
         if (!unsavedInfo.hasMainFileChanges && !unsavedInfo.hasIncludeFileChanges) return this.dispose();
 
+        // Safety-first: persist unsaved-change backups before any close resolution.
+        // onDidDispose cannot keep the panel open, so backup is our fail-safe.
+        const backupResult = await this._unsavedChangesService.saveBackups(this.getCurrentDocumentUri());
+        const hasBackup = backupResult.created > 0;
+        const backupFailed = backupResult.failed > 0;
+
         const choice = await this._unsavedChangesService.showUnsavedChangesDialog(unsavedInfo);
         if (choice === 'save') {
-            try { await this.saveToMarkdown(true, true); }
-            catch (error) { vscode.window.showErrorMessage(`Failed to save: ${getErrorMessage(error)}`); }
-        } else {
+            try {
+                const result = await this.saveToMarkdown(true, true);
+                if (!result.success) {
+                    const reason = result.error || 'Save was cancelled or did not complete.';
+                    const backupSuffix = hasBackup
+                        ? ' Unsaved content was backed up.'
+                        : (backupFailed ? ' Backup creation failed.' : '');
+                    vscode.window.showErrorMessage(`Failed to save before close: ${reason}.${backupSuffix}`);
+                }
+            } catch (error) {
+                const backupSuffix = hasBackup
+                    ? ' Unsaved content was backed up.'
+                    : (backupFailed ? ' Backup creation failed.' : '');
+                vscode.window.showErrorMessage(`Failed to save before close: ${getErrorMessage(error)}.${backupSuffix}`);
+            }
+        } else if (choice === 'discard') {
             this._unsavedChangesService.discardAllChanges();
+        } else {
+            const backupMessage = hasBackup
+                ? ' Unsaved changes were backed up.'
+                : (backupFailed ? ' Backup creation failed.' : '');
+            vscode.window.showWarningMessage(
+                `Close cancellation is not available after panel disposal.${backupMessage}`
+            );
         }
         this.dispose();
     }

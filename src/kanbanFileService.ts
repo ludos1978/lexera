@@ -16,6 +16,7 @@ import { showError, showWarning, showInfo } from './services/NotificationService
 import { SaveOptions } from './files/SaveOptions';
 import { MarkdownFile } from './files/MarkdownFile';
 import { ConflictDialogBridge, ConflictDialogResult, ConflictFileInfo } from './services/ConflictDialogBridge';
+import { computeTrackedFilesSnapshotToken } from './utils/fileStateSnapshot';
 
 /**
  * Save operation state for hybrid state machine + version tracking
@@ -53,6 +54,14 @@ export interface SaveUnifiedOptions {
     skipValidation?: boolean;
 }
 
+export interface SaveUnifiedResult {
+    success: boolean;
+    aborted: boolean;
+    savedMainFile: boolean;
+    includeSaveErrors: string[];
+    error?: string;
+}
+
 /**
  * KanbanFileService
  *
@@ -81,7 +90,7 @@ export class KanbanFileService {
     // Debounce timer for document change reparse (prevents rapid reparses during undo/redo)
 
     // Flag to skip undo detection when we are saving the document ourselves
-    private _saveToMarkdownInFlight: Promise<void> | null = null;
+    private _saveToMarkdownInFlight: Promise<SaveUnifiedResult> | null = null;
 
     constructor(
         private fileManager: FileManager,
@@ -122,7 +131,7 @@ export class KanbanFileService {
     } {
         // Query main file for unsaved changes (single source of truth)
         const mainFile = this.fileRegistry.getMainFile();
-        const hasUnsavedChanges = mainFile?.hasUnsavedChanges() || false;
+        const hasUnsavedChanges = mainFile?.hasAnyUnsavedChanges() || false;
 
         // STATE MACHINE: Convert to boolean
         const isUpdatingFromPanel = this._saveState !== SaveState.IDLE;
@@ -335,15 +344,16 @@ export class KanbanFileService {
     /**
      * Unified save pipeline for all save operations (Cmd+S, individual save, save includes)
      */
-    public async saveUnified(options: SaveUnifiedOptions = {}): Promise<void> {
+    public async saveUnified(options: SaveUnifiedOptions = {}): Promise<SaveUnifiedResult> {
         const scope = options.scope ?? 'all';
         const requiresExclusive = scope === 'all' || scope === 'main';
+        const mainSaveRequired = scope === 'all' || scope === 'main';
 
         if (requiresExclusive && this._saveToMarkdownInFlight) {
             return this._saveToMarkdownInFlight;
         }
 
-        const runSave = async () => {
+        const runSave = async (): Promise<SaveUnifiedResult> => {
             const board = options.board ?? this.board() ?? undefined;
             const force = options.force ?? false;
             const source = options.source ?? 'ui-edit';
@@ -375,21 +385,35 @@ export class KanbanFileService {
 
             const needsBoard = scope === 'main' || scope === 'all' || syncIncludes;
             if (needsBoard && (!board || !board.valid)) {
+                const error = 'Save aborted: board is missing or invalid.';
                 console.warn(`[KanbanFileService.saveUnified] Cannot save - board missing or invalid (scope=${typeof scope === 'string' ? scope : 'file'})`);
-                postSaveResult(false, 'Save aborted: board is missing or invalid.');
-                return;
+                postSaveResult(false, error);
+                return {
+                    success: false,
+                    aborted: true,
+                    savedMainFile: false,
+                    includeSaveErrors: [],
+                    error
+                };
             }
 
             const dirtyEditorFiles = this._collectDirtyEditorFilesForSaveScope(scope, syncIncludes, force);
             if (dirtyEditorFiles.length > 0) {
                 const suffix = dirtyEditorFiles.length > 4 ? ', ...' : '';
                 const preview = dirtyEditorFiles.slice(0, 4).join(', ');
+                const error = `Save aborted: unsaved text-editor changes in ${preview}${suffix}. `
+                    + 'Save those files in the editor first, or resolve via File Manager.';
                 postSaveResult(
                     false,
-                    `Save aborted: unsaved text-editor changes in ${preview}${suffix}. `
-                    + 'Save those files in the editor first, or resolve via File Manager.'
+                    error
                 );
-                return;
+                return {
+                    success: false,
+                    aborted: true,
+                    savedMainFile: false,
+                    includeSaveErrors: [],
+                    error
+                };
             }
 
             if (syncIncludes && board) {
@@ -408,17 +432,31 @@ export class KanbanFileService {
                 ? { result: 'continue' as const, forceWritePaths: new Set<string>() }
                 : await this._handlePresaveConflictCheck(scope);
             if (presaveCheck.result === 'abort') {
-                postSaveResult(false, 'Save cancelled due to unresolved external file changes.');
-                return;
+                const error = 'Save cancelled due to unresolved external file changes.';
+                postSaveResult(false, error);
+                return {
+                    success: false,
+                    aborted: true,
+                    savedMainFile: false,
+                    includeSaveErrors: [],
+                    error
+                };
             }
             const forceWritePaths = presaveCheck.forceWritePaths;
 
             if (scope === 'main' || scope === 'all') {
                 const mainFile = this.fileRegistry.getMainFile();
                 if (!mainFile) {
+                    const error = 'Save aborted: no main file is registered.';
                     console.warn('[KanbanFileService.saveUnified] No main file registered');
-                    postSaveResult(false, 'Save aborted: no main file is registered.');
-                    return;
+                    postSaveResult(false, error);
+                    return {
+                        success: false,
+                        aborted: true,
+                        savedMainFile: false,
+                        includeSaveErrors: [],
+                        error
+                    };
                 }
                 if (board) {
                     mainFile.setCachedBoardFromWebview(board);
@@ -481,7 +519,7 @@ export class KanbanFileService {
                 }
 
                 if (file.getFileType() === 'main') {
-                    await this.saveUnified({
+                    return await this.saveUnified({
                         board,
                         scope: 'main',
                         force,
@@ -491,7 +529,6 @@ export class KanbanFileService {
                         updateUi,
                         skipValidation
                     });
-                    return;
                 }
 
                 await this._fileSaveService.saveFile(file, undefined, {
@@ -502,35 +539,82 @@ export class KanbanFileService {
                 });
             }
 
+            let result: SaveUnifiedResult;
             if (updateUi) {
-                if (!savedMainFile) {
-                    postSaveResult(false, 'Save aborted: main file was not saved.');
+                if (mainSaveRequired && !savedMainFile) {
+                    const error = 'Save aborted: main file was not saved.';
+                    postSaveResult(false, error);
+                    result = {
+                        success: false,
+                        aborted: true,
+                        savedMainFile,
+                        includeSaveErrors,
+                        error
+                    };
                 } else if (includeSaveErrors.length > 0) {
-                    postSaveResult(false, `Saved main file, but ${includeSaveErrors.length} include file(s) failed.`);
+                    const error = `Saved main file, but ${includeSaveErrors.length} include file(s) failed.`;
+                    postSaveResult(false, error);
+                    result = {
+                        success: false,
+                        aborted: false,
+                        savedMainFile,
+                        includeSaveErrors,
+                        error
+                    };
                 } else {
                     postSaveResult(true);
+                    result = {
+                        success: true,
+                        aborted: false,
+                        savedMainFile,
+                        includeSaveErrors: []
+                    };
                 }
+            } else if (mainSaveRequired && !savedMainFile) {
+                result = {
+                    success: false,
+                    aborted: true,
+                    savedMainFile,
+                    includeSaveErrors,
+                    error: 'Save aborted: main file was not saved.'
+                };
+            } else if (includeSaveErrors.length > 0) {
+                result = {
+                    success: false,
+                    aborted: false,
+                    savedMainFile,
+                    includeSaveErrors,
+                    error: `Saved main file, but ${includeSaveErrors.length} include file(s) failed.`
+                };
+            } else {
+                result = {
+                    success: true,
+                    aborted: false,
+                    savedMainFile,
+                    includeSaveErrors: []
+                };
             }
+
+            return result;
         };
 
         if (requiresExclusive) {
             const savePromise = runSave();
             this._saveToMarkdownInFlight = savePromise;
             try {
-                await savePromise;
+                return await savePromise;
             } finally {
                 if (this._saveToMarkdownInFlight === savePromise) {
                     this._saveToMarkdownInFlight = null;
                 }
             }
-            return;
         }
 
         if (this._saveToMarkdownInFlight) {
             await this._saveToMarkdownInFlight;
         }
 
-        await runSave();
+        return await runSave();
     }
 
     private _resolveFileFromRegistry(filePath: string) {
@@ -579,6 +663,19 @@ export class KanbanFileService {
         return Array.from(dirtyFiles);
     }
 
+    private _validateConflictSnapshotToken(snapshotToken: string | undefined): string | null {
+        if (!snapshotToken) {
+            return 'Save aborted: file-state snapshot missing for conflict dialog. Refresh File Manager and retry save.';
+        }
+
+        const currentToken = computeTrackedFilesSnapshotToken(this.fileRegistry);
+        if (snapshotToken !== currentToken) {
+            return 'Save aborted: file states changed while the conflict dialog was open. Review file states and retry save.';
+        }
+
+        return null;
+    }
+
     /**
      * Pre-save conflict check (Scenario 2).
      * Collects files with pending external changes and shows the 3-option dialog.
@@ -625,13 +722,83 @@ export class KanbanFileService {
             return { result: 'abort', forceWritePaths: new Set() };
         }
 
+        const hasPendingActions = dialogResult.perFileResolutions.some(resolution => resolution.action !== 'skip');
+        if (hasPendingActions) {
+            const snapshotValidationError = this._validateConflictSnapshotToken(dialogResult.snapshotToken);
+            if (snapshotValidationError) {
+                showWarning(snapshotValidationError);
+                return { result: 'abort', forceWritePaths: new Set() };
+            }
+        }
+
         // Build resolution map from per-file results
         const resolutionMap = new Map(dialogResult.perFileResolutions.map(r => [r.path, r.action]));
         const forceWritePaths = new Set<string>();
         let anyReloaded = false;
+        const plannedActions = filesWithExternalChanges.map(({ file }) => ({
+            file,
+            action: resolutionMap.get(file.getPath()) || 'skip'
+        }));
 
-        for (const { file } of filesWithExternalChanges) {
-            const action = resolutionMap.get(file.getPath()) || 'skip';
+        // Preflight: collect required backup content before mutating any file state.
+        const backupPlan: Array<{
+            file: MarkdownFile;
+            action: 'overwrite_backup_external' | 'load_external_backup_mine';
+            content: string;
+            notificationPrefix: string;
+        }> = [];
+        for (const plan of plannedActions) {
+            if ((plan.action === 'overwrite' || plan.action === 'overwrite_backup_external') && plan.file.isDirtyInEditor()) {
+                showError(
+                    `Cannot overwrite "${plan.file.getRelativePath()}" while it has unsaved text-editor changes. `
+                    + 'Save or discard editor changes first.'
+                );
+                return { result: 'abort', forceWritePaths: new Set() };
+            }
+
+            switch (plan.action) {
+                case 'overwrite_backup_external': {
+                    const diskContent = await plan.file.readFromDisk();
+                    if (diskContent === null) {
+                        showError('Failed to read external file for backup. Save aborted.');
+                        return { result: 'abort', forceWritePaths: new Set() };
+                    }
+                    backupPlan.push({
+                        file: plan.file,
+                        action: plan.action,
+                        content: diskContent,
+                        notificationPrefix: 'External changes backed up'
+                    });
+                    break;
+                }
+                case 'load_external_backup_mine':
+                    backupPlan.push({
+                        file: plan.file,
+                        action: plan.action,
+                        content: plan.file.getContentForBackup(),
+                        notificationPrefix: 'Your changes backed up'
+                    });
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Preflight: create all required backups before any reload/overwrite action.
+        for (const backup of backupPlan) {
+            const conflictPath = await backup.file.createVisibleConflictFile(backup.content);
+            if (!conflictPath) {
+                if (backup.action === 'overwrite_backup_external') {
+                    showError('Failed to create backup of external changes. Save aborted.');
+                } else {
+                    showError('Failed to create backup of your changes. Save aborted.');
+                }
+                return { result: 'abort', forceWritePaths: new Set() };
+            }
+            this._showConflictFileNotification(conflictPath, backup.notificationPrefix);
+        }
+
+        for (const { file, action } of plannedActions) {
 
             switch (action) {
                 case 'overwrite': {
@@ -640,16 +807,7 @@ export class KanbanFileService {
                     break;
                 }
                 case 'overwrite_backup_external': {
-                    // Backup external version, then force save kanban content
-                    const diskContent = await file.readFromDisk();
-                    if (diskContent) {
-                        const conflictPath = await file.createVisibleConflictFile(diskContent);
-                        if (!conflictPath) {
-                            showError('Failed to create backup of external changes. Save aborted.');
-                            return { result: 'abort', forceWritePaths: new Set() };
-                        }
-                        this._showConflictFileNotification(conflictPath, 'External changes backed up');
-                    }
+                    // Backup already created in preflight, now force save kanban content.
                     forceWritePaths.add(file.getPath());
                     break;
                 }
@@ -663,14 +821,10 @@ export class KanbanFileService {
                     break;
                 }
                 case 'load_external_backup_mine': {
-                    // Backup kanban content, load external version
-                    const kanbanContent = file.getContent();
-                    const conflictPath = await file.createVisibleConflictFile(kanbanContent);
-                    if (!conflictPath) {
-                        showError('Failed to create backup of your changes. Save aborted.');
-                        return { result: 'abort', forceWritePaths: new Set() };
+                    // Backup already created in preflight, now load external version.
+                    if (file.isInEditMode()) {
+                        file.setEditMode(false);
                     }
-                    this._showConflictFileNotification(conflictPath, 'Your changes backed up');
                     await file.reload();
                     anyReloaded = true;
                     break;
@@ -723,6 +877,7 @@ export class KanbanFileService {
             hasUnsavedChanges: file.hasAnyUnsavedChanges(),
             isInEditMode: file.isInEditMode()
         }));
+        const snapshotToken = computeTrackedFilesSnapshotToken(this.fileRegistry);
 
         try {
             return await bridge.showConflict(
@@ -737,7 +892,8 @@ export class KanbanFileService {
                 {
                     conflictType: 'presave_conflict',
                     files: conflictFileInfos,
-                    openMode: 'save_conflict'
+                    openMode: 'save_conflict',
+                    snapshotToken
                 }
             );
         } catch (error) {

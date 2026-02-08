@@ -27,6 +27,7 @@ import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage, 
 import { KanbanDiffService } from '../services/KanbanDiffService';
 import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
+import { computeTrackedFilesSnapshotToken } from '../utils/fileStateSnapshot';
 
 /**
  * File verification result for content sync check
@@ -79,6 +80,7 @@ interface IncludeFileDebugInfo {
 interface TrackedFilesDebugInfo {
     mainFile: string;
     mainFileLastModified: string;
+    snapshotToken: string | null;
     fileWatcherActive: boolean;
     includeFiles: IncludeFileDebugInfo[];
     conflictManager: {
@@ -177,6 +179,25 @@ export class DebugCommands extends SwitchBasedCommand {
         return this.success();
     }
 
+    private _validateSnapshotToken(snapshotToken: string | undefined, fileRegistry: MarkdownFileRegistry): string | null {
+        if (!snapshotToken) {
+            return 'Action blocked: file-state snapshot missing. Refresh File Manager and review file states again.';
+        }
+
+        const currentToken = computeTrackedFilesSnapshotToken(fileRegistry);
+        if (snapshotToken !== currentToken) {
+            return 'Action blocked: file states changed since the last refresh. Refresh File Manager and review actions again.';
+        }
+
+        return null;
+    }
+
+    private _hasPendingConflictActions(
+        resolutions: Array<{ action: 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'import' | 'ignore' | 'skip' }>
+    ): boolean {
+        return resolutions.some(resolution => resolution.action !== 'skip');
+    }
+
     // ============= CONFLICT RESOLUTION HANDLER =============
 
     private async handleConflictResolution(message: ConflictResolutionMessage, context: CommandContext): Promise<CommandResult> {
@@ -187,10 +208,37 @@ export class DebugCommands extends SwitchBasedCommand {
             return this.success();
         }
 
+        const fileRegistry = this.getFileRegistry();
+        if (!fileRegistry) {
+            logger.warn('[DebugCommands] conflictResolution blocked: no file registry available');
+            bridge.handleResolution(message.conflictId, {
+                cancelled: true,
+                perFileResolutions: []
+            }, message.snapshotToken);
+            return this.success();
+        }
+
+        if (this._hasPendingConflictActions(message.perFileResolutions)) {
+            const snapshotValidationError = this._validateSnapshotToken(message.snapshotToken, fileRegistry);
+            if (snapshotValidationError) {
+                logger.warn(`[DebugCommands] conflictResolution blocked: ${snapshotValidationError}`);
+                this.postMessage({
+                    type: 'showMessage',
+                    severity: 'warning',
+                    message: snapshotValidationError
+                });
+                bridge.handleResolution(message.conflictId, {
+                    cancelled: true,
+                    perFileResolutions: []
+                }, message.snapshotToken);
+                return this.success();
+            }
+        }
+
         bridge.handleResolution(message.conflictId, {
             cancelled: message.cancelled,
             perFileResolutions: message.perFileResolutions
-        });
+        }, message.snapshotToken);
 
         return this.success();
     }
@@ -213,6 +261,8 @@ export class DebugCommands extends SwitchBasedCommand {
             return this.success();
         }
 
+        const snapshotToken = computeTrackedFilesSnapshotToken(fileRegistry);
+
         // Build ConflictFileInfo[] from all registered files
         const allFiles = fileRegistry.getAll();
         const conflictFileInfos: ConflictFileInfo[] = allFiles.map(file => ({
@@ -230,7 +280,8 @@ export class DebugCommands extends SwitchBasedCommand {
                 {
                     conflictType: 'external_changes',
                     files: conflictFileInfos,
-                    openMode: message.openMode
+                    openMode: message.openMode,
+                    snapshotToken
                 }
             );
 
@@ -238,10 +289,28 @@ export class DebugCommands extends SwitchBasedCommand {
                 return this.success();
             }
 
+            if (this._hasPendingConflictActions(result.perFileResolutions)) {
+                const snapshotValidationError = this._validateSnapshotToken(result.snapshotToken, fileRegistry);
+                if (snapshotValidationError) {
+                    logger.warn(`[DebugCommands] openFileDialog resolution blocked: ${snapshotValidationError}`);
+                    this.postMessage({
+                        type: 'showMessage',
+                        severity: 'warning',
+                        message: snapshotValidationError
+                    });
+                    return this.success();
+                }
+            }
+
             // Apply per-file resolutions
             await this.applyFileResolutions(result, fileRegistry);
         } catch (error) {
             logger.warn('[DebugCommands] openFileDialog failed:', error);
+            this.postMessage({
+                type: 'showMessage',
+                severity: 'error',
+                message: `File action failed: ${getErrorMessage(error)}`
+            });
         }
 
         return this.success();
@@ -256,61 +325,120 @@ export class DebugCommands extends SwitchBasedCommand {
         result: ConflictDialogResult,
         fileRegistry: MarkdownFileRegistry
     ): Promise<void> {
-        let anyReloaded = false;
+        const plannedResolutions: Array<{
+            file: MarkdownFile;
+            action: ConflictDialogResult['perFileResolutions'][number]['action'];
+            backupContent?: string;
+        }> = [];
 
+        // Preflight: resolve files and collect backup content before any writes/reloads.
         for (const resolution of result.perFileResolutions) {
-            const file = fileRegistry.get(resolution.path) || fileRegistry.findByPath(resolution.path);
-            if (!file) {
-                logger.warn(`[DebugCommands] File not found in registry for resolution: ${resolution.path}`);
+            if (resolution.action === 'skip') {
                 continue;
             }
 
+            const file = fileRegistry.get(resolution.path) || fileRegistry.findByPath(resolution.path);
+            if (!file) {
+                throw new Error(`File not found in registry for resolution: ${resolution.path}`);
+            }
+
+            if ((resolution.action === 'overwrite' || resolution.action === 'overwrite_backup_external') && file.isDirtyInEditor()) {
+                throw new Error(
+                    `Cannot overwrite "${file.getRelativePath()}" while it has unsaved text-editor changes. `
+                    + 'Save or discard editor changes first.'
+                );
+            }
+
+            if (resolution.action === 'overwrite_backup_external') {
+                const diskContent = await file.readFromDisk();
+                if (diskContent === null) {
+                    throw new Error(`Failed to read disk content for backup: ${file.getRelativePath()}`);
+                }
+                plannedResolutions.push({
+                    file,
+                    action: resolution.action,
+                    backupContent: diskContent
+                });
+                continue;
+            }
+
+            if (resolution.action === 'load_external_backup_mine') {
+                plannedResolutions.push({
+                    file,
+                    action: resolution.action,
+                    backupContent: file.getContentForBackup()
+                });
+                continue;
+            }
+
+            plannedResolutions.push({
+                file,
+                action: resolution.action
+            });
+        }
+
+        const needsSaveService = plannedResolutions.some(
+            resolution => resolution.action === 'overwrite' || resolution.action === 'overwrite_backup_external'
+        );
+        const fileSaveService = this._context?.fileSaveService;
+        if (needsSaveService && !fileSaveService) {
+            throw new Error('File save service not available for overwrite actions');
+        }
+
+        // Preflight: create all required backups before any writes/reloads.
+        for (const resolution of plannedResolutions) {
+            if (resolution.action !== 'overwrite_backup_external' && resolution.action !== 'load_external_backup_mine') {
+                continue;
+            }
+
+            const backupContent = resolution.backupContent;
+            if (backupContent === undefined) {
+                throw new Error(`Missing backup content for ${resolution.file.getRelativePath()}`);
+            }
+
+            const backupPath = await resolution.file.createVisibleConflictFile(backupContent);
+            if (!backupPath) {
+                throw new Error(`Failed to create backup before action: ${resolution.file.getRelativePath()}`);
+            }
+        }
+
+        let anyReloaded = false;
+
+        for (const resolution of plannedResolutions) {
             switch (resolution.action) {
                 case 'overwrite': {
                     // Force save file (no backup)
-                    const fileSaveService = this._context?.fileSaveService;
-                    if (fileSaveService) {
-                        await fileSaveService.saveFile(file, undefined, {
-                            source: 'ui-edit',
-                            force: true,
-                            skipReloadDetection: true
-                        });
-                    }
+                    await fileSaveService!.saveFile(resolution.file, undefined, {
+                        source: 'ui-edit',
+                        force: true,
+                        skipReloadDetection: true
+                    });
                     break;
                 }
                 case 'overwrite_backup_external': {
-                    // Backup disk content, then force save
-                    const diskContent = await file.readFromDisk();
-                    if (diskContent) {
-                        await file.createVisibleConflictFile(diskContent);
-                    }
-                    const fileSaveService = this._context?.fileSaveService;
-                    if (fileSaveService) {
-                        await fileSaveService.saveFile(file, undefined, {
-                            source: 'ui-edit',
-                            force: true,
-                            skipReloadDetection: true
-                        });
-                    }
+                    // Backup already created in preflight, now force save.
+                    await fileSaveService!.saveFile(resolution.file, undefined, {
+                        source: 'ui-edit',
+                        force: true,
+                        skipReloadDetection: true
+                    });
                     break;
                 }
                 case 'load_external': {
                     // Reload from disk (no backup)
-                    if (file.isInEditMode()) {
-                        file.setEditMode(false);
+                    if (resolution.file.isInEditMode()) {
+                        resolution.file.setEditMode(false);
                     }
-                    await file.reload();
+                    await resolution.file.reload();
                     anyReloaded = true;
                     break;
                 }
                 case 'load_external_backup_mine': {
-                    // Backup kanban content, then reload from disk
-                    const kanbanContent = file.getContent();
-                    await file.createVisibleConflictFile(kanbanContent);
-                    if (file.isInEditMode()) {
-                        file.setEditMode(false);
+                    // Backup already created in preflight, now reload from disk.
+                    if (resolution.file.isInEditMode()) {
+                        resolution.file.setEditMode(false);
                     }
-                    await file.reload();
+                    await resolution.file.reload();
                     anyReloaded = true;
                     break;
                 }
@@ -1113,6 +1241,9 @@ export class DebugCommands extends SwitchBasedCommand {
 
         const includeFiles: IncludeFileDebugInfo[] = [];
         const allIncludeFiles = fileRegistry?.getIncludeFiles() || [];
+        const snapshotToken = fileRegistry
+            ? computeTrackedFilesSnapshotToken(fileRegistry)
+            : null;
 
         for (const file of allIncludeFiles) {
             const fileContent = file.getContent();
@@ -1158,6 +1289,7 @@ export class DebugCommands extends SwitchBasedCommand {
         return {
             mainFile: mainFileInfo.path,
             mainFileLastModified: mainFileInfo.lastModified,
+            snapshotToken,
             fileWatcherActive: mainFileInfo.watcherActive,
             includeFiles: includeFiles,
             conflictManager: conflictManager,

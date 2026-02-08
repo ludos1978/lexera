@@ -31,6 +31,7 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { computeTrackedFilesSnapshotToken } from '../utils/fileStateSnapshot';
 
 type SaveResolutionAction = 'overwrite' | 'overwrite_backup_external';
 type ReloadResolutionAction = 'load_external' | 'load_external_backup_mine';
@@ -41,6 +42,8 @@ type ReloadResolutionAction = 'load_external' | 'load_external_backup_mine';
  * Processes include file-related messages from the webview.
  */
 export class IncludeCommands extends SwitchBasedCommand {
+    private _fileActionQueue: Promise<void> = Promise.resolve();
+
     readonly metadata: CommandMetadata = {
         id: 'include-commands',
         name: 'Include Commands',
@@ -69,8 +72,8 @@ export class IncludeCommands extends SwitchBasedCommand {
         'requestEditTaskIncludeFileName': (msg, ctx) => this.handleRequestEditTaskIncludeFileName(msg as RequestEditTaskIncludeFileNameMessage, ctx),
         'requestTaskIncludeFileName': (msg, ctx) => this.handleRequestTaskIncludeFileName((msg as any).taskId, (msg as any).columnId, ctx),
         'reloadAllIncludedFiles': (_msg, ctx) => this.handleReloadAllIncludedFiles(ctx),
-        'saveIndividualFile': (msg, ctx) => this.handleSaveIndividualFile((msg as any).filePath, (msg as any).isMainFile, (msg as any).forceSave, (msg as any).action, ctx),
-        'reloadIndividualFile': (msg, ctx) => this.handleReloadIndividualFile((msg as any).filePath, (msg as any).isMainFile, (msg as any).action, ctx)
+        'saveIndividualFile': (msg, ctx) => this.handleQueuedSaveIndividualFile(msg as any, ctx),
+        'reloadIndividualFile': (msg, ctx) => this.handleQueuedReloadIndividualFile(msg as any, ctx)
     };
 
     // ============= HELPER METHODS =============
@@ -233,6 +236,80 @@ export class IncludeCommands extends SwitchBasedCommand {
             const document = await vscode.workspace.openTextDocument(backupPath);
             await vscode.window.showTextDocument(document);
         }
+    }
+
+    private _validateSnapshotToken(snapshotToken: string | undefined, context: CommandContext): string | null {
+        const fileRegistry = this.getFileRegistry();
+        if (!fileRegistry) {
+            return 'File registry not available';
+        }
+
+        if (!snapshotToken) {
+            return 'Action blocked: file-state snapshot missing. Refresh File Manager and try again.';
+        }
+
+        const currentToken = computeTrackedFilesSnapshotToken(fileRegistry);
+        if (snapshotToken !== currentToken) {
+            return 'Action blocked: file states changed since the last refresh. Refresh File Manager and review actions again.';
+        }
+
+        return null;
+    }
+
+    private _enqueueFileAction(action: () => Promise<CommandResult>): Promise<CommandResult> {
+        const queued = this._fileActionQueue.then(action, action);
+        this._fileActionQueue = queued.then(() => undefined, () => undefined);
+        return queued;
+    }
+
+    private handleQueuedSaveIndividualFile(message: any, context: CommandContext): Promise<CommandResult> {
+        return this._enqueueFileAction(async () => {
+            const snapshotValidationError = this._validateSnapshotToken(message.snapshotToken, context);
+            if (snapshotValidationError) {
+                this.postMessage({
+                    type: 'individualFileSaved',
+                    filePath: message.filePath,
+                    isMainFile: message.isMainFile,
+                    success: false,
+                    forceSave: message.forceSave,
+                    action: message.action,
+                    error: snapshotValidationError
+                });
+                return this.success();
+            }
+
+            return this.handleSaveIndividualFile(
+                message.filePath,
+                message.isMainFile,
+                message.forceSave,
+                message.action,
+                context
+            );
+        });
+    }
+
+    private handleQueuedReloadIndividualFile(message: any, context: CommandContext): Promise<CommandResult> {
+        return this._enqueueFileAction(async () => {
+            const snapshotValidationError = this._validateSnapshotToken(message.snapshotToken, context);
+            if (snapshotValidationError) {
+                this.postMessage({
+                    type: 'individualFileReloaded',
+                    filePath: message.filePath,
+                    isMainFile: message.isMainFile,
+                    success: false,
+                    action: message.action,
+                    error: snapshotValidationError
+                });
+                return this.success();
+            }
+
+            return this.handleReloadIndividualFile(
+                message.filePath,
+                message.isMainFile,
+                message.action,
+                context
+            );
+        });
     }
 
     // ============= INCLUDE MODE HANDLERS =============
@@ -512,6 +589,12 @@ export class IncludeCommands extends SwitchBasedCommand {
             if (!fileService || typeof fileService.saveUnified !== 'function') {
                 throw new Error('File service not available');
             }
+            if (targetFile.isDirtyInEditor()) {
+                throw new Error(
+                    `Cannot save "${targetFile.getRelativePath()}" while it has unsaved text-editor changes. `
+                    + 'Save or discard editor changes first.'
+                );
+            }
 
             if (targetFile.hasExternalChanges() && requestedAction === 'overwrite') {
                 const choice = await vscode.window.showWarningMessage(
@@ -536,16 +619,17 @@ export class IncludeCommands extends SwitchBasedCommand {
 
             if (targetFile.hasExternalChanges() && requestedAction === 'overwrite_backup_external') {
                 const diskContent = await targetFile.readFromDisk();
-                if (diskContent !== null) {
-                    backupPath = await targetFile.createVisibleConflictFile(diskContent) || undefined;
-                    if (!backupPath) {
-                        throw new Error(`Failed to create backup for "${targetFile.getRelativePath()}" before overwrite`);
-                    }
-                    void this._notifyBackupCreated(backupPath, 'External version backed up');
+                if (diskContent === null) {
+                    throw new Error(`Failed to read disk content for "${targetFile.getRelativePath()}" before overwrite backup`);
                 }
+                backupPath = await targetFile.createVisibleConflictFile(diskContent) || undefined;
+                if (!backupPath) {
+                    throw new Error(`Failed to create backup for "${targetFile.getRelativePath()}" before overwrite`);
+                }
+                void this._notifyBackupCreated(backupPath, 'External version backed up');
             }
 
-            await fileService.saveUnified({
+            const saveResult = await fileService.saveUnified({
                 scope: isMainFile ? 'main' : { filePath: targetFile.getPath() },
                 force: forceSave || targetFile.hasExternalChanges(),
                 source: 'ui-edit',
@@ -553,6 +637,9 @@ export class IncludeCommands extends SwitchBasedCommand {
                 updateBaselines: isMainFile ? true : undefined,
                 updateUi: false
             });
+            if (!saveResult?.success) {
+                throw new Error(saveResult?.error || 'Save aborted before writing file');
+            }
 
             await this.triggerMarpWatchExport(context, panelAccess);
 
@@ -618,7 +705,7 @@ export class IncludeCommands extends SwitchBasedCommand {
             const targetFile = this._resolveTargetFile(filePath, isMainFile, context);
 
             if (requestedAction === 'load_external_backup_mine') {
-                backupPath = await targetFile.createVisibleConflictFile(targetFile.getContent()) || undefined;
+                backupPath = await targetFile.createVisibleConflictFile(targetFile.getContentForBackup()) || undefined;
                 if (!backupPath) {
                     throw new Error(`Failed to create backup for "${targetFile.getRelativePath()}" before reload`);
                 }
