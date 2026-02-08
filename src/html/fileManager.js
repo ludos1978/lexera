@@ -182,27 +182,57 @@ const ALL_ACTIONS = [
     { value: 'skip', label: 'Skip' }
 ];
 
-function getActionsForFile(file) {
+const READ_ONLY_INCLUDE_TYPES = new Set(['include-regular', 'regular']);
+const INACCESSIBLE_ACCESS_CODES = new Set(['EACCES', 'EPERM', 'EROFS']);
+
+function resolveUnsavedFlags(file) {
+    const hasInternalChanges = !!(file.hasInternalChanges ?? file.hasUnsavedChanges);
+    const hasUnsavedChanges = !!(file.hasUnsavedChanges ?? hasInternalChanges);
+    const hasEditorUnsaved = !!file.isUnsavedInEditor;
+    const hasAnyUnsaved = hasInternalChanges || hasUnsavedChanges || hasEditorUnsaved;
+
+    return {
+        hasInternalChanges,
+        hasUnsavedChanges,
+        hasEditorUnsaved,
+        hasAnyUnsaved
+    };
+}
+
+function getFileStateFlags(file) {
     const fileType = file.fileType || file.type || '';
-    const isReadOnlyInclude = fileType === 'include-regular' || fileType === 'regular';
+    const isReadOnlyInclude = READ_ONLY_INCLUDE_TYPES.has(fileType);
     const accessErrorCode = file.lastAccessErrorCode || null;
     const isMissing = file.exists === false || accessErrorCode === 'ENOENT';
-    const isInaccessible = accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS';
-    const hasExternal = file.hasExternalChanges;
-    const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
-    const hasEditorUnsaved = !!file.isUnsavedInEditor;
+    const isInaccessible = INACCESSIBLE_ACCESS_CODES.has(accessErrorCode);
+    const hasExternal = !!file.hasExternalChanges;
+    const unsaved = resolveUnsavedFlags(file);
 
-    if (isMissing || isInaccessible) {
+    return {
+        fileType,
+        isReadOnlyInclude,
+        accessErrorCode,
+        isMissing,
+        isInaccessible,
+        hasExternal,
+        ...unsaved
+    };
+}
+
+function getActionsForFile(file) {
+    const state = getFileStateFlags(file);
+
+    if (state.isMissing || state.isInaccessible) {
         return ALL_ACTIONS.filter(a => a.value === 'skip');
     }
 
-    if (isReadOnlyInclude) {
-        if (hasEditorUnsaved || hasKanbanUnsaved) {
+    if (state.isReadOnlyInclude) {
+        if (state.hasEditorUnsaved || state.hasInternalChanges) {
             return ALL_ACTIONS.filter(a =>
                 a.value === 'load_external_backup_mine' || a.value === 'skip'
             );
         }
-        if (hasExternal) {
+        if (state.hasExternal) {
             return ALL_ACTIONS.filter(a =>
                 a.value === 'load_external' || a.value === 'load_external_backup_mine' || a.value === 'skip'
             );
@@ -210,19 +240,19 @@ function getActionsForFile(file) {
         return ALL_ACTIONS.filter(a => a.value === 'skip');
     }
 
-    if (hasExternal && hasEditorUnsaved) {
+    if (state.hasExternal && state.hasEditorUnsaved) {
         return ALL_ACTIONS.filter(a =>
             a.value === 'load_external_backup_mine' || a.value === 'skip'
         );
     }
 
-    if (hasEditorUnsaved) {
+    if (state.hasEditorUnsaved) {
         return ALL_ACTIONS.filter(a =>
             a.value === 'load_external_backup_mine' || a.value === 'skip'
         );
     }
 
-    if (hasExternal && hasKanbanUnsaved) {
+    if (state.hasExternal && state.hasInternalChanges) {
         return ALL_ACTIONS.filter(a =>
             a.value === 'overwrite'
             || a.value === 'overwrite_backup_external'
@@ -231,10 +261,10 @@ function getActionsForFile(file) {
         );
     }
 
-    if (hasExternal) {
+    if (state.hasExternal) {
         return ALL_ACTIONS;
     }
-    if (hasKanbanUnsaved) {
+    if (state.hasInternalChanges) {
         return ALL_ACTIONS.filter(a =>
             a.value === 'overwrite' || a.value === 'overwrite_backup_external' || a.value === 'skip'
         );
@@ -245,46 +275,40 @@ function getActionsForFile(file) {
 }
 
 function getDefaultAction(file) {
-    const fileType = file.fileType || file.type || '';
-    const isReadOnlyInclude = fileType === 'include-regular' || fileType === 'regular';
-    const accessErrorCode = file.lastAccessErrorCode || null;
-    const isMissing = file.exists === false || accessErrorCode === 'ENOENT';
-    const isInaccessible = accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS';
-    const hasEditorUnsaved = !!file.isUnsavedInEditor;
-    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || hasEditorUnsaved;
+    const state = getFileStateFlags(file);
 
-    if (isMissing || isInaccessible) {
+    if (state.isMissing || state.isInaccessible) {
         return '';
     }
 
-    if (isReadOnlyInclude) {
-        if (hasUnsaved) {
+    if (state.isReadOnlyInclude) {
+        if (state.hasAnyUnsaved) {
             return 'load_external_backup_mine';
         }
-        return file.hasExternalChanges ? 'load_external' : '';
+        return state.hasExternal ? 'load_external' : '';
     }
 
     switch (openMode) {
         case 'save_conflict':
             // Safety default: preserve disk version in a visible backup before overwrite.
-            if (file.hasExternalChanges && hasEditorUnsaved) {
+            if (state.hasExternal && state.hasEditorUnsaved) {
                 return 'load_external_backup_mine';
             }
-            return file.hasExternalChanges ? 'overwrite_backup_external' : '';
+            return state.hasExternal ? 'overwrite_backup_external' : '';
         case 'reload_request':
-            if (hasUnsaved) {
+            if (state.hasAnyUnsaved) {
                 return 'load_external_backup_mine';
             }
             return 'load_external';
         case 'external_change':
-            if (file.hasExternalChanges && hasEditorUnsaved) {
+            if (state.hasExternal && state.hasEditorUnsaved) {
                 return 'load_external_backup_mine';
             }
-            if (file.hasExternalChanges && hasUnsaved) {
+            if (state.hasExternal && state.hasAnyUnsaved) {
                 // Both sides changed — save kanban content but backup the external version
                 return 'overwrite_backup_external';
             }
-            return file.hasExternalChanges ? 'load_external' : '';
+            return state.hasExternal ? 'load_external' : '';
         default:
             return '';
     }
@@ -645,6 +669,13 @@ function buildUnifiedFileList() {
         const mergedName = window.getBasename
             ? window.getBasename(mergedRelativePath || mergedPath)
             : (mergedRelativePath || mergedPath);
+        const unsavedFlags = resolveUnsavedFlags({
+            hasUnsavedChanges: conflict ? conflict.hasUnsavedChanges : file.hasUnsavedChanges,
+            hasInternalChanges: conflict
+                ? conflict.hasUnsavedChanges
+                : (file.hasInternalChanges || file.hasUnsavedChanges || false),
+            isUnsavedInEditor: file.isUnsavedInEditor || false
+        });
         return {
             ...file,
             path: mergedPath,
@@ -652,9 +683,9 @@ function buildUnifiedFileList() {
             name: mergedName,
             // Overlay conflict-specific fields when available
             hasExternalChanges: conflict ? conflict.hasExternalChanges : (file.hasExternalChanges || false),
-            hasUnsavedChanges: conflict
-                ? conflict.hasUnsavedChanges
-                : (file.hasInternalChanges || file.isUnsavedInEditor || false),
+            hasUnsavedChanges: unsavedFlags.hasAnyUnsaved,
+            hasInternalChanges: unsavedFlags.hasInternalChanges,
+            isUnsavedInEditor: unsavedFlags.hasEditorUnsaved,
             isInEditMode: conflict ? conflict.isInEditMode : false,
             fileType: conflict ? conflict.fileType : (file.isMainFile ? 'main' : file.type),
         };
@@ -667,6 +698,11 @@ function buildUnifiedFileList() {
         if (!browsePathKeys.has(conflictPathKey) && !browsePathKeys.has(conflictRelativeKey)) {
             const displayPath = cf.relativePath || cf.path;
             const displayName = window.getBasename ? window.getBasename(displayPath) : displayPath;
+            const unsavedFlags = resolveUnsavedFlags({
+                hasUnsavedChanges: cf.hasUnsavedChanges || false,
+                hasInternalChanges: cf.hasUnsavedChanges || false,
+                isUnsavedInEditor: false
+            });
             unified.push({
                 path: cf.path,
                 relativePath: displayPath,
@@ -675,8 +711,9 @@ function buildUnifiedFileList() {
                 isMainFile: cf.fileType === 'main',
                 exists: true,
                 hasExternalChanges: cf.hasExternalChanges || false,
-                hasUnsavedChanges: cf.hasUnsavedChanges || false,
-                hasInternalChanges: cf.hasUnsavedChanges || false,
+                hasUnsavedChanges: unsavedFlags.hasAnyUnsaved,
+                hasInternalChanges: unsavedFlags.hasInternalChanges,
+                isUnsavedInEditor: unsavedFlags.hasEditorUnsaved,
                 isInEditMode: cf.isInEditMode || false,
                 fileType: cf.fileType || 'include',
             });
@@ -706,6 +743,7 @@ function createAllFilesArray() {
             exists: mainFileInfo.exists !== false,
             lastAccessErrorCode: mainFileInfo.lastAccessErrorCode || null,
             hasInternalChanges: mainFileInfo.hasInternalChanges || false,
+            hasUnsavedChanges: mainFileInfo.hasInternalChanges || false,
             hasExternalChanges: mainFileInfo.hasExternalChanges || false,
             documentVersion: mainFileInfo.documentVersion || 0,
             lastDocumentVersion: mainFileInfo.lastDocumentVersion || -1,
@@ -726,6 +764,7 @@ function createAllFilesArray() {
             exists: file.exists !== false,
             lastAccessErrorCode: file.lastAccessErrorCode || null,
             hasInternalChanges: file.hasInternalChanges || false,
+            hasUnsavedChanges: file.hasUnsavedChanges || file.hasInternalChanges || false,
             hasExternalChanges: file.hasExternalChanges || false,
             isUnsavedInEditor: file.isUnsavedInEditor || false,
             contentLength: file.contentLength || 0,
@@ -1318,27 +1357,21 @@ function restoreDropdownState(tableContainer, state) {
 function buildStatusBadgeHTML(file) {
     const running = isInFlight(file.path);
     const staleAction = isStaleAction(file.path);
-    const accessErrorCode = file.lastAccessErrorCode || null;
-    const isMissing = file.exists === false || accessErrorCode === 'ENOENT';
-    const isInaccessible = accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS';
-    const hasExternal = file.hasExternalChanges;
-    const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
-    const hasEditorUnsaved = !!file.isUnsavedInEditor;
-    const hasUnsaved = hasKanbanUnsaved || hasEditorUnsaved;
+    const state = getFileStateFlags(file);
     let badge = '';
-    if (isMissing) {
+    if (state.isMissing) {
         badge = '<span class="conflict-badge conflict-both" title="File is missing on disk. Save and reload actions are blocked until the file is restored.">Missing</span>';
-    } else if (isInaccessible) {
-        badge = `<span class="conflict-badge conflict-both" title="File exists but is not accessible (${accessErrorCode}). Check file permissions before saving or reloading.">Inaccessible</span>`;
-    } else if (accessErrorCode) {
-        badge = `<span class="conflict-badge conflict-both" title="File I/O error (${accessErrorCode}). Review the file system state before saving.">I/O Error</span>`;
-    } else if (hasExternal && hasUnsaved) {
+    } else if (state.isInaccessible) {
+        badge = `<span class="conflict-badge conflict-both" title="File exists but is not accessible (${state.accessErrorCode}). Check file permissions before saving or reloading.">Inaccessible</span>`;
+    } else if (state.accessErrorCode) {
+        badge = `<span class="conflict-badge conflict-both" title="File I/O error (${state.accessErrorCode}). Review the file system state before saving.">I/O Error</span>`;
+    } else if (state.hasExternal && state.hasAnyUnsaved) {
         badge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
-    } else if (hasExternal) {
+    } else if (state.hasExternal) {
         badge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
-    } else if (hasEditorUnsaved && !hasKanbanUnsaved) {
+    } else if (state.hasEditorUnsaved && !state.hasInternalChanges) {
         badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved text editor changes. Overwrite is blocked until the editor buffer is saved or discarded.">Editor Unsaved</span>';
-    } else if (hasUnsaved) {
+    } else if (state.hasAnyUnsaved) {
         badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
     } else {
         badge = '<span class="conflict-badge conflict-none">Clean</span>';

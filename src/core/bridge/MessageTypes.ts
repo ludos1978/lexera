@@ -300,6 +300,84 @@ export interface FileVerificationResult {
 }
 
 /**
+ * Detailed file verification result used by verifyContentSyncResult.
+ */
+export interface VerifyContentSyncFileResult {
+    path: string;
+    relativePath: string;
+    isMainFile: boolean;
+    matches: boolean;
+    canonicalSavedMatch: boolean;
+    canonicalContentLength: number;
+    savedContentLength: number | null;
+    canonicalSavedDiff: number | null;
+    canonicalHash: string;
+    savedHash: string | null;
+    registryNormalizedHash?: string | null;
+    registryNormalizedLength?: number | null;
+    savedNormalizedHash?: string | null;
+    savedNormalizedLength?: number | null;
+    frontendHash?: string | null;
+    frontendContentLength?: number | null;
+    frontendRegistryMatch?: boolean | null;
+    frontendRegistryDiff?: number | null;
+    frontendMatchesRaw?: boolean | null;
+    frontendMatchesNormalized?: boolean | null;
+    frontendAvailable?: boolean;
+}
+
+export interface VerifyContentSyncFrontendSnapshot {
+    hash: string;
+    contentLength: number;
+    matchesRegistry: boolean;
+    diffChars: number;
+    registryLength: number;
+    registryRawHash?: string;
+    registryRawLength?: number;
+    registryNormalizedHash?: string;
+    registryNormalizedLength?: number;
+    registryIsNormalized?: boolean;
+    matchKind?: 'raw' | 'normalized' | 'none';
+}
+
+export interface DuplicationVerificationIssue {
+    code: string;
+    severity: 'warning' | 'error';
+    message: string;
+    details?: Record<string, unknown>;
+}
+
+export interface DuplicationCopyState {
+    id: string;
+    available: boolean;
+    hash: string | null;
+    length: number | null;
+}
+
+export interface DuplicationVerificationResult {
+    copies: DuplicationCopyState[];
+    issueCount: number;
+    issues: DuplicationVerificationIssue[];
+}
+
+/**
+ * Detailed content synchronization result used by the File Manager diagnostics UI.
+ */
+export interface VerifyContentSyncResultMessage extends BaseMessage {
+    type: 'verifyContentSyncResult';
+    success: boolean;
+    timestamp: string;
+    totalFiles: number;
+    matchingFiles: number;
+    mismatchedFiles: number;
+    missingFiles: number;
+    fileResults: VerifyContentSyncFileResult[];
+    frontendSnapshot: VerifyContentSyncFrontendSnapshot | null;
+    duplicationVerification: DuplicationVerificationResult | null;
+    summary: string;
+}
+
+/**
  * Update include file content in frontend cache
  */
 export interface UpdateIncludeContentMessage extends BaseMessage {
@@ -2192,6 +2270,7 @@ export type OutgoingMessage =
     | ShowMessageMessage
     | TrackedFilesDebugInfoMessage
     | ContentVerificationResultMessage
+    | VerifyContentSyncResultMessage
     | UpdateIncludeContentMessage
     | SyncDirtyItemsMessage
     | UpdateShortcutsMessage

@@ -493,18 +493,13 @@ export class KanbanFileService {
                     mainFile.setCachedBoardFromWebview(board);
                 }
 
-                const markdown = MarkdownKanbanParser.generateMarkdown(board!);
                 const forceMain = force || forceWritePaths.has(mainFile.getPath());
-                await this._fileSaveService.saveFile(mainFile, markdown, {
+                await this._fileSaveService.saveFile(mainFile, undefined, {
                     source,
                     force: forceMain,
                     skipReloadDetection: true,
                     skipValidation
                 });
-
-                if (updateBaselines && board) {
-                    mainFile.updateFromBoard(board, true, true);
-                }
                 savedMainFile = true;
             }
 

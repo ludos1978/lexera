@@ -356,6 +356,8 @@ export class MainKanbanFile extends MarkdownFile {
 
             // Snapshot board state to prevent in-flight mutations from changing the save payload.
             const boardSnapshot = this._cloneBoardForSave(boardToSave);
+            // Keep one canonical in-memory board snapshot that matches the save payload.
+            this._board = boardSnapshot;
 
             // Regenerate content from board snapshot before saving.
             const content = this._generateMarkdownFromBoard(boardSnapshot);

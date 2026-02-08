@@ -229,7 +229,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         expect(result.success).toBe(true);
         expect(result.aborted).toBe(false);
         expect(saveFile).toHaveBeenCalledTimes(1);
-        expect(saveFile).toHaveBeenCalledWith(mainFile, expect.any(String), expect.objectContaining({
+        expect(saveFile).toHaveBeenCalledWith(mainFile, undefined, expect.objectContaining({
             source: 'ui-edit',
             force: false
         }));
@@ -271,7 +271,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         expect(result.success).toBe(true);
         expect(result.aborted).toBe(false);
         expect(saveFile).toHaveBeenCalledTimes(1);
-        expect(saveFile).toHaveBeenCalledWith(mainFile, expect.any(String), expect.objectContaining({
+        expect(saveFile).toHaveBeenCalledWith(mainFile, undefined, expect.objectContaining({
             force: true
         }));
     });
@@ -518,7 +518,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         expect(result.success).toBe(true);
         expect(result.aborted).toBe(false);
         expect(saveFile).toHaveBeenCalledTimes(1);
-        expect(saveFile).toHaveBeenCalledWith(mainFile, expect.any(String), expect.objectContaining({
+        expect(saveFile).toHaveBeenCalledWith(mainFile, undefined, expect.objectContaining({
             source: 'ui-edit'
         }));
     });

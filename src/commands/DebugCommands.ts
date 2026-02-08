@@ -29,39 +29,17 @@ import {
     OpenFileDialogMessage,
     OpenVscodeDiffMessage,
     CloseVscodeDiffMessage,
-    ApplyBatchFileActionsMessage
+    ApplyBatchFileActionsMessage,
+    VerifyContentSyncFileResult,
+    VerifyContentSyncFrontendSnapshot,
+    DuplicationVerificationResult,
+    DuplicationVerificationIssue,
+    DuplicationCopyState
 } from '../core/bridge/MessageTypes';
 import { KanbanDiffService } from '../services/KanbanDiffService';
 import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
 import { computeTrackedFilesSnapshotToken } from '../utils/fileStateSnapshot';
-
-/**
- * File verification result for content sync check
- */
-interface FileVerificationResult {
-    path: string;
-    relativePath: string;
-    isMainFile: boolean;
-    matches: boolean;
-    canonicalSavedMatch: boolean;
-    canonicalContentLength: number;
-    savedContentLength: number | null;
-    canonicalSavedDiff: number | null;
-    canonicalHash: string;
-    savedHash: string | null;
-    registryNormalizedHash?: string | null;
-    registryNormalizedLength?: number | null;
-    savedNormalizedHash?: string | null;
-    savedNormalizedLength?: number | null;
-    frontendHash?: string | null;
-    frontendContentLength?: number | null;
-    frontendRegistryMatch?: boolean | null;
-    frontendRegistryDiff?: number | null;
-    frontendMatchesRaw?: boolean | null;
-    frontendMatchesNormalized?: boolean | null;
-    frontendAvailable?: boolean;
-}
 
 /**
  * Include file debug info
@@ -122,40 +100,6 @@ interface TrackedFilesDebugInfo {
         baselineLength: number;
         baselineHash: string;
     };
-}
-
-interface FrontendSnapshotInfo {
-    hash: string;
-    contentLength: number;
-    matchesRegistry: boolean;
-    diffChars: number;
-    registryLength: number;
-    registryRawHash?: string;
-    registryRawLength?: number;
-    registryNormalizedHash?: string;
-    registryNormalizedLength?: number;
-    registryIsNormalized?: boolean;
-    matchKind?: 'raw' | 'normalized' | 'none';
-}
-
-interface DuplicationVerificationIssue {
-    code: string;
-    severity: 'warning' | 'error';
-    message: string;
-    details?: Record<string, unknown>;
-}
-
-interface DuplicationCopyState {
-    id: string;
-    available: boolean;
-    hash: string | null;
-    length: number | null;
-}
-
-interface DuplicationVerificationResult {
-    copies: DuplicationCopyState[];
-    issueCount: number;
-    issues: DuplicationVerificationIssue[];
 }
 
 type BatchFileAction = 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'skip';
@@ -966,10 +910,10 @@ export class DebugCommands extends SwitchBasedCommand {
             }
 
             const allFiles = fileRegistry.getAll();
-            const fileResults: FileVerificationResult[] = [];
+            const fileResults: VerifyContentSyncFileResult[] = [];
             let matchingFiles = 0;
             let mismatchedFiles = 0;
-            let frontendSnapshot: FrontendSnapshotInfo | null = null;
+            let frontendSnapshot: VerifyContentSyncFrontendSnapshot | null = null;
             let duplicationVerification: DuplicationVerificationResult | null = null;
             let normalizedRegistryMainHash: string | null = null;
             let normalizedRegistryMainLength: number | null = null;
