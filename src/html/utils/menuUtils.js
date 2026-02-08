@@ -220,7 +220,7 @@ function updateTagDataAttributes(element, newTitle, elementType) {
     }
 
     // Update all tags attribute
-    const allTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(newTitle) : [];
+    const allTags = window.getActiveTagsInTitle(newTitle);
     if (allTags.length > 0) {
         element.setAttribute('data-all-tags', allTags.join(' '));
     } else {

@@ -38,6 +38,15 @@ export interface KanbanColumn {
   includeError?: boolean;  // When true, include file was not found (broken include)
 }
 
+/**
+ * Board-specific settings stored in YAML frontmatter
+ * These settings are per-board and travel with the markdown file
+ */
+export interface BoardSettings {
+  columnWidth?: string;
+  // Future settings can be added here
+}
+
 export interface KanbanBoard {
   valid: boolean;
   title: string;
@@ -45,4 +54,5 @@ export interface KanbanBoard {
   yamlHeader: string | null;
   kanbanFooter: string | null;
   frontmatter?: Record<string, string>;
+  boardSettings?: BoardSettings;
 }

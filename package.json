@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.129.4",
+  "version": "0.129.13",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -297,20 +297,15 @@
             "250px",
             "350px",
             "450px",
+            "550px",
             "650px",
             "33percent",
             "50percent",
             "66percent",
-            "100percent",
-            "small",
-            "medium",
-            "wide",
-            "40",
-            "66",
-            "100"
+            "100percent"
           ],
-          "default": "medium",
-          "description": "Column width preference for the kanban board. Supports pixel and viewport values and retains compatibility with legacy string keys."
+          "default": "450px",
+          "description": "Column width preference for the kanban board. Supports pixel and viewport values."
         },
         "markdown-kanban.layoutRows": {
           "type": "number",

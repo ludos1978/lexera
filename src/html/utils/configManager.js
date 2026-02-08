@@ -24,7 +24,7 @@ class ConfigManager {
             taskMinHeight: 'auto',
             fontSize: '1x',
             fontFamily: 'default',
-            columnWidth: 'auto',
+            columnWidth: '450px',
             columnBorder: '1px solid var(--vscode-panel-border)',
             taskBorder: '1px solid var(--vscode-panel-border)',
             layoutRows: 1,

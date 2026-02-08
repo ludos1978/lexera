@@ -1465,8 +1465,22 @@ function applyColumnWidth(size, skipRender = false) {
 }
 
 function setColumnWidth(size) {
-    applyAndSaveSetting('columnWidth', size, applyColumnWidth, {
-        message: `Column width set to ${size}`
+    // Apply the setting immediately
+    applyColumnWidth(size);
+
+    // Save to YAML frontmatter of the board file
+    vscode.postMessage({
+        type: 'setBoardSetting',
+        key: 'columnWidth',
+        value: size
+    });
+
+    // Update menu indicators
+    updateAllMenuIndicators();
+
+    // Close menus
+    document.querySelectorAll('.file-bar-menu').forEach(m => {
+        m.classList.remove('active');
     });
 }
 
@@ -3791,7 +3805,7 @@ if (!webviewEventListenersInitialized) {
 
                         // Update DOM directly (minimal update, no full re-render)
                         const titleEl = document.querySelector(`[data-column-id="${colData.columnId}"] .column-title-text`);
-                        if (titleEl && window.tagUtils) {
+                        if (titleEl) {
                             titleEl.innerHTML = window.tagUtils.getColumnDisplayTitle(column, window.removeTagsForDisplay);
                         }
                     }

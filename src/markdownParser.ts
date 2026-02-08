@@ -9,10 +9,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Re-export types from KanbanTypes
-export { KanbanTask, KanbanColumn, KanbanBoard } from './board/KanbanTypes';
+export { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
 
 // Import types for internal use
-import { KanbanTask, KanbanColumn, KanbanBoard } from './board/KanbanTypes';
+import { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
 
 export class MarkdownKanbanParser {
   // Runtime-only ID generation - no persistence to markdown
@@ -324,6 +324,9 @@ export class MarkdownKanbanParser {
       // Parse Marp global settings from YAML frontmatter
       board.frontmatter = this.parseMarpFrontmatter(board.yamlHeader || '');
 
+      // Parse board-specific settings from YAML frontmatter
+      board.boardSettings = this.parseBoardSettings(board.yamlHeader || '');
+
       return { board, includedFiles, columnIncludeFiles, taskIncludeFiles };
   }
 
@@ -355,6 +358,95 @@ export class MarkdownKanbanParser {
     }
 
     return frontmatter;
+  }
+
+  /**
+   * Parse board-specific settings from YAML frontmatter
+   * These settings are stored per-board and travel with the markdown file
+   */
+  private static parseBoardSettings(yamlHeader: string): BoardSettings {
+    const settings: BoardSettings = {};
+
+    if (!yamlHeader) {
+      console.log('[MarkdownKanbanParser.parseBoardSettings] No YAML header');
+      return settings;
+    }
+
+    const lines = yamlHeader.split('\n');
+    // Board setting keys that we recognize
+    const boardSettingKeys = ['columnWidth'];
+
+    for (const line of lines) {
+      const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
+      if (match) {
+        const key = match[1];
+        const value = match[2].trim();
+        if (boardSettingKeys.includes(key)) {
+          if (key === 'columnWidth' && value) {
+            settings.columnWidth = value;
+            console.log('[MarkdownKanbanParser.parseBoardSettings] Found columnWidth:', value);
+          }
+        }
+      }
+    }
+
+    console.log('[MarkdownKanbanParser.parseBoardSettings] Parsed settings:', settings);
+    return settings;
+  }
+
+  /**
+   * Update YAML header with board settings
+   * Adds or updates board setting keys in the frontmatter
+   */
+  static updateYamlWithBoardSettings(yamlHeader: string | null, settings: BoardSettings): string {
+    console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Input yamlHeader:', yamlHeader ? 'present' : 'null', 'settings:', settings);
+
+    if (!yamlHeader) {
+      // Create new YAML header with kanban-plugin marker and settings
+      let yaml = '---\nkanban-plugin: board\n';
+      if (settings.columnWidth) {
+        yaml += `columnWidth: ${settings.columnWidth}\n`;
+      }
+      yaml += '---';
+      console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Created new YAML:', yaml);
+      return yaml;
+    }
+
+    const lines = yamlHeader.split('\n');
+    const result: string[] = [];
+    const settingsToAdd = { ...settings };
+    const boardSettingKeys = ['columnWidth'];
+
+    for (const line of lines) {
+      const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
+      if (match && boardSettingKeys.includes(match[1])) {
+        const key = match[1] as keyof BoardSettings;
+        // Update existing setting or remove if undefined
+        if (settingsToAdd[key] !== undefined) {
+          result.push(`${key}: ${settingsToAdd[key]}`);
+          delete settingsToAdd[key];
+        }
+        // Skip line if setting is being removed (undefined)
+      } else {
+        result.push(line);
+      }
+    }
+
+    // Add any new settings before the closing ---
+    const closingIndex = result.lastIndexOf('---');
+    if (closingIndex > 0) {
+      const newSettings: string[] = [];
+      if (settingsToAdd.columnWidth) {
+        newSettings.push(`columnWidth: ${settingsToAdd.columnWidth}`);
+      }
+      if (newSettings.length > 0) {
+        result.splice(closingIndex, 0, ...newSettings);
+      }
+    }
+
+    const updatedYaml = result.join('\n');
+    console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Updated YAML:', updatedYaml);
+    return updatedYaml;
   }
 
   private static processTaskIncludes(board: KanbanBoard, basePath?: string, taskIncludeFiles?: string[], resolveIncludes: boolean = true): void {
@@ -496,11 +588,15 @@ export class MarkdownKanbanParser {
   }
 
   static generateMarkdown(board: KanbanBoard): string {
+    console.log('[MarkdownKanbanParser.generateMarkdown] Board has yamlHeader:', !!board.yamlHeader, 'boardSettings:', board.boardSettings);
+
     let markdown = '';
 
-    // Add YAML front matter if it exists
-    if (board.yamlHeader) {
-      markdown += board.yamlHeader + '\n\n';
+    // Add YAML front matter, updating with board settings if present
+    // Also create YAML header if boardSettings exist but no yamlHeader yet
+    if (board.yamlHeader || board.boardSettings) {
+      const updatedYaml = this.updateYamlWithBoardSettings(board.yamlHeader, board.boardSettings || {});
+      markdown += updatedYaml + '\n\n';
     }
 
     // Sort columns by row before saving to ensure correct order in file

@@ -16,6 +16,7 @@ const baseOptions = {
         { label: "250px", value: "250px", css: "250px" },
         { label: "350px", value: "350px", css: "350px" },
         { label: "450px", value: "450px", css: "450px" },
+        { label: "550px", value: "550px", css: "550px" },
         { label: "650px", value: "650px", css: "650px" },
         { label: "1/3 Screen", value: "33percent", css: "31.5vw", separator: true },
         { label: "1/2 Screen", value: "50percent", css: "48vw" },

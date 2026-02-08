@@ -151,6 +151,7 @@ export class WebviewUpdateService {
         const layoutPresets = this._deps.webviewManager.getLayoutPresetsConfiguration();
         const viewConfig = configService.getBoardViewConfig(layoutPresets);
         this._applyDocumentMarpPreference(viewConfig);
+        this._applyDocumentPreferences(viewConfig);
 
         // Get main file path for image resolution in webview
         const mainFile = this._deps.fileRegistry.getMainFile();
@@ -181,6 +182,8 @@ export class WebviewUpdateService {
         }
 
         // BoardUpdateMessage type matches getBoardViewConfig() output
+        logger.debug('[WebviewUpdateService._sendBoardUpdateMessage] viewConfig.columnWidth:', (viewConfig as any).columnWidth);
+
         const message = {
             type: 'boardUpdate' as const,
             board: board,
@@ -233,7 +236,9 @@ export class WebviewUpdateService {
 
             // 2. Load all workspace settings and send to webview
             const layoutPresets = this._deps.webviewManager.getLayoutPresetsConfiguration();
-            const config: Record<string, unknown> = this._applyDocumentMarpPreference(configService.getBoardViewConfig(layoutPresets));
+            const config: Record<string, unknown> = configService.getBoardViewConfig(layoutPresets);
+            this._applyDocumentMarpPreference(config as { showMarpSettings?: boolean });
+            this._applyDocumentPreferences(config as { columnWidth?: string });
 
             // 3. Inject embed plugin config for frontend sync
             const embedPlugin = PluginRegistry.getInstance().getEmbedPlugin();
@@ -279,6 +284,35 @@ export class WebviewUpdateService {
         const storedMarpPreference = getDocumentPreference(this._deps.extensionContext, documentUri, 'showMarpSettings');
         if (storedMarpPreference !== undefined) {
             config.showMarpSettings = Boolean(storedMarpPreference);
+        }
+        return config;
+    }
+
+    /**
+     * Apply per-file preferences to config (columnWidth, etc.)
+     * Priority: YAML frontmatter (boardSettings) > per-file preferences
+     */
+    private _applyDocumentPreferences<T extends { columnWidth?: string }>(config: T): T {
+        // First, check for settings in YAML frontmatter (board.boardSettings)
+        const board = this._deps.getBoard();
+        logger.debug('[WebviewUpdateService._applyDocumentPreferences] board.boardSettings:', board?.boardSettings);
+
+        if (board?.boardSettings?.columnWidth) {
+            logger.debug('[WebviewUpdateService._applyDocumentPreferences] Using columnWidth from boardSettings:', board.boardSettings.columnWidth);
+            config.columnWidth = board.boardSettings.columnWidth;
+            return config;
+        }
+
+        // Fallback to per-file preferences for backward compatibility
+        const documentUri = this._deps.panelContext.lastDocumentUri;
+        if (!documentUri) {
+            logger.debug('[WebviewUpdateService._applyDocumentPreferences] No documentUri, returning default config');
+            return config;
+        }
+        const storedColumnWidth = getDocumentPreference(this._deps.extensionContext, documentUri, 'columnWidth');
+        logger.debug('[WebviewUpdateService._applyDocumentPreferences] storedColumnWidth from preferences:', storedColumnWidth);
+        if (storedColumnWidth !== undefined && typeof storedColumnWidth === 'string') {
+            config.columnWidth = storedColumnWidth;
         }
         return config;
     }

@@ -36,3 +36,6 @@ import './foldingStateManager.js';
 import './templateDialog.js';
 import './exportMarpUI.js';
 import './webview.js';
+
+// Debug utilities (loaded last to hook into other modules)
+import './utils/consistencyChecker.js';

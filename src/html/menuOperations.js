@@ -159,7 +159,7 @@ class SimpleMenuManager {
 
     getActiveTagsForElement(type, id, columnId) {
         const title = this.getElementTitleForScope(type, id, columnId);
-        return window.getActiveTagsInTitle ? window.getActiveTagsInTitle(title) : [];
+        return window.getActiveTagsInTitle(title);
     }
 
     getElementForScope(scope, id, columnId) {
@@ -569,7 +569,7 @@ class SimpleMenuManager {
             const activeTags = this.getActiveTagsForElement(type, id, columnId);
 
             if (group === 'custom') {
-                tags = window.getUserAddedTags ? window.getUserAddedTags() : [];
+                tags = window.getUserAddedTags();
             } else {
                 const groupValue = tagConfig[group];
 
@@ -1988,7 +1988,7 @@ function updateCacheForNewTask(columnId, newTask, insertIndex = -1) {
 
                         // Start editing the title
                         const titleContainer = taskElement.querySelector('.task-title-container');
-                        if (titleContainer && window.editTitle) {
+                        if (titleContainer) {
                             window.editTitle(titleContainer, newTask.id, columnId);
                         }
                     }, 50);
@@ -2227,12 +2227,10 @@ function toggleColumnTag(columnId, tagName, event) {
     updateTagCategoryCounts(columnId, 'column');
 
     // Recalculate stack heights if visual tags changed (only this stack)
-    const visualTagsBefore = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(oldTitle) : [];
-    const visualTagsAfter = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(newTitle) : [];
+    const visualTagsBefore = window.getActiveTagsInTitle(oldTitle);
+    const visualTagsAfter = window.getActiveTagsInTitle(newTitle);
     if (visualTagsBefore.length !== visualTagsAfter.length) {
-        if (typeof window.applyStackedColumnStyles === 'function') {
-            window.applyStackedColumnStyles(columnId);
-        }
+        window.applyStackedColumnStyles?.(columnId);
     }
 
     // Scroll to element if needed
@@ -2293,12 +2291,10 @@ function toggleTaskTag(taskId, columnId, tagName, event) {
     updateTagCategoryCounts(taskId, 'task', columnId);
 
     // Recalculate stack heights if visual tags changed (only this stack)
-    const visualTagsBefore = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(oldTitle) : [];
-    const visualTagsAfter = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(newTitle) : [];
+    const visualTagsBefore = window.getActiveTagsInTitle(oldTitle);
+    const visualTagsAfter = window.getActiveTagsInTitle(newTitle);
     if (visualTagsBefore.length !== visualTagsAfter.length) {
-        if (typeof window.applyStackedColumnStyles === 'function') {
-            window.applyStackedColumnStyles(columnId);
-        }
+        window.applyStackedColumnStyles?.(columnId);
     }
 
     // Scroll to element if needed
@@ -3435,7 +3431,7 @@ function updateAllVisualTagElements(element, allTags, elementType) {
                 if (hasInclude) {
                     // Update the title display using the shared utility function
                     const displayElement = element.querySelector('.column-title-text');
-                    if (displayElement && window.tagUtils) {
+                    if (displayElement) {
                         const renderedTitle = window.tagUtils.getColumnDisplayTitle(column, window.removeTagsForDisplay);
                         displayElement.innerHTML = renderedTitle;
                     }
@@ -3453,9 +3449,9 @@ function updateAllVisualTagElements(element, allTags, elementType) {
                     if (task.includeMode || /!!!include\([^)]+\)!!!/.test(task.title)) {
                         // Update the title display
                         const displayElement = element.querySelector('.task-title-display');
-                        if (displayElement && window.renderMarkdownWithTags) {
+                        if (displayElement) {
                             const renderedHtml = window.renderMarkdownWithTags(task.title);
-                            displayElement.innerHTML = window.wrapTaskSections ? window.wrapTaskSections(renderedHtml) : renderedHtml;
+                            displayElement.innerHTML = window.wrapTaskSections(renderedHtml);
                         }
                     }
                     break;

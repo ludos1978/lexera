@@ -974,6 +974,15 @@ export interface SetFilePreferenceMessage extends BaseMessage {
 }
 
 /**
+ * Set board setting - stores in YAML frontmatter of the markdown file
+ */
+export interface SetBoardSettingMessage extends BaseMessage {
+    type: 'setBoardSetting';
+    key: 'columnWidth'; // Extend this union as more settings are added
+    value: string;
+}
+
+/**
  * Set context request
  */
 export interface SetContextMessage extends BaseMessage {
@@ -2298,6 +2307,7 @@ export type IncomingMessage =
     | ShowInfoMessage
     | SetPreferenceMessage
     | SetFilePreferenceMessage
+    | SetBoardSettingMessage
     | SetContextMessage
     | RequestConfigurationRefreshMessage
     | OpenSearchPanelMessage

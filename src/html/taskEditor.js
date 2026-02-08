@@ -2193,11 +2193,9 @@ class TaskEditor {
 
         // Update visual tag state
         if (columnElement) {
-            const allTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(newTitle) : [];
+            const allTags = window.getActiveTagsInTitle(newTitle);
             const isCollapsed = columnElement.classList.contains('collapsed');
-            if (window.updateVisualTagState) {
-                window.updateVisualTagState(columnElement, allTags, 'column', isCollapsed);
-            }
+            window.updateVisualTagState(columnElement, allTags, 'column', isCollapsed);
         }
 
         // Handle layout changes
@@ -2319,10 +2317,10 @@ class TaskEditor {
         const columnElement = document.querySelector(`[data-column-id="${columnId}"]`);
         if (!columnElement) { return; }
 
-        const titleTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(column.title || '') : [];
+        const titleTags = window.getActiveTagsInTitle(column.title || '');
 
         // Update primary tag
-        const primaryTag = window.extractFirstTag ? window.extractFirstTag(column.title) : null;
+        const primaryTag = window.extractFirstTag(column.title);
         if (primaryTag && !primaryTag.startsWith('row') && !primaryTag.startsWith('gather_') && !primaryTag.startsWith('span')) {
             columnElement.setAttribute('data-column-tag', primaryTag);
         } else {
@@ -2495,19 +2493,17 @@ class TaskEditor {
         });
 
         // Update display
-        if (this.currentEditor.displayElement && window.renderMarkdownWithTags) {
+        if (this.currentEditor.displayElement) {
             const renderedHtml = window.renderMarkdownWithTags(value);
-            this.currentEditor.displayElement.innerHTML = window.wrapTaskSections ? window.wrapTaskSections(renderedHtml) : renderedHtml;
+            this.currentEditor.displayElement.innerHTML = window.wrapTaskSections(renderedHtml);
         }
 
         // Update visual tag state
         const taskElement = element.closest('.task-item');
         if (taskElement) {
-            const allTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(value) : [];
+            const allTags = window.getActiveTagsInTitle(value);
             const isCollapsed = taskElement.classList.contains('collapsed');
-            if (window.updateVisualTagState) {
-                window.updateVisualTagState(taskElement, allTags, 'task', isCollapsed);
-            }
+            window.updateVisualTagState(taskElement, allTags, 'task', isCollapsed);
         }
     }
 
@@ -2538,20 +2534,13 @@ class TaskEditor {
             }
 
             // Set temporal rendering context for description rendering
-            if (type === 'task-description' && window.tagUtils) {
-                // Set temporal gate from column context
-                if (window.tagUtils.evaluateTemporalGate) {
-                    // Find column title from cached board
-                    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
-                    const columnElement = taskElement?.closest('.kanban-full-height-column');
-                    const columnId = columnElement?.dataset?.columnId;
-                    const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-                    window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', task.title || '');
-                }
-                // Set time slot context
-                if (window.tagUtils.extractTimeSlotTag) {
-                    window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '');
-                }
+            if (type === 'task-description') {
+                const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                const columnElement = taskElement?.closest('.kanban-full-height-column');
+                const columnId = columnElement?.dataset?.columnId;
+                const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
+                window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', task.title || '');
+                window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '') || null;
             }
 
             let renderedHtml = renderMarkdown(displayValue, task.includeContext);
@@ -2594,10 +2583,10 @@ class TaskEditor {
         const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
         if (!taskElement) { return; }
 
-        const titleTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(task.title || '') : [];
+        const titleTags = window.getActiveTagsInTitle(task.title || '');
 
         // Update primary tag
-        const primaryTag = window.extractFirstTag ? window.extractFirstTag(task.title) : null;
+        const primaryTag = window.extractFirstTag(task.title);
         if (primaryTag && !primaryTag.startsWith('row') && !primaryTag.startsWith('gather_') && !primaryTag.startsWith('span')) {
             taskElement.setAttribute('data-task-tag', primaryTag);
         } else {

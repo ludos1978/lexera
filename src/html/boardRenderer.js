@@ -1861,14 +1861,14 @@ function createColumnElement(column, columnIndex) {
     // CRITICAL: Apply visual tag elements (badges, bars) BEFORE returning
     // This ensures the element is fully constructed with all visual elements
     // before being inserted into the DOM - prevents timing/race conditions
-    if (allTags.length > 0 && window.updateAllVisualTagElements) {
+    if (allTags.length > 0) {
         window.updateAllVisualTagElements(columnDiv, allTags, 'column');
     }
 
     // Apply visual elements to tasks as well
     columnDiv.querySelectorAll('[data-task-id][data-all-tags]').forEach(taskElement => {
         const taskTags = taskElement.getAttribute('data-all-tags');
-        if (taskTags && window.updateAllVisualTagElements) {
+        if (taskTags) {
             const taskTagArray = taskTags.split(' ').filter(tag => tag.trim());
             window.updateAllVisualTagElements(taskElement, taskTagArray, 'task');
         }
@@ -1909,20 +1909,12 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
 
     // Set up hierarchical temporal gating context for content rendering
     // This enables: column @kw13 -> task content @10:00-10:30 only highlights during week 13
-    window.currentRenderingTemporalGate = null; // Reset first
-    if (columnTitle && window.tagUtils && typeof window.tagUtils.evaluateTemporalGate === 'function') {
-        window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(columnTitle, task.title || '');
-    }
+    // Also works when week tag is in task title: task @kw25 -> content @08:00-10:00 only highlights during week 25
+    window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(columnTitle || '', task.title || '');
 
     // Extract time slot from task title to use as parent context for minute slots in description
     // This enables hierarchical temporal inheritance: task title @15:00-16:00 -> content @:15-:30
-    window.currentRenderingTimeSlot = null; // Reset first
-    if (task.title && window.tagUtils && typeof window.tagUtils.extractTimeSlotTag === 'function') {
-        const extracted = window.tagUtils.extractTimeSlotTag(task.title);
-        if (extracted) {
-            window.currentRenderingTimeSlot = extracted;
-        }
-    }
+    window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '') || null;
 
     let renderedDescription = (task.description && typeof task.description === 'string' && task.description.trim()) ? renderMarkdown(task.description, task.includeContext) : '';
 
@@ -2015,19 +2007,17 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     // Check temporal tags with hierarchical gating (column > task title > task content)
     // Higher-order temporals in columns gate lower-order temporals in tasks
     const temporalAttributes = [];
-    if (window.tagUtils && window.getActiveTemporalAttributes) {
-        // Get column title for hierarchical gating
-        const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const columnTitle = column?.title || '';
+    // Get column title for hierarchical gating
+    const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
+    const columnTitleForTemporal = column?.title || '';
 
-        // Get active temporal attributes with hierarchical gating
-        const activeAttrs = window.getActiveTemporalAttributes(columnTitle, task.title || '', task.description || '');
+    // Get active temporal attributes with hierarchical gating
+    const activeAttrs = window.getActiveTemporalAttributes(columnTitleForTemporal, task.title || '', task.description || '');
 
-        // Convert to attribute strings
-        for (const [attr, isActive] of Object.entries(activeAttrs)) {
-            if (isActive) {
-                temporalAttributes.push(`${attr}="true"`);
-            }
+    // Convert to attribute strings
+    for (const [attr, isActive] of Object.entries(activeAttrs)) {
+        if (isActive) {
+            temporalAttributes.push(`${attr}="true"`);
         }
     }
     const temporalAttributeString = temporalAttributes.length > 0 ? ' ' + temporalAttributes.join(' ') : '';

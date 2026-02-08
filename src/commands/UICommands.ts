@@ -22,7 +22,8 @@ import {
     UpdateTaskContentExtendedMessage,
     UpdateColumnContentExtendedMessage,
     OpenSearchPanelMessage,
-    SetFilePreferenceMessage
+    SetFilePreferenceMessage,
+    SetBoardSettingMessage
 } from '../core/bridge/MessageTypes';
 import { ResolvedTarget } from '../core/stores/BoardStore';
 import { KanbanBoard } from '../markdownParser';
@@ -52,6 +53,7 @@ export class UICommands extends SwitchBasedCommand {
             'showInfo',
             'setPreference',
             'setFilePreference',
+            'setBoardSetting',
             'setContext',
             'requestConfigurationRefresh',
             'openSearchPanel'
@@ -73,6 +75,7 @@ export class UICommands extends SwitchBasedCommand {
         'showInfo': (msg, _ctx) => this.handleShowInfo(msg as ShowInfoMessage),
         'setPreference': (msg, _ctx) => this.handleSetPreference(msg as SetPreferenceMessage),
         'setFilePreference': (msg, ctx) => this.handleSetFilePreference(msg as SetFilePreferenceMessage, ctx),
+        'setBoardSetting': (msg, ctx) => this.handleSetBoardSetting(msg as SetBoardSettingMessage, ctx),
         'setContext': (msg, _ctx) => this.handleSetContext(msg as SetContextMessage),
         'requestConfigurationRefresh': (_msg, ctx) => this.handleRequestConfigurationRefresh(ctx),
         'openSearchPanel': (msg, ctx) => this.handleOpenSearchPanel(msg as OpenSearchPanelMessage, ctx)
@@ -308,6 +311,48 @@ export class UICommands extends SwitchBasedCommand {
         }
 
         await setDocumentPreference(context.extensionContext, targetUri, message.key, message.value);
+        return this.success();
+    }
+
+    /**
+     * Handle setBoardSetting command
+     * Updates board settings in the YAML frontmatter and saves the file
+     */
+    private async handleSetBoardSetting(message: SetBoardSettingMessage, context: CommandContext): Promise<CommandResult> {
+        logger.debug(`[UICommands.setBoardSetting] Received: key=${message.key}, value=${message.value}`);
+
+        if (!message.key) {
+            console.error('[UICommands] setBoardSetting called with undefined key');
+            return this.failure('setBoardSetting requires a key');
+        }
+
+        const board = context.getCurrentBoard();
+        if (!board) {
+            console.error('[UICommands] setBoardSetting: no board available');
+            return this.failure('setBoardSetting requires a board');
+        }
+
+        logger.debug(`[UICommands.setBoardSetting] Board before update - yamlHeader exists: ${!!board.yamlHeader}, boardSettings:`, board.boardSettings);
+
+        // Initialize boardSettings if not present
+        if (!board.boardSettings) {
+            board.boardSettings = {};
+        }
+
+        // Update the setting
+        if (message.key === 'columnWidth') {
+            board.boardSettings.columnWidth = message.value;
+        }
+
+        logger.debug(`[UICommands.setBoardSetting] Board after update - boardSettings:`, board.boardSettings);
+
+        // Update the board in the store
+        context.setBoard(board);
+
+        // Save to markdown file (this will serialize boardSettings to YAML)
+        await context.onSaveToMarkdown();
+
+        logger.debug(`[UICommands.setBoardSetting] Saved to markdown`);
         return this.success();
     }
 

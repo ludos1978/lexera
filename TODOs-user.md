@@ -1,5 +1,7 @@
+- [ ] can we add some checking mechanism that compares the frontend data with the caches and alerts the user immediately if there are differences which should have been synchronized already? maybe have it active in debug mode only!
+
 - [x] fix the icons according to these changes:
-- in top row columns use the same triangle as in all other folding icons. 
+- in top row columns use the same triangle as in all other folding icons.
 - for background processes use a gear wheel
 - for style presets use a typical font size icon.
 - for files use a floppy disc icon
@@ -7,7 +9,7 @@
 
 - [ ] suggest a way how to combine all kinds of tasks. i think of something such as
 #tag & !2025.10.13
-!2025.09.12 | !2025.09.15 
+!2025.09.12 | !2025.09.15
 !2025.09.12-2025.10.1 (from .. to)
 !2025.13.05 !10:30 is also considered "&" combined
 
@@ -26,7 +28,7 @@ DO A VERY DETAILED ANALYSIS
 - h5 = 5 * 1px (5*2px + 4 * 1px = 14px)
 - h6 = 6 * 1px (6*1.5px + 5 * 1px = 14px)
 
-REDO IT: make them have the same full width use something more similar to roman numbers. I , II, III, IV, V, VI but clearly graphics not using a font! so only using lines! 
+REDO IT: make them have the same full width use something more similar to roman numbers. I , II, III, IV, V, VI but clearly graphics not using a font! so only using lines!
 
 - [ ] if i paste a [[#1]] (or crate the clipboard content from a card / column from the clipboard it inteprets it as a file link and adds a path to it. which breaks it by adding a relative path.
 
@@ -38,14 +40,14 @@ We have the tags #hidden-internal-parked and #hidden-internal-deleted tag.
 We have a top element for "Park" and one for "Trash"
 
 Any content that is moved to the "Park" or "Cut" from the burger menu:
-- is tagged with #hidden-internal-parked . 
+- is tagged with #hidden-internal-parked .
 - When it's placed from the "Park" into the board again, the tag is removed (is also removed from the "Park") and is moved to the new location.
 The same happens with deletion of colums and tasks.
 
-To cleanup #hidden-internal-deleted we add a new column "remove deleted" in the file manager for each file. 
-If something is moved to the Trash, we check if something has the tag #hidden-internal-parked and warn the user that it's removed from the "Park" when continuing (let the user abort the action). 
+To cleanup #hidden-internal-deleted we add a new column "remove deleted" in the file manager for each file.
+If something is moved to the Trash, we check if something has the tag #hidden-internal-parked and warn the user that it's removed from the "Park" when continuing (let the user abort the action).
 
-When parsing and displaying or exporting anything in the board it hides all #hidden-internal-parked (columns and tasks) and #hidden-internal-deleted from visiblity. 
+When parsing and displaying or exporting anything in the board it hides all #hidden-internal-parked (columns and tasks) and #hidden-internal-deleted from visiblity.
 When doing comparisons (diff in the File Manager) the tagged elements are not hidden!
 
 Do you see any conflict that could arise from this funcitonality? One problem might be the #stack tag feature if the columns with #hidden-internal-parked or #hidden-internal-deleted might interfere with it. We might move these columns to the end of the files or add a feature to the stack handling that skips there columns / tasks?

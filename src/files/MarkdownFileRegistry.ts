@@ -732,6 +732,35 @@ export class MarkdownFileRegistry implements vscode.Disposable {
     // ============= CLEANUP =============
 
     /**
+     * Unregister include files that are no longer referenced by the board.
+     *
+     * Compares currently registered include files against a set of paths
+     * that are still in use. Any include files not in the active set are removed.
+     *
+     * @param activePaths Set of normalized relative paths that are still referenced
+     * @returns Array of paths that were unregistered
+     */
+    public unregisterOrphanedIncludes(activePaths: Set<string>): string[] {
+        const unregistered: string[] = [];
+        const includeFiles = this.getIncludeFiles();
+
+        for (const file of includeFiles) {
+            const normalizedPath = file.getNormalizedRelativePath();
+            if (!activePaths.has(normalizedPath)) {
+                logger.debug(`[MarkdownFileRegistry] Unregistering orphaned include: ${normalizedPath}`);
+                this.unregister(file.getPath());
+                unregistered.push(normalizedPath);
+            }
+        }
+
+        if (unregistered.length > 0) {
+            logger.debug(`[MarkdownFileRegistry] Unregistered ${unregistered.length} orphaned include file(s)`);
+        }
+
+        return unregistered;
+    }
+
+    /**
      * Dispose of all resources
      */
     public dispose(): void {

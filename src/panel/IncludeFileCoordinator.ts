@@ -54,6 +54,7 @@ export class IncludeFileCoordinator {
      *
      * Scans the board for column includes, task includes, and regular includes,
      * and creates IncludeFile instances in the registry for each one.
+     * Also removes orphaned include files that are no longer referenced.
      */
     registerBoardIncludeFiles(board: KanbanBoard): void {
         const mainFile = this._deps.fileRegistry.getMainFile();
@@ -62,17 +63,23 @@ export class IncludeFileCoordinator {
             return;
         }
 
+        // Collect all active include paths (normalized) for cleanup later
+        const activeIncludePaths = new Set<string>();
+
         // Sync column includes
         for (const column of board.columns) {
             if (column.includeFiles && column.includeFiles.length > 0) {
                 for (const relativePath of column.includeFiles) {
-                    this._deps.fileRegistry.ensureIncludeRegistered(
+                    const file = this._deps.fileRegistry.ensureIncludeRegistered(
                         relativePath,
                         'include-column',
                         this._deps.fileFactory,
                         mainFile,
                         { columnId: column.id, columnTitle: column.title }
                     );
+                    if (file) {
+                        activeIncludePaths.add(file.getNormalizedRelativePath());
+                    }
                 }
             }
         }
@@ -82,13 +89,16 @@ export class IncludeFileCoordinator {
             for (const task of column.tasks) {
                 if (task.includeFiles && task.includeFiles.length > 0) {
                     for (const relativePath of task.includeFiles) {
-                        this._deps.fileRegistry.ensureIncludeRegistered(
+                        const file = this._deps.fileRegistry.ensureIncludeRegistered(
                             relativePath,
                             'include-task',
                             this._deps.fileFactory,
                             mainFile,
                             { columnId: column.id, taskId: task.id, taskTitle: task.title }
                         );
+                        if (file) {
+                            activeIncludePaths.add(file.getNormalizedRelativePath());
+                        }
                     }
                 }
             }
@@ -97,14 +107,20 @@ export class IncludeFileCoordinator {
         // Sync regular includes (!!!include(path)!!! in task descriptions)
         const regularIncludes = mainFile.getIncludedFiles();
         for (const relativePath of regularIncludes) {
-            this._deps.fileRegistry.ensureIncludeRegistered(
+            const file = this._deps.fileRegistry.ensureIncludeRegistered(
                 relativePath,
                 'include-regular',
                 this._deps.fileFactory,
                 mainFile,
                 {}
             );
+            if (file) {
+                activeIncludePaths.add(file.getNormalizedRelativePath());
+            }
         }
+
+        // Clean up orphaned include files that are no longer referenced
+        this._deps.fileRegistry.unregisterOrphanedIncludes(activeIncludePaths);
 
         // NOTE: Content loading is handled by FileSyncHandler.reloadExternallyModifiedFiles()
         // which is called after registration completes.
