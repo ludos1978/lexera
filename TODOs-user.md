@@ -1,3 +1,5 @@
+- DO NOT DO ANY AUTOMATIC TEXT CONVERSION! I saw -> get an  arrow!!!
+
 - [ ] add comment and note as tags 
 
 - [ ] when deleting the top column of a  stack, sometimes the other columns get merged with the previous stack. there seem to be inconsistencies how #stack's tags are analyzed and applied. 
