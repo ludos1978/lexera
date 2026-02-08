@@ -1093,16 +1093,19 @@ export class DebugCommands extends SwitchBasedCommand {
 
         const mainFilePath = panel?.getCanonicalMainFilePath?.() || mainFile?.getPath() || 'Unknown';
         const mainBaseline = mainFile?.getBaseline() || '';
+        const trackedFiles = fileRegistry?.getAll() || [];
+        const activeWatcherCount = trackedFiles.filter(file => file.isWatcherActive()).length;
+        const lastDocumentVersion = panel?.getLastDocumentVersion?.() ?? -1;
 
         const mainFileInfo = {
             path: mainFilePath,
             lastModified: mainFile?.getLastModified()?.toISOString() || 'Unknown',
             exists: mainFile?.exists() ?? false,
-            watcherActive: true,
+            watcherActive: mainFile?.isWatcherActive() ?? false,
             hasInternalChanges: mainFile?.hasUnsavedChanges() ?? false,
             hasExternalChanges: mainFile?.hasExternalChanges() ?? false,
             documentVersion: document?.version ?? 0,
-            lastDocumentVersion: document ? document.version - 1 : -1,
+            lastDocumentVersion: lastDocumentVersion,
             isUnsavedInEditor: document?.isDirty ?? false,
             baselineLength: mainBaseline.length,
             baselineHash: this.computeHash(mainBaseline).substring(0, 8)
@@ -1132,8 +1135,8 @@ export class DebugCommands extends SwitchBasedCommand {
 
         const conflictManager = {
             healthy: true,
-            trackedFiles: 1 + includeFiles.length,
-            activeWatchers: 1 + includeFiles.length,
+            trackedFiles: trackedFiles.length,
+            activeWatchers: activeWatcherCount,
             pendingConflicts: 0,
             watcherFailures: 0,
             listenerEnabled: true,
@@ -1149,7 +1152,7 @@ export class DebugCommands extends SwitchBasedCommand {
 
         // Check for unsaved changes via file registry
         const hasUnsavedChanges = fileRegistry
-            ? fileRegistry.getFilesWithUnsavedChanges().length > 0
+            ? fileRegistry.getAll().some(file => file.hasAnyUnsavedChanges())
             : false;
 
         return {

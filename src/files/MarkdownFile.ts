@@ -312,6 +312,10 @@ export abstract class MarkdownFile implements vscode.Disposable {
         return this._hasFileSystemChanges;
     }
 
+    public isWatcherActive(): boolean {
+        return this._isWatching;
+    }
+
     public isInEditMode(): boolean {
         return this._isInEditMode;
     }
@@ -490,6 +494,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      */
     public async save(options: SaveOptions = {}): Promise<void> {
         const skipReloadDetection = options.skipReloadDetection ?? true;
+        const skipValidation = options.skipValidation ?? false;
 
         // PERFORMANCE: Use watcher coordinator to prevent conflicts
         await MarkdownFile._watcherCoordinator.startOperation(this._relativePath, 'save');
@@ -511,11 +516,13 @@ export abstract class MarkdownFile implements vscode.Disposable {
         }
 
         try {
-            // Validate before saving
-            const validation = this.validate(this._content);
-            if (!validation.valid) {
-                const errors = validation.errors?.join(', ') || 'Unknown validation error';
-                throw new Error(`Cannot save ${this._relativePath}: ${errors}`);
+            // Validate before saving unless explicitly skipped.
+            if (!skipValidation) {
+                const validation = this.validate(this._content);
+                if (!validation.valid) {
+                    const errors = validation.errors?.join(', ') || 'Unknown validation error';
+                    throw new Error(`Cannot save ${this._relativePath}: ${errors}`);
+                }
             }
 
             const expectedContent = attemptedContent;
@@ -727,13 +734,36 @@ export abstract class MarkdownFile implements vscode.Disposable {
      */
     public async createVisibleConflictFile(content: string): Promise<string | null> {
         try {
-            const conflictPath = getVisibleConflictPath(this._path);
-            await fs.promises.writeFile(conflictPath, content, 'utf-8');
-            return conflictPath;
+            const MAX_ATTEMPTS = 8;
+
+            for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+                const conflictPath = this._buildVisibleConflictCandidatePath(attempt);
+                try {
+                    await fs.promises.writeFile(conflictPath, content, { encoding: 'utf-8', flag: 'wx' });
+                    return conflictPath;
+                } catch (error) {
+                    const errorWithCode = error as NodeJS.ErrnoException;
+                    if (errorWithCode.code === 'EEXIST') {
+                        continue;
+                    }
+                    throw error;
+                }
+            }
+
+            throw new Error(`Could not allocate unique visible conflict file path after ${MAX_ATTEMPTS} attempts`);
         } catch (error) {
             console.error(`[${this.getFileType()}] Failed to create conflict file:`, error);
             return null;
         }
+    }
+
+    private _buildVisibleConflictCandidatePath(attempt: number): string {
+        const timestampBase = new Date().toISOString().replace(/[:.]/g, '-');
+        if (attempt === 0) {
+            return getVisibleConflictPath(this._path, timestampBase);
+        }
+        const randomSuffix = Math.random().toString(36).slice(2, 6);
+        return getVisibleConflictPath(this._path, `${timestampBase}-${attempt}-${randomSuffix}`);
     }
 
     // ============= FILE WATCHING & CHANGE DETECTION =============

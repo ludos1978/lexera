@@ -643,7 +643,7 @@ export class IncludeCommands extends SwitchBasedCommand {
                 }
             }
 
-            await targetFile.forceSyncBaseline();
+            await targetFile.reload();
 
             const requiresFullBoardRefresh = isMainFile || targetFile.getFileType() === 'include-column';
 

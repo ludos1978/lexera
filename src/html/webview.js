@@ -3899,12 +3899,16 @@ if (!webviewEventListenersInitialized) {
                 const current = editor.currentEditor;
 
                 if (message.captureValue) {
+                    const capturedValue = current.wysiwyg
+                        ? current.wysiwyg.getMarkdown()
+                        : (current.element.value || current.element.textContent || '');
+
                     // CAPTURE mode: Extract edit value WITHOUT modifying board
                     capturedEdit = {
                         type: current.type,
                         taskId: current.taskId,
                         columnId: current.columnId,
-                        value: current.element.value,
+                        value: capturedValue,
                         originalValue: current.originalValue
                     };
                 } else if (typeof editor.save === 'function') {

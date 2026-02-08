@@ -82,6 +82,7 @@ export interface PanelCommandAccess {
     // Debug mode
     setDebugMode?(enabled: boolean): void;
     getDebugMode?(): boolean;
+    getLastDocumentVersion?(): number;
 
     // Main file context
     getCanonicalMainFilePath?(): string | undefined;

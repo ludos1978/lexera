@@ -126,7 +126,7 @@ const ALL_ACTIONS = [
 
 function getActionsForFile(file) {
     const hasExternal = file.hasExternalChanges;
-    const hasUnsaved = file.hasUnsavedChanges;
+    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || file.isUnsavedInEditor;
     if (hasExternal) {
         return ALL_ACTIONS;
     }
@@ -141,13 +141,14 @@ function getActionsForFile(file) {
 }
 
 function getDefaultAction(file) {
+    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || file.isUnsavedInEditor;
     switch (openMode) {
         case 'save_conflict':
             return file.hasExternalChanges ? 'overwrite' : '';
         case 'reload_request':
             return 'load_external';
         case 'external_change':
-            if (file.hasExternalChanges && file.hasUnsavedChanges) {
+            if (file.hasExternalChanges && hasUnsaved) {
                 // Both sides changed — save kanban content but backup the external version
                 return 'overwrite_backup_external';
             }
@@ -437,7 +438,9 @@ function buildUnifiedFileList() {
             name: mergedName,
             // Overlay conflict-specific fields when available
             hasExternalChanges: conflict ? conflict.hasExternalChanges : (file.hasExternalChanges || false),
-            hasUnsavedChanges: conflict ? conflict.hasUnsavedChanges : (file.hasInternalChanges || false),
+            hasUnsavedChanges: conflict
+                ? conflict.hasUnsavedChanges
+                : (file.hasInternalChanges || file.isUnsavedInEditor || false),
             isInEditMode: conflict ? conflict.isInEditMode : false,
             fileType: conflict ? conflict.fileType : (file.isMainFile ? 'main' : file.type),
         };
@@ -569,21 +572,7 @@ function createUnifiedTable() {
         const missingFileClass = file.exists === false ? ' missing-file' : '';
 
         // --- Status column ---
-        let statusBadge = '';
-        const hasExternal = file.hasExternalChanges;
-        const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
-        if (hasExternal && hasUnsaved) {
-            statusBadge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
-        } else if (hasExternal) {
-            statusBadge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
-        } else if (hasUnsaved) {
-            statusBadge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
-        } else {
-            statusBadge = '<span class="conflict-badge conflict-none">Clean</span>';
-        }
-        if (file.isInEditMode) {
-            statusBadge += ' <span class="conflict-badge" title="Currently being edited">Editing</span>';
-        }
+        const statusBadge = buildStatusBadgeHTML(file);
 
         // --- Cache & Saved sync columns ---
         const syncStatus = getFileSyncStatus(file.path);
@@ -1066,12 +1055,16 @@ function restoreDropdownState(tableContainer, state) {
 /** Build status badge HTML for a file (extracted from createUnifiedTable). */
 function buildStatusBadgeHTML(file) {
     const hasExternal = file.hasExternalChanges;
-    const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
+    const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
+    const hasEditorUnsaved = !!file.isUnsavedInEditor;
+    const hasUnsaved = hasKanbanUnsaved || hasEditorUnsaved;
     let badge = '';
     if (hasExternal && hasUnsaved) {
         badge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
     } else if (hasExternal) {
         badge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
+    } else if (hasEditorUnsaved && !hasKanbanUnsaved) {
+        badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved text editor changes">Editor Unsaved</span>';
     } else if (hasUnsaved) {
         badge = '<span class="conflict-badge conflict-unsaved" title="Unsaved changes">Unsaved</span>';
     } else {

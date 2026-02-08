@@ -380,6 +380,18 @@ export class KanbanFileService {
                 return;
             }
 
+            const dirtyEditorFiles = this._collectDirtyEditorFilesForSaveScope(scope, syncIncludes, force);
+            if (dirtyEditorFiles.length > 0) {
+                const suffix = dirtyEditorFiles.length > 4 ? ', ...' : '';
+                const preview = dirtyEditorFiles.slice(0, 4).join(', ');
+                postSaveResult(
+                    false,
+                    `Save aborted: unsaved text-editor changes in ${preview}${suffix}. `
+                    + 'Save those files in the editor first, or resolve via File Manager.'
+                );
+                return;
+            }
+
             if (syncIncludes && board) {
                 const panelInstance = this.getPanelInstance();
                 if (panelInstance?.syncIncludeFilesWithBoard) {
@@ -529,6 +541,42 @@ export class KanbanFileService {
 
         return this.fileRegistry.findByPath(filePath)
             || this.fileRegistry.get(absolutePath);
+    }
+
+    private _collectDirtyEditorFilesForSaveScope(scope: SaveScope, syncIncludes: boolean, force: boolean): string[] {
+        if (force) {
+            return [];
+        }
+
+        const dirtyFiles = new Set<string>();
+        const addIfEditorDirty = (file: MarkdownFile | undefined) => {
+            if (!file) {
+                return;
+            }
+            if (file.isDirtyInEditor()) {
+                dirtyFiles.add(file.getRelativePath());
+            }
+        };
+
+        if (scope === 'main' || scope === 'all') {
+            addIfEditorDirty(this.fileRegistry.getMainFile());
+        }
+
+        if (scope === 'includes' || scope === 'all') {
+            const includeCandidates = this.fileRegistry.getIncludeFiles()
+                .filter(file => file.exists())
+                .filter(file => file.getFileType() !== 'include-regular');
+            const includeFiles = syncIncludes
+                ? includeCandidates
+                : includeCandidates.filter(file => file.hasUnsavedChanges());
+            includeFiles.forEach(addIfEditorDirty);
+        }
+
+        if (typeof scope === 'object' && scope.filePath) {
+            addIfEditorDirty(this._resolveFileFromRegistry(scope.filePath));
+        }
+
+        return Array.from(dirtyFiles);
     }
 
     /**

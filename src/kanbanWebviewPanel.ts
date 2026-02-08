@@ -512,6 +512,7 @@ export class KanbanWebviewPanel {
         void this._extensionContext.globalState.update(DEBUG_MODE_STATE_KEY, enabled);
     }
     public getDebugMode(): boolean { return this._context.debugMode; }
+    public getLastDocumentVersion(): number { return this._context.lastDocumentVersion; }
 
     private _initialize() {
         if (!this._context.initialized) {

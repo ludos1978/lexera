@@ -44,6 +44,14 @@ export class FileSaveService {
      * - SaveOptions are applied consistently
      */
     public async saveFile(file: MarkdownFile, content?: string, options?: SaveOptions): Promise<void> {
+        // Hard guard: never overwrite dirty editor buffers unless explicitly forced.
+        if (!options?.force && file.isDirtyInEditor()) {
+            throw new Error(
+                `Cannot save "${file.getRelativePath()}" while it has unsaved text-editor changes. `
+                + 'Save the editor document first or use explicit conflict resolution.'
+            );
+        }
+
         // HASH CHECK: Skip save if no unsaved changes (unless forced)
         // This prevents unnecessary disk writes and ensures hash-based state is respected
         if (!options?.force && !file.hasUnsavedChanges() && content === undefined) {
