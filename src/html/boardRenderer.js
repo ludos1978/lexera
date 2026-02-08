@@ -1374,22 +1374,21 @@ function renderBoard(options = null) {
     // Use DocumentFragment to batch DOM insertions for better performance
     const fragment = document.createDocumentFragment();
 
-    // Sort columns by row first, then by their original index within each row
-    // This ensures row 1 columns come before row 2 columns in the DOM
-    // Filter out parked and deleted columns - they are tagged but stay in cachedBoard
-    // IMPORTANT: Map first to preserve original indices, then filter
+    // Sort columns by row first, then by original index within each row.
+    // IMPORTANT: Keep hidden columns in this ordered list so they still act as
+    // stack boundaries when we render visible columns (prevents stack bleed-through
+    // after hiding/deleting the first column of a stack).
     const sortedColumns = window.cachedBoard.columns
         .map((column, index) => ({
             column,
             index,
-            row: getColumnRow(column.title)
-        }))
-        .filter(({ column }) => {
-            // Filter out columns with parked, deleted, or archived tags
-            const hasParkedTag = column.title?.includes(PARKED_TAG);
-            const hasDeletedTag = column.title?.includes(DELETED_TAG);
-            const hasArchivedTag = column.title?.includes(ARCHIVED_TAG);
-            return !hasParkedTag && !hasDeletedTag && !hasArchivedTag;
+            row: getColumnRow(column.title),
+            isStacked: /#stack\b/i.test(column.title),
+            isHidden: !!(
+                column.title?.includes(PARKED_TAG)
+                || column.title?.includes(DELETED_TAG)
+                || column.title?.includes(ARCHIVED_TAG)
+            )
         })
         .sort((a, b) => {
             // First sort by row number
@@ -1406,8 +1405,8 @@ function renderBoard(options = null) {
         columnsByRow[row] = [];
     }
 
-    sortedColumns.forEach(({ column, index, row }) => {
-        columnsByRow[row].push({ column, index });
+    sortedColumns.forEach((entry) => {
+        columnsByRow[entry.row].push(entry);
     });
 
     // Create row containers in order
@@ -1425,13 +1424,27 @@ function renderBoard(options = null) {
             // Add columns for this row with stacking support
             let currentStackContainer = null;
             let lastColumnElement = null;
+            let lastVisibleStackGroup = -1;
+            let currentStackGroup = 0;
 
             // Process columns in the order they appear in the board data
-            columnsByRow[row].forEach(({ column, index }) => {
-                const columnElement = createColumnElement(column, index);
-                const isStacked = /#stack\b/i.test(column.title);
+            columnsByRow[row].forEach(({ column, index, isStacked, isHidden }) => {
+                if (!isStacked) {
+                    currentStackGroup += 1;
+                }
 
-                if (isStacked && lastColumnElement) {
+                if (isHidden) {
+                    return;
+                }
+
+                const columnElement = createColumnElement(column, index);
+
+                const shouldStackWithPrevious =
+                    isStacked
+                    && !!lastColumnElement
+                    && lastVisibleStackGroup === currentStackGroup;
+
+                if (shouldStackWithPrevious) {
                     // This column should be stacked below the previous one
                     if (!currentStackContainer) {
                         // Create a new stack container and move the previous column into it
@@ -1453,8 +1466,10 @@ function renderBoard(options = null) {
                     stackContainer.appendChild(columnElement);
                     rowContainer.appendChild(stackContainer);
                     currentStackContainer = null;
-                    lastColumnElement = columnElement;
                 }
+
+                lastColumnElement = columnElement;
+                lastVisibleStackGroup = currentStackGroup;
             });
 
             // Clean up empty stacks and add drop zones
