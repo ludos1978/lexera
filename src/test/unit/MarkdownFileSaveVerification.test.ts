@@ -2,6 +2,8 @@ import { MarkdownFile } from '../../files/MarkdownFile';
 import { ConflictResolver } from '../../services/ConflictResolver';
 import { CapturedEdit, IMarkdownFileRegistry } from '../../files/FileInterfaces';
 import { FileSaveService } from '../../core/FileSaveService';
+import * as fs from 'fs';
+import * as path from 'path';
 
 class TestMarkdownFile extends MarkdownFile {
     public diskContent: string;
@@ -11,11 +13,17 @@ class TestMarkdownFile extends MarkdownFile {
     public emergencyBackupPath: string | null = null;
     public emergencyBackupError: string | null = null;
     public emergencyBackupRequests: string[] = [];
+    public externalEvents: Array<'modified' | 'deleted' | 'created'> = [];
+    public editorDirty: boolean = false;
 
     constructor(initialContent: string) {
-        super('/tmp/kanban-save-verification-test.md', 'kanban-save-verification-test.md', new ConflictResolver('test-panel'), {} as any);
+        const randomSuffix = Math.random().toString(36).slice(2, 10);
+        const testFileName = `kanban-save-verification-test-${randomSuffix}.md`;
+        const testPath = path.join('/tmp', testFileName);
+        super(testPath, testFileName, new ConflictResolver('test-panel'), {} as any);
         this.diskContent = initialContent;
         this.setContent(initialContent, true);
+        fs.writeFileSync(this.getPath(), initialContent, 'utf8');
     }
 
     getFileType(): 'include-task' {
@@ -33,13 +41,15 @@ class TestMarkdownFile extends MarkdownFile {
         this.writeCount++;
         if (this.shouldCorruptWrite) {
             this.diskContent = `corrupted:${content}`;
+            await fs.promises.writeFile(this.getPath(), this.diskContent, 'utf8');
             return;
         }
         this.diskContent = content;
+        await fs.promises.writeFile(this.getPath(), content, 'utf8');
     }
 
-    async handleExternalChange(_changeType: 'modified' | 'deleted' | 'created'): Promise<void> {
-        // no-op for unit tests
+    async handleExternalChange(changeType: 'modified' | 'deleted' | 'created'): Promise<void> {
+        this.externalEvents.push(changeType);
     }
 
     validate(_content: string): { valid: boolean; errors?: string[] } {
@@ -56,6 +66,14 @@ class TestMarkdownFile extends MarkdownFile {
 
     async applyEditToBaseline(_capturedEdit: CapturedEdit): Promise<void> {
         // not needed for these tests
+    }
+
+    public isDirtyInEditor(): boolean {
+        return this.editorDirty;
+    }
+
+    public async simulateWatcherChange(changeType: 'modified' | 'deleted' | 'created'): Promise<void> {
+        await this._onFileSystemChange(changeType);
     }
 
     protected async _persistEmergencyBackup(content: string): Promise<string | null> {
@@ -125,6 +143,33 @@ describe('MarkdownFile.save post-write verification', () => {
     });
 });
 
+describe('MarkdownFile self-save event suppression', () => {
+    it('suppresses watcher event when disk content matches own saved content', async () => {
+        const file = new TestMarkdownFile('before');
+        file.setContent('after');
+
+        await file.save({ skipReloadDetection: true });
+        await file.simulateWatcherChange('modified');
+
+        expect(file.externalEvents).toEqual([]);
+        expect(file.hasExternalChanges()).toBe(false);
+    });
+
+    it('does not suppress watcher event when disk content differs from own saved content', async () => {
+        const file = new TestMarkdownFile('before');
+        file.setContent('after');
+
+        await file.save({ skipReloadDetection: true });
+
+        file.diskContent = 'external-change';
+        await fs.promises.writeFile(file.getPath(), file.diskContent, 'utf8');
+        await file.simulateWatcherChange('modified');
+
+        expect(file.externalEvents).toEqual(['modified']);
+        expect(file.hasExternalChanges()).toBe(true);
+    });
+});
+
 describe('FileSaveService.saveFile with provided content', () => {
     it('keeps baseline unchanged when save fails after content update', async () => {
         const file = new TestMarkdownFile('before');
@@ -139,5 +184,31 @@ describe('FileSaveService.saveFile with provided content', () => {
         expect(file.getContent()).toBe('after');
         expect(file.getBaseline()).toBe('before');
         expect(file.hasUnsavedChanges()).toBe(true);
+    });
+
+    it('rejects non-forced save when the editor document is dirty', async () => {
+        const file = new TestMarkdownFile('before');
+        file.editorDirty = true;
+        const service = new FileSaveService('panel-test');
+
+        await expect(service.saveFile(file, 'after', { skipReloadDetection: false }))
+            .rejects
+            .toThrow('unsaved text-editor changes');
+
+        expect(file.writeCount).toBe(0);
+    });
+
+    it('allows forced save when the editor document is dirty', async () => {
+        const file = new TestMarkdownFile('before');
+        file.editorDirty = true;
+        const service = new FileSaveService('panel-test');
+
+        await service.saveFile(file, 'after', {
+            force: true,
+            skipReloadDetection: false
+        });
+
+        expect(file.writeCount).toBe(1);
+        expect(file.getBaseline()).toBe('after');
     });
 });

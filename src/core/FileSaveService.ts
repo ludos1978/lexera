@@ -10,8 +10,8 @@ import { SaveOptions } from '../files/SaveOptions';
  * ARCHITECTURE:
  * - All saves go through FileSaveService.saveFile()
  * - FileSaveService calls file.save(SaveOptions)
- * - SaveOptions.skipReloadDetection (default: true) sets instance flag _skipReloadCounter
- * - File watcher checks instance flag and skips reload if true
+ * - SaveOptions.skipReloadDetection (default: true) registers self-save fingerprints
+ * - File watcher compares disk fingerprints and suppresses matched self-save events
  * - No global state, no timing windows, just clean parameter-based design
  *
  * NOTE: This handles actual FILE SAVE OPERATIONS.

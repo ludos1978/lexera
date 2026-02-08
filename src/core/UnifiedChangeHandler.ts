@@ -9,7 +9,7 @@ import { WebviewBridge } from './bridge/WebviewBridge';
  * the file manager dialog and choose per-file actions.
  *
  * NOTE: Legitimate saves (our own writes) are filtered out by _onFileSystemChange()
- * using the _skipReloadCounter flag. This handler only receives TRUE external changes.
+ * using deterministic self-save fingerprint matching. This handler only receives TRUE external changes.
  *
  * NOTE: Deleted and created files are handled immediately (not batched).
  */

@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MarkdownFile } from './MarkdownFile';
@@ -11,6 +10,7 @@ import { BackupManager } from '../services/BackupManager';
 import { FileManager } from '../fileManager';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
 import { SaveOptions } from './SaveOptions';
+import { writeFileAtomically } from '../utils/atomicWrite';
 
 /**
  * Represents the main kanban markdown file.
@@ -215,16 +215,12 @@ export class MainKanbanFile extends MarkdownFile {
     }
 
     /**
-     * Write content to disk using VS Code API
+     * Write content to disk atomically to avoid partial/truncated saves.
      */
     public async writeToDisk(content: string): Promise<void> {
 
         try {
-            const uri = vscode.Uri.file(this._path);
-            const encoder = new TextEncoder();
-            const contentBytes = encoder.encode(content);
-
-            await vscode.workspace.fs.writeFile(uri, contentBytes);
+            await writeFileAtomically(this._path, content, { encoding: 'utf-8' });
 
             // Update document version if document is open
             const document = this._fileManager.getDocument();
@@ -354,8 +350,8 @@ export class MainKanbanFile extends MarkdownFile {
         await super.save(options);
 
         // CRITICAL: Clear cached board AFTER save completes
-        // Note: save() method automatically sets instance-level _skipReloadCounter
-        // This prevents the file watcher from triggering unnecessary reloads
+        // Note: save() method records self-save fingerprints so watcher events
+        // from our own writes are suppressed deterministically.
         this._cachedBoardFromWebview = undefined;
     }
 

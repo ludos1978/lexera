@@ -1,0 +1,78 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface AtomicWriteOptions {
+    encoding?: BufferEncoding;
+    maxAttempts?: number;
+}
+
+const DEFAULT_MAX_ATTEMPTS = 6;
+
+function buildTempPath(targetPath: string, attempt: number): string {
+    const dir = path.dirname(targetPath);
+    const ext = path.extname(targetPath);
+    const base = path.basename(targetPath, ext);
+    const now = Date.now();
+    const random = Math.random().toString(36).slice(2, 8);
+    const suffix = ext || '.tmp';
+    return path.join(dir, `.${base}.write-${process.pid}-${now}-${attempt}-${random}${suffix}`);
+}
+
+async function fsyncDirectoryIfPossible(dirPath: string): Promise<void> {
+    let dirHandle: fs.promises.FileHandle | undefined;
+    try {
+        dirHandle = await fs.promises.open(dirPath, 'r');
+        await dirHandle.sync();
+    } catch {
+        // Best effort only. Some platforms/filesystems do not support syncing directories.
+    } finally {
+        if (dirHandle) {
+            await dirHandle.close().catch(() => undefined);
+        }
+    }
+}
+
+/**
+ * Crash-safer write: write to a unique temp file, fsync temp, rename over target, fsync directory.
+ * Fails closed if replacement cannot be completed, preserving original file contents.
+ */
+export async function writeFileAtomically(
+    targetPath: string,
+    content: string,
+    options: AtomicWriteOptions = {}
+): Promise<void> {
+    const encoding = options.encoding ?? 'utf-8';
+    const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    const targetDir = path.dirname(targetPath);
+    await fs.promises.mkdir(targetDir, { recursive: true });
+
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const tempPath = buildTempPath(targetPath, attempt);
+        let tempHandle: fs.promises.FileHandle | undefined;
+
+        try {
+            tempHandle = await fs.promises.open(tempPath, 'wx');
+            await tempHandle.writeFile(content, { encoding });
+            await tempHandle.sync();
+            await tempHandle.close();
+            tempHandle = undefined;
+
+            await fs.promises.rename(tempPath, targetPath);
+            await fsyncDirectoryIfPossible(targetDir);
+            return;
+        } catch (error) {
+            lastError = error;
+            if (tempHandle) {
+                await tempHandle.close().catch(() => undefined);
+            }
+            await fs.promises.unlink(tempPath).catch(() => undefined);
+        }
+    }
+
+    throw new Error(
+        `Atomic write failed for "${targetPath}" after ${maxAttempts} attempts. `
+        + `Last error: ${String(lastError)}`
+    );
+}

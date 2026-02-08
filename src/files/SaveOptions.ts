@@ -5,7 +5,7 @@
 export interface SaveOptions {
     /**
      * Whether to skip reload detection for this save
-     * TRUE = This is our own save, don't trigger reload when file watcher detects it
+     * TRUE = This is our own save, suppress matching watcher events via self-save fingerprinting
      * FALSE = Treat as external change (rare - only for external triggers)
      *
      * Default: true (most saves are our own code)

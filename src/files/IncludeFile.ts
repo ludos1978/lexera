@@ -10,6 +10,7 @@ import { PresentationParser } from '../services/export/PresentationParser';
 import { PresentationGenerator } from '../services/export/PresentationGenerator';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
 import { generateTimestamp } from '../constants/FileNaming';
+import { writeFileAtomically } from '../utils/atomicWrite';
 
 /**
  * Include file types supported by the plugin system
@@ -136,8 +137,8 @@ export class IncludeFile extends MarkdownFile {
             const dir = path.dirname(this._absolutePath);
             await fs.promises.mkdir(dir, { recursive: true });
 
-            // Write file
-            await fs.promises.writeFile(this._absolutePath, content, 'utf-8');
+            // Write file atomically to avoid partial/truncated saves.
+            await writeFileAtomically(this._absolutePath, content, { encoding: 'utf-8' });
 
             this._exists = true;
             this._lastModified = new Date();

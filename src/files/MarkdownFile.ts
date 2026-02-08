@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { createHash } from 'crypto';
 import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
 import { SaveOptions } from './SaveOptions';
@@ -20,6 +21,17 @@ export interface FileChangeEvent {
     changeType: 'content' | 'external' | 'saved' | 'reloaded' | 'conflict';
     timestamp: Date;
 }
+
+interface PendingSelfSaveMarker {
+    id: string;
+    fingerprint: string;
+    length: number;
+    expiresAt: number;
+}
+
+const SELF_SAVE_MARKER_TTL_MS = 5000;
+const SELF_SAVE_EVENT_READ_RETRIES = 3;
+const SELF_SAVE_EVENT_RETRY_DELAY_MS = 30;
 
 /**
  * Abstract base class for all markdown files in the Kanban system.
@@ -53,11 +65,10 @@ export abstract class MarkdownFile implements vscode.Disposable {
     protected _preserveRawContent: boolean = false;    // Raw content should not be regenerated (edited via diff view)
 
     // ============= SAVE STATE (Instance-level, no global registry!) =============
-    // Counter instead of boolean: incremented on each save, decremented on each
-    // watcher fire.  Prevents a rapid second save from having its watcher event
-    // treated as an external change when the first watcher event already consumed
-    // the flag.
-    private _skipReloadCounter: number = 0;
+    // Tracks fingerprints of our own writes so watcher events can be matched
+    // deterministically to self-saves (instead of timing/counter heuristics).
+    private _pendingSelfSaveMarkers: PendingSelfSaveMarker[] = [];
+    private _nextSelfSaveMarkerId = 0;
 
     // ============= CHANGE DETECTION =============
     protected _fileWatcher?: vscode.FileSystemWatcher;
@@ -508,12 +519,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
         };
         const transactionId = MarkdownFile._saveTransactionManager.beginTransaction(this._relativePath, originalState);
         const attemptedContent = this._content;
-
-        // Pause file watcher before saving to prevent triggering "external" change
-        const wasWatching = this._isWatching;
-        if (wasWatching) {
-            this.stopWatching();
-        }
+        let selfSaveMarkerId: string | null = null;
 
         try {
             // Validate before saving unless explicitly skipped.
@@ -526,23 +532,11 @@ export abstract class MarkdownFile implements vscode.Disposable {
             }
 
             const expectedContent = attemptedContent;
+            if (skipReloadDetection) {
+                selfSaveMarkerId = this._registerPendingSelfSaveMarker(expectedContent);
+            }
             await this.writeToDisk(expectedContent);
             await this._verifyContentWasPersisted(expectedContent);
-
-            // CRITICAL: Increment counter AFTER successful write (not before!)
-            // This prevents counter from being wrong if write fails.
-            // Safety timeout: the watcher is stopped during save, so the filesystem
-            // event may be lost (never delivered to the new watcher). If no event
-            // consumes this counter within 3s, decay it to prevent permanently
-            // blocking external change detection.
-            if (skipReloadDetection) {
-                this._skipReloadCounter++;
-                setTimeout(() => {
-                    if (this._skipReloadCounter > 0) {
-                        this._skipReloadCounter--;
-                    }
-                }, 3000);
-            }
 
             // Update state after successful write
             this._baseline = this._content;
@@ -558,6 +552,9 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // TRANSACTION: Rollback on failure
             console.error(`[${this.getFileType()}] Save failed, rolling back:`, error);
             MarkdownFile._saveTransactionManager.rollbackTransaction(this._relativePath, transactionId);
+            if (selfSaveMarkerId) {
+                this._removePendingSelfSaveMarker(selfSaveMarkerId);
+            }
 
             // Restore original state
             this._content = originalState.content;
@@ -594,11 +591,6 @@ export abstract class MarkdownFile implements vscode.Disposable {
                 + `Original error: ${saveErrorMessage}.${backupFailureDetail}`
             );
         } finally {
-            // Resume file watcher after save
-            if (wasWatching) {
-                this.startWatching();
-            }
-
             // PERFORMANCE: End operation in coordinator
             MarkdownFile._watcherCoordinator.endOperation(this._relativePath, 'save');
         }
@@ -866,27 +858,14 @@ export abstract class MarkdownFile implements vscode.Disposable {
      * Handle file system change detected by watcher
      */
     protected async _onFileSystemChange(changeType: 'modified' | 'deleted' | 'created'): Promise<void> {
-
-        // CRITICAL: If our own save produced this watcher event, decrement the
-        // counter and skip external change handling.  Using a counter instead of
-        // a boolean ensures that rapid consecutive saves each consume exactly one
-        // watcher event.
-        if (this._skipReloadCounter > 0) {
-            this._skipReloadCounter--;
-
-            // Only skip reload for 'modified' events (our own save)
-            if (changeType === 'modified') {
-                this._hasFileSystemChanges = false; // No need to mark as external
-                return; // Skip external change handling
-            }
-
-            // For 'deleted' or 'created', counter was set but file state changed unexpectedly
-            // Continue to handle as external change (don't skip)
+        if (await this._isExpectedSelfSaveEvent(changeType)) {
+            this._hasFileSystemChanges = false;
+            return;
         }
 
         // All external modifications go through the batched import dialog.
         // No silent reloads — the user always decides whether to import.
-        // (Our own saves are already skipped above via _skipReloadCounter.)
+        // (Our own saves are already skipped above via fingerprint matching.)
 
         // CRITICAL: If user is in edit mode, stop editing IMMEDIATELY before any processing
         // This prevents board corruption when external changes occur during editing
@@ -1007,6 +986,82 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
     private async _delay(ms: number): Promise<void> {
         await new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private _createContentFingerprint(content: string): { fingerprint: string; length: number } {
+        const normalized = this._normalizeLineEndings(content);
+        const fingerprint = createHash('sha256').update(normalized).digest('hex');
+        return {
+            fingerprint,
+            length: normalized.length
+        };
+    }
+
+    private _registerPendingSelfSaveMarker(content: string): string {
+        this._pruneExpiredSelfSaveMarkers();
+        const { fingerprint, length } = this._createContentFingerprint(content);
+        const markerId = `self-save-${++this._nextSelfSaveMarkerId}-${Date.now()}`;
+        this._pendingSelfSaveMarkers.push({
+            id: markerId,
+            fingerprint,
+            length,
+            expiresAt: Date.now() + SELF_SAVE_MARKER_TTL_MS
+        });
+        return markerId;
+    }
+
+    private _removePendingSelfSaveMarker(markerId: string): void {
+        const index = this._pendingSelfSaveMarkers.findIndex(marker => marker.id === markerId);
+        if (index >= 0) {
+            this._pendingSelfSaveMarkers.splice(index, 1);
+        }
+    }
+
+    private _pruneExpiredSelfSaveMarkers(): void {
+        const now = Date.now();
+        this._pendingSelfSaveMarkers = this._pendingSelfSaveMarkers.filter(marker => marker.expiresAt > now);
+    }
+
+    private async _isExpectedSelfSaveEvent(changeType: 'modified' | 'deleted' | 'created'): Promise<boolean> {
+        this._pruneExpiredSelfSaveMarkers();
+        if (this._pendingSelfSaveMarkers.length === 0) {
+            return false;
+        }
+
+        const diskFingerprint = await this._readDiskFingerprintForSelfSaveComparison(changeType);
+        if (!diskFingerprint) {
+            return false;
+        }
+
+        const matchIndex = this._pendingSelfSaveMarkers.findIndex(marker =>
+            marker.fingerprint === diskFingerprint.fingerprint
+            && marker.length === diskFingerprint.length
+        );
+        if (matchIndex < 0) {
+            return false;
+        }
+
+        this._pendingSelfSaveMarkers.splice(matchIndex, 1);
+        return true;
+    }
+
+    private async _readDiskFingerprintForSelfSaveComparison(
+        _changeType: 'modified' | 'deleted' | 'created'
+    ): Promise<{ fingerprint: string; length: number } | null> {
+        for (let attempt = 0; attempt < SELF_SAVE_EVENT_READ_RETRIES; attempt++) {
+            try {
+                const content = await fs.promises.readFile(this._path, 'utf-8');
+                return this._createContentFingerprint(content);
+            } catch {
+                // Best effort retries: atomic replace can produce brief transient states.
+            }
+
+            if (attempt < SELF_SAVE_EVENT_READ_RETRIES - 1) {
+                await this._delay(SELF_SAVE_EVENT_RETRY_DELAY_MS);
+            }
+        }
+
+        return null;
     }
 
     /**
