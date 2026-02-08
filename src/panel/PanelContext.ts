@@ -47,8 +47,7 @@ export class PanelContext {
 
     // ============= DOCUMENT STATE =============
     private _lastDocumentVersion: number = -1;
-    private _lastDocumentUri?: string;
-    private _trackedDocumentUri?: string;
+    private _documentUri?: string;
     private _pendingBoardUpdate: PendingBoardUpdate | null = null;
     private _panelId: string;
 
@@ -123,8 +122,9 @@ export class PanelContext {
     // ============= DOCUMENT STATE GETTERS =============
 
     get lastDocumentVersion(): number { return this._lastDocumentVersion; }
-    get lastDocumentUri(): string | undefined { return this._lastDocumentUri; }
-    get trackedDocumentUri(): string | undefined { return this._trackedDocumentUri; }
+    get lastDocumentUri(): string | undefined { return this._documentUri; }
+    get trackedDocumentUri(): string | undefined { return this._documentUri; }
+    get documentUri(): string | undefined { return this._documentUri; }
     get pendingBoardUpdate(): PendingBoardUpdate | null { return this._pendingBoardUpdate; }
     get panelId(): string { return this._panelId; }
     get debugMode(): boolean { return this._debugMode; }
@@ -201,17 +201,11 @@ export class PanelContext {
     }
 
     setLastDocumentUri(uri: string | undefined): void {
-        if (this._lastDocumentUri !== uri) {
-            this._log('lastDocumentUri', this._lastDocumentUri, uri);
-            this._lastDocumentUri = uri;
-        }
+        this._setDocumentUri(uri, 'lastDocumentUri');
     }
 
     setTrackedDocumentUri(uri: string | undefined): void {
-        if (this._trackedDocumentUri !== uri) {
-            this._log('trackedDocumentUri', this._trackedDocumentUri, uri);
-            this._trackedDocumentUri = uri;
-        }
+        this._setDocumentUri(uri, 'trackedDocumentUri');
     }
 
     setPendingBoardUpdate(update: PendingBoardUpdate | null): void {
@@ -235,6 +229,13 @@ export class PanelContext {
         if (current !== value) {
             (this as any)[`_${name}`] = value;
             this._log(name, current, value);
+        }
+    }
+
+    private _setDocumentUri(uri: string | undefined, source: 'lastDocumentUri' | 'trackedDocumentUri'): void {
+        if (this._documentUri !== uri) {
+            this._log(source, this._documentUri, uri);
+            this._documentUri = uri;
         }
     }
 

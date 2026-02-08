@@ -24,7 +24,10 @@ interface ActiveOperation {
  */
 interface QueuedOperation {
     operation: string;
-    callback: () => Promise<void>;
+    filePath: string;
+    timeoutMs: number;
+    resolve: () => void;
+    reject: (error: Error) => void;
 }
 
 /**
@@ -62,39 +65,20 @@ export class WatcherCoordinator {
         if (existing) {
             // Queue the operation
             return new Promise((resolve, reject) => {
-                if (!this.operationQueue.has(normalizedPath)) {
-                    this.operationQueue.set(normalizedPath, []);
-                }
-                this.operationQueue.get(normalizedPath)!.push({
+                const queue = this.operationQueue.get(normalizedPath) ?? [];
+                queue.push({
                     operation,
-                    callback: async () => {
-                        try {
-                            await this.startOperation(filePath, operation, timeout);
-                            resolve();
-                        } catch (error) {
-                            reject(error);
-                        }
-                    }
+                    filePath,
+                    timeoutMs: timeout,
+                    resolve,
+                    reject: (error: Error) => reject(error)
                 });
+                this.operationQueue.set(normalizedPath, queue);
             });
         }
 
-        // Start the operation
-        return new Promise((resolve, reject) => {
-            const timeoutHandle = setTimeout(() => {
-                console.error(`[WatcherCoordinator] Operation "${operation}" timed out on ${normalizedPath}`);
-                this.endOperation(filePath, operation);
-                reject(new Error(`Operation timeout: ${operation}`));
-            }, timeout);
-
-            this.activeOperations.set(normalizedPath, {
-                operation,
-                startTime: new Date(),
-                timeout: timeoutHandle
-            });
-
-            resolve();
-        });
+        // Start the operation immediately when no active operation exists.
+        return this._activateOperation(normalizedPath, filePath, operation, timeout);
     }
 
     /**
@@ -107,15 +91,57 @@ export class WatcherCoordinator {
         if (existing && existing.operation === operation) {
             clearTimeout(existing.timeout);
             this.activeOperations.delete(normalizedPath);
-
-            // Process next queued operation
-            const queue = this.operationQueue.get(normalizedPath);
-            if (queue && queue.length > 0) {
-                const next = queue.shift()!;
-                next.callback().catch(error => {
-                    console.error(`[WatcherCoordinator] Queued operation failed:`, error);
-                });
-            }
+            this._startNextQueuedOperation(normalizedPath);
+            return;
         }
+
+        if (existing && existing.operation !== operation) {
+            console.warn(
+                `[WatcherCoordinator] Ignored endOperation("${operation}") for ${normalizedPath}; `
+                + `active operation is "${existing.operation}".`
+            );
+        }
+    }
+
+    private _startNextQueuedOperation(normalizedPath: string): void {
+        const queue = this.operationQueue.get(normalizedPath);
+        if (!queue || queue.length === 0) {
+            this.operationQueue.delete(normalizedPath);
+            return;
+        }
+
+        const next = queue.shift()!;
+        if (queue.length === 0) {
+            this.operationQueue.delete(normalizedPath);
+        }
+
+        this._activateOperation(normalizedPath, next.filePath, next.operation, next.timeoutMs)
+            .then(() => next.resolve())
+            .catch(error => {
+                next.reject(error);
+            });
+    }
+
+    private async _activateOperation(
+        normalizedPath: string,
+        filePath: string,
+        operation: string,
+        timeoutMs: number
+    ): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const timeoutHandle = setTimeout(() => {
+                console.error(`[WatcherCoordinator] Operation "${operation}" timed out on ${normalizedPath}`);
+                this.endOperation(filePath, operation);
+                reject(new Error(`Operation timeout: ${operation}`));
+            }, timeoutMs);
+
+            this.activeOperations.set(normalizedPath, {
+                operation,
+                startTime: new Date(),
+                timeout: timeoutHandle
+            });
+
+            resolve();
+        });
     }
 }

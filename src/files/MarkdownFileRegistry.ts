@@ -25,6 +25,20 @@ export interface RegistryChangeEvent {
     timestamp: Date;
 }
 
+export interface RegistryConsistencyIssue {
+    code: string;
+    severity: 'warning' | 'error';
+    message: string;
+    details?: Record<string, unknown>;
+}
+
+export interface RegistryConsistencyReport {
+    checkedAt: string;
+    fileCount: number;
+    issueCount: number;
+    issues: RegistryConsistencyIssue[];
+}
+
 export class MarkdownFileRegistry implements vscode.Disposable {
     // ============= FILE STORAGE =============
     private _files: Map<string, MarkdownFile> = new Map();        // Path -> File
@@ -82,6 +96,25 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         return this._filesByRelativePath.get(normalized);
     }
 
+    /**
+     * Remove every absolute/relative index entry that points to the given file instance.
+     * Used before re-registering moved files and when replacing duplicate instances.
+     */
+    private _removeFileIndexes(file: MarkdownFile): void {
+        for (const [absoluteKey, candidate] of Array.from(this._files.entries())) {
+            if (candidate === file) {
+                this._files.delete(absoluteKey);
+            }
+        }
+
+        for (const [relativeKey, candidate] of Array.from(this._filesByRelativePath.entries())) {
+            if (candidate === file) {
+                this._filesByRelativePath.delete(relativeKey);
+                this._registrationCache.delete(relativeKey);
+            }
+        }
+    }
+
     // ============= MESSAGE HANDLER ACCESS =============
 
     /**
@@ -121,18 +154,30 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         const path = file.getPath();
         const normalizedRelativePath = file.getNormalizedRelativePath();
 
-        // PERFORMANCE: Check registration cache first
-        if (this._registrationCache.has(normalizedRelativePath)) {
+        const existingAbsolute = this._files.get(path);
+        const existingRelative = this._filesByRelativePath.get(normalizedRelativePath);
+        if (existingAbsolute === file && existingRelative === file) {
+            this._registrationCache.add(normalizedRelativePath);
             return;
         }
 
-        // FOUNDATION-1: Check for duplicates BEFORE registering (collision detection)
-        const existingFile = this._filesByRelativePath.get(normalizedRelativePath);
-        if (existingFile && existingFile !== file) {
-            console.warn(`[MarkdownFileRegistry] Duplicate file detected: ${normalizedRelativePath} (overwriting)`);
-            existingFile.dispose();
+        // Remove displaced files first so stale indexes do not survive replacements.
+        const displacedFiles = new Set<MarkdownFile>();
+        if (existingAbsolute && existingAbsolute !== file) {
+            displacedFiles.add(existingAbsolute);
+        }
+        if (existingRelative && existingRelative !== file) {
+            displacedFiles.add(existingRelative);
         }
 
+        for (const displaced of displacedFiles) {
+            console.warn(`[MarkdownFileRegistry] Replacing duplicate file registration: ${displaced.getRelativePath()}`);
+            this._removeFileIndexes(displaced);
+            displaced.dispose();
+        }
+
+        // Clear any stale indexes for the same file instance (e.g. file move/path refresh).
+        this._removeFileIndexes(file);
 
         // PERFORMANCE: Add to registration cache
         this._registrationCache.add(normalizedRelativePath);
@@ -257,6 +302,87 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      */
     public getAll(): MarkdownFile[] {
         return Array.from(this._files.values());
+    }
+
+    /**
+     * Verify registry index consistency and detect duplicated/stale entries.
+     * Useful for debug-mode validation and fail-closed diagnostics.
+     */
+    public getConsistencyReport(): RegistryConsistencyReport {
+        const issues: RegistryConsistencyIssue[] = [];
+        const uniqueFiles = new Set<MarkdownFile>();
+        const fileToAbsoluteKeys = new Map<MarkdownFile, string[]>();
+
+        for (const [absoluteKey, file] of this._files.entries()) {
+            uniqueFiles.add(file);
+            const keys = fileToAbsoluteKeys.get(file) ?? [];
+            keys.push(absoluteKey);
+            fileToAbsoluteKeys.set(file, keys);
+
+            const livePath = file.getPath();
+            if (absoluteKey !== livePath) {
+                issues.push({
+                    code: 'absolute-key-stale',
+                    severity: 'error',
+                    message: 'Absolute file index key diverged from file path.',
+                    details: {
+                        absoluteKey,
+                        livePath,
+                        relativePath: file.getRelativePath()
+                    }
+                });
+            }
+        }
+
+        for (const [file, absoluteKeys] of fileToAbsoluteKeys.entries()) {
+            if (absoluteKeys.length <= 1) {
+                continue;
+            }
+            issues.push({
+                code: 'duplicate-absolute-entries',
+                severity: 'error',
+                message: 'Same file instance is indexed by multiple absolute keys.',
+                details: {
+                    relativePath: file.getRelativePath(),
+                    absoluteKeys
+                }
+            });
+        }
+
+        for (const [normalizedRelativeKey, file] of this._filesByRelativePath.entries()) {
+            const expectedRelativeKey = file.getNormalizedRelativePath();
+            if (normalizedRelativeKey !== expectedRelativeKey) {
+                issues.push({
+                    code: 'relative-key-stale',
+                    severity: 'warning',
+                    message: 'Relative file index key diverged from file normalized relative path.',
+                    details: {
+                        normalizedRelativeKey,
+                        expectedRelativeKey,
+                        absolutePath: file.getPath()
+                    }
+                });
+            }
+
+            if (!uniqueFiles.has(file)) {
+                issues.push({
+                    code: 'orphan-relative-entry',
+                    severity: 'error',
+                    message: 'Relative index references a file missing from absolute index.',
+                    details: {
+                        normalizedRelativeKey,
+                        absolutePath: file.getPath()
+                    }
+                });
+            }
+        }
+
+        return {
+            checkedAt: new Date().toISOString(),
+            fileCount: uniqueFiles.size,
+            issueCount: issues.length,
+            issues
+        };
     }
 
     /**

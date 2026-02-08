@@ -70,6 +70,7 @@ interface IncludeFileDebugInfo {
     path: string;
     type: string;
     exists: boolean;
+    lastAccessErrorCode?: string | null;
     lastModified: string;
     size: string;
     hasInternalChanges: boolean;
@@ -111,6 +112,7 @@ interface TrackedFilesDebugInfo {
         path: string;
         lastModified: string;
         exists: boolean;
+        lastAccessErrorCode?: string | null;
         watcherActive: boolean;
         hasInternalChanges: boolean;
         hasExternalChanges: boolean;
@@ -134,6 +136,26 @@ interface FrontendSnapshotInfo {
     registryNormalizedLength?: number;
     registryIsNormalized?: boolean;
     matchKind?: 'raw' | 'normalized' | 'none';
+}
+
+interface DuplicationVerificationIssue {
+    code: string;
+    severity: 'warning' | 'error';
+    message: string;
+    details?: Record<string, unknown>;
+}
+
+interface DuplicationCopyState {
+    id: string;
+    available: boolean;
+    hash: string | null;
+    length: number | null;
+}
+
+interface DuplicationVerificationResult {
+    copies: DuplicationCopyState[];
+    issueCount: number;
+    issues: DuplicationVerificationIssue[];
 }
 
 type BatchFileAction = 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'skip';
@@ -476,6 +498,16 @@ export class DebugCommands extends SwitchBasedCommand {
                 continue;
             }
 
+            const fileType = file.getFileType();
+            if ((requestAction === 'overwrite' || requestAction === 'overwrite_backup_external') && fileType === 'include-regular') {
+                const message = `Cannot overwrite read-only include file "${file.getRelativePath()}". `
+                    + 'Use reload actions to sync from disk.';
+                results[index].status = 'failed';
+                results[index].error = message;
+                preflightErrors.push(message);
+                continue;
+            }
+
             const dedupeKey = normalizePathForLookup(file.getPath());
             if (seenPaths.has(dedupeKey)) {
                 results[index].status = 'skipped';
@@ -484,8 +516,27 @@ export class DebugCommands extends SwitchBasedCommand {
             }
             seenPaths.add(dedupeKey);
 
+            const accessErrorCode = file.getLastAccessErrorCode?.() ?? null;
+            if (accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS') {
+                const message = `File "${file.getRelativePath()}" is not accessible (${accessErrorCode}). `
+                    + 'Fix file permissions before applying file actions.';
+                results[index].status = 'failed';
+                results[index].error = message;
+                preflightErrors.push(message);
+                continue;
+            }
+
             if ((requestAction === 'overwrite' || requestAction === 'overwrite_backup_external') && file.isDirtyInEditor()) {
                 const message = `Cannot overwrite "${file.getRelativePath()}" while it has unsaved text-editor changes. Save or discard editor changes first.`;
+                results[index].status = 'failed';
+                results[index].error = message;
+                preflightErrors.push(message);
+                continue;
+            }
+
+            if (requestAction === 'load_external' && file.hasAnyUnsavedChanges()) {
+                const message = `Cannot load disk content for "${file.getRelativePath()}" without backup while unsaved changes exist. `
+                    + 'Use "Load from disk (backup kanban)" or save first.';
                 results[index].status = 'failed';
                 results[index].error = message;
                 preflightErrors.push(message);
@@ -919,6 +970,7 @@ export class DebugCommands extends SwitchBasedCommand {
             let matchingFiles = 0;
             let mismatchedFiles = 0;
             let frontendSnapshot: FrontendSnapshotInfo | null = null;
+            let duplicationVerification: DuplicationVerificationResult | null = null;
             let normalizedRegistryMainHash: string | null = null;
             let normalizedRegistryMainLength: number | null = null;
             let registryRawMainHash: string | null = null;
@@ -961,6 +1013,8 @@ export class DebugCommands extends SwitchBasedCommand {
                     console.warn('[DebugCommands] Failed to generate frontend snapshot hash:', error);
                 }
             }
+
+            duplicationVerification = this.collectDuplicationVerification(fileRegistry, frontendBoard);
 
             for (const file of allFiles) {
                 let canonicalContent: string;
@@ -1082,6 +1136,7 @@ export class DebugCommands extends SwitchBasedCommand {
                 missingFiles: 0,
                 fileResults: fileResults,
                 frontendSnapshot: frontendSnapshot,
+                duplicationVerification,
                 summary: `${matchingFiles} files match, ${mismatchedFiles} differ`
             });
         } catch (error) {
@@ -1094,6 +1149,7 @@ export class DebugCommands extends SwitchBasedCommand {
                 mismatchedFiles: 0,
                 missingFiles: 0,
                 fileResults: [],
+                duplicationVerification: null,
                 summary: `Verification failed: ${getErrorMessage(error)}`
             });
         }
@@ -1211,6 +1267,116 @@ export class DebugCommands extends SwitchBasedCommand {
             hash = hash & hash;
         }
         return hash.toString(16);
+    }
+
+    private collectDuplicationVerification(
+        fileRegistry: MarkdownFileRegistry,
+        frontendBoard: unknown
+    ): DuplicationVerificationResult {
+        const issues: DuplicationVerificationIssue[] = [];
+        const copies: DuplicationCopyState[] = [];
+
+        const registryConsistency = fileRegistry.getConsistencyReport();
+        registryConsistency.issues.forEach(issue => {
+            issues.push({
+                code: issue.code,
+                severity: issue.severity,
+                message: issue.message,
+                details: issue.details
+            });
+        });
+
+        const mainFile = fileRegistry.getMainFile();
+        const frontendCopy = this.createBoardCopyState('frontend-board', frontendBoard);
+        const cachedCopy = this.createBoardCopyState('main-cached-board', mainFile?.getCachedBoardFromWebview?.());
+        const parsedCopy = this.createBoardCopyState('main-parsed-board', mainFile?.getBoard?.());
+        const registryContentCopy = this.createContentCopyState('main-registry-content', mainFile?.getContent?.() ?? null);
+
+        copies.push(frontendCopy, cachedCopy, parsedCopy, registryContentCopy);
+
+        this.addCopyMismatchIssue(issues, 'frontend-vs-main-cache', frontendCopy, cachedCopy);
+        this.addCopyMismatchIssue(issues, 'frontend-vs-main-parsed', frontendCopy, parsedCopy);
+        this.addCopyMismatchIssue(issues, 'frontend-vs-main-content', frontendCopy, registryContentCopy);
+        this.addCopyMismatchIssue(issues, 'main-cache-vs-main-content', cachedCopy, registryContentCopy);
+        this.addCopyMismatchIssue(issues, 'main-cache-vs-main-parsed', cachedCopy, parsedCopy);
+        this.addCopyMismatchIssue(issues, 'main-parsed-vs-main-content', parsedCopy, registryContentCopy);
+
+        return {
+            copies,
+            issueCount: issues.length,
+            issues
+        };
+    }
+
+    private createBoardCopyState(id: string, board: unknown): DuplicationCopyState {
+        const markdown = this.tryGenerateMarkdownFromBoard(board);
+        if (markdown === null) {
+            return {
+                id,
+                available: false,
+                hash: null,
+                length: null
+            };
+        }
+        return this.createContentCopyState(id, markdown);
+    }
+
+    private createContentCopyState(id: string, content: string | null): DuplicationCopyState {
+        if (content === null) {
+            return {
+                id,
+                available: false,
+                hash: null,
+                length: null
+            };
+        }
+
+        return {
+            id,
+            available: true,
+            hash: this.computeHash(content),
+            length: content.length
+        };
+    }
+
+    private addCopyMismatchIssue(
+        issues: DuplicationVerificationIssue[],
+        code: string,
+        left: DuplicationCopyState,
+        right: DuplicationCopyState
+    ): void {
+        if (!left.available || !right.available) {
+            return;
+        }
+        if (left.hash === right.hash) {
+            return;
+        }
+
+        issues.push({
+            code,
+            severity: 'warning',
+            message: `State copies diverged (${left.id} != ${right.id}).`,
+            details: {
+                left: { id: left.id, hash: left.hash, length: left.length },
+                right: { id: right.id, hash: right.hash, length: right.length }
+            }
+        });
+    }
+
+    private tryGenerateMarkdownFromBoard(board: unknown): string | null {
+        if (!board || typeof board !== 'object') {
+            return null;
+        }
+        const candidate = board as Partial<KanbanBoard>;
+        if (!Array.isArray(candidate.columns)) {
+            return null;
+        }
+
+        try {
+            return MarkdownKanbanParser.generateMarkdown(candidate as KanbanBoard);
+        } catch {
+            return null;
+        }
     }
 
     private resolveIncludeFrontendContentFromBoard(
@@ -1429,6 +1595,7 @@ export class DebugCommands extends SwitchBasedCommand {
             path: mainFilePath,
             lastModified: mainFile?.getLastModified()?.toISOString() || 'Unknown',
             exists: mainFile?.exists() ?? false,
+            lastAccessErrorCode: mainFile?.getLastAccessErrorCode?.() ?? null,
             watcherActive: mainFile?.isWatcherActive() ?? false,
             hasInternalChanges: mainFile?.hasUnsavedChanges() ?? false,
             hasExternalChanges: mainFile?.hasExternalChanges() ?? false,
@@ -1452,6 +1619,7 @@ export class DebugCommands extends SwitchBasedCommand {
                 path: file.getRelativePath(),
                 type: file.getFileType(),
                 exists: file.exists(),
+                lastAccessErrorCode: file.getLastAccessErrorCode?.() ?? null,
                 lastModified: file.getLastModified()?.toISOString() || 'Unknown',
                 size: 'Unknown',
                 hasInternalChanges: file.hasUnsavedChanges(),

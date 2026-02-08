@@ -28,7 +28,6 @@ let openMode = null;     // null | 'browse' | 'save_conflict' | 'reload_request'
 let conflictId = null;
 let conflictFiles = [];  // from backend message (resolve mode)
 let perFileResolutions = new Map(); // normalizedPath -> { path, action }
-let executedFiles = new Set();      // paths of files that have been executed (saved/reloaded)
 let inFlightFiles = new Set();      // paths currently executing save/reload in backend
 let inFlightTimeouts = new Map();   // normalizedPath -> timeout handle for action acknowledgement watchdog
 let staleActionFiles = new Set();   // paths with timed-out actions; require fresh state sync before new actions
@@ -45,6 +44,7 @@ let diffData = null;        // { kanbanContent, diskContent, baselineContent } o
 let pendingForceWrite = false;
 let lastVerificationResults = null;
 let lastMismatchCount = null;
+let lastDuplicationIssueCount = null;
 
 function normalizeResolutionPath(pathValue) {
     if (!pathValue || typeof pathValue !== 'string') {
@@ -71,18 +71,6 @@ function setResolution(pathValue, action) {
 function getResolutionAction(pathValue) {
     const key = resolutionKey(pathValue);
     return perFileResolutions.get(key)?.action || '';
-}
-
-function markExecuted(pathValue) {
-    const key = resolutionKey(pathValue);
-    if (key) {
-        executedFiles.add(key);
-    }
-}
-
-function isExecuted(pathValue) {
-    const key = resolutionKey(pathValue);
-    return key ? executedFiles.has(key) : false;
 }
 
 function markInFlight(pathValue) {
@@ -195,19 +183,51 @@ const ALL_ACTIONS = [
 ];
 
 function getActionsForFile(file) {
+    const fileType = file.fileType || file.type || '';
+    const isReadOnlyInclude = fileType === 'include-regular' || fileType === 'regular';
+    const accessErrorCode = file.lastAccessErrorCode || null;
+    const isMissing = file.exists === false || accessErrorCode === 'ENOENT';
+    const isInaccessible = accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS';
     const hasExternal = file.hasExternalChanges;
     const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
     const hasEditorUnsaved = !!file.isUnsavedInEditor;
 
+    if (isMissing || isInaccessible) {
+        return ALL_ACTIONS.filter(a => a.value === 'skip');
+    }
+
+    if (isReadOnlyInclude) {
+        if (hasEditorUnsaved || hasKanbanUnsaved) {
+            return ALL_ACTIONS.filter(a =>
+                a.value === 'load_external_backup_mine' || a.value === 'skip'
+            );
+        }
+        if (hasExternal) {
+            return ALL_ACTIONS.filter(a =>
+                a.value === 'load_external' || a.value === 'load_external_backup_mine' || a.value === 'skip'
+            );
+        }
+        return ALL_ACTIONS.filter(a => a.value === 'skip');
+    }
+
     if (hasExternal && hasEditorUnsaved) {
         return ALL_ACTIONS.filter(a =>
-            a.value === 'load_external' || a.value === 'load_external_backup_mine' || a.value === 'skip'
+            a.value === 'load_external_backup_mine' || a.value === 'skip'
         );
     }
 
     if (hasEditorUnsaved) {
         return ALL_ACTIONS.filter(a =>
-            a.value === 'load_external' || a.value === 'load_external_backup_mine' || a.value === 'skip'
+            a.value === 'load_external_backup_mine' || a.value === 'skip'
+        );
+    }
+
+    if (hasExternal && hasKanbanUnsaved) {
+        return ALL_ACTIONS.filter(a =>
+            a.value === 'overwrite'
+            || a.value === 'overwrite_backup_external'
+            || a.value === 'load_external_backup_mine'
+            || a.value === 'skip'
         );
     }
 
@@ -225,8 +245,25 @@ function getActionsForFile(file) {
 }
 
 function getDefaultAction(file) {
+    const fileType = file.fileType || file.type || '';
+    const isReadOnlyInclude = fileType === 'include-regular' || fileType === 'regular';
+    const accessErrorCode = file.lastAccessErrorCode || null;
+    const isMissing = file.exists === false || accessErrorCode === 'ENOENT';
+    const isInaccessible = accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS';
     const hasEditorUnsaved = !!file.isUnsavedInEditor;
     const hasUnsaved = file.hasUnsavedChanges || file.hasInternalChanges || hasEditorUnsaved;
+
+    if (isMissing || isInaccessible) {
+        return '';
+    }
+
+    if (isReadOnlyInclude) {
+        if (hasUnsaved) {
+            return 'load_external_backup_mine';
+        }
+        return file.hasExternalChanges ? 'load_external' : '';
+    }
+
     switch (openMode) {
         case 'save_conflict':
             // Safety default: preserve disk version in a visible backup before overwrite.
@@ -235,7 +272,7 @@ function getDefaultAction(file) {
             }
             return file.hasExternalChanges ? 'overwrite_backup_external' : '';
         case 'reload_request':
-            if (hasEditorUnsaved) {
+            if (hasUnsaved) {
                 return 'load_external_backup_mine';
             }
             return 'load_external';
@@ -274,7 +311,6 @@ function openUnifiedDialog(message) {
     openMode = message.openMode || 'external_change';
     dialogMode = 'resolve';
     perFileResolutions = new Map();
-    executedFiles.clear();
     clearAllInFlightState();
 
     // Set default actions per file using canonical path keys
@@ -313,7 +349,6 @@ function showFileManager() {
     conflictSnapshotToken = null;
     conflictFiles = [];
     perFileResolutions.clear();
-    executedFiles.clear();
     clearAllInFlightState();
 
     window.vscode.postMessage({ type: 'getTrackedFilesDebugInfo' });
@@ -367,7 +402,6 @@ function hideFileManager() {
     conflictFiles = [];
     trackedFilesSnapshotToken = null;
     perFileResolutions.clear();
-    executedFiles.clear();
     clearAllInFlightState();
 
     // Close any open VS Code diff views
@@ -393,34 +427,37 @@ function hideFileManager() {
 // ============= CONFLICT RESOLUTION =============
 
 function cancelConflictResolution() {
+    if (conflictId && window.vscode) {
+        window.vscode.postMessage({
+            type: 'conflictResolution',
+            conflictId: conflictId,
+            cancelled: true,
+            snapshotToken: conflictSnapshotToken || undefined,
+            perFileResolutions: []
+        });
+    }
+    hideFileManager();
+}
+
+function applyConflictResolution() {
     if (inFlightFiles.size > 0) {
-        showFileManagerNotice('Wait for running file actions to finish before closing the conflict dialog.', 'warn', 5000);
+        showFileManagerNotice('Wait for running file actions to finish before applying the conflict resolution.', 'warn', 5000);
         return;
     }
     if (staleActionFiles.size > 0) {
-        showFileManagerNotice('Some actions timed out. Refresh file states before closing the conflict dialog.', 'warn', 5000);
+        showFileManagerNotice('Some actions timed out. Refresh file states before applying the conflict resolution.', 'warn', 5000);
         refreshFileManager();
         return;
     }
 
     if (conflictId && window.vscode) {
-        // Close must never execute new actions implicitly.
-        // If some actions already ran, report completion with all remaining actions skipped.
-        const hasExecutedFiles = executedFiles.size > 0;
-
-        // Force all unresolved entries to skip on close.
-        const resolutions = [];
-        for (const resolution of perFileResolutions.values()) {
-            resolutions.push({
-                path: resolution.path,
-                action: 'skip'
-            });
-        }
+        const resolutions = buildConflictResolutions();
+        const hasPendingActions = resolutions.some(resolution => resolution.action !== 'skip');
 
         window.vscode.postMessage({
             type: 'conflictResolution',
             conflictId: conflictId,
-            cancelled: !hasExecutedFiles,
+            cancelled: !hasPendingActions,
             snapshotToken: conflictSnapshotToken || undefined,
             perFileResolutions: resolutions
         });
@@ -433,10 +470,32 @@ function clearResolutionForFile(filePath) {
     perFileResolutions.delete(resolutionKey(filePath));
 }
 
+function buildConflictResolutions() {
+    const files = conflictFiles && conflictFiles.length > 0
+        ? conflictFiles
+        : buildUnifiedFileList();
+
+    return files.map(file => {
+        const resolutionPath = file.path || file.relativePath || '';
+        const selectedAction = getResolutionAction(file.path) || getResolutionAction(file.relativePath || file.path);
+        const normalizedAction = ALL_ACTIONS.some(actionOption => actionOption.value === selectedAction)
+            ? selectedAction
+            : 'skip';
+        return {
+            path: resolutionPath,
+            action: normalizedAction
+        };
+    });
+}
+
 function onConflictActionChange(selectElement) {
     const filePath = selectElement.dataset.filePath;
     const action = selectElement.value;
     if (filePath === '__all__') return;
+    if (!action) {
+        clearResolutionForFile(filePath);
+        return;
+    }
     setResolution(filePath, action);
 }
 
@@ -450,7 +509,6 @@ function onConflictApplyAll(selectElement) {
         selects.forEach(sel => {
             const filePath = sel.dataset.filePath;
             if (filePath === '__all__') return;
-            if (dialogMode === 'resolve' && isExecuted(filePath)) return;
             if (isStaleAction(filePath)) return;
             const optionExists = Array.from(sel.options).some(opt => opt.value === action);
             if (optionExists) {
@@ -469,7 +527,7 @@ function getSnapshotStatus() {
         return {
             label: 'Snapshot: missing',
             cssClass: 'snapshot-stale',
-            title: 'Conflict snapshot is missing. Refresh and re-open the dialog.'
+            title: 'Conflict snapshot is missing. Close and re-open this dialog before applying actions.'
         };
     }
 
@@ -477,7 +535,9 @@ function getSnapshotStatus() {
         return {
             label: resolveMode ? 'Snapshot: locked, refreshing' : 'Snapshot: refreshing',
             cssClass: 'snapshot-stale',
-            title: 'Action snapshot is stale. Refresh File Manager before running save/reload actions.'
+            title: resolveMode
+                ? 'Conflict snapshot is locked, but action snapshot is stale. Wait for refresh before applying actions.'
+                : 'Action snapshot is stale. Refresh File Manager before running save/reload actions.'
         };
     }
 
@@ -485,7 +545,7 @@ function getSnapshotStatus() {
         label: resolveMode ? 'Snapshot: locked, ready' : 'Snapshot: ready',
         cssClass: 'snapshot-ready',
         title: resolveMode
-            ? 'Conflict snapshot is locked for this dialog and action snapshot is ready.'
+            ? 'Conflict snapshot is locked for this dialog. Use "Apply Selected & Close" to apply selected actions.'
             : 'Action snapshot is ready.'
     };
 }
@@ -524,7 +584,7 @@ function createDialogContent() {
                     <span class="file-manager-timestamp">Updated: ${now}</span>
                 </div>
                 <div class="file-manager-controls">
-                    <button onclick="${isResolve ? 'cancelConflictResolution()' : 'closeDialog()'}" class="file-manager-close">✕</button>
+                    <button onclick="${isResolve ? 'cancelConflictResolution()' : 'closeDialog()'}" class="file-manager-close" title="${isResolve ? 'Close without applying actions' : 'Close'}">✕</button>
                 </div>
             </div>
             <div class="file-manager-content">
@@ -536,7 +596,8 @@ function createDialogContent() {
                 <div class="conflict-footer">
                     <div class="conflict-footer-content">
                         <div class="conflict-footer-buttons">
-                            <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Close</button>
+                            <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Close Without Applying</button>
+                            <button onclick="applyConflictResolution()" class="conflict-btn">Apply Selected & Close</button>
                         </div>
                     </div>
                 </div>
@@ -642,7 +703,8 @@ function createAllFilesArray() {
             name: mainBasename,
             type: 'main',
             isMainFile: true,
-            exists: true,
+            exists: mainFileInfo.exists !== false,
+            lastAccessErrorCode: mainFileInfo.lastAccessErrorCode || null,
             hasInternalChanges: mainFileInfo.hasInternalChanges || false,
             hasExternalChanges: mainFileInfo.hasExternalChanges || false,
             documentVersion: mainFileInfo.documentVersion || 0,
@@ -662,6 +724,7 @@ function createAllFilesArray() {
             type: file.type || 'include',
             isMainFile: false,
             exists: file.exists !== false,
+            lastAccessErrorCode: file.lastAccessErrorCode || null,
             hasInternalChanges: file.hasInternalChanges || false,
             hasExternalChanges: file.hasExternalChanges || false,
             isUnsavedInEditor: file.isUnsavedInEditor || false,
@@ -727,8 +790,7 @@ function createUnifiedTable() {
         const missingFileClass = file.exists === false ? ' missing-file' : '';
         const rowInFlight = isInFlight(file.path);
         const rowStale = isStaleAction(file.path);
-        const rowResolved = dialogMode === 'resolve' && isExecuted(file.path) && !rowInFlight;
-        const rowActionDisabled = rowInFlight || rowResolved || rowStale;
+        const rowActionDisabled = rowInFlight || rowStale;
 
         // --- Status column ---
         const statusBadge = buildStatusBadgeHTML(file);
@@ -795,6 +857,10 @@ function createUnifiedTable() {
         const actionOptions = actions.map(a =>
             `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`
         ).join('');
+        const execDisabled = rowActionDisabled || dialogMode === 'resolve';
+        const execTitle = dialogMode === 'resolve'
+            ? 'In resolve dialogs, selected actions apply when you close the dialog.'
+            : 'Execute action now';
 
         // --- File column ---
         const dirPath = file.relativePath.includes('/')
@@ -832,7 +898,7 @@ function createUnifiedTable() {
                             <option value="">--</option>
                             ${actionOptions}
                         </select>
-                        <button onclick="executeAction(this)" class="action-btn exec-btn" title="Execute action now" ${rowActionDisabled ? 'disabled' : ''}>&#9654;</button>
+                        <button onclick="executeAction(this)" class="action-btn exec-btn" title="${execTitle}" ${execDisabled ? 'disabled' : ''}>&#9654;</button>
                     </div>
                 </td>
                 <td class="col-paths action-cell">
@@ -917,12 +983,24 @@ function createUnifiedTable() {
                         <span class="legend-text">Overwrite actions are blocked while a text editor buffer is dirty.</span>
                     </div>
                     <div class="legend-item">
+                        <span class="legend-icon">Read-only Include</span>
+                        <span class="legend-text">Include-regular files support reload actions only; overwrite is blocked.</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-icon">Missing/Inaccessible</span>
+                        <span class="legend-text">Fix missing files or permissions first; File Manager blocks unsafe save/reload actions.</span>
+                    </div>
+                    <div class="legend-item">
                         <span class="legend-icon">Running</span>
                         <span class="legend-text">Wait for backend completion before closing or re-running file actions.</span>
                     </div>
                     <div class="legend-item">
                         <span class="legend-icon">Apply All</span>
                         <span class="legend-text">Runs as one backend batch with preflight checks before any file action executes.</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="legend-icon">Resolve Mode</span>
+                        <span class="legend-text">Choose actions per file, then use "Apply Selected & Close" to apply exactly once.</span>
                     </div>
                 </div>
             </div>
@@ -1240,13 +1318,21 @@ function restoreDropdownState(tableContainer, state) {
 function buildStatusBadgeHTML(file) {
     const running = isInFlight(file.path);
     const staleAction = isStaleAction(file.path);
-    const applied = dialogMode === 'resolve' && isExecuted(file.path) && !running;
+    const accessErrorCode = file.lastAccessErrorCode || null;
+    const isMissing = file.exists === false || accessErrorCode === 'ENOENT';
+    const isInaccessible = accessErrorCode === 'EACCES' || accessErrorCode === 'EPERM' || accessErrorCode === 'EROFS';
     const hasExternal = file.hasExternalChanges;
     const hasKanbanUnsaved = file.hasUnsavedChanges || file.hasInternalChanges;
     const hasEditorUnsaved = !!file.isUnsavedInEditor;
     const hasUnsaved = hasKanbanUnsaved || hasEditorUnsaved;
     let badge = '';
-    if (hasExternal && hasUnsaved) {
+    if (isMissing) {
+        badge = '<span class="conflict-badge conflict-both" title="File is missing on disk. Save and reload actions are blocked until the file is restored.">Missing</span>';
+    } else if (isInaccessible) {
+        badge = `<span class="conflict-badge conflict-both" title="File exists but is not accessible (${accessErrorCode}). Check file permissions before saving or reloading.">Inaccessible</span>`;
+    } else if (accessErrorCode) {
+        badge = `<span class="conflict-badge conflict-both" title="File I/O error (${accessErrorCode}). Review the file system state before saving.">I/O Error</span>`;
+    } else if (hasExternal && hasUnsaved) {
         badge = '<span class="conflict-badge conflict-both" title="Both external and unsaved changes">External + Unsaved</span>';
     } else if (hasExternal) {
         badge = '<span class="conflict-badge conflict-external" title="External changes detected">External</span>';
@@ -1265,9 +1351,6 @@ function buildStatusBadgeHTML(file) {
     }
     if (staleAction) {
         badge += ' <span class="conflict-badge conflict-stale-action" title="Action response timed out. Refresh file states before retrying.">Needs Refresh</span>';
-    }
-    if (applied) {
-        badge += ' <span class="conflict-badge conflict-resolved" title="Action already applied in this dialog">Applied</span>';
     }
     return badge;
 }
@@ -1395,7 +1478,7 @@ function verifyContentSync(silent = false) {
         if (!silent) showFileManagerNotice('Error: vscode API not available', 'error');
         return;
     }
-    const frontendSnapshot = window.cachedBoard || window.currentBoard;
+    const frontendSnapshot = window.cachedBoard || null;
     window.vscode.postMessage({
         type: 'verifyContentSync',
         frontendBoard: frontendSnapshot
@@ -1416,7 +1499,47 @@ function requestFileManagerSyncRefresh() {
 
 function showVerificationResults(results) {
     lastVerificationResults = results;
-    const resultClass = results.mismatchedFiles > 0 ? 'verification-warning' : 'verification-success';
+    const duplicationVerification = results.duplicationVerification || null;
+    const duplicationIssueCount = duplicationVerification?.issueCount || 0;
+    const duplicationIssues = Array.isArray(duplicationVerification?.issues)
+        ? duplicationVerification.issues
+        : [];
+    const duplicationCopies = Array.isArray(duplicationVerification?.copies)
+        ? duplicationVerification.copies
+        : [];
+    const formatHash = (hash) => hash ? String(hash).substring(0, 8) : 'n/a';
+
+    const duplicationIssuesHtml = duplicationIssues.length > 0
+        ? duplicationIssues.map(issue => {
+            const details = issue.details
+                ? `<div class="file-result-hashes">Details: ${JSON.stringify(issue.details)}</div>`
+                : '';
+            return `
+                <div class="file-result-item ${issue.severity === 'error' ? 'mismatch' : ''}">
+                    <div class="file-result-name">${issue.code}</div>
+                    <div class="file-result-status">${issue.message}</div>
+                    ${details}
+                </div>
+            `;
+        }).join('')
+        : '<div class="file-result-item match"><div class="file-result-status">No duplication issues detected.</div></div>';
+
+    const duplicationCopiesHtml = duplicationCopies.length > 0
+        ? duplicationCopies.map(copy => `
+            <div class="file-result-item ${copy.available ? '' : 'mismatch'}">
+                <div class="file-result-name">${copy.id}</div>
+                <div class="file-result-status">${copy.available ? 'available' : 'missing'}</div>
+                <div class="file-result-hashes">
+                    <div>Hash: ${formatHash(copy.hash)}</div>
+                    <div>Length: ${copy.length ?? 'n/a'} chars</div>
+                </div>
+            </div>
+        `).join('')
+        : '<div class="file-result-item"><div class="file-result-status">No copy-state metadata provided.</div></div>';
+
+    const resultClass = (results.mismatchedFiles > 0 || duplicationIssueCount > 0)
+        ? 'verification-warning'
+        : 'verification-success';
     const resultsHtml = `
         <div class="verification-results-overlay" id="verification-results">
             <div class="verification-dialog ${resultClass}">
@@ -1438,6 +1561,10 @@ function showVerificationResults(results) {
                             <span class="stat-label">Mismatched:</span>
                             <span class="stat-value">${results.mismatchedFiles}</span>
                         </div>
+                        <div class="summary-stat ${duplicationIssueCount > 0 ? 'status-warn' : 'status-good'}">
+                            <span class="stat-label">Duplication Issues:</span>
+                            <span class="stat-value">${duplicationIssueCount}</span>
+                        </div>
                     </div>
                     <div class="verification-details">
                         ${results.frontendSnapshot ? `
@@ -1451,6 +1578,22 @@ function showVerificationResults(results) {
                             </div>
                         </div>
                         ` : ''}
+                        ${duplicationIssueCount > 0 ? `
+                        <div class="verification-summary" style="margin-bottom: 12px;">
+                            <div class="summary-stat status-warn">
+                                <span class="stat-label">Duplication Verification:</span>
+                                <span class="stat-value">${duplicationIssueCount} issue(s) detected</span>
+                            </div>
+                        </div>
+                        ` : ''}
+                        <strong>State Copy Hashes:</strong>
+                        <div class="file-results-list" style="margin-bottom: 12px;">
+                            ${duplicationCopiesHtml}
+                        </div>
+                        <strong>Duplication Verification Issues:</strong>
+                        <div class="file-results-list" style="margin-bottom: 12px;">
+                            ${duplicationIssuesHtml}
+                        </div>
                         <strong>File Details:</strong>
                         <div class="file-results-list">
                             ${results.fileResults.map(file => `
@@ -1620,10 +1763,6 @@ function executeAction(buttonElement) {
         refreshFileManager();
         return;
     }
-    if (dialogMode === 'resolve' && isExecuted(filePath)) {
-        showFileManagerNotice('Action already applied for this file in this conflict dialog.', 'info', 3500);
-        return;
-    }
     if (isInFlight(filePath)) {
         showFileManagerNotice('Action already running for this file. Wait for completion before retrying.', 'warn', 4000);
         return;
@@ -1642,6 +1781,12 @@ function executeAction(buttonElement) {
     setResolution(filePath, action);
 
     window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, action });
+
+    if (dialogMode === 'resolve') {
+        showFileManagerNotice('Action selected. Use "Apply Selected & Close" to run selected conflict actions.', 'info', 3000);
+        updateDialogContent(true);
+        return;
+    }
 
     if (action === 'skip') {
         showFileManagerNotice('Skip selected. No file action executed.', 'info', 2500);
@@ -1722,12 +1867,6 @@ function executeAllActions() {
         }
 
         const resolutions = targetFiles.map(file => {
-            if (isExecuted(file.path)) {
-                return {
-                    path: file.path,
-                    action: 'skip'
-                };
-            }
             const allowed = getActionsForFile(file).some(item => item.value === action);
             return {
                 path: file.path,
@@ -1916,6 +2055,7 @@ function initializeFileManager() {
     window.openUnifiedDialog = openUnifiedDialog;
     window.requestOpenFileDialog = requestOpenFileDialog;
     window.cancelConflictResolution = cancelConflictResolution;
+    window.applyConflictResolution = applyConflictResolution;
     window.onConflictActionChange = onConflictActionChange;
     window.onConflictApplyAll = onConflictApplyAll;
     window.closeDialog = closeDialog;
@@ -1997,10 +2137,6 @@ function initializeFileManager() {
 
                             if (result.status === 'applied') {
                                 appliedCount++;
-                                if (dialogMode === 'resolve') {
-                                    markExecuted(result.path);
-                                    clearResolutionForFile(result.path);
-                                }
                             } else if (result.status === 'failed') {
                                 failedCount++;
                                 if (!firstError && result.error) {
@@ -2065,6 +2201,29 @@ function initializeFileManager() {
                         showFileManagerNotice('Consistency restored: all tracked files are synchronized.', 'info', 3000);
                     }
                     lastMismatchCount = mismatchCount;
+                }
+                if (message.duplicationVerification && typeof message.duplicationVerification.issueCount === 'number') {
+                    const issueCount = message.duplicationVerification.issueCount;
+                    if (issueCount > 0 && issueCount !== lastDuplicationIssueCount) {
+                        const firstIssue = Array.isArray(message.duplicationVerification.issues)
+                            ? message.duplicationVerification.issues[0]
+                            : null;
+                        const firstIssueText = firstIssue?.code
+                            ? ` First issue: ${firstIssue.code}.`
+                            : '';
+                        showFileManagerNotice(
+                            `Data duplication verification detected ${issueCount} issue(s). Review sync state before saving.${firstIssueText}`,
+                            'warn',
+                            7000
+                        );
+                    } else if (issueCount === 0 && (lastDuplicationIssueCount || 0) > 0) {
+                        showFileManagerNotice(
+                            'Data duplication verification passed: no duplicate state sources detected.',
+                            'info',
+                            3500
+                        );
+                    }
+                    lastDuplicationIssueCount = issueCount;
                 }
                 if (fileManagerVisible && fileManagerElement) {
                     updateDialogContent();

@@ -9,11 +9,29 @@ window.cachedShortcuts = window.cachedShortcuts || {};
 
 // Global variables
 let currentFileInfo = null;
-let currentBoard = null;
-window.currentBoard = currentBoard; // Expose to window for file manager verification
 let fileContextErrorState = null;
 window.fileContextErrorActive = false;
 // Note: lastClipboardCheck, clipboardCardData, CLIPBOARD_CHECK_THROTTLE are declared in clipboardHandler.js
+
+// Keep only one board state copy in the webview: window.cachedBoard.
+// currentBoard remains as a compatibility alias used by older modules.
+function installCurrentBoardAlias() {
+    const existingValue = window.currentBoard;
+    if (!window.cachedBoard && existingValue) {
+        window.cachedBoard = existingValue;
+    }
+
+    Object.defineProperty(window, 'currentBoard', {
+        configurable: true,
+        get() {
+            return window.cachedBoard || null;
+        },
+        set(value) {
+            window.cachedBoard = value || null;
+        }
+    });
+}
+installCurrentBoardAlias();
 
 // Note: window.tagColors is set by backend in boardUpdate message
 // Do NOT initialize to {} here - it prevents actual config from loading!
@@ -139,6 +157,8 @@ function setDebugMode(enabled, options = {}) {
         });
     }
 }
+
+window.setDebugMode = setDebugMode;
 
 function toggleDebugMode() {
     setDebugMode(!window.kanbanDebug.enabled, { source: 'manual-toggle' });
@@ -1459,7 +1479,9 @@ function applyColumnWidth(size, skipRender = false) {
         // Trigger a re-render to restore span classes from column titles
         // Skip during initial config to avoid duplicate renders
         if (window.cachedBoard && !skipRender && !window.applyingInitialConfig) {
-            renderBoard(window.cachedBoard, { skipRender: false });
+            if (typeof window.renderBoard === 'function') {
+                window.renderBoard();
+            }
         }
     }
 }
@@ -1508,8 +1530,10 @@ function applyLayoutRows(rows) {
     styleManager.applyLayoutRows(rows);
 
     // Re-render the board to apply row layout (skip during initial config to avoid duplicate renders)
-    if (currentBoard && !window.applyingInitialConfig) {
-        renderBoard();
+    if (window.cachedBoard && !window.applyingInitialConfig) {
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
     }
 }
 
@@ -1670,7 +1694,9 @@ function applyTagVisibility(setting) {
 
     // Trigger re-render to apply text filtering changes (skip during initial config to avoid duplicate renders)
     if (window.cachedBoard && !window.applyingInitialConfig) {
-        renderBoard(window.cachedBoard, { skipRender: false });
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
 
         // Preserve column width after re-render
         setTimeout(() => {
@@ -1697,7 +1723,9 @@ function applyHtmlCommentRenderMode(mode) {
 
     // Trigger re-render to apply changes (skip during initial config to avoid duplicate renders)
     if (window.cachedBoard && !window.applyingInitialConfig) {
-        renderBoard(window.cachedBoard, { skipRender: false });
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
 
         // Preserve column width after re-render
         setTimeout(() => {
@@ -1723,7 +1751,9 @@ function applyHtmlContentRenderMode(mode) {
 
     // Trigger re-render to apply changes (skip during initial config to avoid duplicate renders)
     if (window.cachedBoard && !window.applyingInitialConfig) {
-        renderBoard(window.cachedBoard, { skipRender: false });
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
 
         // Preserve column width after re-render
         setTimeout(() => {
@@ -1813,15 +1843,15 @@ function setTaskSectionHeight(height) {
 // Wrapper functions that use the manager with current context
 function updateColumnRowTagWithContext(columnId, newRow) {
     window.rowLayoutManager.updateColumnRowTag(columnId, newRow, {
-        currentBoard,
+        currentBoard: window.cachedBoard,
         cachedBoard: window.cachedBoard,
         postMessage: vscode.postMessage
     });
 }
 function cleanupRowTagsWithContext() {
     window.rowLayoutManager.cleanupRowTags({
-        currentBoard,
-        renderBoard
+        currentBoard: window.cachedBoard,
+        renderBoard: (typeof window.renderBoard === 'function') ? window.renderBoard : null
     });
 }
 
@@ -2452,8 +2482,6 @@ if (!webviewEventListenersInitialized) {
                     // valid user modifications that should persist through undo/redo operations
                 }
             }
-            currentBoard = window.cachedBoard;
-            window.currentBoard = currentBoard; // Expose to window for file manager verification
             if (typeof window.requestFileManagerSyncRefresh === 'function') {
                 window.requestFileManagerSyncRefresh();
             }
@@ -2487,7 +2515,7 @@ if (!webviewEventListenersInitialized) {
             }
 
             // Then detect rows from board and override configuration if different
-            const detectedRows = detectRowsFromBoard(currentBoard);
+            const detectedRows = detectRowsFromBoard(window.cachedBoard);
             if (detectedRows !== currentLayoutRows) {
                 setLayoutRows(detectedRows);
             }
@@ -3453,8 +3481,6 @@ if (!webviewEventListenersInitialized) {
             // 4. finalizeColumnDrop() which calls normalizeAllStackTags()
             if (message.board) {
                 window.cachedBoard = message.board;
-                currentBoard = window.cachedBoard;
-                window.currentBoard = currentBoard;
                 if (typeof window.renderBoard === 'function') {
                     window.renderBoard();
                 }
@@ -6076,10 +6102,12 @@ function applyLayoutPreset(presetKey) {
     // Recalculate board layout if any height-related settings changed
     // Note: layoutRows already triggers renderBoard internally, but we need to ensure
     // other height changes also trigger recalculation
-    if (needsRecalculation && currentBoard) {
+    if (needsRecalculation && window.cachedBoard) {
         // Use setTimeout to ensure all CSS changes are applied first
         setTimeout(() => {
-            renderBoard(); // Full board re-render to recalculate positions
+            if (typeof window.renderBoard === 'function') {
+                window.renderBoard(); // Full board re-render to recalculate positions
+            }
         }, 50);
     }
 }

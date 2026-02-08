@@ -5,6 +5,7 @@ type SnapshotFile = {
     getPath: () => string;
     getFileType: () => string;
     exists: () => boolean;
+    getLastAccessErrorCode: () => string | null;
     hasExternalChanges: () => boolean;
     hasUnsavedChanges: () => boolean;
     hasAnyUnsavedChanges: () => boolean;
@@ -25,6 +26,7 @@ function createFile(path: string, overrides: Partial<SnapshotFile> = {}): Snapsh
         getPath: () => path,
         getFileType: () => 'include-task',
         exists: () => true,
+        getLastAccessErrorCode: () => null,
         hasExternalChanges: () => false,
         hasUnsavedChanges: () => false,
         hasAnyUnsavedChanges: () => false,
@@ -58,6 +60,18 @@ describe('computeTrackedFilesSnapshotToken', () => {
 
         const token1 = computeTrackedFilesSnapshotToken(createRegistry([cleanFile]));
         const token2 = computeTrackedFilesSnapshotToken(createRegistry([changedFile]));
+
+        expect(token1).not.toBe(token2);
+    });
+
+    it('changes when access error state changes', () => {
+        const cleanFile = createFile('/tmp/a.md');
+        const blockedFile = createFile('/tmp/a.md', {
+            getLastAccessErrorCode: () => 'EACCES'
+        });
+
+        const token1 = computeTrackedFilesSnapshotToken(createRegistry([cleanFile]));
+        const token2 = computeTrackedFilesSnapshotToken(createRegistry([blockedFile]));
 
         expect(token1).not.toBe(token2);
     });

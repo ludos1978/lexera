@@ -18,6 +18,8 @@ class TestMarkdownFile extends MarkdownFile {
     public emergencyBackupRequests: string[] = [];
     public externalEvents: Array<'modified' | 'deleted' | 'created'> = [];
     public editorDirty: boolean = false;
+    public onWriteStart?: (content: string) => void;
+    public waitBeforeWrite: Promise<void> | null = null;
 
     constructor(initialContent: string) {
         const randomSuffix = Math.random().toString(36).slice(2, 10);
@@ -42,6 +44,10 @@ class TestMarkdownFile extends MarkdownFile {
 
     async writeToDisk(content: string): Promise<void> {
         this.writeCount++;
+        this.onWriteStart?.(content);
+        if (this.waitBeforeWrite) {
+            await this.waitBeforeWrite;
+        }
         if (this.shouldCorruptWrite) {
             this.diskContent = `corrupted:${content}`;
             await fs.promises.writeFile(this.getPath(), this.diskContent, 'utf8');
@@ -230,6 +236,41 @@ describe('FileSaveService.saveFile with provided content', () => {
         expect(file.writeCount).toBe(1);
         expect(file.getBaseline()).toBe('after');
     });
+
+    it('serializes saves across different panel services for the same file', async () => {
+        const file = new TestMarkdownFile('before');
+        const serviceA = new FileSaveService('panel-a');
+        const serviceB = new FileSaveService('panel-b');
+        const writeOrder: string[] = [];
+
+        let releaseFirstWrite: () => void = () => undefined;
+        file.waitBeforeWrite = new Promise<void>(resolve => {
+            releaseFirstWrite = resolve;
+        });
+        file.onWriteStart = (content) => {
+            writeOrder.push(content);
+        };
+
+        const firstSavePromise = serviceA.saveFile(file, 'first', { skipReloadDetection: false });
+
+        // Let the first save start and block in writeToDisk.
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        const secondSavePromise = serviceB.saveFile(file, 'second', { skipReloadDetection: false });
+
+        // While first write is blocked, second write must not start yet.
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(writeOrder).toEqual(['first']);
+
+        file.waitBeforeWrite = null;
+        releaseFirstWrite();
+
+        await Promise.all([firstSavePromise, secondSavePromise]);
+
+        expect(writeOrder).toEqual(['first', 'second']);
+        expect(file.getBaseline()).toBe('second');
+        expect(file.getContent()).toBe('second');
+    });
 });
 
 describe('MarkdownFile.getContentForBackup', () => {
@@ -290,5 +331,62 @@ describe('MarkdownFile operation keying', () => {
         expect(endSpy).toHaveBeenCalledWith(expectedPath, 'reload');
         expect(beginSpy).toHaveBeenCalledWith(expectedPath, expect.any(Object));
         expect(commitSpy).toHaveBeenCalledWith(expectedPath, expect.any(String));
+    });
+});
+
+describe('MarkdownFile.probeWriteAccess', () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('returns null when target file is writable', async () => {
+        const file = new TestMarkdownFile('before');
+        const accessSpy = jest.spyOn(fs.promises, 'access').mockResolvedValue(undefined);
+
+        const code = await file.probeWriteAccess();
+
+        expect(code).toBeNull();
+        expect(accessSpy).toHaveBeenCalledWith(file.getPath(), fs.constants.W_OK);
+    });
+
+    it('returns null for missing targets when a parent directory is writable', async () => {
+        const file = new TestMarkdownFile('before');
+        const targetPath = file.getPath();
+        const parentDirectory = path.dirname(targetPath);
+
+        jest.spyOn(fs.promises, 'access').mockImplementation(async (probePath) => {
+            if (probePath === targetPath) {
+                throw Object.assign(new Error('missing target'), { code: 'ENOENT' });
+            }
+            if (probePath === parentDirectory) {
+                return;
+            }
+            throw Object.assign(new Error('unexpected path'), { code: 'ENOENT' });
+        });
+
+        const code = await file.probeWriteAccess();
+
+        expect(code).toBeNull();
+    });
+
+    it('returns a permission code when no writable parent exists for a missing target', async () => {
+        const file = new TestMarkdownFile('before');
+        const targetPath = file.getPath();
+        const parentDirectory = path.dirname(targetPath);
+
+        jest.spyOn(fs.promises, 'access').mockImplementation(async (probePath) => {
+            if (probePath === targetPath) {
+                throw Object.assign(new Error('missing target'), { code: 'ENOENT' });
+            }
+            if (probePath === parentDirectory) {
+                throw Object.assign(new Error('permission denied'), { code: 'EACCES' });
+            }
+            throw Object.assign(new Error('unexpected path'), { code: 'ENOENT' });
+        });
+
+        const code = await file.probeWriteAccess();
+
+        expect(code).toBe('EACCES');
+        expect(file.getLastAccessErrorCode()).toBe('EACCES');
     });
 });

@@ -11,6 +11,7 @@ import { FileManager } from '../fileManager';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
 import { SaveOptions } from './SaveOptions';
 import { writeFileAtomically } from '../utils/atomicWrite';
+import { sortColumnsByRow } from '../utils/columnUtils';
 
 /**
  * Represents the main kanban markdown file.
@@ -207,8 +208,14 @@ export class MainKanbanFile extends MarkdownFile {
     public async readFromDisk(): Promise<string | null> {
         try {
             const content = await fs.promises.readFile(this._path, 'utf-8');
+            this._exists = true;
+            this._clearAccessError();
             return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         } catch (error) {
+            this._recordAccessError(error);
+            if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+                this._exists = false;
+            }
             console.error(`[MainKanbanFile] Failed to read file:`, error);
             return null;
         }
@@ -221,6 +228,8 @@ export class MainKanbanFile extends MarkdownFile {
 
         try {
             await writeFileAtomically(this._path, content, { encoding: 'utf-8' });
+            this._exists = true;
+            this._clearAccessError();
 
             // Update document version if document is open
             const document = this._fileManager.getDocument();
@@ -230,6 +239,7 @@ export class MainKanbanFile extends MarkdownFile {
 
             this._lastModified = new Date();
         } catch (error) {
+            this._recordAccessError(error);
             console.error(`[MainKanbanFile] Failed to write file:`, error);
             throw error;
         }
@@ -342,8 +352,14 @@ export class MainKanbanFile extends MarkdownFile {
         const boardToSave = this._cachedBoardFromWebview || this._board;
 
         if (boardToSave) {
-            // Regenerate content from board before saving
-            const content = this._generateMarkdownFromBoard(boardToSave);
+            this._assertBoardSnapshotIsSaveable(boardToSave);
+
+            // Snapshot board state to prevent in-flight mutations from changing the save payload.
+            const boardSnapshot = this._cloneBoardForSave(boardToSave);
+
+            // Regenerate content from board snapshot before saving.
+            const content = this._generateMarkdownFromBoard(boardSnapshot);
+            this._validateGeneratedMarkdownRoundTrip(boardSnapshot, content);
             this._content = content;
         }
 
@@ -364,5 +380,96 @@ export class MainKanbanFile extends MarkdownFile {
         // Use the existing markdown generation logic from MarkdownKanbanParser
         // This ensures consistency with how the main save process generates markdown
         return this._parser.generateMarkdown(board);
+    }
+
+    private _cloneBoardForSave(board: KanbanBoard): KanbanBoard {
+        return JSON.parse(JSON.stringify(board)) as KanbanBoard;
+    }
+
+    private _assertBoardSnapshotIsSaveable(board: KanbanBoard): void {
+        if (!board || board.valid !== true || !Array.isArray(board.columns)) {
+            throw new Error(
+                `[MainKanbanFile] Refusing to save invalid board snapshot for "${this.getRelativePath()}".`
+            );
+        }
+
+        for (const column of board.columns) {
+            if (!column || !Array.isArray(column.tasks)) {
+                throw new Error(
+                    `[MainKanbanFile] Refusing to save malformed board snapshot for "${this.getRelativePath()}".`
+                );
+            }
+        }
+    }
+
+    private _validateGeneratedMarkdownRoundTrip(boardSnapshot: KanbanBoard, generatedContent: string): void {
+        const basePath = path.dirname(this._path);
+        const reparsed = this._parser.parseMarkdown(
+            generatedContent,
+            basePath,
+            undefined,
+            this._path,
+            false
+        ).board;
+
+        if (!reparsed.valid) {
+            throw new Error('[MainKanbanFile] Generated markdown is invalid after save serialization.');
+        }
+
+        const expectedShape = this._createPersistedBoardShape(boardSnapshot);
+        const actualShape = this._createPersistedBoardShape(reparsed);
+        const expectedJson = JSON.stringify(expectedShape);
+        const actualJson = JSON.stringify(actualShape);
+
+        if (expectedJson !== actualJson) {
+            const diffIndex = this._findFirstDiffIndex(expectedJson, actualJson);
+            throw new Error(
+                `[MainKanbanFile] Save serialization mismatch for "${this.getRelativePath()}" `
+                + `(diffIndex=${diffIndex}, expectedShapeLength=${expectedJson.length}, actualShapeLength=${actualJson.length}).`
+            );
+        }
+    }
+
+    private _createPersistedBoardShape(board: KanbanBoard): unknown {
+        const normalizedYaml = board.yamlHeader || board.boardSettings
+            ? this._parser.updateYamlWithBoardSettings(board.yamlHeader, board.boardSettings || {})
+            : null;
+
+        const normalizedColumns = sortColumnsByRow(board.columns).map(column => {
+            if (column.includeMode) {
+                return {
+                    title: column.title,
+                    includeMode: true,
+                    tasks: []
+                };
+            }
+
+            const tasks = column.tasks.map(task => ({
+                title: task.includeMode && task.originalTitle ? task.originalTitle : task.title,
+                description: task.includeMode ? '' : (task.description ?? '')
+            }));
+
+            return {
+                title: column.title,
+                includeMode: false,
+                tasks
+            };
+        });
+
+        return {
+            yamlHeader: normalizedYaml,
+            kanbanFooter: board.kanbanFooter || null,
+            columns: normalizedColumns
+        };
+    }
+
+    private _findFirstDiffIndex(a: string, b: string): number {
+        const max = Math.min(a.length, b.length);
+        for (let i = 0; i < max; i++) {
+            if (a[i] !== b[i]) {
+                return i;
+            }
+        }
+        return max;
     }
 }

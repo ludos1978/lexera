@@ -11,6 +11,7 @@ import { PresentationGenerator } from '../services/export/PresentationGenerator'
 import { safeDecodeURIComponent } from '../utils/stringUtils';
 import { generateTimestamp } from '../constants/FileNaming';
 import { writeFileAtomically } from '../utils/atomicWrite';
+import { SaveOptions } from './SaveOptions';
 
 /**
  * Include file types supported by the plugin system
@@ -81,6 +82,10 @@ export class IncludeFile extends MarkdownFile {
         return this._parentFile;
     }
 
+    public override getPath(): string {
+        return this._ensureAbsolutePathCurrent();
+    }
+
     /**
      * Resolve relative path to absolute path
      * Note: URL decoding is handled in constructor before calling this method
@@ -92,6 +97,27 @@ export class IncludeFile extends MarkdownFile {
 
         const parentDir = path.dirname(parentPath);
         return path.resolve(parentDir, relativePath);
+    }
+
+    private _ensureAbsolutePathCurrent(): string {
+        const resolvedPath = IncludeFile._resolveAbsolutePath(this._relativePath, this._parentFile.getPath());
+        if (resolvedPath === this._absolutePath) {
+            return resolvedPath;
+        }
+
+        const hadWatcher = Boolean(this._fileWatcher);
+        if (hadWatcher) {
+            this.stopWatching();
+        }
+
+        this._absolutePath = resolvedPath;
+        this._path = resolvedPath;
+
+        if (hadWatcher) {
+            this.startWatching();
+        }
+
+        return resolvedPath;
     }
 
     // ============= CONTENT OPERATIONS (for include-task) =============
@@ -112,11 +138,15 @@ export class IncludeFile extends MarkdownFile {
     public async readFromDisk(): Promise<string | null> {
 
         try {
-            const content = await fs.promises.readFile(this._absolutePath, 'utf-8');
+            const absolutePath = this._ensureAbsolutePathCurrent();
+            const content = await fs.promises.readFile(absolutePath, 'utf-8');
+            this._exists = true;
+            this._clearAccessError();
             // CRITICAL: Normalize CRLF to LF (Windows line endings to Unix)
             // This ensures consistent line endings for all parsing operations
             return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         } catch (error) {
+            this._recordAccessError(error);
             if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
                 console.warn(`[${this.getFileType()}] File not found: ${this._absolutePath}`);
                 this._exists = false;
@@ -133,16 +163,19 @@ export class IncludeFile extends MarkdownFile {
     public async writeToDisk(content: string): Promise<void> {
 
         try {
+            const absolutePath = this._ensureAbsolutePathCurrent();
             // Ensure directory exists
-            const dir = path.dirname(this._absolutePath);
+            const dir = path.dirname(absolutePath);
             await fs.promises.mkdir(dir, { recursive: true });
 
             // Write file atomically to avoid partial/truncated saves.
-            await writeFileAtomically(this._absolutePath, content, { encoding: 'utf-8' });
+            await writeFileAtomically(absolutePath, content, { encoding: 'utf-8' });
 
             this._exists = true;
+            this._clearAccessError();
             this._lastModified = new Date();
         } catch (error) {
+            this._recordAccessError(error);
             console.error(`[${this.getFileType()}] Failed to write file:`, error);
             throw error;
         }
@@ -163,7 +196,7 @@ export class IncludeFile extends MarkdownFile {
 
         // Use PresentationParser to convert slides to tasks
         const slides = PresentationParser.parsePresentation(this._content);
-        const tasks = PresentationParser.slidesToTasks(slides, this._path, mainFilePath);
+        const tasks = PresentationParser.slidesToTasks(slides, this._ensureAbsolutePathCurrent(), mainFilePath);
 
         // CRITICAL: Match by POSITION, not title - tasks identified by position
         return tasks.map((task, index) => {
@@ -213,8 +246,9 @@ export class IncludeFile extends MarkdownFile {
 
         try {
             const timestamp = generateTimestamp();
-            const backupDir = path.join(path.dirname(this._absolutePath), '.backups');
-            const filename = path.basename(this._absolutePath);
+            const absolutePath = this._ensureAbsolutePathCurrent();
+            const backupDir = path.join(path.dirname(absolutePath), '.backups');
+            const filename = path.basename(absolutePath);
             const backupPath = path.join(backupDir, `${timestamp}_${label}_${filename}`);
 
             // Ensure backup directory exists
@@ -230,6 +264,16 @@ export class IncludeFile extends MarkdownFile {
             console.error(`[${this.getFileType()}] Failed to create backup:`, error);
             return null;
         }
+    }
+
+    public override async reload(): Promise<void> {
+        this._ensureAbsolutePathCurrent();
+        await super.reload();
+    }
+
+    public override async save(options: SaveOptions = {}): Promise<void> {
+        this._ensureAbsolutePathCurrent();
+        await super.save(options);
     }
 
     // ============= BASELINE CAPTURE FOR INCLUDE FILES =============

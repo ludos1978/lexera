@@ -29,7 +29,7 @@ interface PendingSelfSaveMarker {
     expiresAt: number;
 }
 
-const SELF_SAVE_MARKER_TTL_MS = 5000;
+const SELF_SAVE_MARKER_TTL_MS = 10000;
 const SELF_SAVE_EVENT_READ_RETRIES = 3;
 const SELF_SAVE_EVENT_RETRY_DELAY_MS = 30;
 
@@ -56,6 +56,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
     // ============= BACKEND STATE (File System & VS Code Editor) =============
     protected _exists: boolean = true;
+    protected _lastAccessErrorCode: string | null = null;
     protected _lastModified: Date | null = null;
     protected _documentVersion: number = 0;
     protected _hasFileSystemChanges: boolean = false;  // File changed on disk outside VS Code
@@ -279,6 +280,77 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
     public setExists(value: boolean): void {
         this._exists = value;
+    }
+
+    public getLastAccessErrorCode(): string | null {
+        return this._lastAccessErrorCode;
+    }
+
+    /**
+     * Probe whether this file can be written before starting a save pipeline.
+     * Returns a filesystem error code when blocked (for example EACCES/EPERM/EROFS),
+     * otherwise null when writing should be possible.
+     */
+    public async probeWriteAccess(): Promise<string | null> {
+        try {
+            await fs.promises.access(this._path, fs.constants.W_OK);
+            this._clearAccessError();
+            return null;
+        } catch (error) {
+            const code = this._extractErrorCode(error);
+            if (code === 'ENOENT') {
+                const parentCode = await this._probeWritableParentDirectory(path.dirname(this._path));
+                if (!parentCode) {
+                    this._clearAccessError();
+                    return null;
+                }
+                this._lastAccessErrorCode = parentCode;
+                return parentCode;
+            }
+            this._recordAccessError(error);
+            return this._lastAccessErrorCode;
+        }
+    }
+
+    protected _recordAccessError(error: unknown): void {
+        if (error && typeof error === 'object' && 'code' in error && typeof (error as { code?: unknown }).code === 'string') {
+            this._lastAccessErrorCode = (error as { code: string }).code;
+            return;
+        }
+        this._lastAccessErrorCode = 'UNKNOWN';
+    }
+
+    protected _clearAccessError(): void {
+        this._lastAccessErrorCode = null;
+    }
+
+    private async _probeWritableParentDirectory(startDirectory: string): Promise<string | null> {
+        let currentDirectory = startDirectory;
+
+        while (true) {
+            try {
+                await fs.promises.access(currentDirectory, fs.constants.W_OK);
+                return null;
+            } catch (error) {
+                const code = this._extractErrorCode(error);
+                if (code === 'ENOENT') {
+                    const parentDirectory = path.dirname(currentDirectory);
+                    if (parentDirectory === currentDirectory) {
+                        return code;
+                    }
+                    currentDirectory = parentDirectory;
+                    continue;
+                }
+                return code;
+            }
+        }
+    }
+
+    private _extractErrorCode(error: unknown): string {
+        if (error && typeof error === 'object' && 'code' in error && typeof (error as { code?: unknown }).code === 'string') {
+            return (error as { code: string }).code;
+        }
+        return 'UNKNOWN';
     }
 
     public getLastModified(): Date | null {

@@ -14,6 +14,7 @@ export function computeTrackedFilesSnapshotToken(fileRegistry: MarkdownFileRegis
         path: file.getPath().replace(/\\/g, '/'),
         type: file.getFileType(),
         exists: file.exists(),
+        lastAccessErrorCode: file.getLastAccessErrorCode?.() ?? null,
         hasExternalChanges: file.hasExternalChanges(),
         hasUnsavedChanges: file.hasUnsavedChanges(),
         hasAnyUnsavedChanges: file.hasAnyUnsavedChanges(),

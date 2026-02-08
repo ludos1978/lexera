@@ -28,6 +28,10 @@
         const domIssues = checkDomVsCachedBoard();
         issues.push(...domIssues);
 
+        // Check 1b: Ensure we don't keep divergent board copies in globals.
+        const boardAliasIssues = checkBoardAliasConsistency();
+        issues.push(...boardAliasIssues);
+
         // Check 2: Duplicate IDs in cachedBoard
         const dupIssues = checkDuplicateIds();
         issues.push(...dupIssues);
@@ -39,6 +43,31 @@
         // Check 4: cachedBoard vs savedBoardState (unexpected unsaved changes)
         const saveIssues = checkSavedStateConsistency();
         issues.push(...saveIssues);
+
+        return issues;
+    }
+
+    /**
+     * Check 1b: window.currentBoard must be the same instance as window.cachedBoard.
+     * If they diverge, frontend code is writing board state into two places.
+     */
+    function checkBoardAliasConsistency() {
+        const issues = [];
+        if (!window.cachedBoard && !window.currentBoard) {
+            return issues;
+        }
+
+        if (window.cachedBoard !== window.currentBoard) {
+            issues.push({
+                type: 'board-alias-diverged',
+                severity: 'error',
+                message: 'window.currentBoard diverged from window.cachedBoard',
+                details: {
+                    hasCachedBoard: !!window.cachedBoard,
+                    hasCurrentBoard: !!window.currentBoard
+                }
+            });
+        }
 
         return issues;
     }

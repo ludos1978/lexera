@@ -3,7 +3,10 @@ import { DebugCommands } from '../../commands/DebugCommands';
 type MockFile = {
     getPath: () => string;
     getRelativePath: () => string;
+    getFileType: () => 'main' | 'include-column' | 'include-task' | 'include-regular';
+    getLastAccessErrorCode: () => string | null;
     isDirtyInEditor: () => boolean;
+    hasAnyUnsavedChanges: () => boolean;
     readFromDisk: () => Promise<string | null>;
     getContentForBackup: () => string;
     createVisibleConflictFile: (content: string) => Promise<string | null>;
@@ -20,7 +23,10 @@ function createMockFile(
     return {
         getPath: () => filePath,
         getRelativePath: () => relativePath,
+        getFileType: () => 'include-task',
+        getLastAccessErrorCode: () => null,
         isDirtyInEditor: () => false,
+        hasAnyUnsavedChanges: () => false,
         readFromDisk: async () => 'disk',
         getContentForBackup: () => 'kanban',
         createVisibleConflictFile: async () => `/tmp/${relativePath}-conflict.md`,
@@ -174,6 +180,106 @@ describe('DebugCommands applyBatchFileActions', () => {
         expect(payload.results[1].error).toContain('reload failed');
         expect(payload.results[2].status).toBe('skipped');
         expect(payload.results[2].error).toContain('Batch stopped');
+    });
+
+    it('blocks load_external without backup when unsaved changes exist', async () => {
+        const commands = new DebugCommands() as any;
+        const postMessage = jest.fn();
+        const reload = jest.fn(async () => undefined);
+        const unsavedFile = createMockFile('/tmp/unsaved.md', {
+            hasAnyUnsavedChanges: () => true,
+            reload
+        });
+        const registry = createMockRegistry({
+            '/tmp/unsaved.md': unsavedFile
+        });
+
+        commands.getFileRegistry = () => registry;
+        commands.postMessage = postMessage;
+        commands._validateSnapshotToken = jest.fn(() => null);
+        commands._context = {
+            fileSaveService: { saveFile: jest.fn(async () => undefined) }
+        };
+
+        await commands.handleApplyBatchFileActions({
+            type: 'applyBatchFileActions',
+            snapshotToken: 'snapshot-1',
+            actions: [{ path: '/tmp/unsaved.md', action: 'load_external' }]
+        }, {});
+
+        expect(reload).not.toHaveBeenCalled();
+        const payload = postMessage.mock.calls[0][0];
+        expect(payload.type).toBe('batchFileActionsResult');
+        expect(payload.success).toBe(false);
+        expect(payload.failedCount).toBe(1);
+        expect(payload.results[0].status).toBe('failed');
+        expect(payload.results[0].error).toContain('without backup');
+    });
+
+    it('blocks overwrite actions for read-only include files', async () => {
+        const commands = new DebugCommands() as any;
+        const postMessage = jest.fn();
+        const saveFile = jest.fn(async () => undefined);
+        const readOnlyInclude = createMockFile('/tmp/regular-include.md', {
+            getFileType: () => 'include-regular'
+        });
+        const registry = createMockRegistry({
+            '/tmp/regular-include.md': readOnlyInclude
+        });
+
+        commands.getFileRegistry = () => registry;
+        commands.postMessage = postMessage;
+        commands._validateSnapshotToken = jest.fn(() => null);
+        commands._context = {
+            fileSaveService: { saveFile }
+        };
+
+        await commands.handleApplyBatchFileActions({
+            type: 'applyBatchFileActions',
+            snapshotToken: 'snapshot-1',
+            actions: [{ path: '/tmp/regular-include.md', action: 'overwrite' }]
+        }, {});
+
+        expect(saveFile).not.toHaveBeenCalled();
+        const payload = postMessage.mock.calls[0][0];
+        expect(payload.type).toBe('batchFileActionsResult');
+        expect(payload.success).toBe(false);
+        expect(payload.failedCount).toBe(1);
+        expect(payload.results[0].status).toBe('failed');
+        expect(payload.results[0].error).toContain('read-only include file');
+    });
+
+    it('blocks batch actions when file access errors indicate permission issues', async () => {
+        const commands = new DebugCommands() as any;
+        const postMessage = jest.fn();
+        const saveFile = jest.fn(async () => undefined);
+        const blockedFile = createMockFile('/tmp/blocked.md', {
+            getLastAccessErrorCode: () => 'EACCES'
+        });
+        const registry = createMockRegistry({
+            '/tmp/blocked.md': blockedFile
+        });
+
+        commands.getFileRegistry = () => registry;
+        commands.postMessage = postMessage;
+        commands._validateSnapshotToken = jest.fn(() => null);
+        commands._context = {
+            fileSaveService: { saveFile }
+        };
+
+        await commands.handleApplyBatchFileActions({
+            type: 'applyBatchFileActions',
+            snapshotToken: 'snapshot-1',
+            actions: [{ path: '/tmp/blocked.md', action: 'overwrite' }]
+        }, {});
+
+        expect(saveFile).not.toHaveBeenCalled();
+        const payload = postMessage.mock.calls[0][0];
+        expect(payload.type).toBe('batchFileActionsResult');
+        expect(payload.success).toBe(false);
+        expect(payload.failedCount).toBe(1);
+        expect(payload.results[0].status).toBe('failed');
+        expect(payload.results[0].error).toContain('not accessible');
     });
 
     it('deduplicates actions by resolved file path (relative/absolute aliases)', async () => {

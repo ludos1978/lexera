@@ -1389,7 +1389,7 @@ function renderBoard(options = null) {
                 || column.title?.includes(DELETED_TAG)
                 || column.title?.includes(ARCHIVED_TAG)
             )
-        })
+        }))
         .sort((a, b) => {
             // First sort by row number
             if (a.row !== b.row) {

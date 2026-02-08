@@ -8,6 +8,13 @@ export interface AtomicWriteOptions {
 
 const DEFAULT_MAX_ATTEMPTS = 6;
 
+function formatError(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return String(error);
+}
+
 function buildTempPath(targetPath: string, attempt: number): string {
     const dir = path.dirname(targetPath);
     const ext = path.extname(targetPath);
@@ -23,11 +30,16 @@ async function fsyncDirectoryIfPossible(dirPath: string): Promise<void> {
     try {
         dirHandle = await fs.promises.open(dirPath, 'r');
         await dirHandle.sync();
-    } catch {
+    } catch (error) {
         // Best effort only. Some platforms/filesystems do not support syncing directories.
+        console.warn(`[atomicWrite] Directory fsync skipped for "${dirPath}": ${formatError(error)}`);
     } finally {
         if (dirHandle) {
-            await dirHandle.close().catch(() => undefined);
+            try {
+                await dirHandle.close();
+            } catch (closeError) {
+                console.warn(`[atomicWrite] Failed to close directory handle for "${dirPath}": ${formatError(closeError)}`);
+            }
         }
     }
 }
@@ -47,6 +59,7 @@ export async function writeFileAtomically(
     await fs.promises.mkdir(targetDir, { recursive: true });
 
     let lastError: unknown;
+    let lastCleanupErrors: string[] = [];
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         const tempPath = buildTempPath(targetPath, attempt);
@@ -63,16 +76,33 @@ export async function writeFileAtomically(
             await fsyncDirectoryIfPossible(targetDir);
             return;
         } catch (error) {
+            const cleanupErrors: string[] = [];
             lastError = error;
             if (tempHandle) {
-                await tempHandle.close().catch(() => undefined);
+                try {
+                    await tempHandle.close();
+                } catch (closeError) {
+                    cleanupErrors.push(`close temp handle failed: ${formatError(closeError)}`);
+                }
             }
-            await fs.promises.unlink(tempPath).catch(() => undefined);
+            try {
+                await fs.promises.unlink(tempPath);
+            } catch (unlinkError) {
+                const errorWithCode = unlinkError as NodeJS.ErrnoException;
+                if (errorWithCode.code !== 'ENOENT') {
+                    cleanupErrors.push(`remove temp file failed: ${formatError(unlinkError)}`);
+                }
+            }
+            lastCleanupErrors = cleanupErrors;
         }
     }
 
+    const cleanupSuffix = lastCleanupErrors.length > 0
+        ? ` Cleanup errors: ${lastCleanupErrors.join('; ')}.`
+        : '';
+
     throw new Error(
         `Atomic write failed for "${targetPath}" after ${maxAttempts} attempts. `
-        + `Last error: ${String(lastError)}`
+        + `Last error: ${formatError(lastError)}.${cleanupSuffix}`
     );
 }
