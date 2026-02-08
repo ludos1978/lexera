@@ -920,6 +920,10 @@ function createUnifiedTable() {
                         <span class="legend-icon">Running</span>
                         <span class="legend-text">Wait for backend completion before closing or re-running file actions.</span>
                     </div>
+                    <div class="legend-item">
+                        <span class="legend-icon">Apply All</span>
+                        <span class="legend-text">Runs as one backend batch with preflight checks before any file action executes.</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1556,28 +1560,6 @@ function confirmForceWrite() {
 
 // ============= FILE OPERATIONS =============
 
-function saveIndividualFile(filePath, isMainFile, action = 'overwrite', forceSave = false) {
-    if (!window.vscode) {
-        window.kanbanDebug?.warn('[FileManager.saveIndividualFile] ABORTED: window.vscode undefined');
-        return false;
-    }
-    if (!trackedFilesSnapshotToken) {
-        showFileManagerNotice('File state snapshot missing. Refresh File Manager before saving.', 'warn', 4000);
-        refreshFileManager();
-        return false;
-    }
-    window.kanbanDebug?.warn('[FileManager.saveIndividualFile] Sending save request', { filePath, isMainFile, action, forceSave });
-    window.vscode.postMessage({
-        type: 'saveIndividualFile',
-        filePath: filePath,
-        isMainFile: isMainFile,
-        forceSave: forceSave,
-        snapshotToken: trackedFilesSnapshotToken,
-        action: action
-    });
-    return true;
-}
-
 function findUnifiedFileByPath(filePath) {
     const key = resolutionKey(filePath);
     if (!key) return null;
@@ -1587,27 +1569,6 @@ function findUnifiedFileByPath(filePath) {
         const relativeKey = resolutionKey(file.relativePath || file.path);
         return pathKey === key || relativeKey === key;
     }) || null;
-}
-
-function reloadIndividualFile(filePath, isMainFile, action = 'load_external') {
-    if (!window.vscode) {
-        window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] ABORTED: window.vscode undefined');
-        return false;
-    }
-    if (!trackedFilesSnapshotToken) {
-        showFileManagerNotice('File state snapshot missing. Refresh File Manager before reloading.', 'warn', 4000);
-        refreshFileManager();
-        return false;
-    }
-    window.kanbanDebug?.warn('[FileManager.reloadIndividualFile] Sending reload request', { filePath, isMainFile, action });
-    window.vscode.postMessage({
-        type: 'reloadIndividualFile',
-        filePath: filePath,
-        isMainFile: isMainFile,
-        snapshotToken: trackedFilesSnapshotToken,
-        action: action
-    });
-    return true;
 }
 
 function convertFilePaths(filePath, isMainFile, direction) {
@@ -1648,7 +1609,6 @@ function executeAction(buttonElement) {
         return;
     }
     const filePath = select.dataset.filePath;
-    const isMainFile = select.dataset.isMain === 'true';
     const action = select.value;
 
     if (!filePath) {
@@ -1681,24 +1641,30 @@ function executeAction(buttonElement) {
 
     setResolution(filePath, action);
 
-    window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, isMainFile, action });
+    window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, action });
 
-    switch (action) {
-        case 'overwrite':
-        case 'overwrite_backup_external':
-            if (saveIndividualFile(filePath, isMainFile, action, false)) {
-                markInFlight(filePath);
-            }
-            break;
-        case 'load_external':
-        case 'load_external_backup_mine':
-            if (reloadIndividualFile(filePath, isMainFile, action)) {
-                markInFlight(filePath);
-            }
-            break;
-        default:
-            window.kanbanDebug?.warn(`[FileManager.executeAction] ABORTED: Unknown action: ${action}`);
+    if (action === 'skip') {
+        showFileManagerNotice('Skip selected. No file action executed.', 'info', 2500);
+        updateDialogContent(true);
+        return;
     }
+
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.executeAction] ABORTED: window.vscode undefined');
+        return;
+    }
+    if (!trackedFilesSnapshotToken) {
+        showFileManagerNotice('File state snapshot missing. Refresh File Manager before applying actions.', 'warn', 5000);
+        refreshFileManager();
+        return;
+    }
+
+    markInFlight(filePath);
+    window.vscode.postMessage({
+        type: 'applyBatchFileActions',
+        snapshotToken: trackedFilesSnapshotToken,
+        actions: [{ path: filePath, action }]
+    });
 
     updateDialogContent(true);
 }
@@ -1725,6 +1691,10 @@ function executeAllActions() {
         return;
     }
     const action = select.value;
+    if (action === 'skip') {
+        showFileManagerNotice('Skip selected. No file actions executed.', 'info', 2500);
+        return;
+    }
 
     const targetFiles = dialogMode === 'resolve'
         ? conflictFiles
@@ -1782,36 +1752,45 @@ function executeAllActions() {
         return;
     }
 
+    if (!window.vscode) {
+        window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: window.vscode undefined (browse mode)');
+        return;
+    }
+    if (!trackedFilesSnapshotToken) {
+        showFileManagerNotice('File state snapshot missing. Refresh File Manager before applying all.', 'warn', 5000);
+        refreshFileManager();
+        return;
+    }
+
+    const batchActions = [];
+
     targetFiles.forEach(file => {
         const actionAllowed = getActionsForFile(file).some(item => item.value === action);
         if (!actionAllowed) {
             return;
         }
         const filePath = file.path;
-        const isMainFile = file.fileType === 'main' || file.isMainFile === true;
         if (!filePath) {
             return;
         }
         if (isInFlight(filePath)) {
             return;
         }
+
         setResolution(filePath, action);
-        switch (action) {
-            case 'overwrite':
-            case 'overwrite_backup_external':
-                if (saveIndividualFile(filePath, isMainFile, action, false)) {
-                    markInFlight(filePath);
-                }
-                break;
-            case 'load_external':
-            case 'load_external_backup_mine':
-                if (reloadIndividualFile(filePath, isMainFile, action)) {
-                    markInFlight(filePath);
-                }
-                break;
-            default:
-                window.kanbanDebug?.warn(`[FileManager.executeAllActions] ABORTED: Unknown action: ${action}`);
-        }
+        batchActions.push({ path: filePath, action });
+    });
+
+    if (batchActions.length === 0) {
+        showFileManagerNotice('Selected action is not valid for the current file states.', 'warn', 4000);
+        return;
+    }
+
+    batchActions.forEach(item => markInFlight(item.path));
+    window.vscode.postMessage({
+        type: 'applyBatchFileActions',
+        snapshotToken: trackedFilesSnapshotToken,
+        actions: batchActions
     });
 
     updateDialogContent(true);
@@ -2001,39 +1980,63 @@ function initializeFileManager() {
                 }
                 break;
 
-            case 'individualFileSaved':
-                clearInFlight(message.filePath);
+            case 'batchFileActionsResult':
                 if (fileManagerVisible) {
-                    updateDialogContent(true);
-                    trackedFilesSnapshotToken = null;
-                    if (message.success) {
-                        markExecuted(message.filePath);
-                        clearResolutionForFile(message.filePath);
-                        if (message.backupPath) {
-                            showFileManagerNotice('Backup created before overwrite.', 'info', 4000);
-                        }
-                    } else {
-                        showFileManagerNotice(`Save failed: ${message.error || 'Unknown error'}`, 'error', 5000);
-                    }
-                    refreshFileManager();
-                    verifyContentSync(true);
-                }
-                break;
+                    const results = Array.isArray(message.results) ? message.results : [];
+                    let appliedCount = 0;
+                    let failedCount = 0;
+                    let skippedCount = 0;
+                    let backupCount = 0;
+                    let firstError = null;
 
-            case 'individualFileReloaded':
-                clearInFlight(message.filePath);
-                if (fileManagerVisible) {
-                    updateDialogContent(true);
-                    trackedFilesSnapshotToken = null;
-                    if (message.success) {
-                        markExecuted(message.filePath);
-                        clearResolutionForFile(message.filePath);
-                        if (message.backupPath) {
-                            showFileManagerNotice('Backup created before reload.', 'info', 4000);
-                        }
+                    if (results.length === 0) {
+                        clearAllInFlightState();
                     } else {
-                        showFileManagerNotice(`Reload failed: ${message.error || 'Unknown error'}`, 'error', 5000);
+                        results.forEach(result => {
+                            clearInFlight(result.path);
+
+                            if (result.status === 'applied') {
+                                appliedCount++;
+                                if (dialogMode === 'resolve') {
+                                    markExecuted(result.path);
+                                    clearResolutionForFile(result.path);
+                                }
+                            } else if (result.status === 'failed') {
+                                failedCount++;
+                                if (!firstError && result.error) {
+                                    firstError = result.error;
+                                }
+                            } else {
+                                skippedCount++;
+                            }
+
+                            if (result.backupCreated) {
+                                backupCount++;
+                            }
+                        });
                     }
+
+                    trackedFilesSnapshotToken = null;
+                    updateDialogContent(true);
+
+                    if (failedCount > 0) {
+                        const detail = firstError ? ` First error: ${firstError}` : '';
+                        showFileManagerNotice(
+                            `Batch actions finished with failures (${appliedCount} applied, ${failedCount} failed, ${skippedCount} skipped).${detail}`,
+                            'error',
+                            7000
+                        );
+                    } else if (appliedCount > 0) {
+                        const backupSuffix = backupCount > 0 ? ` ${backupCount} backup(s) created.` : '';
+                        showFileManagerNotice(
+                            `Batch actions applied to ${appliedCount} file(s).${backupSuffix}`,
+                            'info',
+                            4500
+                        );
+                    } else {
+                        showFileManagerNotice('Batch actions completed with no applied file changes.', 'info', 3500);
+                    }
+
                     refreshFileManager();
                     verifyContentSync(true);
                 }

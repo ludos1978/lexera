@@ -14,7 +14,7 @@
  */
 
 import { SwitchBasedCommand, CommandContext, CommandMetadata, CommandResult, MessageHandler } from './interfaces';
-import { getErrorMessage, safeDecodeURIComponent } from '../utils/stringUtils';
+import { getErrorMessage, safeDecodeURIComponent, normalizePathForLookup } from '../utils/stringUtils';
 import { PanelCommandAccess, hasConflictService } from '../types/PanelCommandAccess';
 import { MarkdownKanbanParser } from '../markdownParser';
 import { KanbanBoard } from '../board/KanbanTypes';
@@ -23,7 +23,14 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SetDebugModeMessage, ConflictResolutionMessage, OpenFileDialogMessage, OpenVscodeDiffMessage, CloseVscodeDiffMessage } from '../core/bridge/MessageTypes';
+import {
+    SetDebugModeMessage,
+    ConflictResolutionMessage,
+    OpenFileDialogMessage,
+    OpenVscodeDiffMessage,
+    CloseVscodeDiffMessage,
+    ApplyBatchFileActionsMessage
+} from '../core/bridge/MessageTypes';
 import { KanbanDiffService } from '../services/KanbanDiffService';
 import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
@@ -129,6 +136,16 @@ interface FrontendSnapshotInfo {
     matchKind?: 'raw' | 'normalized' | 'none';
 }
 
+type BatchFileAction = 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'skip';
+
+interface BatchFileActionResult {
+    path: string;
+    action: BatchFileAction;
+    status: 'applied' | 'skipped' | 'failed';
+    error?: string;
+    backupCreated?: boolean;
+}
+
 /**
  * Debug Commands Handler
  *
@@ -146,6 +163,7 @@ export class DebugCommands extends SwitchBasedCommand {
             'clearTrackedFilesCache',
             'setDebugMode',
             'getMediaTrackingStatus',
+            'applyBatchFileActions',
             'conflictResolution',
             'openFileDialog',
             'openVscodeDiff',
@@ -162,6 +180,7 @@ export class DebugCommands extends SwitchBasedCommand {
         'clearTrackedFilesCache': (_msg, ctx) => this.handleClearTrackedFilesCache(ctx),
         'setDebugMode': (msg, ctx) => this.handleSetDebugMode(msg as SetDebugModeMessage, ctx),
         'getMediaTrackingStatus': (msg, ctx) => this.handleGetMediaTrackingStatus((msg as any).filePath, ctx),
+        'applyBatchFileActions': (msg, ctx) => this.handleApplyBatchFileActions(msg as ApplyBatchFileActionsMessage, ctx),
         'conflictResolution': (msg, ctx) => this.handleConflictResolution(msg as ConflictResolutionMessage, ctx),
         'openFileDialog': (msg, ctx) => this.handleOpenFileDialog(msg as OpenFileDialogMessage, ctx),
         'openVscodeDiff': (msg, ctx) => this.handleOpenVscodeDiff(msg as OpenVscodeDiffMessage, ctx),
@@ -196,6 +215,14 @@ export class DebugCommands extends SwitchBasedCommand {
         resolutions: Array<{ action: 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'import' | 'ignore' | 'skip' }>
     ): boolean {
         return resolutions.some(resolution => resolution.action !== 'skip');
+    }
+
+    private _isBatchFileAction(action: unknown): action is BatchFileAction {
+        return action === 'overwrite'
+            || action === 'overwrite_backup_external'
+            || action === 'load_external'
+            || action === 'load_external_backup_mine'
+            || action === 'skip';
     }
 
     // ============= CONFLICT RESOLUTION HANDLER =============
@@ -316,6 +343,290 @@ export class DebugCommands extends SwitchBasedCommand {
         return this.success();
     }
 
+    // ============= BATCH FILE ACTION HANDLER =============
+
+    private async handleApplyBatchFileActions(message: ApplyBatchFileActionsMessage, _context: CommandContext): Promise<CommandResult> {
+        const requestedActions = Array.isArray(message.actions) ? message.actions : [];
+        const emptyResultPayload = {
+            type: 'batchFileActionsResult',
+            success: true,
+            appliedCount: 0,
+            failedCount: 0,
+            skippedCount: 0,
+            backupCount: 0,
+            results: [] as BatchFileActionResult[]
+        };
+
+        if (requestedActions.length === 0) {
+            this.postMessage(emptyResultPayload);
+            return this.success();
+        }
+
+        const fileRegistry = this.getFileRegistry();
+        if (!fileRegistry) {
+            const failureResults = requestedActions.map(request => ({
+                path: typeof request.path === 'string' ? request.path : '',
+                action: this._isBatchFileAction(request.action) ? request.action : 'skip',
+                status: 'failed' as const,
+                error: 'File registry not available'
+            }));
+            this.postMessage({
+                type: 'batchFileActionsResult',
+                success: false,
+                appliedCount: 0,
+                failedCount: failureResults.length,
+                skippedCount: 0,
+                backupCount: 0,
+                error: 'File registry not available',
+                results: failureResults
+            });
+            return this.success();
+        }
+
+        const snapshotValidationError = this._validateSnapshotToken(message.snapshotToken, fileRegistry);
+        if (snapshotValidationError) {
+            const failureResults = requestedActions.map(request => ({
+                path: typeof request.path === 'string' ? request.path : '',
+                action: this._isBatchFileAction(request.action) ? request.action : 'skip',
+                status: 'failed' as const,
+                error: snapshotValidationError
+            }));
+            this.postMessage({
+                type: 'batchFileActionsResult',
+                success: false,
+                appliedCount: 0,
+                failedCount: failureResults.length,
+                skippedCount: 0,
+                backupCount: 0,
+                error: snapshotValidationError,
+                results: failureResults
+            });
+            return this.success();
+        }
+
+        const batchResults = await this._executeBatchFileActions(requestedActions, fileRegistry);
+        const appliedCount = batchResults.filter(result => result.status === 'applied').length;
+        const failedCount = batchResults.filter(result => result.status === 'failed').length;
+        const skippedCount = batchResults.filter(result => result.status === 'skipped').length;
+        const backupCount = batchResults.filter(result => result.backupCreated).length;
+
+        this.postMessage({
+            type: 'batchFileActionsResult',
+            success: failedCount === 0,
+            appliedCount,
+            failedCount,
+            skippedCount,
+            backupCount,
+            error: failedCount > 0 ? 'One or more file actions failed.' : undefined,
+            results: batchResults
+        });
+        return this.success();
+    }
+
+    private async _executeBatchFileActions(
+        requestedActions: ApplyBatchFileActionsMessage['actions'],
+        fileRegistry: MarkdownFileRegistry
+    ): Promise<BatchFileActionResult[]> {
+        const results: BatchFileActionResult[] = requestedActions.map(request => ({
+            path: typeof request.path === 'string' ? request.path : '',
+            action: this._isBatchFileAction(request.action) ? request.action : 'skip',
+            status: 'skipped'
+        }));
+
+        const preflightErrors: string[] = [];
+        const seenPaths = new Set<string>();
+        const plannedActions: Array<{
+            resultIndex: number;
+            file: MarkdownFile;
+            action: Exclude<BatchFileAction, 'skip'>;
+            backupContent?: string;
+            backupCreated?: boolean;
+        }> = [];
+
+        for (let index = 0; index < requestedActions.length; index++) {
+            const request = requestedActions[index];
+            const requestPath = typeof request.path === 'string' ? request.path : '';
+            const requestAction = request.action;
+
+            if (!requestPath) {
+                results[index].status = 'failed';
+                results[index].error = 'Missing file path for file action.';
+                preflightErrors.push('Missing file path for one or more actions.');
+                continue;
+            }
+
+            if (!this._isBatchFileAction(requestAction)) {
+                results[index].status = 'failed';
+                results[index].error = `Unsupported file action: ${String(requestAction)}`;
+                preflightErrors.push(`Unsupported file action "${String(requestAction)}" for "${requestPath}".`);
+                continue;
+            }
+
+            results[index].action = requestAction;
+            if (requestAction === 'skip') {
+                results[index].status = 'skipped';
+                continue;
+            }
+
+            const file = fileRegistry.get(requestPath) || fileRegistry.findByPath(requestPath);
+            if (!file) {
+                results[index].status = 'failed';
+                results[index].error = `File not found in registry: ${requestPath}`;
+                preflightErrors.push(`File not found in registry: ${requestPath}`);
+                continue;
+            }
+
+            const dedupeKey = normalizePathForLookup(file.getPath());
+            if (seenPaths.has(dedupeKey)) {
+                results[index].status = 'skipped';
+                results[index].error = 'Duplicate file action ignored in batch request.';
+                continue;
+            }
+            seenPaths.add(dedupeKey);
+
+            if ((requestAction === 'overwrite' || requestAction === 'overwrite_backup_external') && file.isDirtyInEditor()) {
+                const message = `Cannot overwrite "${file.getRelativePath()}" while it has unsaved text-editor changes. Save or discard editor changes first.`;
+                results[index].status = 'failed';
+                results[index].error = message;
+                preflightErrors.push(message);
+                continue;
+            }
+
+            if (requestAction === 'overwrite_backup_external') {
+                const diskContent = await file.readFromDisk();
+                if (diskContent === null) {
+                    const message = `Failed to read disk content for backup: ${file.getRelativePath()}`;
+                    results[index].status = 'failed';
+                    results[index].error = message;
+                    preflightErrors.push(message);
+                    continue;
+                }
+                plannedActions.push({
+                    resultIndex: index,
+                    file,
+                    action: requestAction,
+                    backupContent: diskContent
+                });
+                continue;
+            }
+
+            if (requestAction === 'load_external_backup_mine') {
+                plannedActions.push({
+                    resultIndex: index,
+                    file,
+                    action: requestAction,
+                    backupContent: file.getContentForBackup()
+                });
+                continue;
+            }
+
+            plannedActions.push({
+                resultIndex: index,
+                file,
+                action: requestAction
+            });
+        }
+
+        if (preflightErrors.length > 0) {
+            for (const plan of plannedActions) {
+                if (results[plan.resultIndex].status === 'skipped' && !results[plan.resultIndex].error) {
+                    results[plan.resultIndex].status = 'failed';
+                    results[plan.resultIndex].error = 'Batch aborted during preflight validation. No actions executed.';
+                }
+            }
+            return results;
+        }
+
+        const needsSaveService = plannedActions.some(
+            plan => plan.action === 'overwrite' || plan.action === 'overwrite_backup_external'
+        );
+        const fileSaveService = this._context?.fileSaveService;
+        if (needsSaveService && !fileSaveService) {
+            for (const plan of plannedActions) {
+                results[plan.resultIndex].status = 'failed';
+                results[plan.resultIndex].error = 'File save service not available for overwrite actions.';
+            }
+            return results;
+        }
+
+        // Preflight backup creation for all backup-required actions before any save/reload action runs.
+        for (const plan of plannedActions) {
+            if (plan.action !== 'overwrite_backup_external' && plan.action !== 'load_external_backup_mine') {
+                continue;
+            }
+            const backupContent = plan.backupContent;
+            if (backupContent === undefined) {
+                results[plan.resultIndex].status = 'failed';
+                results[plan.resultIndex].error = `Missing backup content for ${plan.file.getRelativePath()}.`;
+                for (const pendingPlan of plannedActions) {
+                    if (results[pendingPlan.resultIndex].status === 'skipped' && !results[pendingPlan.resultIndex].error) {
+                        results[pendingPlan.resultIndex].status = 'failed';
+                        results[pendingPlan.resultIndex].error = 'Batch aborted while preparing backups. No actions executed.';
+                    }
+                }
+                return results;
+            }
+
+            const backupPath = await plan.file.createVisibleConflictFile(backupContent);
+            if (!backupPath) {
+                results[plan.resultIndex].status = 'failed';
+                results[plan.resultIndex].error = `Failed to create backup before action: ${plan.file.getRelativePath()}`;
+                for (const pendingPlan of plannedActions) {
+                    if (results[pendingPlan.resultIndex].status === 'skipped' && !results[pendingPlan.resultIndex].error) {
+                        results[pendingPlan.resultIndex].status = 'failed';
+                        results[pendingPlan.resultIndex].error = 'Batch aborted while preparing backups. No actions executed.';
+                    }
+                }
+                return results;
+            }
+            plan.backupCreated = true;
+            results[plan.resultIndex].backupCreated = true;
+        }
+
+        let abortReason: string | null = null;
+
+        for (const plan of plannedActions) {
+            const result = results[plan.resultIndex];
+            if (abortReason) {
+                if (result.status === 'skipped' && !result.error) {
+                    result.status = 'skipped';
+                    result.error = abortReason;
+                }
+                continue;
+            }
+
+            try {
+                switch (plan.action) {
+                    case 'overwrite':
+                    case 'overwrite_backup_external':
+                        await fileSaveService!.saveFile(plan.file, undefined, {
+                            source: 'ui-edit',
+                            force: true,
+                            skipReloadDetection: true
+                        });
+                        break;
+                    case 'load_external':
+                    case 'load_external_backup_mine':
+                        if (plan.file.isInEditMode()) {
+                            plan.file.setEditMode(false);
+                        }
+                        await plan.file.reload();
+                        break;
+                    default:
+                        break;
+                }
+                result.status = 'applied';
+            } catch (error) {
+                const errorMessage = getErrorMessage(error);
+                result.status = 'failed';
+                result.error = errorMessage;
+                abortReason = `Batch stopped after "${plan.file.getRelativePath()}" failed.`;
+            }
+        }
+
+        return results;
+    }
+
     /**
      * Apply per-file resolutions from the unified file dialog.
      * Handles all 5 action types: overwrite, overwrite_backup_external,
@@ -325,133 +636,22 @@ export class DebugCommands extends SwitchBasedCommand {
         result: ConflictDialogResult,
         fileRegistry: MarkdownFileRegistry
     ): Promise<void> {
-        const plannedResolutions: Array<{
-            file: MarkdownFile;
-            action: ConflictDialogResult['perFileResolutions'][number]['action'];
-            backupContent?: string;
-        }> = [];
-
-        // Preflight: resolve files and collect backup content before any writes/reloads.
-        for (const resolution of result.perFileResolutions) {
-            if (resolution.action === 'skip') {
-                continue;
-            }
-
-            const file = fileRegistry.get(resolution.path) || fileRegistry.findByPath(resolution.path);
-            if (!file) {
-                throw new Error(`File not found in registry for resolution: ${resolution.path}`);
-            }
-
-            if ((resolution.action === 'overwrite' || resolution.action === 'overwrite_backup_external') && file.isDirtyInEditor()) {
-                throw new Error(
-                    `Cannot overwrite "${file.getRelativePath()}" while it has unsaved text-editor changes. `
-                    + 'Save or discard editor changes first.'
-                );
-            }
-
-            if (resolution.action === 'overwrite_backup_external') {
-                const diskContent = await file.readFromDisk();
-                if (diskContent === null) {
-                    throw new Error(`Failed to read disk content for backup: ${file.getRelativePath()}`);
-                }
-                plannedResolutions.push({
-                    file,
-                    action: resolution.action,
-                    backupContent: diskContent
-                });
-                continue;
-            }
-
-            if (resolution.action === 'load_external_backup_mine') {
-                plannedResolutions.push({
-                    file,
-                    action: resolution.action,
-                    backupContent: file.getContentForBackup()
-                });
-                continue;
-            }
-
-            plannedResolutions.push({
-                file,
-                action: resolution.action
-            });
-        }
-
-        const needsSaveService = plannedResolutions.some(
-            resolution => resolution.action === 'overwrite' || resolution.action === 'overwrite_backup_external'
+        const normalizedActions: ApplyBatchFileActionsMessage['actions'] = result.perFileResolutions.map(
+            resolution => ({
+                path: resolution.path,
+                action: this._isBatchFileAction(resolution.action) ? resolution.action : 'skip'
+            })
         );
-        const fileSaveService = this._context?.fileSaveService;
-        if (needsSaveService && !fileSaveService) {
-            throw new Error('File save service not available for overwrite actions');
+
+        const batchResults = await this._executeBatchFileActions(normalizedActions, fileRegistry);
+        const firstFailure = batchResults.find(entry => entry.status === 'failed');
+        if (firstFailure) {
+            throw new Error(firstFailure.error || `Failed to apply file action for "${firstFailure.path}"`);
         }
 
-        // Preflight: create all required backups before any writes/reloads.
-        for (const resolution of plannedResolutions) {
-            if (resolution.action !== 'overwrite_backup_external' && resolution.action !== 'load_external_backup_mine') {
-                continue;
-            }
-
-            const backupContent = resolution.backupContent;
-            if (backupContent === undefined) {
-                throw new Error(`Missing backup content for ${resolution.file.getRelativePath()}`);
-            }
-
-            const backupPath = await resolution.file.createVisibleConflictFile(backupContent);
-            if (!backupPath) {
-                throw new Error(`Failed to create backup before action: ${resolution.file.getRelativePath()}`);
-            }
-        }
-
-        let anyReloaded = false;
-
-        for (const resolution of plannedResolutions) {
-            switch (resolution.action) {
-                case 'overwrite': {
-                    // Force save file (no backup)
-                    await fileSaveService!.saveFile(resolution.file, undefined, {
-                        source: 'ui-edit',
-                        force: true,
-                        skipReloadDetection: true
-                    });
-                    break;
-                }
-                case 'overwrite_backup_external': {
-                    // Backup already created in preflight, now force save.
-                    await fileSaveService!.saveFile(resolution.file, undefined, {
-                        source: 'ui-edit',
-                        force: true,
-                        skipReloadDetection: true
-                    });
-                    break;
-                }
-                case 'load_external': {
-                    // Reload from disk (no backup)
-                    if (resolution.file.isInEditMode()) {
-                        resolution.file.setEditMode(false);
-                    }
-                    await resolution.file.reload();
-                    anyReloaded = true;
-                    break;
-                }
-                case 'load_external_backup_mine': {
-                    // Backup already created in preflight, now reload from disk.
-                    if (resolution.file.isInEditMode()) {
-                        resolution.file.setEditMode(false);
-                    }
-                    await resolution.file.reload();
-                    anyReloaded = true;
-                    break;
-                }
-                case 'skip':
-                default:
-                    // Do nothing
-                    break;
-            }
-        }
-
-        // If any files were reloaded, the board update is handled by the reload() event chain
-        if (anyReloaded) {
-            logger.debug('[DebugCommands] Files reloaded via applyFileResolutions, board update triggered by reload events');
+        const appliedCount = batchResults.filter(entry => entry.status === 'applied').length;
+        if (appliedCount > 0) {
+            logger.debug(`[DebugCommands] Applied ${appliedCount} file resolution action(s)`);
         }
     }
 

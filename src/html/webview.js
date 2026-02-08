@@ -4016,32 +4016,6 @@ if (!webviewEventListenersInitialized) {
             // Handle reload confirmation (no UI notification needed)
             break;
 
-        case 'individualFileSaved':
-            // Handle individual file save confirmation
-            const fileName = message.filePath.split('/').pop();
-            if (message.success) {
-                // Refresh the file manager to show updated states
-                if (typeof window.refreshFileManager === 'function') {
-                    setTimeout(() => window.refreshFileManager(), 500);
-                }
-            } else {
-                console.error(`[Debug] Failed to save ${fileName}: ${message.error}`);
-            }
-            break;
-
-        case 'individualFileReloaded':
-            // Handle individual file reload confirmation
-            const reloadedFileName = message.filePath.split('/').pop();
-            if (message.success) {
-                // Refresh the file manager to show updated states
-                if (typeof window.refreshFileManager === 'function') {
-                    setTimeout(() => window.refreshFileManager(), 500);
-                }
-            } else {
-                console.error(`[Debug] Failed to reload ${reloadedFileName}: ${message.error}`);
-            }
-            break;
-
         case 'pathsConverted':
             // Handle single file path conversion result
             {

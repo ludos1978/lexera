@@ -1393,26 +1393,16 @@ export interface ReloadAllIncludedFilesMessage extends BaseMessage {
 }
 
 /**
- * Save individual file
+ * Apply multiple file actions in one backend batch (preflight + execution).
+ * Used by File Manager "Apply All" in browse mode.
  */
-export interface SaveIndividualFileMessage extends BaseMessage {
-    type: 'saveIndividualFile';
-    filePath: string;
-    isMainFile: boolean;
-    forceSave: boolean;
+export interface ApplyBatchFileActionsMessage extends BaseMessage {
+    type: 'applyBatchFileActions';
     snapshotToken?: string;
-    action?: 'overwrite' | 'overwrite_backup_external';
-}
-
-/**
- * Reload individual file
- */
-export interface ReloadIndividualFileMessage extends BaseMessage {
-    type: 'reloadIndividualFile';
-    filePath: string;
-    isMainFile: boolean;
-    snapshotToken?: string;
-    action?: 'load_external' | 'load_external_backup_mine';
+    actions: Array<{
+        path: string;
+        action: 'overwrite' | 'overwrite_backup_external' | 'load_external' | 'load_external_backup_mine' | 'skip';
+    }>;
 }
 
 // ============= EDIT MODE MESSAGES =============
@@ -2350,8 +2340,7 @@ export type IncomingMessage =
     | RequestEditTaskIncludeFileNameMessage
     | RequestTaskIncludeFileNameMessage
     | ReloadAllIncludedFilesMessage
-    | SaveIndividualFileMessage
-    | ReloadIndividualFileMessage
+    | ApplyBatchFileActionsMessage
     // EditMode messages
     | EditingStartedMessage
     | EditingStoppedNormalMessage
