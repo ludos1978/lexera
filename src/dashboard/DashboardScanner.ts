@@ -198,6 +198,20 @@ export class DashboardScanner {
             for (const task of column.tasks || []) {
                 totalTasks++;
                 const taskText = (task.title || '') + '\n' + (task.description || '');
+                const taskTitleTemporal = this._extractTemporalInfo(task.title || '');
+                let taskTemporalContext: {
+                    date: Date;
+                    week?: number;
+                    year?: number;
+                    isWeekBased: boolean;
+                } | null = (taskTitleTemporal?.hasExplicitDate && taskTitleTemporal.date)
+                    ? {
+                        date: taskTitleTemporal.date,
+                        week: taskTitleTemporal.week,
+                        year: taskTitleTemporal.year,
+                        isWeekBased: taskTitleTemporal.week !== undefined
+                    }
+                    : null;
 
                 // Extract all tags from task (for tag summary)
                 const tags = TextMatcher.extractTags(taskText);
@@ -228,23 +242,43 @@ export class DashboardScanner {
                     // Determine effective date for this line's temporal tag
                     let effectiveDate = lineTemporal.date;
                     let effectiveDateIsWeekBased = lineTemporal.week !== undefined;
+                    let effectiveWeek = lineTemporal.week;
+                    let effectiveYear = lineTemporal.year;
 
                     // For time slots WITHOUT explicit date/week - can inherit from column
                     if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
-                        if (columnTemporal && columnDate) {
+                        if (columnTemporal && columnDate && !columnWithinTimeframe) {
+                            // Column is outside timeframe - gates this time slot
+                            continue;
+                        }
+
+                        if (taskTemporalContext?.date) {
+                            // Task has temporal context (title or earlier explicit line) - inherit from task
+                            effectiveDate = taskTemporalContext.date;
+                            effectiveDateIsWeekBased = taskTemporalContext.isWeekBased;
+                            effectiveWeek = taskTemporalContext.week;
+                            effectiveYear = taskTemporalContext.year;
+                        } else if (columnTemporal && columnDate) {
                             // Column has temporal tag - time slot inherits from column
-                            if (!columnWithinTimeframe) {
-                                // Column is outside timeframe - gates this time slot
-                                continue;
-                            }
                             effectiveDate = columnDate;
                             effectiveDateIsWeekBased = columnTemporal.week !== undefined;
+                            effectiveWeek = columnTemporal.week;
+                            effectiveYear = columnTemporal.year;
                         }
                         // If no column temporal tag, time slot uses "today" (already set)
                     } else if (lineTemporal.hasExplicitDate && columnTemporal && columnTemporal.date && !columnWithinTimeframe) {
                         // Line has explicit date/week tag, but column has temporal tag outside timeframe
                         // Column gates the line (hierarchical gating)
                         continue;
+                    }
+
+                    if (lineTemporal.hasExplicitDate && lineTemporal.date) {
+                        taskTemporalContext = {
+                            date: lineTemporal.date,
+                            week: lineTemporal.week,
+                            year: lineTemporal.year,
+                            isWeekBased: lineTemporal.week !== undefined
+                        };
                     }
 
                     const withinTimeframe = effectiveDate ? isWithinTimeframe(effectiveDate, timeframeDays, effectiveDateIsWeekBased) : false;
@@ -275,8 +309,8 @@ export class DashboardScanner {
                             taskTitle: lineTitle,
                             temporalTag: lineTemporal.tag,
                             date: effectiveDate,
-                            week: lineTemporal.week || columnTemporal?.week,
-                            year: lineTemporal.year || columnTemporal?.year,
+                            week: effectiveWeek,
+                            year: effectiveYear,
                             timeSlot: lineTemporal.timeSlot,
                             rawTitle: task.title || '',
                             isOverdue: isDeadlineTask && isOverdue

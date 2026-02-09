@@ -2160,13 +2160,48 @@ let heightPollingEndTime = 0; // When to stop polling
 // Baseline heights before DOM changes - used to detect if recalculation is needed
 let baselineHeights = new Map();
 
+function getActiveEditorColumnId() {
+    const activeEditor = window.taskEditor?.currentEditor;
+    if (!activeEditor) {
+        return null;
+    }
+
+    const activeElement = activeEditor.wysiwyg?.getViewDom?.() || activeEditor.element;
+    if (!activeElement || typeof activeElement.closest !== 'function') {
+        return null;
+    }
+
+    const columnElement = activeElement.closest('.kanban-full-height-column');
+    return columnElement ? columnElement.getAttribute('data-column-id') : null;
+}
+
+function isFromActiveEditorColumn(target) {
+    if (!(target instanceof Element)) {
+        return false;
+    }
+
+    const activeColumnId = getActiveEditorColumnId();
+    if (!activeColumnId) {
+        return false;
+    }
+
+    const targetColumn = target.closest('.kanban-full-height-column');
+    return !!(targetColumn && targetColumn.getAttribute('data-column-id') === activeColumnId);
+}
+
 // Update baseline heights (call this periodically when heights are stable)
 function updateBaselineHeights() {
+    const activeEditorColumnId = getActiveEditorColumnId();
     baselineHeights.clear();
     document.querySelectorAll('.kanban-full-height-column').forEach(col => {
+        const colId = col.getAttribute('data-column-id');
+        if (activeEditorColumnId && colId === activeEditorColumnId) {
+            return;
+        }
+
         const content = col.querySelector('.column-content');
         if (content) {
-            baselineHeights.set(col.getAttribute('data-column-id'), content.scrollHeight);
+            baselineHeights.set(colId, content.scrollHeight);
         }
     });
 }
@@ -2206,10 +2241,15 @@ function startHeightPolling() {
 
         // Check if any heights differ from baseline
         let heightChanged = false;
+        const activeEditorColumnId = getActiveEditorColumnId();
         document.querySelectorAll('.kanban-full-height-column').forEach(col => {
+            const colId = col.getAttribute('data-column-id');
+            if (activeEditorColumnId && colId === activeEditorColumnId) {
+                return;
+            }
+
             const content = col.querySelector('.column-content');
             if (content) {
-                const colId = col.getAttribute('data-column-id');
                 const currentHeight = content.scrollHeight;
                 const baselineHeight = baselineHeights.get(colId);
                 if (baselineHeight !== undefined && currentHeight !== baselineHeight) {
@@ -2250,6 +2290,10 @@ function setupColumnResizeObserver() {
         const affectedStacks = new Set();
 
         entries.forEach(entry => {
+            if (isFromActiveEditorColumn(entry.target)) {
+                return;
+            }
+
             const column = entry.target.closest('.kanban-full-height-column');
             let stack = entry.target.closest('.kanban-column-stack');
 
@@ -2306,12 +2350,16 @@ function setupColumnResizeObserver() {
 
         // Check for structural changes OR class changes
         const hasRelevantChanges = mutations.some(m => {
+            const target = m.target;
+            if (isFromActiveEditorColumn(target)) {
+                return false;
+            }
+
             if (m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
                 return true;
             }
             // Class changes on task-item (task collapse) or column elements (column fold)
             if (m.type === 'attributes' && m.attributeName === 'class') {
-                const target = m.target;
                 if (target.classList) {
                     if (target.classList.contains('task-item') || target.classList.contains('kanban-full-height-column')) {
                         return true;

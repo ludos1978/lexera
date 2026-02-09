@@ -35,6 +35,7 @@ export interface BoardSyncDependencies {
     getMediaTracker: () => MediaTracker | null;  // Getter because MediaTracker is created lazily
     panelContext: PanelContext;  // Panel context for scoped event bus
     getWebviewBridge: () => WebviewBridge | null;
+    syncIncludeFilesWithBoard?: (board: KanbanBoard) => void;
 }
 
 export class BoardSyncHandler {
@@ -104,6 +105,21 @@ export class BoardSyncHandler {
             mainFile.setCachedBoardFromWebview(normalizedBoard);
         }
 
+        const syncIncludeRegistry = (): void => {
+            if (!this._deps.syncIncludeFilesWithBoard) {
+                return;
+            }
+            try {
+                this._deps.syncIncludeFilesWithBoard(normalizedBoard);
+            } catch (error) {
+                console.error('[BoardSyncHandler] Failed to sync include registry from board change:', error);
+            }
+        };
+
+        // Keep include registry in sync for every board mutation path so removed includes
+        // are immediately untracked (not only during include-switch/save code paths).
+        syncIncludeRegistry();
+
         if (isDebug && (event.data.trigger === 'undo' || event.data.trigger === 'redo')) {
             logger.debug('[kanban.BoardSyncHandler.undoRedo.start]', {
                 trigger: event.data.trigger,
@@ -119,6 +135,10 @@ export class BoardSyncHandler {
         if (mainFile) {
             const markdown = MarkdownKanbanParser.generateMarkdown(normalizedBoard);
             mainFile.setContent(markdown, false); // false = don't update baseline
+
+            // Re-run include sync after main markdown regeneration so regular include
+            // references (derived from markdown text) are also updated immediately.
+            syncIncludeRegistry();
 
             // 5b. Update media tracking
             const mediaTracker = this._deps.getMediaTracker();

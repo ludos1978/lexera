@@ -1,7 +1,8 @@
 # TODOs - File Manager & Saving System
 
 **Last verified: 2026-02-09**
-**Confidence Level: 98%**
+**Data duplication check: 2026-02-09**
+**Confidence Level: 95%**
 
 ---
 
@@ -22,42 +23,59 @@ The saving system is robust with all critical safety mechanisms in place:
 
 ---
 
-## REMAINING ITEMS (Low Priority)
+## REMAINING ITEMS
 
-### P1: Permission Error Semantics
+### P1: IncludeFile applyEditToBaseline Inconsistency
+**Location:** `IncludeFile.ts:286-288`
+**Issue:** Sets BOTH `_content` AND `_baseline` to same value
+**Comparison:** `MainKanbanFile.ts:167` only updates `_content` (correct pattern)
+**Impact:** Include file edits immediately appear "saved" - `hasUnsavedChanges()` returns false
+**Note:** May be intentional for conflict resolution workflow - needs review
+
+### P2: Frontend Board State Triplication
+**Location:** `webview.js`
+**Copies:**
+- `window.cachedBoard` - current state
+- `window.savedBoardState` - for unsaved detection
+- `window.currentBoard` - alias getter
+**Issue:** Pending column changes only sync to `cachedBoard`, not `savedBoardState`
+**Impact:** Inconsistent unsaved change detection
+
+### P3: Permission Error Semantics
 **Location:** `IncludeFile.ts:148-157`
-**Issue:** `_exists` flag only updates for ENOENT, not EACCES/EPERM
-**Mitigation:** Errors ARE tracked via `_lastAccessErrorCode`
-**Optional:** Add `_accessible` flag for semantic clarity
+**Issue:** `_exists` flag only updates for ENOENT
+**Mitigation:** Errors tracked via `_lastAccessErrorCode`
 
 ### P3: Configuration Edge Cases
 - Backup location not validated at config time
-- Temp directory could be read-only (no fallback)
+- Temp directory could be read-only
 
 ---
 
 ## REFACTORING OPPORTUNITIES
 
-### 1. Simplify Board State (7 → fewer locations)
-Current board state exists in 7 locations:
-```
-Backend: _content, _baseline, _board, _cachedBoardFromWebview
-Frontend: BoardStore._state.board, window.cachedBoard
-Transient: generateBoard() output
-```
-**Consideration:** The duplication is intentional (backend/frontend sync) and now validated at boundaries. No action needed unless complexity causes issues.
-
-### 2. Remove Legacy Alias Getters
+### 1. Remove Legacy Alias Getters
 `PanelContext.ts` has 3 getters for the same `_documentUri`:
 ```typescript
 get lastDocumentUri()
 get trackedDocumentUri()
 get documentUri()
 ```
-**Action:** Could consolidate to single `documentUri` getter and update call sites.
+**Action:** Consolidate to single `documentUri` getter.
 
-### 3. Consolidate TimeoutConstants
-All timeouts are already centralized in `src/constants/TimeoutConstants.ts`. Well organized.
+### 2. File Registry Triple Index
+`MarkdownFileRegistry.ts` has 3 indexes for same files:
+```typescript
+_files: Map<string, MarkdownFile>           // by absolute path
+_filesByRelativePath: Map<string, MarkdownFile>  // by relative path
+_registrationCache: Set<string>             // for fast lookup
+```
+**Risk:** File moves may not update all indexes
+**Mitigation:** `getConsistencyReport()` exists for validation
+
+### 3. Frontend savedBoardState Sync
+`webview.js` has separate `cachedBoard` and `savedBoardState`
+**Action:** Consider merging or ensuring all mutations sync both
 
 ---
 

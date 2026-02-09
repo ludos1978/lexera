@@ -106,6 +106,7 @@ class TaskEditor {
         this._stackLayoutNeedsFullRecalc = false;
         this._stackLayoutPendingColumns = new Set();
         this._wysiwygRecalcTimeout = null;
+        this._postCloseFocusTimeout = null;
         this.setupGlobalHandlers();
     }
 
@@ -1533,6 +1534,20 @@ class TaskEditor {
         editElement.onblur = () => {
             if (this.isTransitioning) { return; }
 
+            const activeElement = document.activeElement;
+            const focusDroppedToRoot = activeElement === document.body || activeElement === document.documentElement;
+            if (editElement._ignoreNextRootBlur && focusDroppedToRoot) {
+                editElement._ignoreNextRootBlur = false;
+                requestAnimationFrame(() => {
+                    if (!this.currentEditor || this.currentEditor.element !== editElement || this.isTransitioning) {
+                        return;
+                    }
+                    this._focusElement(editElement);
+                });
+                return;
+            }
+            editElement._ignoreNextRootBlur = false;
+
             setTimeout(() => {
                 if (document.activeElement !== editElement &&
                     !this.isTransitioning &&
@@ -1615,9 +1630,24 @@ class TaskEditor {
 
     _setupWysiwygHandlers(editor, wysiwygContainer, containerElement) {
         const dom = editor.getViewDom();
+        dom._ignoreNextRootBlur = true;
 
         dom.addEventListener('blur', () => {
             if (this.isTransitioning) { return; }
+
+            const activeElement = document.activeElement;
+            const focusDroppedToRoot = activeElement === document.body || activeElement === document.documentElement;
+            if (dom._ignoreNextRootBlur && focusDroppedToRoot) {
+                dom._ignoreNextRootBlur = false;
+                requestAnimationFrame(() => {
+                    if (!this.currentEditor || this.currentEditor.wysiwyg?.getViewDom?.() !== dom || this.isTransitioning) {
+                        return;
+                    }
+                    this._focusElement(dom);
+                });
+                return;
+            }
+            dom._ignoreNextRootBlur = false;
 
             setTimeout(() => {
                 if (document.activeElement !== dom &&
@@ -1826,6 +1856,13 @@ class TaskEditor {
         });
     }
 
+    _clearPostCloseFocusTimeout() {
+        if (this._postCloseFocusTimeout) {
+            clearTimeout(this._postCloseFocusTimeout);
+            this._postCloseFocusTimeout = null;
+        }
+    }
+
     _getNearestScrollParent(element) {
         let current = element instanceof HTMLElement ? element.parentElement : null;
         while (current) {
@@ -1876,6 +1913,7 @@ class TaskEditor {
     startEdit(element, type, taskId = null, columnId = null, preserveCursor = false) {
         // If transitioning, don't interfere
         if (this.isTransitioning) { return; }
+        this._clearPostCloseFocusTimeout();
 
         if (type === 'task-description' && taskId && columnId) {
             const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
@@ -1997,6 +2035,7 @@ class TaskEditor {
         if (wysiwygContext?.editor) {
             this._setupWysiwygHandlers(wysiwygContext.editor, wysiwygContext.container, containerElement);
         } else {
+            editElement._ignoreNextRootBlur = true;
             this._setupInputHandler(editElement, containerElement);
             this._setupBlurHandler(editElement);
             this._setupMouseHandlers(editElement);
@@ -2694,13 +2733,24 @@ class TaskEditor {
         });
 
         // Focus the card after editing ends
+        this._clearPostCloseFocusTimeout();
         if (type === 'task-title' || type === 'task-description') {
             // Find the task item to focus
             const taskItem = element.closest('.task-item');
             if (taskItem) {
                 // Small delay to ensure display element is visible
-                setTimeout(() => {
-                    this._focusElement(taskItem);
+                this._postCloseFocusTimeout = setTimeout(() => {
+                    this._postCloseFocusTimeout = null;
+                    if (this.currentEditor || this.isTransitioning || !taskItem.isConnected) {
+                        return;
+                    }
+
+                    const focusTarget = taskItem.querySelector('.task-section[tabindex], .task-section');
+                    if (!focusTarget) {
+                        return;
+                    }
+
+                    this._focusElement(focusTarget);
                     this._scheduleScrollRestore(scrollPositions);
                     scrollPositions.forEach(({ element: scrollElement, top, left }) => {
                         this._lockScrollForFrames(scrollElement, top, left);
