@@ -69,6 +69,7 @@ export interface BoardUpdateMessage extends BaseMessage {
     layoutRows: number;
     rowHeight: string;
     layoutPreset: string;
+    stickyStackMode: string;
     arrowKeyFocusScroll: string;
     // Additional config from getBoardViewConfig()
     layoutPresets?: Record<string, unknown>;
@@ -1051,13 +1052,31 @@ export interface SetFilePreferenceMessage extends BaseMessage {
     value: unknown;
 }
 
+export type BoardSettingKey =
+    | 'columnWidth'
+    | 'layoutRows'
+    | 'maxRowHeight'
+    | 'rowHeight'
+    | 'layoutPreset'
+    | 'stickyStackMode'
+    | 'tagVisibility'
+    | 'taskMinHeight'
+    | 'sectionHeight'
+    | 'taskSectionHeight'
+    | 'fontSize'
+    | 'fontFamily'
+    | 'whitespace'
+    | 'htmlCommentRenderMode'
+    | 'htmlContentRenderMode'
+    | 'arrowKeyFocusScroll';
+
 /**
  * Set board setting - stores in YAML frontmatter of the markdown file
  */
 export interface SetBoardSettingMessage extends BaseMessage {
     type: 'setBoardSetting';
-    key: 'columnWidth'; // Extend this union as more settings are added
-    value: string;
+    key: BoardSettingKey;
+    value: string | number;
 }
 
 /**

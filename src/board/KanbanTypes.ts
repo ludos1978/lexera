@@ -44,7 +44,21 @@ export interface KanbanColumn {
  */
 export interface BoardSettings {
   columnWidth?: string;
-  // Future settings can be added here
+  layoutRows?: number;
+  maxRowHeight?: number;
+  rowHeight?: string;
+  layoutPreset?: string;
+  stickyStackMode?: string;
+  tagVisibility?: string;
+  taskMinHeight?: string;
+  sectionHeight?: string;
+  taskSectionHeight?: string;
+  fontSize?: string;
+  fontFamily?: string;
+  whitespace?: string;
+  htmlCommentRenderMode?: string;
+  htmlContentRenderMode?: string;
+  arrowKeyFocusScroll?: string;
 }
 
 export interface KanbanBoard {

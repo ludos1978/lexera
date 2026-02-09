@@ -31,6 +31,7 @@ import { showError as notifyError, showWarning, showInfo as notifyInfo } from '.
 import * as vscode from 'vscode';
 import { setDocumentPreference } from '../utils/documentPreference';
 import { logger } from '../utils/logger';
+import { getErrorMessage } from '../utils/stringUtils';
 
 /**
  * UI Commands Handler
@@ -326,6 +327,11 @@ export class UICommands extends SwitchBasedCommand {
             return this.failure('setBoardSetting requires a key');
         }
 
+        if (message.value === undefined || message.value === null) {
+            console.error('[UICommands] setBoardSetting called with undefined/null value');
+            return this.failure('setBoardSetting requires a value');
+        }
+
         const board = context.getCurrentBoard();
         if (!board) {
             console.error('[UICommands] setBoardSetting: no board available');
@@ -339,9 +345,29 @@ export class UICommands extends SwitchBasedCommand {
             board.boardSettings = {};
         }
 
-        // Update the setting
-        if (message.key === 'columnWidth') {
-            board.boardSettings.columnWidth = message.value;
+        // Update the setting with strict value typing
+        if (message.key === 'layoutRows' || message.key === 'maxRowHeight') {
+            const numericValue = typeof message.value === 'number' ? message.value : Number(message.value);
+            if (!Number.isFinite(numericValue)) {
+                return this.failure(`Invalid ${message.key} value: ${String(message.value)}`);
+            }
+
+            if (message.key === 'layoutRows') {
+                if (numericValue < 1) {
+                    return this.failure(`Invalid layoutRows value: ${String(message.value)}`);
+                }
+                board.boardSettings.layoutRows = Math.floor(numericValue);
+            } else {
+                if (numericValue < 0) {
+                    return this.failure(`Invalid maxRowHeight value: ${String(message.value)}`);
+                }
+                board.boardSettings.maxRowHeight = Math.floor(numericValue);
+            }
+        } else {
+            if (typeof message.value !== 'string') {
+                return this.failure(`Invalid ${message.key} value type. Expected string.`);
+            }
+            board.boardSettings[message.key] = message.value;
         }
 
         logger.debug(`[UICommands.setBoardSetting] Board after update - boardSettings:`, board.boardSettings);
@@ -349,8 +375,25 @@ export class UICommands extends SwitchBasedCommand {
         // Update the board in the store
         context.setBoard(board);
 
-        // Save to markdown file (this will serialize boardSettings to YAML)
-        await context.onSaveToMarkdown();
+        try {
+            const mainFile = context.getFileRegistry?.()?.getMainFile();
+            if (mainFile) {
+                // Persist only the main file for board settings (YAML frontmatter),
+                // so include save constraints cannot block this metadata write.
+                mainFile.setCachedBoardFromWebview(board);
+                await context.fileSaveService.saveFile(mainFile, undefined, {
+                    source: 'ui-edit',
+                    skipReloadDetection: true
+                });
+            } else {
+                // Fallback to legacy full save path when registry context is unavailable.
+                await context.onSaveToMarkdown();
+            }
+        } catch (error) {
+            const messageText = getErrorMessage(error);
+            notifyError(`Failed to save board setting "${message.key}": ${messageText}`);
+            return this.failure(`setBoardSetting failed: ${messageText}`);
+        }
 
         logger.debug(`[UICommands.setBoardSetting] Saved to markdown`);
         return this.success();

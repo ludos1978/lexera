@@ -14,6 +14,25 @@ export { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/Ka
 // Import types for internal use
 import { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
 
+const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
+  'columnWidth',
+  'layoutRows',
+  'maxRowHeight',
+  'rowHeight',
+  'layoutPreset',
+  'stickyStackMode',
+  'tagVisibility',
+  'taskMinHeight',
+  'sectionHeight',
+  'taskSectionHeight',
+  'fontSize',
+  'fontFamily',
+  'whitespace',
+  'htmlCommentRenderMode',
+  'htmlContentRenderMode',
+  'arrowKeyFocusScroll'
+];
+
 export class MarkdownKanbanParser {
   // Runtime-only ID generation - no persistence to markdown
 
@@ -373,20 +392,33 @@ export class MarkdownKanbanParser {
     }
 
     const lines = yamlHeader.split('\n');
-    // Board setting keys that we recognize
-    const boardSettingKeys = ['columnWidth'];
 
     for (const line of lines) {
       const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
       if (match) {
-        const key = match[1];
+        const key = match[1] as keyof BoardSettings;
         const value = match[2].trim();
-        if (boardSettingKeys.includes(key)) {
-          if (key === 'columnWidth' && value) {
-            settings.columnWidth = value;
-            console.log('[MarkdownKanbanParser.parseBoardSettings] Found columnWidth:', value);
-          }
+        if (!BOARD_SETTING_KEYS.includes(key) || !value) {
+          continue;
         }
+
+        if (key === 'layoutRows' || key === 'maxRowHeight') {
+          const numericValue = Number(value);
+          if (!Number.isFinite(numericValue)) {
+            continue;
+          }
+
+          if (key === 'layoutRows') {
+            if (numericValue >= 1) {
+              settings.layoutRows = Math.floor(numericValue);
+            }
+          } else if (numericValue >= 0) {
+            settings.maxRowHeight = Math.floor(numericValue);
+          }
+          continue;
+        }
+
+        settings[key] = value;
       }
     }
 
@@ -403,9 +435,17 @@ export class MarkdownKanbanParser {
 
     if (!yamlHeader) {
       // Create new YAML header with kanban-plugin marker and settings
+      const newSettings: string[] = [];
+      for (const key of BOARD_SETTING_KEYS) {
+        const value = settings[key];
+        if (value !== undefined) {
+          newSettings.push(`${key}: ${String(value)}`);
+        }
+      }
+
       let yaml = '---\nkanban-plugin: board\n';
-      if (settings.columnWidth) {
-        yaml += `columnWidth: ${settings.columnWidth}\n`;
+      if (newSettings.length > 0) {
+        yaml += `${newSettings.join('\n')}\n`;
       }
       yaml += '---';
       console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Created new YAML:', yaml);
@@ -415,18 +455,19 @@ export class MarkdownKanbanParser {
     const lines = yamlHeader.split('\n');
     const result: string[] = [];
     const settingsToAdd = { ...settings };
-    const boardSettingKeys = ['columnWidth'];
 
     for (const line of lines) {
       const match = line.match(/^([a-zA-Z0-9_-]+):\s*(.*)$/);
-      if (match && boardSettingKeys.includes(match[1])) {
+      if (match && BOARD_SETTING_KEYS.includes(match[1] as keyof BoardSettings)) {
         const key = match[1] as keyof BoardSettings;
-        // Update existing setting or remove if undefined
+        // Update existing setting only when explicitly provided.
+        // If missing from `settings`, preserve existing YAML value to avoid accidental data loss.
         if (settingsToAdd[key] !== undefined) {
-          result.push(`${key}: ${settingsToAdd[key]}`);
+          result.push(`${key}: ${String(settingsToAdd[key])}`);
           delete settingsToAdd[key];
+        } else {
+          result.push(line);
         }
-        // Skip line if setting is being removed (undefined)
       } else {
         result.push(line);
       }
@@ -436,8 +477,11 @@ export class MarkdownKanbanParser {
     const closingIndex = result.lastIndexOf('---');
     if (closingIndex > 0) {
       const newSettings: string[] = [];
-      if (settingsToAdd.columnWidth) {
-        newSettings.push(`columnWidth: ${settingsToAdd.columnWidth}`);
+      for (const key of BOARD_SETTING_KEYS) {
+        const value = settingsToAdd[key];
+        if (value !== undefined) {
+          newSettings.push(`${key}: ${String(value)}`);
+        }
       }
       if (newSettings.length > 0) {
         result.splice(closingIndex, 0, ...newSettings);

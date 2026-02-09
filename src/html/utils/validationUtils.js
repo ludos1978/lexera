@@ -307,35 +307,63 @@ class ValidationUtils {
      * @returns {boolean} True if text appears to be a file path
      */
     static isFilePath(text) {
-        if (!text) return false;
+        if (!text || typeof text !== 'string') { return false; }
 
-        // Basic checks to avoid false positives first
-        if (text.includes('://')) return false; // URLs
-        if (text.startsWith('mailto:')) return false; // Email links
-        if (text.includes('@') && !text.includes('/') && !text.includes('\\')) return false; // Email addresses
+        let candidate = text.trim();
+        if (!candidate) { return false; }
+        if (/[\r\n]/.test(candidate)) { return false; }
 
-        // Check for Windows absolute paths (C:\ or C:/ style)
-        if (/^[a-zA-Z]:[\/\\]/.test(text)) {
-            // Has file extension
-            if (/\.[a-zA-Z0-9]{1,10}$/.test(text)) return true;
+        // Strip matching wrappers copied from terminals/editors.
+        if (
+            candidate.length >= 2 &&
+            (
+                (candidate.startsWith('"') && candidate.endsWith('"')) ||
+                (candidate.startsWith('\'') && candidate.endsWith('\'')) ||
+                (candidate.startsWith('`') && candidate.endsWith('`'))
+            )
+        ) {
+            candidate = candidate.slice(1, -1).trim();
+            if (!candidate) { return false; }
         }
 
-        // Check for Unix/Linux absolute paths starting with /
-        if (text.startsWith('/')) {
-            // Has file extension
-            if (/\.[a-zA-Z0-9]{1,10}$/.test(text)) return true;
+        // Already-formatted markdown links are not plain paths.
+        if (/^!?\[[^\]]*\]\([^)]+\)$/.test(candidate) || /^\[\[[^\]]+\]\]$/.test(candidate)) {
+            return false;
         }
 
-        // Check for relative paths with directory separators
-        if (text.includes('/') || text.includes('\\')) {
-            // Has file extension
-            if (/\.[a-zA-Z0-9]{1,10}$/.test(text)) return true;
+        // Explicit file URI should always count as a file path.
+        if (/^file:\/\//i.test(candidate)) {
+            return true;
         }
 
-        // Check for simple filename with extension
-        if (/\.[a-zA-Z0-9]{1,10}$/.test(text)) return true;
+        // Reject non-file URI schemes (http://, https://, vscode://, etc.).
+        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(candidate)) { return false; }
+        if (/^mailto:/i.test(candidate)) { return false; }
+        if (candidate.includes('@') && !candidate.includes('/') && !candidate.includes('\\')) { return false; }
 
-        return false;
+        // Strong-positive path forms.
+        if (/^[A-Za-z]:[\\/]/.test(candidate)) { return true; } // Windows drive path
+        if (/^\\\\[^\\]+\\[^\\]/.test(candidate)) { return true; } // UNC path
+
+        // If no separator exists, treat as non-path text.
+        if (!candidate.includes('/') && !candidate.includes('\\')) { return false; }
+
+        // Score ambiguous slash/backslash text to avoid obvious false positives.
+        let score = 0;
+        const normalized = candidate.replace(/\\/g, '/');
+        const segments = normalized.split('/').filter(Boolean);
+
+        score += 2; // Has at least one separator
+        if (segments.length >= 2) { score += 2; }
+        if (/[/\\]$/.test(candidate)) { score += 1; }
+        if (/\s[/\\]|[/\\]\s/.test(candidate)) { score -= 2; } else { score += 1; }
+        if (/^[^<>|?*\x00-\x1F]+$/.test(candidate)) { score += 1; }
+
+        // Date-like strings are common non-path false positives.
+        if (/^\d{4}[/-]\d{1,2}[/-]\d{1,2}$/.test(candidate)) { score -= 3; }
+        if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(candidate)) { score -= 2; }
+
+        return score >= 4;
     }
 
     /**
@@ -376,4 +404,3 @@ if (typeof window !== 'undefined') {
     window.isFilePath = ValidationUtils.isFilePath;
     window.isImageFile = ValidationUtils.isImageFile;
 }
-

@@ -464,9 +464,29 @@ async function readClipboardContent() {
 
 // escapeFilePath function moved to utils/validationUtils.js
 
+function extractPathLeaf(filePath) {
+    if (!filePath) { return ''; }
+
+    let normalized = String(filePath).trim();
+    if (!normalized) { return ''; }
+
+    // Normalize separators and strip common URI prefix.
+    normalized = normalized
+        .replace(/\\/g, '/')
+        .replace(/^file:\/+/, '/')
+        .replace(/\/+$/, '');
+
+    if (!normalized) { return filePath; }
+
+    const parts = normalized.split('/').filter(Boolean);
+    return parts.length > 0 ? parts[parts.length - 1] : normalized;
+}
+
 function createFileMarkdownLink(filePath) {
-    const fileName = filePath.split(/[\/\\]/).pop() || filePath;
-    const extension = fileName.toLowerCase().split('.').pop();
+    const fileName = extractPathLeaf(filePath) || filePath;
+    const lastDotIndex = fileName.lastIndexOf('.');
+    const hasExtension = lastDotIndex > 0 && lastDotIndex < fileName.length - 1;
+    const extension = hasExtension ? fileName.slice(lastDotIndex + 1).toLowerCase() : '';
 
     // Image file extensions
     const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif'];
@@ -493,7 +513,7 @@ function createFileMarkdownLink(filePath) {
     } else {
         // Other files: [filename](path) - use URL encoding
         const safePath = escapeFilePath(filePath);
-        const baseName = fileName.replace(/\.[^/.]+$/, "");
+        const baseName = hasExtension ? fileName.slice(0, lastDotIndex) : fileName;
         return `[${baseName}](${safePath})`;
     }
 }
@@ -615,7 +635,7 @@ async function processClipboardText(text) {
     // Check if it's a single file path
     if (isFilePath(text.trim())) {
         const filePath = text.trim();
-        const fileName = filePath.split(/[\/\\]/).pop();
+        const fileName = extractPathLeaf(filePath) || filePath;
         const content = createFileMarkdownLink(filePath);
 
         return {
@@ -1118,12 +1138,51 @@ window.stopMarpAutoExport = stopMarpAutoExport;
  * @param {string} options.message - Success message to show user
  * @param {function} options.afterApply - Callback to run after applying
  */
+const BOARD_SETTING_KEYS = new Set([
+    'columnWidth',
+    'layoutRows',
+    'maxRowHeight',
+    'rowHeight',
+    'layoutPreset',
+    'stickyStackMode',
+    'tagVisibility',
+    'taskMinHeight',
+    'sectionHeight',
+    'taskSectionHeight',
+    'fontSize',
+    'fontFamily',
+    'whitespace',
+    'htmlCommentRenderMode',
+    'htmlContentRenderMode',
+    'arrowKeyFocusScroll'
+]);
+
+function saveBoardSetting(settingKey, value) {
+    if (!BOARD_SETTING_KEYS.has(settingKey)) {
+        console.warn(`[webview] Ignoring unknown board setting key: ${settingKey}`);
+        return;
+    }
+
+    if (window.cachedBoard) {
+        if (!window.cachedBoard.boardSettings) {
+            window.cachedBoard.boardSettings = {};
+        }
+        window.cachedBoard.boardSettings[settingKey] = value;
+    }
+
+    vscode.postMessage({
+        type: 'setBoardSetting',
+        key: settingKey,
+        value: value
+    });
+}
+
 function applyAndSaveSetting(configKey, value, applyFunction, options = {}) {
     // Apply the setting
     applyFunction(value);
 
-    // Store preference
-    configManager.setPreference(configKey, value);
+    // Persist board-level setting in YAML frontmatter
+    saveBoardSetting(configKey, value);
 
     // Update menu indicators
     updateAllMenuIndicators();
@@ -1490,12 +1549,8 @@ function setColumnWidth(size) {
     // Apply the setting immediately
     applyColumnWidth(size);
 
-    // Save to YAML frontmatter of the board file
-    vscode.postMessage({
-        type: 'setBoardSetting',
-        key: 'columnWidth',
-        value: size
-    });
+    // Persist in YAML frontmatter of the board file
+    saveBoardSetting('columnWidth', size);
 
     // Update menu indicators
     updateAllMenuIndicators();
@@ -2503,7 +2558,7 @@ if (!webviewEventListenersInitialized) {
             // Prevent renderBoard() calls during initial config application
             // Each apply* function checks this flag and skips its internal renderBoard() call
             // Set this early before any apply* functions are called
-            if (isInitialLoad) {
+            if (isInitialLoad || isFullRefresh) {
                 window.applyingInitialConfig = true;
             }
 
@@ -2517,11 +2572,12 @@ if (!webviewEventListenersInitialized) {
             // Then detect rows from board and override configuration if different
             const detectedRows = detectRowsFromBoard(window.cachedBoard);
             if (detectedRows !== currentLayoutRows) {
-                setLayoutRows(detectedRows);
+                // Apply only. Do not persist auto-detected row count back into YAML.
+                applyLayoutRows(detectedRows);
             }
 
-            // Only apply configuration settings on initial load, not on content updates
-            if (isInitialLoad) {
+            // Only apply configuration settings on initial load/full refresh, not on incremental content updates
+            if (isInitialLoad || isFullRefresh) {
                 // Initialize global reference to current values
                 window.currentColumnWidth = currentColumnWidth;
                 // Update whitespace with the value from configuration
@@ -2641,8 +2697,8 @@ if (!webviewEventListenersInitialized) {
             
             // Layout rows are now handled above (with auto-detection override)
             
-            // Continue configuration settings only on initial load
-            if (isInitialLoad) {
+            // Continue configuration settings only on initial load/full refresh
+            if (isInitialLoad || isFullRefresh) {
                 // Update row height with the value from configuration
                 if (message.rowHeight) {
                     // Normalize old row height values to current options
@@ -2716,7 +2772,10 @@ if (!webviewEventListenersInitialized) {
                     requestTemplates();
                 }
 
-                // Clear the flag - configuration application is complete
+            }
+
+            // Clear the flag - configuration application is complete
+            if (isInitialLoad || isFullRefresh) {
                 window.applyingInitialConfig = false;
             }
 
@@ -6081,11 +6140,7 @@ function applyLayoutPreset(presetKey) {
     window.currentLayoutPreset = presetKey;
 
     // Send to backend
-    vscode.postMessage({
-        type: 'setPreference',
-        key: 'layoutPreset',
-        value: presetKey
-    });
+    saveBoardSetting('layoutPreset', presetKey);
 
     // Close the menu
     const dropdown = document.getElementById('layout-presets-dropdown');

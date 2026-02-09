@@ -27,6 +27,7 @@ export interface KanbanConfiguration {
     layoutRows: number;
     rowHeight: string;
     layoutPreset: string;
+    stickyStackMode: string;
     layoutPresets: { [key: string]: any };
     tagVisibility: string;
     exportTagVisibility: boolean;
@@ -111,6 +112,7 @@ export class ConfigurationService {
         layoutRows: 1,
         rowHeight: 'auto',
         layoutPreset: 'normal',
+        stickyStackMode: 'titleonly',
         tagVisibility: 'allexcludinglayout',
         exportTagVisibility: true,
         htmlCommentRenderMode: 'hidden',
@@ -303,29 +305,32 @@ export class ConfigurationService {
 
     public getBoardViewConfig(layoutPresets: Record<string, any>): Record<string, any> {
         return {
-            columnWidth: this.getConfig('columnWidth'),
+            // Board-affecting visual settings are YAML-backed (boardSettings) now.
+            // Keep stable defaults here; WebviewUpdateService overlays boardSettings on top.
+            columnWidth: this.defaults.columnWidth,
             columnBorder: this.getConfig('columnBorder'),
             taskBorder: this.getConfig('taskBorder'),
-            layoutRows: this.getConfig('layoutRows'),
-            rowHeight: this.getConfig('rowHeight'),
-            layoutPreset: this.getConfig('layoutPreset'),
+            layoutRows: this.defaults.layoutRows,
+            rowHeight: this.defaults.rowHeight,
+            layoutPreset: this.defaults.layoutPreset,
+            stickyStackMode: this.defaults.stickyStackMode,
             layoutPresets: layoutPresets,
-            maxRowHeight: this.getConfig('maxRowHeight'),
-            taskMinHeight: this.getConfig('taskMinHeight'),
-            sectionHeight: this.getConfig('sectionHeight'),
-            taskSectionHeight: this.getConfig('taskSectionHeight'),
-            fontSize: this.getConfig('fontSize'),
-            fontFamily: this.getConfig('fontFamily'),
-            whitespace: this.getConfig('whitespace'),
-            htmlCommentRenderMode: this.getConfig('htmlCommentRenderMode'),
-            htmlContentRenderMode: this.getConfig('htmlContentRenderMode'),
+            maxRowHeight: this.defaults.maxRowHeight,
+            taskMinHeight: this.defaults.taskMinHeight,
+            sectionHeight: this.defaults.sectionHeight,
+            taskSectionHeight: this.defaults.taskSectionHeight,
+            fontSize: this.defaults.fontSize,
+            fontFamily: this.defaults.fontFamily,
+            whitespace: this.defaults.whitespace,
+            htmlCommentRenderMode: this.defaults.htmlCommentRenderMode,
+            htmlContentRenderMode: this.defaults.htmlContentRenderMode,
             tagColors: this.getConfig('tagColors'),
             enabledTagCategoriesColumn: this.getEnabledTagCategoriesColumn(),
             enabledTagCategoriesTask: this.getEnabledTagCategoriesTask(),
             customTagCategories: this.getCustomTagCategories(),
-            tagVisibility: this.getConfig('tagVisibility'),
+            tagVisibility: this.defaults.tagVisibility,
             exportTagVisibility: this.getConfig('exportTagVisibility'),
-            arrowKeyFocusScroll: this.getConfig('arrowKeyFocusScroll'),
+            arrowKeyFocusScroll: this.defaults.arrowKeyFocusScroll,
             openLinksInNewTab: this.getConfig('openLinksInNewTab'),
             pathGeneration: this.getConfig('pathGeneration'),
             showMarpSettings: this.getConfig('showMarpSettings'),

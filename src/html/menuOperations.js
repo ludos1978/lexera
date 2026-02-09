@@ -103,6 +103,33 @@ function moveTaskInDOM(taskId, columnId, newIndex, targetColumnId = null) {
         targetContainer.insertBefore(taskElement, taskItems[newIndex]);
     }
 
+    // If task moved across columns, update all inline handlers/data attributes
+    // that still reference the source column ID.
+    if (targetColId !== columnId) {
+        const fromColumnToken = `'${columnId}'`;
+        const toColumnToken = `'${targetColId}'`;
+
+        taskElement.querySelectorAll('[onclick]').forEach(el => {
+            const onclick = el.getAttribute('onclick');
+            if (!onclick || !onclick.includes(fromColumnToken)) {
+                return;
+            }
+            el.setAttribute('onclick', onclick.split(fromColumnToken).join(toColumnToken));
+        });
+
+        taskElement.querySelectorAll('[data-column-id]').forEach(el => {
+            if (el.getAttribute('data-column-id') === columnId) {
+                el.setAttribute('data-column-id', targetColId);
+            }
+        });
+
+        // Defensive: re-run initialization hooks in case external modules
+        // attached listeners based on previous column context.
+        if (typeof window.initializeTaskElement === 'function') {
+            window.initializeTaskElement(taskElement);
+        }
+    }
+
     // Recalculate stack heights after task move (use debounced for better performance)
     const targetColumn = targetContainer.closest('.kanban-full-height-column');
     const targetStack = targetColumn?.closest('.kanban-column-stack');

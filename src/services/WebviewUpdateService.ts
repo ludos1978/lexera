@@ -238,7 +238,7 @@ export class WebviewUpdateService {
             const layoutPresets = this._deps.webviewManager.getLayoutPresetsConfiguration();
             const config: Record<string, unknown> = configService.getBoardViewConfig(layoutPresets);
             this._applyDocumentMarpPreference(config as { showMarpSettings?: boolean });
-            this._applyDocumentPreferences(config as { columnWidth?: string });
+            this._applyDocumentPreferences(config);
 
             // 3. Inject embed plugin config for frontend sync
             const embedPlugin = PluginRegistry.getInstance().getEmbedPlugin();
@@ -292,27 +292,54 @@ export class WebviewUpdateService {
      * Apply per-file preferences to config (columnWidth, etc.)
      * Priority: YAML frontmatter (boardSettings) > per-file preferences
      */
-    private _applyDocumentPreferences<T extends { columnWidth?: string }>(config: T): T {
-        // First, check for settings in YAML frontmatter (board.boardSettings)
+    private _applyDocumentPreferences<T extends Record<string, unknown>>(config: T): T {
         const board = this._deps.getBoard();
-        logger.debug('[WebviewUpdateService._applyDocumentPreferences] board.boardSettings:', board?.boardSettings);
+        const boardSettings = board?.boardSettings;
+        logger.debug('[WebviewUpdateService._applyDocumentPreferences] board.boardSettings:', boardSettings);
 
-        if (board?.boardSettings?.columnWidth) {
-            logger.debug('[WebviewUpdateService._applyDocumentPreferences] Using columnWidth from boardSettings:', board.boardSettings.columnWidth);
-            config.columnWidth = board.boardSettings.columnWidth;
-            return config;
+        if (boardSettings) {
+            const boardSettingKeys: Array<keyof NonNullable<KanbanBoard['boardSettings']>> = [
+                'columnWidth',
+                'layoutRows',
+                'maxRowHeight',
+                'rowHeight',
+                'layoutPreset',
+                'stickyStackMode',
+                'tagVisibility',
+                'taskMinHeight',
+                'sectionHeight',
+                'taskSectionHeight',
+                'fontSize',
+                'fontFamily',
+                'whitespace',
+                'htmlCommentRenderMode',
+                'htmlContentRenderMode',
+                'arrowKeyFocusScroll'
+            ];
+
+            for (const key of boardSettingKeys) {
+                const value = boardSettings[key];
+                if (value !== undefined) {
+                    (config as Record<string, unknown>)[key] = value;
+                }
+            }
         }
 
-        // Fallback to per-file preferences for backward compatibility
+        // Fallback to per-file columnWidth preference for backward compatibility
         const documentUri = this._deps.panelContext.lastDocumentUri;
         if (!documentUri) {
-            logger.debug('[WebviewUpdateService._applyDocumentPreferences] No documentUri, returning default config');
+            logger.debug('[WebviewUpdateService._applyDocumentPreferences] No documentUri, returning config');
             return config;
         }
+
+        if (boardSettings?.columnWidth !== undefined) {
+            return config;
+        }
+
         const storedColumnWidth = getDocumentPreference(this._deps.extensionContext, documentUri, 'columnWidth');
         logger.debug('[WebviewUpdateService._applyDocumentPreferences] storedColumnWidth from preferences:', storedColumnWidth);
         if (storedColumnWidth !== undefined && typeof storedColumnWidth === 'string') {
-            config.columnWidth = storedColumnWidth;
+            (config as { columnWidth?: string }).columnWidth = storedColumnWidth;
         }
         return config;
     }

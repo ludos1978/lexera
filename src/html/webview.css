@@ -2794,7 +2794,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 3px;
   margin-right: 6px;
-  /* vertical-align: text-bottom; */
+  vertical-align: text-top;
   background: var(--vscode-editor-background);
   color: var(--vscode-button-foreground);
   cursor: pointer;

@@ -413,8 +413,7 @@ export function activate(context: vscode.ExtensionContext) {
 				e.affectsConfiguration('markdown-kanban.backupInterval') ||
 				e.affectsConfiguration('markdown-kanban.backupLocation') ||
 				e.affectsConfiguration('markdown-kanban.maxBackupsPerFile') ||
-				e.affectsConfiguration('markdown-kanban.openLinksInNewTab') ||
-				e.affectsConfiguration('markdown-kanban.maxRowHeight');
+				e.affectsConfiguration('markdown-kanban.openLinksInNewTab');
 			
 			if (needsFullRefresh) {
 				const panels = KanbanWebviewPanel.getAllPanels();

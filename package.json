@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.132.4",
+  "version": "0.132.7",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -291,202 +291,10 @@
             }
           }
         },
-        "markdown-kanban.columnWidth": {
-          "type": "string",
-          "enum": [
-            "250px",
-            "350px",
-            "450px",
-            "550px",
-            "650px",
-            "33percent",
-            "50percent",
-            "66percent",
-            "100percent"
-          ],
-          "default": "450px",
-          "description": "Column width preference for the kanban board. Supports pixel and viewport values."
-        },
-        "markdown-kanban.layoutRows": {
-          "type": "number",
-          "default": 1,
-          "minimum": 1,
-          "maximum": 6,
-          "description": "Number of layout rows to show in the board view."
-        },
-        "markdown-kanban.rowHeight": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "300px",
-            "500px",
-            "700px",
-            "33percent",
-            "50percent",
-            "66percent",
-            "100percent",
-            "19em",
-            "31em",
-            "44em"
-          ],
-          "default": "auto",
-          "description": "Row height configuration used when multiple rows exist."
-        },
-        "markdown-kanban.whitespace": {
-          "type": "string",
-          "enum": [
-            "4px",
-            "8px",
-            "12px",
-            "16px",
-            "24px",
-            "36px",
-            "48px",
-            "60px"
-          ],
-          "default": "4px",
-          "description": "Spacing value between cards."
-        },
-        "markdown-kanban.taskMinHeight": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "200px",
-            "400px",
-            "600px",
-            "33percent",
-            "50percent",
-            "66percent",
-            "100percent"
-          ],
-          "default": "auto",
-          "description": "Minimum height for each task card."
-        },
-        "markdown-kanban.sectionHeight": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "200px",
-            "400px",
-            "600px",
-            "33percent",
-            "50percent",
-            "66percent",
-            "100percent"
-          ],
-          "default": "auto",
-          "description": "Section height configuration for the kanban board."
-        },
-        "markdown-kanban.taskSectionHeight": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "150px",
-            "300px",
-            "500px",
-            "33percent",
-            "50percent",
-            "66percent",
-            "100percent"
-          ],
-          "default": "auto",
-          "description": "Task section height used inside the column cards."
-        },
-        "markdown-kanban.fontSize": {
-          "type": "string",
-          "enum": [
-            "0_5x",
-            "0_75x",
-            "1x",
-            "1_25x",
-            "1_5x",
-            "2x",
-            "2_5x",
-            "3x",
-            "4x",
-            "5x"
-          ],
-          "default": "1x",
-          "description": "Base font size multiplier applied on the board."
-        },
-        "markdown-kanban.fontFamily": {
-          "type": "string",
-          "enum": [
-            "system",
-            "roboto",
-            "opensans",
-            "lato",
-            "poppins",
-            "inter",
-            "helvetica",
-            "arial",
-            "georgia",
-            "times",
-            "firacode",
-            "jetbrains",
-            "sourcecodepro",
-            "consolas"
-          ],
-          "default": "system",
-          "description": "Primary font family used for the kanban board text."
-        },
-        "markdown-kanban.layoutPreset": {
-          "type": "string",
-          "enum": [
-            "Overview",
-            "normal",
-            "grid3x",
-            "focused"
-          ],
-          "default": "normal",
-          "description": "Default layout preset applied at startup."
-        },
-        "markdown-kanban.stickyStackMode": {
-          "type": "string",
-          "enum": [
-            "full",
-            "titleonly"
-          ],
-          "default": "titleonly",
-          "description": "Sticky stack behavior for column stacks."
-        },
-        "markdown-kanban.tagVisibility": {
-          "type": "string",
-          "enum": [
-            "all",
-            "allexcludinglayout",
-            "customonly",
-            "mentionsonly",
-            "none",
-            "standard",
-            "custom",
-            "mentions"
-          ],
-          "default": "allexcludinglayout",
-          "description": "Tag visibility and filtering within the board."
-        },
         "markdown-kanban.exportTagVisibility": {
           "type": "boolean",
           "default": true,
           "description": "Include tag visibility settings when exporting."
-        },
-        "markdown-kanban.htmlCommentRenderMode": {
-          "type": "string",
-          "enum": [
-            "hidden",
-            "text"
-          ],
-          "default": "hidden",
-          "description": "How HTML comments should render inside tasks."
-        },
-        "markdown-kanban.htmlContentRenderMode": {
-          "type": "string",
-          "enum": [
-            "html",
-            "text"
-          ],
-          "default": "html",
-          "description": "How HTML content within the board should render."
         },
         "markdown-kanban.embed.knownDomains": {
           "type": "array",
@@ -5913,25 +5721,6 @@
         "markdown-kanban.tagCategoryReference": {
           "type": "null",
           "markdownDescription": "## Tag Category Reference\n\nAll 27 tag categories available for both columns and tasks. Each Category uses consistent styling:\n\n### Column-Optimized Categories (headerBar + border)\n- `Workflow` - Workflow stages: ideas, outline, draft, review, polish, ready, published, active, testing, production, archive\n- `Organization` - Organization: intro, core, advanced, frontend, backend, infrastructure, design\n- `Teaching-Content` - Teaching content: slide, video, reading, exercise, quiz, demo, interactive, handout, discussion  \n- `Product-Content` - Product content: story, task, chore, improvement, design, infrastructure-task\n- `Complexity` - Complexity levels: trivial, beginner, intermediate, advanced-level, expert\n- `Schedule` - Schedule phases: Schedule, planning, preparation, verify\n- `Overview` - Overview content: Overview, information, presentation\n- `Example` - Example content: Example, tasks, homework\n- `Deliveries` - Deliverables: Deliveries, handouts, references\n\n### Task-Optimized Categories (cornerBadge + background)\n- `Priority` - Priority levels: urgent, high, medium, low, delayed, stopped\n- `Positivity` - Sentiment levels: ++ (very positive), + (positive), ø (neutral), - (negative), -- (very negative)\n- `Status` - Status states: todo, inprogress, done, blocked, testing, wip, cancelled, archived\n- `Status-Review` - Review states: needs-review, in-review, needs-changes, reviewed, needs-approval, approved, rejected\n- `Time-Estimate` - Time estimates: quick, medium-time, long\n- `Status-Testing` - Testing states: untested, unit-tested, integration-tested, e2e-tested, security-tested, performance-tested, regression-tested, uat-passed\n- `Teaching-Platform` - Teaching platforms: online, in-person, hybrid, async, sync\n- `Product-Platform` - Product platforms: web, mobile, ios, android, desktop, api\n- `version` - Version tags: v1, v2, v3, rc, stable, legacy, eol\n- `Impact` - Impact levels: minor, moderate, major, breaking\n\n### Universal Categories (work on both)\n- `Importance` - Importance: critical, normal\n- `type` - Item types: bug, feature, enhancement, documentation, epic, spike, refactor\n- `Category` - Technical areas: backend, frontend, database, api, security, performance, ux, ui\n\n### Visual Effect Categories (opacity + filter + pattern)\n- `Export` - Export control: export-exclude (grayed out with stripes), private (faded with stripes), draft (faded with horizontal stripes)\n\n### Color Categories (background only)\n- `Colors-Dark` - 12 dark Colors: dark-red, dark-orange, dark-yellow, dark-green, dark-cyan, dark-blue, dark-purple, dark-pink, dark-brown, dark-gray, black, dark-charcoal\n- `Colors` - 12 normal Colors: red, orange, yellow, green, cyan, blue, purple, pink, brown, gray, teal, indigo\n- `Colors-Light` - 12 light Colors: light-red, light-orange, light-yellow, light-green, light-cyan, light-blue, light-purple, light-pink, light-brown, light-gray, white, light-beige\n- `Colors-Accessible` - 8 WCAG Colors: accessible-indigo (#332288), accessible-green (#117733), accessible-teal (#44AA99), accessible-cyan (#88CCEE), accessible-yellow (#DDCC77), accessible-rose (#CC6677), accessible-purple (#AA4499), accessible-magenta (#882255)\n\n### Visual Effect Properties\nTags can use these additional properties for visual effects:\n- `opacity` (0.0-1.0) - Overall transparency of the element\n- `filter` (CSS filter) - CSS filter like grayscale(0.7), blur(2px)\n- `pattern` (stripes|stripes-h|stripes-v|dots|none) - Background pattern overlay"
-        },
-        "markdown-kanban.maxRowHeight": {
-          "type": "number",
-          "default": 0,
-          "description": "Maximum height for kanban rows in pixels. Set to 0 for unlimited height (full card height). Other values limit the row height.",
-          "minimum": 0
-        },
-        "markdown-kanban.arrowKeyFocusScroll": {
-          "type": "string",
-          "default": "center",
-          "description": "How arrow key navigation scrolls focused items into view",
-          "enum": [
-            "center",
-            "nearest"
-          ],
-          "enumDescriptions": [
-            "Center the focused item in the viewport",
-            "Scroll just enough to bring the item into view"
-          ]
         },
         "markdown-kanban.columnBorder": {
           "type": "string",
