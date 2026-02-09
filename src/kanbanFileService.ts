@@ -15,7 +15,8 @@ import { BoardStore } from './core/stores';
 import { showError, showWarning, showInfo } from './services/NotificationService';
 import { SaveOptions } from './files/SaveOptions';
 import { MarkdownFile } from './files/MarkdownFile';
-import { ConflictDialogBridge, ConflictDialogResult, ConflictFileInfo } from './services/ConflictDialogBridge';
+import { IncludeFile } from './files/IncludeFile';
+import { ConflictDialogBridge, ConflictDialogResult, toConflictFileInfo } from './services/ConflictDialogBridge';
 import { computeTrackedFilesSnapshotToken } from './utils/fileStateSnapshot';
 
 /**
@@ -121,6 +122,14 @@ export class KanbanFileService {
     private get getPanelInstance() { return this._deps.getPanelInstance; }
     private get setOriginalTaskOrder() { return (board: KanbanBoard) => this._deps.boardStore.setOriginalTaskOrder(board); }
 
+    private async _parseBoardFromDisk(filePath: string): Promise<KanbanBoard> {
+        const basePath = path.dirname(filePath);
+        const diskContent = await fs.promises.readFile(filePath, 'utf-8');
+        const normalizedContent = diskContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const parseResult = MarkdownKanbanParser.parseMarkdown(normalizedContent, basePath, undefined, filePath);
+        return parseResult.board;
+    }
+
     /**
      * Get current state values for syncing back to panel
      * NOTE: Document state (version, uri) is now shared via PanelContext
@@ -155,11 +164,8 @@ export class KanbanFileService {
                 // Parse board from file on disk (NOT VS Code buffer)
                 // The kanban only cares about file data on disk, never the editor buffer state
                 const filePath = document.uri.fsPath;
-                const basePath = path.dirname(filePath);
-                const diskContent = await fs.promises.readFile(filePath, 'utf-8');
-                const normalizedContent = diskContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-                const parseResult = MarkdownKanbanParser.parseMarkdown(normalizedContent, basePath, undefined, filePath);
-                this.setBoard(parseResult.board);
+                const board = await this._parseBoardFromDisk(filePath);
+                this.setBoard(board);
 
                 const currentBoard = this.board();
                 if (currentBoard) {
@@ -271,9 +277,7 @@ export class KanbanFileService {
             // Read from disk, NOT VS Code buffer — kanban only cares about file data on disk
             const filePath = document.uri.fsPath;
             const basePath = path.dirname(filePath);
-            const diskContent = await fs.promises.readFile(filePath, 'utf-8');
-            const normalizedContent = diskContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-            const parseResult = MarkdownKanbanParser.parseMarkdown(normalizedContent, basePath, undefined, filePath);
+            const parsedBoard = await this._parseBoardFromDisk(filePath);
 
             // Update version tracking (in shared PanelContext)
             this._context.setLastDocumentVersion(document.version);
@@ -287,11 +291,11 @@ export class KanbanFileService {
             }
 
             // Update the board
-            this.setBoard(parseResult.board);
+            this.setBoard(parsedBoard);
 
             // CRITICAL: Check include file existence and set includeError flags BEFORE sending to frontend
             // This runs during initial load when MainKanbanFile may not be initialized yet
-            this._checkIncludeFileExistence(parseResult.board, basePath);
+            this._checkIncludeFileExistence(parsedBoard, basePath);
 
             // Clean up any duplicate row tags
             const currentBoard = this.board();
@@ -397,6 +401,24 @@ export class KanbanFileService {
                 };
             }
 
+            if (board) {
+                const includeDeterminismError = this._validateDeterministicIncludeWritesBeforeSave(
+                    board,
+                    scope,
+                    syncIncludes
+                );
+                if (includeDeterminismError) {
+                    postSaveResult(false, includeDeterminismError);
+                    return {
+                        success: false,
+                        aborted: true,
+                        savedMainFile: false,
+                        includeSaveErrors: [],
+                        error: includeDeterminismError
+                    };
+                }
+            }
+
             const dirtyEditorFiles = this._collectDirtyEditorFilesForSaveScope(scope, syncIncludes, force);
             if (dirtyEditorFiles.length > 0) {
                 const suffix = dirtyEditorFiles.length > 4 ? ', ...' : '';
@@ -475,20 +497,60 @@ export class KanbanFileService {
             }
             const forceWritePaths = presaveCheck.forceWritePaths;
 
-            if (scope === 'main' || scope === 'all') {
-                const mainFile = this.fileRegistry.getMainFile();
-                if (!mainFile) {
-                    const error = 'Save aborted: no main file is registered.';
-                    console.warn('[KanbanFileService.saveUnified] No main file registered');
-                    postSaveResult(false, error);
-                    return {
-                        success: false,
-                        aborted: true,
-                        savedMainFile: false,
-                        includeSaveErrors: [],
-                        error
-                    };
+            const mainFile = mainSaveRequired ? this.fileRegistry.getMainFile() : undefined;
+            if (mainSaveRequired && !mainFile) {
+                const error = 'Save aborted: no main file is registered.';
+                console.warn('[KanbanFileService.saveUnified] No main file registered');
+                postSaveResult(false, error);
+                return {
+                    success: false,
+                    aborted: true,
+                    savedMainFile: false,
+                    includeSaveErrors: [],
+                    error
+                };
+            }
+
+            if (scope === 'includes' || scope === 'all') {
+                const includeCandidates = this._getIncludeSaveTargets(syncIncludes || force);
+                const forceIncludeSave = force || syncIncludes;
+
+                const includeFiles = forceIncludeSave
+                    ? includeCandidates
+                    : includeCandidates.filter(f => f.hasUnsavedChanges());
+
+                for (const includeFile of includeFiles) {
+                    const forceInclude = forceIncludeSave || forceWritePaths.has(includeFile.getPath());
+                    try {
+                        await this._fileSaveService.saveFile(includeFile, undefined, {
+                            source,
+                            force: forceInclude,
+                            skipReloadDetection: true,
+                            skipValidation
+                        });
+                    } catch (error) {
+                        const errorMessage = `[KanbanFileService] Failed to save include file ${includeFile.getPath()}: ${getErrorMessage(error)}`;
+                        console.warn(errorMessage);
+                        includeSaveErrors.push(errorMessage);
+
+                        const includeFailureError = scope === 'all'
+                            ? `Save aborted: failed to save include file "${includeFile.getRelativePath()}". Main file was not saved. `
+                                + `Reason: ${getErrorMessage(error)}`
+                            : `Save aborted: failed to save include file "${includeFile.getRelativePath()}". `
+                                + `Reason: ${getErrorMessage(error)}`;
+                        postSaveResult(false, includeFailureError);
+                        return {
+                            success: false,
+                            aborted: true,
+                            savedMainFile: false,
+                            includeSaveErrors,
+                            error: includeFailureError
+                        };
+                    }
                 }
+            }
+
+            if (mainFile) {
                 if (board) {
                     mainFile.setCachedBoardFromWebview(board);
                 }
@@ -501,39 +563,6 @@ export class KanbanFileService {
                     skipValidation
                 });
                 savedMainFile = true;
-            }
-
-            if (scope === 'includes' || scope === 'all') {
-                const includeCandidates = this._getIncludeSaveTargets(syncIncludes || force);
-                const forceIncludeSave = force || syncIncludes;
-
-                const includeFiles = forceIncludeSave
-                    ? includeCandidates
-                    : includeCandidates.filter(f => f.hasUnsavedChanges());
-
-                if (includeFiles.length > 0) {
-                    const saveResults = await Promise.allSettled(
-                        includeFiles.map(f => this._fileSaveService.saveFile(f, undefined, {
-                            source,
-                            force: forceIncludeSave || forceWritePaths.has(f.getPath()),
-                            skipReloadDetection: true,
-                            skipValidation
-                        }))
-                    );
-
-                    const failures = saveResults
-                        .map((result, index) => ({ result, file: includeFiles[index] }))
-                        .filter(({ result }) => result.status === 'rejected');
-
-                    if (failures.length > 0) {
-                        failures.forEach(({ result, file }) => {
-                            const error = (result as PromiseRejectedResult).reason;
-                            const errorMessage = `[KanbanFileService] Failed to save include file ${file.getPath()}: ${error?.message || error}`;
-                            console.warn(errorMessage);
-                            includeSaveErrors.push(errorMessage);
-                        });
-                    }
-                }
             }
 
             if (typeof scope === 'object' && scope.filePath) {
@@ -576,63 +605,25 @@ export class KanbanFileService {
                 });
             }
 
-            let result: SaveUnifiedResult;
-            if (updateUi) {
-                if (mainSaveRequired && !savedMainFile) {
-                    const error = 'Save aborted: main file was not saved.';
-                    postSaveResult(false, error);
-                    result = {
-                        success: false,
-                        aborted: true,
-                        savedMainFile,
-                        includeSaveErrors,
-                        error
-                    };
-                } else if (includeSaveErrors.length > 0) {
-                    const error = `Saved main file, but ${includeSaveErrors.length} include file(s) failed.`;
-                    postSaveResult(false, error);
-                    result = {
-                        success: false,
-                        aborted: false,
-                        savedMainFile,
-                        includeSaveErrors,
-                        error
-                    };
-                } else {
-                    postSaveResult(true);
-                    result = {
-                        success: true,
-                        aborted: false,
-                        savedMainFile,
-                        includeSaveErrors: []
-                    };
-                }
-            } else if (mainSaveRequired && !savedMainFile) {
-                result = {
+            if (mainSaveRequired && !savedMainFile) {
+                const error = 'Save aborted: main file was not saved.';
+                postSaveResult(false, error);
+                return {
                     success: false,
                     aborted: true,
                     savedMainFile,
                     includeSaveErrors,
-                    error: 'Save aborted: main file was not saved.'
-                };
-            } else if (includeSaveErrors.length > 0) {
-                result = {
-                    success: false,
-                    aborted: false,
-                    savedMainFile,
-                    includeSaveErrors,
-                    error: `Saved main file, but ${includeSaveErrors.length} include file(s) failed.`
-                };
-            } else {
-                result = {
-                    success: true,
-                    aborted: false,
-                    savedMainFile,
-                    includeSaveErrors: []
+                    error
                 };
             }
 
-            return result;
+            postSaveResult(true);
+            return {
+                success: true,
+                aborted: false,
+                savedMainFile,
+                includeSaveErrors: []
+            };
         };
 
         if (requiresExclusive) {
@@ -704,6 +695,113 @@ export class KanbanFileService {
         }
 
         return Array.from(dirtyFiles);
+    }
+
+    private _resolveWritableIncludeForSync(includePath: string): IncludeFile | null {
+        const decodedPath = safeDecodeURIComponent(includePath);
+        const file = this.fileRegistry.findByPath(decodedPath)
+            || this.fileRegistry.findByPath(includePath);
+        if (!file) {
+            return null;
+        }
+
+        if (file.getFileType() === 'main' || file.getFileType() === 'include-regular') {
+            return null;
+        }
+
+        if (file.shouldPreserveRawContent()) {
+            return null;
+        }
+
+        return file as IncludeFile;
+    }
+
+    private _validateDeterministicIncludeWritesBeforeSave(
+        board: KanbanBoard,
+        scope: SaveScope,
+        syncIncludes: boolean
+    ): string | null {
+        if (!syncIncludes) {
+            return null;
+        }
+
+        if (scope !== 'all' && scope !== 'includes') {
+            return null;
+        }
+
+        type IncludeWriteCandidate = {
+            file: IncludeFile;
+            sources: string[];
+            contents: Set<string>;
+        };
+        const candidates = new Map<string, IncludeWriteCandidate>();
+
+        const recordCandidate = (file: IncludeFile, source: string, content: string): void => {
+            const key = file.getPath();
+            const candidate = candidates.get(key) ?? {
+                file,
+                sources: [],
+                contents: new Set<string>()
+            };
+            candidate.sources.push(source);
+            candidate.contents.add(content);
+            candidates.set(key, candidate);
+        };
+
+        for (const column of board.columns) {
+            if (!column.includeFiles || column.includeFiles.length === 0) {
+                continue;
+            }
+
+            for (const includePath of column.includeFiles) {
+                const includeFile = this._resolveWritableIncludeForSync(includePath);
+                if (!includeFile) {
+                    continue;
+                }
+
+                let content: string;
+                try {
+                    content = includeFile.generateFromTasks(column.tasks || []);
+                } catch (error) {
+                    return `Save aborted: failed to generate include content for "${includeFile.getRelativePath()}". `
+                        + `Reason: ${getErrorMessage(error)}`;
+                }
+
+                recordCandidate(includeFile, `column:${column.id}`, content);
+            }
+        }
+
+        for (const column of board.columns) {
+            for (const task of column.tasks || []) {
+                if (!task.includeFiles || task.includeFiles.length === 0) {
+                    continue;
+                }
+
+                for (const includePath of task.includeFiles) {
+                    const includeFile = this._resolveWritableIncludeForSync(includePath);
+                    if (!includeFile) {
+                        continue;
+                    }
+                    recordCandidate(includeFile, `task:${task.id}`, task.description || '');
+                }
+            }
+        }
+
+        const conflicts = Array.from(candidates.values()).filter(candidate => candidate.contents.size > 1);
+        if (conflicts.length === 0) {
+            return null;
+        }
+
+        const conflictPreview = conflicts
+            .slice(0, 3)
+            .map(candidate => {
+                const sources = candidate.sources.slice(0, 3).join(', ');
+                return `${candidate.file.getRelativePath()} (${sources})`;
+            })
+            .join('; ');
+        const suffix = conflicts.length > 3 ? '; ...' : '';
+        return `Save aborted: ambiguous include content detected for ${conflicts.length} file(s): ${conflictPreview}${suffix}. `
+            + 'A writable include file must map to exactly one board content source per save.';
     }
 
     private _validateRegistryConsistencyBeforeSave(): string | null {
@@ -1028,10 +1126,11 @@ export class KanbanFileService {
 
         // If any files were reloaded, update the board
         if (anyReloaded) {
-            const freshMainFile = this.fileRegistry.getMainFile();
-            const freshBoard = freshMainFile?.getBoard();
-            if (freshBoard) {
-                this.setBoard(freshBoard);
+            const existingBoard = this.board();
+            const regeneratedBoard = this.fileRegistry.generateBoard(existingBoard ?? undefined)
+                ?? this.fileRegistry.getMainFile()?.getBoard();
+            if (regeneratedBoard) {
+                this.setBoard(regeneratedBoard);
                 await this.sendBoardUpdate(false, true);
             }
         }
@@ -1071,14 +1170,7 @@ export class KanbanFileService {
             return null;
         }
 
-        const conflictFileInfos: ConflictFileInfo[] = filesWithChanges.map(({ file }) => ({
-            path: file.getPath(),
-            relativePath: file.getRelativePath(),
-            fileType: file.getFileType() as ConflictFileInfo['fileType'],
-            hasExternalChanges: file.hasExternalChanges(),
-            hasUnsavedChanges: file.hasAnyUnsavedChanges(),
-            isInEditMode: file.isInEditMode()
-        }));
+        const conflictFileInfos = filesWithChanges.map(({ file }) => toConflictFileInfo(file));
         const snapshotToken = computeTrackedFilesSnapshotToken(this.fileRegistry);
 
         try {

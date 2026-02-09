@@ -23,6 +23,7 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import {
     SetDebugModeMessage,
     ConflictResolutionMessage,
@@ -37,7 +38,7 @@ import {
     DuplicationCopyState
 } from '../core/bridge/MessageTypes';
 import { KanbanDiffService } from '../services/KanbanDiffService';
-import { ConflictDialogResult, ConflictFileInfo } from '../services/ConflictDialogBridge';
+import { ConflictDialogResult, toConflictFileInfo } from '../services/ConflictDialogBridge';
 import { logger } from '../utils/logger';
 import { computeTrackedFilesSnapshotToken } from '../utils/fileStateSnapshot';
 
@@ -52,6 +53,7 @@ interface IncludeFileDebugInfo {
     lastModified: string;
     size: string;
     hasInternalChanges: boolean;
+    hasAnyUnsavedChanges: boolean;
     hasExternalChanges: boolean;
     isUnsavedInEditor: boolean;
     contentLength: number;
@@ -93,6 +95,7 @@ interface TrackedFilesDebugInfo {
         lastAccessErrorCode?: string | null;
         watcherActive: boolean;
         hasInternalChanges: boolean;
+        hasAnyUnsavedChanges: boolean;
         hasExternalChanges: boolean;
         documentVersion: number;
         lastDocumentVersion: number;
@@ -258,14 +261,7 @@ export class DebugCommands extends SwitchBasedCommand {
 
         // Build ConflictFileInfo[] from all registered files
         const allFiles = fileRegistry.getAll();
-        const conflictFileInfos: ConflictFileInfo[] = allFiles.map(file => ({
-            path: file.getPath(),
-            relativePath: file.getRelativePath(),
-            fileType: file.getFileType() as ConflictFileInfo['fileType'],
-            hasExternalChanges: file.hasExternalChanges(),
-            hasUnsavedChanges: file.hasAnyUnsavedChanges(),
-            isInEditMode: file.isInEditMode()
-        }));
+        const conflictFileInfos = allFiles.map(file => toConflictFileInfo(file));
 
         try {
             const result = await bridge.showConflict(
@@ -553,12 +549,11 @@ export class DebugCommands extends SwitchBasedCommand {
             if (backupContent === undefined) {
                 results[plan.resultIndex].status = 'failed';
                 results[plan.resultIndex].error = `Missing backup content for ${plan.file.getRelativePath()}.`;
-                for (const pendingPlan of plannedActions) {
-                    if (results[pendingPlan.resultIndex].status === 'skipped' && !results[pendingPlan.resultIndex].error) {
-                        results[pendingPlan.resultIndex].status = 'failed';
-                        results[pendingPlan.resultIndex].error = 'Batch aborted while preparing backups. No actions executed.';
-                    }
-                }
+                this._markPendingBatchActionsFailed(
+                    results,
+                    plannedActions,
+                    'Batch aborted while preparing backups. No actions executed.'
+                );
                 return results;
             }
 
@@ -566,12 +561,11 @@ export class DebugCommands extends SwitchBasedCommand {
             if (!backupPath) {
                 results[plan.resultIndex].status = 'failed';
                 results[plan.resultIndex].error = `Failed to create backup before action: ${plan.file.getRelativePath()}`;
-                for (const pendingPlan of plannedActions) {
-                    if (results[pendingPlan.resultIndex].status === 'skipped' && !results[pendingPlan.resultIndex].error) {
-                        results[pendingPlan.resultIndex].status = 'failed';
-                        results[pendingPlan.resultIndex].error = 'Batch aborted while preparing backups. No actions executed.';
-                    }
-                }
+                this._markPendingBatchActionsFailed(
+                    results,
+                    plannedActions,
+                    'Batch aborted while preparing backups. No actions executed.'
+                );
                 return results;
             }
             plan.backupCreated = true;
@@ -1203,14 +1197,22 @@ export class DebugCommands extends SwitchBasedCommand {
 
     // ============= HELPER METHODS =============
 
-    private computeHash(content: string): string {
-        let hash = 0;
-        for (let i = 0; i < content.length; i++) {
-            const char = content.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
+    private _markPendingBatchActionsFailed(
+        results: BatchFileActionResult[],
+        plannedActions: Array<{ resultIndex: number }>,
+        reason: string
+    ): void {
+        for (const pendingPlan of plannedActions) {
+            const pendingResult = results[pendingPlan.resultIndex];
+            if (pendingResult.status === 'skipped' && !pendingResult.error) {
+                pendingResult.status = 'failed';
+                pendingResult.error = reason;
+            }
         }
-        return hash.toString(16);
+    }
+
+    private computeHash(content: string): string {
+        return createHash('sha256').update(content, 'utf8').digest('hex');
     }
 
     private collectDuplicationVerification(
@@ -1542,10 +1544,11 @@ export class DebugCommands extends SwitchBasedCommand {
             lastAccessErrorCode: mainFile?.getLastAccessErrorCode?.() ?? null,
             watcherActive: mainFile?.isWatcherActive() ?? false,
             hasInternalChanges: mainFile?.hasUnsavedChanges() ?? false,
+            hasAnyUnsavedChanges: mainFile?.hasAnyUnsavedChanges() ?? false,
             hasExternalChanges: mainFile?.hasExternalChanges() ?? false,
             documentVersion: document?.version ?? 0,
             lastDocumentVersion: lastDocumentVersion,
-            isUnsavedInEditor: document?.isDirty ?? false,
+            isUnsavedInEditor: mainFile?.isDirtyInEditor() ?? document?.isDirty ?? false,
             baselineLength: mainBaseline.length,
             baselineHash: this.computeHash(mainBaseline).substring(0, 8)
         };
@@ -1567,6 +1570,7 @@ export class DebugCommands extends SwitchBasedCommand {
                 lastModified: file.getLastModified()?.toISOString() || 'Unknown',
                 size: 'Unknown',
                 hasInternalChanges: file.hasUnsavedChanges(),
+                hasAnyUnsavedChanges: file.hasAnyUnsavedChanges(),
                 hasExternalChanges: file.hasExternalChanges(),
                 isUnsavedInEditor: file.isDirtyInEditor(),
                 contentLength: fileContent.length,

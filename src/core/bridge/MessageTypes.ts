@@ -1698,6 +1698,8 @@ export interface ShowConflictDialogMessage extends BaseMessage {
         fileType: 'main' | 'include-column' | 'include-task' | 'include-regular';
         hasExternalChanges: boolean;
         hasUnsavedChanges: boolean;
+        hasInternalChanges?: boolean;
+        isUnsavedInEditor?: boolean;
         isInEditMode: boolean;
         contentPreview?: string;
     }>;

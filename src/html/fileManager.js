@@ -186,10 +186,14 @@ const READ_ONLY_INCLUDE_TYPES = new Set(['include-regular', 'regular']);
 const INACCESSIBLE_ACCESS_CODES = new Set(['EACCES', 'EPERM', 'EROFS']);
 
 function resolveUnsavedFlags(file) {
-    const hasInternalChanges = !!(file.hasInternalChanges ?? file.hasUnsavedChanges);
-    const hasUnsavedChanges = !!(file.hasUnsavedChanges ?? hasInternalChanges);
+    const hasInternalChanges = !!(file.hasInternalChanges ?? false);
     const hasEditorUnsaved = !!file.isUnsavedInEditor;
-    const hasAnyUnsaved = hasInternalChanges || hasUnsavedChanges || hasEditorUnsaved;
+    const hasAnyUnsaved = !!(
+        file.hasAnyUnsavedChanges
+        ?? file.hasUnsavedChanges
+        ?? (hasInternalChanges || hasEditorUnsaved)
+    );
+    const hasUnsavedChanges = hasAnyUnsaved;
 
     return {
         hasInternalChanges,
@@ -669,12 +673,20 @@ function buildUnifiedFileList() {
         const mergedName = window.getBasename
             ? window.getBasename(mergedRelativePath || mergedPath)
             : (mergedRelativePath || mergedPath);
+        const mergedEditorUnsaved = conflict
+            ? !!(conflict.isUnsavedInEditor ?? file.isUnsavedInEditor)
+            : !!file.isUnsavedInEditor;
+        const mergedInternalChanges = conflict
+            ? !!(conflict.hasInternalChanges ?? (conflict.hasUnsavedChanges && !mergedEditorUnsaved))
+            : !!(file.hasInternalChanges ?? false);
+        const mergedAnyUnsaved = conflict
+            ? !!(conflict.hasUnsavedChanges ?? (mergedInternalChanges || mergedEditorUnsaved))
+            : !!(file.hasAnyUnsavedChanges ?? file.hasUnsavedChanges ?? (mergedInternalChanges || mergedEditorUnsaved));
         const unsavedFlags = resolveUnsavedFlags({
-            hasUnsavedChanges: conflict ? conflict.hasUnsavedChanges : file.hasUnsavedChanges,
-            hasInternalChanges: conflict
-                ? conflict.hasUnsavedChanges
-                : (file.hasInternalChanges || file.hasUnsavedChanges || false),
-            isUnsavedInEditor: file.isUnsavedInEditor || false
+            hasAnyUnsavedChanges: mergedAnyUnsaved,
+            hasUnsavedChanges: mergedAnyUnsaved,
+            hasInternalChanges: mergedInternalChanges,
+            isUnsavedInEditor: mergedEditorUnsaved
         });
         return {
             ...file,
@@ -684,6 +696,7 @@ function buildUnifiedFileList() {
             // Overlay conflict-specific fields when available
             hasExternalChanges: conflict ? conflict.hasExternalChanges : (file.hasExternalChanges || false),
             hasUnsavedChanges: unsavedFlags.hasAnyUnsaved,
+            hasAnyUnsavedChanges: unsavedFlags.hasAnyUnsaved,
             hasInternalChanges: unsavedFlags.hasInternalChanges,
             isUnsavedInEditor: unsavedFlags.hasEditorUnsaved,
             isInEditMode: conflict ? conflict.isInEditMode : false,
@@ -699,9 +712,10 @@ function buildUnifiedFileList() {
             const displayPath = cf.relativePath || cf.path;
             const displayName = window.getBasename ? window.getBasename(displayPath) : displayPath;
             const unsavedFlags = resolveUnsavedFlags({
+                hasAnyUnsavedChanges: cf.hasUnsavedChanges || false,
                 hasUnsavedChanges: cf.hasUnsavedChanges || false,
-                hasInternalChanges: cf.hasUnsavedChanges || false,
-                isUnsavedInEditor: false
+                hasInternalChanges: cf.hasInternalChanges || false,
+                isUnsavedInEditor: cf.isUnsavedInEditor || false
             });
             unified.push({
                 path: cf.path,
@@ -712,6 +726,7 @@ function buildUnifiedFileList() {
                 exists: true,
                 hasExternalChanges: cf.hasExternalChanges || false,
                 hasUnsavedChanges: unsavedFlags.hasAnyUnsaved,
+                hasAnyUnsavedChanges: unsavedFlags.hasAnyUnsaved,
                 hasInternalChanges: unsavedFlags.hasInternalChanges,
                 isUnsavedInEditor: unsavedFlags.hasEditorUnsaved,
                 isInEditMode: cf.isInEditMode || false,
@@ -743,7 +758,12 @@ function createAllFilesArray() {
             exists: mainFileInfo.exists !== false,
             lastAccessErrorCode: mainFileInfo.lastAccessErrorCode || null,
             hasInternalChanges: mainFileInfo.hasInternalChanges || false,
-            hasUnsavedChanges: mainFileInfo.hasInternalChanges || false,
+            hasUnsavedChanges: mainFileInfo.hasAnyUnsavedChanges
+                ?? mainFileInfo.hasInternalChanges
+                ?? false,
+            hasAnyUnsavedChanges: mainFileInfo.hasAnyUnsavedChanges
+                ?? mainFileInfo.hasInternalChanges
+                ?? false,
             hasExternalChanges: mainFileInfo.hasExternalChanges || false,
             documentVersion: mainFileInfo.documentVersion || 0,
             lastDocumentVersion: mainFileInfo.lastDocumentVersion || -1,
@@ -764,7 +784,14 @@ function createAllFilesArray() {
             exists: file.exists !== false,
             lastAccessErrorCode: file.lastAccessErrorCode || null,
             hasInternalChanges: file.hasInternalChanges || false,
-            hasUnsavedChanges: file.hasUnsavedChanges || file.hasInternalChanges || false,
+            hasUnsavedChanges: file.hasAnyUnsavedChanges
+                ?? file.hasUnsavedChanges
+                ?? file.hasInternalChanges
+                ?? false,
+            hasAnyUnsavedChanges: file.hasAnyUnsavedChanges
+                ?? file.hasUnsavedChanges
+                ?? file.hasInternalChanges
+                ?? false,
             hasExternalChanges: file.hasExternalChanges || false,
             isUnsavedInEditor: file.isUnsavedInEditor || false,
             contentLength: file.contentLength || 0,
@@ -1388,55 +1415,79 @@ function buildStatusBadgeHTML(file) {
     return badge;
 }
 
-/** Build Cache cell inner HTML from sync status. */
-function buildCacheCellHTML(syncStatus) {
+function getRegistrySyncReference(syncStatus) {
+    const registryNormalized = syncStatus.registryNormalizedHash
+        && syncStatus.registryNormalizedLength !== null
+        && syncStatus.registryNormalizedLength !== undefined;
+    const registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
+    const registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
+
+    return {
+        registryHash,
+        registryChars
+    };
+}
+
+function buildHashCellHTML(display, cssClass, title) {
+    return `<div class="hash-display ${cssClass}" title="${title}">${display}</div>`;
+}
+
+function buildSyncHashCell(syncStatus, resolver) {
     let display = '---';
     let cssClass = 'sync-unknown';
     let title = '';
 
     if (syncStatus) {
-        const registryNormalized = syncStatus.registryNormalizedHash
-            && syncStatus.registryNormalizedLength !== null
-            && syncStatus.registryNormalizedLength !== undefined;
-        const registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
-        const registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
-
-        if (syncStatus.frontendHash && syncStatus.frontendContentLength !== null && syncStatus.frontendContentLength !== undefined) {
-            if (syncStatus.frontendMatchesRaw === true) {
-                display = '\u2705'; cssClass = 'sync-good';
-            } else if (syncStatus.frontendMatchesNormalized === true) {
-                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
-            } else if (syncStatus.frontendRegistryMatch === false) {
-                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
-            }
-            title = `Frontend: ${syncStatus.frontendHash} (${syncStatus.frontendContentLength} chars)\nRegistry: ${registryHash} (${registryChars} chars)`;
-        } else if (syncStatus.frontendAvailable === false) {
-            display = '\u2753';
-            title = 'Frontend hash not available';
+        const registryReference = getRegistrySyncReference(syncStatus);
+        const resolved = resolver(syncStatus, registryReference);
+        if (resolved?.display) {
+            display = resolved.display;
+        }
+        if (resolved?.cssClass) {
+            cssClass = resolved.cssClass;
+        }
+        if (resolved?.title) {
+            title = resolved.title;
         }
     }
 
-    return `<div class="hash-display ${cssClass}" title="${title}">${display}</div>`;
+    return buildHashCellHTML(display, cssClass, title);
+}
+
+/** Build Cache cell inner HTML from sync status. */
+function buildCacheCellHTML(syncStatus) {
+    return buildSyncHashCell(syncStatus, (syncState, { registryHash, registryChars }) => {
+        let display = '---';
+        let cssClass = 'sync-unknown';
+        let title = '';
+        if (syncState.frontendHash && syncState.frontendContentLength !== null && syncState.frontendContentLength !== undefined) {
+            if (syncState.frontendMatchesRaw === true) {
+                display = '\u2705'; cssClass = 'sync-good';
+            } else if (syncState.frontendMatchesNormalized === true) {
+                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
+            } else if (syncState.frontendRegistryMatch === false) {
+                display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
+            }
+            title = `Frontend: ${syncState.frontendHash} (${syncState.frontendContentLength} chars)\nRegistry: ${registryHash} (${registryChars} chars)`;
+        } else if (syncState.frontendAvailable === false) {
+            display = '\u2753';
+            title = 'Frontend hash not available';
+        }
+        return { display, cssClass, title };
+    });
 }
 
 /** Build Saved cell inner HTML from sync status. */
 function buildSavedCellHTML(syncStatus) {
-    let display = '---';
-    let cssClass = 'sync-unknown';
-    let title = '';
+    return buildSyncHashCell(syncStatus, (syncState, { registryHash, registryChars }) => {
+        let display = '---';
+        let cssClass = 'sync-unknown';
+        let title = '';
+        if (syncState.savedHash) {
+            const savedHashValue = syncState.savedNormalizedHash || syncState.savedHash;
+            const savedCharsValue = syncState.savedNormalizedLength ?? (syncState.savedContentLength || 0);
 
-    if (syncStatus) {
-        const registryNormalized = syncStatus.registryNormalizedHash
-            && syncStatus.registryNormalizedLength !== null
-            && syncStatus.registryNormalizedLength !== undefined;
-        const registryHash = registryNormalized ? syncStatus.registryNormalizedHash : (syncStatus.canonicalHash || 'N/A');
-        const registryChars = registryNormalized ? syncStatus.registryNormalizedLength : (syncStatus.canonicalContentLength || 0);
-
-        if (syncStatus.savedHash) {
-            const savedHashValue = syncStatus.savedNormalizedHash || syncStatus.savedHash;
-            const savedCharsValue = syncStatus.savedNormalizedLength ?? (syncStatus.savedContentLength || 0);
-
-            if (syncStatus.canonicalSavedMatch) {
+            if (syncState.canonicalSavedMatch) {
                 display = '\u2705'; cssClass = 'sync-good';
             } else {
                 display = '\u26A0\uFE0F'; cssClass = 'sync-warn';
@@ -1447,9 +1498,8 @@ function buildSavedCellHTML(syncStatus) {
             display = '\u2753';
             title = 'Saved file not available';
         }
-    }
-
-    return `<div class="hash-display ${cssClass}" title="${title}">${display}</div>`;
+        return { display, cssClass, title };
+    });
 }
 
 // ============= REFRESH / AUTO-REFRESH =============

@@ -1,4 +1,4 @@
-import { ConflictDialogBridge } from '../../services/ConflictDialogBridge';
+import { ConflictDialogBridge, toConflictFileInfo } from '../../services/ConflictDialogBridge';
 
 describe('ConflictDialogBridge snapshot token guard', () => {
     it('resolves normally when the resolution snapshot token matches', async () => {
@@ -64,6 +64,32 @@ describe('ConflictDialogBridge snapshot token guard', () => {
             cancelled: true,
             perFileResolutions: [],
             snapshotToken: 'snapshot-2'
+        });
+    });
+});
+
+describe('toConflictFileInfo', () => {
+    it('maps unsaved/editor flags without ambiguity', () => {
+        const info = toConflictFileInfo({
+            getPath: () => '/tmp/board.md',
+            getRelativePath: () => 'board.md',
+            getFileType: () => 'main',
+            hasExternalChanges: () => true,
+            hasUnsavedChanges: () => false,
+            hasAnyUnsavedChanges: () => true,
+            isDirtyInEditor: () => true,
+            isInEditMode: () => false
+        });
+
+        expect(info).toEqual({
+            path: '/tmp/board.md',
+            relativePath: 'board.md',
+            fileType: 'main',
+            hasExternalChanges: true,
+            hasUnsavedChanges: true,
+            hasInternalChanges: false,
+            isUnsavedInEditor: true,
+            isInEditMode: false
         });
     });
 });

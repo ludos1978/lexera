@@ -31,7 +31,7 @@ class TestMarkdownFile extends MarkdownFile {
         fs.writeFileSync(this.getPath(), initialContent, 'utf8');
     }
 
-    getFileType(): 'include-task' {
+    getFileType(): 'main' | 'include-task' {
         return 'include-task';
     }
 
@@ -91,6 +91,22 @@ class TestMarkdownFile extends MarkdownFile {
             throw new Error(this.emergencyBackupError);
         }
         return this.emergencyBackupPath;
+    }
+}
+
+class TestMainLikeFile extends TestMarkdownFile {
+    private _cachedBoardFromWebview: unknown = undefined;
+
+    getFileType(): 'main' {
+        return 'main';
+    }
+
+    public setCachedBoardFromWebview(board: unknown): void {
+        this._cachedBoardFromWebview = board;
+    }
+
+    public getCachedBoardFromWebview(): unknown {
+        return this._cachedBoardFromWebview;
     }
 }
 
@@ -270,6 +286,27 @@ describe('FileSaveService.saveFile with provided content', () => {
         expect(writeOrder).toEqual(['first', 'second']);
         expect(file.getBaseline()).toBe('second');
         expect(file.getContent()).toBe('second');
+    });
+});
+
+describe('FileSaveService.saveFile clean-content behavior', () => {
+    it('skips clean non-forced saves when no content and no pending main snapshot exist', async () => {
+        const file = new TestMarkdownFile('before');
+        const service = new FileSaveService('panel-test');
+
+        await service.saveFile(file, undefined, { skipReloadDetection: false });
+
+        expect(file.writeCount).toBe(0);
+    });
+
+    it('does not skip main-file saves when a cached board snapshot exists', async () => {
+        const file = new TestMainLikeFile('before');
+        file.setCachedBoardFromWebview({ valid: true, columns: [] });
+        const service = new FileSaveService('panel-test');
+
+        await service.saveFile(file, undefined, { skipReloadDetection: false });
+
+        expect(file.writeCount).toBe(1);
     });
 });
 

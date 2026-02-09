@@ -19,6 +19,7 @@ type MockMarkdownFile = {
     readFromDisk: jest.Mock<Promise<string | null>, []>;
     createVisibleConflictFile: jest.Mock<Promise<string | null>, [string]>;
     getContentForBackup: jest.Mock<string, []>;
+    generateFromTasks: jest.Mock<string, [unknown[]]>;
     setCachedBoardFromWebview: jest.Mock<void, [unknown]>;
     updateFromBoard: jest.Mock<void, [unknown, boolean, boolean]>;
     getBoard: jest.Mock<unknown, []>;
@@ -55,6 +56,7 @@ function createMockFile(config: {
         readFromDisk: jest.fn(async () => 'disk-content'),
         createVisibleConflictFile: jest.fn(async (_content: string) => '/tmp/conflict.md'),
         getContentForBackup: jest.fn(() => 'backup-content'),
+        generateFromTasks: jest.fn((tasks: unknown[]) => JSON.stringify(tasks)),
         setCachedBoardFromWebview: jest.fn(),
         updateFromBoard: jest.fn(),
         getBoard: jest.fn(() => ({
@@ -71,6 +73,7 @@ function createServiceHarness(config: {
     mainFile: MockMarkdownFile;
     includeFiles?: MockMarkdownFile[];
     consistencyIssues?: Array<{ code: string; severity: 'warning' | 'error'; message: string }>;
+    generatedBoard?: unknown;
 }) {
     const board = {
         valid: true,
@@ -80,12 +83,16 @@ function createServiceHarness(config: {
         kanbanFooter: null
     };
 
-    const saveFile = jest.fn(async () => undefined);
+    const saveFile = jest.fn<Promise<void>, [MockMarkdownFile, unknown?, unknown?]>(async () => undefined);
     const consistencyIssues = config.consistencyIssues ?? [];
+    const generatedBoard = config.generatedBoard ?? board;
+    const setBoard = jest.fn();
+    const sendBoardUpdate = jest.fn(async () => undefined);
 
     const fileRegistry = {
         getMainFile: jest.fn(() => config.mainFile),
         getIncludeFiles: jest.fn(() => config.includeFiles ?? []),
+        generateBoard: jest.fn(() => generatedBoard),
         getConsistencyReport: jest.fn(() => ({
             checkedAt: '2026-01-01T00:00:00.000Z',
             fileCount: 1 + (config.includeFiles?.length ?? 0),
@@ -116,7 +123,7 @@ function createServiceHarness(config: {
     const deps = {
         boardStore: {
             getBoard: jest.fn(() => board),
-            setBoard: jest.fn(),
+            setBoard,
             setOriginalTaskOrder: jest.fn(),
             clearHistory: jest.fn()
         },
@@ -128,7 +135,7 @@ function createServiceHarness(config: {
         })),
         getPanelInstance: jest.fn(() => null),
         getWebviewManager: jest.fn(() => null),
-        sendBoardUpdate: jest.fn(async () => undefined)
+        sendBoardUpdate
     };
 
     const context = {
@@ -152,6 +159,8 @@ function createServiceHarness(config: {
 
     return {
         board,
+        setBoard,
+        sendBoardUpdate,
         fileRegistry,
         saveFile,
         service
@@ -361,6 +370,256 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         expect(result.aborted).toBe(true);
         expect(result.error).toContain('requires backup');
         expect(saveFile).not.toHaveBeenCalled();
+    });
+
+    it('regenerates board state from registry after reload actions in conflict resolution', async () => {
+        const mainFile = createMockFile({
+            path: '/workspace/board.md',
+            relativePath: 'board.md',
+            fileType: 'main',
+            hasExternalChanges: true,
+            hasUnsavedChanges: false
+        });
+        const regeneratedBoard = {
+            valid: true,
+            title: 'Regenerated',
+            columns: [],
+            yamlHeader: '---\nkanban-plugin: board\n---',
+            kanbanFooter: null
+        };
+
+        const { service, board, saveFile, fileRegistry, setBoard, sendBoardUpdate } = createServiceHarness({
+            mainFile,
+            includeFiles: [],
+            generatedBoard: regeneratedBoard
+        });
+
+        jest.spyOn(service as any, '_showPresaveConflictDialog')
+            .mockResolvedValue({
+                cancelled: false,
+                snapshotToken: 'token',
+                perFileResolutions: [
+                    {
+                        path: mainFile.getPath(),
+                        action: 'load_external'
+                    }
+                ]
+            });
+        jest.spyOn(service as any, '_validateConflictSnapshotToken').mockReturnValue(null);
+
+        const result = await service.saveUnified({
+            scope: 'main',
+            board: board as any,
+            updateUi: false,
+            updateBaselines: false
+        });
+
+        expect(mainFile.reload).toHaveBeenCalledTimes(1);
+        expect(fileRegistry.generateBoard).toHaveBeenCalled();
+        expect(setBoard).toHaveBeenCalledWith(regeneratedBoard);
+        expect(sendBoardUpdate).toHaveBeenCalledWith(false, true);
+        expect(saveFile).not.toHaveBeenCalled();
+        expect(result.success).toBe(false);
+        expect(result.aborted).toBe(true);
+        expect(result.error).toContain('external versions were loaded');
+    });
+
+    it('aborts save when one writable include file maps to conflicting board content sources', async () => {
+        const mainFile = createMockFile({
+            path: '/workspace/board.md',
+            relativePath: 'board.md',
+            fileType: 'main',
+            hasExternalChanges: false
+        });
+        const sharedInclude = createMockFile({
+            path: '/workspace/includes/shared.md',
+            relativePath: 'includes/shared.md',
+            fileType: 'include-column',
+            hasExternalChanges: false,
+            hasUnsavedChanges: true
+        });
+        sharedInclude.generateFromTasks.mockImplementation((tasks: unknown[]) =>
+            (tasks as Array<{ title?: string }>).map(task => task.title || '').join('|')
+        );
+
+        const conflictingBoard = {
+            valid: true,
+            title: 'Board',
+            yamlHeader: '---\nkanban-plugin: board\n---',
+            kanbanFooter: null,
+            columns: [
+                {
+                    id: 'col-a',
+                    title: 'A',
+                    tasks: [{ id: 'task-a', title: 'Alpha', description: '' }],
+                    includeFiles: ['includes/shared.md']
+                },
+                {
+                    id: 'col-b',
+                    title: 'B',
+                    tasks: [{ id: 'task-b', title: 'Beta', description: '' }],
+                    includeFiles: ['includes/shared.md']
+                }
+            ]
+        };
+
+        const { service, saveFile } = createServiceHarness({
+            mainFile,
+            includeFiles: [sharedInclude]
+        });
+
+        const result = await service.saveUnified({
+            scope: 'all',
+            board: conflictingBoard as any,
+            syncIncludes: true,
+            updateUi: false,
+            updateBaselines: false
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.aborted).toBe(true);
+        expect(result.error).toContain('ambiguous include content detected');
+        expect(saveFile).not.toHaveBeenCalled();
+    });
+
+    it('allows save when repeated writable include references generate identical content', async () => {
+        const mainFile = createMockFile({
+            path: '/workspace/board.md',
+            relativePath: 'board.md',
+            fileType: 'main',
+            hasExternalChanges: false
+        });
+        const sharedInclude = createMockFile({
+            path: '/workspace/includes/shared.md',
+            relativePath: 'includes/shared.md',
+            fileType: 'include-column',
+            hasExternalChanges: false,
+            hasUnsavedChanges: true
+        });
+        sharedInclude.generateFromTasks.mockImplementation((tasks: unknown[]) =>
+            (tasks as Array<{ title?: string }>).map(task => task.title || '').join('|')
+        );
+
+        const deterministicBoard = {
+            valid: true,
+            title: 'Board',
+            yamlHeader: '---\nkanban-plugin: board\n---',
+            kanbanFooter: null,
+            columns: [
+                {
+                    id: 'col-a',
+                    title: 'A',
+                    tasks: [{ id: 'task-a', title: 'Alpha', description: '' }],
+                    includeFiles: ['includes/shared.md']
+                },
+                {
+                    id: 'col-b',
+                    title: 'B',
+                    tasks: [{ id: 'task-b', title: 'Alpha', description: '' }],
+                    includeFiles: ['includes/shared.md']
+                }
+            ]
+        };
+
+        const { service, saveFile } = createServiceHarness({
+            mainFile,
+            includeFiles: [sharedInclude]
+        });
+
+        const result = await service.saveUnified({
+            scope: 'all',
+            board: deterministicBoard as any,
+            syncIncludes: true,
+            updateUi: false,
+            updateBaselines: false
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.aborted).toBe(false);
+        expect(saveFile).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborts scope=all before main write when include save fails', async () => {
+        const mainFile = createMockFile({
+            path: '/workspace/board.md',
+            relativePath: 'board.md',
+            fileType: 'main',
+            hasExternalChanges: false
+        });
+        const includeFile = createMockFile({
+            path: '/workspace/includes/item.md',
+            relativePath: 'includes/item.md',
+            fileType: 'include-task',
+            hasUnsavedChanges: true,
+            hasExternalChanges: false
+        });
+
+        const { service, board, saveFile } = createServiceHarness({
+            mainFile,
+            includeFiles: [includeFile]
+        });
+
+        saveFile.mockImplementation(async (file: MockMarkdownFile) => {
+            if (file.getPath() === includeFile.getPath()) {
+                throw new Error('simulated include write failure');
+            }
+            return undefined;
+        });
+
+        const result = await service.saveUnified({
+            scope: 'all',
+            syncIncludes: false,
+            board: board as any,
+            updateUi: false,
+            updateBaselines: false
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.aborted).toBe(true);
+        expect(result.savedMainFile).toBe(false);
+        expect(result.error).toContain('Main file was not saved');
+        expect(result.includeSaveErrors).toHaveLength(1);
+        expect(result.includeSaveErrors[0]).toContain(includeFile.getPath());
+
+        const savedPaths = saveFile.mock.calls.map(call => call[0].getPath());
+        expect(savedPaths).toEqual([includeFile.getPath()]);
+    });
+
+    it('writes include files before main file for scope=all', async () => {
+        const mainFile = createMockFile({
+            path: '/workspace/board.md',
+            relativePath: 'board.md',
+            fileType: 'main',
+            hasExternalChanges: false
+        });
+        const includeFile = createMockFile({
+            path: '/workspace/includes/item.md',
+            relativePath: 'includes/item.md',
+            fileType: 'include-task',
+            hasUnsavedChanges: true,
+            hasExternalChanges: false
+        });
+
+        const { service, board, saveFile } = createServiceHarness({
+            mainFile,
+            includeFiles: [includeFile]
+        });
+
+        const result = await service.saveUnified({
+            scope: 'all',
+            syncIncludes: false,
+            board: board as any,
+            updateUi: false,
+            updateBaselines: false
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.aborted).toBe(false);
+        expect(result.savedMainFile).toBe(true);
+        expect(saveFile).toHaveBeenCalledTimes(2);
+
+        const savedPaths = saveFile.mock.calls.map(call => call[0].getPath());
+        expect(savedPaths).toEqual([includeFile.getPath(), mainFile.getPath()]);
     });
 
     it('aborts main save before writing when target file remains permission-blocked', async () => {

@@ -33,8 +33,37 @@ export interface ConflictFileInfo {
     fileType: 'main' | 'include-column' | 'include-task' | 'include-regular';
     hasExternalChanges: boolean;
     hasUnsavedChanges: boolean;
+    hasInternalChanges: boolean;
+    isUnsavedInEditor: boolean;
     isInEditMode: boolean;
     contentPreview?: string;
+}
+
+export interface ConflictFileSource {
+    getPath(): string;
+    getRelativePath(): string;
+    getFileType(): 'main' | 'include-column' | 'include-task' | 'include-regular';
+    hasExternalChanges(): boolean;
+    hasUnsavedChanges(): boolean;
+    hasAnyUnsavedChanges(): boolean;
+    isDirtyInEditor(): boolean;
+    isInEditMode(): boolean;
+}
+
+/**
+ * Normalize file state into ConflictFileInfo used by conflict dialogs.
+ */
+export function toConflictFileInfo(file: ConflictFileSource): ConflictFileInfo {
+    return {
+        path: file.getPath(),
+        relativePath: file.getRelativePath(),
+        fileType: file.getFileType(),
+        hasExternalChanges: file.hasExternalChanges(),
+        hasUnsavedChanges: file.hasAnyUnsavedChanges(),
+        hasInternalChanges: file.hasUnsavedChanges(),
+        isUnsavedInEditor: file.isDirtyInEditor(),
+        isInEditMode: file.isInEditMode()
+    };
 }
 
 export type OpenMode = 'browse' | 'save_conflict' | 'reload_request' | 'external_change';

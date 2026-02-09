@@ -87,9 +87,14 @@ export class FileSaveService {
             );
         }
 
+        // Main file saves can carry a pending board snapshot even when _content/_baseline
+        // are currently equal. In that case we must run file.save() so MainKanbanFile can
+        // serialize the cached board snapshot deterministically.
+        const hasPendingMainBoardSnapshot = this._hasPendingMainBoardSnapshot(file);
+
         // HASH CHECK: Skip save if no unsaved changes (unless forced)
         // This prevents unnecessary disk writes and ensures hash-based state is respected.
-        if (!options?.force && !file.hasUnsavedChanges() && content === undefined) {
+        if (!options?.force && !hasPendingMainBoardSnapshot && !file.hasUnsavedChanges() && content === undefined) {
             return; // No changes to save
         }
 
@@ -107,5 +112,18 @@ export class FileSaveService {
         };
 
         await file.save(saveOptions);
+    }
+
+    private _hasPendingMainBoardSnapshot(file: MarkdownFile): boolean {
+        const mainLikeFile = file as MarkdownFile & {
+            getFileType?: () => string;
+            getCachedBoardFromWebview?: () => unknown;
+        };
+
+        if (mainLikeFile.getFileType?.() !== 'main') {
+            return false;
+        }
+
+        return mainLikeFile.getCachedBoardFromWebview?.() !== undefined;
     }
 }
