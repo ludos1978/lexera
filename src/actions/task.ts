@@ -9,45 +9,26 @@ import { BoardAction } from './types';
 import { KanbanTask } from '../markdownParser';
 import { findColumn, findTaskIndex } from './helpers';
 import { IdGenerator } from '../utils/idGenerator';
+import { normalizeTaskContent } from '../utils/taskContent';
 
 // ============= CONTENT UPDATES (target: task) =============
 
 /**
- * Update task title
+ * Update unified task content
  */
-export const updateTitle = (
+export const updateContent = (
     taskId: string,
     columnId: string,
-    newTitle: string
+    newContent: string
 ): BoardAction => ({
-    type: 'task:updateTitle',
+    type: 'task:updateContent',
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         const task = column?.tasks.find(t => t.id === taskId);
         if (!task) return false;
 
-        task.title = newTitle;
-        return true;
-    }
-});
-
-/**
- * Update task description
- */
-export const updateDescription = (
-    taskId: string,
-    columnId: string,
-    newDescription: string
-): BoardAction => ({
-    type: 'task:updateDescription',
-    targets: [{ type: 'task', id: taskId, columnId }],
-    execute: (board) => {
-        const column = findColumn(board, columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
-        if (!task) return false;
-
-        task.description = newDescription;
+        task.content = normalizeTaskContent(newContent);
         return true;
     }
 });
@@ -67,11 +48,8 @@ export const update = (
         const task = column?.tasks.find(t => t.id === taskId);
         if (!task) return false;
 
-        if (taskData.title !== undefined) {
-            task.title = taskData.title;
-        }
-        if (taskData.description !== undefined) {
-            task.description = taskData.description;
+        if (taskData.content !== undefined) {
+            task.content = normalizeTaskContent(taskData.content);
         }
         if (taskData.displayTitle !== undefined && task.includeMode) {
             task.displayTitle = taskData.displayTitle;
@@ -100,8 +78,7 @@ export const add = (
 
         const newTask: KanbanTask = {
             id: taskData.id || IdGenerator.generateTaskId(),
-            title: taskData.title || '',
-            description: taskData.description,
+            content: normalizeTaskContent(taskData.content ?? ''),
             displayTitle: taskData.displayTitle,
             originalTitle: taskData.originalTitle,
             includeMode: taskData.includeMode || false,
@@ -382,8 +359,7 @@ export const insertBefore = (
 
         const newTask: KanbanTask = {
             id: IdGenerator.generateTaskId(),
-            title: '',
-            description: ''
+            content: ''
         };
 
         column.tasks.splice(taskIndex, 0, newTask);
@@ -410,8 +386,7 @@ export const insertAfter = (
 
         const newTask: KanbanTask = {
             id: IdGenerator.generateTaskId(),
-            title: '',
-            description: ''
+            content: ''
         };
 
         column.tasks.splice(taskIndex + 1, 0, newTask);

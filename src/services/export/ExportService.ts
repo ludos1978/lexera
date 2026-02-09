@@ -23,6 +23,7 @@ import { escapeRegExp, getErrorMessage, toForwardSlashes } from '../../utils/str
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
 import { MarkdownKanbanParser } from '../../markdownParser';
 import { logger } from '../../utils/logger';
+import { getTaskSummaryLine, splitTaskContent } from '../../utils/taskContent';
 
 /**
  * Export options - SINGLE unified system for ALL exports
@@ -215,7 +216,7 @@ export class ExportService {
     /**
      * Filter excluded content from a board object based on exclude tags
      * - Removes columns where column.title contains any exclude tag
-     * - Removes tasks where task.title contains any exclude tag
+     * - Removes tasks where task content contains any exclude tag
      * - Filters lines in task.content that contain exclude tags
      */
     private static filterExcludedFromBoard(board: KanbanBoard, excludeTags: string[]): KanbanBoard {
@@ -235,19 +236,19 @@ export class ExportService {
             // Filter tasks in this column
             const filteredTasks: KanbanTask[] = [];
             for (const task of column.tasks || []) {
-                // Skip task if its title contains an exclude tag
-                if (this.hasExcludeTag(task.title, excludeTags)) {
+                // Skip task if its content contains an exclude tag
+                if (this.hasExcludeTag(task.content, excludeTags)) {
                     continue;
                 }
 
-                // Filter lines in task description
-                if (task.description) {
-                    const filteredLines = task.description
+                // Filter lines in task content
+                if (task.content) {
+                    const filteredLines = task.content
                         .split('\n')
                         .filter((line: string) => !this.hasExcludeTag(line, excludeTags));
                     filteredTasks.push({
                         ...task,
-                        description: filteredLines.join('\n')
+                        content: filteredLines.join('\n')
                     });
                 } else {
                     filteredTasks.push(task);
@@ -1501,10 +1502,11 @@ export class ExportService {
             let kanbanContent = '';
             const tasks = PresentationParser.slidesToTasks(slides);
             for (const task of tasks) {
-                kanbanContent += `- [ ] ${task.title}\n`;
-                if (task.description) {
+                const { summaryLine, remainingContent } = splitTaskContent(task.content);
+                kanbanContent += `- [ ] ${summaryLine}\n`;
+                if (remainingContent) {
                     // Indent description lines
-                    const descLines = task.description.split('\n');
+                    const descLines = remainingContent.split('\n');
                     for (const line of descLines) {
                         kanbanContent += `  ${line}\n`;
                     }
@@ -1603,7 +1605,7 @@ export class ExportService {
                 // Extract from tasks
                 if (column.tasks) {
                     for (const task of column.tasks) {
-                        const taskTitleClean = escapeRegExp(task.title);
+                        const taskTitleClean = escapeRegExp(getTaskSummaryLine(task.content));
                         const taskRegex = new RegExp(`<!-- _class: ([^>]+) -->\\s*- \\[[ x]\\] ${taskTitleClean}`, 'm');
                         const taskMatch = markdown.match(taskRegex);
 

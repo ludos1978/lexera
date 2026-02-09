@@ -2494,7 +2494,10 @@ if (!webviewEventListenersInitialized) {
             const isFullRefresh = message.isFullRefresh;
             if (isInitialLoad || isFullRefresh) {
                 window.cachedBoard = JSON.parse(JSON.stringify(message.board)); // Deep clone - SINGLE source of truth
-                window.savedBoardState = JSON.parse(JSON.stringify(message.board)); // Reference for unsaved detection
+                if (window.taskContentUtils?.hydrateBoardTasks) {
+                    window.taskContentUtils.hydrateBoardTasks(window.cachedBoard);
+                }
+                window.savedBoardState = JSON.parse(JSON.stringify(window.cachedBoard)); // Reference for unsaved detection
                 window.hasUnsavedChanges = false;
 
                 // CONSISTENCY CHECK: Validate column IDs are unique
@@ -2513,6 +2516,9 @@ if (!webviewEventListenersInitialized) {
             } else {
                 // Always update the cached board when receiving updates from backend
                 window.cachedBoard = JSON.parse(JSON.stringify(message.board));
+                if (window.taskContentUtils?.hydrateBoardTasks) {
+                    window.taskContentUtils.hydrateBoardTasks(window.cachedBoard);
+                }
 
                 // Re-apply pending column changes to preserve local edits
                 if (window.pendingColumnChanges && window.pendingColumnChanges.size > 0) {
@@ -2526,13 +2532,13 @@ if (!webviewEventListenersInitialized) {
 
                 // If this is a save confirmation (no unsaved changes), update the saved reference
                 if (!window.hasUnsavedChanges) {
-                    window.savedBoardState = JSON.parse(JSON.stringify(message.board));
+                    window.savedBoardState = JSON.parse(JSON.stringify(window.cachedBoard));
                 }
 
                 // For undo/redo operations, update the saved state reference but preserve pending changes
                 // Pending changes represent ongoing user edits that should persist through undo operations
                 if (message.isUndo || message.isRedo) {
-                    window.savedBoardState = JSON.parse(JSON.stringify(message.board));
+                    window.savedBoardState = JSON.parse(JSON.stringify(window.cachedBoard));
                     // Note: We intentionally do NOT clear pending changes here, as they represent
                     // valid user modifications that should persist through undo/redo operations
                 }
@@ -3143,12 +3149,6 @@ if (!webviewEventListenersInitialized) {
             // the task descriptions containing pending include placeholders.
             // This case is kept but no longer triggers renderBoard.
             break;
-        case 'enableTaskIncludeMode':
-            // Call the enableTaskIncludeMode function with the provided parameters
-            if (typeof window.enableTaskIncludeMode === 'function') {
-                window.enableTaskIncludeMode(message.taskId, message.columnId, message.fileName);
-            }
-            break;
         case 'clipboardImageSaved':
             // Handle clipboard image save response from backend
             if (message.success) {
@@ -3158,14 +3158,12 @@ if (!webviewEventListenersInitialized) {
                 const markdownLink = `![](${safePath})`;
 
                 createTasksWithContent([{
-                    title: imageFileName,
-                    description: markdownLink
+                    content: `${imageFileName}\n${markdownLink}`
                 }], message.dropPosition);
             } else {
                 // Create error task if save failed
                 createTasksWithContent([{
-                    title: 'Clipboard Image (Error)',
-                    description: `Failed to save image: ${message.error || 'Unknown error'}`
+                    content: `Clipboard Image (Error)\nFailed to save image: ${message.error || 'Unknown error'}`
                 }], message.dropPosition);
             }
             break;
@@ -3180,8 +3178,7 @@ if (!webviewEventListenersInitialized) {
 
                 // Use explicit column and position from the message
                 createTasksWithContent([{
-                    title: diagramFileName,
-                    description: diagramLink
+                    content: `${diagramFileName}\n${diagramLink}`
                 }], message.dropPosition, message.columnId, message.insertionIndex);
             } else {
                 // Show error if diagram creation failed
@@ -3338,8 +3335,7 @@ if (!webviewEventListenersInitialized) {
                     : `[${message.originalFileName}](${safePath})`;
 
                 createTasksWithContent([{
-                    title: originalName,
-                    description: markdownLink
+                    content: `${originalName}\n${markdownLink}`
                 }], message.dropPosition);
 
                 // Show notification
@@ -3363,8 +3359,7 @@ if (!webviewEventListenersInitialized) {
             } else {
                 console.error('[File-Drop] Failed to save file:', message.error);
                 createTasksWithContent([{
-                    title: message.originalFileName || 'File',
-                    description: `Error: ${message.error}`
+                    content: `${message.originalFileName || 'File'}\nError: ${message.error}`
                 }], message.dropPosition);
             }
             break;
@@ -3381,8 +3376,7 @@ if (!webviewEventListenersInitialized) {
                     : `[${message.originalFileName}](${safePath})`;
 
                 createTasksWithContent([{
-                    title: originalName,
-                    description: markdownLink
+                    content: `${originalName}\n${markdownLink}`
                 }], message.dropPosition);
 
                 // Show notification
@@ -3398,8 +3392,7 @@ if (!webviewEventListenersInitialized) {
             } else {
                 console.error('[File-Drop] Failed to save file from contents:', message.error);
                 createTasksWithContent([{
-                    title: message.originalFileName || 'File',
-                    description: `Error: ${message.error}`
+                    content: `${message.originalFileName || 'File'}\nError: ${message.error}`
                 }], message.dropPosition);
             }
             break;
@@ -3422,8 +3415,7 @@ if (!webviewEventListenersInitialized) {
                 const markdownLink = `![](${safePath})`;
 
                 createTasksWithContent([{
-                    title: originalName,
-                    description: markdownLink
+                    content: `${originalName}\n${markdownLink}`
                 }], message.dropPosition);
 
                 // Show notification based on what happened
@@ -3451,8 +3443,7 @@ if (!webviewEventListenersInitialized) {
                 console.error('[Image-Drop] Failed to save image:', message.error);
                 // Create error task if save failed
                 createTasksWithContent([{
-                    title: 'Dropped Image (Error)',
-                    description: `Failed to save image: ${message.error || 'Unknown error'}`
+                    content: `Dropped Image (Error)\nFailed to save image: ${message.error || 'Unknown error'}`
                 }], message.dropPosition);
             }
             break;
@@ -3494,14 +3485,6 @@ if (!webviewEventListenersInitialized) {
                 console.error('[FRONTEND proceedUpdateIncludeFile] updateColumnIncludeFile function not found!');
             }
             break;
-        case 'proceedUpdateTaskIncludeFile':
-            // User provided new file name in VS Code dialog - proceed with updating task include file
-            if (typeof updateTaskIncludeFile === 'function') {
-                updateTaskIncludeFile(message.taskId, message.columnId, message.newFileName, message.currentFile);
-            } else {
-                console.error('[FRONTEND proceedUpdateTaskIncludeFile] updateTaskIncludeFile function not found!');
-            }
-            break;
         case 'revertColumnTitle':
             // Revert column title when user cancels include switch
             if (window.cachedBoard && window.cachedBoard.columns) {
@@ -3540,6 +3523,9 @@ if (!webviewEventListenersInitialized) {
             // 4. finalizeColumnDrop() which calls normalizeAllStackTags()
             if (message.board) {
                 window.cachedBoard = message.board;
+                if (window.taskContentUtils?.hydrateBoardTasks) {
+                    window.taskContentUtils.hydrateBoardTasks(window.cachedBoard);
+                }
                 if (typeof window.renderBoard === 'function') {
                     window.renderBoard();
                 }
@@ -3764,16 +3750,22 @@ if (!webviewEventListenersInitialized) {
                 // Find the task across all columns
                 let foundTask = null;
                 let foundColumn = null;
-                let previousDescription = null;
-                let previousTitle = null;
+                let previousContent = null;
+                let previousSummary = '';
 
                 for (const column of window.cachedBoard.columns) {
                     const task = column.tasks.find(t => t.id === message.taskId);
                     if (task) {
+                        if (window.taskContentUtils?.ensureTaskContent) {
+                            window.taskContentUtils.ensureTaskContent(task);
+                        }
                         foundTask = task;
                         foundColumn = column;
-                        previousDescription = task.description ?? '';
-                        previousTitle = task.title ?? '';
+                        previousContent = task.content ?? '';
+                        if (window.taskContentUtils?.splitTaskContent) {
+                            const parts = window.taskContentUtils.splitTaskContent(task.content ?? '');
+                            previousSummary = parts.summaryLine ?? '';
+                        }
                         break;
                     }
                 }
@@ -3785,10 +3777,16 @@ if (!webviewEventListenersInitialized) {
                     // Update task metadata
                     // CRITICAL FIX: Use !== undefined checks instead of || operator
                     // Empty string "" is falsy and would fall back to old value with ||
-                    if (taskData.description !== undefined) foundTask.description = taskData.description;
-                    if (taskData.title !== undefined) foundTask.title = taskData.title;
-                    // Also support taskTitle property from message
-                    if (message.taskTitle !== undefined) foundTask.title = message.taskTitle;
+                    let nextContent = foundTask.content ?? '';
+                    if (taskData.content !== undefined) {
+                        nextContent = taskData.content;
+                    }
+                    if (nextContent !== foundTask.content) {
+                        foundTask.content = nextContent;
+                    }
+                    if (window.taskContentUtils?.ensureTaskContent) {
+                        window.taskContentUtils.ensureTaskContent(foundTask);
+                    }
                     if (taskData.displayTitle !== undefined) foundTask.displayTitle = taskData.displayTitle;
                     if (taskData.originalTitle !== undefined) foundTask.originalTitle = taskData.originalTitle;
 
@@ -3823,28 +3821,32 @@ if (!webviewEventListenersInitialized) {
                         const editor = window.taskEditor.currentEditor;
                         const taskData = message.task || message;
 
-                        if (editor.type === 'task-title' && (message.taskTitle !== undefined || taskData.title !== undefined)) {
-                            const newTitle = message.taskTitle !== undefined ? message.taskTitle : taskData.title;
+                        if (editor.type === 'task-title' && taskData.content !== undefined) {
+                            const newTitle = window.taskContentUtils?.getTaskSummaryLine
+                                ? window.taskContentUtils.getTaskSummaryLine(taskData.content || '')
+                                : ((taskData.content || '').split('\n')[0] || '');
                             const currentValue = editor.element?.value ?? '';
-                            if (currentValue === (previousTitle ?? '')) {
+                            if (currentValue === previousSummary) {
                                 editor.element.value = newTitle || '';
                                 editor.originalValue = newTitle || ''; // Update originalValue to prevent stale revert
                             }
                         }
 
-                        if (editor.type === 'task-description' && taskData.description !== undefined) {
+                        if (editor.type === 'task-description' && taskData.content !== undefined) {
+                            const nextEditorValue = taskData.content || '';
                             const currentValue = editor.wysiwyg?.getMarkdown?.() ?? editor.element?.value ?? '';
-                            if (currentValue === (previousDescription ?? '')) {
+                            const previousEditorValue = previousContent ?? '';
+                            if (currentValue === previousEditorValue) {
                                 if (editor.wysiwyg && typeof editor.wysiwyg.setMarkdown === 'function') {
-                                    editor.wysiwyg.setMarkdown(taskData.description || '');
+                                    editor.wysiwyg.setMarkdown(nextEditorValue || '');
                                 }
                                 if (editor.element) {
-                                    editor.element.value = taskData.description || '';
+                                    editor.element.value = nextEditorValue || '';
                                     if (!editor.wysiwyg) {
                                         editor.element.dispatchEvent(new Event('input', { bubbles: true }));
                                     }
                                 }
-                                editor.originalValue = taskData.description || ''; // Update originalValue to prevent stale revert
+                                editor.originalValue = nextEditorValue || ''; // Update originalValue to prevent stale revert
                             }
                         }
                     }
@@ -3855,10 +3857,10 @@ if (!webviewEventListenersInitialized) {
                     const overlayDraft = isOverlayEditingTask && typeof overlayEditor?.getDraft === 'function'
                         ? overlayEditor.getDraft()
                         : null;
-                    if (isOverlayEditingTask && taskData.description !== undefined && typeof overlayEditor?.updateDraft === 'function') {
-                        const shouldUpdateOverlay = overlayDraft === (previousDescription ?? '');
+                    if (isOverlayEditingTask && taskData.content !== undefined && typeof overlayEditor?.updateDraft === 'function') {
+                        const shouldUpdateOverlay = overlayDraft === (previousContent ?? '');
                         if (shouldUpdateOverlay) {
-                            overlayEditor.updateDraft(taskData.description);
+                            overlayEditor.updateDraft(taskData.content ?? '');
                         }
                     }
 
@@ -3938,12 +3940,20 @@ if (!webviewEventListenersInitialized) {
                     if (column) {
                         const task = column.tasks.find(t => t.id === taskData.taskId);
                         if (task) {
+                            if (window.taskContentUtils?.ensureTaskContent) {
+                                window.taskContentUtils.ensureTaskContent(task);
+                            }
                             // Update cache
                             task.displayTitle = taskData.displayTitle;
-                            task.description = taskData.description;
+                            if (taskData.content !== undefined) {
+                                task.content = taskData.content;
+                            }
                             task.includeMode = taskData.includeMode;
                             task.includeFiles = taskData.includeFiles;
                             task.includeError = taskData.includeError;
+                            if (window.taskContentUtils?.ensureTaskContent) {
+                                window.taskContentUtils.ensureTaskContent(task);
+                            }
                         }
                     }
                 }
@@ -3987,10 +3997,13 @@ if (!webviewEventListenersInitialized) {
                     const capturedValue = current.wysiwyg
                         ? current.wysiwyg.getMarkdown()
                         : (current.element.value || current.element.textContent || '');
+                    const capturedType = (current.type === 'task-title' || current.type === 'task-description')
+                        ? 'task-content'
+                        : current.type;
 
                     // CAPTURE mode: Extract edit value WITHOUT modifying board
                     capturedEdit = {
-                        type: current.type,
+                        type: capturedType,
                         taskId: current.taskId,
                         columnId: current.columnId,
                         value: capturedValue,
@@ -4786,10 +4799,7 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
         if (field === 'columnTitle' && columnElement) {
             return columnElement.querySelector('.column-title') || columnElement;
         }
-        if (field === 'taskTitle' && taskElement) {
-            return taskElement.querySelector('.task-title-display') || taskElement;
-        }
-        if (field === 'description' && taskElement) {
+        if (field === 'taskContent' && taskElement) {
             return taskElement.querySelector('.task-description-display') || taskElement;
         }
         return taskElement || columnElement || null;
@@ -5487,8 +5497,7 @@ function insertFileLink(fileInfo) {
     } else {
         // Create new task with the file link
         createTasksWithContent([{
-            title: markdownLink,
-            description: isImage ? markdownLink : ''
+            content: isImage ? `${markdownLink}\n${markdownLink}` : markdownLink
         }], fileInfo.dropPosition);
         vscode.postMessage({ type: 'showMessage', text: `Created new task with ${isImage ? 'image' : 'file'} link: ${fileName}` });
     }

@@ -600,16 +600,17 @@
         }
       }
 
-      if (!taskData || !taskData.description) {
-        log('Task data or description not found. taskData:', !!taskData, 'description:', !!taskData?.description);
+      const taskContent = taskData?.content || '';
+      if (!taskData || !taskContent) {
+        log('Task data or content not found. taskData:', !!taskData, 'content:', !!taskContent);
         return;
       }
-      log('Found task description:', taskData.description.substring(0, 100));
+      log('Found task content:', taskContent.substring(0, 100));
 
       // Re-render just the description using the existing renderMarkdown function
       if (typeof window.renderMarkdown === 'function') {
         log('Calling window.renderMarkdown');
-        const renderedHtml = window.renderMarkdown(taskData.description);
+        const renderedHtml = window.renderMarkdown(taskContent);
         log('Rendered HTML length:', renderedHtml?.length);
         taskDescriptionEl.innerHTML = renderedHtml;
         log('Updated task description innerHTML');

@@ -140,73 +140,148 @@ function initializeTaskElement(taskElement) {
 window.initializeTaskElement = initializeTaskElement;
 
 /**
- * Generate alternative title from task description when no title exists
- *
- * Format for images:
- * ![alt text](path/to/screenshot.png "image description") => image description - alt text
- * ![](path/to/screenshot.png "image description") => image description (screenshot.png)
- * ![alt text](path/to/screenshot.png) => alt text (screenshot.png)
- * ![](path/to/screenshot.png) => (screenshot.png)
- *
- * If no images: Use first 20 characters of text
+ * Build a plain-text folded title from unified task content.
+ * This avoids rendering media/embeds in folded task headers.
  */
-function generateAlternativeTitle(description) {
-    if (!description || typeof description !== 'string' || description.trim() === '') {
-        return undefined;
+function extractFilenameForSummary(pathValue) {
+    if (!pathValue || typeof pathValue !== 'string') {
+        return '';
     }
 
-    // Match markdown images: ![alt text](path "title")
-    const imageRegex = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/;
-    const match = imageRegex.exec(description);
+    let normalized = pathValue.trim();
+    if (normalized.startsWith('<') && normalized.endsWith('>')) {
+        normalized = normalized.slice(1, -1);
+    }
+    normalized = normalized.replace(/^['"]|['"]$/g, '');
+    if (window.safeDecodeURIComponent) {
+        normalized = window.safeDecodeURIComponent(normalized);
+    }
+    normalized = normalized.split(/[?#]/)[0];
 
-    if (match) {
-        const altText = match[1] || '';  // Can be empty
-        const imagePath = match[2];
-        const imageDescription = match[3] || '';  // Title attribute
-
-        // Extract filename from path
-        const filename = imagePath.split('/').pop().split('\\').pop() || imagePath;
-
-        // Apply formatting rules
-        if (imageDescription && altText) {
-            // Rule 1: image description - alt text
-            return `${imageDescription} - ${altText}`;
-        } else if (imageDescription && !altText) {
-            // Rule 2: image description (filename)
-            return `${imageDescription} (${filename})`;
-        } else if (altText && !imageDescription) {
-            // Rule 3: alt text (filename)
-            return `${altText} (${filename})`;
-        } else {
-            // Rule 4: (filename)
-            return `(${filename})`;
+    if (window.getBasename) {
+        const basename = window.getBasename(normalized);
+        if (basename) {
+            return basename;
         }
     }
 
-    // Fallback: First 20 characters of text content
-    // Remove all markdown syntax to get clean text
-    let cleanText = description
-        .replace(/^#+\s+/gm, '')           // Remove headers
-        .replace(/^\s*[-*+]\s+/gm, '')     // Remove list markers
-        .replace(/^\s*\d+\.\s+/gm, '')     // Remove numbered lists
-        .replace(/!\[.*?\]\(.*?\)/g, '')   // Remove images
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
-        .replace(/\[\[([^\]]+)\]\]/g, '$1')      // Convert wiki links to text
-        .replace(/`{1,3}[^`]*`{1,3}/g, '')       // Remove code
-        .replace(/[*_~]{1,2}([^*_~]+)[*_~]{1,2}/g, '$1') // Remove bold/italic
-        .replace(/\n+/g, ' ')              // Replace newlines with spaces
+    const fallback = normalized.split('/').pop().split('\\').pop();
+    return fallback || normalized;
+}
+
+function buildMediaSummaryText(description, altText, filename, alwaysShowFilename = false) {
+    const cleanDescription = (description || '').trim();
+    const cleanAltText = (altText || '').trim();
+    const cleanFilename = (filename || '').trim();
+    const parts = [];
+
+    if (cleanDescription) {
+        parts.push(cleanDescription);
+    }
+    if (cleanAltText && cleanAltText !== cleanDescription) {
+        parts.push(cleanAltText);
+    }
+
+    let text = parts.join(' - ');
+    if ((alwaysShowFilename || !text) && cleanFilename) {
+        text = text ? `${text} (${cleanFilename})` : cleanFilename;
+    }
+
+    return text;
+}
+
+function convertSummaryLineToPlainText(summaryLine) {
+    if (!summaryLine || typeof summaryLine !== 'string') {
+        return '';
+    }
+
+    let plainText = summaryLine;
+
+    // Include badges may be present in displayTitle placeholders.
+    plainText = plainText.replace(/%INCLUDE_BADGE:([^%]+)%/g, (match, includePath) => extractFilenameForSummary(includePath) || includePath || '');
+
+    // Markdown images with optional attribute blocks (e.g. {.embed fallback=...})
+    plainText = plainText.replace(/!\[([^\]]*)\]\(([^)\s]+|<[^>]+>)(?:\s+"([^"]*)")?\)(\{[^}]*\})?/g, (match, altText, imagePath, description, attrs) => {
+        const attrText = attrs || '';
+        const fallbackMatch = attrText.match(/\bfallback=["']?([^"'\s}]+)["']?/i);
+        const fallbackFilename = fallbackMatch ? extractFilenameForSummary(fallbackMatch[1]) : '';
+        const filename = fallbackFilename || extractFilenameForSummary(imagePath);
+        const isEmbed = /\bembed\b/i.test(attrText);
+        return buildMediaSummaryText(description, altText, filename, isEmbed);
+    });
+
+    // Wiki embeds: ![[path|alias]]
+    plainText = plainText.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, targetPath, aliasText) => {
+        const alias = (aliasText || '').trim();
+        const filename = extractFilenameForSummary(targetPath);
+        if (alias && filename && alias !== filename) {
+            return `${alias} (${filename})`;
+        }
+        return alias || filename || (targetPath || '').trim();
+    });
+
+    // Regular include syntax
+    plainText = plainText.replace(/!!!include\(([^)]+)\)!!!/g, (match, includePath) => extractFilenameForSummary(includePath) || includePath || '');
+
+    // Standard markdown links (ignore images already handled above)
+    plainText = plainText.replace(/(^|[^!])\[([^\]]*)\]\(([^)]+)\)/g, (match, prefix, linkText) => `${prefix}${linkText || ''}`);
+
+    // Regular wiki links: [[path|alias]]
+    plainText = plainText.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, targetPath, aliasText) => {
+        const alias = (aliasText || '').trim();
+        if (alias) {
+            return alias;
+        }
+        const cleanTarget = (targetPath || '').trim();
+        return cleanTarget;
+    });
+
+    plainText = plainText
+        .replace(/^#+\s+/g, '')
+        .replace(/^\s*[-*+]\s+/g, '')
+        .replace(/^\s*\d+\.\s+/g, '')
+        .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+        .replace(/[*_~]{1,2}/g, '')
+        .replace(/\{[^}]*\}/g, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 
-    if (cleanText.length > 0) {
-        // Return first 60 characters (no ellipsis - CSS will handle overflow)
-        if (cleanText.length > 60) {
-            return cleanText.substring(0, 60);
-        }
-        return cleanText;
+    return plainText;
+}
+
+function getCollapsedTaskTitleText(taskOrContent) {
+    const content = typeof taskOrContent === 'string'
+        ? taskOrContent
+        : (taskOrContent?.content || '');
+
+    if (!content || typeof content !== 'string') {
+        return '';
     }
 
-    return undefined;
+    const summaryLine = window.taskContentUtils?.getTaskSummaryLine
+        ? window.taskContentUtils.getTaskSummaryLine(content)
+        : (content.split('\n').find(line => line && line.trim()) || content.split('\n')[0] || '');
+
+    const summaryText = convertSummaryLineToPlainText(summaryLine);
+    if (summaryText) {
+        return summaryText.length > 120 ? summaryText.substring(0, 120).trim() : summaryText;
+    }
+
+    const fallbackText = convertSummaryLineToPlainText(content);
+    if (!fallbackText) {
+        return '';
+    }
+    return fallbackText.length > 120 ? fallbackText.substring(0, 120).trim() : fallbackText;
 }
+
+// Backward-compatible alias used by a few call sites.
+function generateAlternativeTitle(description) {
+    return getCollapsedTaskTitleText(description);
+}
+
+window.getCollapsedTaskTitleText = getCollapsedTaskTitleText;
+window.generateAlternativeTitle = generateAlternativeTitle;
 
 // Cache board element reference for performance
 let cachedBoardElement = null;
@@ -417,11 +492,8 @@ function getAllTagsInUse() {
         
         // Get tags from all tasks
         column.tasks.forEach(task => {
-            const taskTitleTags = getActiveTagsInTitle(task.title);
-            taskTitleTags.forEach(tag => tagsInUse.add(tag.toLowerCase()));
-            
-            const taskDescTags = getActiveTagsInTitle(task.description);
-            taskDescTags.forEach(tag => tagsInUse.add(tag.toLowerCase()));
+            const taskContentTags = getActiveTagsInTitle(task.content || '');
+            taskContentTags.forEach(tag => tagsInUse.add(tag.toLowerCase()));
         });
     });
     
@@ -1157,6 +1229,11 @@ function renderBoard(options = null) {
         });
     }
 
+    // Ensure unified task content model before any rendering logic touches tasks.
+    if (window.taskContentUtils?.hydrateBoardTasks && window.cachedBoard) {
+        window.taskContentUtils.hydrateBoardTasks(window.cachedBoard);
+    }
+
     // Initialize parked items - builds UI array for Park dropdown
     // Items stay in cachedBoard with tags, filtering happens during render
     if (typeof window.initializeParkedItems === 'function') {
@@ -1659,9 +1736,10 @@ function createColumnElement(column, columnIndex) {
 
     // Filter out parked, deleted, and archived tasks - they are tagged but stay in cachedBoard
     const visibleTasks = column.tasks.filter(task => {
-        const hasParkedTag = task.title?.includes(PARKED_TAG) || task.description?.includes(PARKED_TAG);
-        const hasDeletedTag = task.title?.includes(DELETED_TAG) || task.description?.includes(DELETED_TAG);
-        const hasArchivedTag = task.title?.includes(ARCHIVED_TAG) || task.description?.includes(ARCHIVED_TAG);
+        const content = task.content || '';
+        const hasParkedTag = content.includes(PARKED_TAG);
+        const hasDeletedTag = content.includes(DELETED_TAG);
+        const hasArchivedTag = content.includes(ARCHIVED_TAG);
         return !hasParkedTag && !hasDeletedTag && !hasArchivedTag;
     });
 
@@ -1895,14 +1973,10 @@ function createColumnElement(column, columnIndex) {
 /**
  * Get the content that should be shown in the edit field for a task
  * For task includes, this is the complete file content
- * For regular tasks, this is just the description
+ * For regular tasks, this is the unified task content
  */
 function getTaskEditContent(task) {
-    // FIX BUG #3: No-parsing approach
-    // For task includes, task.description ALREADY contains the complete file content
-    // displayTitle is just "# include in path" (UI indicator only, not part of file)
-    // Don't reconstruct - just return description directly!
-    const content = task.description || '';
+    const content = task.content || '';
 
     return content;
 }
@@ -1922,16 +1996,24 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
         return '';
     }
 
+    if (window.taskContentUtils?.ensureTaskContent) {
+        window.taskContentUtils.ensureTaskContent(task);
+    }
+    const taskContent = task.content || '';
+    const taskSummary = window.taskContentUtils?.getTaskSummaryLine
+        ? window.taskContentUtils.getTaskSummaryLine(taskContent)
+        : (taskContent.split('\n')[0] || '');
+
     // Set up hierarchical temporal gating context for content rendering
     // This enables: column @kw13 -> task content @10:00-10:30 only highlights during week 13
     // Also works when week tag is in task title: task @kw25 -> content @08:00-10:00 only highlights during week 25
-    window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(columnTitle || '', task.title || '');
+    window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(columnTitle || '', taskSummary || '');
 
     // Extract time slot from task title to use as parent context for minute slots in description
     // This enables hierarchical temporal inheritance: task title @15:00-16:00 -> content @:15-:30
-    window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '') || null;
+    window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(taskSummary || '') || null;
 
-    let renderedDescription = (task.description && typeof task.description === 'string' && task.description.trim()) ? renderMarkdown(task.description, task.includeContext) : '';
+    let renderedDescription = (taskContent && typeof taskContent === 'string' && taskContent.trim()) ? renderMarkdown(taskContent, task.includeContext) : '';
 
     // Clear the rendering contexts AFTER description is rendered
     window.currentRenderingTimeSlot = null;
@@ -1947,42 +2029,18 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
         renderedDescription = wrapTaskSections(renderedDescription);
     }
 
-    // Use same pattern as column includes:
-    // - displayTitle for display (content from file or filtered title)
-    // - task.title for editing (includes the !!!taskinclude(...)!!! syntax)
-    // Use getTaskDisplayTitle to handle taskinclude filepaths as clickable links
     const isCollapsed = window.collapsedTasks.has(task.id);
+    const collapsedTitleText = isCollapsed ? getCollapsedTaskTitleText(task) : '';
+    const renderedTitle = collapsedTitleText ? escapeHtml(collapsedTitleText) : '';
 
-    // Check if task has no meaningful title
-    const hasNoTitle = !task.title || !task.title.trim();
-
-    // Generate alternative title when task is folded and has no title
-    let renderedTitle;
-    if (hasNoTitle && isCollapsed && task.description) {
-        // Generate alternative title from description
-        const alternativeTitle = generateAlternativeTitle(task.description);
-        if (alternativeTitle) {
-            renderedTitle = `<span class="task-alternative-title">${escapeHtml(alternativeTitle)}</span>`;
-        } else {
-            renderedTitle = '';
-        }
-    } else {
-        // Normal title rendering
-        renderedTitle = window.tagUtils ? window.tagUtils.getTaskDisplayTitle(task) :
-            ((task.displayTitle || (task.title ? window.removeTagsForDisplay(task.title) : '')) &&
-             typeof (task.displayTitle || task.title) === 'string' &&
-             (task.displayTitle || task.title).trim()) ?
-            renderMarkdown(task.displayTitle || task.title, task.includeContext) : '';
-    }
-
-    // Extract ALL tags for stacking features (from the full title)
-    const allTags = getActiveTagsInTitle(task.title);
+    // Extract ALL tags for stacking features from unified content
+    const allTags = getActiveTagsInTitle(taskContent);
 
     // Find first tag with border definition
-    const taskBorderTag = getFirstTagWithProperty(task.title, 'border');
+    const taskBorderTag = getFirstTagWithProperty(taskContent, 'border');
 
     // Find first tag with background definition
-    const taskBgTag = getFirstTagWithProperty(task.title, 'background');
+    const taskBgTag = getFirstTagWithProperty(taskContent, 'background');
 
     // Add separate tag attributes for border and background (skips tags without those properties)
     const borderTagAttribute = taskBorderTag ? ` data-task-border-tag="${taskBorderTag}"` : '';
@@ -2027,7 +2085,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const columnTitleForTemporal = column?.title || '';
 
     // Get active temporal attributes with hierarchical gating
-    const activeAttrs = window.getActiveTemporalAttributes(columnTitleForTemporal, task.title || '', task.description || '');
+    const activeAttrs = window.getActiveTemporalAttributes(columnTitleForTemporal, taskSummary || '', taskContent || '');
 
     // Convert to attribute strings
     for (const [attr, isActive] of Object.entries(activeAttrs)) {
@@ -2057,12 +2115,8 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
             <div class="task-header">
                 <div class="task-drag-handle" title="Drag to move task">⋮⋮</div>
                 <span class="task-collapse-toggle ${isCollapsed ? 'rotated' : ''}" onclick="toggleTaskCollapseById('${task.id}', '${columnId}'); updateFoldAllButton('${columnId}')">▶</span>
-                <div class="task-title-container" onclick="handleTaskTitleClick(event, this, '${task.id}', '${columnId}')">
-                <div class="task-title-display markdown-content">${renderedTitle}</div>
-                    <textarea class="task-title-edit"
-                                data-field="title"
-                                placeholder="Task title (Markdown supported)..."
-                                style="display: none;">${escapeHtml(task.title || '')}</textarea>
+                <div class="task-title-container">
+                <div class="task-title-display">${renderedTitle}</div>
                 </div>
                 <div class="task-menu-container">
                     <div class="donut-menu">
@@ -2102,12 +2156,6 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                             </div>
                             <div class="donut-menu-divider"></div>
                             <button class="donut-menu-item" onclick="copyTaskAsMarkdown('${task.id}', '${columnId}')">Copy as markdown</button>
-                            <div class="donut-menu-divider"></div>
-                            ${task.includeMode ?
-                                `<button class="donut-menu-item" onclick="toggleTaskIncludeMode('${task.id}', '${columnId}')">Disable include mode</button>
-                                <button class="donut-menu-item" onclick="editTaskIncludeFile('${task.id}', '${columnId}')">Edit include file</button>` :
-                                `<button class="donut-menu-item" onclick="toggleTaskIncludeMode('${task.id}', '${columnId}')">Enable include mode</button>`
-                            }
                         </div>
                     </div>
                 </div>
@@ -2119,7 +2167,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                 <textarea class="task-description-edit"
                             data-field="description"
                             placeholder="Add description (Markdown supported)..."
-                            style="display: none;">${escapeHtml(getTaskEditContent(task))}</textarea>
+                            style="display: none;">${escapeHtml(taskContent)}</textarea>
             </div>
             ${footerBarsHtml}
         </div>
@@ -2814,18 +2862,21 @@ function toggleTaskDescriptionCheckbox(checkboxEl, taskId, columnId) {
     }
 
     const task = found.task;
-    const originalDescription = typeof task.description === 'string' ? task.description : '';
-    const updatedDescription = toggleMarkdownTaskCheckbox(originalDescription, checkboxIndex);
-    if (updatedDescription === originalDescription) {
+    const originalContent = typeof task.content === 'string' ? task.content : '';
+    const updatedContent = toggleMarkdownTaskCheckbox(originalContent, checkboxIndex);
+    if (updatedContent === originalContent) {
         return;
     }
 
-    task.description = updatedDescription;
+    task.content = updatedContent;
+    if (window.taskContentUtils?.ensureTaskContent) {
+        window.taskContentUtils.ensureTaskContent(task);
+    }
 
     const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
     const displayElement = taskElement?.querySelector?.('.task-description-display');
     if (displayElement) {
-        let renderedHtml = renderMarkdown(updatedDescription, task.includeContext);
+        let renderedHtml = renderMarkdown(updatedContent, task.includeContext);
         if (typeof window.wrapTaskSections === 'function') {
             renderedHtml = window.wrapTaskSections(renderedHtml);
         }
@@ -2836,7 +2887,7 @@ function toggleTaskDescriptionCheckbox(checkboxEl, taskId, columnId) {
         type: 'editTask',
         taskId: taskId,
         columnId: columnId,
-        taskData: task
+        taskData: { content: updatedContent }
     });
 }
 
@@ -2893,7 +2944,7 @@ function injectStackableBars(targetElement = null) {
                 for (const column of window.cachedBoard.columns) {
                     const task = column.tasks.find(t => t.id === taskId);
                     if (task) {
-                        titleText = task.title;
+                        titleText = task.content || '';
                         break;
                     }
                 }
@@ -2918,33 +2969,24 @@ function injectStackableBars(targetElement = null) {
             element.removeAttribute(bgTagAttr);
         }
 
-        // Filter out tags that are ONLY in description (not in title) for task elements
-        if (!isColumn) { // This is a task element
-            const taskTitleDisplay = element.querySelector('.task-title-display');
-            const taskDescDisplay = element.querySelector('.task-description-display');
+        // Filter out tags that are ONLY in remaining content (not in summary line) for task elements.
+        if (!isColumn) {
+            const taskId = element.getAttribute('data-task-id');
+            const task = taskId ? findTaskById(taskId) : null;
 
-            if (taskTitleDisplay && taskDescDisplay) {
-                // Get tags from title
-                const titleTags = new Set();
-                taskTitleDisplay.querySelectorAll('.kanban-tag').forEach(tagSpan => {
-                    const tagName = tagSpan.getAttribute('data-tag');
-                    if (tagName) {
-                        titleTags.add(tagName);
-                    }
-                });
+            if (task) {
+                const contentText = task.content || '';
+                const summaryText = window.taskContentUtils?.getTaskSummaryLine
+                    ? window.taskContentUtils.getTaskSummaryLine(contentText)
+                    : (contentText.split('\n')[0] || '');
+                const remainingText = window.taskContentUtils?.getTaskRemainingContent
+                    ? window.taskContentUtils.getTaskRemainingContent(contentText)
+                    : contentText.split('\n').slice(1).join('\n');
 
-                // Get tags from description
-                const descriptionTags = new Set();
-                taskDescDisplay.querySelectorAll('.kanban-tag').forEach(tagSpan => {
-                    const tagName = tagSpan.getAttribute('data-tag');
-                    if (tagName) {
-                        descriptionTags.add(tagName);
-                    }
-                });
+                const summaryTags = new Set(getActiveTagsInTitle(summaryText));
+                const remainingTags = new Set(getActiveTagsInTitle(remainingText));
 
-                // Only use tags that are in the title (even if also in description)
-                // Filter out tags that are ONLY in description
-                tags = tags.filter(tag => titleTags.has(tag) || !descriptionTags.has(tag));
+                tags = tags.filter(tag => summaryTags.has(tag) || !remainingTags.has(tag));
             }
         }
 
@@ -3140,7 +3182,12 @@ function removeAllTags(id, type, columnId = null) {
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
         const task = column?.tasks?.find(t => t.id === id);
         if (task) {
-            currentTitle = task.title || '';
+            if (window.taskContentUtils?.ensureTaskContent) {
+                window.taskContentUtils.ensureTaskContent(task);
+            }
+            currentTitle = window.taskContentUtils?.getTaskSummaryLine
+                ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                : ((task.content || '').split('\n')[0] || '');
             element = task;
         }
     }
@@ -3174,14 +3221,22 @@ function removeAllTags(id, type, columnId = null) {
         }
     } else if (type === 'task') {
         const task = element; // element is the task object
-        task.title = newTitle; // Update the task title
+        if (window.taskContentUtils?.ensureTaskContent) {
+            window.taskContentUtils.ensureTaskContent(task);
+        }
+        const remainingContent = window.taskContentUtils?.getTaskRemainingContent
+            ? window.taskContentUtils.getTaskRemainingContent(task.content || '')
+            : (task.content || '').split('\n').slice(1).join('\n');
+        task.content = window.taskContentUtils?.mergeTaskContent
+            ? window.taskContentUtils.mergeTaskContent(newTitle, remainingContent)
+            : `${newTitle}${remainingContent ? `\n${remainingContent}` : ''}`;
 
         // Send editTask message immediately when tags are removed
         vscode.postMessage({
             type: 'editTask',
             taskId: id,
             columnId: columnId,
-            taskData: task
+            taskData: { content: task.content }
         });
 
         // Update display immediately

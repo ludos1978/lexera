@@ -254,7 +254,7 @@ export class KanbanWebviewPanel {
         highlight: boolean = true,
         elementPath?: string,
         elementType?: string,
-        field?: 'columnTitle' | 'taskTitle' | 'description'
+        field?: 'columnTitle' | 'taskContent'
     ): void {
         const message: ScrollToElementMessage = {
             type: 'scrollToElement',

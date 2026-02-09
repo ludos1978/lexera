@@ -5,6 +5,7 @@
 
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
 import { IdGenerator } from '../utils/idGenerator';
+import { getTaskSummaryLine, normalizeTaskContent } from '../utils/taskContent';
 import {
     applyColumnOrder,
     buildColumnOrderAfterMove,
@@ -17,8 +18,7 @@ import {
  * Input data for creating a new task
  */
 export interface NewTaskInput {
-    title?: string;
-    description?: string;
+    content?: string;
 }
 
 /**
@@ -97,8 +97,7 @@ export class BoardCrudOperations {
 
         const newTask: KanbanTask = {
             id: this.generateId('task'),
-            title: taskData.title || '',
-            description: taskData.description || ''
+            content: normalizeTaskContent(taskData.content ?? '')
         };
 
         column.tasks.push(newTask);
@@ -111,8 +110,7 @@ export class BoardCrudOperations {
 
         const newTask: KanbanTask = {
             id: this.generateId('task'),
-            title: taskData.title || '',
-            description: taskData.description || ''
+            content: normalizeTaskContent(taskData.content ?? '')
         };
 
         if (insertionIndex >= 0 && insertionIndex <= column.tasks.length) {
@@ -134,18 +132,20 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public editTask(board: KanbanBoard, taskId: string, columnId: string, taskData: Partial<KanbanTask>): boolean {
+    public editTask(
+        board: KanbanBoard,
+        taskId: string,
+        columnId: string,
+        taskData: Partial<KanbanTask>
+    ): boolean {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
         const task = column.tasks.find(t => t.id === taskId);
         if (!task) { return false; }
 
-        if (taskData.title !== undefined) {
-            task.title = taskData.title;
-        }
-        if (taskData.description !== undefined) {
-            task.description = taskData.description;
+        if (taskData.content !== undefined) {
+            task.content = normalizeTaskContent(taskData.content);
         }
         if (taskData.displayTitle !== undefined && task.includeMode) {
             task.displayTitle = taskData.displayTitle;
@@ -160,8 +160,7 @@ export class BoardCrudOperations {
 
         const newTask: KanbanTask = {
             id: this.generateId('task'),
-            title: result.task.title,
-            description: result.task.description,
+            content: result.task.content,
             includeMode: result.task.includeMode,
             includeFiles: result.task.includeFiles
                 ? result.task.includeFiles.map(f => f.trim())
@@ -180,8 +179,7 @@ export class BoardCrudOperations {
 
         const newTask: KanbanTask = {
             id: this.generateId('task'),
-            title: '',
-            description: ''
+            content: ''
         };
 
         result.column.tasks.splice(result.index, 0, newTask);
@@ -194,8 +192,7 @@ export class BoardCrudOperations {
 
         const newTask: KanbanTask = {
             id: this.generateId('task'),
-            title: '',
-            description: ''
+            content: ''
         };
 
         result.column.tasks.splice(result.index + 1, 0, newTask);
@@ -390,14 +387,14 @@ export class BoardCrudOperations {
 
         if (sortType === 'title') {
             column.tasks.sort((a, b) => {
-                const titleA = a.title || '';
-                const titleB = b.title || '';
+                const titleA = getTaskSummaryLine(a.content);
+                const titleB = getTaskSummaryLine(b.content);
                 return titleA.localeCompare(titleB);
             });
         } else if (sortType === 'numericTag') {
             column.tasks.sort((a, b) => {
-                const numA = extractNumericTag(a.title);
-                const numB = extractNumericTag(b.title);
+                const numA = extractNumericTag(getTaskSummaryLine(a.content));
+                const numB = extractNumericTag(getTaskSummaryLine(b.content));
 
                 if (numA === null && numB === null) return 0;
                 if (numA === null) return 1;

@@ -378,7 +378,7 @@ export class ChangeStateMachine {
             } else {
                 loadTarget.task.includeFiles = [];
                 loadTarget.task.displayTitle = '';
-                loadTarget.task.description = '';
+                loadTarget.task.content = '';
                 loadTarget.task.includeMode = false;
                 this._sendTaskUpdate(panel, loadTarget.column, loadTarget.task, null, true);
             }
@@ -676,9 +676,8 @@ export class ChangeStateMachine {
             type: 'updateTaskContent',
             columnId: column.id,
             taskId: task.id,
-            description: isLoadingContent ? '' : task.description,
+            content: isLoadingContent ? '' : task.content,
             displayTitle: isLoadingContent ? '' : task.displayTitle,
-            taskTitle: task.title,
             originalTitle: task.originalTitle,
             includeMode: isLoadingContent ? false : task.includeMode,
             includeFiles: isLoadingContent ? [] : task.includeFiles,

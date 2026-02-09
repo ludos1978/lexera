@@ -13,6 +13,7 @@
  */
 
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { getTaskSummaryLine } from '../utils/taskContent';
 import {
     extractDate,
     extractPersonNames,
@@ -61,7 +62,7 @@ export class GatherQueryEngine {
         // First, identify all sticky tasks
         board.columns.forEach(column => {
             column.tasks.forEach(task => {
-                const taskText = `${task.title || ''} ${task.description || ''}`;
+                const taskText = task.content || '';
                 if (hasSticky(taskText)) {
                     stickyTasks.add(task.id);
                 }
@@ -107,7 +108,7 @@ export class GatherQueryEngine {
             sourceColumn.tasks.forEach(task => {
                 if (stickyTasks.has(task.id)) { return; }
 
-                const taskText = `${task.title || ''} ${task.description || ''}`;
+                const taskText = task.content || '';
                 const taskDate = extractDate(taskText);
                 const personNames = extractPersonNames(taskText);
 
@@ -130,7 +131,7 @@ export class GatherQueryEngine {
                 sourceColumn.tasks.forEach(task => {
                     if (stickyTasks.has(task.id) || matchedCards.has(task.id)) { return; }
 
-                    const taskText = `${task.title || ''} ${task.description || ''}`;
+                    const taskText = task.content || '';
                     const taskDate = extractDate(taskText);
                     const personNames = extractPersonNames(taskText);
                     // Has any temporal tag (@date) or person-like tag (#person)
@@ -367,8 +368,8 @@ export class GatherQueryEngine {
      */
     private _sortColumnByDate(column: KanbanColumn): void {
         column.tasks.sort((a, b) => {
-            const dateA = extractDate(`${a.title || ''} ${a.description || ''}`);
-            const dateB = extractDate(`${b.title || ''} ${b.description || ''}`);
+            const dateA = extractDate(a.content || '');
+            const dateB = extractDate(b.content || '');
 
             if (!dateA && !dateB) { return 0; }
             if (!dateA) { return 1; }
@@ -383,8 +384,8 @@ export class GatherQueryEngine {
      */
     private _sortColumnByName(column: KanbanColumn): void {
         column.tasks.sort((a, b) => {
-            const titleA = a.title || '';
-            const titleB = b.title || '';
+            const titleA = getTaskSummaryLine(a.content);
+            const titleB = getTaskSummaryLine(b.content);
             return titleA.localeCompare(titleB);
         });
     }

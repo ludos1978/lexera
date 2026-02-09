@@ -440,11 +440,8 @@
      */
     function formatLocation(location) {
         let text = escapeHtml(location.columnTitle);
-        if (location.taskTitle) {
-            text += ' / ' + escapeHtml(location.taskTitle);
-        }
-        if (location.field === 'description') {
-            text += ' (description)';
+        if (location.taskSummary) {
+            text += ' / ' + escapeHtml(location.taskSummary);
         }
         return text;
     }

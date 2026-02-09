@@ -782,7 +782,7 @@ export class KanbanFileService {
                     if (!includeFile) {
                         continue;
                     }
-                    recordCandidate(includeFile, `task:${task.id}`, task.description || '');
+                    recordCandidate(includeFile, `task:${task.id}`, task.content || '');
                 }
             }
         }
@@ -1432,7 +1432,7 @@ export class KanbanFileService {
                         if (!fileExists) {
                             (task as any).includeMode = true;  // REQUIRED for frontend to show error styling
                             (task as any).includeError = true;
-                            task.description = '';  // Error details shown on hover via include badge
+                            task.content = '';  // Error details shown on hover via include badge
                         }
                     }
                 }

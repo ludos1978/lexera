@@ -5,6 +5,10 @@
 
 import { BoardCrudOperations, NewTaskInput } from '../../board/BoardCrudOperations';
 import { KanbanBoard } from '../../markdownParser';
+import { mergeLegacyTaskContent, splitTaskContent } from '../../utils/taskContent';
+
+const getSummary = (content: string): string => splitTaskContent(content).summaryLine;
+const getBody = (content: string): string => splitTaskContent(content).remainingContent;
 
 // Helper to create a test board
 function createTestBoard(): KanbanBoard {
@@ -18,16 +22,16 @@ function createTestBoard(): KanbanBoard {
                 id: 'col-1',
                 title: 'To Do',
                 tasks: [
-                    { id: 'task-1', title: 'Task 1', description: 'Description 1' },
-                    { id: 'task-2', title: 'Task 2', description: 'Description 2' },
-                    { id: 'task-3', title: 'Task 3', description: '' }
+                    { id: 'task-1', content: mergeLegacyTaskContent('Task 1', 'Description 1') },
+                    { id: 'task-2', content: mergeLegacyTaskContent('Task 2', 'Description 2') },
+                    { id: 'task-3', content: mergeLegacyTaskContent('Task 3', '') }
                 ]
             },
             {
                 id: 'col-2',
                 title: 'In Progress',
                 tasks: [
-                    { id: 'task-4', title: 'Task 4', description: 'Working on it' }
+                    { id: 'task-4', content: mergeLegacyTaskContent('Task 4', 'Working on it') }
                 ]
             },
             {
@@ -52,18 +56,18 @@ describe('BoardCrudOperations', () => {
         describe('addTask', () => {
             it('should add task to column', () => {
                 const board = createTestBoard();
-                const taskData: NewTaskInput = { title: 'New Task', description: 'New Description' };
+                const taskData: NewTaskInput = { content: mergeLegacyTaskContent('New Task', 'New Description') };
 
                 const result = operations.addTask(board, 'col-3', taskData);
 
                 expect(result).toBe(true);
                 expect(board.columns[2].tasks.length).toBe(1);
-                expect(board.columns[2].tasks[0].title).toBe('New Task');
+                expect(getSummary(board.columns[2].tasks[0].content)).toBe('New Task');
             });
 
             it('should return false for non-existent column', () => {
                 const board = createTestBoard();
-                const result = operations.addTask(board, 'non-existent', { title: 'Test' });
+                const result = operations.addTask(board, 'non-existent', { content: 'Test' });
 
                 expect(result).toBe(false);
             });
@@ -73,29 +77,29 @@ describe('BoardCrudOperations', () => {
                 const result = operations.addTask(board, 'col-3', {});
 
                 expect(result).toBe(true);
-                expect(board.columns[2].tasks[0].title).toBe('');
+                expect(board.columns[2].tasks[0].content).toBe('');
             });
         });
 
         describe('addTaskAtPosition', () => {
             it('should add task at specific position', () => {
                 const board = createTestBoard();
-                const taskData: NewTaskInput = { title: 'Inserted Task' };
+                const taskData: NewTaskInput = { content: 'Inserted Task' };
 
                 const result = operations.addTaskAtPosition(board, 'col-1', taskData, 1);
 
                 expect(result).toBe(true);
                 expect(board.columns[0].tasks.length).toBe(4);
-                expect(board.columns[0].tasks[1].title).toBe('Inserted Task');
-                expect(board.columns[0].tasks[2].title).toBe('Task 2');
+                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Inserted Task');
+                expect(getSummary(board.columns[0].tasks[2].content)).toBe('Task 2');
             });
 
             it('should add at end if position exceeds length', () => {
                 const board = createTestBoard();
-                const result = operations.addTaskAtPosition(board, 'col-1', { title: 'End Task' }, 100);
+                const result = operations.addTaskAtPosition(board, 'col-1', { content: 'End Task' }, 100);
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[3].title).toBe('End Task');
+                expect(getSummary(board.columns[0].tasks[3].content)).toBe('End Task');
             });
         });
 
@@ -122,24 +126,34 @@ describe('BoardCrudOperations', () => {
             it('should edit task title', () => {
                 const board = createTestBoard();
 
-                const result = operations.editTask(board, 'task-1', 'col-1', { title: 'Updated Title' });
+                const result = operations.editTask(
+                    board,
+                    'task-1',
+                    'col-1',
+                    { content: mergeLegacyTaskContent('Updated Title', 'Description 1') }
+                );
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].title).toBe('Updated Title');
+                expect(getSummary(board.columns[0].tasks[0].content)).toBe('Updated Title');
             });
 
             it('should edit task description', () => {
                 const board = createTestBoard();
 
-                const result = operations.editTask(board, 'task-1', 'col-1', { description: 'Updated Description' });
+                const result = operations.editTask(
+                    board,
+                    'task-1',
+                    'col-1',
+                    { content: mergeLegacyTaskContent('Task 1', 'Updated Description') }
+                );
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].description).toBe('Updated Description');
+                expect(getBody(board.columns[0].tasks[0].content)).toBe('Updated Description');
             });
 
             it('should return false for non-existent task', () => {
                 const board = createTestBoard();
-                const result = operations.editTask(board, 'non-existent', 'col-1', { title: 'Test' });
+                const result = operations.editTask(board, 'non-existent', 'col-1', { content: 'Test' });
 
                 expect(result).toBe(false);
             });
@@ -183,7 +197,7 @@ describe('BoardCrudOperations', () => {
 
                 expect(result).toBe(true);
                 expect(board.columns[0].tasks.length).toBe(4);
-                expect(board.columns[0].tasks[1].title).toBe('Task 1');
+                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Task 1');
                 expect(board.columns[0].tasks[1].id).not.toBe('task-1');
             });
         });
@@ -338,9 +352,9 @@ describe('BoardCrudOperations', () => {
                         id: 'col-1',
                         title: 'Sort Test',
                         tasks: [
-                            { id: 't1', title: 'Zebra', description: '' },
-                            { id: 't2', title: 'Apple', description: '' },
-                            { id: 't3', title: 'Mango', description: '' }
+                            { id: 't1', content: 'Zebra' },
+                            { id: 't2', content: 'Apple' },
+                            { id: 't3', content: 'Mango' }
                         ]
                     }]
                 };
@@ -348,9 +362,9 @@ describe('BoardCrudOperations', () => {
                 const result = operations.sortColumn(board, 'col-1', 'title');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].title).toBe('Apple');
-                expect(board.columns[0].tasks[1].title).toBe('Mango');
-                expect(board.columns[0].tasks[2].title).toBe('Zebra');
+                expect(getSummary(board.columns[0].tasks[0].content)).toBe('Apple');
+                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Mango');
+                expect(getSummary(board.columns[0].tasks[2].content)).toBe('Zebra');
             });
 
             it('should sort by numeric tag', () => {
@@ -363,9 +377,9 @@ describe('BoardCrudOperations', () => {
                         id: 'col-1',
                         title: 'Sort Test',
                         tasks: [
-                            { id: 't1', title: 'Task #30', description: '' },
-                            { id: 't2', title: 'Task #5', description: '' },
-                            { id: 't3', title: 'Task #100', description: '' }
+                            { id: 't1', content: 'Task #30' },
+                            { id: 't2', content: 'Task #5' },
+                            { id: 't3', content: 'Task #100' }
                         ]
                     }]
                 };
@@ -373,9 +387,9 @@ describe('BoardCrudOperations', () => {
                 const result = operations.sortColumn(board, 'col-1', 'numericTag');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].title).toBe('Task #5');
-                expect(board.columns[0].tasks[1].title).toBe('Task #30');
-                expect(board.columns[0].tasks[2].title).toBe('Task #100');
+                expect(getSummary(board.columns[0].tasks[0].content)).toBe('Task #5');
+                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Task #30');
+                expect(getSummary(board.columns[0].tasks[2].content)).toBe('Task #100');
             });
         });
     });

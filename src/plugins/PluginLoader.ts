@@ -18,8 +18,6 @@ import { PLUGIN_CONFIG_SCHEMAS } from '../services/PluginConfigSchema';
 
 // Import plugins
 import { ColumnIncludePlugin } from './import/ColumnIncludePlugin';
-import { TaskIncludePlugin } from './import/TaskIncludePlugin';
-import { RegularIncludePlugin } from './import/RegularIncludePlugin';
 import { MarpExportPlugin } from './export/MarpExportPlugin';
 import { PandocExportPlugin } from './export/PandocExportPlugin';
 import { EmbedPlugin } from './embed/EmbedPlugin';
@@ -79,21 +77,8 @@ export class PluginLoader {
             console.error('[PluginLoader] Failed to register ColumnIncludePlugin:', error);
         }
 
-        // Task Include Plugin (priority: 90)
-        // Handles !!!include()!!! in task titles
-        try {
-            registry.registerImportPlugin(new TaskIncludePlugin());
-        } catch (error) {
-            console.error('[PluginLoader] Failed to register TaskIncludePlugin:', error);
-        }
-
-        // Regular Include Plugin (priority: 80)
-        // Handles !!!include()!!! in task descriptions
-        try {
-            registry.registerImportPlugin(new RegularIncludePlugin());
-        } catch (error) {
-            console.error('[PluginLoader] Failed to register RegularIncludePlugin:', error);
-        }
+        // NOTE: Task/regular include plugins are intentionally not registered.
+        // Only column-header !!!include()!!! remains supported.
 
         // ============= EXPORT PLUGINS =============
 

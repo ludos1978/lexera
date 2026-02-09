@@ -28,6 +28,7 @@ import { showInfo, showWarning } from './NotificationService';
 import { logger } from '../utils/logger';
 import { PathFormat } from './FileSearchWebview';
 import { extractIncludeFiles } from '../constants/IncludeConstants';
+import { splitTaskContent } from '../utils/taskContent';
 
 /**
  * Options for path replacement operations
@@ -298,9 +299,8 @@ export class LinkReplacementService {
 
             // Check tasks in this column
             for (const task of column.tasks) {
-                const taskTitle = task.title || '';
-                const taskDesc = task.description || '';
-                if (replacementPaths.some(p => taskTitle.includes(p) || taskDesc.includes(p))) {
+                const taskContent = task.content || '';
+                if (replacementPaths.some(p => taskContent.includes(p))) {
                     const key = `task:${task.id}`;
                     if (!seenTargets.has(key)) {
                         seenTargets.add(key);
@@ -417,7 +417,7 @@ export class LinkReplacementService {
             } else if (options.taskId && column) {
                 const task = column.tasks.find((t: KanbanTask) => t.id === options.taskId);
                 if (task) {
-                    textToSearch = (task.title || '') + '\n' + (task.description || '');
+                    textToSearch = task.content || '';
                 }
             }
 
@@ -642,7 +642,7 @@ export class LinkReplacementService {
         columnId?: string,
         isColumnTitle?: boolean
     ): Promise<boolean> {
-        if (!deps.handleIncludeSwitch) return false;
+        if (!deps.handleIncludeSwitch || !isColumnTitle) return false;
 
         const oldIncludePaths = extractIncludeFiles(oldTitle);
         const newIncludePaths = extractIncludeFiles(newTitle);
@@ -664,18 +664,10 @@ export class LinkReplacementService {
             return false;
         }
 
-        // Include paths changed - trigger include switch
-        if (isColumnTitle && columnId) {
+        // Include paths changed - trigger include switch for column headers only.
+        if (columnId) {
             await deps.handleIncludeSwitch({
                 columnId,
-                oldFiles: oldIncludePaths,
-                newFiles: newIncludePaths,
-                newTitle
-            });
-            return true;
-        } else if (taskId) {
-            await deps.handleIncludeSwitch({
-                taskId,
                 oldFiles: oldIncludePaths,
                 newFiles: newIncludePaths,
                 newTitle
@@ -737,32 +729,14 @@ export class LinkReplacementService {
 
                 // Check tasks
                 for (const task of column.tasks) {
-                    const oldTaskTitle = task.title || '';
-                    const oldTaskDesc = task.description || '';
-                    const taskTitleHasPath = replacementPaths.some(p => oldTaskTitle.includes(p));
-                    const taskDescHasPath = replacementPaths.some(p => oldTaskDesc.includes(p));
+                    const oldTaskContent = task.content || '';
+                    const taskHasPath = replacementPaths.some(p => oldTaskContent.includes(p));
 
-                    if (taskTitleHasPath || taskDescHasPath) {
+                    if (taskHasPath) {
                         const taskBaseDir = task.includeContext?.includeDir || mainFileDir;
-                        let taskChanged = false;
-
-                        if (taskTitleHasPath) {
-                            const newTaskTitle = this._applyAllReplacements(oldTaskTitle, replacements, taskBaseDir, options.pathFormat);
-                            if (newTaskTitle !== oldTaskTitle) {
-                                task.title = newTaskTitle;
-                                taskChanged = true;
-                            }
-                        }
-
-                        if (taskDescHasPath) {
-                            const newTaskDesc = this._applyAllReplacements(oldTaskDesc, replacements, taskBaseDir, options.pathFormat);
-                            if (newTaskDesc !== oldTaskDesc) {
-                                task.description = newTaskDesc;
-                                taskChanged = true;
-                            }
-                        }
-
-                        if (taskChanged) {
+                        const newTaskContent = this._applyAllReplacements(oldTaskContent, replacements, taskBaseDir, options.pathFormat);
+                        if (newTaskContent !== oldTaskContent) {
+                            task.content = newTaskContent;
                             deps.webviewBridge.send({
                                 type: 'updateTaskContent',
                                 taskId: task.id,
@@ -785,8 +759,10 @@ export class LinkReplacementService {
             const task = column?.tasks.find((t: KanbanTask) => t.id === options.taskId);
             if (task) {
                 const taskBaseDir = task.includeContext?.includeDir || mainFileDir;
-                const oldTitle = task.title || '';
-                const newTitle = this._applyAllReplacements(oldTitle, replacements, taskBaseDir, options.pathFormat);
+                const oldContent = task.content || '';
+                const newContent = this._applyAllReplacements(oldContent, replacements, taskBaseDir, options.pathFormat);
+                const oldTitle = splitTaskContent(oldContent).summaryLine;
+                const newTitle = splitTaskContent(newContent).summaryLine;
 
                 // Check for include switch
                 const hadIncludeSwitch = await this._handleIncludeSwitchIfNeeded(
@@ -794,10 +770,7 @@ export class LinkReplacementService {
                 );
                 if (hadIncludeSwitch) return;
 
-                task.title = newTitle;
-                if (task.description) {
-                    task.description = this._applyAllReplacements(task.description, replacements, taskBaseDir, options.pathFormat);
-                }
+                task.content = newContent;
 
                 deps.webviewBridge.send({
                     type: 'updateTaskContent',

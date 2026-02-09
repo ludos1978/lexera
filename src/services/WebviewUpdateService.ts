@@ -389,7 +389,7 @@ export class WebviewUpdateService {
                     columnId: result.column.id,
                     taskId: result.task.id,
                     displayTitle: result.task.displayTitle,
-                    description: result.task.description,
+                    content: result.task.content,
                     includeMode: result.task.includeMode,
                     includeFiles: result.task.includeFiles,
                     includeError: result.task.includeError

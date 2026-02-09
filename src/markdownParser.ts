@@ -5,6 +5,7 @@ import { sortColumnsByRow } from './utils/columnUtils';
 import { MarkdownFile } from './files/MarkdownFile'; // FOUNDATION-1: For path comparison
 import { createDisplayTitleWithPlaceholders } from './constants/IncludeConstants';
 import { PluginRegistry, IncludeContextLocation } from './plugins';
+import { splitTaskContent } from './utils/taskContent';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -89,15 +90,13 @@ export class MarkdownKanbanParser {
    *                          duplicate content when exporting with mergeIncludes=false
    */
   static parseMarkdown(content: string, basePath?: string, existingBoard?: KanbanBoard, mainFilePath?: string, resolveIncludes: boolean = true): { board: KanbanBoard, includedFiles: string[], columnIncludeFiles: string[], taskIncludeFiles: string[] } {
-      // First parse with original content to preserve raw descriptions
+      // First parse with original content to preserve raw task content
       const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 
       // Location-based include detection:
       // - Column includes: !!!include()!!! in column headers (## header)
-      // - Task includes: !!!include()!!! in task titles (- [ ] title)
-      // - Regular includes: !!!include()!!! in task descriptions (indented lines)
-      // We detect these during parsing based on context, not upfront
-      let includedFiles: string[] = []; // Regular includes only (from descriptions)
+      // Task and regular includes are intentionally disabled.
+      let includedFiles: string[] = [];
       let columnIncludeFiles: string[] = [];
       let taskIncludeFiles: string[] = [];
       const board: KanbanBoard = {
@@ -264,13 +263,12 @@ export class MarkdownKanbanParser {
 
           if (currentColumn && !currentColumn.includeMode) {
             // Only parse tasks for non-include columns
-            const taskTitle = line.substring(6);
+            const taskSummary = line.substring(6);
 
             // Create task with temporary ID - will be matched by content during finalization
             currentTask = {
               id: IdGenerator.generateTaskId(), // Temporary, replaced if content matches
-              title: taskTitle,
-              description: ''
+              content: taskSummary
             };
 
             taskIndexInColumn++;
@@ -283,7 +281,7 @@ export class MarkdownKanbanParser {
           continue;
         }
 
-        // Collect description from any indented content
+        // Collect remaining task content from indented lines
         if (currentTask && collectingDescription) {
           if (trimmedLine === '' && !line.startsWith('  ')) {
             // Skip blank separator lines before a new task/column/footer/YAML or end of file
@@ -307,12 +305,9 @@ export class MarkdownKanbanParser {
             descLine = line.substring(2);
           }
 
-          // Store description (frontend will handle include processing)
-          if (!currentTask.description) {
-            currentTask.description = descLine;
-          } else {
-            currentTask.description += '\n' + descLine;
-          }
+          // Preserve the markdown split format in unified content:
+          // first line = summary, remaining lines = details
+          currentTask.content += `\n${descLine}`;
           continue;
         }
 
@@ -333,12 +328,7 @@ export class MarkdownKanbanParser {
         board.kanbanFooter = footerLines.join('\n');
       }
 
-      // Process task includes AFTER normal parsing
-      // Pass resolveIncludes to control file reading
-      this.processTaskIncludes(board, basePath, taskIncludeFiles, resolveIncludes);
-
-      // Detect regular includes in task descriptions (not handled by parser, but tracked for file watching)
-      this.detectRegularIncludes(board, includedFiles);
+      // Task includes and regular includes are disabled.
 
       // Parse Marp global settings from YAML frontmatter
       board.frontmatter = this.parseMarpFrontmatter(board.yamlHeader || '');
@@ -493,119 +483,13 @@ export class MarkdownKanbanParser {
     return updatedYaml;
   }
 
-  private static processTaskIncludes(board: KanbanBoard, basePath?: string, taskIncludeFiles?: string[], resolveIncludes: boolean = true): void {
-    for (const column of board.columns) {
-      for (const task of column.tasks) {
-        // Check if task title contains include syntax (location-based: task includes)
-        // Uses plugin system exclusively (no fallback)
-        const taskIncludeFilePaths = this.detectIncludes(task.title, 'task-title');
-
-        if (taskIncludeFilePaths.length > 0) {
-          // This is a task include - process included file (first line as title, rest as description)
-          const includeFiles: string[] = [];
-          taskIncludeFilePaths.forEach(filePath => {
-            includeFiles.push(filePath);
-            // Track for file watching (FOUNDATION-1: Use normalized comparison)
-            if (taskIncludeFiles && !taskIncludeFiles.some(p => MarkdownFile.isSameFile(p, filePath))) {
-              taskIncludeFiles.push(filePath);
-            }
-          });
-
-          // STRATEGY: Load full content into description, displayTitle is just metadata
-          // The displayTitle shows file info in the UI, description contains the actual file content
-          let fullFileContent = '';
-
-          // Only read files when resolveIncludes is true
-          // When false (e.g., exporting with mergeIncludes=false), skip reading to prevent duplicate content
-          if (resolveIncludes) {
-            for (const filePath of includeFiles) {
-              const resolvedPath = basePath ? PathResolver.resolve(basePath, filePath) : filePath;
-              try {
-                if (fs.existsSync(resolvedPath)) {
-                  // Read COMPLETE file content WITHOUT modification
-                  // Image paths will be rewritten at render time by markdown-it plugin
-                  fullFileContent = fs.readFileSync(resolvedPath, 'utf8');
-                } else {
-                  console.warn(`[Parser] Task include file not found: ${resolvedPath}`);
-                  // Error details shown on hover via include badge
-                  fullFileContent = '';
-                  task.includeError = true;
-                }
-              } catch (error) {
-                console.error(`[Parser] Error processing task include ${filePath}:`, error);
-                // Error details shown on hover via include badge
-                fullFileContent = '';
-                task.includeError = true;
-              }
-            }
-          }
-
-          // Create placeholder for frontend badge rendering
-          // SINGLE SOURCE OF TRUTH: Use shared utility function
-          let displayTitle = createDisplayTitleWithPlaceholders(task.title, includeFiles);
-
-          // Remove checkbox prefix from displayTitle for cleaner display
-          displayTitle = displayTitle.replace(/^- \[ \]\s*/, '').trim();
-
-          // Update task properties for include mode
-          task.includeMode = true;
-          // FOUNDATION-1: Store ORIGINAL paths (preserve casing)
-          // Registry will normalize internally for lookups
-          // DO NOT normalize here - files need original paths for display
-          task.includeFiles = includeFiles.map(f => f.trim()); // Just trim whitespace, keep original casing
-          task.originalTitle = task.title; // Keep original title with include syntax
-          task.displayTitle = displayTitle; // UI metadata with placeholder for badge
-          task.description = fullFileContent; // COMPLETE file content (empty when resolveIncludes=false)
-        }
-      }
-    }
-  }
-
-  private static detectRegularIncludes(board: KanbanBoard, includedFiles: string[]): void {
-    // Scan all task descriptions for !!!include()!!! patterns (regular includes)
-    // Uses plugin system exclusively (no fallback)
-
-    for (const column of board.columns) {
-      for (const task of column.tasks) {
-        // Skip tasks with includeMode - they are task includes, not regular includes
-        if (task.includeMode) {
-          continue;
-        }
-
-        if (task.description) {
-          // Track which regular includes this task uses
-          // Use plugin-based detection exclusively
-          const detectedFiles = this.detectIncludes(task.description, 'description');
-          const taskIncludes: string[] = [];
-
-          for (const includeFile of detectedFiles) {
-            // Add to global list if not already present
-            if (!includedFiles.includes(includeFile)) {
-              includedFiles.push(includeFile);
-            }
-
-            // Track this include for this specific task
-            if (!taskIncludes.includes(includeFile)) {
-              taskIncludes.push(includeFile);
-            }
-          }
-
-          // Store the list of regular includes for this task
-          if (taskIncludes.length > 0) {
-            task.regularIncludeFiles = taskIncludes;
-          }
-        }
-      }
-    }
-  }
-
   private static finalizeCurrentTask(task: KanbanTask | null, column: KanbanColumn | null, existingBoard?: KanbanBoard, columnIndex?: number): void {
     if (!task || !column) {return;}
 
-    // CRITICAL: NEVER delete or trim description - whitespace IS valid content
-    // Description is always a string (empty string if not set)
-    if (task.description === undefined) {
-      task.description = '';
+    // CRITICAL: NEVER delete or trim content - whitespace IS valid content
+    // Content is always a string (empty string if not set)
+    if (task.content === undefined) {
+      task.content = '';
     }
 
     // CRITICAL: Match by POSITION to preserve ID (Backend is source of truth)
@@ -660,17 +544,18 @@ export class MarkdownKanbanParser {
         markdown += `## ${column.title}\n`;
 
         for (const task of column.tasks) {
-          // For taskinclude tasks, use the original title with include syntax
-          const titleToSave = task.includeMode && task.originalTitle ? task.originalTitle : task.title;
-          markdown += `- [ ] ${titleToSave}\n`;
+          const { summaryLine, remainingContent } = splitTaskContent(task.content);
 
-          // For taskinclude tasks, don't save the description (it comes from the file)
+          // For taskinclude tasks, use the original summary line with include syntax
+          const summaryToSave = task.includeMode && task.originalTitle ? task.originalTitle : summaryLine;
+          markdown += `- [ ] ${summaryToSave}\n`;
+
+          // For taskinclude tasks, don't save remaining content (it comes from the file)
           if (!task.includeMode) {
-            // Add description with proper indentation
-            // CRITICAL: Always write description - whitespace IS valid content
-            const descriptionToUse = task.description ?? '';
-            if (descriptionToUse) {
-              const descriptionLines = descriptionToUse.split('\n');
+            // Add remaining content with proper indentation
+            // CRITICAL: Always write remaining content - whitespace IS valid content
+            if (remainingContent) {
+              const descriptionLines = remainingContent.split('\n');
               for (const descLine of descriptionLines) {
                 markdown += `  ${descLine}\n`;
               }

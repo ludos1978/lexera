@@ -5,7 +5,6 @@
  * - confirmDisableIncludeMode
  * - requestIncludeFile, registerInlineInclude
  * - requestIncludeFileName, requestEditIncludeFileName
- * - requestEditTaskIncludeFileName, requestTaskIncludeFileName
  * - reloadAllIncludedFiles
  *
  * Debug commands (forceWriteAllContent, verifyContentSync, etc.) have been
@@ -18,8 +17,7 @@ import { SwitchBasedCommand, CommandContext, CommandMetadata, CommandResult, Mes
 import {
     ConfirmDisableIncludeModeMessage,
     RequestIncludeFileNameMessage,
-    RequestEditIncludeFileNameMessage,
-    RequestEditTaskIncludeFileNameMessage
+    RequestEditIncludeFileNameMessage
 } from '../core/bridge/MessageTypes';
 import { PathResolver } from '../services/PathResolver';
 import { safeFileUri, selectMarkdownFile } from '../utils';
@@ -45,8 +43,6 @@ export class IncludeCommands extends SwitchBasedCommand {
             'registerInlineInclude',
             'requestIncludeFileName',
             'requestEditIncludeFileName',
-            'requestEditTaskIncludeFileName',
-            'requestTaskIncludeFileName',
             'reloadAllIncludedFiles'
         ],
         priority: 100
@@ -58,8 +54,6 @@ export class IncludeCommands extends SwitchBasedCommand {
         'registerInlineInclude': (msg, ctx) => this.handleRegisterInlineInclude((msg as any).filePath, (msg as any).content, ctx),
         'requestIncludeFileName': (msg, ctx) => this.handleRequestIncludeFileName(msg as RequestIncludeFileNameMessage, ctx),
         'requestEditIncludeFileName': (msg, ctx) => this.handleRequestEditIncludeFileName(msg as RequestEditIncludeFileNameMessage, ctx),
-        'requestEditTaskIncludeFileName': (msg, ctx) => this.handleRequestEditTaskIncludeFileName(msg as RequestEditTaskIncludeFileNameMessage, ctx),
-        'requestTaskIncludeFileName': (msg, ctx) => this.handleRequestTaskIncludeFileName((msg as any).taskId, (msg as any).columnId, ctx),
         'reloadAllIncludedFiles': (_msg, ctx) => this.handleReloadAllIncludedFiles(ctx)
     };
 
@@ -283,61 +277,6 @@ export class IncludeCommands extends SwitchBasedCommand {
                 columnId: message.columnId,
                 newFileName: relativePath,
                 currentFile: currentFile
-            });
-        }
-        return this.success();
-    }
-
-    private async handleRequestEditTaskIncludeFileName(message: RequestEditTaskIncludeFileNameMessage, context: CommandContext): Promise<CommandResult> {
-        const currentFile = message.currentFile || '';
-        const taskId = message.taskId;
-        const columnId = message.columnId;
-
-        const fileRegistry = this.getFileRegistry();
-        const file = fileRegistry?.getByRelativePath(currentFile);
-
-        // Only prompt if file was ever loaded (exists() is cached). Skip for broken includes.
-        if (file && await this.promptUnsavedChanges(file, currentFile, context, 'task include') === 'cancel') {
-            return this.success();
-        }
-
-        const currentDir = this.getCurrentDir(context);
-        if (!currentDir) { return this.success(); }
-
-        const fileUris = await selectMarkdownFile({
-            defaultUri: this.buildDefaultUri(currentDir, currentFile, 'includeCommands-changeTaskInclude'),
-            title: 'Select new include file for task'
-        });
-
-        const relativePath = this.getSelectedRelativePath(fileUris, currentDir);
-        if (relativePath) {
-            this.postMessage({
-                type: 'proceedUpdateTaskIncludeFile',
-                taskId: taskId,
-                columnId: columnId,
-                newFileName: relativePath,
-                currentFile: currentFile
-            });
-        }
-        return this.success();
-    }
-
-    private async handleRequestTaskIncludeFileName(taskId: string, columnId: string, context: CommandContext): Promise<CommandResult> {
-        const currentDir = this.getCurrentDir(context);
-        if (!currentDir) { return this.success(); }
-
-        const fileUris = await selectMarkdownFile({
-            defaultUri: safeFileUri(currentDir, 'includeCommands-selectTaskInclude'),
-            title: 'Select include file for task'
-        });
-
-        const relativePath = this.getSelectedRelativePath(fileUris, currentDir);
-        if (relativePath) {
-            this.postMessage({
-                type: 'enableTaskIncludeMode',
-                taskId: taskId,
-                columnId: columnId,
-                fileName: relativePath
             });
         }
         return this.success();

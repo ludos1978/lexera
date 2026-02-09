@@ -43,8 +43,8 @@ export interface UpcomingItem {
     columnTitle: string;
     /** Task index (0-based) within column for position-based navigation */
     taskIndex: number;
-    /** Task title (may include tags) */
-    taskTitle: string;
+    /** Task summary line (may include tags) */
+    taskSummary: string;
     /** The temporal tag that matched (e.g., "@2026.1.20" - NEW: @ prefix for temporal) */
     temporalTag: string;
     /** Parsed date for sorting (may be undefined for week/weekday tags) */
@@ -174,8 +174,8 @@ export interface TagSearchResult {
     columnTitle: string;
     /** Task index (0-based) within column */
     taskIndex: number;
-    /** Task title */
-    taskTitle: string;
+    /** Task summary line */
+    taskSummary: string;
     /** The tag that matched the search */
     matchedTag: string;
 }

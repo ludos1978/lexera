@@ -12,6 +12,7 @@ import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
 import { SaveOptions } from './SaveOptions';
 import { writeFileAtomically } from '../utils/atomicWrite';
 import { sortColumnsByRow } from '../utils/columnUtils';
+import { normalizeTaskContent } from '../utils/taskContent';
 
 /**
  * Represents the main kanban markdown file.
@@ -141,15 +142,10 @@ export class MainKanbanFile extends MarkdownFile {
         }
 
         // Apply the edit to the board based on type
-        if (capturedEdit.type === 'task-title' && capturedEdit.taskId) {
+        if (capturedEdit.type === 'task-content' && capturedEdit.taskId) {
             const task = this._findTaskInBoard(board, capturedEdit.taskId, capturedEdit.columnId);
             if (task) {
-                task.title = capturedEdit.value;
-            }
-        } else if (capturedEdit.type === 'task-description' && capturedEdit.taskId) {
-            const task = this._findTaskInBoard(board, capturedEdit.taskId, capturedEdit.columnId);
-            if (task) {
-                task.description = capturedEdit.value;
+                task.content = capturedEdit.value;
             }
         } else if (capturedEdit.type === 'column-title' && capturedEdit.columnId) {
             const column = findColumn(board, capturedEdit.columnId);
@@ -446,10 +442,15 @@ export class MainKanbanFile extends MarkdownFile {
                 };
             }
 
-            const tasks = column.tasks.map(task => ({
-                title: task.includeMode && task.originalTitle ? task.originalTitle : task.title,
-                description: task.includeMode ? '' : (task.description ?? '')
-            }));
+            const tasks = column.tasks.map(task => {
+                const persistedContent = task.includeMode && task.originalTitle
+                    ? task.originalTitle
+                    : task.content;
+
+                return {
+                    content: normalizeTaskContent(persistedContent)
+                };
+            });
 
             return {
                 title: column.title,

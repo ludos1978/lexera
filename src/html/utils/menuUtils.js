@@ -145,12 +145,39 @@ function toggleTagInTitle(title, tagName, preserveRowTag = false) {
     return { newTitle, wasActive };
 }
 
+function getTaskSummaryLine(task) {
+    if (window.taskContentUtils?.getTaskSummaryLine) {
+        return window.taskContentUtils.getTaskSummaryLine(task?.content || '');
+    }
+    const content = task?.content || '';
+    return content.split('\n')[0] || '';
+}
+
+function getTaskRemainingContent(task) {
+    if (window.taskContentUtils?.getTaskRemainingContent) {
+        return window.taskContentUtils.getTaskRemainingContent(task?.content || '');
+    }
+    const content = task?.content || '';
+    const lines = content.split('\n');
+    return lines.slice(1).join('\n');
+}
+
+function setTaskSummaryLine(task, summaryLine) {
+    if (!task) return;
+    const remainingContent = getTaskRemainingContent(task);
+    if (window.taskContentUtils?.mergeTaskContent) {
+        task.content = window.taskContentUtils.mergeTaskContent(summaryLine || '', remainingContent);
+        return;
+    }
+    task.content = `${summaryLine || ''}${remainingContent ? `\n${remainingContent}` : ''}`;
+}
+
 /**
- * Sync title change across all board references
+ * Sync summary-line change across all board references.
  * @param {string} elementType - 'column' or 'task'
  * @param {string} elementId - Column or task ID
  * @param {string} columnId - Column ID (for tasks)
- * @param {string} newTitle - New title to set
+ * @param {string} newTitle - New summary line to set
  */
 function syncTitleToBoards(elementType, elementId, columnId, newTitle) {
     const boards = [window.cachedBoard, window.currentBoard].filter(b => b?.columns);
@@ -163,7 +190,12 @@ function syncTitleToBoards(elementType, elementId, columnId, newTitle) {
             // Task
             const column = board.columns.find(c => c.id === columnId);
             const task = column?.tasks?.find(t => t.id === elementId);
-            if (task) task.title = newTitle;
+            if (task) {
+                if (window.taskContentUtils?.ensureTaskContent) {
+                    window.taskContentUtils.ensureTaskContent(task);
+                }
+                setTaskSummaryLine(task, newTitle);
+            }
         }
     }
 }
@@ -325,7 +357,7 @@ function getIncludeFile(element) {
  * @param {string} elementType - 'column' or 'task'
  * @param {string} elementId - Column or task ID
  * @param {string} columnId - Column ID (for tasks)
- * @param {string} newTitle - New title to set
+ * @param {string} newTitle - New title/summary line to set
  */
 function postEditMessage(elementType, elementId, columnId, newTitle) {
     if (elementType === 'column') {
@@ -335,11 +367,21 @@ function postEditMessage(elementType, elementId, columnId, newTitle) {
             title: newTitle
         });
     } else {
+        const found = findTaskInBoard(elementId, columnId);
+        const task = found?.task;
+        if (task && window.taskContentUtils?.ensureTaskContent) {
+            window.taskContentUtils.ensureTaskContent(task);
+        }
+        const remainingContent = getTaskRemainingContent(task);
+        const nextContent = window.taskContentUtils?.mergeTaskContent
+            ? window.taskContentUtils.mergeTaskContent(newTitle || '', remainingContent)
+            : `${newTitle || ''}${remainingContent ? `\n${remainingContent}` : ''}`;
+
         vscode.postMessage({
             type: 'editTask',
             taskId: elementId,
             columnId: columnId,
-            taskData: { title: newTitle }
+            taskData: { content: nextContent }
         });
     }
 }

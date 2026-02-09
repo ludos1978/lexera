@@ -655,14 +655,14 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                         }
 
                         if (file && fileExistsOnDisk) {
-                            // Load description from task include file
+                            // Load unified task content from task include file
                             const includeFile = file as IncludeFile;
-                            task.description = includeFile.getContent();
+                            task.content = includeFile.getContent();
                             (task as any).includeError = false;
                         } else if (!fileExistsOnDisk) {
                             console.warn(`[MarkdownFileRegistry] generateBoard() - Task include ERROR: ${relativePath}`);
                             // Error details shown on hover via include badge
-                            task.description = '';
+                            task.content = '';
                             // Mark task as having include error
                             (task as any).includeError = true;
                         }
@@ -703,7 +703,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
             columnId?: string;
             columnTitle?: string;
             taskId?: string;
-            taskTitle?: string;
+            taskSummary?: string;
         }
     ): IncludeFile | undefined {
         const baseDir = path.dirname(mainFile.getPath());

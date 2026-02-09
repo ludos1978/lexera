@@ -179,10 +179,9 @@ export class WebviewManager {
                     taskBaseDir = task.includeContext.includeDir;
                 }
 
-                // Scan task title and description
-                this._extractAssetDirs(task.title, taskBaseDir, assetDirs, imageRegex, htmlMediaRegex);
-                if (task.description) {
-                    this._extractAssetDirs(task.description, taskBaseDir, assetDirs, imageRegex, htmlMediaRegex);
+                // Scan unified task content
+                if (task.content) {
+                    this._extractAssetDirs(task.content, taskBaseDir, assetDirs, imageRegex, htmlMediaRegex);
                 }
             }
         }

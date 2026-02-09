@@ -9,12 +9,11 @@
 
 export interface KanbanTask {
   id: string;
-  title: string;
-  description?: string;
+  content: string;
   includeMode?: boolean;  // When true, content is generated from included files
   includeFiles?: string[]; // Paths to included files (for task includes - includeMode=true)
-  regularIncludeFiles?: string[]; // Paths to regular includes (!!!include()!!! in description)
-  originalTitle?: string;  // Original title before include processing
+  regularIncludeFiles?: string[]; // Paths to regular includes (!!!include()!!! in task content)
+  originalTitle?: string;  // Original summary line before include processing
   displayTitle?: string;   // Cleaned title for display (without include syntax)
   isLoadingContent?: boolean;  // When true, frontend shows loading indicator while include content loads
   includeError?: boolean;  // When true, include file was not found (broken include)

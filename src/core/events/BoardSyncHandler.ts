@@ -283,7 +283,7 @@ export class BoardSyncHandler {
                         }
 
                         const includeFile = file as IncludeFile;
-                        const fullContent = task.description || '';
+                        const fullContent = task.content || '';
                         const currentContent = includeFile.getContent();
 
                         // CRITICAL PROTECTION: Never replace existing content with empty

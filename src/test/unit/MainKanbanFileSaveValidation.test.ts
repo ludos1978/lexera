@@ -15,8 +15,7 @@ function createBoard(): KanbanBoard {
                 tasks: [
                     {
                         id: 'task-1',
-                        title: 'Task A',
-                        description: 'Description A'
+                        content: 'Task A\nDescription A'
                     }
                 ]
             }

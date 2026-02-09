@@ -20,6 +20,7 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import { MainKanbanFile } from '../files/MainKanbanFile';
 import { IncludeFile } from '../files/IncludeFile';
 import { logger } from '../utils/logger';
+import { mergeLegacyTaskContent, splitTaskContent } from '../utils/taskContent';
 
 /**
  * Interface for webview panel dependencies needed by this processor
@@ -81,7 +82,7 @@ export class IncludeLoadingProcessor {
             if (event.editType === 'column_title') {
                 targetColumn = (event.params.columnId ? findColumn(board, event.params.columnId) : null) ?? null;
                 isColumnSwitch = true;
-            } else if (event.editType === 'task_title') {
+            } else if (event.editType === 'task_content') {
                 targetColumn = (event.params.taskId ? findColumnContainingTask(board, event.params.taskId) : null) ?? null;
                 targetTask = event.params.taskId ? (targetColumn?.tasks.find(t => t.id === event.params.taskId) || null) : null;
             }
@@ -160,9 +161,9 @@ export class IncludeLoadingProcessor {
             const task = target.task;
             task.includeFiles = [];
             task.includeMode = false;
-            task.description = '';
+            task.content = '';
             if (newTitle !== undefined) {
-                task.title = newTitle;
+                task.content = mergeLegacyTaskContent(newTitle, '');
                 task.originalTitle = newTitle;
                 task.displayTitle = newTitle.replace(INCLUDE_SYNTAX.REGEX, '').trim();
             }
@@ -295,7 +296,7 @@ export class IncludeLoadingProcessor {
             'include-task',
             fileFactory,
             mainFile,
-            { columnId: column.id, taskId: task.id, taskTitle: task.title }
+            { columnId: column.id, taskId: task.id, taskSummary: splitTaskContent(task.content).summaryLine }
         );
 
         const file = this._fileRegistry.getByRelativePath(relativePath);
@@ -307,9 +308,8 @@ export class IncludeLoadingProcessor {
             task.includeMode = true;
             task.includeFiles = [relativePath];
             task.includeError = true;
-            task.description = '';
+            task.content = '';
             if (newTitle !== undefined) {
-                task.title = newTitle;
                 task.originalTitle = newTitle;
             }
             return;
@@ -322,9 +322,8 @@ export class IncludeLoadingProcessor {
             task.includeMode = true;
             task.includeFiles = [relativePath];
             task.includeError = true;
-            task.description = '';
+            task.content = '';
             if (newTitle !== undefined) {
-                task.title = newTitle;
                 task.originalTitle = newTitle;
             }
             return;
@@ -342,9 +341,8 @@ export class IncludeLoadingProcessor {
             task.includeMode = true;
             task.includeFiles = [relativePath];
             task.includeError = true;
-            task.description = '';
+            task.content = '';
             if (newTitle !== undefined) {
-                task.title = newTitle;
                 task.originalTitle = newTitle;
             }
             return;
@@ -358,9 +356,8 @@ export class IncludeLoadingProcessor {
             task.includeMode = true;
             task.includeFiles = [relativePath];
             task.includeError = true;
-            task.description = '';
+            task.content = '';
             if (newTitle !== undefined) {
-                task.title = newTitle;
                 task.originalTitle = newTitle;
             }
             return;
@@ -371,7 +368,7 @@ export class IncludeLoadingProcessor {
         task.includeFiles = [relativePath];
         task.includeError = false;  // Explicitly clear error on success
         task.displayTitle = `# include in ${relativePath}`;
-        task.description = fullFileContent;
+        task.content = fullFileContent;
 
         // Set includeContext for dynamic image path resolution in the frontend
         // This allows images in included files to resolve paths relative to the include file
@@ -385,7 +382,6 @@ export class IncludeLoadingProcessor {
         logger.debug(`[IncludeLoadingProcessor] Set task includeContext: taskId=${task.id}, includeDir=${task.includeContext.includeDir}, absolutePath=${absolutePath}`);
 
         if (newTitle !== undefined) {
-            task.title = newTitle;
             task.originalTitle = newTitle;
         }
 

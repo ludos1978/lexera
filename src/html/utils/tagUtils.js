@@ -860,7 +860,7 @@ class TagUtils {
     /**
      * Get active temporal attributes for a task considering hierarchical gating.
      *
-     * Structural hierarchy: Column > Task Title > Task Content
+     * Structural hierarchy: Column > Task Summary > Task Content
      * Temporal hierarchy: date > week > weekday > hour > timeSlot
      *
      * A temporal tag at a lower structural level is only highlighted if ALL temporal tags
@@ -872,11 +872,11 @@ class TagUtils {
      * - If column has NO week tag → task highlights whenever time matches
      *
      * @param {string} columnTitle - Column title text
-     * @param {string} taskTitle - Task title text
+     * @param {string} taskSummary - Task summary text
      * @param {string} taskContent - Task description/content text
      * @returns {Object} Object with data attributes as keys and boolean values
      */
-    getActiveTemporalAttributes(columnTitle, taskTitle, taskContent) {
+    getActiveTemporalAttributes(columnTitle, taskSummary, taskContent) {
         let gate = { open: true, closedBy: null };
         const result = {};
 
@@ -887,9 +887,9 @@ class TagUtils {
         // Tasks should only have attributes for temporal tags that exist in the task itself
         gate = columnResult.gate;
 
-        // Evaluate task title level (gated by column)
-        const titleResult = this.evaluateTemporalsAtLevel(taskTitle || '', gate, 'taskTitle');
-        // Add task title attrs to result
+        // Evaluate task summary level (gated by column)
+        const titleResult = this.evaluateTemporalsAtLevel(taskSummary || '', gate, 'taskSummary');
+        // Add task summary attrs to result
         for (const [attr, value] of Object.entries(titleResult.attrs)) {
             if (result[attr] === undefined) {
                 result[attr] = value;
@@ -908,18 +908,18 @@ class TagUtils {
      * Used by markdown-it plugin to determine if content-level temporal tags should highlight.
      *
      * @param {string} columnTitle - Column title text (may contain week/date tags)
-     * @param {string} taskTitle - Task title text (may contain week/date/time tags)
+     * @param {string} taskSummary - Task summary text (may contain week/date/time tags)
      * @returns {Object} { open: boolean, gatingRank: number|undefined, closedBy: string|null }
      */
-    evaluateTemporalGate(columnTitle, taskTitle) {
+    evaluateTemporalGate(columnTitle, taskSummary) {
         let gate = { open: true, closedBy: null, gatingRank: undefined };
 
         // Evaluate column level
         const columnResult = this.evaluateTemporalsAtLevel(columnTitle || '', gate, 'column');
         gate = columnResult.gate;
 
-        // Evaluate task title level (further gates based on task title temporals)
-        const titleResult = this.evaluateTemporalsAtLevel(taskTitle || '', gate, 'taskTitle');
+        // Evaluate task summary level (further gates based on task summary temporals)
+        const titleResult = this.evaluateTemporalsAtLevel(taskSummary || '', gate, 'taskSummary');
         gate = titleResult.gate;
 
         return gate;
@@ -1630,7 +1630,10 @@ class TagUtils {
             return generateIncludeLinkWithMenu(fileName, displayText, 'task', task.includeError);
         } else {
             // Normal task - render displayTitle which may contain %INCLUDE_BADGE:filepath% placeholder
-            const displayTitle = task.displayTitle || (task.title ? (window.removeTagsForDisplay ? window.removeTagsForDisplay(task.title) : task.title) : '');
+            const summaryLine = window.taskContentUtils?.getTaskSummaryLine
+                ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                : ((task.content || '').split('\n')[0] || '');
+            const displayTitle = task.displayTitle || (summaryLine ? (window.removeTagsForDisplay ? window.removeTagsForDisplay(summaryLine) : summaryLine) : '');
 
             // CRITICAL FIX: Extract placeholder paths BEFORE markdown rendering to prevent corruption
             // markdown-it's typographer or other processing might corrupt paths with special chars
@@ -1761,6 +1764,6 @@ if (typeof window !== 'undefined') {
     window.extractTimeSlotTag = (text) => tagUtils.extractTimeSlotTag(text);
     window.extractMinuteSlotTag = (text) => tagUtils.extractMinuteSlotTag(text);
     window.isTemporallyActive = (text) => tagUtils.isTemporallyActive(text);
-    window.getActiveTemporalAttributes = (colTitle, taskTitle, taskContent) =>
-        tagUtils.getActiveTemporalAttributes(colTitle, taskTitle, taskContent);
+    window.getActiveTemporalAttributes = (colTitle, taskSummary, taskContent) =>
+        tagUtils.getActiveTemporalAttributes(colTitle, taskSummary, taskContent);
 }

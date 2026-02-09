@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ExportArchivedItemsMessage, OpenArchiveFileMessage } from '../core/bridge/MessageTypes';
+import { splitTaskContent } from '../utils/taskContent';
 
 /**
  * Archive Commands Handler
@@ -213,7 +214,7 @@ archived: true
 
         // Generate sections for each column
         for (const column of columns) {
-            const columnData = column.data as { title?: string; tasks?: Array<{ title?: string; description?: string; completed?: boolean }> };
+            const columnData = column.data as { title?: string; tasks?: Array<{ content?: string; completed?: boolean }> };
             const cleanTitle = this.removeInternalTags(columnData.title || 'Untitled Column');
             lines.push(`## Archived Column: ${cleanTitle} ${archiveTag}`);
             lines.push('');
@@ -233,7 +234,7 @@ archived: true
             lines.push('');
 
             for (const taskItem of tasks) {
-                const taskData = taskItem.data as { title?: string; description?: string; completed?: boolean };
+                const taskData = taskItem.data as { content?: string; completed?: boolean };
                 lines.push(this.formatTaskForExport(taskData, archiveTag));
             }
             lines.push('');
@@ -246,10 +247,12 @@ archived: true
      * Format a single task for export
      * Format: - [ ] Task title #archived !YYYY.MM.DD !HH:MM:SS
      */
-    private formatTaskForExport(task: { title?: string; description?: string; completed?: boolean }, archiveTag: string): string {
+    private formatTaskForExport(task: { content?: string; completed?: boolean }, archiveTag: string): string {
         const checkbox = task.completed ? '- [x]' : '- [ ]';
-        const cleanTitle = this.removeInternalTags(task.title || '');
-        const cleanDescription = this.removeInternalTags(task.description || '');
+        const normalizedContent = task.content || '';
+        const { summaryLine, remainingContent } = splitTaskContent(normalizedContent);
+        const cleanTitle = this.removeInternalTags(summaryLine || '');
+        const cleanDescription = this.removeInternalTags(remainingContent || '');
 
         let result = `${checkbox} ${cleanTitle} ${archiveTag}`;
 

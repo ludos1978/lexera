@@ -18,6 +18,7 @@ import { KanbanBoard, KanbanColumn, KanbanTask } from '../board/KanbanTypes';
 import { MarkdownPatterns, HtmlPatterns, DiagramPatterns, isUrl } from '../shared/regexPatterns';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
 import { TextMatcher, TextMatcherOptions } from '../utils/textMatcher';
+import { getTaskSummaryLine } from '../utils/taskContent';
 
 /**
  * Types of embedded elements that can be scanned
@@ -31,8 +32,8 @@ export interface ElementLocation {
     columnId: string;
     columnTitle: string;
     taskId?: string;
-    taskTitle?: string;
-    field: 'columnTitle' | 'taskTitle' | 'description';
+    taskSummary?: string;
+    field: 'columnTitle' | 'taskContent';
 }
 
 /**
@@ -90,8 +91,8 @@ export class BoardContentScanner {
         return column.displayTitle || column.title;
     }
 
-    private _getTaskTitle(task: KanbanTask): string {
-        return task.displayTitle || task.title;
+    private _getTaskSummary(task: KanbanTask): string {
+        return task.displayTitle || getTaskSummaryLine(task.content);
     }
 
     private _buildColumnLocation(column: KanbanColumn, field: ElementLocation['field']): ElementLocation {
@@ -107,7 +108,7 @@ export class BoardContentScanner {
             columnId: column.id,
             columnTitle: this._getColumnTitle(column),
             taskId: task.id,
-            taskTitle: this._getTaskTitle(task),
+            taskSummary: this._getTaskSummary(task),
             field
         };
     }
@@ -151,32 +152,24 @@ export class BoardContentScanner {
 
             // Check tasks
             for (const task of column.tasks) {
-                const taskTitleLocation = this._buildTaskLocation(column, task, 'taskTitle');
+                const taskLocation = this._buildTaskLocation(column, task, 'taskContent');
 
                 // Determine task include base path:
                 // 1. Use task's own includeContext if available
                 // 2. Fall back to column's include base path (for tasks inside include columns)
                 const taskIncludeBasePath = task.includeContext?.includeDir || columnIncludeBasePath;
 
-                // Check task title (use include base path if available)
-                this._extractFromContent(task.title, taskTitleLocation, elements, taskIncludeBasePath);
+                // Check full task content (use include base path if available)
+                this._extractFromContent(task.content, taskLocation, elements, taskIncludeBasePath);
 
                 // Check task-level includes
                 if (task.includeFiles && task.includeFiles.length > 0) {
-                    this._pushIncludeElements(elements, task.includeFiles, taskTitleLocation);
+                    this._pushIncludeElements(elements, task.includeFiles, taskLocation);
                 }
 
-                // Check task description
-                if (task.description) {
-                    const taskDescriptionLocation = this._buildTaskLocation(column, task, 'description');
-                    // Use include context's directory if available (for correct relative path resolution)
-                    const includeBasePath = task.includeContext?.includeDir || columnIncludeBasePath;
-                    this._extractFromContent(task.description, taskDescriptionLocation, elements, includeBasePath);
-
-                    // Check regular includes in description
-                    if (task.regularIncludeFiles && task.regularIncludeFiles.length > 0) {
-                        this._pushIncludeElements(elements, task.regularIncludeFiles, taskDescriptionLocation);
-                    }
+                // Check regular includes in task content
+                if (task.regularIncludeFiles && task.regularIncludeFiles.length > 0) {
+                    this._pushIncludeElements(elements, task.regularIncludeFiles, taskLocation);
                 }
             }
         }
@@ -266,7 +259,7 @@ export class BoardContentScanner {
                     );
 
                     if (!alreadyTracked && task.includeFiles.length > 0) {
-                        const taskLocation = this._buildTaskLocation(column, task, 'taskTitle');
+                        const taskLocation = this._buildTaskLocation(column, task, 'taskContent');
                         for (const includePath of task.includeFiles) {
                             const resolvedPath = this._resolvePath(includePath);
                             if (!fs.existsSync(resolvedPath)) {
@@ -331,26 +324,13 @@ export class BoardContentScanner {
 
             // Search tasks
             for (const task of column.tasks) {
-                const taskTitle = this._getTaskTitle(task);
-
-                // Search task title
-                if (matcher.matches(prepareText(taskTitle))) {
+                const taskContent = task.content || '';
+                if (matcher.matches(prepareText(taskContent))) {
                     matches.push({
                         matchText: query,
-                        context: buildContext(taskTitle),
-                        location: this._buildTaskLocation(column, task, 'taskTitle')
+                        context: buildContext(taskContent),
+                        location: this._buildTaskLocation(column, task, 'taskContent')
                     });
-                }
-
-                // Search task description
-                if (task.description) {
-                    if (matcher.matches(prepareText(task.description))) {
-                        matches.push({
-                            matchText: query,
-                            context: buildContext(task.description),
-                            location: this._buildTaskLocation(column, task, 'description')
-                        });
-                    }
                 }
 
                 if (includeContentByPath && task.regularIncludeFiles && task.regularIncludeFiles.length > 0) {
@@ -364,7 +344,7 @@ export class BoardContentScanner {
                                 matches.push({
                                     matchText: query,
                                     context: `include: ${includePath}\n${buildContext(includeContent)}`,
-                                    location: this._buildTaskLocation(column, task, 'description')
+                                    location: this._buildTaskLocation(column, task, 'taskContent')
                                 });
                             }
                         }

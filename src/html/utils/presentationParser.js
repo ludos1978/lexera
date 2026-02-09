@@ -168,20 +168,31 @@ function parsePresentation(content) {
 /**
  * Convert presentation slides to task objects
  * @param {Array<{title: string|undefined, content: string}>} slides
- * @returns {Array<{id: string, title: string, description: string}>}
+ * @returns {Array<{id: string, content: string}>}
  */
 function slidesToTasks(slides) {
+    const mergeContent = (title, content) => {
+        const safeTitle = title ?? '';
+        const safeContent = content || '';
+        if (!safeTitle) {
+            return safeContent;
+        }
+        if (!safeContent) {
+            return safeTitle;
+        }
+        return `${safeTitle}\n${safeContent}`;
+    };
+
     return slides.map((slide) => ({
         id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        title: slide.title ?? '',
-        description: slide.content || ''
+        content: mergeContent(slide.title, slide.content)
     }));
 }
 
 /**
  * Parse markdown content and convert to tasks
  * @param {string} content - The markdown content to parse
- * @returns {Array<{id: string, title: string, description: string}>}
+ * @returns {Array<{id: string, content: string}>}
  */
 function parseMarkdownToTasks(content) {
     const slides = parsePresentation(content);
@@ -198,7 +209,7 @@ function parseMarkdownToTasks(content) {
  * - All remaining slides become tasks
  *
  * @param {string} content - The markdown content
- * @returns {{columnTitle: string, tasks: Array<{id: string, title: string, description: string}>}}
+ * @returns {{columnTitle: string, tasks: Array<{id: string, content: string}>}}
  */
 function parseClipboardAsColumn(content) {
     if (!content) {
@@ -219,8 +230,9 @@ function parseClipboardAsColumn(content) {
             for (let i = 1; i < slides.length; i++) {
                 tasks.push({
                     id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    title: slides[i].title ?? '',
-                    description: slides[i].content || ''
+                    content: slides[i].title
+                        ? (slides[i].content ? `${slides[i].title}\n${slides[i].content}` : slides[i].title)
+                        : (slides[i].content || '')
                 });
             }
         } else {

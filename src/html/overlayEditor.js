@@ -32,6 +32,11 @@
         settings: overlay.querySelector('.task-overlay-settings')
     };
 
+    if (elements.titleInput) {
+        elements.titleInput.readOnly = true;
+        elements.titleInput.setAttribute('aria-readonly', 'true');
+    }
+
     class CommandRegistry {
         // Requires: shared toolbar command registry that routes to adapters.
         constructor() {
@@ -412,6 +417,16 @@
         return typeof value === 'string' ? value.replace(/[\r\n]+/g, ' ') : '';
     }
 
+    function getTaskSummary(task) {
+        if (!task) {
+            return '';
+        }
+        if (window.taskContentUtils?.getTaskSummaryLine) {
+            return window.taskContentUtils.getTaskSummaryLine(task.content || '');
+        }
+        return (task.content || '').split('\n')[0] || '';
+    }
+
     function setTitleInputValue(value) {
         if (!elements.titleInput) { return; }
         elements.titleInput.value = normalizeTitle(value || '');
@@ -419,27 +434,22 @@
 
     function syncTitleFromInput() {
         if (!elements.titleInput) { return; }
-        const nextValue = normalizeTitle(elements.titleInput.value);
-        if (nextValue !== elements.titleInput.value) {
+        // Title is derived from task content and is read-only.
+        const nextValue = normalizeTitle(getTaskSummary({ content: state.draft || '' }));
+        if (elements.titleInput.value !== nextValue) {
             elements.titleInput.value = nextValue;
-        }
-        if (!state.taskRef) {
-            return;
-        }
-        if (state.taskRef.title !== nextValue) {
-            state.taskRef = { ...state.taskRef, title: nextValue };
         }
     }
 
     function updateHeaderTitle(task) {
-        setTitleInputValue(task?.title || '');
+        setTitleInputValue(getTaskSummary(task));
     }
 
     function renderPreview() {
         if (!elements.previewWrap) { return; }
         const draft = state.draft || '';
         const includeContext = state.taskRef?.includeContext;
-        const taskTitle = state.taskRef?.title;
+        const taskSummary = getTaskSummary({ content: draft });
         const taskId = state.taskId;
 
         // Set temporal rendering context
@@ -447,8 +457,8 @@
         const columnElement = taskElement?.closest('.kanban-full-height-column');
         const columnId = columnElement?.dataset?.columnId;
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', taskTitle || '');
-        window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(taskTitle || '') || null;
+        window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', taskSummary || '');
+        window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(taskSummary || '') || null;
         let rendered = typeof window.renderMarkdown === 'function'
             ? window.renderMarkdown(draft, includeContext)
             : (window.escapeHtml ? window.escapeHtml(draft) : draft);
@@ -678,10 +688,9 @@
         const nextTaskRef = {
             taskId: taskRef?.taskId,
             columnId: taskRef?.columnId,
-            includeContext: task?.includeContext || null,
-            title: task?.title || ''
+            includeContext: task?.includeContext || null
         };
-        const nextDraft = task?.description || '';
+        const nextDraft = task?.content || '';
         setState(
             {
                 taskRef: nextTaskRef,
@@ -737,18 +746,15 @@
         syncTitleFromInput();
         const { task, column } = resolved;
         const normalizedValue = normalizeDraft(state.draft);
-        const currentValue = task.description || '';
-        const normalizedTitle = normalizeTitle(state.taskRef?.title || '');
-        const currentTitle = task.title || '';
-        const titleChanged = normalizedTitle !== currentTitle;
-        if (normalizedValue === currentValue && !titleChanged && !task.includeMode) {
+        const currentValue = task.content || '';
+        if (normalizedValue === currentValue && !task.includeMode) {
             closeOverlay();
             return;
         }
         setState({ draft: normalizedValue });
-        task.description = normalizedValue;
-        if (titleChanged) {
-            task.title = normalizedTitle;
+        task.content = normalizedValue;
+        if (window.taskContentUtils?.ensureTaskContent) {
+            window.taskContentUtils.ensureTaskContent(task);
         }
         if (typeof window.renderSingleTask === 'function') {
             window.renderSingleTask(task.id, task, column.id);
@@ -767,7 +773,7 @@
                 type: 'editTask',
                 taskId: task.id,
                 columnId: column.id,
-                taskData: task
+                taskData: { content: normalizedValue }
             });
         }
         closeOverlay();

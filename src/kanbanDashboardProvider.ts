@@ -960,7 +960,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                     html += '<div class="tree-twistie"></div>';
                     html += '<div class="tree-contents"><div class="tree-label-2line">';
-                    html += '<span class="entry-title">' + escapeHtml(item.taskTitle) + '</span>';
+                    html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
                     html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
                     html += '</div></div>';
                     html += '</div>';
@@ -1080,7 +1080,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     if (isColumnMatch) {
                         html += '<span class="entry-title">[Col] ' + escapeHtml(item.columnTitle) + '</span>';
                     } else {
-                        html += '<span class="entry-title">' + escapeHtml(item.taskTitle) + '</span>';
+                        html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
                     }
                     html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
                     html += '</div></div>';

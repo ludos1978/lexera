@@ -1028,16 +1028,12 @@ function createUnifiedTable() {
                 <div class="legend-title">Include Types:</div>
                 <div class="legend-items">
                     <div class="legend-item">
-                        <span class="include-type-label regular legend-badge">[INCLUDE]</span>
-                        <span class="legend-text">!!!include() - read-only</span>
-                    </div>
-                    <div class="legend-item">
                         <span class="include-type-label column legend-badge">[COLINC]</span>
                         <span class="legend-text">!!!include() in column header - bidirectional</span>
                     </div>
                     <div class="legend-item">
-                        <span class="include-type-label task legend-badge">[TASKINC]</span>
-                        <span class="legend-text">!!!include() in task title - bidirectional</span>
+                        <span class="legend-icon">Note</span>
+                        <span class="legend-text">Task/body includes are deprecated; use embeds with ![](...).</span>
                     </div>
                 </div>
             </div>

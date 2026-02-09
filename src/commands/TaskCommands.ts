@@ -6,7 +6,6 @@
  * - moveTask, moveTaskToColumn, moveTaskToTop/Up/Down/Bottom
  * - insertTaskBefore/After
  * - updateTaskFromStrikethroughDeletion
- * - editTaskTitle
  *
  * @module commands/TaskCommands
  */
@@ -26,14 +25,10 @@ import {
     MoveTaskUpMessage,
     MoveTaskDownMessage,
     MoveTaskToBottomMessage,
-    EditTaskTitleMessage,
     UpdateTaskFromStrikethroughDeletionMessage
 } from '../core/bridge/MessageTypes';
-import { INCLUDE_SYNTAX, extractIncludeFiles } from '../constants/IncludeConstants';
-import { getErrorMessage } from '../utils/stringUtils';
-import { findColumn, findColumnContainingTask } from '../actions/helpers';
+import { findColumn } from '../actions/helpers';
 import { TaskActions } from '../actions';
-import { UndoCapture } from '../core/stores/UndoCapture';
 
 /**
  * Task Commands Handler
@@ -59,7 +54,6 @@ export class TaskCommands extends SwitchBasedCommand {
             'moveTaskUp',
             'moveTaskDown',
             'moveTaskToBottom',
-            'editTaskTitle',
             'updateTaskFromStrikethroughDeletion'
         ],
         priority: 100
@@ -79,60 +73,8 @@ export class TaskCommands extends SwitchBasedCommand {
         'moveTaskUp': (msg, ctx) => this.handleMoveTaskUp(msg as MoveTaskUpMessage, ctx),
         'moveTaskDown': (msg, ctx) => this.handleMoveTaskDown(msg as MoveTaskDownMessage, ctx),
         'moveTaskToBottom': (msg, ctx) => this.handleMoveTaskToBottom(msg as MoveTaskToBottomMessage, ctx),
-        'editTaskTitle': (msg, ctx) => this.handleEditTaskTitle(msg as EditTaskTitleMessage, ctx),
         'updateTaskFromStrikethroughDeletion': (msg, ctx) => this.handleUpdateTaskFromStrikethroughDeletion(msg as UpdateTaskFromStrikethroughDeletionMessage, ctx)
     };
-
-    // ============= HELPER METHODS =============
-
-    /**
-     * Handle include switch for a task title change
-     * Performs the include switch if the title contains or contained include syntax
-     * @returns true if include switch was performed, false otherwise
-     */
-    private async handleTaskIncludeSwitch(
-        taskId: string,
-        newTitle: string,
-        oldIncludeFiles: string[],
-        context: CommandContext
-    ): Promise<boolean> {
-        const hasNewInclude = INCLUDE_SYNTAX.REGEX_SINGLE.test(newTitle);
-        const hadOldInclude = oldIncludeFiles.length > 0;
-
-        if (!hasNewInclude && !hadOldInclude) {
-            return false;
-        }
-
-        const newIncludeFiles = extractIncludeFiles(newTitle);
-
-        // Clear dirty flag before stopping edit
-        context.clearTaskDirty(taskId);
-
-        // Stop editing before switch
-        await context.requestStopEditing();
-
-        // Capture undo state BEFORE include switch (include switches bypass action system)
-        const board = context.getCurrentBoard();
-        const column = board ? findColumnContainingTask(board, taskId) : null;
-        if (board && column) {
-            context.boardStore.saveUndoEntry(
-                UndoCapture.forTask(board, taskId, column.id, 'includeSwitch')
-            );
-        }
-
-        try {
-            await context.handleIncludeSwitch({
-                taskId,
-                oldFiles: oldIncludeFiles,
-                newFiles: newIncludeFiles,
-                newTitle
-            });
-        } finally {
-            context.setEditingInProgress(false);
-        }
-
-        return true;
-    }
 
     // ============= TASK HANDLERS =============
     // NOTE: Column include file content is synced automatically by BoardSyncHandler._propagateEditsToIncludeFiles()
@@ -142,71 +84,11 @@ export class TaskCommands extends SwitchBasedCommand {
      * Handle editTask message - complex with include handling
      */
     private async handleEditTask(message: EditTaskMessage, context: CommandContext): Promise<CommandResult> {
-        // Check if this is a title change with include syntax (add/remove/change)
-        if (message.taskData?.title !== undefined) {
-            const newTitle = message.taskData.title;
-            const board = context.getCurrentBoard();
-            const column = board ? findColumn(board, message.columnId) : undefined;
-            const task = column?.tasks.find(t => t.id === message.taskId);
-
-            if (task) {
-                // CRITICAL: Skip include detection for column-generated tasks
-                const columnHasInclude = column?.includeMode === true;
-
-                if (!columnHasInclude) {
-                    try {
-                        const oldIncludeFiles = task.includeFiles || [];
-                        const handled = await this.handleTaskIncludeSwitch(
-                            message.taskId,
-                            newTitle,
-                            oldIncludeFiles,
-                            context
-                        );
-                        if (handled) {
-                            return this.success();
-                        }
-                    } catch (error) {
-                        console.error(`[TaskCommands.editTask] Exception in include handling:`, error);
-                    }
-                }
-            }
-        }
-
-        // Regular task edit (no include changes)
         await this.executeAction(
             context,
             TaskActions.update(message.taskId, message.columnId, message.taskData),
             { sendUpdates: false }
         );
-
-        // If this is a task include and description was updated, update the file instance
-        if (message.taskData.description !== undefined) {
-            const board = context.getCurrentBoard();
-            const column = board ? findColumn(board, message.columnId) : undefined;
-            const task = column?.tasks.find(t => t.id === message.taskId);
-
-            const columnHasInclude = column?.includeMode === true;
-
-            if (task && task.includeMode && task.includeFiles && !columnHasInclude) {
-                const fileRegistry = context.getFileRegistry();
-
-                for (const relativePath of task.includeFiles) {
-                    const file = fileRegistry?.getByRelativePath(relativePath);
-
-                    if (file) {
-                        // CRITICAL FIX: Type guard to prevent writing to MainKanbanFile
-                        if (file.getFileType() === 'main') {
-                            console.error(`[TaskCommands] BUG: Refusing to write task include content to MainKanbanFile: ${relativePath}`);
-                            continue;
-                        }
-
-                        const fullFileContent = message.taskData.description || '';
-                        file.setContent(fullFileContent, false);
-                    }
-                }
-            }
-
-        }
 
         return this.success();
     }
@@ -345,53 +227,10 @@ export class TaskCommands extends SwitchBasedCommand {
     }
 
     /**
-     * Handle editTaskTitle message - complex with include handling
-     */
-    private async handleEditTaskTitle(message: EditTaskTitleMessage, context: CommandContext): Promise<CommandResult> {
-        const currentBoard = context.getCurrentBoard();
-        const targetColumn = currentBoard ? findColumn(currentBoard, message.columnId) : undefined;
-        const task = targetColumn?.tasks.find(t => t.id === message.taskId);
-
-        // Skip include detection for column-generated tasks
-        const columnHasTaskInclude = targetColumn?.includeMode === true;
-
-        if (!columnHasTaskInclude && task) {
-            const oldIncludeFiles = task.includeFiles || [];
-            try {
-                const handled = await this.handleTaskIncludeSwitch(
-                    message.taskId,
-                    message.title,
-                    oldIncludeFiles,
-                    context
-                );
-                if (handled) {
-                    return this.success();
-                }
-            } catch (error) {
-                if (getErrorMessage(error) !== 'USER_CANCELLED') {
-                    throw error;
-                }
-                return this.success();
-            }
-        }
-
-        // Regular title edit without include syntax
-        await this.executeAction(
-            context,
-            TaskActions.updateTitle(message.taskId, message.columnId, message.title),
-            { sendUpdates: false }
-        );
-
-        context.setEditingInProgress(false);
-
-        return this.success();
-    }
-
-    /**
      * Handle updateTaskFromStrikethroughDeletion message
      */
     private async handleUpdateTaskFromStrikethroughDeletion(message: UpdateTaskFromStrikethroughDeletionMessage, context: CommandContext): Promise<CommandResult> {
-        const { taskId, columnId, newContent, contentType } = message;
+        const { taskId, columnId, newContent } = message;
 
         const board = context.getCurrentBoard();
         if (!board) {
@@ -399,20 +238,15 @@ export class TaskCommands extends SwitchBasedCommand {
             return this.failure('No current board available');
         }
 
-        // Content is already in markdown format from frontend
-        const updateData: { title?: string; description?: string } = {};
-        if (contentType === 'title') {
-            updateData.title = newContent;
-        } else if (contentType === 'description') {
-            updateData.description = newContent;
-        } else {
-            console.warn('[TaskCommands] Unknown content type, defaulting to title');
-            updateData.title = newContent;
+        const column = findColumn(board, columnId);
+        const task = column?.tasks.find(t => t.id === taskId);
+        if (!task) {
+            return this.failure('Task not found');
         }
 
         await this.executeAction(
             context,
-            TaskActions.update(taskId, columnId, updateData),
+            TaskActions.update(taskId, columnId, { content: newContent }),
             { sendUpdates: false }
         );
 

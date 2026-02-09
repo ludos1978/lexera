@@ -335,8 +335,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             // Sync to backend first (registers files, generates markdown)
             context.emitBoardChanged(currentBoard, 'template');
 
-            // CRITICAL FIX: Trigger include switches for columns/tasks with includes
-            // This uses the standard state machine path (unifiedLoad) to load content
+            // Trigger include switches for columns with includes.
             for (const column of columnsWithTags) {
                 // Handle column-level includes
                 if (column.includeFiles && column.includeFiles.length > 0) {
@@ -346,18 +345,6 @@ export class TemplateCommands extends SwitchBasedCommand {
                         newFiles: column.includeFiles,
                         newTitle: column.title
                     });
-                }
-
-                // Handle task-level includes
-                for (const task of column.tasks) {
-                    if (task.includeFiles && task.includeFiles.length > 0 && task.includeMode) {
-                        await context.handleIncludeSwitch({
-                            taskId: task.id,
-                            oldFiles: [],
-                            newFiles: task.includeFiles,
-                            newTitle: task.title
-                        });
-                    }
                 }
             }
 
@@ -403,40 +390,21 @@ export class TemplateCommands extends SwitchBasedCommand {
 
             // Process tasks
             const processedTasks = (col.tasks || []).map((task: TemplateTask) => {
-                const processedTaskTitle = VariableProcessor.substitute(
-                    task.title,
+                const processedTaskContent = VariableProcessor.substitute(
+                    task.content || '',
                     variables,
                     template.variables
                 );
 
                 const processedTask: {
                     id: string;
-                    title: string;
+                    content: string;
                     completed: boolean;
-                    description?: string;
-                    includeFiles?: string[];
-                    includeMode?: boolean;
                 } = {
                     id: IdGenerator.generateTaskId(),
-                    title: processedTaskTitle,
+                    content: processedTaskContent,
                     completed: task.completed || false
                 };
-
-                if (task.description) {
-                    processedTask.description = VariableProcessor.substitute(
-                        task.description,
-                        variables,
-                        template.variables
-                    );
-                }
-
-                // Handle include files in task title
-                if (task.includeFiles && task.includeFiles.length > 0) {
-                    processedTask.includeFiles = task.includeFiles.map((f: string) =>
-                        VariableProcessor.substituteFilename(f, variables, template.variables)
-                    );
-                    processedTask.includeMode = true;
-                }
 
                 return processedTask;
             });

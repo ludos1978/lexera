@@ -118,6 +118,85 @@
         return false;
     }
 
+    // ============= TASK CONTENT UTILITIES =============
+
+    function normalizeTaskContent(content) {
+        if (typeof content !== 'string') {
+            return '';
+        }
+        return content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    }
+
+    function splitTaskContent(content) {
+        const normalized = normalizeTaskContent(content);
+        if (!normalized) {
+            return { summaryLine: '', remainingContent: '' };
+        }
+        const lines = normalized.split('\n');
+        return {
+            summaryLine: lines[0] ?? '',
+            remainingContent: lines.slice(1).join('\n')
+        };
+    }
+
+    function mergeTaskContent(summaryLine, remainingContent) {
+        const normalizedSummary = normalizeTaskContent(summaryLine);
+        const normalizedRemaining = normalizeTaskContent(remainingContent);
+
+        if (!normalizedRemaining) {
+            return normalizedSummary;
+        }
+
+        return `${normalizedSummary}\n${normalizedRemaining}`;
+    }
+
+    function getTaskSummaryLine(contentOrTask) {
+        const content = typeof contentOrTask === 'string'
+            ? contentOrTask
+            : contentOrTask?.content;
+        const { summaryLine, remainingContent } = splitTaskContent(content);
+        if (summaryLine && summaryLine.trim().length > 0) {
+            return summaryLine;
+        }
+        if (!remainingContent) {
+            return summaryLine;
+        }
+        const firstNonEmpty = remainingContent.split('\n').find(line => line.trim().length > 0);
+        return firstNonEmpty || summaryLine;
+    }
+
+    function getTaskRemainingContent(contentOrTask) {
+        const content = typeof contentOrTask === 'string'
+            ? contentOrTask
+            : contentOrTask?.content;
+        return splitTaskContent(content).remainingContent;
+    }
+
+    function ensureTaskContent(task) {
+        if (!task || typeof task !== 'object') {
+            return task;
+        }
+        task.content = normalizeTaskContent(task.content);
+        return task;
+    }
+
+    function hydrateBoardTasks(board) {
+        if (!board || !Array.isArray(board.columns)) {
+            return board;
+        }
+
+        board.columns.forEach(column => {
+            if (!Array.isArray(column.tasks)) {
+                return;
+            }
+            column.tasks.forEach(task => {
+                ensureTaskContent(task);
+            });
+        });
+
+        return board;
+    }
+
     // ============= GLOBAL EXPORTS =============
 
     if (typeof window !== 'undefined') {
@@ -151,6 +230,18 @@
         if (!window.isAbsolutePath) {
             window.isAbsolutePath = isAbsolutePath;
         }
+        if (!window.taskContentUtils) {
+            window.taskContentUtils = {};
+        }
+        Object.assign(window.taskContentUtils, {
+            normalizeTaskContent,
+            splitTaskContent,
+            mergeTaskContent,
+            getTaskSummaryLine,
+            getTaskRemainingContent,
+            ensureTaskContent,
+            hydrateBoardTasks
+        });
 
         // Unified stringUtils object
         if (!window.stringUtils) {
@@ -165,7 +256,12 @@
             isSamePath,
             getBasename,
             getDirname,
-            isAbsolutePath
+            isAbsolutePath,
+            normalizeTaskContent,
+            splitTaskContent,
+            mergeTaskContent,
+            getTaskSummaryLine,
+            getTaskRemainingContent
         });
     }
 })();

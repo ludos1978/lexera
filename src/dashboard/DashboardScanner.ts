@@ -15,6 +15,7 @@ import {
 } from './DashboardTypes';
 import { TextMatcher } from '../utils/textMatcher';
 import { logger } from '../utils/logger';
+import { getTaskSummaryLine, splitTaskContent } from '../utils/taskContent';
 
 // Date locale configuration - matches frontend tagUtils.js
 let dateLocale: string = 'de-DE';
@@ -197,8 +198,9 @@ export class DashboardScanner {
             let taskIndex = 0;
             for (const task of column.tasks || []) {
                 totalTasks++;
-                const taskText = (task.title || '') + '\n' + (task.description || '');
-                const taskTitleTemporal = this._extractTemporalInfo(task.title || '');
+                const taskText = task.content || '';
+                const taskSummary = getTaskSummaryLine(task.content);
+                const taskTitleTemporal = this._extractTemporalInfo(taskSummary);
                 let taskTemporalContext: {
                     date: Date;
                     week?: number;
@@ -299,20 +301,20 @@ export class DashboardScanner {
 
                     if (effectiveDate && shouldInclude) {
                         // Use the line content as the display title for this temporal item
-                        const lineTitle = line.trim() || task.title || '';
+                        const lineTitle = line.trim() || taskSummary || '';
                         upcomingItems.push({
                             boardUri,
                             boardName,
                             columnIndex,
                             columnTitle: columnTitle,
                             taskIndex,
-                            taskTitle: lineTitle,
+                            taskSummary: lineTitle,
                             temporalTag: lineTemporal.tag,
                             date: effectiveDate,
                             week: effectiveWeek,
                             year: effectiveYear,
                             timeSlot: lineTemporal.timeSlot,
-                            rawTitle: task.title || '',
+                            rawTitle: taskSummary || '',
                             isOverdue: isDeadlineTask && isOverdue
                         });
                     }
@@ -514,7 +516,8 @@ export class DashboardScanner {
 
             let taskIndex = 0;
             for (const task of column.tasks || []) {
-                const taskText = (task.title || '') + '\n' + (task.description || '');
+                const taskText = task.content || '';
+                const { summaryLine } = splitTaskContent(task.content);
                 const tags = TextMatcher.extractTags(taskText);
 
                 // Check if any tag in task matches the search (exact match)
@@ -526,7 +529,7 @@ export class DashboardScanner {
                             columnIndex,
                             columnTitle,
                             taskIndex,
-                            taskTitle: task.title || '',
+                            taskSummary: summaryLine || '',
                             matchedTag: tag.name
                         });
                         anyTaskMatchedDirectly = true;
@@ -545,7 +548,7 @@ export class DashboardScanner {
                     columnIndex,
                     columnTitle,
                     taskIndex: -1,  // -1 indicates column-level match
-                    taskTitle: '',  // No specific task
+                    taskSummary: '',  // No specific task
                     matchedTag: columnMatchingTag?.name || searchTag
                 });
             }

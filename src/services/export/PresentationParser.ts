@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { KanbanTask } from '../../board/KanbanTypes';
 import { IdGenerator } from '../../utils/idGenerator';
+import { mergeLegacyTaskContent } from '../../utils/taskContent';
 
 export interface PresentationSlide {
   title?: string;
@@ -221,13 +222,9 @@ export class PresentationParser {
     return slides.map((slide, _index) => {
       const task: KanbanTask = {
         id: IdGenerator.generateTaskId(),
-        // CRITICAL: Use ?? not || - empty string IS a valid title
-        title: slide.title ?? '',
+        // CRITICAL: Use ?? not || - empty string IS valid summary content
+        content: mergeLegacyTaskContent(slide.title ?? '', slide.content)
       };
-
-      // CRITICAL: Always set description - never check for empty
-      // Empty/whitespace content IS valid content
-      task.description = slide.content;
 
       // Add includeContext for dynamic image path resolution
       if (includeFilePath && mainFilePath) {

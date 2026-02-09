@@ -88,7 +88,7 @@ export interface FileSystemChangeEvent {
 
 export interface UserEditEvent {
     type: 'user_edit';
-    editType: 'task_title' | 'task_description' | 'column_title';
+    editType: 'task_content' | 'column_title';
     params: {
         taskId?: string;
         columnId?: string;

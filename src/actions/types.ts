@@ -27,7 +27,7 @@ export interface ActionTarget {
  * @template T - Return type of execute (default: boolean for success/failure)
  */
 export interface BoardAction<T = boolean> {
-    /** Action type identifier (e.g., 'task:updateTitle', 'column:add') */
+    /** Action type identifier (e.g., 'task:updateContent', 'column:add') */
     readonly type: string;
 
     /** Elements affected by this action (for targeted updates) */

@@ -1,6 +1,7 @@
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
 import { TagUtils, TagVisibility } from '../../utils/tagUtils';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
+import { splitTaskContent } from '../../utils/taskContent';
 
 /**
  * Options for presentation generation
@@ -75,7 +76,7 @@ export class PresentationGenerator {
         }
         // Filter tasks with exclude tags
         if (options.excludeTags && options.excludeTags.length > 0) {
-            filteredTasks = filteredTasks.filter(task => !this.hasExcludeTag(task.title, options.excludeTags));
+            filteredTasks = filteredTasks.filter(task => !this.hasExcludeTag(task.content, options.excludeTags));
         }
 
         // Convert tasks to slide content strings
@@ -155,9 +156,10 @@ export class PresentationGenerator {
             const tasks = this.filterTasks(column.tasks, options);
 
             for (const task of tasks) {
+                const { summaryLine, remainingContent } = splitTaskContent(task.content);
                 // Task title (plain text, like presentation format)
                 // Use originalTitle to preserve !!!include(...)!!! syntax (displayTitle has badge placeholders)
-                let title = task.originalTitle ?? task.title ?? '';
+                let title = task.originalTitle ?? summaryLine ?? '';
                 if (options.stripIncludes) {
                     title = title.replace(INCLUDE_SYNTAX.REGEX, '').trim();
                 }
@@ -167,7 +169,7 @@ export class PresentationGenerator {
                 }
 
                 // Task content
-                let description = task.description ?? '';
+                let description = remainingContent ?? '';
 
                 // Apply tag filtering if specified
                 if (options.tagVisibility && options.tagVisibility !== 'all') {
@@ -202,9 +204,10 @@ export class PresentationGenerator {
      * Convert a single task to slide content string
      */
     private static taskToSlideContent(task: KanbanTask, options: PresentationOptions): string {
+        const { summaryLine, remainingContent } = splitTaskContent(task.content);
         // Use originalTitle to preserve !!!include(...)!!! syntax (displayTitle has badge placeholders)
-        let title = task.originalTitle ?? task.title ?? '';
-        let description = task.description ?? '';
+        let title = task.originalTitle ?? summaryLine ?? '';
+        let description = remainingContent ?? '';
 
         if (options.stripIncludes) {
             title = title.replace(INCLUDE_SYNTAX.REGEX, '').trim();
@@ -336,7 +339,7 @@ export class PresentationGenerator {
             filtered = filtered.filter(task => !task.includeMode && !task.includeFiles);
         }
         if (options.excludeTags && options.excludeTags.length > 0) {
-            filtered = filtered.filter(task => !this.hasExcludeTag(task.title, options.excludeTags));
+            filtered = filtered.filter(task => !this.hasExcludeTag(task.content, options.excludeTags));
         }
         return filtered;
     }

@@ -246,7 +246,7 @@ export class UndoCapture {
     private static resolveUserEditTargets(event: UserEditEvent, board: KanbanBoard): ResolvedTarget[] {
         const targets: ResolvedTarget[] = [];
 
-        if (event.editType === 'task_title' || event.editType === 'task_description') {
+        if (event.editType === 'task_content') {
             if (event.params.taskId) {
                 const columnId = UndoCapture.findColumnForTask(board, event.params.taskId);
                 targets.push({

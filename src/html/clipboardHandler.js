@@ -103,8 +103,9 @@ window.handleClipboardDragStart = function(e) {
     // Create task data for single content
     const tempTask = {
         id: 'temp-clipboard-' + Date.now(),
-        title: clipboardCardData.title,
-        description: clipboardCardData.isImage ? '[Image from clipboard]' : clipboardCardData.content,
+        content: clipboardCardData.isImage
+            ? `${clipboardCardData.title}\n[Image from clipboard]`
+            : (clipboardCardData.content || clipboardCardData.title || ''),
         isFromClipboard: true
     };
 
@@ -278,8 +279,7 @@ window.handleEmptyCardDragStart = function(e) {
     // Create empty task data
     const tempTask = {
         id: 'temp-empty-' + Date.now(),
-        title: '',
-        description: '',
+        content: '',
         isFromEmptyCard: true
     };
 

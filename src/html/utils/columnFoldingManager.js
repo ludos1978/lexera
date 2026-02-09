@@ -677,24 +677,21 @@ function toggleTaskCollapse(taskElement, skipRecalculation = false) {
         window.collapsedTasks.delete(taskId);
     }
 
-    // Update title for tasks with no title when folding/unfolding
+    // Update folded summary text (plain text only)
     const titleDisplay = taskElement.querySelector('.task-title-display');
     if (titleDisplay) {
-        // Get task data from cached board - use window.findTaskById from boardRenderer
         const task = window.findTaskById ? window.findTaskById(taskId) : null;
         if (task) {
-            const hasNoTitle = !task.title || !task.title.trim();
-
-            // If task has no title and is now collapsed, show alternative title
-            if (hasNoTitle && isNowCollapsed && task.description) {
-                const alternativeTitle = window.generateAlternativeTitle ? window.generateAlternativeTitle(task.description) : null;
-                if (alternativeTitle) {
-                    const escapedTitle = window.escapeHtml ? window.escapeHtml(alternativeTitle) : alternativeTitle;
-                    titleDisplay.innerHTML = `<span class="task-alternative-title">${escapedTitle}</span>`;
-                }
-            } else if (hasNoTitle && !isNowCollapsed) {
-                // When unfolding, clear the alternative title
-                titleDisplay.innerHTML = '';
+            if (isNowCollapsed) {
+                const collapsedTitle = window.getCollapsedTaskTitleText
+                    ? window.getCollapsedTaskTitleText(task)
+                    : (window.taskContentUtils?.getTaskSummaryLine
+                        ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                        : ((task.content || '').split('\n')[0] || ''));
+                titleDisplay.textContent = collapsedTitle || '';
+            } else {
+                // Expanded cards show full content area; hide folded-title text.
+                titleDisplay.textContent = '';
             }
         }
     }

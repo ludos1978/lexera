@@ -1352,7 +1352,7 @@ export class DebugCommands extends SwitchBasedCommand {
             for (const column of frontendBoard.columns) {
                 for (const task of column.tasks) {
                     if (task.includeFiles?.some(includePath => this.matchesIncludePath(includePath, candidates))) {
-                        matches.push(task.description || '');
+                        matches.push(task.content || '');
                     }
                 }
             }

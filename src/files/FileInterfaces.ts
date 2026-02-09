@@ -13,11 +13,11 @@
 import { KanbanBoard } from '../board/KanbanTypes';
 
 /**
- * Represents a captured edit from the UI (task title, description, column title)
- * Used when the user is editing and we need to preserve their changes
+ * Represents a captured edit from the UI.
+ * Used when the user is editing and we need to preserve their changes.
  */
 export interface CapturedEdit {
-    type: 'task-title' | 'task-description' | 'column-title';
+    type: 'task-content' | 'column-title';
     value: string;
     taskId?: string;
     columnId?: string;

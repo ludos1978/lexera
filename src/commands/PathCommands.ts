@@ -752,10 +752,7 @@ export class PathCommands extends SwitchBasedCommand {
             return `${prefix}${newPath} "${escapedSourceUrl}")`;
         });
 
-        task.title = addTitle(task.title);
-        if (task.description) {
-            task.description = addTitle(task.description);
-        }
+        task.content = addTitle(task.content || '');
 
         // Send targeted update to the webview
         const webviewBridge = context.getWebviewBridge();
@@ -948,17 +945,13 @@ export class PathCommands extends SwitchBasedCommand {
 
         let updated = false;
 
-        if ((capturedEdit.type === 'task-title' || capturedEdit.type === 'task-description') && capturedEdit.taskId) {
+        if (capturedEdit.type === 'task-content' && capturedEdit.taskId) {
             const column = capturedEdit.columnId
                 ? findColumn(board, capturedEdit.columnId)
                 : findColumnContainingTask(board, capturedEdit.taskId);
             const task = column?.tasks.find(t => t.id === capturedEdit.taskId);
             if (task) {
-                if (capturedEdit.type === 'task-title') {
-                    task.title = capturedEdit.value;
-                } else {
-                    task.description = capturedEdit.value;
-                }
+                task.content = capturedEdit.value;
                 updated = true;
             }
         } else if (capturedEdit.type === 'column-title' && capturedEdit.columnId) {

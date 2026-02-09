@@ -505,6 +505,65 @@ function isImageUrl(url) {
     return exts.some(ext => pathname.toLowerCase().endsWith(ext));
 }
 
+const INLINE_FILE_IFRAME_EXTENSIONS = new Set([
+    '.md', '.markdown', '.txt', '.log', '.csv', '.tsv',
+    '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
+    '.xml', '.html', '.htm'
+]);
+
+function normalizeInlineFilePath(src) {
+    if (!src || typeof src !== 'string') {
+        return '';
+    }
+    const trimmed = src.trim();
+    const unwrapped = trimmed.startsWith('<') && trimmed.endsWith('>')
+        ? trimmed.slice(1, -1).trim()
+        : trimmed;
+    const decoded = safeDecodePath(unwrapped);
+    return decoded.split(/[?#]/)[0];
+}
+
+function getInlineFileIframeExtension(src) {
+    const normalized = normalizeInlineFilePath(src).toLowerCase();
+    for (const extension of INLINE_FILE_IFRAME_EXTENSIONS) {
+        if (normalized.endsWith(extension)) {
+            return extension;
+        }
+    }
+    return null;
+}
+
+function getInlineFileIframeLabel(src, alt, extension) {
+    const normalized = normalizeInlineFilePath(src);
+    const filename = normalized.split('/').pop()?.split('\\').pop() || normalized;
+    const cleanAlt = (alt || '').trim();
+    if (cleanAlt) {
+        return cleanAlt;
+    }
+    if (filename) {
+        return filename;
+    }
+    return extension ? extension.replace('.', '').toUpperCase() : 'file';
+}
+
+function renderInlineFileIframe(url, originalSrc, alt, title, extension) {
+    const escapedUrl = escapeHtml(url);
+    const escapedOriginalSrc = escapeHtml(originalSrc);
+    const label = getInlineFileIframeLabel(originalSrc, alt, extension);
+    const captionHtml = title ? `<div class="inline-file-embed-caption media-caption">${escapeHtml(title)}</div>` : '';
+
+    return `<div class="inline-file-embed-container" data-file-path="${escapedOriginalSrc}" data-inline-type="${escapeHtml(extension || 'file')}">
+        <div class="inline-file-embed-header">
+            <span class="inline-file-embed-type">${escapeHtml((extension || 'file').replace('.', '').toUpperCase())}</span>
+            <span class="inline-file-embed-label">${escapeHtml(label)}</span>
+        </div>
+        <div class="inline-file-embed-frame-wrapper">
+            <iframe src="${escapedUrl}" loading="lazy" sandbox="allow-same-origin"></iframe>
+        </div>
+        ${captionHtml}
+    </div>`;
+}
+
 /**
  * Render an embed as an iframe with container
  * @param {Object} embedInfo - Embed information from detectEmbed
@@ -711,9 +770,6 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode) 
         md.use(window.markdownitContainer, 'center100');
         md.use(window.markdownitContainer, 'right');
         md.use(window.markdownitContainer, 'caption');
-    }
-    if (typeof window.markdownItInclude !== 'undefined') {
-        md.use(window.markdownItInclude);
     }
     if (typeof window.markdownItImageFigures !== 'undefined') {
         md.use(window.markdownItImageFigures, { figcaption: 'title' });
@@ -3143,6 +3199,32 @@ function renderMarkdown(text, includeContext) {
             // Get include context for relative path resolution (needed for diagrams/PDFs in include files)
             const includeContext = window.currentTaskIncludeContext;
             const includeDir = includeContext?.includeDir;
+            const resolveDisplaySrc = (srcValue) => {
+                let resolvedSrc = srcValue;
+                const isWindowsAbsolute = isWindowsAbsolutePath(srcValue);
+                const isRelativePath = isRelativeResourcePath(srcValue);
+
+                if (includeContext && isRelativePath) {
+                    const decodedSrc = safeDecodePath(srcValue);
+                    const decodedIncludeDir = safeDecodePath(includeContext.includeDir);
+                    const resolvedPath = resolveRelativePath(decodedIncludeDir, decodedSrc);
+                    resolvedSrc = buildWebviewResourceUrl(resolvedPath, true);
+                } else if (isRelativePath && window.currentFilePath) {
+                    const decodedSrc = safeDecodePath(srcValue);
+                    const docPath = window.currentFilePath.replace(/\\/g, '/');
+                    const lastSlash = docPath.lastIndexOf('/');
+                    const docDir = lastSlash > 0 ? docPath.substring(0, lastSlash) : '';
+                    const resolvedPath = resolveRelativePath(docDir, decodedSrc);
+                    resolvedSrc = buildWebviewResourceUrl(resolvedPath, true);
+                } else if (isWindowsAbsolute) {
+                    const normalizedPath = normalizeWindowsAbsolutePath(srcValue, true);
+                    resolvedSrc = buildWebviewResourceUrl(normalizedPath, true);
+                } else if (srcValue && srcValue.startsWith('/')) {
+                    resolvedSrc = buildWebviewResourceUrl(safeDecodePath(srcValue), true);
+                }
+
+                return resolvedSrc;
+            };
 
             // Slideshow mode: file.pdf or file.pdf?p=N
             if (pdfInfo && pdfInfo.mode === 'slideshow') {
@@ -3252,6 +3334,13 @@ function renderMarkdown(text, includeContext) {
                 return createLoadingPlaceholder(docId, 'diagram-placeholder', `Loading ${displayLabel}...`);
             }
 
+            // Text-like files can be embedded inline in a scrollable iframe.
+            const inlineFileExtension = getInlineFileIframeExtension(originalSrc);
+            if (inlineFileExtension) {
+                const iframeSrc = resolveDisplaySrc(originalSrc);
+                return renderInlineFileIframe(iframeSrc, originalSrc, alt, title, inlineFileExtension);
+            }
+
             // Check if this is an embed URL (external iframe content)
             const embedInfo = detectEmbed(originalSrc, alt, title, token);
             if (embedInfo) {
@@ -3284,39 +3373,7 @@ function renderMarkdown(text, includeContext) {
                 }
             }
 
-            let displaySrc = originalSrc;
-
-            // Check if we have includeContext and the path is relative
-            // (includeContext was already declared above for diagram/PDF handling)
-            const isWindowsAbsolute = isWindowsAbsolutePath(originalSrc);
-            const isRelativePath = isRelativeResourcePath(originalSrc);
-
-            if (includeContext && isRelativePath) {
-                const decodedSrc = safeDecodePath(originalSrc);
-                const decodedIncludeDir = safeDecodePath(includeContext.includeDir);
-                const resolvedPath = resolveRelativePath(decodedIncludeDir, decodedSrc);
-                displaySrc = buildWebviewResourceUrl(resolvedPath, true);
-            } else if (isRelativePath && window.currentFilePath) {
-                // Relative path in main file - resolve against document directory
-                const decodedSrc = safeDecodePath(originalSrc);
-
-                // Get document directory from currentFilePath
-                const docPath = window.currentFilePath.replace(/\\/g, '/');
-                const lastSlash = docPath.lastIndexOf('/');
-                const docDir = lastSlash > 0 ? docPath.substring(0, lastSlash) : '';
-
-                const resolvedPath = resolveRelativePath(docDir, decodedSrc);
-                displaySrc = buildWebviewResourceUrl(resolvedPath, true);
-            } else if (isWindowsAbsolute) {
-                // Windows absolute path (C:/Users/...) - convert to webview URI
-                // Decode first to handle already-encoded paths, then re-encode for URL
-                const normalizedPath = normalizeWindowsAbsolutePath(originalSrc, true);
-                displaySrc = buildWebviewResourceUrl(normalizedPath, true);
-            } else if (originalSrc && originalSrc.startsWith('/')) {
-                // Unix absolute path (/Users/...) - convert to webview URI
-                // Decode first to handle already-encoded paths, then re-encode for URL
-                displaySrc = buildWebviewResourceUrl(safeDecodePath(originalSrc), true);
-            }
+            const displaySrc = resolveDisplaySrc(originalSrc);
 
             // Store original src for click handling
             const originalSrcAttr = ` data-original-src="${escapeHtml(originalSrc)}"`;

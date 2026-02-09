@@ -2510,6 +2510,65 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* ============================================================================
+   INLINE FILE EMBEDS - Text/Markdown-like files rendered in iframe containers
+   ============================================================================ */
+
+.inline-file-embed-container {
+  display: block;
+  width: 100%;
+  margin: 0.5em 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+.inline-file-embed-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-foreground);
+  font-size: 0.85em;
+}
+
+.inline-file-embed-type {
+  font-family: var(--vscode-editor-font-family);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  opacity: 0.9;
+}
+
+.inline-file-embed-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.inline-file-embed-frame-wrapper {
+  width: 100%;
+  max-height: min(55vh, 520px);
+  overflow: auto;
+  background: var(--vscode-editor-background);
+}
+
+.inline-file-embed-frame-wrapper iframe {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+  border: none;
+  background: var(--vscode-editor-background);
+}
+
+.inline-file-embed-caption {
+  display: block;
+  padding: 4px 0;
+}
+
+/* ============================================================================
    MEDIA CAPTIONS - For images, videos, audio, and embeds
    ============================================================================ */
 
@@ -2616,6 +2675,14 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 .task-item.collapsed .task-description-container {
   display: none;
+}
+
+.task-item:not(.collapsed) .task-title-container {
+  display: none;
+}
+
+.task-item.collapsed .task-title-container {
+  display: flex;
 }
 
 .task-header {
@@ -2737,6 +2804,12 @@ figure:has(.diagram-placeholder .image-not-found) {
   cursor: pointer;
   min-height: 20px;
   line-height: 1.4;
+}
+
+.task-item.collapsed .task-title-display {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-title-display:hover {

@@ -35,6 +35,29 @@ function logMenuScroll(reason, element, detail = {}) {
     }
 }
 
+function ensureTaskContentShape(task) {
+    if (window.taskContentUtils?.ensureTaskContent) {
+        window.taskContentUtils.ensureTaskContent(task);
+    }
+}
+
+function getTaskSummaryLine(task) {
+    ensureTaskContentShape(task);
+    if (window.taskContentUtils?.getTaskSummaryLine) {
+        return window.taskContentUtils.getTaskSummaryLine(task?.content || '');
+    }
+    return (task?.content || '').split('\n')[0] || '';
+}
+
+function getTaskRemainingContent(task) {
+    ensureTaskContentShape(task);
+    if (window.taskContentUtils?.getTaskRemainingContent) {
+        return window.taskContentUtils.getTaskRemainingContent(task?.content || '');
+    }
+    const lines = (task?.content || '').split('\n');
+    return lines.slice(1).join('\n');
+}
+
 /**
  * Scrolls an element into view only if it's outside the viewport
  * @param {HTMLElement} element - Element to check and potentially scroll
@@ -204,7 +227,14 @@ class SimpleMenuManager {
     }
 
     getElementTitleForScope(scope, id, columnId) {
-        return this.getElementForScope(scope, id, columnId)?.title || '';
+        const element = this.getElementForScope(scope, id, columnId);
+        if (!element) {
+            return '';
+        }
+        if (scope === 'task') {
+            return getTaskSummaryLine(element);
+        }
+        return element.title || '';
     }
 
     renderDirectiveInput(scope, id, columnId, directiveName, label) {
@@ -1033,8 +1063,7 @@ function duplicateColumn(columnId) {
             // Deep copy the tasks array
             const duplicatedTasks = originalColumn.tasks.map(task => ({
                 id: `temp-duplicate-task-${Date.now()}-${Math.random()}`,
-                title: task.title || '',
-                description: task.description || '',
+                content: task.content || '',
                 includeMode: task.includeMode || false,
                 includeFile: task.includeFile || null
             }));
@@ -1760,8 +1789,7 @@ function duplicateTask(taskId, columnId) {
             const { task: originalTask, column: targetColumn } = found;
             const duplicatedTask = {
                 id: `temp-duplicate-${Date.now()}`,
-                title: originalTask.title,
-                description: originalTask.description
+                content: originalTask.content || ''
             };
 
             // Insert after the original task
@@ -1787,8 +1815,7 @@ function insertTaskBefore(taskId, columnId) {
             if (targetIndex >= 0) {
                 const newTask = {
                     id: `temp-insert-before-${Date.now()}`,
-                    title: '',
-                    description: ''
+                    content: ''
                 };
 
                 updateCacheForNewTask(targetColumn.id, newTask, targetIndex);
@@ -1813,8 +1840,7 @@ function insertTaskAfter(taskId, columnId) {
             if (targetIndex >= 0) {
                 const newTask = {
                     id: `temp-insert-after-${Date.now()}`,
-                    title: '',
-                    description: ''
+                    content: ''
                 };
 
                 updateCacheForNewTask(targetColumn.id, newTask, targetIndex + 1);
@@ -2115,8 +2141,7 @@ function addTask(columnId) {
     // Cache-first: Only update cached board, no automatic save
     const newTask = {
         id: `temp-menu-${Date.now()}`,
-        title: '',
-        description: ''
+        content: ''
     };
 
     updateCacheForNewTask(columnId, newTask);
@@ -2302,7 +2327,7 @@ function toggleTaskTag(taskId, columnId, tagName, event) {
     if (!domElement) return;
 
     // Toggle tag in title (no row tag preservation for tasks)
-    const oldTitle = task.title || '';
+    const oldTitle = getTaskSummaryLine(task);
     const { newTitle, wasActive } = window.menuUtils.toggleTagInTitle(oldTitle, tagName, false);
 
     // Sync to all board references
@@ -2410,8 +2435,11 @@ function updateTaskDisplayImmediate(taskId, newTitle, isActive, tagName) {
     // Update title display
     const titleElement = taskElement.querySelector('.task-title-display');
     if (titleElement) {
-        titleElement.innerHTML = newTitle
-            ? (window.renderMarkdown ? window.renderMarkdown(newTitle) : newTitle)
+        const foldedTitle = window.getCollapsedTaskTitleText
+            ? window.getCollapsedTaskTitleText({ content: newTitle || '' })
+            : (newTitle || '');
+        titleElement.textContent = taskElement.classList.contains('collapsed')
+            ? (foldedTitle || '')
             : '';
     }
 
@@ -2426,7 +2454,7 @@ function updateTaskDisplayImmediate(taskId, newTitle, isActive, tagName) {
     const found = window.menuUtils.findTaskInBoard(taskId);
     const context = found ? {
         columnTitle: found.column.title || '',
-        taskDescription: found.task.description || ''
+        taskDescription: getTaskRemainingContent(found.task)
     } : {};
     window.menuUtils.updateTemporalAttributes(taskElement, newTitle, 'task', context);
 
@@ -2627,13 +2655,12 @@ function compareBoards(savedBoard, cachedBoard) {
             }
             
             // Check task content changes
-            if (savedTask.title !== cachedTask.title || savedTask.description !== cachedTask.description) {
+            if (savedTask.content !== cachedTask.content) {
                 changes.taskChanges.push({
                     taskId: cachedTask.id,
                     columnId: cachedCol.id, // Current column
                     taskData: {
-                        title: cachedTask.title,
-                        description: cachedTask.description
+                        content: cachedTask.content
                     }
                 });
             }
@@ -3176,7 +3203,7 @@ function updateTagCategoryCounts(id, type, columnId = null) {
         if (columnId) {
             const column = currentBoard?.columns?.find(c => c.id === columnId);
             const task = column?.tasks?.find(t => t.id === id);
-            currentTitle = task?.title || '';
+            currentTitle = task ? getTaskSummaryLine(task) : '';
         }
     }
 
@@ -3444,7 +3471,7 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
             for (const column of window.cachedBoard.columns) {
                 const task = column.tasks.find(t => t.id === taskId);
                 if (task) {
-                    titleText = task.title;
+                    titleText = getTaskSummaryLine(task);
                     break;
                 }
             }
@@ -3505,14 +3532,14 @@ function updateAllVisualTagElements(element, allTags, elementType) {
             for (const column of window.cachedBoard.columns) {
                 const task = column.tasks.find(t => t.id === taskId);
                 if (task) {
-                    // Check if task is in include mode or has include syntax
-                    if (task.includeMode || /!!!include\([^)]+\)!!!/.test(task.title)) {
-                        // Update the title display
-                        const displayElement = element.querySelector('.task-title-display');
-                        if (displayElement) {
-                            const renderedHtml = window.renderMarkdownWithTags(task.title);
-                            displayElement.innerHTML = window.wrapTaskSections(renderedHtml);
-                        }
+                    const displayElement = element.querySelector('.task-title-display');
+                    if (displayElement) {
+                        const foldedTitle = window.getCollapsedTaskTitleText
+                            ? window.getCollapsedTaskTitleText(task)
+                            : getTaskSummaryLine(task);
+                        displayElement.textContent = element.classList.contains('collapsed')
+                            ? (foldedTitle || '')
+                            : '';
                     }
                     break;
                 }
@@ -3601,7 +3628,7 @@ function updateAllVisualTagElements(element, allTags, elementType) {
                 for (const column of window.cachedBoard.columns) {
                     const task = column.tasks.find(t => t.id === taskId);
                     if (task) {
-                        titleText = task.title;
+                        titleText = getTaskSummaryLine(task);
                         break;
                     }
                 }
@@ -3818,7 +3845,5 @@ window.submenuGenerator = window.menuManager; // Compatibility alias
 window.manualRefresh = manualRefresh;
 window.updateVisualTagState = updateVisualTagState;
 window.updateAllVisualTagElements = updateAllVisualTagElements;
-window.toggleTaskIncludeMode = toggleTaskIncludeMode;
-window.editTaskIncludeFile = editTaskIncludeFile;
 window.toggleGlobalSticky = toggleGlobalSticky;
 window.closeInputModal = closeInputModal;

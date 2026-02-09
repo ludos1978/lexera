@@ -407,7 +407,7 @@ export interface SyncDirtyTaskInfo {
     columnId: string;
     taskId: string;
     displayTitle?: string;
-    description?: string;
+    content?: string;
     includeMode?: boolean;
     includeFiles?: string[];
     includeError?: boolean;
@@ -465,10 +465,8 @@ export interface UpdateTaskContentExtendedMessage extends BaseMessage {
     type: 'updateTaskContent';
     columnId: string;
     taskId: string;
-    title?: string;
-    description?: string;
+    content?: string;
     displayTitle?: string;
-    taskTitle?: string;
     originalTitle?: string;
     includeMode: boolean;
     includeFiles?: string[];
@@ -582,7 +580,9 @@ export interface EditTaskMessage extends BaseMessage {
     type: 'editTask';
     taskId: string;
     columnId: string;
-    taskData: Partial<KanbanTask>;
+    taskData: Partial<KanbanTask> & {
+        [key: string]: unknown;
+    };
 }
 
 /**
@@ -603,8 +603,7 @@ export interface AddTaskMessage extends BaseMessage {
     type: 'addTask';
     columnId: string;
     taskData: {
-        title?: string;
-        description?: string;
+        content?: string;
         [key: string]: unknown;
     };
 }
@@ -625,8 +624,7 @@ export interface AddTaskAtPositionMessage extends BaseMessage {
     type: 'addTaskAtPosition';
     columnId: string;
     taskData: {
-        title?: string;
-        description?: string;
+        content?: string;
         [key: string]: unknown;
     };
     insertionIndex: number;
@@ -706,16 +704,6 @@ export interface MoveTaskToBottomMessage extends BaseMessage {
 }
 
 /**
- * Edit task title
- */
-export interface EditTaskTitleMessage extends BaseMessage {
-    type: 'editTaskTitle';
-    taskId: string;
-    columnId: string;
-    title: string;
-}
-
-/**
  * Update task from strikethrough deletion
  */
 export interface UpdateTaskFromStrikethroughDeletionMessage extends BaseMessage {
@@ -723,7 +711,6 @@ export interface UpdateTaskFromStrikethroughDeletionMessage extends BaseMessage 
     taskId: string;
     columnId: string;
     newContent: string;
-    contentType: 'title' | 'description';
 }
 
 /**
@@ -2064,8 +2051,8 @@ export interface SearchElementLocation {
     columnId: string;
     columnTitle: string;
     taskId?: string;
-    taskTitle?: string;
-    field: 'columnTitle' | 'taskTitle' | 'description';
+    taskSummary?: string;
+    field: 'columnTitle' | 'taskContent';
 }
 
 /**
@@ -2106,7 +2093,7 @@ export interface NavigateToElementMessage extends BaseMessage {
     taskId?: string;
     elementPath?: string;
     elementType?: string;
-    field?: 'columnTitle' | 'taskTitle' | 'description';
+    field?: 'columnTitle' | 'taskContent';
 }
 
 /**
@@ -2128,7 +2115,7 @@ export interface ScrollToElementMessage extends BaseMessage {
     highlight: boolean;
     elementPath?: string;
     elementType?: string;
-    field?: 'columnTitle' | 'taskTitle' | 'description';
+    field?: 'columnTitle' | 'taskContent';
 }
 
 /**
@@ -2343,7 +2330,6 @@ export type IncomingMessage =
     | MoveTaskUpMessage
     | MoveTaskDownMessage
     | MoveTaskToBottomMessage
-    | EditTaskTitleMessage
     | UpdateTaskFromStrikethroughDeletionMessage
     | AddColumnMessage
     | MoveColumnMessage

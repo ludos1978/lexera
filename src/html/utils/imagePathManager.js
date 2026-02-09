@@ -1413,10 +1413,6 @@ function updatePathInDOM(oldPath, newPath, direction) {
                         task.markdown = task.markdown.split(oldPath).join(newPath);
                         boardUpdated = true;
                     }
-                    if (task.description && task.description.includes(oldPath)) {
-                        task.description = task.description.split(oldPath).join(newPath);
-                        boardUpdated = true;
-                    }
                     if (task.content && task.content.includes(oldPath)) {
                         task.content = task.content.split(oldPath).join(newPath);
                         boardUpdated = true;

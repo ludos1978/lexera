@@ -1,5 +1,4 @@
 import * as path from 'path';
-import { INCLUDE_SYNTAX } from '../constants/IncludeConstants';
 
 /**
  * Variable definition from template YAML frontmatter
@@ -25,10 +24,8 @@ export interface TemplateColumn {
  * Parsed template task
  */
 export interface TemplateTask {
-    title: string;
-    description?: string;
+    content: string;
     completed?: boolean;
-    includeFiles?: string[];  // Include file references
 }
 
 /**
@@ -217,17 +214,30 @@ export class TemplateParser {
         let currentTask: TemplateTask | null = null;
         let descriptionLines: string[] = [];
 
+        const mergeTaskContent = (summaryLine: string, description: string): string => {
+            if (!description) {
+                return summaryLine;
+            }
+            return `${summaryLine}\n${description}`;
+        };
+
+        const flushTaskDescription = (): void => {
+            if (!currentTask || descriptionLines.length === 0) {
+                return;
+            }
+            const summaryLine = currentTask.content.split('\n')[0] || '';
+            const description = descriptionLines.join('\n').trim();
+            currentTask.content = mergeTaskContent(summaryLine, description);
+            descriptionLines = [];
+        };
+
         const lines = body.split('\n');
 
         for (const line of lines) {
             // Column header (## Title)
             const columnMatch = line.match(/^##\s+(.+)$/);
             if (columnMatch) {
-                // Save previous task description
-                if (currentTask && descriptionLines.length > 0) {
-                    currentTask.description = descriptionLines.join('\n').trim();
-                    descriptionLines = [];
-                }
+                flushTaskDescription();
                 currentTask = null;
 
                 // Save previous column
@@ -247,20 +257,14 @@ export class TemplateParser {
             // Task (- [ ] or - [x])
             const taskMatch = line.match(/^-\s+\[([ x])\]\s+(.+)$/);
             if (taskMatch && currentColumn) {
-                // Save previous task description
-                if (currentTask && descriptionLines.length > 0) {
-                    currentTask.description = descriptionLines.join('\n').trim();
-                    descriptionLines = [];
-                }
+                flushTaskDescription();
 
                 const completed = taskMatch[1] === 'x';
-                const title = taskMatch[2].trim();
-                const includeFiles = this.extractIncludes(title);
+                const summaryLine = taskMatch[2].trim();
 
                 currentTask = {
-                    title,
-                    completed,
-                    includeFiles: includeFiles.length > 0 ? includeFiles : undefined
+                    content: summaryLine,
+                    completed
                 };
                 currentColumn.tasks.push(currentTask);
                 continue;
@@ -274,17 +278,12 @@ export class TemplateParser {
 
             // Non-indented content after a task ends the description
             if (currentTask && line.trim() && !line.match(/^\s/)) {
-                if (descriptionLines.length > 0) {
-                    currentTask.description = descriptionLines.join('\n').trim();
-                    descriptionLines = [];
-                }
+                flushTaskDescription();
             }
         }
 
         // Save final task description
-        if (currentTask && descriptionLines.length > 0) {
-            currentTask.description = descriptionLines.join('\n').trim();
-        }
+        flushTaskDescription();
 
         // Save final column
         if (currentColumn) {
@@ -292,17 +291,5 @@ export class TemplateParser {
         }
 
         return columns;
-    }
-
-    /**
-     * Extract !!!include()!!! references from text
-     */
-    private static extractIncludes(text: string): string[] {
-        const includes: string[] = [];
-        const matches = text.matchAll(INCLUDE_SYNTAX.REGEX);
-        for (const match of matches) {
-            includes.push(match[1]);
-        }
-        return includes;
     }
 }

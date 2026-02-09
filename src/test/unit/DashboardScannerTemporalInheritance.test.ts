@@ -17,8 +17,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
                     title: 'Schedule',
                     tasks: [
                         {
-                            title: 'Task',
-                            description: line
+                            content: `Task\n${line}`
                         }
                     ]
                 }
@@ -48,8 +47,8 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
                     title: 'Schedule',
                     tasks: [
                         {
-                            title: `Final Presentation @${year}-kw${week}`,
-                            description: [
+                            content: [
+                                `Final Presentation @${year}-kw${week}`,
                                 '- @08:00-10:00 : Setup',
                                 '- @10:30-12:00 : Presentations'
                             ].join('\n')
@@ -92,8 +91,8 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
                     title: 'Schedule',
                     tasks: [
                         {
-                            title: 'Final Presentation',
-                            description: [
+                            content: [
+                                'Final Presentation',
                                 `## Final Presentation @${year}-kw${week}`,
                                 '- Exhibition over the full day.',
                                 '- @08:00-10:00 : Setup'
@@ -131,8 +130,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
                     title: 'Schedule',
                     tasks: [
                         {
-                            title: 'Daily Work',
-                            description: '- @08:00-10:00 : Setup'
+                            content: 'Daily Work\n- @08:00-10:00 : Setup'
                         }
                     ]
                 }

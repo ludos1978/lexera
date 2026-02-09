@@ -22,6 +22,7 @@ import { ChangeStateMachine } from '../core/ChangeStateMachine';
 import { PanelContext } from './PanelContext';
 import { findColumn, findColumnContainingTask } from '../actions/helpers';
 import { logger } from '../utils/logger';
+import { splitTaskContent } from '../utils/taskContent';
 
 /**
  * Dependencies required by IncludeFileCoordinator
@@ -52,7 +53,7 @@ export class IncludeFileCoordinator {
     /**
      * Register all include files from the board into the file registry
      *
-     * Scans the board for column includes, task includes, and regular includes,
+     * Scans the board for column includes,
      * and creates IncludeFile instances in the registry for each one.
      * Also removes orphaned include files that are no longer referenced.
      */
@@ -84,40 +85,7 @@ export class IncludeFileCoordinator {
             }
         }
 
-        // Sync task includes
-        for (const column of board.columns) {
-            for (const task of column.tasks) {
-                if (task.includeFiles && task.includeFiles.length > 0) {
-                    for (const relativePath of task.includeFiles) {
-                        const file = this._deps.fileRegistry.ensureIncludeRegistered(
-                            relativePath,
-                            'include-task',
-                            this._deps.fileFactory,
-                            mainFile,
-                            { columnId: column.id, taskId: task.id, taskTitle: task.title }
-                        );
-                        if (file) {
-                            activeIncludePaths.add(file.getNormalizedRelativePath());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sync regular includes (!!!include(path)!!! in task descriptions)
-        const regularIncludes = mainFile.getIncludedFiles();
-        for (const relativePath of regularIncludes) {
-            const file = this._deps.fileRegistry.ensureIncludeRegistered(
-                relativePath,
-                'include-regular',
-                this._deps.fileFactory,
-                mainFile,
-                {}
-            );
-            if (file) {
-                activeIncludePaths.add(file.getNormalizedRelativePath());
-            }
-        }
+        // Task includes and regular includes are disabled.
 
         // Clean up orphaned include files that are no longer referenced
         this._deps.fileRegistry.unregisterOrphanedIncludes(activeIncludePaths);
@@ -190,10 +158,6 @@ export class IncludeFileCoordinator {
 
         if (fileType === 'include-column') {
             this._sendColumnIncludeUpdate(file, board, relativePath);
-        } else if (fileType === 'include-task') {
-            this._sendTaskIncludeUpdate(file, board, relativePath);
-        } else if (fileType === 'include-regular') {
-            this._sendRegularIncludeUpdate(file, board, relativePath);
         }
     }
 
@@ -338,7 +302,7 @@ export class IncludeFileCoordinator {
             // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
             if (file.getFileType() === 'main') {
                 console.error(`[IncludeFileCoordinator] BUG: Task include path resolved to MainKanbanFile: ${relativePath}`);
-                foundTask.description = '';
+                foundTask.content = '';
                 foundTask.includeError = true;
                 return;
             }
@@ -347,14 +311,14 @@ export class IncludeFileCoordinator {
 
             // Check if file exists before using content
             const fileExists = file.exists();
-            let description: string;
+            let content: string;
             let includeError: boolean;
 
             if (isDebug) {
                 logger.debug('[kanban.IncludeFileCoordinator.includeTask.update]', {
                     columnId: foundColumn.id,
                     taskId: foundTask.id,
-                    taskTitle: foundTask.title,
+                    taskSummary: splitTaskContent(foundTask.content).summaryLine,
                     relativePath,
                     filePath,
                     fileExists
@@ -363,18 +327,18 @@ export class IncludeFileCoordinator {
 
             if (fileExists) {
                 // Get updated content from file
-                description = file.getContent() || '';
+                content = file.getContent() || '';
                 includeError = false;
             } else {
                 // File doesn't exist - error details shown on hover via include badge
                 console.warn(`[IncludeFileCoordinator] Task include file does not exist: ${relativePath}`);
-                description = '';
+                content = '';
                 includeError = true;
             }
 
             // Update task
             foundTask.displayTitle = displayTitle;
-            foundTask.description = description;
+            foundTask.content = content;
             foundTask.includeError = includeError;
 
             if (isDebug) {
@@ -382,7 +346,7 @@ export class IncludeFileCoordinator {
                     columnId: foundColumn.id,
                     taskId: foundTask.id,
                     relativePath,
-                    contentLength: description.length,
+                    contentLength: content.length,
                     includeError
                 });
             }
@@ -392,9 +356,8 @@ export class IncludeFileCoordinator {
                 type: 'updateTaskContent',
                 columnId: foundColumn.id,
                 taskId: foundTask.id,
-                description: description,
+                content: content,
                 displayTitle: displayTitle,
-                taskTitle: foundTask.title,
                 originalTitle: foundTask.originalTitle,
                 includeMode: true,
                 includeFiles: foundTask.includeFiles,
@@ -441,9 +404,8 @@ export class IncludeFileCoordinator {
                 type: 'updateTaskContent',
                 columnId: column.id,
                 taskId: task.id,
-                description: task.description,
+                content: task.content,
                 displayTitle: task.displayTitle,
-                taskTitle: task.title,
                 originalTitle: task.originalTitle,
                 includeMode: false,
                 regularIncludeFiles: task.regularIncludeFiles

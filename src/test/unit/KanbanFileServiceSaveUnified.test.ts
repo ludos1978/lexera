@@ -1,4 +1,5 @@
 import { KanbanFileService } from '../../kanbanFileService';
+import { getTaskSummaryLine } from '../../utils/taskContent';
 
 type MockMarkdownFile = {
     getPath: jest.Mock<string, []>;
@@ -439,7 +440,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
             hasUnsavedChanges: true
         });
         sharedInclude.generateFromTasks.mockImplementation((tasks: unknown[]) =>
-            (tasks as Array<{ title?: string }>).map(task => task.title || '').join('|')
+            (tasks as Array<{ content?: string }>).map(task => getTaskSummaryLine(task.content || '')).join('|')
         );
 
         const conflictingBoard = {
@@ -451,13 +452,13 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
                 {
                     id: 'col-a',
                     title: 'A',
-                    tasks: [{ id: 'task-a', title: 'Alpha', description: '' }],
+                    tasks: [{ id: 'task-a', content: 'Alpha' }],
                     includeFiles: ['includes/shared.md']
                 },
                 {
                     id: 'col-b',
                     title: 'B',
-                    tasks: [{ id: 'task-b', title: 'Beta', description: '' }],
+                    tasks: [{ id: 'task-b', content: 'Beta' }],
                     includeFiles: ['includes/shared.md']
                 }
             ]
@@ -497,7 +498,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
             hasUnsavedChanges: true
         });
         sharedInclude.generateFromTasks.mockImplementation((tasks: unknown[]) =>
-            (tasks as Array<{ title?: string }>).map(task => task.title || '').join('|')
+            (tasks as Array<{ content?: string }>).map(task => getTaskSummaryLine(task.content || '')).join('|')
         );
 
         const deterministicBoard = {
@@ -509,13 +510,13 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
                 {
                     id: 'col-a',
                     title: 'A',
-                    tasks: [{ id: 'task-a', title: 'Alpha', description: '' }],
+                    tasks: [{ id: 'task-a', content: 'Alpha' }],
                     includeFiles: ['includes/shared.md']
                 },
                 {
                     id: 'col-b',
                     title: 'B',
-                    tasks: [{ id: 'task-b', title: 'Alpha', description: '' }],
+                    tasks: [{ id: 'task-b', content: 'Alpha' }],
                     includeFiles: ['includes/shared.md']
                 }
             ]

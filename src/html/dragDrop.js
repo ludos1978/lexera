@@ -805,7 +805,7 @@ function setupGlobalDragAndDrop() {
                 handleVSCodeUriDrop(e, textData2);
             } else {
                 // Plain text - create a new card
-                createTasksWithContent([{ title: textData2, description: '' }], { x: e.clientX, y: e.clientY });
+                createTasksWithContent([{ content: textData2 }], { x: e.clientX, y: e.clientY });
             }
             return;
         }
@@ -2102,29 +2102,21 @@ function handleClipboardCardDrop(e, clipboardData) {
         // Extract the task data
         const taskData = parsedData.task || parsedData;
 
-        const title = taskData.title || taskData.content || parsedData.content || 'New Card';
+        const content = typeof taskData.content === 'string'
+            ? taskData.content
+            : (typeof parsedData.content === 'string' ? parsedData.content : 'New Card');
 
-        // Ensure description is always a string, never a blob object
-        let description = taskData.description || '';
-        if (typeof description !== 'string') {
-            description = taskData.content || '';
-            if (typeof description !== 'string') {
-                description = 'Clipboard content';
-            }
-        }
-
-        createTasksWithContent([{ title, description }], { x: e.clientX, y: e.clientY });
+        createTasksWithContent([{ content }], { x: e.clientX, y: e.clientY });
     } catch (error) {
         // Failed to parse clipboard data - treat as plain text
         createTasksWithContent([{
-            title: 'Clipboard Content',
-            description: typeof clipboardData === 'string' ? clipboardData : 'Clipboard content'
+            content: typeof clipboardData === 'string' ? clipboardData : 'Clipboard content'
         }], { x: e.clientX, y: e.clientY });
     }
 }
 
 function handleEmptyCardDrop(e, emptyCardData) {
-    createTasksWithContent([{ title: '', description: '' }], { x: e.clientX, y: e.clientY });
+    createTasksWithContent([{ content: '' }], { x: e.clientX, y: e.clientY });
 }
 
 function handleMultipleFilesDrop(e, filesContent) {
@@ -2169,10 +2161,7 @@ function handleMultipleFilesDrop(e, filesContent) {
             }
         }
 
-        return {
-            title: title,
-            description: link
-        };
+        return { content: title ? `${title}\n${link}` : link };
     });
 
     // Batch create all tasks at once (single render)
@@ -2189,7 +2178,7 @@ function handleClipboardImageDrop(e, imageData) {
 
         if (!base64Data) {
             console.error('No image data found in parsed data');
-            createTasksWithContent([{ title: 'Clipboard Image', description: 'Failed to save image: No image data found' }], { x: e.clientX, y: e.clientY });
+            createTasksWithContent([{ content: 'Clipboard Image\nFailed to save image: No image data found' }], { x: e.clientX, y: e.clientY });
             return;
         }
 
@@ -2200,7 +2189,7 @@ function handleClipboardImageDrop(e, imageData) {
 
     } catch (error) {
         console.error('Failed to handle clipboard image drop:', error);
-        createTasksWithContent([{ title: 'Clipboard Image', description: 'Failed to process clipboard image' }], { x: e.clientX, y: e.clientY });
+        createTasksWithContent([{ content: 'Clipboard Image\nFailed to process clipboard image' }], { x: e.clientX, y: e.clientY });
     }
 }
 
@@ -2279,7 +2268,7 @@ function processImageSave(e, base64Data, imageType, md5Hash) {
 
     } catch (error) {
         console.error('Failed to process clipboard image save:', error);
-        createTasksWithContent([{ title: 'Clipboard Image', description: 'Failed to process clipboard image' }], { x: e.clientX, y: e.clientY });
+        createTasksWithContent([{ content: 'Clipboard Image\nFailed to process clipboard image' }], { x: e.clientX, y: e.clientY });
     }
 }
 
@@ -2369,12 +2358,12 @@ function executeFileObjectCopy(dropId, isImage) {
                 });
             } catch (error) {
                 console.error('[Image-Drop] Failed to process image:', error);
-                createTasksWithContent([{ title: fileName, description: `![${fileName}](${fileName}) - Failed to copy image` }], dropPosition);
+                createTasksWithContent([{ content: `${fileName}\n![${fileName}](${fileName}) - Failed to copy image` }], dropPosition);
             }
         };
         reader.onerror = function(error) {
             console.error('[Image-Drop] FileReader error:', error);
-            createTasksWithContent([{ title: fileName, description: `![${fileName}](${fileName}) - Failed to read image` }], dropPosition);
+            createTasksWithContent([{ content: `${fileName}\n![${fileName}](${fileName}) - Failed to read image` }], dropPosition);
         };
         reader.readAsDataURL(file);
     } else {
@@ -2395,12 +2384,12 @@ function executeFileObjectCopy(dropId, isImage) {
                 });
             } catch (error) {
                 console.error('[File-Drop] Failed to process file:', error);
-                createTasksWithContent([{ title: fileName, description: `[${fileName}](${fileName}) - Failed to copy file` }], dropPosition);
+                createTasksWithContent([{ content: `${fileName}\n[${fileName}](${fileName}) - Failed to copy file` }], dropPosition);
             }
         };
         reader.onerror = function(error) {
             console.error('[File-Drop] FileReader error:', error);
-            createTasksWithContent([{ title: fileName, description: `[${fileName}](${fileName}) - Failed to read file` }], dropPosition);
+            createTasksWithContent([{ content: `${fileName}\n[${fileName}](${fileName}) - Failed to read file` }], dropPosition);
         };
         reader.readAsArrayBuffer(file);
     }
@@ -2754,7 +2743,7 @@ function getIncludeContextForDrop(event) {
 
 /**
  * UNIFIED: Create one or more tasks at a drop position
- * @param {Array} tasksData - Array of {title, description} objects
+ * @param {Array} tasksData - Array of task objects with unified `content`
  * @param {Object} dropPosition - Drop position {x, y}
  * @param {string|null} explicitColumnId - Optional explicit column ID (overrides position-based lookup)
  * @param {number} explicitInsertionIndex - Optional explicit insertion index (overrides position-based calculation)
@@ -2826,8 +2815,9 @@ function createTasksWithContent(tasksData, dropPosition, explicitColumnId = null
         // Create all tasks at once
         const newTasks = tasksData.map((taskData, index) => ({
             id: `temp-drop-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-            title: typeof taskData.title === 'string' ? taskData.title : 'New Task',
-            description: typeof taskData.description === 'string' ? taskData.description : ''
+            content: typeof taskData.content === 'string'
+                ? taskData.content
+                : 'New Task'
         }));
 
         // Insert all tasks into the column at the correct position
@@ -4189,6 +4179,60 @@ function removeInternalTags(text) {
     return text.replace(DELETED_TAG, '').replace(PARKED_TAG, '').replace(ARCHIVED_TAG, '').trim();
 }
 
+function ensureTaskContent(task) {
+    if (window.taskContentUtils?.ensureTaskContent) {
+        window.taskContentUtils.ensureTaskContent(task);
+    }
+}
+
+function getTaskContent(task) {
+    ensureTaskContent(task);
+    return typeof task?.content === 'string' ? task.content : '';
+}
+
+function getTaskSummaryLine(task) {
+    ensureTaskContent(task);
+    if (window.taskContentUtils?.getTaskSummaryLine) {
+        return window.taskContentUtils.getTaskSummaryLine(task?.content || '');
+    }
+    return (task?.content || '').split('\n')[0] || '';
+}
+
+function getTaskRemainingContent(task) {
+    ensureTaskContent(task);
+    if (window.taskContentUtils?.getTaskRemainingContent) {
+        return window.taskContentUtils.getTaskRemainingContent(task?.content || '');
+    }
+    return (task?.content || '').split('\n').slice(1).join('\n');
+}
+
+function setTaskSummaryLine(task, summaryLine) {
+    if (!task) return;
+    const remainingContent = getTaskRemainingContent(task);
+    task.content = window.taskContentUtils?.mergeTaskContent
+        ? window.taskContentUtils.mergeTaskContent(summaryLine || '', remainingContent)
+        : `${summaryLine || ''}${remainingContent ? `\n${remainingContent}` : ''}`;
+}
+
+function setTaskContent(task, content) {
+    if (!task) return;
+    task.content = typeof content === 'string' ? content : '';
+}
+
+function appendInternalTagToTask(task, internalTag) {
+    const summaryLine = getTaskSummaryLine(task);
+    setTaskSummaryLine(task, `${summaryLine} ${internalTag}`.trim());
+}
+
+function replaceInternalTagInTask(task, oldTag, newTag) {
+    const content = getTaskContent(task);
+    setTaskContent(task, content.replace(oldTag, newTag));
+}
+
+function clearInternalTagsFromTask(task) {
+    setTaskContent(task, removeInternalTags(getTaskContent(task)));
+}
+
 function notifyBoardUpdate() {
     if (typeof markUnsavedChanges === 'function') {
         markUnsavedChanges();
@@ -4224,12 +4268,13 @@ function initializeParkedItems() {
         }
 
         column.tasks?.forEach((task) => {
-            if (task.title?.includes(PARKED_TAG) || task.description?.includes(PARKED_TAG)) {
+            const taskContent = getTaskContent(task);
+            if (taskContent.includes(PARKED_TAG)) {
                 parkedItems.push({
                     type: 'task',
                     id: task.id,
-                    title: removeInternalTags(task.title) ||
-                           removeInternalTags(task.description?.substring(0, 50)) ||
+                    title: removeInternalTags(getTaskSummaryLine(task)) ||
+                           removeInternalTags(getTaskRemainingContent(task).substring(0, 50)) ||
                            'Untitled Task',
                     data: task,
                     originalColumnId: column.id
@@ -4412,7 +4457,7 @@ function parkTask(taskElement) {
         return;
     }
 
-    console.log('[parkTask] Found task, adding tag', { taskId, currentTitle: task.title });
+    console.log('[parkTask] Found task, adding tag', { taskId, currentTitle: getTaskSummaryLine(task) });
 
     vscode.postMessage({
         type: 'saveUndoState',
@@ -4423,7 +4468,7 @@ function parkTask(taskElement) {
     });
 
     // Just add the tag - initializeParkedItems will handle the rest during render
-    task.title = (task.title || '') + ' ' + PARKED_TAG;
+    appendInternalTagToTask(task, PARKED_TAG);
 
     notifyBoardUpdate();
 }
@@ -4539,10 +4584,7 @@ function restoreParkedTask(parkedIndex, dropPosition) {
     });
 
     // Remove the tag first
-    task.title = removeInternalTags(task.title);
-    if (task.description) {
-        task.description = removeInternalTags(task.description);
-    }
+    clearInternalTagsFromTask(task);
 
     // Track target for incremental DOM update
     let targetColumnId = null;
@@ -4638,8 +4680,7 @@ function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack,
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
-        if (task.title) task.title = removeInternalTags(task.title);
-        if (task.description) task.description = removeInternalTags(task.description);
+        clearInternalTagsFromTask(task);
     });
 
     // Use incremental rendering instead of full board re-render
@@ -4747,10 +4788,7 @@ function removeParkedItem(index) {
     if (item.type === 'task') {
         const task = item.data;
         if (task) {
-            task.title = (task.title || '').replace(PARKED_TAG, DELETED_TAG);
-            if (task.description) {
-                task.description = task.description.replace(PARKED_TAG, DELETED_TAG);
-            }
+            replaceInternalTagInTask(task, PARKED_TAG, DELETED_TAG);
         }
     } else if (item.type === 'column') {
         const column = item.data;
@@ -4800,10 +4838,7 @@ function restoreParkedItemByIndex(index) {
     if (item.type === 'task') {
         const task = item.data;
         if (task) {
-            task.title = removeInternalTags(task.title);
-            if (task.description) {
-                task.description = removeInternalTags(task.description);
-            }
+            clearInternalTagsFromTask(task);
 
             // Find the column containing this task and its index
             let targetColumnId = null;
@@ -4833,8 +4868,7 @@ function restoreParkedItemByIndex(index) {
             column.title = removeInternalTags(column.title);
             // Also remove tags from tasks in the column
             column.tasks?.forEach(task => {
-                if (task.title) task.title = removeInternalTags(task.title);
-                if (task.description) task.description = removeInternalTags(task.description);
+                clearInternalTagsFromTask(task);
             });
 
             // Use incremental rendering instead of full board re-render
@@ -4947,12 +4981,13 @@ function initializeDeletedItems() {
         }
 
         column.tasks?.forEach((task) => {
-            if (task.title?.includes(DELETED_TAG) || task.description?.includes(DELETED_TAG)) {
+            const taskContent = getTaskContent(task);
+            if (taskContent.includes(DELETED_TAG)) {
                 deletedItems.push({
                     type: 'task',
                     id: task.id,
-                    title: removeInternalTags(task.title) ||
-                           removeInternalTags(task.description?.substring(0, 50)) ||
+                    title: removeInternalTags(getTaskSummaryLine(task)) ||
+                           removeInternalTags(getTaskRemainingContent(task).substring(0, 50)) ||
                            'Untitled Task',
                     data: task,
                     originalColumnId: column.id
@@ -5155,7 +5190,7 @@ function trashTask(taskElement) {
     });
 
     // Just add the tag - initializeDeletedItems will handle the rest during render
-    task.title = (task.title || '') + ' ' + DELETED_TAG;
+    appendInternalTagToTask(task, DELETED_TAG);
 
     notifyBoardUpdate();
 }
@@ -5165,9 +5200,8 @@ function trashTask(taskElement) {
  */
 function findParkedTasksInColumn(tasks) {
     return (tasks || []).filter(task => {
-        const title = task.title || '';
-        const desc = task.description || '';
-        return title.includes(PARKED_TAG) || desc.includes(PARKED_TAG);
+        const content = getTaskContent(task);
+        return content.includes(PARKED_TAG);
     });
 }
 
@@ -5176,7 +5210,7 @@ function findParkedTasksInColumn(tasks) {
  */
 function formatParkedTaskNames(parkedTasks) {
     const names = parkedTasks.slice(0, 3).map(t =>
-        `"${(t.title || '').replace(PARKED_TAG, '').trim().substring(0, 30)}"`
+        `"${removeInternalTags(getTaskSummaryLine(t)).substring(0, 30)}"`
     ).join(', ');
     const more = parkedTasks.length > 3 ? ` and ${parkedTasks.length - 3} more` : '';
     return names + more;
@@ -5291,10 +5325,7 @@ function trashParkedItem(parkedIndex) {
     if (item.type === 'task') {
         const task = item.data;
         if (task) {
-            task.title = (task.title || '').replace(PARKED_TAG, DELETED_TAG);
-            if (task.description) {
-                task.description = task.description.replace(PARKED_TAG, DELETED_TAG);
-            }
+            replaceInternalTagInTask(task, PARKED_TAG, DELETED_TAG);
         }
     } else if (item.type === 'column') {
         const column = item.data;
@@ -5393,10 +5424,7 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
     });
 
     // Remove the tag first
-    task.title = removeInternalTags(task.title);
-    if (task.description) {
-        task.description = removeInternalTags(task.description);
-    }
+    clearInternalTagsFromTask(task);
 
     // Track target for incremental DOM update
     let targetColumnId = null;
@@ -5494,8 +5522,7 @@ function restoreDeletedColumn(deletedIndex, dropPosition, capturedDropTargetStac
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
-        if (task.title) task.title = removeInternalTags(task.title);
-        if (task.description) task.description = removeInternalTags(task.description);
+        clearInternalTagsFromTask(task);
     });
 
     // Use incremental rendering instead of full board re-render
@@ -5541,10 +5568,7 @@ function restoreDeletedItemByIndex(index) {
     if (item.type === 'task') {
         const task = item.data;
         if (task) {
-            task.title = removeInternalTags(task.title);
-            if (task.description) {
-                task.description = removeInternalTags(task.description);
-            }
+            clearInternalTagsFromTask(task);
 
             // Find the column containing this task and its index
             let targetColumnId = null;
@@ -5573,8 +5597,7 @@ function restoreDeletedItemByIndex(index) {
         if (column) {
             column.title = removeInternalTags(column.title);
             column.tasks?.forEach(task => {
-                if (task.title) task.title = removeInternalTags(task.title);
-                if (task.description) task.description = removeInternalTags(task.description);
+                clearInternalTagsFromTask(task);
             });
 
             // Use incremental rendering instead of full board re-render
@@ -5713,7 +5736,7 @@ function doEmptyTrash() {
     window.cachedBoard.columns.forEach(column => {
         if (column.tasks) {
             column.tasks = column.tasks.filter(t =>
-                !t.title?.includes(DELETED_TAG) && !t.description?.includes(DELETED_TAG)
+                !t.content?.includes(DELETED_TAG)
             );
         }
     });
@@ -5774,12 +5797,13 @@ function initializeArchivedItems() {
         }
 
         column.tasks?.forEach((task) => {
-            if (task.title?.includes(ARCHIVED_TAG) || task.description?.includes(ARCHIVED_TAG)) {
+            const taskContent = getTaskContent(task);
+            if (taskContent.includes(ARCHIVED_TAG)) {
                 archivedItems.push({
                     type: 'task',
                     id: task.id,
-                    title: removeInternalTags(task.title) ||
-                           removeInternalTags(task.description?.substring(0, 50)) ||
+                    title: removeInternalTags(getTaskSummaryLine(task)) ||
+                           removeInternalTags(getTaskRemainingContent(task).substring(0, 50)) ||
                            'Untitled Task',
                     data: task,
                     originalColumnId: column.id
@@ -5959,7 +5983,7 @@ function archiveTask(taskElement) {
     });
 
     // Just add the tag - initializeArchivedItems will handle the rest during render
-    task.title = (task.title || '') + ' ' + ARCHIVED_TAG;
+    appendInternalTagToTask(task, ARCHIVED_TAG);
 
     notifyBoardUpdate();
 }
@@ -6075,10 +6099,7 @@ function restoreArchivedTask(archivedIndex, dropPosition) {
     });
 
     // Remove the tag first
-    task.title = removeInternalTags(task.title);
-    if (task.description) {
-        task.description = removeInternalTags(task.description);
-    }
+    clearInternalTagsFromTask(task);
 
     // Track target for incremental DOM update
     let targetColumnId = null;
@@ -6165,8 +6186,7 @@ function restoreArchivedColumn(archivedIndex, dropPosition, capturedDropTargetSt
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
     column.tasks?.forEach(task => {
-        if (task.title) task.title = removeInternalTags(task.title);
-        if (task.description) task.description = removeInternalTags(task.description);
+        clearInternalTagsFromTask(task);
     });
 
     // Use incremental rendering instead of full board re-render
@@ -6207,10 +6227,7 @@ function restoreArchivedItemByIndex(index) {
     if (item.type === 'task') {
         const task = item.data;
         if (task) {
-            task.title = removeInternalTags(task.title);
-            if (task.description) {
-                task.description = removeInternalTags(task.description);
-            }
+            clearInternalTagsFromTask(task);
 
             // Find the column containing this task and its index
             let targetColumnId = null;
@@ -6240,8 +6257,7 @@ function restoreArchivedItemByIndex(index) {
             column.title = removeInternalTags(column.title);
             // Also remove tags from tasks in the column
             column.tasks?.forEach(task => {
-                if (task.title) task.title = removeInternalTags(task.title);
-                if (task.description) task.description = removeInternalTags(task.description);
+                clearInternalTagsFromTask(task);
             });
 
             // Use incremental rendering instead of full board re-render

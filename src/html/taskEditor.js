@@ -151,10 +151,18 @@ class TaskEditor {
             if (column) {
                 const task = column.tasks.find(t => t.id === editState.taskId);
                 if (task) {
+                    if (window.taskContentUtils?.ensureTaskContent) {
+                        window.taskContentUtils.ensureTaskContent(task);
+                    }
                     if (editState.type === 'task-title') {
-                        task.title = editState.value;
+                        const parts = window.taskContentUtils?.splitTaskContent
+                            ? window.taskContentUtils.splitTaskContent(task.content || '')
+                            : { summaryLine: '', remainingContent: '' };
+                        task.content = window.taskContentUtils?.mergeTaskContent
+                            ? window.taskContentUtils.mergeTaskContent(editState.value, parts.remainingContent)
+                            : editState.value;
                     } else if (editState.type === 'task-description') {
-                        task.description = editState.value;
+                        task.content = editState.value;
                     }
                 }
             }
@@ -648,7 +656,10 @@ class TaskEditor {
         const column = window.cachedBoard?.columns.find(col => col.id === columnId);
         const task = column?.tasks.find(t => t.id === taskId);
         if (task) {
-            editElement.value = task.description || '';
+            if (window.taskContentUtils?.ensureTaskContent) {
+                window.taskContentUtils.ensureTaskContent(task);
+            }
+            editElement.value = task.content || '';
         }
     }
 
@@ -1911,6 +1922,13 @@ class TaskEditor {
      * @param {boolean} preserveCursor - Whether to preserve cursor position (default: false, moves to end)
      */
     startEdit(element, type, taskId = null, columnId = null, preserveCursor = false) {
+        // Task summary line is derived from unified content and must not be edited directly.
+        if (type === 'task-title') {
+            const taskItem = element?.closest?.('.task-item');
+            const descriptionContainer = taskItem?.querySelector?.('.task-description-container');
+            return this.startEdit(descriptionContainer || element, 'task-description', taskId, columnId, preserveCursor);
+        }
+
         // If transitioning, don't interfere
         if (this.isTransitioning) { return; }
         this._clearPostCloseFocusTimeout();
@@ -2432,9 +2450,7 @@ class TaskEditor {
         }
 
         // Capture original values
-        const originalTitle = task.title || '';
         const originalDisplayTitle = task.displayTitle || '';
-        const originalDescription = task.description || '';
 
         // Handle based on field type
         if (type === 'task-title') {
@@ -2491,7 +2507,10 @@ class TaskEditor {
      */
     _saveTaskTitle(task, value, taskId, columnId, element) {
         const newIncludeMatches = value.match(/!!!include\(([^)]+)\)!!!/g) || [];
-        const oldIncludeMatches = (task.title || '').match(/!!!include\(([^)]+)\)!!!/g) || [];
+        const currentSummary = window.taskContentUtils?.getTaskSummaryLine
+            ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+            : ((task.content || '').split('\n')[0] || '');
+        const oldIncludeMatches = (currentSummary || '').match(/!!!include\(([^)]+)\)!!!/g) || [];
 
         const hasIncludeChanges =
             oldIncludeMatches.length !== newIncludeMatches.length ||
@@ -2509,9 +2528,17 @@ class TaskEditor {
         }
 
         // Regular task title editing
-        if (task.title !== value) {
+        if (currentSummary !== value) {
             this.lastEditContext = `task-title-${taskId}-${columnId}`;
-            task.title = value;
+            if (window.taskContentUtils?.ensureTaskContent) {
+                window.taskContentUtils.ensureTaskContent(task);
+            }
+            const parts = window.taskContentUtils?.splitTaskContent
+                ? window.taskContentUtils.splitTaskContent(task.content || '')
+                : { summaryLine: '', remainingContent: '' };
+            task.content = window.taskContentUtils?.mergeTaskContent
+                ? window.taskContentUtils.mergeTaskContent(value, parts.remainingContent)
+                : value;
         }
 
         return false;
@@ -2522,19 +2549,29 @@ class TaskEditor {
      */
     _saveTaskTitleWithIncludes(task, value, taskId, columnId, element) {
         this.lastEditContext = `task-title-${taskId}-${columnId}`;
-        task.title = value;
+        if (window.taskContentUtils?.ensureTaskContent) {
+            window.taskContentUtils.ensureTaskContent(task);
+        }
+        const parts = window.taskContentUtils?.splitTaskContent
+            ? window.taskContentUtils.splitTaskContent(task.content || '')
+            : { summaryLine: '', remainingContent: '' };
+        task.content = window.taskContentUtils?.mergeTaskContent
+            ? window.taskContentUtils.mergeTaskContent(value, parts.remainingContent)
+            : value;
 
         vscode.postMessage({
             type: 'editTask',
             taskId: taskId,
             columnId: columnId,
-            taskData: { title: value }
+            taskData: { content: task.content || value }
         });
 
         // Update display
         if (this.currentEditor.displayElement) {
-            const renderedHtml = window.renderMarkdownWithTags(value);
-            this.currentEditor.displayElement.innerHTML = window.wrapTaskSections(renderedHtml);
+            const collapsedTitle = window.getCollapsedTaskTitleText
+                ? window.getCollapsedTaskTitleText(task)
+                : value;
+            this.currentEditor.displayElement.textContent = collapsedTitle || '';
         }
 
         // Update visual tag state
@@ -2550,11 +2587,14 @@ class TaskEditor {
      * Save task description
      */
     _saveTaskDescription(task, value, taskId, columnId) {
-        const currentRawValue = task.description || '';
+        if (window.taskContentUtils?.ensureTaskContent) {
+            window.taskContentUtils.ensureTaskContent(task);
+        }
+        const currentRawValue = task.content || '';
         if (currentRawValue === value && !task.includeMode) { return; }
 
         this.lastEditContext = `task-description-${taskId}-${columnId}`;
-        task.description = value;
+        task.content = value;
     }
 
     /**
@@ -2564,12 +2604,21 @@ class TaskEditor {
         if (!this.currentEditor.displayElement) { return; }
 
         if (value.trim()) {
+            if (window.taskContentUtils?.ensureTaskContent) {
+                window.taskContentUtils.ensureTaskContent(task);
+            }
+            const taskSummary = window.taskContentUtils?.getTaskSummaryLine
+                ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                : ((task.content || '').split('\n')[0] || '');
+
             // Determine correct display value for includes
             let displayValue = value;
             if (type === 'task-description' && task.includeMode) {
-                displayValue = task.description || '';
+                displayValue = task.content || '';
             } else if (type === 'task-title' && task.includeMode) {
                 displayValue = task.displayTitle || '';
+            } else if (type === 'task-description') {
+                displayValue = task.content || value;
             }
 
             // Set temporal rendering context for description rendering
@@ -2578,8 +2627,8 @@ class TaskEditor {
                 const columnElement = taskElement?.closest('.kanban-full-height-column');
                 const columnId = columnElement?.dataset?.columnId;
                 const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-                window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', task.title || '');
-                window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(task.title || '') || null;
+                window.currentRenderingTemporalGate = window.tagUtils.evaluateTemporalGate(column?.title || '', taskSummary || '');
+                window.currentRenderingTimeSlot = window.tagUtils.extractTimeSlotTag(taskSummary || '') || null;
             }
 
             let renderedHtml = renderMarkdown(displayValue, task.includeContext);
@@ -2602,14 +2651,23 @@ class TaskEditor {
 
         this.currentEditor.displayElement.style.removeProperty('display');
 
-        // For task includes, also update title display when description is edited
-        if (type === 'task-description' && task.includeMode) {
+        // Keep folded summary text in sync after task description edits.
+        if (type === 'task-description') {
             const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
             if (taskElement) {
                 const titleDisplayElement = taskElement.querySelector('.task-title-display');
                 if (titleDisplayElement) {
-                    const displayHtml = window.tagUtils ? window.tagUtils.getTaskDisplayTitle(task) : renderMarkdown(task.displayTitle || '', task.includeContext);
-                    titleDisplayElement.innerHTML = displayHtml;
+                    const isCollapsed = taskElement.classList.contains('collapsed');
+                    if (isCollapsed) {
+                        const collapsedTitle = window.getCollapsedTaskTitleText
+                            ? window.getCollapsedTaskTitleText(task)
+                            : (window.taskContentUtils?.getTaskSummaryLine
+                                ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                                : ((task.content || '').split('\n')[0] || ''));
+                        titleDisplayElement.textContent = collapsedTitle || '';
+                    } else {
+                        titleDisplayElement.textContent = '';
+                    }
                 }
             }
         }
@@ -2622,10 +2680,11 @@ class TaskEditor {
         const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
         if (!taskElement) { return; }
 
-        const titleTags = window.getActiveTagsInTitle(task.title || '');
+        const contentText = task.content || '';
+        const titleTags = window.getActiveTagsInTitle(contentText);
 
         // Update primary tag
-        const primaryTag = window.extractFirstTag(task.title);
+        const primaryTag = window.extractFirstTag(contentText);
         if (primaryTag && !primaryTag.startsWith('row') && !primaryTag.startsWith('gather_') && !primaryTag.startsWith('span')) {
             taskElement.setAttribute('data-task-tag', primaryTag);
         } else {
@@ -2659,7 +2718,10 @@ class TaskEditor {
         taskElement.removeAttribute('data-current-time');
 
         // Get active temporal attributes with hierarchical gating
-        const activeAttrs = window.getActiveTemporalAttributes(columnTitle, task.title || '', task.description || '');
+        const summary = window.taskContentUtils?.getTaskSummaryLine
+            ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+            : ((task.content || '').split('\n')[0] || '');
+        const activeAttrs = window.getActiveTemporalAttributes(columnTitle, summary || '', task.content || '');
 
         // Set only the active ones
         for (const [attr, isActive] of Object.entries(activeAttrs)) {
@@ -2778,7 +2840,7 @@ class TaskEditor {
             });
         }
 
-        // Update alternative title if task has no title and is collapsed
+        // Keep folded summary text synced after edit completion.
         if (type === 'task-title' || type === 'task-description') {
             const taskItem = element.closest('.task-item');
             if (taskItem) {
@@ -2789,19 +2851,14 @@ class TaskEditor {
                     // Get task data from cached board
                     const task = findTaskById(taskId);
                     if (task) {
-                        const hasNoTitle = !task.title || !task.title.trim();
-
-                        // Update title display if task has no title
-                        if (hasNoTitle && task.description) {
-                            const titleDisplay = taskItem.querySelector('.task-title-display');
-                            if (titleDisplay && typeof generateAlternativeTitle === 'function') {
-                                const alternativeTitle = generateAlternativeTitle(task.description);
-                                if (alternativeTitle) {
-                                    titleDisplay.innerHTML = `<span class="task-alternative-title">${escapeHtml(alternativeTitle)}</span>`;
-                                } else {
-                                    titleDisplay.innerHTML = '';
-                                }
-                            }
+                        const titleDisplay = taskItem.querySelector('.task-title-display');
+                        if (titleDisplay) {
+                            const collapsedTitle = window.getCollapsedTaskTitleText
+                                ? window.getCollapsedTaskTitleText(task)
+                                : (window.taskContentUtils?.getTaskSummaryLine
+                                    ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                                    : ((task.content || '').split('\n')[0] || ''));
+                            titleDisplay.textContent = collapsedTitle || '';
                         }
                     }
                 }
@@ -3058,16 +3115,8 @@ if (!window.taskEditor) {
  * @param {string} columnId - Parent column ID
  */
 function editTitle(element, taskId, columnId) {
-
-    // Don't start editing if we're already editing this field
-    if (taskEditor.currentEditor &&
-        taskEditor.currentEditor.type === 'task-title' &&
-        taskEditor.currentEditor.taskId === taskId &&
-        taskEditor.currentEditor.columnId === columnId) {
-        return; // Already editing this title
-    }
-
-    taskEditor.startEdit(element, 'task-title', taskId, columnId, true); // preserveCursor=true for clicks
+    // Task summary/title is read-only; edit full unified content instead.
+    editDescription(element, taskId, columnId);
 }
 
 /**
