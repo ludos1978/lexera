@@ -15,8 +15,6 @@ node_modules/@typescript-eslint/**
 node_modules/jest/**
 node_modules/@jest/**
 node_modules/@marp-team/**
-node_modules/playwright/**
-node_modules/playwright-core/**
 node_modules/chromium/**
 node_modules/.bin/**
 node_modules/@babel/**

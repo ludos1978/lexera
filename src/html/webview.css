@@ -363,8 +363,8 @@ body {
   white-space: nowrap;
 }
 
-/* Container query: Hide text when file-info-bar is narrow (below 1000px) */
-@container file-info-bar (max-width: 1000px) {
+/* Container query: Hide text when file-info-bar is narrow (below 1200px) */
+@container file-info-bar (max-width: 1200px) {
   .global-fold-text,
   .sort-text,
   .global-sticky-text,
@@ -389,7 +389,7 @@ body {
 }
 
 /* Compact mode at medium widths */
-@container file-info-bar (max-width: 700px) {
+@container file-info-bar (max-width: 850px) {
   .file-name {
     max-width: 100px;
   }
@@ -406,7 +406,7 @@ body {
 }
 
 /* Very compact at narrow widths */
-@container file-info-bar (max-width: 500px) {
+@container file-info-bar (max-width: 600px) {
   .file-name {
     max-width: 60px;
   }
@@ -428,7 +428,7 @@ body {
 }
 
 /* Extremely narrow - hide center section elements */
-@container file-info-bar (max-width: 350px) {
+@container file-info-bar (max-width: 450px) {
   .file-info-content {
     /* Only left and right, no center - override the min-width */
     grid-template-columns: minmax(0, 1fr) 0 auto;
@@ -446,7 +446,7 @@ body {
 
 /* Media query fallback for browsers without container query support */
 @supports not (container-type: inline-size) {
-  @media (max-width: 1000px) {
+  @media (max-width: 1200px) {
     .global-fold-text,
     .sort-text,
     .global-sticky-text,
@@ -868,7 +868,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
 }
 
 /* Hide label text at narrow widths */
-@container file-info-bar (max-width: 1000px) {
+@container file-info-bar (max-width: 1200px) {
   .drag-menu-label {
     display: none;
   }

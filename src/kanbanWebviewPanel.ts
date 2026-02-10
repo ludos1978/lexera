@@ -169,9 +169,18 @@ export class KanbanWebviewPanel {
 
         const debugMode = KanbanWebviewPanel._loadPersistedDebugMode(context);
         const kanbanPanel = new KanbanWebviewPanel(panel, extensionUri, context, debugMode);
-        const documentPath = state?.documentUri;
+        let documentPath = state?.documentUri;
 
         logger.debug('[KanbanWebviewPanel.revive] documentPath from state:', documentPath);
+
+        // If webview state is missing, try to recover from globalState
+        if (!documentPath || typeof documentPath !== 'string' || documentPath.length === 0) {
+            const fallbackUri = KanbanWebviewPanel._findUnrevivedDocumentUri(context);
+            if (fallbackUri) {
+                logger.debug('[KanbanWebviewPanel.revive] Recovered documentPath from globalState:', fallbackUri);
+                documentPath = fallbackUri;
+            }
+        }
 
         // Validate: must be a non-empty string that looks like a file path
         if (documentPath && typeof documentPath === 'string' && documentPath.length > 0) {
@@ -195,7 +204,7 @@ export class KanbanWebviewPanel {
                 }
             })();
         } else {
-            console.warn('[KanbanWebviewPanel.revive] No valid documentPath in state');
+            console.warn('[KanbanWebviewPanel.revive] No valid documentPath in state or globalState fallback');
         }
     }
 

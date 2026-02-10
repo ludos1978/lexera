@@ -486,7 +486,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} https://microsoft.github.io; script-src 'nonce-${nonce}';">
     <link href="${codiconsUri}" rel="stylesheet" />
     <title>Kanban Dashboard</title>
     <style>
@@ -936,7 +936,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             // Group by date
             const groups = {};
             items.forEach(item => {
-                const dateKey = item.date ? formatDate(new Date(item.date)) : 'No Date';
+                const dateKey = item.date ? formatDate(new Date(item.date), item.week, item.year, item.weekday) : 'No Date';
                 if (!groups[dateKey]) groups[dateKey] = [];
                 groups[dateKey].push(item);
             });
@@ -1338,7 +1338,22 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             });
         }
 
-        function formatDate(date) {
+        function formatDate(date, week, year, weekday) {
+            const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+            // If this is a week-based item with weekday, display as "KW X Fri"
+            if (week !== undefined && week !== null) {
+                const currentYear = new Date().getFullYear();
+                let result = 'KW ' + week;
+                if (year && year !== currentYear) {
+                    result += ' ' + year;
+                }
+                if (weekday !== undefined && weekday !== null) {
+                    result += ' ' + weekdayNames[weekday];
+                }
+                return result;
+            }
+
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const d = new Date(date);

@@ -53,6 +53,8 @@ export interface UpcomingItem {
     week?: number;
     /** Year for week tag */
     year?: number;
+    /** Weekday (0=Sun, 1=Mon, ..., 6=Sat) if combined with week */
+    weekday?: number;
     /** Time slot if this is a time tag (e.g., "@06:00-12:00") */
     timeSlot?: string;
     /** Original raw title with all tags */

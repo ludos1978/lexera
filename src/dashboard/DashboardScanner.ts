@@ -120,6 +120,49 @@ function getDateOfISOWeek(week: number, year: number): Date {
 }
 
 /**
+ * Get a specific weekday of a given ISO week
+ * @param week - ISO week number
+ * @param year - Year
+ * @param weekday - Weekday (0=Sun, 1=Mon, ..., 6=Sat) - uses JS convention
+ */
+function getWeekdayOfISOWeek(week: number, year: number, weekday: number): Date {
+    const monday = getDateOfISOWeek(week, year);
+    // Monday is weekday 1, so offset from Monday
+    // 0=Sun means -1 from Monday (or +6), 1=Mon means 0, 2=Tue means +1, etc.
+    const daysFromMonday = weekday === 0 ? 6 : weekday - 1;
+    const result = new Date(monday);
+    result.setDate(monday.getDate() + daysFromMonday);
+    return result;
+}
+
+/**
+ * Parse weekday name to JS weekday number (0=Sun, 1=Mon, ..., 6=Sat)
+ */
+function parseWeekdayName(name: string): number | null {
+    const weekdays: Record<string, number> = {
+        'sun': 0, 'sunday': 0,
+        'mon': 1, 'monday': 1,
+        'tue': 2, 'tuesday': 2,
+        'wed': 3, 'wednesday': 3,
+        'thu': 4, 'thursday': 4,
+        'fri': 5, 'friday': 5,
+        'sat': 6, 'saturday': 6
+    };
+    return weekdays[name.toLowerCase()] ?? null;
+}
+
+/**
+ * Get ISO week number for a date
+ */
+function getISOWeek(date: Date): number {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+/**
  * Check if a date is within the specified timeframe from today
  * @param date - The date to check
  * @param timeframeDays - Number of days in the future to include
@@ -180,7 +223,9 @@ export class DashboardScanner {
         for (const column of board.columns || []) {
             // Check column's temporal tag first (hierarchical gating)
             const columnTitle = column.title || '';
-            const columnTemporal = this._extractTemporalInfo(columnTitle);
+            const columnTemporals = this._extractTemporalInfo(columnTitle);
+            // Use first temporal result for column gating (usually there's only one)
+            const columnTemporal = columnTemporals.length > 0 ? columnTemporals[0] : null;
 
             // If column has a date/week tag outside timeframe, skip all tasks in this column
             let columnWithinTimeframe = true;
@@ -200,7 +245,9 @@ export class DashboardScanner {
                 totalTasks++;
                 const taskText = task.content || '';
                 const taskSummary = getTaskSummaryLine(task.content);
-                const taskTitleTemporal = this._extractTemporalInfo(taskSummary);
+                const taskTitleTemporals = this._extractTemporalInfo(taskSummary);
+                // Use first temporal result for task context (usually there's only one)
+                const taskTitleTemporal = taskTitleTemporals.length > 0 ? taskTitleTemporals[0] : null;
                 let taskTemporalContext: {
                     date: Date;
                     week?: number;
@@ -231,92 +278,97 @@ export class DashboardScanner {
                 let hasTemporalTag = false;
 
                 for (const line of lines) {
-                    const lineTemporal = this._extractTemporalInfo(line);
-                    if (!lineTemporal) continue;
+                    const lineTemporals = this._extractTemporalInfo(line);
+                    if (lineTemporals.length === 0) continue;
 
                     hasTemporalTag = true;
 
-                    // Skip checked deadline tasks (- [x] !date)
-                    if (lineTemporal.checkboxState === 'checked') {
-                        continue;
-                    }
-
-                    // Determine effective date for this line's temporal tag
-                    let effectiveDate = lineTemporal.date;
-                    let effectiveDateIsWeekBased = lineTemporal.week !== undefined;
-                    let effectiveWeek = lineTemporal.week;
-                    let effectiveYear = lineTemporal.year;
-
-                    // For time slots WITHOUT explicit date/week - can inherit from column
-                    if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
-                        if (columnTemporal && columnDate && !columnWithinTimeframe) {
-                            // Column is outside timeframe - gates this time slot
+                    // Process each temporal result (may be multiple for week OR syntax)
+                    for (const lineTemporal of lineTemporals) {
+                        // Skip checked deadline tasks (- [x] !date)
+                        if (lineTemporal.checkboxState === 'checked') {
                             continue;
                         }
 
-                        if (taskTemporalContext?.date) {
-                            // Task has temporal context (title or earlier explicit line) - inherit from task
-                            effectiveDate = taskTemporalContext.date;
-                            effectiveDateIsWeekBased = taskTemporalContext.isWeekBased;
-                            effectiveWeek = taskTemporalContext.week;
-                            effectiveYear = taskTemporalContext.year;
-                        } else if (columnTemporal && columnDate) {
-                            // Column has temporal tag - time slot inherits from column
-                            effectiveDate = columnDate;
-                            effectiveDateIsWeekBased = columnTemporal.week !== undefined;
-                            effectiveWeek = columnTemporal.week;
-                            effectiveYear = columnTemporal.year;
+                        // Determine effective date for this line's temporal tag
+                        let effectiveDate = lineTemporal.date;
+                        let effectiveDateIsWeekBased = lineTemporal.week !== undefined;
+                        let effectiveWeek = lineTemporal.week;
+                        let effectiveYear = lineTemporal.year;
+                        const effectiveWeekday = lineTemporal.weekday;
+
+                        // For time slots WITHOUT explicit date/week - can inherit from column
+                        if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
+                            if (columnTemporal && columnDate && !columnWithinTimeframe) {
+                                // Column is outside timeframe - gates this time slot
+                                continue;
+                            }
+
+                            if (taskTemporalContext?.date) {
+                                // Task has temporal context (title or earlier explicit line) - inherit from task
+                                effectiveDate = taskTemporalContext.date;
+                                effectiveDateIsWeekBased = taskTemporalContext.isWeekBased;
+                                effectiveWeek = taskTemporalContext.week;
+                                effectiveYear = taskTemporalContext.year;
+                            } else if (columnTemporal && columnDate) {
+                                // Column has temporal tag - time slot inherits from column
+                                effectiveDate = columnDate;
+                                effectiveDateIsWeekBased = columnTemporal.week !== undefined;
+                                effectiveWeek = columnTemporal.week;
+                                effectiveYear = columnTemporal.year;
+                            }
+                            // If no column temporal tag, time slot uses "today" (already set)
+                        } else if (lineTemporal.hasExplicitDate && columnTemporal && columnTemporal.date && !columnWithinTimeframe) {
+                            // Line has explicit date/week tag, but column has temporal tag outside timeframe
+                            // Column gates the line (hierarchical gating)
+                            continue;
                         }
-                        // If no column temporal tag, time slot uses "today" (already set)
-                    } else if (lineTemporal.hasExplicitDate && columnTemporal && columnTemporal.date && !columnWithinTimeframe) {
-                        // Line has explicit date/week tag, but column has temporal tag outside timeframe
-                        // Column gates the line (hierarchical gating)
-                        continue;
-                    }
 
-                    if (lineTemporal.hasExplicitDate && lineTemporal.date) {
-                        taskTemporalContext = {
-                            date: lineTemporal.date,
-                            week: lineTemporal.week,
-                            year: lineTemporal.year,
-                            isWeekBased: lineTemporal.week !== undefined
-                        };
-                    }
+                        if (lineTemporal.hasExplicitDate && lineTemporal.date) {
+                            taskTemporalContext = {
+                                date: lineTemporal.date,
+                                week: lineTemporal.week,
+                                year: lineTemporal.year,
+                                isWeekBased: lineTemporal.week !== undefined
+                            };
+                        }
 
-                    const withinTimeframe = effectiveDate ? isWithinTimeframe(effectiveDate, timeframeDays, effectiveDateIsWeekBased) : false;
+                        const withinTimeframe = effectiveDate ? isWithinTimeframe(effectiveDate, timeframeDays, effectiveDateIsWeekBased) : false;
 
-                    // For deadline tasks (unchecked checkbox), also include overdue items
-                    const isDeadlineTask = lineTemporal.checkboxState === 'unchecked';
-                    let isOverdue = false;
-                    if (effectiveDate) {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const checkDate = new Date(effectiveDate);
-                        checkDate.setHours(0, 0, 0, 0);
-                        isOverdue = checkDate < today;
-                    }
+                        // For deadline tasks (unchecked checkbox), also include overdue items
+                        const isDeadlineTask = lineTemporal.checkboxState === 'unchecked';
+                        let isOverdue = false;
+                        if (effectiveDate) {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const checkDate = new Date(effectiveDate);
+                            checkDate.setHours(0, 0, 0, 0);
+                            isOverdue = checkDate < today;
+                        }
 
-                    // Include if within timeframe OR if it's an overdue deadline task
-                    const shouldInclude = withinTimeframe || (isDeadlineTask && isOverdue);
+                        // Include if within timeframe OR if it's an overdue deadline task
+                        const shouldInclude = withinTimeframe || (isDeadlineTask && isOverdue);
 
-                    if (effectiveDate && shouldInclude) {
-                        // Use the line content as the display title for this temporal item
-                        const lineTitle = line.trim() || taskSummary || '';
-                        upcomingItems.push({
-                            boardUri,
-                            boardName,
-                            columnIndex,
-                            columnTitle: columnTitle,
-                            taskIndex,
-                            taskSummary: lineTitle,
-                            temporalTag: lineTemporal.tag,
-                            date: effectiveDate,
-                            week: effectiveWeek,
-                            year: effectiveYear,
-                            timeSlot: lineTemporal.timeSlot,
-                            rawTitle: taskSummary || '',
-                            isOverdue: isDeadlineTask && isOverdue
-                        });
+                        if (effectiveDate && shouldInclude) {
+                            // Use the line content as the display title for this temporal item
+                            const lineTitle = line.trim() || taskSummary || '';
+                            upcomingItems.push({
+                                boardUri,
+                                boardName,
+                                columnIndex,
+                                columnTitle: columnTitle,
+                                taskIndex,
+                                taskSummary: lineTitle,
+                                temporalTag: lineTemporal.tag,
+                                date: effectiveDate,
+                                week: effectiveWeek,
+                                year: effectiveYear,
+                                weekday: effectiveWeekday,
+                                timeSlot: lineTemporal.timeSlot,
+                                rawTitle: taskSummary || '',
+                                isOverdue: isDeadlineTask && isOverdue
+                            });
+                        }
                     }
                 }
 
@@ -352,27 +404,29 @@ export class DashboardScanner {
 
     /**
      * Extract temporal information from text
-     * Now captures time slots alongside dates/weeks
+     * Returns array of results to handle week OR syntax (e.g., @kw8|kw38 @fri)
      * Also detects checkbox state for deadline tasks (- [ ] or - [x] at line start)
      */
-    private static _extractTemporalInfo(text: string): {
+    private static _extractTemporalInfo(text: string): Array<{
         tag: string;
         date?: Date;
         week?: number;
         year?: number;
+        weekday?: number;  // 0=Sun, 1=Mon, ..., 6=Sat
         timeSlot?: string;
         hasExplicitDate?: boolean;  // true if date came from explicit date/week tag
         checkboxState?: 'unchecked' | 'checked' | 'none';  // checkbox state if temporal tag is on a checkbox line
-    } | null {
-        let result: {
+    }> {
+        const results: Array<{
             tag: string;
             date?: Date;
             week?: number;
             year?: number;
+            weekday?: number;
             timeSlot?: string;
             hasExplicitDate?: boolean;
             checkboxState?: 'unchecked' | 'checked' | 'none';
-        } | null = null;
+        }> = [];
 
         // Check for time slot first (can be combined with date/week)
         // NEW TAG SYSTEM: Supports @HH:MM-HH:MM, @HHMM-HHMM, @HHMM, @HHam/pm
@@ -423,66 +477,146 @@ export class DashboardScanner {
             }
         }
 
+        // Check for weekday tag: @mon, @friday, etc.
+        let weekdayNum: number | null = null;
+        const weekdayMatch = text.match(/@(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/i);
+        if (weekdayMatch) {
+            weekdayNum = parseWeekdayName(weekdayMatch[1]);
+        }
+
+        // Helper to detect checkbox state
+        const detectCheckboxState = (tag: string): 'unchecked' | 'checked' | 'none' => {
+            const lines = text.split('\n');
+            for (const line of lines) {
+                if (line.includes(tag)) {
+                    const uncheckedMatch = line.match(/^\s*- \[ \]/);
+                    const checkedMatch = line.match(/^\s*- \[[xX]\]/);
+                    if (checkedMatch) return 'checked';
+                    if (uncheckedMatch) return 'unchecked';
+                    return 'none';
+                }
+            }
+            return 'none';
+        };
+
         // Try to find year tag: @Y2026 or @J2026 (German "Jahr")
         const yearTagMatch = text.match(/@[YyJj](\d{4})/);
         if (yearTagMatch) {
             const year = parseInt(yearTagMatch[1], 10);
-            // Year tag represents Jan 1 of that year
             const date = new Date(year, 0, 1);
-            result = { tag: yearTagMatch[0], date, year, timeSlot, hasExplicitDate: true };
+            results.push({
+                tag: yearTagMatch[0],
+                date,
+                year,
+                timeSlot,
+                hasExplicitDate: true,
+                checkboxState: detectCheckboxState(yearTagMatch[0])
+            });
+            return results;
         }
 
         // Try to find date tag (most specific) - NEW: @ prefix
-        if (!result) {
-            const dateMatch = text.match(/@(\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?)/);
-            if (dateMatch) {
-                const date = parseDateTag(dateMatch[0]);
-                if (date) {
-                    result = { tag: dateMatch[0], date, timeSlot, hasExplicitDate: true };
-                }
+        const dateMatch = text.match(/@(\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?)/);
+        if (dateMatch) {
+            const date = parseDateTag(dateMatch[0]);
+            if (date) {
+                results.push({
+                    tag: dateMatch[0],
+                    date,
+                    timeSlot,
+                    hasExplicitDate: true,
+                    checkboxState: detectCheckboxState(dateMatch[0])
+                });
+                return results;
             }
         }
 
-        // If no date, try to find week tag - NEW: @ prefix
-        if (!result) {
-            const weekMatch = text.match(/@(?:(\d{4})[-.]?)?(?:[wW]|[kK][wW])(\d{1,2})/);
-            if (weekMatch) {
-                const year = weekMatch[1] ? parseInt(weekMatch[1], 10) : new Date().getFullYear();
-                const week = parseInt(weekMatch[2], 10);
-                const date = getDateOfISOWeek(week, year);
-                result = { tag: weekMatch[0], date, week, year, timeSlot, hasExplicitDate: true };
+        // Try to find week tag(s) with OR syntax: @kw8|kw38, @kw8|38, @w8|w9
+        // Pattern captures: optional year, first week prefix+number, then |number or |prefix+number repeats
+        const weekOrMatch = text.match(/@(?:(\d{4})[-.]?)?(?:[wW]|[kK][wW])(\d{1,2})(?:\|(?:[wW]|[kK][wW])?(\d{1,2}))*(?=\s|$)/);
+        if (weekOrMatch) {
+            const fullMatch = weekOrMatch[0];
+            const baseYear = weekOrMatch[1] ? parseInt(weekOrMatch[1], 10) : new Date().getFullYear();
+
+            // Extract all week numbers from the match
+            // First week is in group 2, additional weeks need to be parsed from the full match
+            const weekNumbers: number[] = [];
+
+            // Parse all week numbers from the full tag string
+            const weekNumPattern = /(?:[wW]|[kK][wW])?(\d{1,2})/g;
+            const tagContent = fullMatch.slice(1); // Remove @ prefix
+            let numMatch;
+            while ((numMatch = weekNumPattern.exec(tagContent)) !== null) {
+                weekNumbers.push(parseInt(numMatch[1], 10));
             }
+
+            // If weekday is specified, create a result for each week + weekday combination
+            if (weekdayNum !== null) {
+                for (const week of weekNumbers) {
+                    const date = getWeekdayOfISOWeek(week, baseYear, weekdayNum);
+                    results.push({
+                        tag: fullMatch + ' ' + weekdayMatch![0],
+                        date,
+                        week,
+                        year: baseYear,
+                        weekday: weekdayNum,
+                        timeSlot,
+                        hasExplicitDate: true,
+                        checkboxState: detectCheckboxState(fullMatch)
+                    });
+                }
+            } else {
+                // No weekday - create result for each week (Monday of that week)
+                for (const week of weekNumbers) {
+                    const date = getDateOfISOWeek(week, baseYear);
+                    results.push({
+                        tag: fullMatch,
+                        date,
+                        week,
+                        year: baseYear,
+                        timeSlot,
+                        hasExplicitDate: true,
+                        checkboxState: detectCheckboxState(fullMatch)
+                    });
+                }
+            }
+
+            if (results.length > 0) {
+                return results;
+            }
+        }
+
+        // Standalone weekday tag (without week) - means current week's weekday
+        if (weekdayNum !== null && !weekOrMatch) {
+            const today = new Date();
+            const currentWeek = getISOWeek(today);
+            const currentYear = today.getFullYear();
+            const date = getWeekdayOfISOWeek(currentWeek, currentYear, weekdayNum);
+            results.push({
+                tag: weekdayMatch![0],
+                date,
+                weekday: weekdayNum,
+                timeSlot,
+                hasExplicitDate: true,
+                checkboxState: detectCheckboxState(weekdayMatch![0])
+            });
+            return results;
         }
 
         // If no date or week but has time slot, treat as "today" (can inherit from column)
-        if (!result && timeSlot) {
+        if (results.length === 0 && timeSlot) {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            result = { tag: timeSlot, date: today, timeSlot, hasExplicitDate: false };
+            results.push({
+                tag: timeSlot,
+                date: today,
+                timeSlot,
+                hasExplicitDate: false,
+                checkboxState: detectCheckboxState(timeSlot)
+            });
         }
 
-        // Detect checkbox state: find which line contains the temporal tag
-        // and check if that line starts with - [ ] or - [x]
-        if (result) {
-            const lines = text.split('\n');
-            for (const line of lines) {
-                if (line.includes(result.tag)) {
-                    // Check if line starts with checkbox (allowing leading whitespace)
-                    const uncheckedMatch = line.match(/^\s*- \[ \]/);
-                    const checkedMatch = line.match(/^\s*- \[[xX]\]/);
-                    if (checkedMatch) {
-                        result.checkboxState = 'checked';
-                    } else if (uncheckedMatch) {
-                        result.checkboxState = 'unchecked';
-                    } else {
-                        result.checkboxState = 'none';
-                    }
-                    break;
-                }
-            }
-        }
-
-        return result;
+        return results;
     }
 
     /**
