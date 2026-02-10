@@ -70,6 +70,10 @@ export class BoardRegistryService implements vscode.Disposable {
     private _recentSearches: SearchEntry[] = [];
     private static readonly MAX_UNPINNED_SEARCHES = 3;
 
+    // Default config (All Boards settings)
+    private _defaultTimeframe: 3 | 7 | 30 = 7;
+    private _defaultTagFilters: string[] = [];
+
     // Sort mode
     private _sortMode: DashboardSortMode = 'boardFirst';
 
@@ -210,14 +214,13 @@ export class BoardRegistryService implements vscode.Disposable {
         }
 
         const uriString = uri.toString();
-        const defaultTimeframe = this._getDefaultTimeframe();
 
         const board: RegisteredBoard = {
             uri: uriString,
             filePath,
             config: {
                 uri: uriString,
-                timeframe: defaultTimeframe,
+                timeframe: 0,
                 tagFilters: [],
                 enabled: true
             }
@@ -325,7 +328,7 @@ export class BoardRegistryService implements vscode.Disposable {
      */
     async updateBoardConfig(
         uri: string,
-        updates: { timeframe?: 3 | 7 | 30; tagFilters?: string[]; enabled?: boolean }
+        updates: { timeframe?: 0 | 3 | 7 | 30; tagFilters?: string[]; enabled?: boolean }
     ): Promise<void> {
         const board = this.getBoardByUri(uri);
         if (!board) { return; }
@@ -381,6 +384,57 @@ export class BoardRegistryService implements vscode.Disposable {
         this._onBoardsChanged.fire();
     }
 
+    // ============= Default Config (All Boards Settings) =============
+
+    get defaultTimeframe(): 3 | 7 | 30 { return this._defaultTimeframe; }
+    get defaultTagFilters(): string[] { return [...this._defaultTagFilters]; }
+
+    async setDefaultTimeframe(timeframe: 3 | 7 | 30): Promise<void> {
+        this._defaultTimeframe = timeframe;
+        await this._context.workspaceState.update('kanbanBoards.defaultTimeframe', timeframe);
+        this._onBoardsChanged.fire();
+    }
+
+    async addDefaultTagFilter(tag: string): Promise<void> {
+        if (!this._defaultTagFilters.includes(tag)) {
+            this._defaultTagFilters.push(tag);
+            await this._context.workspaceState.update('kanbanBoards.defaultTagFilters', this._defaultTagFilters);
+            this._onBoardsChanged.fire();
+        }
+    }
+
+    async removeDefaultTagFilter(tag: string): Promise<void> {
+        const idx = this._defaultTagFilters.indexOf(tag);
+        if (idx !== -1) {
+            this._defaultTagFilters.splice(idx, 1);
+            await this._context.workspaceState.update('kanbanBoards.defaultTagFilters', this._defaultTagFilters);
+            this._onBoardsChanged.fire();
+        }
+    }
+
+    /**
+     * Get the effective timeframe for a board (resolves 0 to default)
+     */
+    getEffectiveTimeframe(board: RegisteredBoard): 3 | 7 | 30 {
+        if (board.config.timeframe === 0) {
+            return this._defaultTimeframe;
+        }
+        return board.config.timeframe;
+    }
+
+    /**
+     * Get the effective tag filters for a board (default + per-board merged)
+     */
+    getEffectiveTagFilters(board: RegisteredBoard): string[] {
+        const tags = new Set<string>(this._defaultTagFilters);
+        if (board.config.tagFilters) {
+            for (const tag of board.config.tagFilters) {
+                tags.add(tag);
+            }
+        }
+        return Array.from(tags);
+    }
+
     // ============= Scan (migrated from KanbanSidebarProvider) =============
 
     get hasScanned(): boolean { return this._hasScanned; }
@@ -425,7 +479,6 @@ export class BoardRegistryService implements vscode.Disposable {
             let processed = 0;
             let skippedSpecial = 0;
             const totalCandidates = candidateFiles.size;
-            const defaultTimeframe = this._getDefaultTimeframe();
 
             for (const filePath of candidateFiles) {
                 if (token.isCancellationRequested) { break; }
@@ -453,7 +506,7 @@ export class BoardRegistryService implements vscode.Disposable {
                             filePath,
                             config: {
                                 uri: uriString,
-                                timeframe: defaultTimeframe,
+                                timeframe: 0,
                                 tagFilters: [],
                                 enabled: true
                             }
@@ -793,8 +846,12 @@ export class BoardRegistryService implements vscode.Disposable {
         this._recentSearches = this._context.workspaceState.get<SearchEntry[]>('kanbanBoards.searches', []);
         this._sortMode = this._context.workspaceState.get<DashboardSortMode>('kanbanBoards.sortMode', 'boardFirst');
 
+        // Load default config (All Boards settings)
+        const configDefault = this._getDefaultTimeframe();
+        this._defaultTimeframe = this._context.workspaceState.get<3 | 7 | 30>('kanbanBoards.defaultTimeframe', configDefault);
+        this._defaultTagFilters = this._context.workspaceState.get<string[]>('kanbanBoards.defaultTagFilters', []);
+
         // Build boards map from stored file paths
-        const defaultTimeframe = this._getDefaultTimeframe();
         for (const filePath of storedFiles) {
             const uri = vscode.Uri.file(filePath);
             const uriString = uri.toString();
@@ -803,7 +860,7 @@ export class BoardRegistryService implements vscode.Disposable {
                 filePath,
                 config: {
                     uri: uriString,
-                    timeframe: defaultTimeframe,
+                    timeframe: 0,
                     tagFilters: [],
                     enabled: true
                 }

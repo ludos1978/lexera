@@ -21,6 +21,9 @@
     const boardsList = document.getElementById('boards-list');
     const boardsActions = document.getElementById('boards-actions');
     const lockBtn = document.getElementById('lock-btn');
+    const allBoardsToggleBtn = document.getElementById('all-boards-toggle-btn');
+    const allBoardsConfig = document.getElementById('all-boards-config');
+    const allBoardsConfigContent = document.getElementById('all-boards-config-content');
     const addBoardBtn = document.getElementById('add-board-btn');
     const scanBtn = document.getElementById('scan-btn');
 
@@ -36,6 +39,7 @@
     // Folded state tracking
     const foldedGroups = new Set();
     const expandedBoards = new Set();
+    let allBoardsConfigExpanded = false;
 
     // Icon/label maps for search results
     const typeLabels = {
@@ -69,6 +73,15 @@
         lockBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             vscode.postMessage({ type: 'toggleLock' });
+        });
+
+        // All Boards settings toggle
+        allBoardsToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            allBoardsConfigExpanded = !allBoardsConfigExpanded;
+            allBoardsConfig.style.display = allBoardsConfigExpanded ? 'block' : 'none';
+            allBoardsToggleBtn.classList.toggle('active', allBoardsConfigExpanded);
+            if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
         });
 
         // Add/Scan buttons
@@ -139,6 +152,7 @@
                 renderBoards();
                 renderRecentSearches();
                 renderLockState();
+                if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
                 break;
 
             case 'searchResults':
@@ -522,7 +536,9 @@
             html += '<div class="tree-twistie"></div>';
             html += '<div class="tree-contents">';
             html += '<span class="board-config-label">Timeframe:</span>';
+            var defaultTf = currentState.defaultTimeframe || 7;
             html += '<select class="timeframe-select" data-board-uri="' + escapeHtml(board.uri) + '">';
+            html += '<option value="0"' + (board.config.timeframe === 0 ? ' selected' : '') + '>Default (' + defaultTf + 'd)</option>';
             html += '<option value="3"' + (board.config.timeframe === 3 ? ' selected' : '') + '>3 days</option>';
             html += '<option value="7"' + (board.config.timeframe === 7 ? ' selected' : '') + '>7 days</option>';
             html += '<option value="30"' + (board.config.timeframe === 30 ? ' selected' : '') + '>30 days</option>';
@@ -674,6 +690,87 @@
             header.addEventListener('dragend', () => {
                 draggedPath = null;
                 boardsList.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            });
+        });
+    }
+
+    // ============= All Boards Config =============
+
+    function renderAllBoardsConfig() {
+        if (!currentState) { return; }
+
+        var defaultTf = currentState.defaultTimeframe || 7;
+        var defaultTags = currentState.defaultTagFilters || [];
+
+        var html = '';
+
+        // Timeframe row
+        html += '<div class="tree-row board-config-row">';
+        html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+        html += '<div class="tree-twistie"></div>';
+        html += '<div class="tree-contents">';
+        html += '<span class="board-config-label">Timeframe:</span>';
+        html += '<select class="default-timeframe-select">';
+        html += '<option value="3"' + (defaultTf === 3 ? ' selected' : '') + '>3 days</option>';
+        html += '<option value="7"' + (defaultTf === 7 ? ' selected' : '') + '>7 days</option>';
+        html += '<option value="30"' + (defaultTf === 30 ? ' selected' : '') + '>30 days</option>';
+        html += '</select>';
+        html += '</div></div>';
+
+        // Tags input row
+        html += '<div class="tree-row board-config-row">';
+        html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+        html += '<div class="tree-twistie"></div>';
+        html += '<div class="tree-contents">';
+        html += '<span class="board-config-label">Tags:</span>';
+        html += '<input type="text" class="board-tag-input default-tag-input" placeholder="Add default tag...">';
+        html += '</div></div>';
+
+        // Current default tag filters
+        if (defaultTags.length > 0) {
+            html += '<div class="tree-row board-config-row">';
+            html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents">';
+            html += '<div class="board-tag-filters">';
+            defaultTags.forEach(function(tag) {
+                html += '<span class="board-tag-filter default-tag-filter" data-tag="' + escapeHtml(tag) + '">';
+                html += escapeHtml(tag);
+                html += '<span class="board-tag-filter-remove">✕</span>';
+                html += '</span>';
+            });
+            html += '</div></div></div>';
+        }
+
+        allBoardsConfigContent.innerHTML = html;
+
+        // Event listeners for default config
+        var tfSelect = allBoardsConfigContent.querySelector('.default-timeframe-select');
+        if (tfSelect) {
+            tfSelect.addEventListener('change', function() {
+                vscode.postMessage({ type: 'setDefaultTimeframe', timeframe: parseInt(tfSelect.value) });
+            });
+        }
+
+        var tagInput = allBoardsConfigContent.querySelector('.default-tag-input');
+        if (tagInput) {
+            var addDefaultTag = function() {
+                var tag = tagInput.value.trim();
+                if (tag) {
+                    vscode.postMessage({ type: 'addDefaultTagFilter', tag: tag });
+                    tagInput.value = '';
+                }
+            };
+            tagInput.addEventListener('change', addDefaultTag);
+            tagInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); addDefaultTag(); }
+            });
+        }
+
+        allBoardsConfigContent.querySelectorAll('.default-tag-filter .board-tag-filter-remove').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var filter = btn.closest('.default-tag-filter');
+                vscode.postMessage({ type: 'removeDefaultTagFilter', tag: filter.dataset.tag });
             });
         });
     }

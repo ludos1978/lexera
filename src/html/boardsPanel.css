@@ -483,6 +483,34 @@ body {
     opacity: 1;
 }
 
+/* ============= All Boards Config ============= */
+.all-boards-config {
+    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+}
+
+.all-boards-config .board-config-row .tree-contents {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    margin-right: 8px;
+    gap: 4px;
+    padding: 2px 0;
+}
+
+.all-boards-config .board-config-label {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+#all-boards-toggle-btn.active {
+    opacity: 1;
+    color: var(--vscode-notificationsWarningIcon-foreground, orange);
+}
+
 /* ============= Board Actions ============= */
 .boards-actions {
     display: flex;

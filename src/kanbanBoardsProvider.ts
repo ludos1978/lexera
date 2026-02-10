@@ -120,6 +120,17 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                     await this._registry.removeTagFilter(message.boardUri, message.tag);
                     break;
 
+                // Default config (All Boards settings)
+                case 'setDefaultTimeframe':
+                    await this._registry.setDefaultTimeframe(message.timeframe);
+                    break;
+                case 'addDefaultTagFilter':
+                    await this._registry.addDefaultTagFilter(message.tag);
+                    break;
+                case 'removeDefaultTagFilter':
+                    await this._registry.removeDefaultTagFilter(message.tag);
+                    break;
+
                 // Search
                 case 'searchText':
                     await this._handleTextSearch(message.query, {
@@ -189,6 +200,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             locked: this._registry.locked,
             searches: this._registry.recentSearches,
             sortMode: this._registry.sortMode,
+            defaultTimeframe: this._registry.defaultTimeframe,
+            defaultTagFilters: this._registry.defaultTagFilters,
             hasActivePanel: KanbanWebviewPanel.getAllPanels().length > 0
         });
     }
@@ -564,8 +577,14 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                 <button class="lock-btn" id="lock-btn" title="Toggle lock">
                     <span class="codicon codicon-lock"></span>
                 </button>
+                <button class="lock-btn" id="all-boards-toggle-btn" title="All boards settings">
+                    <span class="codicon codicon-settings-gear"></span>
+                </button>
             </div>
             <div class="section-content" id="boards-content">
+                <div class="all-boards-config" id="all-boards-config" style="display: none;">
+                    <div id="all-boards-config-content"></div>
+                </div>
                 <div id="boards-list"></div>
                 <div class="boards-actions" id="boards-actions">
                     <button class="action-btn" id="add-board-btn" title="Add board">

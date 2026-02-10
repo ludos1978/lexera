@@ -1,14 +1,15 @@
 - [ ] i want to integrate the kanban boards view with the dashboard view and the search.
   the kanban boards should integrate the boards fuctionality from the dashboard. the configuration which boards are checked for events and tags etc. should be configurable within the kanban boards. Also it should be lockable, so that no board can be added or removed without unlocking. it's locked by default. of course we remove the boards from the dashboard. also add broken embeds and links to the list of elements to that can be automatically checked for. the results should be listed in the dashboard as well.
 
-  the dashboard only lists the results of the boards tags and date results. all results that are shown in the dashboard should be sortable by 
+  the dashboard only lists the results of the boards tags and date results. all results that are shown in the dashboard should be sortable by
   - "board first", the results are listed below (such as tags etc.)
   - "tags, dates", all results are merged from all boards and ordered by alphabet / date.
 
   the search should be more compact. integrate the search field above the kanban boards at the top. the added boards are listed below. Show the search results in the dashboard as one line in the dashboard under a category "search" (or within the boards result if ordered so). It will keep up to 3 searches and it can be pinned, so the search stays in the dashboard. the pinned searches must also be stored with the workspace and restored when re-opened.
-  - the search can search the open board (default) or all boards in (kanban boards) or all currently opened boards. 
+  - the search can search the open board (default) or all boards in (kanban boards) or all currently opened boards.
   - the search can be words, regex etc.
 
+  in the boards add an all boards setting at the top, it should open with a folding button right of the lock button. it allows defining the timeframe and tags for all boards at once. the timeframe on each board has also an option "use default" or the user might change it individually. more tags can be added for each board, but the defaults are used on each board check anyway!
 
 - [ ] if i open a folder link by alt+clicking it and it's available in the workspace explorer. if possible highlight the folder there instead of opening it externally. The default action open is to show in workspace explorer, if that fails it should be opened in the system explorer/finder.
 
@@ -18,9 +19,9 @@
 
 - DO NOT DO ANY AUTOMATIC TEXT CONVERSION! I saw -> get an  arrow!!!
 
-- [ ] add comment and note as tags 
+- [ ] add comment and note as tags
 
-- [ ] when deleting the top column of a  stack, sometimes the other columns get merged with the previous stack. there seem to be inconsistencies how #stack's tags are analyzed and applied. 
+- [ ] when deleting the top column of a  stack, sometimes the other columns get merged with the previous stack. there seem to be inconsistencies how #stack's tags are analyzed and applied.
 
 - [ ] i cant open the files from the file manager. clicking on a filename should open the file in question.
 

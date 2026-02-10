@@ -11,8 +11,8 @@
 export interface DashboardBoardConfig {
     /** File URI of the kanban board */
     uri: string;
-    /** Timeframe in days for showing upcoming items (3, 7, or 30) */
-    timeframe: 3 | 7 | 30;
+    /** Timeframe in days for showing upcoming items (0 = use default, 3, 7, or 30) */
+    timeframe: 0 | 3 | 7 | 30;
     /** Tags to filter/highlight in this board */
     tagFilters: string[];
     /** Whether this board is enabled in the dashboard */
@@ -206,7 +206,7 @@ export interface DashboardRemoveBoardMessage {
 export interface DashboardUpdateConfigMessage {
     type: 'dashboardUpdateConfig';
     boardUri: string;
-    timeframe?: 3 | 7 | 30;
+    timeframe?: 0 | 3 | 7 | 30;
     tagFilters?: string[];
     enabled?: boolean;
 }

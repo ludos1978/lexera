@@ -2,6 +2,7 @@
 
 kanban-plugin: board
 
+fontSize: 1_0x
 ---
 
 ## !!!include(./root/root-include-1.md)!!!

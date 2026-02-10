@@ -2,6 +2,7 @@
 
 kanban-plugin: board
 
+fontSize: 1_0x
 ---
 
 ## Mermaid Diagram Tests 13

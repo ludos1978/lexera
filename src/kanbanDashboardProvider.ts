@@ -157,17 +157,18 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         for (const registeredBoard of enabledBoards) {
             try {
-                const result = await this._scanBoard(registeredBoard.uri, registeredBoard.config.timeframe);
+                const effectiveTimeframe = registry.getEffectiveTimeframe(registeredBoard);
+                const result = await this._scanBoard(registeredBoard.uri, effectiveTimeframe);
                 if (!result) continue;
 
                 upcomingItems.push(...result.upcomingItems);
                 boardSummaries.push(result.summary);
 
-                // Collect items matching configured tag filters
-                const boardConfig = registeredBoard.config;
-                if (boardConfig.tagFilters && boardConfig.tagFilters.length > 0 && result.board) {
+                // Collect items matching effective tag filters (default + per-board)
+                const effectiveTagFilters = registry.getEffectiveTagFilters(registeredBoard);
+                if (effectiveTagFilters.length > 0 && result.board) {
                     const boardName = path.basename(vscode.Uri.parse(registeredBoard.uri).fsPath, '.md');
-                    for (const tagFilter of boardConfig.tagFilters) {
+                    for (const tagFilter of effectiveTagFilters) {
                         const matches = DashboardScanner.searchByTag(
                             result.board,
                             registeredBoard.uri,
@@ -796,6 +797,17 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         const vscode = acquireVsCodeApi();
         let dashboardData = null;
 
+        // Fold state tracking - persists across re-renders
+        const collapsedGroups = new Set();
+
+        function groupExpandedClass(key) {
+            return collapsedGroups.has(key) ? '' : ' expanded';
+        }
+
+        function groupItemsStyle(key) {
+            return collapsedGroups.has(key) ? ' style="display: none"' : '';
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             // Setup section toggle handlers
@@ -881,14 +893,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [boardName, boardItems] of Object.entries(boards)) {
-                // Board group
+                const boardKey = 'upcoming/board/' + boardName;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
 
                 // Group by date within board
                 const dateGroups = {};
@@ -899,13 +911,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 });
 
                 for (const [date, dateItems] of Object.entries(dateGroups)) {
+                    const dateGroupKey = boardKey + '/' + date;
                     html += '<div class="tree-group">';
-                    html += '<div class="tree-row tree-group-toggle">';
+                    html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(dateGroupKey) + '">';
                     html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                    html += '<div class="tree-twistie collapsible expanded"></div>';
+                    html += '<div class="tree-twistie collapsible' + groupExpandedClass(dateGroupKey) + '"></div>';
                     html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(date) + '</span></div>';
                     html += '</div>';
-                    html += '<div class="tree-group-items">';
+                    html += '<div class="tree-group-items"' + groupItemsStyle(dateGroupKey) + '>';
                     dateItems.forEach(item => {
                         html += renderUpcomingItem(item, 4);
                     });
@@ -930,13 +943,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [date, groupItems] of Object.entries(groups)) {
+                const gKey = 'upcoming/date/' + date;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row date-group-header tree-group-toggle">';
+                html += '<div class="tree-row date-group-header tree-group-toggle" data-group-key="' + escapeHtml(gKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(gKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(date) + '</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(gKey) + '>';
                 groupItems.forEach(item => {
                     html += renderUpcomingItem(item, 3);
                 });
@@ -1003,22 +1017,15 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const emptyMsg = document.getElementById('tagged-empty');
             const items = dashboardData.taggedItems || [];
 
-            const hasTagFilters = (dashboardData.config?.boards || []).some(b => b.tagFilters && b.tagFilters.length > 0);
-
-            if (!hasTagFilters) {
-                if (section) section.style.display = 'none';
+            if (items.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.textContent = 'No tag filters configured';
+                emptyMsg.style.display = 'block';
+                if (section) section.style.display = 'block';
                 return;
             }
 
             if (section) section.style.display = 'block';
-
-            if (items.length === 0) {
-                container.innerHTML = '';
-                emptyMsg.textContent = 'No tasks match configured tag filters';
-                emptyMsg.style.display = 'block';
-                return;
-            }
-
             emptyMsg.style.display = 'none';
             const sortMode = dashboardData.sortMode || 'boardFirst';
 
@@ -1041,22 +1048,24 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [boardName, tagGroups] of Object.entries(boards)) {
+                const boardKey = 'tagged/board/' + boardName;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + '</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
 
                 for (const [tag, tagItems] of Object.entries(tagGroups)) {
+                    const tagGroupKey = boardKey + '/' + tag;
                     html += '<div class="tree-group">';
-                    html += '<div class="tree-row tree-group-toggle">';
+                    html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(tagGroupKey) + '">';
                     html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                    html += '<div class="tree-twistie collapsible expanded"></div>';
+                    html += '<div class="tree-twistie collapsible' + groupExpandedClass(tagGroupKey) + '"></div>';
                     html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(tag) + ' (' + tagItems.length + ')</span></div>';
                     html += '</div>';
-                    html += '<div class="tree-group-items">';
+                    html += '<div class="tree-group-items"' + groupItemsStyle(tagGroupKey) + '>';
                     tagItems.forEach(item => {
                         html += renderTaggedItem(item, 4);
                     });
@@ -1081,13 +1090,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [tag, groupItems] of Object.entries(groups)) {
+                const gKey = 'tagged/tag/' + tag;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(gKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(gKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(tag) + ' (' + groupItems.length + ')</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(gKey) + '>';
                 groupItems.forEach(item => {
                     html += renderTaggedItem(item, 3);
                 });
@@ -1162,13 +1172,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [boardName, boardItems] of Object.entries(boards)) {
+                const boardKey = 'broken/board/' + boardName;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
                 boardItems.forEach(item => {
                     html += renderBrokenItem(item, 3);
                 });
@@ -1189,13 +1200,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [type, groupItems] of Object.entries(groups)) {
+                const gKey = 'broken/type/' + type;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(gKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(gKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(type) + ' (' + groupItems.length + ')</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(gKey) + '>';
                 groupItems.forEach(item => {
                     html += renderBrokenItem(item, 3);
                 });
@@ -1262,13 +1274,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             let html = '';
 
             for (const [query, queryItems] of Object.entries(queries)) {
+                const queryKey = 'search/query/' + query;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(queryKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(queryKey) + '"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">"' + escapeHtml(query) + '" (' + queryItems.length + ')</span></div>';
                 html += '</div>';
-                html += '<div class="tree-group-items">';
+                html += '<div class="tree-group-items"' + groupItemsStyle(queryKey) + '>';
 
                 if (sortMode === 'boardFirst') {
                     // Sub-group by board
@@ -1279,13 +1292,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     });
 
                     for (const [boardName, boardItems] of Object.entries(boards)) {
+                        const boardKey = queryKey + '/board/' + boardName;
                         html += '<div class="tree-group">';
-                        html += '<div class="tree-row tree-group-toggle">';
+                        html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
                         html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                        html += '<div class="tree-twistie collapsible expanded"></div>';
+                        html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
                         html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
                         html += '</div>';
-                        html += '<div class="tree-group-items">';
+                        html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
                         boardItems.forEach(item => {
                             html += renderSearchItem(item, 4);
                         });
@@ -1344,12 +1358,15 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     const group = toggle.closest('.tree-group');
                     const twistie = toggle.querySelector('.tree-twistie');
                     const items = group.querySelector('.tree-group-items');
+                    const groupKey = toggle.getAttribute('data-group-key');
                     if (twistie.classList.contains('expanded')) {
                         twistie.classList.remove('expanded');
                         items.style.display = 'none';
+                        if (groupKey) collapsedGroups.add(groupKey);
                     } else {
                         twistie.classList.add('expanded');
                         items.style.display = 'block';
+                        if (groupKey) collapsedGroups.delete(groupKey);
                     }
                 });
             });

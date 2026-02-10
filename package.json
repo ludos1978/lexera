@@ -100,12 +100,13 @@
               "timeframe": {
                 "type": "number",
                 "enum": [
+                  0,
                   3,
                   7,
                   30
                 ],
-                "default": 7,
-                "description": "Timeframe in days for showing upcoming items"
+                "default": 0,
+                "description": "Timeframe in days for showing upcoming items (0 = use default)"
               },
               "tagFilters": {
                 "type": "array",
