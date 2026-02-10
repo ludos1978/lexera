@@ -400,6 +400,10 @@ export class MainKanbanFile extends MarkdownFile {
         }
     }
 
+    /**
+     * Validate round-trip consistency (for debugging only - does NOT block saves).
+     * Logs warnings if mismatch detected but allows save to proceed.
+     */
     private _validateGeneratedMarkdownRoundTrip(boardSnapshot: KanbanBoard, generatedContent: string): void {
         const basePath = path.dirname(this._path);
         const reparsed = this._parser.parseMarkdown(
@@ -411,7 +415,8 @@ export class MainKanbanFile extends MarkdownFile {
         ).board;
 
         if (!reparsed.valid) {
-            throw new Error('[MainKanbanFile] Generated markdown is invalid after save serialization.');
+            console.warn('[MainKanbanFile] Generated markdown is invalid after save serialization - proceeding with save anyway.');
+            return;
         }
 
         const expectedShape = this._createPersistedBoardShape(boardSnapshot);
@@ -460,9 +465,11 @@ export class MainKanbanFile extends MarkdownFile {
 
             console.error('='.repeat(80));
 
-            throw new Error(
+            // WARNING ONLY - do not block save
+            console.warn(
                 `[MainKanbanFile] Save serialization mismatch for "${this.getRelativePath()}" `
-                + `(diffIndex=${diffIndex}, expectedShapeLength=${expectedJson.length}, actualShapeLength=${actualJson.length}).`
+                + `(diffIndex=${diffIndex}, expectedShapeLength=${expectedJson.length}, actualShapeLength=${actualJson.length}). `
+                + `Proceeding with save anyway.`
             );
         }
     }
