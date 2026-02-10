@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { KanbanWebviewPanel } from './kanbanWebviewPanel';
 import { configService } from './services/ConfigurationService';
-import { KanbanSidebarProvider } from './kanbanSidebarProvider';
-import { KanbanSearchProvider } from './kanbanSearchProvider';
+import { BoardRegistryService } from './services/BoardRegistryService';
+import { KanbanBoardsProvider } from './kanbanBoardsProvider';
 import { KanbanDashboardProvider } from './kanbanDashboardProvider';
 import { PluginLoader } from './plugins';
 import { selectMarkdownFile } from './utils';
@@ -51,31 +51,33 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions.push(mediaIndex);
 	}
 
-	// Initialize kanban sidebar
+	// Initialize BoardRegistryService singleton (shared data layer)
+	const registry = BoardRegistryService.initialize(context);
+	context.subscriptions.push(registry);
+
+	// Auto-scan on first activation if enabled and first-time per workspace
 	const config = configService.getAllConfig();
 	const autoScanEnabled = config.sidebar?.autoScan ?? true;
-	const sidebarProvider = new KanbanSidebarProvider(context, autoScanEnabled);
-	const treeView = vscode.window.createTreeView('kanbanBoardsSidebar', {
-		treeDataProvider: sidebarProvider,
-		dragAndDropController: sidebarProvider.dragAndDropController,
-		showCollapseAll: false
-	});
-	context.subscriptions.push(treeView);
-	context.subscriptions.push(sidebarProvider);
+	if (autoScanEnabled && !registry.hasScanned) {
+		registry.scanWorkspace().catch(err => {
+			console.error('[Extension] Auto-scan failed:', err);
+		});
+	}
 
-	// Initialize kanban search sidebar
-	const searchProvider = new KanbanSearchProvider(context.extensionUri);
+	// Initialize unified boards sidebar (replaces old TreeDataProvider + SearchProvider)
+	const boardsProvider = new KanbanBoardsProvider(context.extensionUri);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
-			KanbanSearchProvider.viewType,
-			searchProvider
+			KanbanBoardsProvider.viewType,
+			boardsProvider
 		)
 	);
+	context.subscriptions.push(boardsProvider);
 
-	// Internal command for routing [[#tag]] clicks to the search sidebar
+	// Internal command for routing [[#tag]] clicks to the boards sidebar search
 	context.subscriptions.push(
 		vscode.commands.registerCommand('markdown-kanban.internal.searchWithQuery', (query: string) => {
-			searchProvider.setSearchQuery(query);
+			boardsProvider.setSearchQuery(query);
 		})
 	);
 
@@ -88,27 +90,24 @@ export function activate(context: vscode.ExtensionContext) {
 		)
 	);
 
-	// Register dashboard commands
+	// Register dashboard commands - route through BoardRegistryService
 	context.subscriptions.push(
 		vscode.commands.registerCommand('markdown-kanban.dashboard.addBoard', async (item: vscode.Uri | { uri: vscode.Uri | string } | undefined) => {
-			let uriString: string | undefined;
+			let uri: vscode.Uri | undefined;
 
-			// Handle different call contexts:
-			// - From explorer context menu: item is a vscode.Uri directly
-			// - From sidebar context menu: item is { uri: vscode.Uri }
 			if (item instanceof vscode.Uri) {
-				uriString = item.toString();
+				uri = item;
 			} else if (item?.uri) {
-				uriString = item.uri.toString ? item.uri.toString() : String(item.uri);
+				uri = item.uri instanceof vscode.Uri ? item.uri : vscode.Uri.parse(String(item.uri));
 			}
 
-			if (uriString) {
-				await dashboardProvider.addBoard(uriString);
+			if (uri) {
+				await registry.addBoard(uri);
 			}
 		}),
 		vscode.commands.registerCommand('markdown-kanban.dashboard.removeBoard', async (boardUri: string) => {
 			if (boardUri) {
-				await dashboardProvider.removeBoard(boardUri);
+				await registry.removeBoardByUri(boardUri);
 			}
 		})
 	);
@@ -337,9 +336,9 @@ export function activate(context: vscode.ExtensionContext) {
 		panels[0].performEditorRedo();
 	});
 
-	// Sidebar commands
+	// Sidebar commands - route through BoardRegistryService
 	const scanWorkspaceCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.scanWorkspace', async () => {
-		await sidebarProvider.scanWorkspace();
+		await registry.scanWorkspace();
 	});
 
 	const addFileToSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.addFile', async () => {
@@ -347,27 +346,28 @@ export function activate(context: vscode.ExtensionContext) {
 
 		if (fileUris && fileUris.length > 0) {
 			for (const uri of fileUris) {
-				await sidebarProvider.addFile(uri);
+				await registry.addBoard(uri);
 			}
 		}
 	});
 
 	const removeFileFromSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.removeFile', async (item) => {
-		if (item) {
-			await sidebarProvider.removeFile(item);
+		if (item && item.uri) {
+			await registry.removeBoard(item.uri.fsPath);
 		}
 	});
 
 	const clearSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.clear', async () => {
-		await sidebarProvider.clear();
+		await registry.clearBoards();
 	});
 
 	const refreshSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.refresh', () => {
-		sidebarProvider.refresh();
+		// Boards panel refreshes via registry events; trigger a boards change notification
+		(registry as any)._onBoardsChanged.fire();
 	});
 
 	const filterSidebarCommand = vscode.commands.registerCommand('markdown-kanban.sidebar.filter', async () => {
-		await sidebarProvider.showFilterMenu();
+		// Filter is now handled inside the webview; no-op for backward compat
 	});
 
 	// Note: External file change detection is handled by MarkdownFile instances via their built-in watchers

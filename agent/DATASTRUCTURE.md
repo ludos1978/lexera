@@ -2,7 +2,7 @@
 
 This document provides a comprehensive overview of all interfaces, types, classes, and enums that define data structures in the Markdown Kanban codebase.
 
-**Last Updated:** 2025-11-04
+**Last Updated:** 2026-02-10
 
 ---
 
@@ -63,6 +63,7 @@ import { INCLUDE_SYNTAX, FILE_TYPES } from './constants/IncludeConstants';
 10. [Message Handler](#message-handler)
 11. [Save Coordination](#save-coordination)
 12. [State Management](#state-management)
+13. [Board Registry & Dashboard](#board-registry--dashboard)
 
 ---
 
@@ -1031,3 +1032,88 @@ interface VerifyContentSyncMessage {
 ```
 
 **Purpose**: Carries frontend content for comparison with backend state.
+
+---
+
+## Board Registry & Dashboard
+
+### `/src/services/BoardRegistryService.ts` (NEW 2026-02-10)
+
+Singleton shared data layer replacing board management from KanbanSidebarProvider and KanbanDashboardProvider.
+
+#### `RegisteredBoard`
+```typescript
+interface RegisteredBoard {
+    uri: string;        // File URI string
+    filePath: string;   // Absolute file path
+    config: DashboardBoardConfig;  // timeframe, tagFilters, enabled
+}
+```
+
+#### `SearchEntry`
+```typescript
+interface SearchEntry {
+    query: string;
+    pinned: boolean;
+    useRegex?: boolean;
+    scope?: 'active' | 'listed' | 'open';
+}
+```
+
+#### `DashboardSortMode`
+```typescript
+type DashboardSortMode = 'boardFirst' | 'merged';
+```
+
+**Workspace State Keys:**
+- `kanbanBoards.files` — Board file paths (migrated from `kanbanSidebar.files`)
+- `kanbanBoards.order` — Custom display order
+- `kanbanBoards.hasScanned` — Whether workspace scan has run
+- `kanbanBoards.locked` — Lock state (prevents add/remove)
+- `kanbanBoards.searches` — Recent/pinned searches
+- `kanbanBoards.sortMode` — Dashboard sort mode
+
+### `/src/dashboard/DashboardTypes.ts` (MODIFIED 2026-02-10)
+
+#### `DashboardBrokenElement`
+```typescript
+interface DashboardBrokenElement {
+    type: 'image' | 'include' | 'link' | 'media' | 'diagram';
+    path: string;
+    boardUri: string;
+    boardName: string;
+    columnTitle: string;
+    taskSummary?: string;
+    columnId: string;
+    taskId?: string;
+}
+```
+
+#### `DashboardSearchResult`
+```typescript
+interface DashboardSearchResult {
+    query: string;
+    pinned: boolean;
+    boardUri: string;
+    boardName: string;
+    matchText: string;
+    context: string;
+    columnTitle: string;
+    taskSummary?: string;
+    columnId: string;
+    taskId?: string;
+}
+```
+
+#### `DashboardData` (extended)
+```typescript
+interface DashboardData {
+    upcomingItems: UpcomingItem[];
+    boardSummaries: BoardTagSummary[];
+    config: DashboardConfig;
+    taggedItems: TagSearchResult[];
+    brokenElements: DashboardBrokenElement[];   // NEW
+    searchResults: DashboardSearchResult[];      // NEW
+    sortMode: DashboardSortMode;                 // NEW
+}
+```

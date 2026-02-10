@@ -2,10 +2,59 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-02-10
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-02-10) - Unified Boards Panel + Dashboard Refactor
+
+Unified 3 separate sidebar views into 2-panel layout:
+- **Boards Panel** (`kanbanBoardsSidebar`) = board file list + board config + search (replaces old TreeDataProvider sidebar + search webview)
+- **Dashboard Panel** (`kanbanDashboard`) = results only (upcoming, tagged, broken elements, pinned search results) with sort modes
+
+### New File: `src/services/BoardRegistryService.ts`
+Singleton shared data layer for board management. Single source of truth for board list, order, lock state, board configs, search entries, and sort mode.
+- `BoardRegistryService.initialize(context)` — Create singleton instance
+- `BoardRegistryService.getInstance()` — Get singleton instance
+- `getBoards()` / `getEnabledBoards()` — Get boards in display order
+- `getBoardByPath(filePath)` / `getBoardByUri(uri)` — Lookup board
+- `addBoard(uri)` / `removeBoard(filePath)` / `removeBoardByUri(uri)` / `clearBoards()` — Board CRUD
+- `reorderBoards(draggedPaths, targetPath)` — Drag & drop reorder
+- `updateBoardConfig(uri, updates)` / `addTagFilter(uri, tag)` / `removeTagFilter(uri, tag)` — Board config
+- `locked` / `setLocked(locked)` — Lock state (prevents add/remove)
+- `scanWorkspace()` / `isKanbanFile(filePath)` — Workspace scanning with ripgrep
+- `recentSearches` / `addSearch(query, useRegex, scope)` / `toggleSearchPin(query)` / `removeSearch(query)` / `getPinnedSearches()` — Search management
+- `sortMode` / `setSortMode(mode)` — Dashboard sort mode ('boardFirst' | 'merged')
+- Events: `onBoardsChanged`, `onSearchesChanged`, `onSortModeChanged`
+
+### New File: `src/kanbanBoardsProvider.ts`
+WebviewViewProvider (viewType: `kanbanBoardsSidebar`) replacing both KanbanSidebarProvider and KanbanSearchProvider.
+- `resolveWebviewView()` — Setup webview with external HTML/CSS/JS
+- `setSearchQuery(query)` — Route external search commands (tag clicks)
+- `_collectBoardsForScope(scope)` — Collect boards for search scope ('active', 'listed', 'open')
+- `_handleSearch(query, useRegex, scope, searchType)` — Execute text/broken search via BoardContentScanner
+- `_handleNavigateToElement(boardUri, columnId, taskId)` — Navigate to board element
+- `_sendStateToWebview()` — Send full state (boards, locked, searches, sortMode, hasActivePanel)
+
+### New File: `src/html/boardsPanel.js` + `src/html/boardsPanel.css`
+Frontend for unified boards sidebar: search input + regex toggle + scope dropdown, recent searches with pin/unpin, board list with collapsible per-board config (timeframe, tags), lock toggle, drag-drop reorder, search results.
+
+### Modified: `src/kanbanDashboardProvider.ts`
+Rewritten as results-only panel. Removed: board config management (addBoard, removeBoard, _updateBoardConfig, _addTagFilter, _removeTagFilter, _saveConfig, _loadConfig, file watchers). Added: subscribes to BoardRegistryService events, scans broken elements via BoardContentScanner, re-executes pinned searches, sort mode toggle (Board First / Merged), broken elements section, search results section.
+
+### Modified: `src/dashboard/DashboardTypes.ts`
+- Added `DashboardSortMode`, `DashboardBrokenElement`, `DashboardSearchResult` types
+- Extended `DashboardData` with `brokenElements`, `searchResults`, `sortMode`
+- Added `DashboardSetSortModeMessage`, `DashboardNavigateToElementMessage`
+
+### Deleted Files
+- `src/kanbanSidebarProvider.ts` — Replaced by BoardRegistryService + KanbanBoardsProvider
+- `src/kanbanSearchProvider.ts` — Replaced by KanbanBoardsProvider
+- `src/html/searchPanel.js` — Replaced by boardsPanel.js
+- `src/html/searchPanel.css` — Replaced by boardsPanel.css
 
 ---
 

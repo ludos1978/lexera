@@ -6014,18 +6014,14 @@
     "views": {
       "kanbanBoards": [
         {
+          "type": "webview",
           "id": "kanbanBoardsSidebar",
           "name": "Kanban Boards"
         },
         {
           "type": "webview",
-          "id": "kanbanSearch",
-          "name": "Kanban Search"
-        },
-        {
-          "type": "webview",
           "id": "kanbanDashboard",
-          "name": "Dashboard"
+          "name": "Kanban Dashboard"
         }
       ]
     },
@@ -6117,45 +6113,6 @@
       }
     ],
     "menus": {
-      "view/title": [
-        {
-          "command": "markdown-kanban.sidebar.filter",
-          "when": "view == kanbanBoardsSidebar",
-          "group": "navigation@1"
-        },
-        {
-          "command": "markdown-kanban.sidebar.scanWorkspace",
-          "when": "view == kanbanBoardsSidebar",
-          "group": "navigation@2"
-        },
-        {
-          "command": "markdown-kanban.sidebar.addFile",
-          "when": "view == kanbanBoardsSidebar",
-          "group": "navigation@3"
-        },
-        {
-          "command": "markdown-kanban.sidebar.refresh",
-          "when": "view == kanbanBoardsSidebar",
-          "group": "navigation@4"
-        },
-        {
-          "command": "markdown-kanban.sidebar.clear",
-          "when": "view == kanbanBoardsSidebar",
-          "group": "overflow"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "markdown-kanban.sidebar.removeFile",
-          "when": "view == kanbanBoardsSidebar && viewItem == kanbanBoard",
-          "group": "inline"
-        },
-        {
-          "command": "markdown-kanban.dashboard.addBoard",
-          "when": "view == kanbanBoardsSidebar && viewItem == kanbanBoard",
-          "group": "dashboard"
-        }
-      ],
       "explorer/context": [
         {
           "command": "markdown-kanban.openKanban",

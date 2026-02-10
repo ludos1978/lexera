@@ -2,11 +2,41 @@
 
 This document catalogs ALL singleton instances, global state, and data instances (actual runtime instances, not just type definitions) in the Markdown Kanban Obsidian extension.
 
-**Last Updated:** 2025-11-04
+**Last Updated:** 2026-02-10
 
 ---
 
-## Recent Architecture Changes (Phase 1-6)
+## Recent Architecture Changes
+
+### Unified Boards Panel + Dashboard Refactor (2026-02-10)
+
+**SIDEBAR-1: BoardRegistryService Singleton**
+- **New File**: `/src/services/BoardRegistryService.ts`
+- **Instance**: `BoardRegistryService._instance` (singleton via `initialize(context)` / `getInstance()`)
+- **Data**: Board list (Map), custom order, lock state, validation cache, search entries, sort mode, file watchers
+- **Events**: `onBoardsChanged`, `onSearchesChanged`, `onSortModeChanged`
+- **Persistence**: workspaceState (`kanbanBoards.*`) + VS Code settings (`markdown-kanban.dashboard.boards`)
+- **Impact**: Single source of truth for board management, replaces data from KanbanSidebarProvider + KanbanDashboardProvider
+
+**SIDEBAR-2: KanbanBoardsProvider (WebviewViewProvider)**
+- **New File**: `/src/kanbanBoardsProvider.ts`
+- **Instance**: Created in `extension.ts`, registered as WebviewViewProvider for `kanbanBoardsSidebar`
+- **Replaces**: KanbanSidebarProvider (TreeDataProvider) + KanbanSearchProvider (WebviewView)
+- **Frontend**: `/src/html/boardsPanel.js` + `/src/html/boardsPanel.css`
+
+**SIDEBAR-3: Dashboard Provider Rewrite**
+- **Modified**: `/src/kanbanDashboardProvider.ts` — now results-only, subscribes to BoardRegistryService events
+- **Removed**: Board config management, file watchers, _loadConfig/_saveConfig
+- **Added**: Broken elements scanning, pinned search re-execution, sort mode toggle
+
+**DELETED**:
+- `/src/kanbanSidebarProvider.ts` — Replaced by BoardRegistryService + KanbanBoardsProvider
+- `/src/kanbanSearchProvider.ts` — Replaced by KanbanBoardsProvider
+- `/src/html/searchPanel.js` + `/src/html/searchPanel.css` — Replaced by boardsPanel.*
+
+---
+
+## Previous Architecture Changes (Phase 1-6)
 
 ### Phase 6: Constants Centralization & Logging Cleanup (2025-11-04)
 

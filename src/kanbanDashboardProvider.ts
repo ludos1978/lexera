@@ -1,10 +1,14 @@
 /**
  * KanbanDashboardProvider - WebviewViewProvider for the Dashboard sidebar panel
  *
- * Aggregates data from multiple kanban boards showing:
+ * Results-only panel showing:
  * - Upcoming items (tasks with temporal tags within configurable timeframe)
- * - All tags used per board
- * - Per-board configurable settings
+ * - Tagged items (tasks matching configured tag filters)
+ * - Broken elements (missing files, images, includes)
+ * - Pinned search results
+ *
+ * Board configuration is managed by BoardRegistryService + Boards Panel.
+ * This panel subscribes to registry events and displays results only.
  *
  * @module kanbanDashboardProvider
  */
@@ -15,19 +19,21 @@ import * as fs from 'fs';
 import { KanbanWebviewPanel } from './kanbanWebviewPanel';
 import { MarkdownKanbanParser } from './markdownParser';
 import {
-    DashboardConfig,
-    DashboardBoardConfig,
     DashboardData,
     UpcomingItem,
     BoardTagSummary,
-    TagInfo,
     TagSearchResult,
+    DashboardBrokenElement,
+    DashboardSearchResult,
+    DashboardSortMode,
     DashboardIncomingMessage
 } from './dashboard/DashboardTypes';
 import { DashboardScanner } from './dashboard/DashboardScanner';
+import { BoardRegistryService } from './services/BoardRegistryService';
+import { BoardContentScanner } from './services/BoardContentScanner';
 
 /**
- * KanbanDashboardProvider - Sidebar panel for kanban dashboard
+ * KanbanDashboardProvider - Sidebar panel for kanban dashboard (results only)
  */
 export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kanbanDashboard';
@@ -35,21 +41,32 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
     private _extensionContext: vscode.ExtensionContext;
-    private _config: DashboardConfig;
-    private _fileWatchers: Map<string, vscode.Disposable> = new Map();
+    private _disposables: vscode.Disposable[] = [];
 
     constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
         this._extensionUri = extensionUri;
         this._extensionContext = context;
-        this._config = this._loadConfig();
 
-        // Watch for configuration changes
-        vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('markdown-kanban.dashboard')) {
-                this._config = this._loadConfig();
+        // Subscribe to BoardRegistryService events for auto-refresh
+        const registry = BoardRegistryService.getInstance();
+
+        this._disposables.push(
+            registry.onBoardsChanged(() => {
                 this._refreshData();
-            }
-        });
+            })
+        );
+
+        this._disposables.push(
+            registry.onSearchesChanged(() => {
+                this._refreshData();
+            })
+        );
+
+        this._disposables.push(
+            registry.onSortModeChanged(() => {
+                this._refreshData();
+            })
+        );
     }
 
     /**
@@ -78,31 +95,38 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 case 'dashboardRefresh':
                     this._refreshData();
                     break;
-                case 'dashboardAddBoard':
-                    await this.addBoard(message.boardUri);
-                    break;
-                case 'dashboardRemoveBoard':
-                    await this.removeBoard(message.boardUri);
-                    break;
-                case 'dashboardUpdateConfig':
-                    await this._updateBoardConfig(
-                        message.boardUri,
-                        message.timeframe,
-                        message.tagFilters,
-                        message.enabled
-                    );
-                    break;
                 case 'dashboardNavigate':
                     await this._handleNavigate(message.boardUri, message.columnIndex, message.taskIndex);
                     break;
                 case 'dashboardTagSearch':
                     await this._handleTagSearch(message.tag);
                     break;
+                case 'dashboardNavigateToElement':
+                    await this._handleNavigateToElement(message.boardUri, message.columnId, message.taskId);
+                    break;
+                case 'dashboardSetSortMode':
+                    await BoardRegistryService.getInstance().setSortMode(message.sortMode);
+                    break;
+                // Board config messages are now handled by Boards Panel via BoardRegistryService
+                // Keep handlers for backward compat but route through registry
+                case 'dashboardAddBoard':
+                    await BoardRegistryService.getInstance().addBoard(vscode.Uri.parse(message.boardUri));
+                    break;
+                case 'dashboardRemoveBoard':
+                    await BoardRegistryService.getInstance().removeBoardByUri(message.boardUri);
+                    break;
+                case 'dashboardUpdateConfig':
+                    await BoardRegistryService.getInstance().updateBoardConfig(message.boardUri, {
+                        timeframe: message.timeframe,
+                        tagFilters: message.tagFilters,
+                        enabled: message.enabled
+                    });
+                    break;
                 case 'dashboardAddTagFilter':
-                    await this._addTagFilter(message.boardUri, message.tag);
+                    await BoardRegistryService.getInstance().addTagFilter(message.boardUri, message.tag);
                     break;
                 case 'dashboardRemoveTagFilter':
-                    await this._removeTagFilter(message.boardUri, message.tag);
+                    await BoardRegistryService.getInstance().removeTagFilter(message.boardUri, message.tag);
                     break;
             }
         });
@@ -113,169 +137,110 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 this._refreshData();
             }
         });
-
-        // Setup file watchers for existing boards
-        this._setupAllFileWatchers();
     }
 
     /**
-     * Add a board to the dashboard
-     */
-    public async addBoard(uri: string): Promise<void> {
-        // Check if already exists
-        if (this._config.boards.some(b => b.uri === uri)) {
-            return;
-        }
-
-        const newBoard: DashboardBoardConfig = {
-            uri,
-            timeframe: this._config.defaultTimeframe,
-            tagFilters: [],
-            enabled: true
-        };
-
-        this._config.boards.push(newBoard);
-        await this._saveConfig();
-        this._setupFileWatcher(uri);
-        this._refreshData();
-    }
-
-    /**
-     * Remove a board from the dashboard
-     */
-    public async removeBoard(uri: string): Promise<void> {
-        const index = this._config.boards.findIndex(b => b.uri === uri);
-        if (index === -1) return;
-
-        this._config.boards.splice(index, 1);
-        await this._saveConfig();
-
-        // Remove file watcher
-        this._fileWatchers.get(uri)?.dispose();
-        this._fileWatchers.delete(uri);
-
-        this._refreshData();
-    }
-
-    /**
-     * Update a board's configuration
-     */
-    private async _updateBoardConfig(
-        uri: string,
-        timeframe?: 3 | 7 | 30,
-        tagFilters?: string[],
-        enabled?: boolean
-    ): Promise<void> {
-        const board = this._config.boards.find(b => b.uri === uri);
-        if (!board) return;
-
-        if (timeframe !== undefined) board.timeframe = timeframe;
-        if (tagFilters !== undefined) board.tagFilters = tagFilters;
-        if (enabled !== undefined) board.enabled = enabled;
-
-        await this._saveConfig();
-        this._refreshData();
-    }
-
-    /**
-     * Load configuration from workspace settings
-     */
-    private _loadConfig(): DashboardConfig {
-        const config = vscode.workspace.getConfiguration('markdown-kanban');
-        return {
-            boards: config.get<DashboardBoardConfig[]>('dashboard.boards', []),
-            defaultTimeframe: config.get<3 | 7 | 30>('dashboard.defaultTimeframe', 7)
-        };
-    }
-
-    /**
-     * Save configuration to workspace settings
-     */
-    private async _saveConfig(): Promise<void> {
-        const config = vscode.workspace.getConfiguration('markdown-kanban');
-        await config.update('dashboard.boards', this._config.boards, vscode.ConfigurationTarget.Workspace);
-    }
-
-    /**
-     * Setup file watchers for all configured boards
-     */
-    private _setupAllFileWatchers(): void {
-        for (const board of this._config.boards) {
-            this._setupFileWatcher(board.uri);
-        }
-    }
-
-    /**
-     * Setup file watcher for a single board
-     */
-    private _setupFileWatcher(boardUri: string): void {
-        // Clean up existing watcher
-        this._fileWatchers.get(boardUri)?.dispose();
-
-        try {
-            const uri = vscode.Uri.parse(boardUri);
-            const pattern = new vscode.RelativePattern(
-                vscode.Uri.file(path.dirname(uri.fsPath)),
-                path.basename(uri.fsPath)
-            );
-
-            const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-
-            const disposable = vscode.Disposable.from(
-                watcher,
-                watcher.onDidChange(() => this._refreshData()),
-                watcher.onDidDelete(() => {
-                    // Optionally remove deleted boards
-                    console.log(`[Dashboard] Board file deleted: ${boardUri}`);
-                })
-            );
-
-            this._fileWatchers.set(boardUri, disposable);
-        } catch (error) {
-            console.error(`[Dashboard] Failed to setup watcher for ${boardUri}:`, error);
-        }
-    }
-
-    /**
-     * Refresh dashboard data
+     * Refresh dashboard data from BoardRegistryService
      */
     private async _refreshData(): Promise<void> {
         if (!this._view) return;
 
+        const registry = BoardRegistryService.getInstance();
+        const enabledBoards = registry.getEnabledBoards();
+        const sortMode = registry.sortMode;
+
         const upcomingItems: UpcomingItem[] = [];
         const boardSummaries: BoardTagSummary[] = [];
         const taggedItems: TagSearchResult[] = [];
+        const brokenElements: DashboardBrokenElement[] = [];
+        const searchResults: DashboardSearchResult[] = [];
 
-        for (const boardConfig of this._config.boards) {
-            if (!boardConfig.enabled) continue;
-
+        for (const registeredBoard of enabledBoards) {
             try {
-                const result = await this._scanBoard(boardConfig);
-                if (result) {
-                    upcomingItems.push(...result.upcomingItems);
-                    boardSummaries.push(result.summary);
+                const result = await this._scanBoard(registeredBoard.uri, registeredBoard.config.timeframe);
+                if (!result) continue;
 
-                    // Collect items matching configured tag filters
-                    console.log('[Dashboard] Board config:', boardConfig.uri, 'tagFilters:', boardConfig.tagFilters);
-                    console.log('[Dashboard] result.board exists:', result.board ? 'yes' : 'no');
-                    console.log('[Dashboard] result.board.columns:', result.board?.columns?.length || 0);
-                    if (boardConfig.tagFilters && boardConfig.tagFilters.length > 0 && result.board) {
-                        const boardName = path.basename(vscode.Uri.parse(boardConfig.uri).fsPath, '.md');
-                        for (const tagFilter of boardConfig.tagFilters) {
-                            console.log('[Dashboard] Searching for tag:', tagFilter, 'in board:', boardName);
-                            const matches = DashboardScanner.searchByTag(
-                                result.board,
-                                boardConfig.uri,
-                                boardName,
-                                tagFilter
-                            );
-                            console.log('[Dashboard] Found', matches.length, 'matches for', tagFilter);
-                            taggedItems.push(...matches);
-                        }
+                upcomingItems.push(...result.upcomingItems);
+                boardSummaries.push(result.summary);
+
+                // Collect items matching configured tag filters
+                const boardConfig = registeredBoard.config;
+                if (boardConfig.tagFilters && boardConfig.tagFilters.length > 0 && result.board) {
+                    const boardName = path.basename(vscode.Uri.parse(registeredBoard.uri).fsPath, '.md');
+                    for (const tagFilter of boardConfig.tagFilters) {
+                        const matches = DashboardScanner.searchByTag(
+                            result.board,
+                            registeredBoard.uri,
+                            boardName,
+                            tagFilter
+                        );
+                        taggedItems.push(...matches);
                     }
                 }
+
+                // Scan for broken elements
+                if (result.board) {
+                    const boardUri = vscode.Uri.parse(registeredBoard.uri);
+                    const basePath = path.dirname(boardUri.fsPath);
+                    const scanner = new BoardContentScanner(basePath);
+                    const broken = scanner.findBrokenElements(result.board);
+                    const boardName = path.basename(boardUri.fsPath, '.md');
+
+                    for (const elem of broken) {
+                        brokenElements.push({
+                            type: elem.type,
+                            path: elem.path,
+                            boardUri: registeredBoard.uri,
+                            boardName,
+                            columnTitle: elem.location.columnTitle,
+                            taskSummary: elem.location.taskSummary,
+                            columnId: elem.location.columnId,
+                            taskId: elem.location.taskId
+                        });
+                    }
+                }
+
             } catch (error) {
-                console.error(`[Dashboard] Error scanning board ${boardConfig.uri}:`, error);
+                console.error(`[Dashboard] Error scanning board ${registeredBoard.uri}:`, error);
+            }
+        }
+
+        // Execute pinned searches across all enabled boards
+        const pinnedSearches = registry.getPinnedSearches();
+        for (const search of pinnedSearches) {
+            for (const registeredBoard of enabledBoards) {
+                try {
+                    const boardUri = vscode.Uri.parse(registeredBoard.uri);
+                    if (!fs.existsSync(boardUri.fsPath)) continue;
+
+                    const content = fs.readFileSync(boardUri.fsPath, 'utf-8');
+                    const basePath = path.dirname(boardUri.fsPath);
+                    const parseResult = MarkdownKanbanParser.parseMarkdown(content, basePath, undefined, boardUri.fsPath);
+                    if (!parseResult?.board) continue;
+
+                    const scanner = new BoardContentScanner(basePath);
+                    const matches = scanner.searchText(parseResult.board, search.query, {
+                        useRegex: search.useRegex
+                    });
+
+                    const boardName = path.basename(boardUri.fsPath, '.md');
+                    for (const match of matches) {
+                        searchResults.push({
+                            query: search.query,
+                            pinned: true,
+                            boardUri: registeredBoard.uri,
+                            boardName,
+                            matchText: match.matchText,
+                            context: match.context,
+                            columnTitle: match.location.columnTitle,
+                            taskSummary: match.location.taskSummary,
+                            columnId: match.location.columnId,
+                            taskId: match.location.taskId
+                        });
+                    }
+                } catch (error) {
+                    console.error(`[Dashboard] Error executing pinned search "${search.query}" on ${registeredBoard.uri}:`, error);
+                }
             }
         }
 
@@ -298,11 +263,21 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             )
         );
 
+        // Build config from registry for backward compat with existing webview code
+        const allBoards = registry.getBoards();
+        const config = {
+            boards: allBoards.map(b => b.config),
+            defaultTimeframe: 7 as 3 | 7 | 30
+        };
+
         const data: DashboardData = {
             upcomingItems,
             boardSummaries,
-            config: this._config,
-            taggedItems: uniqueTaggedItems
+            config,
+            taggedItems: uniqueTaggedItems,
+            brokenElements,
+            searchResults,
+            sortMode
         };
 
         this._view.webview.postMessage({
@@ -314,20 +289,18 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     /**
      * Scan a single board for upcoming items and tags
      */
-    private async _scanBoard(boardConfig: DashboardBoardConfig): Promise<{
+    private async _scanBoard(boardUri: string, timeframe: 3 | 7 | 30): Promise<{
         upcomingItems: UpcomingItem[];
         summary: BoardTagSummary;
         board: import('./markdownParser').KanbanBoard;
     } | null> {
         try {
-            const uri = vscode.Uri.parse(boardConfig.uri);
+            const uri = vscode.Uri.parse(boardUri);
 
-            // Check if file exists
             if (!fs.existsSync(uri.fsPath)) {
                 return null;
             }
 
-            // Read and parse the file
             const content = fs.readFileSync(uri.fsPath, 'utf-8');
             const basePath = path.dirname(uri.fsPath);
             const parseResult = MarkdownKanbanParser.parseMarkdown(content, basePath, undefined, uri.fsPath);
@@ -337,15 +310,13 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             }
 
             const board = parseResult.board;
-
             const boardName = path.basename(uri.fsPath, '.md');
 
-            // Use DashboardScanner to extract data
             const scanResult = DashboardScanner.scanBoard(
                 board,
-                boardConfig.uri,
+                boardUri,
                 boardName,
-                boardConfig.timeframe
+                timeframe
             );
 
             return {
@@ -353,7 +324,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 board
             };
         } catch (error) {
-            console.error(`[Dashboard] Error scanning board ${boardConfig.uri}:`, error);
+            console.error(`[Dashboard] Error scanning board ${boardUri}:`, error);
             return null;
         }
     }
@@ -366,15 +337,12 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const uri = vscode.Uri.parse(boardUri);
             const document = await vscode.workspace.openTextDocument(uri);
 
-            // Open/focus the kanban panel
             KanbanWebviewPanel.createOrShow(this._extensionUri, this._extensionContext, document);
 
-            // Use document.uri.toString() to match how panels are stored in the map
             const panelKey = document.uri.toString();
             const panel = KanbanWebviewPanel.getPanelForDocument(panelKey);
 
             if (panel) {
-                // Use position-based scroll which looks up elements by index
                 panel.scrollToElementByIndex(columnIndex, taskIndex, true);
             } else {
                 console.error(`[Dashboard] Panel not found for document: ${panelKey}`);
@@ -385,18 +353,41 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Handle navigation to a specific element by column/task IDs
+     */
+    private async _handleNavigateToElement(boardUri: string, columnId: string, taskId?: string): Promise<void> {
+        try {
+            const uri = vscode.Uri.parse(boardUri);
+            const document = await vscode.workspace.openTextDocument(uri);
+
+            KanbanWebviewPanel.createOrShow(this._extensionUri, this._extensionContext, document);
+
+            const panelKey = document.uri.toString();
+            const panel = KanbanWebviewPanel.getPanelForDocument(panelKey);
+
+            if (panel) {
+                panel.scrollToElement(columnId, taskId, true);
+            } else {
+                console.error(`[Dashboard] Panel not found for document: ${panelKey}`);
+            }
+        } catch (error) {
+            console.error(`[Dashboard] Error navigating to element:`, error);
+        }
+    }
+
+    /**
      * Handle tag search request
      */
     private async _handleTagSearch(tag: string): Promise<void> {
         if (!this._view || !tag.trim()) return;
 
+        const registry = BoardRegistryService.getInstance();
+        const enabledBoards = registry.getEnabledBoards();
         const results: TagSearchResult[] = [];
 
-        for (const boardConfig of this._config.boards) {
-            if (!boardConfig.enabled) continue;
-
+        for (const registeredBoard of enabledBoards) {
             try {
-                const uri = vscode.Uri.parse(boardConfig.uri);
+                const uri = vscode.Uri.parse(registeredBoard.uri);
                 if (!fs.existsSync(uri.fsPath)) continue;
 
                 const content = fs.readFileSync(uri.fsPath, 'utf-8');
@@ -408,13 +399,13 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 const boardName = path.basename(uri.fsPath, '.md');
                 const boardResults = DashboardScanner.searchByTag(
                     parseResult.board,
-                    boardConfig.uri,
+                    registeredBoard.uri,
                     boardName,
                     tag
                 );
                 results.push(...boardResults);
             } catch (error) {
-                console.error(`[Dashboard] Error searching board ${boardConfig.uri}:`, error);
+                console.error(`[Dashboard] Error searching board ${registeredBoard.uri}:`, error);
             }
         }
 
@@ -426,57 +417,11 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Add a tag filter to a board
-     */
-    private async _addTagFilter(boardUri: string, tag: string): Promise<void> {
-        console.log('[Dashboard] _addTagFilter called:', boardUri, 'tag:', tag);
-        const boardIndex = this._config.boards.findIndex(b => b.uri === boardUri);
-        if (boardIndex === -1) {
-            console.log('[Dashboard] Board not found in config');
-            return;
-        }
-
-        const board = this._config.boards[boardIndex];
-        if (!board.tagFilters) {
-            board.tagFilters = [];
-        }
-
-        // Don't add duplicates
-        if (!board.tagFilters.includes(tag)) {
-            board.tagFilters.push(tag);
-            console.log('[Dashboard] Tag added, new filters:', board.tagFilters);
-            await this._saveConfig();
-            this._refreshData();
-        } else {
-            console.log('[Dashboard] Tag already exists');
-        }
-    }
-
-    /**
-     * Remove a tag filter from a board
-     */
-    private async _removeTagFilter(boardUri: string, tag: string): Promise<void> {
-        const boardIndex = this._config.boards.findIndex(b => b.uri === boardUri);
-        if (boardIndex === -1) return;
-
-        const board = this._config.boards[boardIndex];
-        if (!board.tagFilters) return;
-
-        const tagIndex = board.tagFilters.indexOf(tag);
-        if (tagIndex !== -1) {
-            board.tagFilters.splice(tagIndex, 1);
-            await this._saveConfig();
-            this._refreshData();
-        }
-    }
-
-    /**
      * Generate HTML for the sidebar webview
      */
     private _getHtmlForWebview(webview: vscode.Webview): string {
         const nonce = this._getNonce();
 
-        // Get URI for codicons CSS
         const codiconsUri = webview.asWebviewUri(
             vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css')
         );
@@ -516,6 +461,38 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         .dashboard-container {
             display: flex;
             flex-direction: column;
+        }
+
+        /* ===========================================
+           Sort Mode Toggle
+           =========================================== */
+        .sort-mode-bar {
+            display: flex;
+            gap: 4px;
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--vscode-panel-border, transparent);
+        }
+        .sort-mode-btn {
+            flex: 1;
+            height: 22px;
+            padding: 0 6px;
+            border: 1px solid var(--vscode-button-secondaryBackground);
+            background: transparent;
+            color: var(--vscode-foreground);
+            border-radius: 2px;
+            cursor: pointer;
+            font-size: 11px;
+            opacity: 0.7;
+        }
+        .sort-mode-btn:hover {
+            opacity: 1;
+            background: var(--vscode-list-hoverBackground);
+        }
+        .sort-mode-btn.active {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-color: var(--vscode-button-background);
+            opacity: 1;
         }
 
         /* ===========================================
@@ -675,63 +652,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         /* ===========================================
-           Board Configuration
-           =========================================== */
-        .board-config-item {
-            display: contents;
-        }
-        .board-config-body {
-            display: none;
-        }
-        .board-config-body.expanded {
-            display: contents;
-        }
-        .board-config-row .tree-contents {
-            display: flex;
-            margin-right: 8px;
-            gap: 2px;
-            padding: 2px 0;
-        }
-        .board-config-label {
-            color: var(--vscode-descriptionForeground);
-            font-size: var(--dashboard-font-size-small);
-            min-width: 70px;
-        }
-
-        /* ===========================================
-           Form Controls
-           =========================================== */
-        .timeframe-select,
-        .board-tag-input,
-        .tag-search-input {
-            font-size: var(--dashboard-font-size-small);
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border);
-            border-radius: 3px;
-            padding: 1px 2px;
-        }
-        .timeframe-select {
-            width: 100px;
-            background: var(--vscode-dropdown-background);
-            color: var(--vscode-dropdown-foreground);
-            border-color: var(--vscode-dropdown-border);
-        }
-        .board-tag-input {
-            flex: 1;
-            width: 100px;
-        }
-        .tag-search-input {
-            width: 100%;
-            padding: 6px 8px;
-            box-sizing: border-box;
-        }
-        .tag-search-input:focus {
-            outline: 1px solid var(--vscode-focusBorder);
-            border-color: var(--vscode-focusBorder);
-        }
-
-        /* ===========================================
            Tags & Badges
            =========================================== */
         .tag-cloud {
@@ -752,80 +672,77 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             background: var(--vscode-terminal-ansiYellow);
             color: var(--vscode-editor-foreground);
         }
-        .board-tag-filters {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-        }
-        .board-tag-filter {
-            padding: 1px 3px;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            border-radius: 3px;
-            display: inline-flex;
-            align-items: center;
-            font-size: 0.9em;
-            gap: 4px;
-        }
-        .board-tag-filter-remove {
-            cursor: pointer;
-            opacity: 0.7;
-        }
-        .board-tag-filter-remove:hover {
-            opacity: 1;
-        }
 
         /* ===========================================
            Buttons
            =========================================== */
-        .remove-btn,
         .refresh-btn {
             background: none;
             border: none;
             cursor: pointer;
             padding: 2px 4px;
-        }
-        .remove-btn {
-            color: var(--vscode-errorForeground);
-        }
-        .refresh-btn {
             color: var(--vscode-foreground);
             padding: 4px;
         }
-        .remove-btn:hover,
         .refresh-btn:hover {
             background: var(--vscode-list-hoverBackground);
+        }
+
+        /* ===========================================
+           Broken elements
+           =========================================== */
+        .broken-icon {
+            color: var(--vscode-errorForeground);
+            margin-right: 4px;
+            flex-shrink: 0;
+        }
+
+        /* ===========================================
+           Search results highlight
+           =========================================== */
+        .search-match-context {
+            font-size: var(--dashboard-font-size-small);
+            opacity: 0.7;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         /* ===========================================
            Messages & Hints
            =========================================== */
         .empty-message {
-            text-align: center;
-            padding: 20px;
+            text-align: left;
+            padding: 2px 0px 2px 32px;
+            font-size: 11px;
             color: var(--vscode-descriptionForeground);
-        }
-        .add-board-hint {
-            padding: 12px;
-            text-align: center;
-            color: var(--vscode-descriptionForeground);
-            margin-top: 8px;
-            border: 1px dashed var(--vscode-panel-border);
-            border-radius: 4px;
-        }
-        .tag-search-container {
-            margin-bottom: 8px;
-        }
-        .tag-search-header {
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 8px;
-            padding-bottom: 4px;
-            border-bottom: 1px solid var(--vscode-panel-border);
         }
     </style>
 </head>
 <body>
     <div class="dashboard-container">
+        <!-- Sort Mode Toggle -->
+        <div class="sort-mode-bar">
+            <button class="sort-mode-btn active" data-mode="boardFirst">Board First</button>
+            <button class="sort-mode-btn" data-mode="merged">Merged</button>
+            <button class="refresh-btn" id="refresh-btn" title="Refresh">↻</button>
+        </div>
+
+        <!-- Pinned Search Results Section -->
+        <div class="section">
+            <div class="tree-row section-header" data-section="search">
+                <div class="tree-indent"><div class="indent-guide"></div></div>
+                <div class="tree-twistie collapsible expanded"></div>
+                <div class="tree-contents">
+                    <h3>Search Results</h3>
+                </div>
+            </div>
+            <div class="section-content" id="search-content">
+                <div class="empty-message" id="search-empty">No pinned searches</div>
+                <div id="search-list"></div>
+            </div>
+        </div>
+
         <!-- Upcoming Items Section -->
         <div class="section">
             <div class="tree-row section-header" data-section="upcoming">
@@ -834,7 +751,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 <div class="tree-contents">
                     <h3>Upcoming</h3>
                 </div>
-                <button class="refresh-btn" id="refresh-btn" title="Refresh">↻</button>
             </div>
             <div class="section-content" id="upcoming-content">
                 <div class="empty-message" id="upcoming-empty">No upcoming items</div>
@@ -857,25 +773,23 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             </div>
         </div>
 
-        <!-- Hidden datalist for tag suggestions -->
-        <datalist id="tag-suggestions"></datalist>
-
-        <!-- Boards Configuration Section -->
+        <!-- Broken Elements Section -->
         <div class="section">
-            <div class="tree-row section-header" data-section="boards">
+            <div class="tree-row section-header" data-section="broken">
                 <div class="tree-indent"><div class="indent-guide"></div></div>
                 <div class="tree-twistie collapsible expanded"></div>
                 <div class="tree-contents">
-                    <h3>Boards</h3>
+                    <h3>Broken Elements</h3>
                 </div>
             </div>
-            <div class="section-content" id="boards-content">
-                <div id="boards-list"></div>
-                <div class="add-board-hint">
-                    Right-click .md → "Add to Dashboard"
-                </div>
+            <div class="section-content" id="broken-content">
+                <div class="empty-message" id="broken-empty">No broken elements</div>
+                <div id="broken-list"></div>
             </div>
         </div>
+
+        <!-- Hidden datalist for tag suggestions -->
+        <datalist id="tag-suggestions"></datalist>
     </div>
 
     <script nonce="${nonce}">
@@ -887,7 +801,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             // Setup section toggle handlers
             document.querySelectorAll('.section-header[data-section]').forEach(header => {
                 header.addEventListener('click', (e) => {
-                    // Don't toggle if clicking on a button inside
                     if (e.target.closest('button')) return;
                     const sectionId = header.getAttribute('data-section');
                     toggleSection(sectionId);
@@ -898,6 +811,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             document.getElementById('refresh-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
                 refresh();
+            });
+
+            // Setup sort mode buttons
+            document.querySelectorAll('.sort-mode-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const mode = btn.getAttribute('data-mode');
+                    setSortMode(mode);
+                });
             });
 
             vscode.postMessage({ type: 'dashboardReady' });
@@ -914,10 +835,19 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderDashboard() {
             if (!dashboardData) return;
+            updateSortModeButtons();
             renderUpcomingItems();
             renderTaggedItems();
+            renderBrokenElements();
+            renderSearchResults();
             populateTagSuggestions();
-            renderBoardsConfig();
+        }
+
+        function updateSortModeButtons() {
+            const mode = dashboardData.sortMode || 'boardFirst';
+            document.querySelectorAll('.sort-mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+            });
         }
 
         function renderUpcomingItems() {
@@ -932,8 +862,65 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             }
 
             emptyMsg.style.display = 'none';
+            const sortMode = dashboardData.sortMode || 'boardFirst';
 
-            // Group by date
+            if (sortMode === 'boardFirst') {
+                renderUpcomingBoardFirst(container, items);
+            } else {
+                renderUpcomingMerged(container, items);
+            }
+        }
+
+        function renderUpcomingBoardFirst(container, items) {
+            // Group by board, then by date within each board
+            const boards = {};
+            items.forEach(item => {
+                if (!boards[item.boardName]) boards[item.boardName] = [];
+                boards[item.boardName].push(item);
+            });
+
+            let html = '';
+            for (const [boardName, boardItems] of Object.entries(boards)) {
+                // Board group
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items">';
+
+                // Group by date within board
+                const dateGroups = {};
+                boardItems.forEach(item => {
+                    const dateKey = item.date ? formatDate(new Date(item.date), item.week, item.year, item.weekday) : 'No Date';
+                    if (!dateGroups[dateKey]) dateGroups[dateKey] = [];
+                    dateGroups[dateKey].push(item);
+                });
+
+                for (const [date, dateItems] of Object.entries(dateGroups)) {
+                    html += '<div class="tree-group">';
+                    html += '<div class="tree-row tree-group-toggle">';
+                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                    html += '<div class="tree-twistie collapsible expanded"></div>';
+                    html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(date) + '</span></div>';
+                    html += '</div>';
+                    html += '<div class="tree-group-items">';
+                    dateItems.forEach(item => {
+                        html += renderUpcomingItem(item, 4);
+                    });
+                    html += '</div></div>';
+                }
+
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachUpcomingListeners(container);
+        }
+
+        function renderUpcomingMerged(container, items) {
+            // Group by date only (merged across boards)
             const groups = {};
             items.forEach(item => {
                 const dateKey = item.date ? formatDate(new Date(item.date), item.week, item.year, item.weekday) : 'No Date';
@@ -943,34 +930,40 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [date, groupItems] of Object.entries(groups)) {
-                // Date group container
                 html += '<div class="tree-group">';
-                // Date group header - level 1 (foldable)
                 html += '<div class="tree-row date-group-header tree-group-toggle">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                 html += '<div class="tree-twistie collapsible expanded"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(date) + '</span></div>';
                 html += '</div>';
-                // Items container - level 2
                 html += '<div class="tree-group-items">';
                 groupItems.forEach(item => {
-                    const overdueClass = item.isOverdue ? ' overdue' : '';
-                    html += '<div class="tree-row upcoming-item' + overdueClass + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-                    html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
-                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                    html += '<div class="tree-twistie"></div>';
-                    html += '<div class="tree-contents"><div class="tree-label-2line">';
-                    html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
-                    html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
-                    html += '</div></div>';
-                    html += '</div>';
+                    html += renderUpcomingItem(item, 3);
                 });
                 html += '</div></div>';
             }
 
             container.innerHTML = html;
+            attachUpcomingListeners(container);
+        }
 
-            // Add click listeners to upcoming items
+        function renderUpcomingItem(item, indentLevel) {
+            const overdueClass = item.isOverdue ? ' overdue' : '';
+            let html = '<div class="tree-row upcoming-item' + overdueClass + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
+            html += '<div class="tree-indent">';
+            for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
+            html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
+            html += '</div></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function attachUpcomingListeners(container) {
             container.querySelectorAll('.upcoming-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
@@ -979,45 +972,25 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     navigateToTask(boardUri, columnIndex, taskIndex);
                 });
             });
-
-            // Add click listeners to toggle date groups
-            container.querySelectorAll('.tree-group-toggle').forEach(toggle => {
-                toggle.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const group = toggle.closest('.tree-group');
-                    const twistie = toggle.querySelector('.tree-twistie');
-                    const items = group.querySelector('.tree-group-items');
-                    if (twistie.classList.contains('expanded')) {
-                        twistie.classList.remove('expanded');
-                        items.style.display = 'none';
-                    } else {
-                        twistie.classList.add('expanded');
-                        items.style.display = 'block';
-                    }
-                });
-            });
+            attachToggleListeners(container);
         }
 
         function populateTagSuggestions() {
             const datalist = document.getElementById('tag-suggestions');
             const summaries = dashboardData.boardSummaries || [];
 
-            // Collect all unique tags from all boards (exclude temporal/time tags)
             const allTags = new Map();
             summaries.forEach(summary => {
                 (summary.tags || []).forEach(tag => {
-                    // Skip temporal tags (start with !)
                     if (tag.type === 'temporal') return;
                     if (!allTags.has(tag.name)) {
                         allTags.set(tag.name, tag);
                     } else {
-                        // Merge counts
                         allTags.get(tag.name).count += tag.count;
                     }
                 });
             });
 
-            // Sort by count descending and create options
             const sortedTags = Array.from(allTags.values()).sort((a, b) => b.count - a.count);
             datalist.innerHTML = sortedTags.map(tag =>
                 '<option value="' + escapeHtml(tag.name) + '">' + escapeHtml(tag.name) + ' (' + tag.count + ')</option>'
@@ -1030,10 +1003,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const emptyMsg = document.getElementById('tagged-empty');
             const items = dashboardData.taggedItems || [];
 
-            // Check if any boards have tag filters configured
             const hasTagFilters = (dashboardData.config?.boards || []).some(b => b.tagFilters && b.tagFilters.length > 0);
 
-            // Hide entire section if no tag filters configured
             if (!hasTagFilters) {
                 if (section) section.style.display = 'none';
                 return;
@@ -1049,8 +1020,58 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             }
 
             emptyMsg.style.display = 'none';
+            const sortMode = dashboardData.sortMode || 'boardFirst';
 
-            // Group by matched tag
+            if (sortMode === 'boardFirst') {
+                renderTaggedBoardFirst(container, items);
+            } else {
+                renderTaggedMerged(container, items);
+            }
+        }
+
+        function renderTaggedBoardFirst(container, items) {
+            // Group by board, then by tag
+            const boards = {};
+            items.forEach(item => {
+                if (!boards[item.boardName]) boards[item.boardName] = {};
+                const tagKey = item.matchedTag || 'Other';
+                if (!boards[item.boardName][tagKey]) boards[item.boardName][tagKey] = [];
+                boards[item.boardName][tagKey].push(item);
+            });
+
+            let html = '';
+            for (const [boardName, tagGroups] of Object.entries(boards)) {
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + '</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items">';
+
+                for (const [tag, tagItems] of Object.entries(tagGroups)) {
+                    html += '<div class="tree-group">';
+                    html += '<div class="tree-row tree-group-toggle">';
+                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                    html += '<div class="tree-twistie collapsible expanded"></div>';
+                    html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(tag) + ' (' + tagItems.length + ')</span></div>';
+                    html += '</div>';
+                    html += '<div class="tree-group-items">';
+                    tagItems.forEach(item => {
+                        html += renderTaggedItem(item, 4);
+                    });
+                    html += '</div></div>';
+                }
+
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachTaggedListeners(container);
+        }
+
+        function renderTaggedMerged(container, items) {
+            // Group by tag only
             const groups = {};
             items.forEach(item => {
                 const tagKey = item.matchedTag || 'Other';
@@ -1060,38 +1081,44 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
             let html = '';
             for (const [tag, groupItems] of Object.entries(groups)) {
-                // Tag group container
                 html += '<div class="tree-group">';
-                // Tag group header - level 1 (foldable)
                 html += '<div class="tree-row tree-group-toggle">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                 html += '<div class="tree-twistie collapsible expanded"></div>';
                 html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(tag) + ' (' + groupItems.length + ')</span></div>';
                 html += '</div>';
-                // Items container - level 2
                 html += '<div class="tree-group-items">';
                 groupItems.forEach(item => {
-                    const isColumnMatch = item.taskIndex === -1;
-                    html += '<div class="tree-row tag-search-result' + (isColumnMatch ? ' column-match' : '') + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-                    html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
-                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                    html += '<div class="tree-twistie"></div>';
-                    html += '<div class="tree-contents"><div class="tree-label-2line">';
-                    if (isColumnMatch) {
-                        html += '<span class="entry-title">[Col] ' + escapeHtml(item.columnTitle) + '</span>';
-                    } else {
-                        html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
-                    }
-                    html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
-                    html += '</div></div>';
-                    html += '</div>';
+                    html += renderTaggedItem(item, 3);
                 });
                 html += '</div></div>';
             }
 
             container.innerHTML = html;
+            attachTaggedListeners(container);
+        }
 
-            // Add click listeners for items
+        function renderTaggedItem(item, indentLevel) {
+            const isColumnMatch = item.taskIndex === -1;
+            let html = '<div class="tree-row tag-search-result' + (isColumnMatch ? ' column-match' : '') + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
+            html += '<div class="tree-indent">';
+            for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            if (isColumnMatch) {
+                html += '<span class="entry-title">[Col] ' + escapeHtml(item.columnTitle) + '</span>';
+            } else {
+                html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
+            }
+            html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
+            html += '</div></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function attachTaggedListeners(container) {
             container.querySelectorAll('.tag-search-result').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
@@ -1100,9 +1127,218 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     navigateToTask(boardUri, columnIndex, taskIndex);
                 });
             });
+            attachToggleListeners(container);
+        }
 
-            // Add click listeners to toggle tag groups
+        function renderBrokenElements() {
+            const section = document.querySelector('[data-section="broken"]')?.closest('.section');
+            const container = document.getElementById('broken-list');
+            const emptyMsg = document.getElementById('broken-empty');
+            const items = dashboardData.brokenElements || [];
+
+            if (items.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.style.display = 'block';
+                if (section) section.style.display = 'block';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+            const sortMode = dashboardData.sortMode || 'boardFirst';
+
+            if (sortMode === 'boardFirst') {
+                renderBrokenBoardFirst(container, items);
+            } else {
+                renderBrokenMerged(container, items);
+            }
+        }
+
+        function renderBrokenBoardFirst(container, items) {
+            const boards = {};
+            items.forEach(item => {
+                if (!boards[item.boardName]) boards[item.boardName] = [];
+                boards[item.boardName].push(item);
+            });
+
+            let html = '';
+            for (const [boardName, boardItems] of Object.entries(boards)) {
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items">';
+                boardItems.forEach(item => {
+                    html += renderBrokenItem(item, 3);
+                });
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachBrokenListeners(container);
+        }
+
+        function renderBrokenMerged(container, items) {
+            // Group by type
+            const groups = {};
+            items.forEach(item => {
+                if (!groups[item.type]) groups[item.type] = [];
+                groups[item.type].push(item);
+            });
+
+            let html = '';
+            for (const [type, groupItems] of Object.entries(groups)) {
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(type) + ' (' + groupItems.length + ')</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items">';
+                groupItems.forEach(item => {
+                    html += renderBrokenItem(item, 3);
+                });
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachBrokenListeners(container);
+        }
+
+        function renderBrokenItem(item, indentLevel) {
+            let html = '<div class="tree-row broken-item" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
+            if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
+            html += '>';
+            html += '<div class="tree-indent">';
+            for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            html += '<span class="entry-title"><span class="broken-icon">⚠</span>' + escapeHtml(item.type) + ': ' + escapeHtml(item.path) + '</span>';
+            html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle);
+            if (item.taskSummary) html += ' / ' + escapeHtml(item.taskSummary);
+            html += '</span>';
+            html += '</div></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function attachBrokenListeners(container) {
+            container.querySelectorAll('.broken-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const boardUri = item.getAttribute('data-board-uri');
+                    const columnId = item.getAttribute('data-column-id');
+                    const taskId = item.getAttribute('data-task-id') || undefined;
+                    navigateToElement(boardUri, columnId, taskId);
+                });
+            });
+            attachToggleListeners(container);
+        }
+
+        function renderSearchResults() {
+            const section = document.querySelector('[data-section="search"]')?.closest('.section');
+            const container = document.getElementById('search-list');
+            const emptyMsg = document.getElementById('search-empty');
+            const items = dashboardData.searchResults || [];
+
+            if (items.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.style.display = 'block';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+
+            // Group by query
+            const queries = {};
+            items.forEach(item => {
+                if (!queries[item.query]) queries[item.query] = [];
+                queries[item.query].push(item);
+            });
+
+            const sortMode = dashboardData.sortMode || 'boardFirst';
+            let html = '';
+
+            for (const [query, queryItems] of Object.entries(queries)) {
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible expanded"></div>';
+                html += '<div class="tree-contents"><span class="tree-label-name">"' + escapeHtml(query) + '" (' + queryItems.length + ')</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items">';
+
+                if (sortMode === 'boardFirst') {
+                    // Sub-group by board
+                    const boards = {};
+                    queryItems.forEach(item => {
+                        if (!boards[item.boardName]) boards[item.boardName] = [];
+                        boards[item.boardName].push(item);
+                    });
+
+                    for (const [boardName, boardItems] of Object.entries(boards)) {
+                        html += '<div class="tree-group">';
+                        html += '<div class="tree-row tree-group-toggle">';
+                        html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                        html += '<div class="tree-twistie collapsible expanded"></div>';
+                        html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                        html += '</div>';
+                        html += '<div class="tree-group-items">';
+                        boardItems.forEach(item => {
+                            html += renderSearchItem(item, 4);
+                        });
+                        html += '</div></div>';
+                    }
+                } else {
+                    queryItems.forEach(item => {
+                        html += renderSearchItem(item, 3);
+                    });
+                }
+
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachSearchListeners(container);
+        }
+
+        function renderSearchItem(item, indentLevel) {
+            let html = '<div class="tree-row search-result-item" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
+            if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
+            html += '>';
+            html += '<div class="tree-indent">';
+            for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            html += '<span class="entry-title">' + escapeHtml(item.taskSummary || item.columnTitle) + '</span>';
+            html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
+            html += '</div></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function attachSearchListeners(container) {
+            container.querySelectorAll('.search-result-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const boardUri = item.getAttribute('data-board-uri');
+                    const columnId = item.getAttribute('data-column-id');
+                    const taskId = item.getAttribute('data-task-id') || undefined;
+                    navigateToElement(boardUri, columnId, taskId);
+                });
+            });
+            attachToggleListeners(container);
+        }
+
+        // Shared toggle listener for tree groups
+        function attachToggleListeners(container) {
             container.querySelectorAll('.tree-group-toggle').forEach(toggle => {
+                // Avoid double-binding by checking for marker
+                if (toggle._toggleBound) return;
+                toggle._toggleBound = true;
                 toggle.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const group = toggle.closest('.tree-group');
@@ -1119,173 +1355,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             });
         }
 
-        function renderBoardsConfig() {
-            const container = document.getElementById('boards-list');
-            const hint = document.querySelector('.add-board-hint');
-            const boards = dashboardData.config?.boards || [];
-
-            // Show hint only when no boards configured
-            if (hint) {
-                hint.style.display = boards.length === 0 ? 'block' : 'none';
-            }
-
-            if (boards.length === 0) {
-                container.innerHTML = '<div class="empty-message">No boards added yet</div>';
-                return;
-            }
-
-            // Save expanded state before re-rendering
-            const expandedBoards = new Set();
-            container.querySelectorAll('.board-config-item').forEach(item => {
-                const body = item.querySelector('.board-config-body');
-                if (body && body.classList.contains('expanded')) {
-                    expandedBoards.add(item.getAttribute('data-board-uri'));
-                }
-            });
-
-            let html = '';
-            boards.forEach((board, index) => {
-                const name = board.uri.split('/').pop().replace('.md', '');
-                const tagFilters = board.tagFilters || [];
-
-                html += '<div class="board-config-item" data-board-uri="' + escapeHtml(board.uri) + '">';
-
-                // Header (clickable to expand/collapse) - tree row style
-                html += '<div class="tree-row board-config-header">';
-                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie collapsible board-config-toggle"></div>';
-                html += '<div class="tree-contents"><span class="tree-label-name" title="' + escapeHtml(board.uri) + '">' + escapeHtml(name) + '</span></div>';
-                html += '<button class="remove-btn" data-board-uri="' + escapeHtml(board.uri) + '" title="Remove">✕</button>';
-                html += '</div>';
-
-                // Body (expandable)
-                html += '<div class="board-config-body">';
-
-                // Timeframe row - use tree-row structure
-                html += '<div class="tree-row board-config-row">';
-                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie"></div>';
-                html += '<div class="tree-contents">';
-                html += '<span class="board-config-label">Timeframe:</span>';
-                html += '<select class="timeframe-select" data-board-uri="' + escapeHtml(board.uri) + '">';
-                html += '<option value="3"' + (board.timeframe === 3 ? ' selected' : '') + '>3 days</option>';
-                html += '<option value="7"' + (board.timeframe === 7 ? ' selected' : '') + '>7 days</option>';
-                html += '<option value="30"' + (board.timeframe === 30 ? ' selected' : '') + '>30 days</option>';
-                html += '</select>';
-                html += '</div>';
-                html += '</div>';
-
-                // Tag filters row - use tree-row structure
-                html += '<div class="tree-row board-config-row">';
-                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                html += '<div class="tree-twistie"></div>';
-                html += '<div class="tree-contents">';
-                html += '<span class="board-config-label">Tags:</span>';
-                html += '<input type="text" class="board-tag-input" data-board-uri="' + escapeHtml(board.uri) + '" ';
-                html += 'list="tag-suggestions" placeholder="Add tag...">';
-                html += '</div>';
-                html += '</div>';
-
-                // Current tag filters
-                if (tagFilters.length > 0) {
-                    html += '<div class="tree-row board-config-row">';
-                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
-                    html += '<div class="tree-twistie"></div>';
-                    html += '<div class="tree-contents">';
-                    html += '<div class="board-tag-filters">';
-                    tagFilters.forEach(tag => {
-                        html += '<span class="board-tag-filter" data-board-uri="' + escapeHtml(board.uri) + '" data-tag="' + escapeHtml(tag) + '">';
-                        html += escapeHtml(tag);
-                        html += '<span class="board-tag-filter-remove">✕</span>';
-                        html += '</span>';
-                    });
-                    html += '</div>';
-                    html += '</div>';
-                    html += '</div>';
-                }
-
-                html += '</div>';
-                html += '</div>';
-            });
-
-            container.innerHTML = html;
-
-            // Restore expanded state
-            container.querySelectorAll('.board-config-item').forEach(item => {
-                const uri = item.getAttribute('data-board-uri');
-                if (expandedBoards.has(uri)) {
-                    const toggle = item.querySelector('.board-config-toggle');
-                    const body = item.querySelector('.board-config-body');
-                    if (toggle) toggle.classList.add('expanded');
-                    if (body) body.classList.add('expanded');
-                }
-            });
-
-            // Add event listeners for board header toggle
-            container.querySelectorAll('.board-config-header').forEach(header => {
-                header.addEventListener('click', (e) => {
-                    if (e.target.closest('.remove-btn')) return;
-                    const item = header.closest('.board-config-item');
-                    const toggle = header.querySelector('.board-config-toggle');
-                    const body = item.querySelector('.board-config-body');
-                    toggle.classList.toggle('expanded');
-                    body.classList.toggle('expanded');
-                });
-            });
-
-            // Add event listeners for timeframe selects
-            container.querySelectorAll('.timeframe-select').forEach(select => {
-                select.addEventListener('change', () => {
-                    const boardUri = select.getAttribute('data-board-uri');
-                    updateTimeframe(boardUri, select.value);
-                });
-            });
-
-            // Add event listeners for remove buttons
-            container.querySelectorAll('.remove-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const boardUri = btn.getAttribute('data-board-uri');
-                    removeBoard(boardUri);
-                });
-            });
-
-            // Add event listeners for tag input
-            container.querySelectorAll('.board-tag-input').forEach(input => {
-                input.addEventListener('change', (e) => {
-                    const boardUri = input.getAttribute('data-board-uri');
-                    const tag = e.target.value.trim();
-                    if (tag) {
-                        addTagFilter(boardUri, tag);
-                        e.target.value = '';
-                    }
-                });
-                // Also handle Enter key for custom tags
-                input.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const boardUri = input.getAttribute('data-board-uri');
-                        const tag = e.target.value.trim();
-                        if (tag) {
-                            addTagFilter(boardUri, tag);
-                            e.target.value = '';
-                        }
-                    }
-                });
-            });
-
-            // Add event listeners for tag filter removal
-            container.querySelectorAll('.board-tag-filter-remove').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const filter = btn.closest('.board-tag-filter');
-                    const boardUri = filter.getAttribute('data-board-uri');
-                    const tag = filter.getAttribute('data-tag');
-                    removeTagFilter(boardUri, tag);
-                });
-            });
-        }
-
-
         function toggleSection(sectionId) {
             const header = document.querySelector('.section-header[data-section="' + sectionId + '"]');
             const twistie = header.querySelector('.tree-twistie');
@@ -1298,6 +1367,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ type: 'dashboardRefresh' });
         }
 
+        function setSortMode(mode) {
+            vscode.postMessage({ type: 'dashboardSetSortMode', sortMode: mode });
+        }
+
         function navigateToTask(boardUri, columnIndex, taskIndex) {
             vscode.postMessage({
                 type: 'dashboardNavigate',
@@ -1307,41 +1380,18 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             });
         }
 
-        function updateTimeframe(boardUri, timeframe) {
+        function navigateToElement(boardUri, columnId, taskId) {
             vscode.postMessage({
-                type: 'dashboardUpdateConfig',
+                type: 'dashboardNavigateToElement',
                 boardUri,
-                timeframe: parseInt(timeframe)
-            });
-        }
-
-        function removeBoard(boardUri) {
-            vscode.postMessage({
-                type: 'dashboardRemoveBoard',
-                boardUri
-            });
-        }
-
-        function addTagFilter(boardUri, tag) {
-            vscode.postMessage({
-                type: 'dashboardAddTagFilter',
-                boardUri,
-                tag
-            });
-        }
-
-        function removeTagFilter(boardUri, tag) {
-            vscode.postMessage({
-                type: 'dashboardRemoveTagFilter',
-                boardUri,
-                tag
+                columnId,
+                taskId
             });
         }
 
         function formatDate(date, week, year, weekday) {
             const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-            // If this is a week-based item with weekday, display as "KW X Fri"
             if (week !== undefined && week !== null) {
                 const currentYear = new Date().getFullYear();
                 let result = 'KW ' + week;
@@ -1397,9 +1447,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
      * Dispose of resources
      */
     public dispose(): void {
-        for (const watcher of this._fileWatchers.values()) {
-            watcher.dispose();
+        for (const d of this._disposables) {
+            d.dispose();
         }
-        this._fileWatchers.clear();
+        this._disposables = [];
     }
 }

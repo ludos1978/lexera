@@ -96,6 +96,59 @@ export interface BoardTagSummary {
 }
 
 /**
+ * Sort mode for dashboard results display
+ */
+export type DashboardSortMode = 'boardFirst' | 'merged';
+
+/**
+ * A broken element found during board scanning
+ */
+export interface DashboardBrokenElement {
+    /** Type of broken element */
+    type: 'image' | 'include' | 'link' | 'media' | 'diagram';
+    /** The path that is broken */
+    path: string;
+    /** Board file URI */
+    boardUri: string;
+    /** Board display name */
+    boardName: string;
+    /** Column title where element was found */
+    columnTitle: string;
+    /** Task summary if in a task */
+    taskSummary?: string;
+    /** Column ID for navigation */
+    columnId: string;
+    /** Task ID for navigation */
+    taskId?: string;
+}
+
+/**
+ * A search result from pinned search re-execution
+ */
+export interface DashboardSearchResult {
+    /** The search query */
+    query: string;
+    /** Whether the search is pinned */
+    pinned: boolean;
+    /** Board file URI */
+    boardUri: string;
+    /** Board display name */
+    boardName: string;
+    /** The matched text */
+    matchText: string;
+    /** Surrounding context */
+    context: string;
+    /** Column title where match was found */
+    columnTitle: string;
+    /** Task summary if in a task */
+    taskSummary?: string;
+    /** Column ID for navigation */
+    columnId: string;
+    /** Task ID for navigation */
+    taskId?: string;
+}
+
+/**
  * Complete dashboard data sent to the webview
  */
 export interface DashboardData {
@@ -107,6 +160,12 @@ export interface DashboardData {
     config: DashboardConfig;
     /** Items matching configured tag filters */
     taggedItems: TagSearchResult[];
+    /** Broken elements found across boards */
+    brokenElements: DashboardBrokenElement[];
+    /** Pinned search results */
+    searchResults: DashboardSearchResult[];
+    /** Current sort mode */
+    sortMode: DashboardSortMode;
 }
 
 // Message types for dashboard webview communication
@@ -209,6 +268,24 @@ export interface DashboardRemoveTagFilterMessage {
 }
 
 /**
+ * Request to set the sort mode
+ */
+export interface DashboardSetSortModeMessage {
+    type: 'dashboardSetSortMode';
+    sortMode: DashboardSortMode;
+}
+
+/**
+ * Request to navigate to a specific element by column/task IDs
+ */
+export interface DashboardNavigateToElementMessage {
+    type: 'dashboardNavigateToElement';
+    boardUri: string;
+    columnId: string;
+    taskId?: string;
+}
+
+/**
  * Tag search results from backend to webview
  */
 export interface DashboardTagSearchResultsMessage {
@@ -243,9 +320,11 @@ export type DashboardIncomingMessage =
     | DashboardRemoveBoardMessage
     | DashboardUpdateConfigMessage
     | DashboardNavigateMessage
+    | DashboardNavigateToElementMessage
     | DashboardTagSearchMessage
     | DashboardAddTagFilterMessage
-    | DashboardRemoveTagFilterMessage;
+    | DashboardRemoveTagFilterMessage
+    | DashboardSetSortModeMessage;
 
 /**
  * Union type for all dashboard messages from backend to webview
