@@ -1,3 +1,17 @@
+- [ ] i want to integrate the kanban boards view with the dashboard view and the search.
+  the kanban boards should integrate the boards fuctionality from the dashboard. the configuration which boards are checked for events and tags etc. should be configurable within the kanban boards. Also it should be lockable, so that no board can be added or removed without unlocking. it's locked by default. of course we remove the boards from the dashboard. also add broken embeds and links to the list of elements to that can be automatically checked for. the results should be listed in the dashboard as well.
+
+  the dashboard only lists the results of the boards tags and date results. all results that are shown in the dashboard should be sortable by 
+  - "board first", the results are listed below (such as tags etc.)
+  - "tags, dates", all results are merged from all boards and ordered by alphabet / date.
+
+  the search should be more compact. integrate the search field above the kanban boards at the top. the added boards are listed below. Show the search results in the dashboard as one line in the dashboard under a category "search" (or within the boards result if ordered so). It will keep up to 3 searches and it can be pinned, so the search stays in the dashboard. the pinned searches must also be stored with the workspace and restored when re-opened.
+  - the search can search the open board (default) or all boards in (kanban boards) or all currently opened boards. 
+  - the search can be words, regex etc.
+
+
+- [ ] if i open a folder link by alt+clicking it and it's available in the workspace explorer. if possible highlight the folder there instead of opening it externally. The default action open is to show in workspace explorer, if that fails it should be opened in the system explorer/finder.
+
 - [ ] i want to be able to drag eml (emails or links to emails) into the kanban!
 
 - [ ] verify the saving system with the file manager at it's core. what could be improved to make sure all data is consistent and can allways be saved. never ever might anything get lost by not being able to save, overwriting content without user intent or trough data inconsistencies. how can we be 100% sure nothing like this occurs? analyze deeply and all involved systems!!! the file manager ist the hub for the user to verify this and must be very clear in it's explanation of the file(s) states! make sure it is only as complex as absolutely required and remove complexity where you encounter it. Make sure the structure is simple to make debugging easy!
