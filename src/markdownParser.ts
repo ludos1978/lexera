@@ -5,7 +5,6 @@ import { sortColumnsByRow } from './utils/columnUtils';
 import { MarkdownFile } from './files/MarkdownFile'; // FOUNDATION-1: For path comparison
 import { createDisplayTitleWithPlaceholders } from './constants/IncludeConstants';
 import { PluginRegistry, IncludeContextLocation } from './plugins';
-import { splitTaskContent } from './utils/taskContent';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -544,16 +543,20 @@ export class MarkdownKanbanParser {
         markdown += `## ${column.title}\n`;
 
         for (const task of column.tasks) {
-          const { summaryLine, remainingContent } = splitTaskContent(task.content);
+          // Normalize and split content into lines
+          const normalizedContent = (task.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+          const contentLines = normalizedContent.split('\n');
+          const summaryLine = contentLines[0] || '';
 
           markdown += `- [ ] ${summaryLine}\n`;
 
           // Add remaining content with proper indentation
-          // CRITICAL: Always write remaining content - whitespace IS valid content
-          if (remainingContent) {
-            const descriptionLines = remainingContent.split('\n');
-            for (const descLine of descriptionLines) {
-              markdown += `  ${descLine}\n`;
+          // CRITICAL: Check if there are lines AFTER the summary (contentLines.length > 1)
+          // This preserves trailing newlines even when remainingContent would be empty string
+          // Example: "summary\n" has contentLines = ["summary", ""], length 2, so we write the empty line
+          if (contentLines.length > 1) {
+            for (let i = 1; i < contentLines.length; i++) {
+              markdown += `  ${contentLines[i]}\n`;
             }
           }
         }
