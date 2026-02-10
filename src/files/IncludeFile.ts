@@ -16,16 +16,12 @@ import { SaveOptions } from './SaveOptions';
 /**
  * Include file types supported by the plugin system
  */
-export type IncludeFileType = 'include-regular' | 'include-column' | 'include-task';
+export type IncludeFileType = 'include-column';
 
 /**
- * Unified class for all include files (column, task, regular includes).
+ * Include file class for column include files.
  *
- * This class consolidates all include file functionality into a single,
- * configurable class. The file type is specified at construction time
- * and determines behavior for parsing, generation, and validation.
- *
- * Replaces: ColumnIncludeFile, TaskIncludeFile, RegularIncludeFile
+ * This class handles column include files (presentation-style include content).
  *
  * Responsibilities:
  * - Manage include file paths (relative to parent)
@@ -118,15 +114,6 @@ export class IncludeFile extends MarkdownFile {
         }
 
         return resolvedPath;
-    }
-
-    // ============= CONTENT OPERATIONS (for include-task) =============
-
-    /**
-     * Set task description content (for include-task)
-     */
-    public setTaskDescription(description: string): void {
-        this.setContent(description, false);
     }
 
     // ============= FILE I/O =============
@@ -299,17 +286,7 @@ export class IncludeFile extends MarkdownFile {
      * Validate file content based on file type
      */
     public validate(content: string): { valid: boolean; errors?: string[] } {
-        switch (this._fileType) {
-            case 'include-column':
-                return this._validateColumnContent(content);
-            case 'include-task':
-                return this._validateTaskContent(content);
-            case 'include-regular':
-                // Regular includes accept any markdown content
-                return { valid: true };
-            default:
-                return { valid: true };
-        }
+        return this._validateColumnContent(content);
     }
 
     /**
@@ -329,24 +306,6 @@ export class IncludeFile extends MarkdownFile {
             // Empty slides are allowed (placeholders, separators, etc.)
         } catch (error) {
             errors.push(`Failed to parse presentation: ${error}`);
-        }
-
-        return {
-            valid: errors.length === 0,
-            errors: errors.length > 0 ? errors : undefined
-        };
-    }
-
-    /**
-     * Validate task include content (for include-task)
-     * Matches original TaskIncludeFile behavior - rejects empty content
-     */
-    private _validateTaskContent(content: string): { valid: boolean; errors?: string[] } {
-        const errors: string[] = [];
-
-        // Task includes should have some content (original behavior)
-        if (!content || content.trim().length === 0) {
-            errors.push('Task include cannot be empty');
         }
 
         return {

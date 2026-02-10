@@ -5,7 +5,7 @@ type MockMarkdownFile = {
     getPath: jest.Mock<string, []>;
     getRelativePath: jest.Mock<string, []>;
     getFileName: jest.Mock<string, []>;
-    getFileType: jest.Mock<'main' | 'include-column' | 'include-task' | 'include-regular', []>;
+    getFileType: jest.Mock<'main' | 'include-column', []>;
     getLastAccessErrorCode: jest.Mock<string | null, []>;
     probeWriteAccess: jest.Mock<Promise<string | null>, []>;
     exists: jest.Mock<boolean, []>;
@@ -30,7 +30,7 @@ function createMockFile(config: {
     path: string;
     relativePath?: string;
     fileName?: string;
-    fileType: 'main' | 'include-column' | 'include-task' | 'include-regular';
+    fileType: 'main' | 'include-column';
     exists?: boolean;
     hasUnsavedChanges?: boolean;
     hasExternalChanges?: boolean;
@@ -201,7 +201,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         expect(saveFile).not.toHaveBeenCalled();
     });
 
-    it('does not block save for external changes on include-regular files outside the save target', async () => {
+    it('does not block save for external changes on include files outside the save target', async () => {
         const mainFile = createMockFile({
             path: '/workspace/board.md',
             relativePath: 'board.md',
@@ -211,7 +211,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         const includeRegular = createMockFile({
             path: '/workspace/content/note.md',
             relativePath: 'content/note.md',
-            fileType: 'include-regular',
+            fileType: 'include-column',
             hasExternalChanges: true,
             hasUnsavedChanges: false
         });
@@ -296,7 +296,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         const includeFile = createMockFile({
             path: '/workspace/includes/item.md',
             relativePath: 'includes/item.md',
-            fileType: 'include-task',
+            fileType: 'include-column',
             hasExternalChanges: true,
             hasUnsavedChanges: false
         });
@@ -550,7 +550,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         const includeFile = createMockFile({
             path: '/workspace/includes/item.md',
             relativePath: 'includes/item.md',
-            fileType: 'include-task',
+            fileType: 'include-column',
             hasUnsavedChanges: true,
             hasExternalChanges: false
         });
@@ -596,7 +596,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         const includeFile = createMockFile({
             path: '/workspace/includes/item.md',
             relativePath: 'includes/item.md',
-            fileType: 'include-task',
+            fileType: 'include-column',
             hasUnsavedChanges: true,
             hasExternalChanges: false
         });
@@ -720,7 +720,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         const includeFile = createMockFile({
             path: '/workspace/includes/blocked.md',
             relativePath: 'includes/blocked.md',
-            fileType: 'include-task',
+            fileType: 'include-column',
             hasUnsavedChanges: true,
             hasExternalChanges: false
         });
@@ -756,7 +756,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         const includeFile = createMockFile({
             path: '/workspace/includes/blocked.md',
             relativePath: 'includes/blocked.md',
-            fileType: 'include-task',
+            fileType: 'include-column',
             hasUnsavedChanges: false,
             hasExternalChanges: false
         });
@@ -783,33 +783,35 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
         }));
     });
 
-    it('aborts file-scoped save for read-only include files', async () => {
+    it('allows file-scoped save for include files', async () => {
         const mainFile = createMockFile({
             path: '/workspace/board.md',
             relativePath: 'board.md',
             fileType: 'main'
         });
-        const includeRegular = createMockFile({
+        const includeFile = createMockFile({
             path: '/workspace/includes/reference.md',
             relativePath: 'includes/reference.md',
-            fileType: 'include-regular',
+            fileType: 'include-column',
             hasUnsavedChanges: true
         });
 
         const { service, saveFile } = createServiceHarness({
             mainFile,
-            includeFiles: [includeRegular]
+            includeFiles: [includeFile]
         });
 
         const result = await service.saveUnified({
-            scope: { filePath: includeRegular.getRelativePath() },
+            scope: { filePath: includeFile.getRelativePath() },
             updateUi: false,
             updateBaselines: false
         });
 
-        expect(result.success).toBe(false);
-        expect(result.aborted).toBe(true);
-        expect(result.error).toContain('read-only include file');
-        expect(saveFile).not.toHaveBeenCalled();
+        expect(result.success).toBe(true);
+        expect(result.aborted).toBe(false);
+        expect(saveFile).toHaveBeenCalledTimes(1);
+        expect(saveFile).toHaveBeenCalledWith(includeFile, undefined, expect.objectContaining({
+            source: 'ui-edit'
+        }));
     });
 });

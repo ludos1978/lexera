@@ -540,8 +540,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      * Process:
      * 1. Get main file's parsed board
      * 2. For each column with includeFiles, load tasks from IncludeFile (type=include-column)
-     * 3. For each task with includeFiles, load description from IncludeFile (type=include-task)
-     * 4. Return complete board
+     * 3. Return complete board
      *
      * @param existingBoard Optional existing board to preserve column/task IDs during regeneration
      * @returns KanbanBoard with all include content loaded, or undefined if main file not ready
@@ -621,53 +620,6 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                         (column as any).includeError = true;
                     }
                     // else: file exists but not registered - error already cleared above, content loads later
-                }
-            }
-
-            // Step 4: Load content for task includes (if any)
-            for (const task of column.tasks) {
-                if (task.includeFiles && task.includeFiles.length > 0) {
-
-                    for (const relativePath of task.includeFiles) {
-                        const decodedPath = safeDecodeURIComponent(relativePath);
-                        const file = this.getByRelativePath(decodedPath)
-                            || this.get(decodedPath);
-
-                        // CRITICAL: Check disk existence FIRST, regardless of registry status
-                        // This handles the case where user fixes an include path - the new file
-                        // exists on disk but isn't registered yet
-                        const absolutePath = file
-                            ? file.getPath()
-                            : path.resolve(path.dirname(mainFile.getPath()), decodedPath);
-                        const fileExistsOnDisk = fs.existsSync(absolutePath);
-
-                        if (fileExistsOnDisk) {
-                            // File exists on disk - clear error even if not registered yet
-                            // Content will be loaded when IncludeLoadingProcessor runs
-                            (task as any).includeError = false;
-                        }
-
-                        // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
-                        if (file && file.getFileType() === 'main') {
-                            console.error(`[MarkdownFileRegistry] generateBoard() BUG: Task include path resolved to MainKanbanFile: ${relativePath}`);
-                            (task as any).includeError = true;
-                            continue;
-                        }
-
-                        if (file && fileExistsOnDisk) {
-                            // Load unified task content from task include file
-                            const includeFile = file as IncludeFile;
-                            task.content = includeFile.getContent();
-                            (task as any).includeError = false;
-                        } else if (!fileExistsOnDisk) {
-                            console.warn(`[MarkdownFileRegistry] generateBoard() - Task include ERROR: ${relativePath}`);
-                            // Error details shown on hover via include badge
-                            task.content = '';
-                            // Mark task as having include error
-                            (task as any).includeError = true;
-                        }
-                        // else: file exists but not registered - error already cleared above
-                    }
                 }
             }
         }
@@ -788,12 +740,12 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      * Ensure an include file is registered (lazy registration)
      *
      * @param relativePath - Relative path to the include file
-     * @param type - Include type ('regular', 'column', 'task')
+     * @param type - Include type ('column')
      * @param fileFactory - FileFactory instance for creating files
      */
     public ensureIncludeFileRegistered(
         relativePath: string,
-        type: 'regular' | 'column' | 'task',
+        _type: 'column',
         fileFactory: IFileFactory
     ): void {
         // Convert absolute path to relative and normalize ./ prefix
@@ -815,7 +767,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
 
         // Schedule actual registration for next tick (lazy loading)
         setTimeout(() => {
-            this._performLazyRegistration(relativePath, type, fileFactory);
+            this._performLazyRegistration(relativePath, _type, fileFactory);
         }, 0);
     }
 
@@ -824,7 +776,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      */
     private async _performLazyRegistration(
         relativePath: string,
-        type: 'regular' | 'column' | 'task',
+        _type: 'column',
         fileFactory: IFileFactory
     ): Promise<void> {
         try {
@@ -840,9 +792,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
             }
 
             // Map type to IncludeFileType
-            const fileType: IncludeFileType = type === 'column' ? 'include-column'
-                : type === 'task' ? 'include-task'
-                : 'include-regular';
+            const fileType: IncludeFileType = 'include-column';
 
             // Create and register (cast to IncludeFile for full type support)
             const includeFile = fileFactory.createIncludeDirect(relativePath, mainFile, fileType) as IncludeFile;

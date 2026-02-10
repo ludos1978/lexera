@@ -178,6 +178,10 @@ window._markIframeUrlBlocked = function(url) {
  * Called after board rendering or single column rendering completes.
  */
 window._checkRenderedIframes = function() {
+    if (typeof window._hydrateInlineFileEmbeds === 'function') {
+        window._hydrateInlineFileEmbeds();
+    }
+
     const iframes = document.querySelectorAll(_iframeSelector);
     const urlPerOrigin = {};
 
@@ -510,6 +514,7 @@ const INLINE_FILE_IFRAME_EXTENSIONS = new Set([
     '.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
     '.xml', '.html', '.htm'
 ]);
+const INLINE_MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
 function normalizeInlineFilePath(src) {
     if (!src || typeof src !== 'string') {
@@ -546,6 +551,156 @@ function getInlineFileIframeLabel(src, alt, extension) {
     return extension ? extension.replace('.', '').toUpperCase() : 'file';
 }
 
+function getInlineFileBaseHref(sourceUrl) {
+    if (!sourceUrl || typeof sourceUrl !== 'string') {
+        return '';
+    }
+
+    try {
+        const parsed = new URL(sourceUrl);
+        const pathName = parsed.pathname || '';
+        const lastSlash = pathName.lastIndexOf('/');
+        parsed.pathname = lastSlash >= 0 ? pathName.slice(0, lastSlash + 1) : '/';
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString();
+    } catch (error) {
+        return '';
+    }
+}
+
+function renderInlineFileBody(content, extension) {
+    const safeContent = content || '';
+
+    if (INLINE_MARKDOWN_EXTENSIONS.has((extension || '').toLowerCase()) && typeof window.markdownit === 'function') {
+        try {
+            const md = window.markdownit({
+                html: false,
+                linkify: true,
+                breaks: true,
+                typographer: false
+            });
+            return `<div class="inline-file-markdown">${md.render(safeContent)}</div>`;
+        } catch (error) {
+            // Fall through to plain text rendering.
+        }
+    }
+
+    return `<pre class="inline-file-text">${escapeHtml(safeContent)}</pre>`;
+}
+
+function buildInlineFileSrcdoc(content, extension, sourceUrl) {
+    const baseHref = getInlineFileBaseHref(sourceUrl);
+    const baseTag = baseHref ? `<base href="${escapeHtml(baseHref)}">` : '';
+    const bodyHtml = renderInlineFileBody(content, extension);
+
+    return `<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    ${baseTag}
+    <style>
+        :root { color-scheme: light dark; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            color: inherit;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        body { padding: 10px 12px; }
+        .inline-file-text {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .inline-file-markdown {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .inline-file-markdown > :first-child { margin-top: 0; }
+        .inline-file-markdown > :last-child { margin-bottom: 0; }
+        .inline-file-markdown img,
+        .inline-file-markdown video,
+        .inline-file-markdown iframe {
+            max-width: 100%;
+            height: auto;
+        }
+        .inline-file-error {
+            color: #c62828;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+        }
+    </style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+}
+
+function buildInlineFileErrorSrcdoc(sourceUrl, message) {
+    const safeMessage = escapeHtml(message || 'Failed to load embedded file.');
+    const safeSource = escapeHtml(sourceUrl || '');
+    return `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+    <pre class="inline-file-error">Error loading embed
+${safeMessage}
+
+Source: ${safeSource}</pre>
+</body>
+</html>`;
+}
+
+async function hydrateInlineFileIframe(iframeEl) {
+    if (!iframeEl || iframeEl.dataset.inlineLoaded === '1' || iframeEl.dataset.inlineLoading === '1') {
+        return;
+    }
+
+    const sourceUrl = iframeEl.dataset.inlineSource || '';
+    const extension = (iframeEl.dataset.inlineExtension || '').toLowerCase();
+    if (!sourceUrl) {
+        return;
+    }
+
+    iframeEl.dataset.inlineLoading = '1';
+
+    try {
+        const response = await fetch(sourceUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const fileContent = await response.text();
+
+        iframeEl.srcdoc = buildInlineFileSrcdoc(fileContent, extension, sourceUrl);
+        iframeEl.dataset.inlineLoaded = '1';
+    } catch (error) {
+        const errorMessage = error && typeof error === 'object' && 'message' in error
+            ? String(error.message)
+            : 'Unknown error';
+        iframeEl.srcdoc = buildInlineFileErrorSrcdoc(sourceUrl, errorMessage);
+        iframeEl.dataset.inlineLoaded = '1';
+    } finally {
+        delete iframeEl.dataset.inlineLoading;
+    }
+}
+
+window._hydrateInlineFileEmbeds = function(root) {
+    const scope = root instanceof Element ? root : document;
+    const iframes = scope.querySelectorAll('.inline-file-embed-frame-wrapper iframe[data-inline-source]');
+    iframes.forEach((iframeEl) => {
+        void hydrateInlineFileIframe(iframeEl);
+    });
+};
+
 function renderInlineFileIframe(url, originalSrc, alt, title, extension) {
     const escapedUrl = escapeHtml(url);
     const escapedOriginalSrc = escapeHtml(originalSrc);
@@ -558,7 +713,7 @@ function renderInlineFileIframe(url, originalSrc, alt, title, extension) {
             <span class="inline-file-embed-label">${escapeHtml(label)}</span>
         </div>
         <div class="inline-file-embed-frame-wrapper">
-            <iframe src="${escapedUrl}" loading="lazy" sandbox="allow-same-origin"></iframe>
+            <iframe src="about:blank" data-inline-source="${escapedUrl}" data-inline-extension="${escapeHtml((extension || '').toLowerCase())}" loading="lazy" sandbox="allow-same-origin"></iframe>
         </div>
         ${captionHtml}
     </div>`;

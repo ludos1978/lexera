@@ -25,6 +25,9 @@ Behavior goals:
 - Task include mode and regular body include rendering paths are disabled.
 - Non-column include use-cases are now expected via `![](...)` embeds.
 - Inline embed extension added for text-like files (including markdown) via scrollable iframe containers with max height.
+- Legacy include-task/include-regular file types were removed from backend contracts (`MarkdownFile`, `IncludeFileType`, conflict/message payload unions).
+- Legacy task/regular include import plugins and frontend markdown-it include bridge were deleted.
+- Include command/message handling was reduced to column-include operations only.
 
 ### Validation
 - `npm run check-types` passes.
@@ -34,9 +37,7 @@ Behavior goals:
 ### Remaining Optional Cleanup (Non-blocking for functional migration)
 - Internal naming still includes legacy "title" terms in some metadata-only contexts:
   - include-mode metadata fields (`originalTitle`, `displayTitle`)
-- Legacy include-task/include-regular type definitions still exist in some backend interfaces for compatibility,
-  but no new task/body include flow is exposed through parser/UI commands.
-- These are naming semantics, not split task data model fields.
+- Some UI variable names still mention historical task-include wording (`currentTaskIncludeContext`), but behavior is now column-include/embed only.
 
 ## Target Model
 

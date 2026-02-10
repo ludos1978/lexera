@@ -7,10 +7,8 @@
  * Key Classes:
  * - MarkdownFile: Abstract base class with state, operations, and change detection
  * - MainKanbanFile: The main kanban.md file
- * - IncludeFile: Unified class for all include file types
+ * - IncludeFile: Include file class for column includes
  *   - fileType='include-column': Column includes (presentation format)
- *   - fileType='include-task': Task includes (markdown description)
- *   - fileType='include-regular': Regular includes (inline markdown)
  * - MarkdownFileRegistry: Central registry for file management
  * - FileFactory: Factory for creating file instances (uses plugin system)
  *

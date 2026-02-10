@@ -3,7 +3,7 @@ import { DebugCommands } from '../../commands/DebugCommands';
 type MockFile = {
     getPath: () => string;
     getRelativePath: () => string;
-    getFileType: () => 'main' | 'include-column' | 'include-task' | 'include-regular';
+    getFileType: () => 'main' | 'include-column';
     getLastAccessErrorCode: () => string | null;
     isDirtyInEditor: () => boolean;
     hasAnyUnsavedChanges: () => boolean;
@@ -23,7 +23,7 @@ function createMockFile(
     return {
         getPath: () => filePath,
         getRelativePath: () => relativePath,
-        getFileType: () => 'include-task',
+        getFileType: () => 'include-column',
         getLastAccessErrorCode: () => null,
         isDirtyInEditor: () => false,
         hasAnyUnsavedChanges: () => false,
@@ -216,15 +216,13 @@ describe('DebugCommands applyBatchFileActions', () => {
         expect(payload.results[0].error).toContain('without backup');
     });
 
-    it('blocks overwrite actions for read-only include files', async () => {
+    it('allows overwrite actions for include files', async () => {
         const commands = new DebugCommands() as any;
         const postMessage = jest.fn();
         const saveFile = jest.fn(async () => undefined);
-        const readOnlyInclude = createMockFile('/tmp/regular-include.md', {
-            getFileType: () => 'include-regular'
-        });
+        const includeFile = createMockFile('/tmp/include.md');
         const registry = createMockRegistry({
-            '/tmp/regular-include.md': readOnlyInclude
+            '/tmp/include.md': includeFile
         });
 
         commands.getFileRegistry = () => registry;
@@ -237,16 +235,15 @@ describe('DebugCommands applyBatchFileActions', () => {
         await commands.handleApplyBatchFileActions({
             type: 'applyBatchFileActions',
             snapshotToken: 'snapshot-1',
-            actions: [{ path: '/tmp/regular-include.md', action: 'overwrite' }]
+            actions: [{ path: '/tmp/include.md', action: 'overwrite' }]
         }, {});
 
-        expect(saveFile).not.toHaveBeenCalled();
+        expect(saveFile).toHaveBeenCalledTimes(1);
         const payload = postMessage.mock.calls[0][0];
         expect(payload.type).toBe('batchFileActionsResult');
-        expect(payload.success).toBe(false);
-        expect(payload.failedCount).toBe(1);
-        expect(payload.results[0].status).toBe('failed');
-        expect(payload.results[0].error).toContain('read-only include file');
+        expect(payload.success).toBe(true);
+        expect(payload.appliedCount).toBe(1);
+        expect(payload.results[0].status).toBe('applied');
     });
 
     it('blocks batch actions when file access errors indicate permission issues', async () => {

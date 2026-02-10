@@ -24,7 +24,7 @@ function createRegistry(files: SnapshotFile[]): MarkdownFileRegistry {
 function createFile(path: string, overrides: Partial<SnapshotFile> = {}): SnapshotFile {
     const defaults: SnapshotFile = {
         getPath: () => path,
-        getFileType: () => 'include-task',
+        getFileType: () => 'include-column',
         exists: () => true,
         getLastAccessErrorCode: () => null,
         hasExternalChanges: () => false,

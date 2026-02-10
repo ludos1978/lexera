@@ -136,7 +136,17 @@ export class IncludeLoadingProcessor {
         if (target.type === 'column') {
             await this._loadColumnContent(target.column, includeFiles, preloadedContent, newTitle, mainFile, fileFactory, context);
         } else {
-            await this._loadTaskContent(target.column, target.task, includeFiles[0], newTitle, mainFile, fileFactory, context);
+            // Task includes were removed. Keep task content local and clear include flags.
+            const task = target.task;
+            task.includeMode = false;
+            task.includeFiles = [];
+            task.includeError = false;
+            if (newTitle !== undefined) {
+                const currentBody = splitTaskContent(task.content || '').remainingContent;
+                task.content = mergeLegacyTaskContent(newTitle, currentBody);
+                task.originalTitle = newTitle;
+                task.displayTitle = newTitle;
+            }
         }
     }
 
@@ -276,118 +286,6 @@ export class IncludeLoadingProcessor {
 
         column.tasks = tasks;
         logger.debug(`[IncludeLoadingProcessor] _loadColumnContent finished: columnId=${column.id}, includeError=${column.includeError}, taskCount=${tasks.length}, hasErrorTask=${tasks.some(t => t.includeError)}`);
-    }
-
-    /**
-     * Load task include content - ALWAYS reloads from disk
-     */
-    private async _loadTaskContent(
-        column: KanbanColumn,
-        task: KanbanTask,
-        relativePath: string,
-        newTitle: string | undefined,
-        mainFile: MainKanbanFile,
-        fileFactory: FileFactory,
-        context: ChangeContext
-    ): Promise<void> {
-        // Ensure file is registered
-        this._fileRegistry.ensureIncludeRegistered(
-            relativePath,
-            'include-task',
-            fileFactory,
-            mainFile,
-            { columnId: column.id, taskId: task.id, taskSummary: splitTaskContent(task.content).summaryLine }
-        );
-
-        const file = this._fileRegistry.getByRelativePath(relativePath);
-
-        // Handle file not found - still mark as include mode but with error
-        // Error details shown on hover via include badge
-        if (!file) {
-            console.error(`[IncludeLoadingProcessor] File not found after registration: ${relativePath}`);
-            task.includeMode = true;
-            task.includeFiles = [relativePath];
-            task.includeError = true;
-            task.content = '';
-            if (newTitle !== undefined) {
-                task.originalTitle = newTitle;
-            }
-            return;
-        }
-
-        // CRITICAL DEFENSE: Verify this is actually an IncludeFile, not MainKanbanFile
-        // This prevents cache corruption if the registry returns the wrong file type
-        if (file.getFileType() === 'main') {
-            console.error(`[IncludeLoadingProcessor] BUG: Registry returned MainKanbanFile for include path: ${relativePath}`);
-            task.includeMode = true;
-            task.includeFiles = [relativePath];
-            task.includeError = true;
-            task.content = '';
-            if (newTitle !== undefined) {
-                task.originalTitle = newTitle;
-            }
-            return;
-        }
-
-        // ALWAYS reload from disk
-        await file.reload();
-
-        // CRITICAL: Fresh disk check - don't trust cached _exists flag
-        // The _exists flag can be stale if _readFromDiskWithVerification() short-circuited
-        const absolutePath = file.getPath();
-        if (!fs.existsSync(absolutePath)) {
-            file.setExists(false);  // Update cached state
-            console.warn(`[IncludeLoadingProcessor] File does not exist: ${relativePath}`);
-            task.includeMode = true;
-            task.includeFiles = [relativePath];
-            task.includeError = true;
-            task.content = '';
-            if (newTitle !== undefined) {
-                task.originalTitle = newTitle;
-            }
-            return;
-        }
-
-        const fullFileContent = file.getContent();
-
-        // THEN: Check for empty content (file exists but is empty)
-        if (!fullFileContent || fullFileContent.length === 0) {
-            console.warn(`[IncludeLoadingProcessor] File is empty: ${relativePath}`);
-            task.includeMode = true;
-            task.includeFiles = [relativePath];
-            task.includeError = true;
-            task.content = '';
-            if (newTitle !== undefined) {
-                task.originalTitle = newTitle;
-            }
-            return;
-        }
-
-        // Update task properties - success case
-        task.includeMode = true;
-        task.includeFiles = [relativePath];
-        task.includeError = false;  // Explicitly clear error on success
-        task.displayTitle = `# include in ${relativePath}`;
-        task.content = fullFileContent;
-
-        // Set includeContext for dynamic image path resolution in the frontend
-        // This allows images in included files to resolve paths relative to the include file
-        const mainFilePath = mainFile.getPath();
-        task.includeContext = {
-            includeFilePath: absolutePath,
-            includeDir: path.dirname(absolutePath),
-            mainFilePath: mainFilePath,
-            mainDir: path.dirname(mainFilePath)
-        };
-        logger.debug(`[IncludeLoadingProcessor] Set task includeContext: taskId=${task.id}, includeDir=${task.includeContext.includeDir}, absolutePath=${absolutePath}`);
-
-        if (newTitle !== undefined) {
-            task.originalTitle = newTitle;
-        }
-
-        // Sync file baseline
-        file.setContent(fullFileContent, true);
-        context.result.updatedFiles.push(relativePath);
     }
 
     // ============= PATH NORMALIZATION HELPERS =============

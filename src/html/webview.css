@@ -8301,16 +8301,8 @@ figcaption {
 }
 
 /* Specific include type styles */
-.include-type-label.include-regular, .include-type-label.regular {
-    background: #4CAF50 !important;
-    color: white !important;
-}
 .include-type-label.include-column, .include-type-label.column {
     background: #2196F3 !important;
-    color: white !important;
-}
-.include-type-label.include-task, .include-type-label.task {
-    background: #FF9800 !important;
     color: white !important;
 }
 

@@ -59,7 +59,7 @@ export interface IMainKanbanFile {
  * Include file type union
  * Matches the type in IncludeFile.ts
  */
-export type IncludeFileType = 'include-regular' | 'include-column' | 'include-task';
+export type IncludeFileType = 'include-column';
 
 /**
  * Interface for IncludeFile

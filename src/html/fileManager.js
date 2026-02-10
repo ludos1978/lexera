@@ -182,7 +182,7 @@ const ALL_ACTIONS = [
     { value: 'skip', label: 'Skip' }
 ];
 
-const READ_ONLY_INCLUDE_TYPES = new Set(['include-regular', 'regular']);
+const READ_ONLY_INCLUDE_TYPES = new Set();
 const INACCESSIBLE_ACCESS_CODES = new Set(['EACCES', 'EPERM', 'EROFS']);
 
 function resolveUnsavedFlags(file) {
@@ -1138,15 +1138,9 @@ function updateDiffCheckboxStates() {
 
 function getIncludeTypeShortLabel(fileType) {
     switch (fileType) {
-        case 'include-regular':
-        case 'regular':
-            return 'include';
         case 'include-column':
         case 'column':
             return 'colinc';
-        case 'include-task':
-        case 'task':
-            return 'taskinc';
         default:
             return 'include';
     }

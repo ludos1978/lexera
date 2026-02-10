@@ -1707,7 +1707,7 @@ class TagUtils {
 function generateIncludeLinkWithMenu(filePath, displayText, clickHandler, isBroken = false) {
     const escapeHtml = (text) => text.replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
     const escapedPath = filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-    const handlerFn = clickHandler === 'task' ? 'handleTaskIncludeClick' : 'handleColumnIncludeClick';
+    const handlerFn = 'handleColumnIncludeClick';
 
     // Determine if path is absolute (Unix: starts with /, Windows: starts with drive letter like C:\)
     const isAbsolutePath = filePath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(filePath);

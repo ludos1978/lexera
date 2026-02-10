@@ -3,7 +3,7 @@
  *
  * Scans board content for:
  * - Images (markdown and HTML)
- * - Include files (column, task, and regular includes)
+ * - Include files (column includes only)
  * - Links (markdown links to local files)
  * - Media (video/audio elements)
  * - Diagrams (drawio, excalidraw references)
@@ -161,16 +161,6 @@ export class BoardContentScanner {
 
                 // Check full task content (use include base path if available)
                 this._extractFromContent(task.content, taskLocation, elements, taskIncludeBasePath);
-
-                // Check task-level includes
-                if (task.includeFiles && task.includeFiles.length > 0) {
-                    this._pushIncludeElements(elements, task.includeFiles, taskLocation);
-                }
-
-                // Check regular includes in task content
-                if (task.regularIncludeFiles && task.regularIncludeFiles.length > 0) {
-                    this._pushIncludeElements(elements, task.regularIncludeFiles, taskLocation);
-                }
             }
         }
 
@@ -251,29 +241,6 @@ export class BoardContentScanner {
                 }
             }
 
-            for (const task of column.tasks) {
-                if (task.includeError && task.includeFiles) {
-                    const alreadyTracked = broken.some(b =>
-                        b.type === 'include' &&
-                        task.includeFiles!.some(f => b.path === f)
-                    );
-
-                    if (!alreadyTracked && task.includeFiles.length > 0) {
-                        const taskLocation = this._buildTaskLocation(column, task, 'taskContent');
-                        for (const includePath of task.includeFiles) {
-                            const resolvedPath = this._resolvePath(includePath);
-                            if (!fs.existsSync(resolvedPath)) {
-                                pushBroken({
-                                    type: 'include',
-                                    path: includePath,
-                                    rawMatch: `!!!include(${includePath})!!!`,
-                                    location: taskLocation
-                                }, resolvedPath);
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         return broken;
@@ -282,7 +249,7 @@ export class BoardContentScanner {
     /**
      * Search for text in board content
      */
-    searchText(board: KanbanBoard, query: string, includeContentByPath?: Map<string, string>, options?: TextMatcherOptions): TextMatch[] {
+    searchText(board: KanbanBoard, query: string, options?: TextMatcherOptions): TextMatch[] {
         if (!query) {
             return [];
         }
@@ -333,23 +300,6 @@ export class BoardContentScanner {
                     });
                 }
 
-                if (includeContentByPath && task.regularIncludeFiles && task.regularIncludeFiles.length > 0) {
-                    for (const includePath of task.regularIncludeFiles) {
-                        // _resolvePath already handles URL decoding
-                        const resolvedPath = this._resolvePath(includePath);
-                        const includeContent = includeContentByPath.get(resolvedPath);
-
-                        if (includeContent) {
-                            if (matcher.matches(prepareText(includeContent))) {
-                                matches.push({
-                                    matchText: query,
-                                    context: `include: ${includePath}\n${buildContext(includeContent)}`,
-                                    location: this._buildTaskLocation(column, task, 'taskContent')
-                                });
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -432,18 +382,6 @@ export class BoardContentScanner {
                     resolveBasePath
                 });
             }
-        }
-
-        // Includes in content (regular includes)
-        const includeRegex = MarkdownPatterns.include();
-        while ((match = includeRegex.exec(content)) !== null) {
-            elements.push({
-                type: 'include',
-                path: match[1],
-                rawMatch: match[0],
-                location,
-                resolveBasePath
-            });
         }
     }
 

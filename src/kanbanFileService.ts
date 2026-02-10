@@ -571,19 +571,6 @@ export class KanbanFileService {
                     throw new Error(`File not found in registry: ${scope.filePath}`);
                 }
 
-                if (file.getFileType() === 'include-regular') {
-                    const error = `Save aborted: "${file.getRelativePath()}" is a read-only include file. `
-                        + 'Use reload actions to sync from disk.';
-                    postSaveResult(false, error);
-                    return {
-                        success: false,
-                        aborted: true,
-                        savedMainFile: false,
-                        includeSaveErrors: [],
-                        error
-                    };
-                }
-
                 if (file.getFileType() === 'main') {
                     return await this.saveUnified({
                         board,
@@ -657,8 +644,7 @@ export class KanbanFileService {
 
     private _getIncludeSaveTargets(syncIncludes: boolean): MarkdownFile[] {
         const includeCandidates = this.fileRegistry.getIncludeFiles()
-            .filter(file => file.exists())
-            .filter(file => file.getFileType() !== 'include-regular');
+            .filter(file => file.exists());
 
         if (syncIncludes) {
             return includeCandidates;
@@ -705,7 +691,7 @@ export class KanbanFileService {
             return null;
         }
 
-        if (file.getFileType() === 'main' || file.getFileType() === 'include-regular') {
+        if (file.getFileType() === 'main') {
             return null;
         }
 
@@ -768,22 +754,6 @@ export class KanbanFileService {
                 }
 
                 recordCandidate(includeFile, `column:${column.id}`, content);
-            }
-        }
-
-        for (const column of board.columns) {
-            for (const task of column.tasks || []) {
-                if (!task.includeFiles || task.includeFiles.length === 0) {
-                    continue;
-                }
-
-                for (const includePath of task.includeFiles) {
-                    const includeFile = this._resolveWritableIncludeForSync(includePath);
-                    if (!includeFile) {
-                        continue;
-                    }
-                    recordCandidate(includeFile, `task:${task.id}`, task.content || '');
-                }
             }
         }
 
@@ -1413,27 +1383,6 @@ export class KanbanFileService {
                         (column as any).includeError = true;
                         // Don't create error task - just show empty column with error badge
                         column.tasks = [];
-                    }
-                }
-            }
-
-            // Check task includes
-            for (const task of column.tasks || []) {
-                if (task.includeFiles && task.includeFiles.length > 0) {
-                    for (const relativePath of task.includeFiles) {
-                        const decodedPath = safeDecodeURIComponent(relativePath);
-                        const absolutePath = path.isAbsolute(decodedPath)
-                            ? decodedPath
-                            : path.resolve(basePath, decodedPath);
-
-                        const fileExists = fs.existsSync(absolutePath);
-                        logger.debug(`[KanbanFileService] Initial load include check: task=${task.id}, relativePath=${relativePath}, absolutePath=${absolutePath}, exists=${fileExists}`);
-
-                        if (!fileExists) {
-                            (task as any).includeMode = true;  // REQUIRED for frontend to show error styling
-                            (task as any).includeError = true;
-                            task.content = '';  // Error details shown on hover via include badge
-                        }
                     }
                 }
             }

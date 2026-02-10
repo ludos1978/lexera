@@ -2220,8 +2220,7 @@ window.addColumn = addColumn;
 // Include mode operations moved to utils/includeModeManager.js:
 // - toggleColumnIncludeMode, enableColumnIncludeMode, editColumnIncludeFile
 // - updateColumnIncludeFile, disableColumnIncludeMode
-// - enableTaskIncludeMode, editTaskIncludeFile, updateTaskIncludeFile
-// - disableTaskIncludeMode, toggleTaskIncludeMode
+// - task include operations removed
 
 // ============================================================================
 // TAG TOGGLE OPERATIONS

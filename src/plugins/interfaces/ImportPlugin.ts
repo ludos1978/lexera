@@ -27,11 +27,11 @@ export interface ImportPluginMetadata {
     /** Plugin version */
     version: string;
 
-    /** Priority for detection (higher = checked first). Recommended: 100=column, 90=task, 80=regular */
+    /** Priority for detection (higher = checked first). */
     priority: number;
 
     /** File type this plugin produces */
-    fileType: 'include-column' | 'include-task' | 'include-regular' | 'main';
+    fileType: 'include-column' | 'main';
 
     /** File extensions this plugin handles (e.g., ['.md', '.marp.md']) */
     extensions: string[];

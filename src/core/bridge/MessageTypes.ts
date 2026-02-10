@@ -1425,15 +1425,6 @@ export interface ConfirmDisableIncludeModeMessage extends BaseMessage {
 }
 
 /**
- * Register inline include
- */
-export interface RegisterInlineIncludeMessage extends BaseMessage {
-    type: 'registerInlineInclude';
-    filePath: string;
-    content: string;
-}
-
-/**
  * Request include file name
  */
 export interface RequestIncludeFileNameMessage extends BaseMessage {
@@ -1448,25 +1439,6 @@ export interface RequestEditIncludeFileNameMessage extends BaseMessage {
     type: 'requestEditIncludeFileName';
     currentFile?: string;
     columnId?: string;
-}
-
-/**
- * Request edit task include file name
- */
-export interface RequestEditTaskIncludeFileNameMessage extends BaseMessage {
-    type: 'requestEditTaskIncludeFileName';
-    currentFile?: string;
-    taskId?: string;
-    columnId?: string;
-}
-
-/**
- * Request task include file name
- */
-export interface RequestTaskIncludeFileNameMessage extends BaseMessage {
-    type: 'requestTaskIncludeFileName';
-    taskId: string;
-    columnId: string;
 }
 
 /**
@@ -1701,7 +1673,7 @@ export interface ShowConflictDialogMessage extends BaseMessage {
     files: Array<{
         path: string;
         relativePath: string;
-        fileType: 'main' | 'include-column' | 'include-task' | 'include-regular';
+        fileType: 'main' | 'include-column';
         hasExternalChanges: boolean;
         hasUnsavedChanges: boolean;
         hasInternalChanges?: boolean;
@@ -1805,15 +1777,6 @@ export interface SaveUndoStateMessage extends BaseMessage {
     toColumnId?: string;
     fromIndex?: number;
     toIndex?: number;
-}
-
-/**
- * Request include file
- */
-export interface RequestIncludeFileMessage extends BaseMessage {
-    type: 'requestIncludeFile';
-    columnId: string;
-    filePath?: string;
 }
 
 /**
@@ -2374,7 +2337,6 @@ export type IncomingMessage =
     | ResolveAndCopyPathMessage
     | SaveBoardStateMessage
     | SaveUndoStateMessage
-    | RequestIncludeFileMessage
     | ExportMessage
     | RenderCompletedMessage
     | RenderSkippedMessage
@@ -2420,11 +2382,8 @@ export type IncomingMessage =
     | AskOpenExportFolderMessage
     // Include messages
     | ConfirmDisableIncludeModeMessage
-    | RegisterInlineIncludeMessage
     | RequestIncludeFileNameMessage
     | RequestEditIncludeFileNameMessage
-    | RequestEditTaskIncludeFileNameMessage
-    | RequestTaskIncludeFileNameMessage
     | ReloadAllIncludedFilesMessage
     | ApplyBatchFileActionsMessage
     // EditMode messages

@@ -546,19 +546,14 @@ export class MarkdownKanbanParser {
         for (const task of column.tasks) {
           const { summaryLine, remainingContent } = splitTaskContent(task.content);
 
-          // For taskinclude tasks, use the original summary line with include syntax
-          const summaryToSave = task.includeMode && task.originalTitle ? task.originalTitle : summaryLine;
-          markdown += `- [ ] ${summaryToSave}\n`;
+          markdown += `- [ ] ${summaryLine}\n`;
 
-          // For taskinclude tasks, don't save remaining content (it comes from the file)
-          if (!task.includeMode) {
-            // Add remaining content with proper indentation
-            // CRITICAL: Always write remaining content - whitespace IS valid content
-            if (remainingContent) {
-              const descriptionLines = remainingContent.split('\n');
-              for (const descLine of descriptionLines) {
-                markdown += `  ${descLine}\n`;
-              }
+          // Add remaining content with proper indentation
+          // CRITICAL: Always write remaining content - whitespace IS valid content
+          if (remainingContent) {
+            const descriptionLines = remainingContent.split('\n');
+            for (const descLine of descriptionLines) {
+              markdown += `  ${descLine}\n`;
             }
           }
         }

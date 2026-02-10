@@ -87,7 +87,7 @@ export class FileFactory {
      *
      * @param relativePath - Relative path to the include file
      * @param parentFile - Parent MainKanbanFile
-     * @param type - Include type ('include-regular', 'include-column', 'include-task')
+     * @param type - Include type ('include-column')
      * @returns Created file instance
      * @throws Error if no plugin can handle the file
      */
@@ -141,10 +141,6 @@ export class FileFactory {
         switch (type) {
             case 'include-column':
                 return 'column-header';
-            case 'include-task':
-                return 'task-title';
-            case 'include-regular':
-                return 'description';
             default:
                 return 'any';
         }

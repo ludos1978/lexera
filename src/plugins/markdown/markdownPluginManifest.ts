@@ -198,17 +198,9 @@ export const MARKDOWN_PLUGIN_MANIFEST: MarkdownPluginEntry[] = [
         ],
     },
     {
-        id: 'include',
-        name: 'Include Plugin',
-        priority: 210,
-        scope: 'frontend',
-        type: 'npm',
-        windowGlobal: 'markdownItInclude',
-    },
-    {
         id: 'image-figures',
         name: 'Image Figures Plugin',
-        priority: 220,
+        priority: 210,
         scope: 'both',
         type: 'npm',
         windowGlobal: 'markdownItImageFigures',
@@ -218,7 +210,7 @@ export const MARKDOWN_PLUGIN_MANIFEST: MarkdownPluginEntry[] = [
     {
         id: 'image-attrs',
         name: 'Image Attributes Plugin',
-        priority: 225,
+        priority: 215,
         scope: 'both',
         type: 'npm',
         windowGlobal: 'markdownItImageAttrs',
@@ -227,7 +219,7 @@ export const MARKDOWN_PLUGIN_MANIFEST: MarkdownPluginEntry[] = [
     {
         id: 'media',
         name: 'Media Plugin',
-        priority: 230,
+        priority: 220,
         scope: 'both',
         type: 'npm',
         windowGlobal: 'markdownItMediaCustom',

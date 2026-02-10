@@ -971,7 +971,7 @@ export class KanbanWebviewPanel {
         this._fileService.setupDocumentChangeListener(this._disposables);
     }
 
-    public ensureIncludeFileRegistered(relativePath: string, type: 'regular' | 'column' | 'task'): void {
+    public ensureIncludeFileRegistered(relativePath: string, type: 'column'): void {
         this._fileRegistry.ensureIncludeFileRegistered(relativePath, type, this._fileFactory);
     }
 

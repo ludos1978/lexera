@@ -31,8 +31,8 @@ class TestMarkdownFile extends MarkdownFile {
         fs.writeFileSync(this.getPath(), initialContent, 'utf8');
     }
 
-    getFileType(): 'main' | 'include-task' {
-        return 'include-task';
+    getFileType(): 'main' | 'include-column' {
+        return 'include-column';
     }
 
     async readFromDisk(): Promise<string | null> {

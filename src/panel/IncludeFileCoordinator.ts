@@ -14,15 +14,12 @@ import { KanbanBoard, KanbanTask, KanbanColumn } from '../markdownParser';
 import { MarkdownFileRegistry, FileFactory, MainKanbanFile, IncludeFile, MarkdownFile } from '../files';
 import { WebviewBridge } from '../core/bridge';
 import {
-    UpdateColumnContentExtendedMessage,
-    UpdateTaskContentExtendedMessage,
-    UpdateIncludeContentMessage
+    UpdateColumnContentExtendedMessage
 } from '../core/bridge/MessageTypes';
 import { ChangeStateMachine } from '../core/ChangeStateMachine';
 import { PanelContext } from './PanelContext';
 import { findColumn, findColumnContainingTask } from '../actions/helpers';
 import { logger } from '../utils/logger';
-import { splitTaskContent } from '../utils/taskContent';
 
 /**
  * Dependencies required by IncludeFileCoordinator
@@ -98,8 +95,7 @@ export class IncludeFileCoordinator {
     // - markIncludesAsLoading() - No longer needed with unified sync approach
     // - loadIncludeContentAsync() - Replaced by FileSyncHandler.reloadExternallyModifiedFiles({ force: true })
     // - _loadColumnIncludes() - Logic now in FileSyncHandler._reloadChangedIncludeFiles()
-    // - _loadTaskIncludes() - Logic now in FileSyncHandler._reloadChangedIncludeFiles()
-    // - _loadRegularIncludes() - Logic now in FileSyncHandler._reloadChangedIncludeFiles()
+    // - non-column include loaders removed with include-scope migration
     //
     // INIT and FOCUS now use the SAME unified code path:
     // - INIT: FileSyncHandler.reloadExternallyModifiedFiles({ force: true })  - Load all files
@@ -254,163 +250,6 @@ export class IncludeFileCoordinator {
                 includeError: includeError
             };
             this._deps.webviewBridge.send(columnMessage);
-        }
-    }
-
-    /**
-     * Send task include file update to frontend
-     */
-    private _sendTaskIncludeUpdate(file: MarkdownFile, board: KanbanBoard, relativePath: string): void {
-        const filePath = file.getPath();
-        const isDebug = this._deps.state.debugMode;
-        // Find task that uses this include file
-        let foundTask: KanbanTask | undefined;
-        let foundColumn: KanbanColumn | undefined;
-
-        for (const column of board.columns) {
-            for (const task of column.tasks) {
-                if (task.includeFiles && task.includeFiles.some((p: string) =>
-                    MarkdownFile.isSameFile(p, relativePath) || MarkdownFile.isSameFile(p, filePath)
-                )) {
-                    foundTask = task;
-                    foundColumn = column;
-                    break;
-                }
-            }
-            if (foundTask) break;
-        }
-
-        if (!foundTask || !foundColumn) {
-            if (isDebug) {
-                console.warn('[kanban.IncludeFileCoordinator.includeTask.noMatch]', {
-                    relativePath,
-                    filePath,
-                    boardColumns: board.columns.map(column => ({
-                        id: column.id,
-                        taskIds: column.tasks.map(task => task.id),
-                        includeTasks: column.tasks
-                            .filter(task => Array.isArray(task.includeFiles) && task.includeFiles.length > 0)
-                            .map(task => ({ id: task.id, includeFiles: task.includeFiles || [] }))
-                    }))
-                });
-                console.warn(`[IncludeFileCoordinator] No task found for include file: ${relativePath}`);
-            }
-            return;
-        }
-
-        if (foundTask && foundColumn) {
-            // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
-            if (file.getFileType() === 'main') {
-                console.error(`[IncludeFileCoordinator] BUG: Task include path resolved to MainKanbanFile: ${relativePath}`);
-                foundTask.content = '';
-                foundTask.includeError = true;
-                return;
-            }
-
-            const displayTitle = `# include in ${relativePath}`;
-
-            // Check if file exists before using content
-            const fileExists = file.exists();
-            let content: string;
-            let includeError: boolean;
-
-            if (isDebug) {
-                logger.debug('[kanban.IncludeFileCoordinator.includeTask.update]', {
-                    columnId: foundColumn.id,
-                    taskId: foundTask.id,
-                    taskSummary: splitTaskContent(foundTask.content).summaryLine,
-                    relativePath,
-                    filePath,
-                    fileExists
-                });
-            }
-
-            if (fileExists) {
-                // Get updated content from file
-                content = file.getContent() || '';
-                includeError = false;
-            } else {
-                // File doesn't exist - error details shown on hover via include badge
-                console.warn(`[IncludeFileCoordinator] Task include file does not exist: ${relativePath}`);
-                content = '';
-                includeError = true;
-            }
-
-            // Update task
-            foundTask.displayTitle = displayTitle;
-            foundTask.content = content;
-            foundTask.includeError = includeError;
-
-            if (isDebug) {
-                logger.debug('[kanban.IncludeFileCoordinator.includeTask.parsed]', {
-                    columnId: foundColumn.id,
-                    taskId: foundTask.id,
-                    relativePath,
-                    contentLength: content.length,
-                    includeError
-                });
-            }
-
-            // Send update to frontend
-            const taskMessage: UpdateTaskContentExtendedMessage = {
-                type: 'updateTaskContent',
-                columnId: foundColumn.id,
-                taskId: foundTask.id,
-                content: content,
-                displayTitle: displayTitle,
-                originalTitle: foundTask.originalTitle,
-                includeMode: true,
-                includeFiles: foundTask.includeFiles,
-                includeError: includeError
-            };
-            this._deps.webviewBridge.send(taskMessage);
-        }
-    }
-
-    /**
-     * Send regular include file update to frontend
-     */
-    private _sendRegularIncludeUpdate(file: MarkdownFile, board: KanbanBoard, relativePath: string): void {
-        // Send updated include content to frontend cache
-        const content = file.getContent();
-        const fileExists = file.exists();
-        const includeContentMessage: UpdateIncludeContentMessage = {
-            type: 'updateIncludeContent',
-            filePath: relativePath,
-            content: content,
-            error: fileExists ? undefined : `File not found: ${relativePath}`
-        };
-        this._deps.webviewBridge.sendBatched(includeContentMessage);
-
-        // Find all tasks that use this regular include
-        const affectedTasks: Array<{task: KanbanTask, column: KanbanColumn}> = [];
-        for (const column of board.columns) {
-            for (const task of column.tasks) {
-                if (task.regularIncludeFiles?.length) {
-                    const hasThisInclude = task.regularIncludeFiles.some((p: string) =>
-                        MarkdownFile.isSameFile(p, relativePath)
-                    );
-
-                    if (hasThisInclude) {
-                        affectedTasks.push({ task, column });
-                    }
-                }
-            }
-        }
-
-        // Send targeted updates for each affected task
-        for (const {task, column} of affectedTasks) {
-            const regularTaskMessage: UpdateTaskContentExtendedMessage = {
-                type: 'updateTaskContent',
-                columnId: column.id,
-                taskId: task.id,
-                content: task.content,
-                displayTitle: task.displayTitle,
-                originalTitle: task.originalTitle,
-                includeMode: false,
-                regularIncludeFiles: task.regularIncludeFiles
-            };
-            this._deps.webviewBridge.sendBatched(regularTaskMessage);
         }
     }
 

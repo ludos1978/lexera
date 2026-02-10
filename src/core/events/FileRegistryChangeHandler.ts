@@ -79,7 +79,7 @@ export class FileRegistryChangeHandler {
         // Handle 'reloaded' events for all file types
         if (fileType === 'main') {
             await this._handleMainFileReloaded(event);
-        } else if (fileType === 'include-column' || fileType === 'include-task' || fileType === 'include-regular') {
+        } else if (fileType === 'include-column') {
             await this._handleIncludeFileReloaded(event, file);
         }
     }

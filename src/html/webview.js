@@ -3129,8 +3129,6 @@ if (!webviewEventListenersInitialized) {
             // Handle include file content response from backend
             if (typeof window.updateIncludeFileCache === 'function') {
                 window.updateIncludeFileCache(message.filePath, message.content, message.error);
-            } else {
-                console.warn('[webview.js]   ❌ window.updateIncludeFileCache is NOT a function! Cannot update cache.');
             }
             break;
 
@@ -3138,8 +3136,6 @@ if (!webviewEventListenersInitialized) {
             // Handle processed include content from backend
             if (typeof window.updateIncludeFileCache === 'function') {
                 window.updateIncludeFileCache(message.filePath, message.content, message.error);
-            } else {
-                console.warn('[webview.js]   ❌ window.updateIncludeFileCache is NOT a function! Cannot update cache.');
             }
             break;
 

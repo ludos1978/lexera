@@ -4,7 +4,7 @@ type RegistryFile = {
     getPath: jest.Mock<string, []>;
     getRelativePath: jest.Mock<string, []>;
     getNormalizedRelativePath: jest.Mock<string, []>;
-    getFileType: jest.Mock<'main' | 'include-column' | 'include-task' | 'include-regular', []>;
+    getFileType: jest.Mock<'main' | 'include-column', []>;
     onDidChange: jest.Mock;
     dispose: jest.Mock<void, []>;
 };
@@ -14,7 +14,7 @@ function createRegistryFile(path: string, normalizedRelativePath: string): Regis
         getPath: jest.fn(() => path),
         getRelativePath: jest.fn(() => normalizedRelativePath),
         getNormalizedRelativePath: jest.fn(() => normalizedRelativePath),
-        getFileType: jest.fn(() => 'include-task'),
+        getFileType: jest.fn(() => 'include-column'),
         onDidChange: jest.fn(() => ({ dispose: jest.fn() })),
         dispose: jest.fn()
     };

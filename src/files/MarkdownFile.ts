@@ -128,7 +128,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
     /**
      * Get the file type identifier
      */
-    abstract getFileType(): 'main' | 'include-regular' | 'include-column' | 'include-task';
+    abstract getFileType(): 'main' | 'include-column';
 
     /**
      * Read content from disk

@@ -385,7 +385,6 @@ export class WebviewManager {
             'markdown-it-underline-browser.js',
             'markdown-it-abbr-browser.js',
             'markdown-it-container-browser.js',
-            'markdown-it-include-browser.js',
             'markdown-it-image-figures-browser.js',
             'markdown-it-image-attrs-browser.js',
             'markdown-it-wiki-links-browser.js',

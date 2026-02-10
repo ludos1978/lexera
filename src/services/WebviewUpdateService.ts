@@ -130,10 +130,7 @@ export class WebviewUpdateService {
         await this.refreshAllConfiguration();
 
         // NOTE: Don't call _sendIncludeFileContents() here.
-        // The frontend will request include files via 'requestIncludeFile' during rendering,
-        // and the backend responds via 'includeFileContent'. Sending proactively here
-        // causes duplicate messages because the board is rendered before the batch is flushed.
-        // Proactive updates are handled by FileSyncHandler and IncludeFileCoordinator for file changes.
+        // Include content updates are delivered by file sync/coordinator handlers.
     }
 
     /**

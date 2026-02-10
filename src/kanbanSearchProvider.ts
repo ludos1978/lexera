@@ -184,22 +184,10 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
         }
 
         try {
-            const includeContentByPath = new Map<string, string>();
-            const fileRegistry = panel.getFileRegistry?.();
-            if (fileRegistry) {
-                for (const includeFile of fileRegistry.getIncludeFiles()) {
-                    if (includeFile.getFileType?.() === 'include-regular') {
-                        const content = includeFile.getContent() || '';
-                        includeContentByPath.set(includeFile.getPath(), content);
-                    }
-                }
-            }
-
             const scanner = new BoardContentScanner(basePath);
             const matches = scanner.searchText(
                 board,
                 query.trim(),
-                includeContentByPath.size > 0 ? includeContentByPath : undefined,
                 options
             );
 

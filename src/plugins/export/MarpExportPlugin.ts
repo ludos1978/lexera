@@ -328,7 +328,7 @@ export class MarpExportPlugin implements ExportPlugin {
             logger.debug(`[MarpExportPlugin] format: ${options.format}, args:`, args.join(' '));
 
             // IMPORTANT: Use the directory of the input file as CWD
-            // This ensures markdown-it-include resolves paths relative to the markdown file location
+            // Resolve media paths relative to the markdown file location.
             const inputFileDir = path.dirname(options.inputFilePath);
 
             const command = 'npx';

@@ -30,7 +30,7 @@ export type PerFileAction =
 export interface ConflictFileInfo {
     path: string;
     relativePath: string;
-    fileType: 'main' | 'include-column' | 'include-task' | 'include-regular';
+    fileType: 'main' | 'include-column';
     hasExternalChanges: boolean;
     hasUnsavedChanges: boolean;
     hasInternalChanges: boolean;
@@ -42,7 +42,7 @@ export interface ConflictFileInfo {
 export interface ConflictFileSource {
     getPath(): string;
     getRelativePath(): string;
-    getFileType(): 'main' | 'include-column' | 'include-task' | 'include-regular';
+    getFileType(): 'main' | 'include-column';
     hasExternalChanges(): boolean;
     hasUnsavedChanges(): boolean;
     hasAnyUnsavedChanges(): boolean;

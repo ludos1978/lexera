@@ -14,7 +14,7 @@ function createIncludeFile(): IncludeFile {
         parentFile as any,
         new ConflictResolver('test-panel'),
         {} as any,
-        'include-task'
+        'include-column'
     );
 }
 
@@ -75,7 +75,7 @@ describe('IncludeFile access state tracking', () => {
             parentFile as any,
             new ConflictResolver('test-panel'),
             {} as any,
-            'include-task'
+            'include-column'
         );
 
         expect(file.getPath()).toBe(path.resolve('/tmp/project-a', 'includes/test.md'));
@@ -96,7 +96,7 @@ describe('IncludeFile access state tracking', () => {
             parentFile as any,
             new ConflictResolver('test-panel'),
             {} as any,
-            'include-task'
+            'include-column'
         );
 
         parentPath = '/tmp/project-b/board.md';

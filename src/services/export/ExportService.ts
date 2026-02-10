@@ -1480,13 +1480,12 @@ export class ExportService {
 
     /**
      * Convert presentation format to kanban format
-     * For column includes and task includes that are in presentation format
+     * For column includes that are in presentation format
      */
     private static convertPresentationToKanban(presentationContent: string, includeType: string): string {
 
-        // Determine the include type (position-based: 'columninclude', 'taskinclude', or 'include')
+        // Determine include type (position-based)
         const isColumnInclude = includeType === 'columninclude';
-        const isTaskInclude = includeType === 'taskinclude';
 
         // Parse presentation content into slides
         const slides = PresentationParser.parsePresentation(presentationContent);
@@ -1515,41 +1514,8 @@ export class ExportService {
 
             return kanbanContent;
 
-        } else if (isTaskInclude) {
-            // For taskinclude, use raw presentation content as single task
-            // First non-empty line becomes task title, rest becomes description
-            // This preserves all formatting including --- separators
-            const lines = presentationContent.split('\n');
-            let title = '';
-            let description = '';
-            let titleIndex = -1;
-
-            // Find first non-empty line for title
-            for (let i = 0; i < lines.length; i++) {
-                if (lines[i].trim()) {
-                    title = lines[i].trim();
-                    titleIndex = i;
-                    break;
-                }
-            }
-
-            // Everything after title becomes description (preserving --- and all content)
-            if (titleIndex >= 0 && titleIndex < lines.length - 1) {
-                description = lines.slice(titleIndex + 1).join('\n').trim();
-            }
-
-            let kanbanContent = `- [ ] ${title || 'Untitled'}\n`;
-            if (description) {
-                const descLines = description.split('\n');
-                for (const line of descLines) {
-                    kanbanContent += `  ${line}\n`;
-                }
-            }
-
-            return kanbanContent;
-
         } else {
-            // Regular include - just return as-is or wrapped in a column
+            // Non-column include markers are no longer converted.
             return presentationContent;
         }
     }

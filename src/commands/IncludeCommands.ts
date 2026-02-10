@@ -3,7 +3,6 @@
  *
  * Handles include file-related message operations:
  * - confirmDisableIncludeMode
- * - requestIncludeFile, registerInlineInclude
  * - requestIncludeFileName, requestEditIncludeFileName
  * - reloadAllIncludedFiles
  *
@@ -19,7 +18,6 @@ import {
     RequestIncludeFileNameMessage,
     RequestEditIncludeFileNameMessage
 } from '../core/bridge/MessageTypes';
-import { PathResolver } from '../services/PathResolver';
 import { safeFileUri, selectMarkdownFile } from '../utils';
 import { PanelCommandAccess, hasIncludeFileMethods } from '../types/PanelCommandAccess';
 import { showError } from '../services/NotificationService';
@@ -39,8 +37,6 @@ export class IncludeCommands extends SwitchBasedCommand {
         description: 'Handles include file operations, tracking, and synchronization',
         messageTypes: [
             'confirmDisableIncludeMode',
-            'requestIncludeFile',
-            'registerInlineInclude',
             'requestIncludeFileName',
             'requestEditIncludeFileName',
             'reloadAllIncludedFiles'
@@ -50,8 +46,6 @@ export class IncludeCommands extends SwitchBasedCommand {
 
     protected handlers: Record<string, MessageHandler> = {
         'confirmDisableIncludeMode': (msg, ctx) => this.handleConfirmDisableIncludeMode(msg as ConfirmDisableIncludeModeMessage, ctx),
-        'requestIncludeFile': (msg, ctx) => this.handleRequestIncludeFile((msg as any).filePath ?? '', ctx),
-        'registerInlineInclude': (msg, ctx) => this.handleRegisterInlineInclude((msg as any).filePath, (msg as any).content, ctx),
         'requestIncludeFileName': (msg, ctx) => this.handleRequestIncludeFileName(msg as RequestIncludeFileNameMessage, ctx),
         'requestEditIncludeFileName': (msg, ctx) => this.handleRequestEditIncludeFileName(msg as RequestEditIncludeFileNameMessage, ctx),
         'reloadAllIncludedFiles': (_msg, ctx) => this.handleReloadAllIncludedFiles(ctx)
@@ -143,89 +137,6 @@ export class IncludeCommands extends SwitchBasedCommand {
                 type: 'proceedDisableIncludeMode',
                 columnId: message.columnId
             });
-        }
-        return this.success();
-    }
-
-    private async handleRequestIncludeFile(filePath: string, context: CommandContext): Promise<CommandResult> {
-        if (!this.getPanel()) {
-            return this.failure('No webview panel available');
-        }
-
-        const document = context.fileManager.getDocument();
-        if (!document) {
-            return this.failure('No current document available');
-        }
-
-        const basePath = path.dirname(document.uri.fsPath);
-        const absolutePath = PathResolver.resolve(basePath, filePath);
-
-        try {
-            if (!fs.existsSync(absolutePath)) {
-                this.postMessage({
-                    type: 'includeFileContent',
-                    filePath: filePath,
-                    content: null,
-                    error: `File not found: ${filePath}`
-                });
-                return this.success();
-            }
-
-            const content = fs.readFileSync(absolutePath, 'utf8');
-            this.postMessage({
-                type: 'includeFileContent',
-                filePath: filePath,
-                content: content
-            });
-        } catch (fileError) {
-            this.postMessage({
-                type: 'includeFileContent',
-                filePath: filePath,
-                content: null,
-                error: `Error reading file: ${filePath}`
-            });
-        }
-        return this.success();
-    }
-
-    private async handleRegisterInlineInclude(filePath: string, content: string | null, context: CommandContext): Promise<CommandResult> {
-        const panel = context.getWebviewPanel();
-        if (!panel || !hasIncludeFileMethods(panel)) {
-            return this.success();
-        }
-        const panelAccess = panel as PanelCommandAccess;
-        if (!panelAccess.ensureIncludeFileRegistered) {
-            return this.success();
-        }
-
-        let relativePath = filePath;
-        if (!path.isAbsolute(relativePath) && !relativePath.startsWith('.')) {
-            relativePath = './' + relativePath;
-        }
-
-        panelAccess.ensureIncludeFileRegistered(relativePath, 'regular');
-
-        const fileRegistry = this.getFileRegistry();
-        const updateInclude = (): boolean => {
-            const includeFile = fileRegistry?.getByRelativePath(relativePath);
-            if (!includeFile || includeFile.getFileType() === 'main') {
-                return false;
-            }
-
-            if (content !== null && content !== undefined) {
-                includeFile.setContent(content, true);
-                includeFile.setExists(true);
-            } else if (content === null) {
-                includeFile.setExists(false);
-            }
-
-            return true;
-        };
-
-        if (!updateInclude()) {
-            setTimeout(() => {
-                updateInclude();
-            }, 0);
         }
         return this.success();
     }

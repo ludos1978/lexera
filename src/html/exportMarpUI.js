@@ -1730,36 +1730,6 @@ function handleColumnIncludeClick(event, filePath) {
 }
 
 /**
- * Handle clicks on task include filename links
- */
-function handleTaskIncludeClick(event, filePath) {
-    if (event.altKey) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        vscode.postMessage({
-            type: 'openIncludeFile',
-            filePath: filePath
-        });
-    }
-}
-
-/**
- * Handle clicks on regular include filename links
- */
-function handleRegularIncludeClick(event, filePath) {
-    if (event.altKey) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        vscode.postMessage({
-            type: 'openIncludeFile',
-            filePath: filePath
-        });
-    }
-}
-
-/**
  * Handle column export result
  */
 function handleColumnExportResult(result) {
@@ -2149,8 +2119,6 @@ window.exportColumn = exportColumn;
 
 // Include click handlers
 window.handleColumnIncludeClick = handleColumnIncludeClick;
-window.handleTaskIncludeClick = handleTaskIncludeClick;
-window.handleRegularIncludeClick = handleRegularIncludeClick;
 window.handleColumnExportResult = handleColumnExportResult;
 window.handleCopyContentResult = handleCopyContentResult;
 

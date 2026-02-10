@@ -439,15 +439,6 @@ export class DebugCommands extends SwitchBasedCommand {
             }
 
             const fileType = file.getFileType();
-            if ((requestAction === 'overwrite' || requestAction === 'overwrite_backup_external') && fileType === 'include-regular') {
-                const message = `Cannot overwrite read-only include file "${file.getRelativePath()}". `
-                    + 'Use reload actions to sync from disk.';
-                results[index].status = 'failed';
-                results[index].error = message;
-                preflightErrors.push(message);
-                continue;
-            }
-
             const dedupeKey = normalizePathForLookup(file.getPath());
             if (seenPaths.has(dedupeKey)) {
                 results[index].status = 'skipped';
@@ -1330,10 +1321,6 @@ export class DebugCommands extends SwitchBasedCommand {
         file: IncludeFile
     ): string | null {
         const fileType = file.getFileType();
-        if (fileType === 'include-regular') {
-            return null;
-        }
-
         const candidates = this.buildIncludePathCandidates(file.getRelativePath(), file.getPath());
 
         if (fileType === 'include-column') {
@@ -1345,21 +1332,6 @@ export class DebugCommands extends SwitchBasedCommand {
             }
             const contents = matches.map(column => file.generateFromTasks(column.tasks));
             return this.ensureConsistentIncludeContent(contents, 'include-column', file.getRelativePath());
-        }
-
-        if (fileType === 'include-task') {
-            const matches: string[] = [];
-            for (const column of frontendBoard.columns) {
-                for (const task of column.tasks) {
-                    if (task.includeFiles?.some(includePath => this.matchesIncludePath(includePath, candidates))) {
-                        matches.push(task.content || '');
-                    }
-                }
-            }
-            if (matches.length === 0) {
-                return null;
-            }
-            return this.ensureConsistentIncludeContent(matches, 'include-task', file.getRelativePath());
         }
 
         return null;
