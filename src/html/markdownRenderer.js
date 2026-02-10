@@ -364,6 +364,27 @@ let embedDefaultIframeAttributes = {
     referrerpolicy: 'strict-origin-when-cross-origin'
 };
 
+const UNSUPPORTED_IFRAME_ALLOW_FEATURES = new Set([
+    'local-network-access'
+]);
+
+function sanitizeIframeAllowPolicy(allowValue) {
+    if (typeof allowValue !== 'string') {
+        return allowValue;
+    }
+
+    const filtered = allowValue
+        .split(';')
+        .map(feature => feature.trim())
+        .filter(Boolean)
+        .filter(feature => {
+            const featureName = feature.split(/\s+/)[0].toLowerCase();
+            return !UNSUPPORTED_IFRAME_ALLOW_FEATURES.has(featureName);
+        });
+
+    return filtered.join('; ');
+}
+
 // Web preview config — synced from backend EmbedPlugin via updateEmbedConfig
 let webPreviewConfig = {
     enabled: true,
@@ -382,6 +403,9 @@ function updateEmbedConfig(config) {
     }
     if (config && config.defaultIframeAttributes && typeof config.defaultIframeAttributes === 'object') {
         embedDefaultIframeAttributes = { ...embedDefaultIframeAttributes, ...config.defaultIframeAttributes };
+        if (typeof embedDefaultIframeAttributes.allow === 'string') {
+            embedDefaultIframeAttributes.allow = sanitizeIframeAllowPolicy(embedDefaultIframeAttributes.allow);
+        }
     }
     if (config && config.webPreview && typeof config.webPreview === 'object') {
         webPreviewConfig = { ...webPreviewConfig, ...config.webPreview };
@@ -467,7 +491,7 @@ function detectEmbed(src, alt, title, token) {
         frameborder: imageAttrs.frameborder || embedDefaultIframeAttributes.frameborder,
         allowfullscreen: imageAttrs.allowfullscreen !== undefined ? imageAttrs.allowfullscreen : embedDefaultIframeAttributes.allowfullscreen,
         loading: imageAttrs.loading || embedDefaultIframeAttributes.loading,
-        allow: imageAttrs.allow || embedDefaultIframeAttributes.allow,
+        allow: sanitizeIframeAllowPolicy(imageAttrs.allow || embedDefaultIframeAttributes.allow),
         referrerpolicy: imageAttrs.referrerpolicy || embedDefaultIframeAttributes.referrerpolicy,
         // Any other custom attributes
         customAttrs: {}
@@ -660,20 +684,111 @@ Source: ${safeSource}</pre>
 </html>`;
 }
 
+const inlineFileExistsRequests = new Map();
+let inlineFileExistsRequestId = 0;
+
+function isInlineFileExistenceCheckRequired(sourceUrl, originalSourcePath) {
+    const source = (sourceUrl || '').toLowerCase();
+    const original = (originalSourcePath || '').trim().toLowerCase();
+
+    if (!original) {
+        return false;
+    }
+
+    // Skip network / data URLs. This preflight is for local files (relative/absolute/include).
+    if (
+        source.startsWith('http://') ||
+        source.startsWith('https://') ||
+        source.startsWith('data:') ||
+        source.startsWith('blob:') ||
+        original.startsWith('http://') ||
+        original.startsWith('https://') ||
+        original.startsWith('data:') ||
+        original.startsWith('blob:')
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+function requestInlineFileExistsCheck(pathValue, includeDir) {
+    return new Promise((resolve) => {
+        if (typeof vscode === 'undefined' || typeof vscode.postMessage !== 'function') {
+            resolve({ exists: true, resolvedPath: pathValue, error: '' });
+            return;
+        }
+
+        const requestId = `inline-file-exists-${++inlineFileExistsRequestId}`;
+        inlineFileExistsRequests.set(requestId, { resolve });
+
+        vscode.postMessage({
+            type: 'checkFileExists',
+            requestId,
+            path: pathValue,
+            includeDir: includeDir || undefined
+        });
+
+        // Avoid deadlocks if the backend doesn't answer.
+        window.setTimeout(() => {
+            const pending = inlineFileExistsRequests.get(requestId);
+            if (!pending) {
+                return;
+            }
+            inlineFileExistsRequests.delete(requestId);
+            pending.resolve({
+                exists: false,
+                resolvedPath: pathValue,
+                error: 'File existence check timed out'
+            });
+        }, 5000);
+    });
+}
+
 async function hydrateInlineFileIframe(iframeEl) {
-    if (!iframeEl || iframeEl.dataset.inlineLoaded === '1' || iframeEl.dataset.inlineLoading === '1') {
+    if (!iframeEl || iframeEl.dataset.inlineLoading === '1') {
         return;
     }
 
     const sourceUrl = iframeEl.dataset.inlineSource || '';
     const extension = (iframeEl.dataset.inlineExtension || '').toLowerCase();
+    const originalSourcePath = iframeEl.dataset.inlineOriginalSource || '';
+    const includeDir = iframeEl.dataset.inlineIncludeDir || '';
     if (!sourceUrl) {
+        return;
+    }
+
+    // If source changed on an existing iframe node, reset hydration state.
+    if (iframeEl.dataset.inlineLoadedSource && iframeEl.dataset.inlineLoadedSource !== sourceUrl) {
+        delete iframeEl.dataset.inlineLoaded;
+        delete iframeEl.dataset.inlineStatus;
+        delete iframeEl.dataset.inlineRetryScheduled;
+        delete iframeEl.dataset.inlineRetryCount;
+    }
+
+    // Successful loads are stable - no further fetches needed.
+    if (iframeEl.dataset.inlineLoaded === '1' && iframeEl.dataset.inlineStatus === 'success') {
+        return;
+    }
+
+    // A failed load already has a scheduled retry.
+    if (iframeEl.dataset.inlineStatus === 'error' && iframeEl.dataset.inlineRetryScheduled === '1') {
         return;
     }
 
     iframeEl.dataset.inlineLoading = '1';
 
     try {
+        if (isInlineFileExistenceCheckRequired(sourceUrl, originalSourcePath)) {
+            const normalizedPath = normalizeInlineFilePath(originalSourcePath) || originalSourcePath;
+            const checkResult = await requestInlineFileExistsCheck(normalizedPath, includeDir);
+            if (!checkResult?.exists) {
+                const resolvedPath = checkResult?.resolvedPath || normalizedPath;
+                const errorMessage = checkResult?.error || `File not found: ${resolvedPath}`;
+                throw new Error(errorMessage);
+            }
+        }
+
         const response = await fetch(sourceUrl, { cache: 'no-store' });
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -682,12 +797,35 @@ async function hydrateInlineFileIframe(iframeEl) {
 
         iframeEl.srcdoc = buildInlineFileSrcdoc(fileContent, extension, sourceUrl);
         iframeEl.dataset.inlineLoaded = '1';
+        iframeEl.dataset.inlineStatus = 'success';
+        iframeEl.dataset.inlineLoadedSource = sourceUrl;
+        iframeEl.dataset.inlineRetryCount = '0';
+        delete iframeEl.dataset.inlineRetryScheduled;
     } catch (error) {
         const errorMessage = error && typeof error === 'object' && 'message' in error
             ? String(error.message)
             : 'Unknown error';
         iframeEl.srcdoc = buildInlineFileErrorSrcdoc(sourceUrl, errorMessage);
-        iframeEl.dataset.inlineLoaded = '1';
+        delete iframeEl.dataset.inlineLoaded;
+        iframeEl.dataset.inlineStatus = 'error';
+        iframeEl.dataset.inlineLoadedSource = sourceUrl;
+
+        const retryCount = Number(iframeEl.dataset.inlineRetryCount || '0') + 1;
+        iframeEl.dataset.inlineRetryCount = String(retryCount);
+        const retryDelaysMs = [1000, 3000, 5000, 10000, 20000];
+        const retryDelay = retryDelaysMs[Math.min(retryCount - 1, retryDelaysMs.length - 1)];
+        iframeEl.dataset.inlineRetryScheduled = '1';
+
+        window.setTimeout(() => {
+            if (!document.contains(iframeEl)) {
+                return;
+            }
+            if ((iframeEl.dataset.inlineSource || '') !== sourceUrl) {
+                return;
+            }
+            delete iframeEl.dataset.inlineRetryScheduled;
+            void hydrateInlineFileIframe(iframeEl);
+        }, retryDelay);
     } finally {
         delete iframeEl.dataset.inlineLoading;
     }
@@ -701,9 +839,10 @@ window._hydrateInlineFileEmbeds = function(root) {
     });
 };
 
-function renderInlineFileIframe(url, originalSrc, alt, title, extension) {
+function renderInlineFileIframe(url, originalSrc, alt, title, extension, includeDir = '') {
     const escapedUrl = escapeHtml(url);
     const escapedOriginalSrc = escapeHtml(originalSrc);
+    const escapedIncludeDir = escapeHtml(includeDir || '');
     const label = getInlineFileIframeLabel(originalSrc, alt, extension);
     const captionHtml = title ? `<div class="inline-file-embed-caption media-caption">${escapeHtml(title)}</div>` : '';
 
@@ -713,7 +852,7 @@ function renderInlineFileIframe(url, originalSrc, alt, title, extension) {
             <span class="inline-file-embed-label">${escapeHtml(label)}</span>
         </div>
         <div class="inline-file-embed-frame-wrapper">
-            <iframe src="about:blank" data-inline-source="${escapedUrl}" data-inline-extension="${escapeHtml((extension || '').toLowerCase())}" loading="lazy" sandbox="allow-same-origin"></iframe>
+            <iframe src="about:blank" data-inline-source="${escapedUrl}" data-inline-original-source="${escapedOriginalSrc}" data-inline-include-dir="${escapedIncludeDir}" data-inline-extension="${escapeHtml((extension || '').toLowerCase())}" loading="lazy" sandbox="allow-same-origin"></iframe>
         </div>
         ${captionHtml}
     </div>`;
@@ -729,6 +868,7 @@ function renderInlineFileIframe(url, originalSrc, alt, title, extension) {
  */
 function renderEmbed(embedInfo, originalSrc, alt, title) {
     const { url, fallback, width, height, frameborder, allowfullscreen, loading, allow, referrerpolicy, customAttrs } = embedInfo;
+    const sanitizedAllow = sanitizeIframeAllowPolicy(allow);
 
     // If URL's origin is known to block iframes, render fallback immediately (no blank flash)
     if (_isIframeBlocked(url)) {
@@ -744,8 +884,8 @@ function renderEmbed(embedInfo, originalSrc, alt, title) {
         iframeAttrs += ' allowfullscreen';
     }
     iframeAttrs += ` loading="${escapeHtml(loading)}"`;
-    if (allow) {
-        iframeAttrs += ` allow="${escapeHtml(allow)}"`;
+    if (sanitizedAllow) {
+        iframeAttrs += ` allow="${escapeHtml(sanitizedAllow)}"`;
     }
     if (referrerpolicy) {
         iframeAttrs += ` referrerpolicy="${escapeHtml(referrerpolicy)}"`;
@@ -2304,6 +2444,13 @@ window.addEventListener('message', event => {
             request.resolve(null);
             mermaidCacheRequests.delete(requestId);
         }
+    } else if (message.type === 'fileExistsCheckResult') {
+        const { requestId, exists, resolvedPath, error } = message;
+        const request = inlineFileExistsRequests.get(requestId);
+        if (request) {
+            request.resolve({ exists: !!exists, resolvedPath, error });
+            inlineFileExistsRequests.delete(requestId);
+        }
     }
 });
 
@@ -3493,7 +3640,7 @@ function renderMarkdown(text, includeContext) {
             const inlineFileExtension = getInlineFileIframeExtension(originalSrc);
             if (inlineFileExtension) {
                 const iframeSrc = resolveDisplaySrc(originalSrc);
-                return renderInlineFileIframe(iframeSrc, originalSrc, alt, title, inlineFileExtension);
+                return renderInlineFileIframe(iframeSrc, originalSrc, alt, title, inlineFileExtension, includeDir);
             }
 
             // Check if this is an embed URL (external iframe content)
@@ -3520,7 +3667,7 @@ function renderMarkdown(text, includeContext) {
                         frameborder: embedDefaultIframeAttributes.frameborder || '0',
                         allowfullscreen: embedDefaultIframeAttributes.allowfullscreen ?? true,
                         loading: 'lazy',
-                        allow: embedDefaultIframeAttributes.allow || '',
+                        allow: sanitizeIframeAllowPolicy(embedDefaultIframeAttributes.allow || ''),
                         referrerpolicy: embedDefaultIframeAttributes.referrerpolicy || '',
                         customAttrs: { sandbox: sandbox }
                     };

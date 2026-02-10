@@ -2,6 +2,7 @@
 
 kanban-plugin: board
 
+fontSize: 1_0x
 ---
 
 ## # Heading 1 in Columntitle #green #todo

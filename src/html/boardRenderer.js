@@ -30,6 +30,21 @@ function insertHtmlNodes(htmlString, referenceElement, position = 'before') {
     }
 }
 
+/**
+ * Blur focused element if it is inside a container that is about to be replaced/cleared.
+ * Prevents occasional VS Code webview trackFocus null classList errors.
+ * @param {HTMLElement|null} container
+ */
+function blurActiveElementIfContained(container) {
+    if (!container) {
+        return;
+    }
+    const activeElement = document.activeElement;
+    if (activeElement && container.contains(activeElement)) {
+        activeElement.blur?.();
+    }
+}
+
 // Make folding state variables global for persistence
 window.collapsedColumns = window.collapsedColumns || new Set();
 window.collapsedTasks = window.collapsedTasks || new Set();
@@ -970,6 +985,10 @@ function renderSingleColumn(columnId, columnData) {
     const tasksContainer = existingColumnElement.querySelector(`#tasks-${columnId}`);
     const scrollTop = tasksContainer ? tasksContainer.scrollTop : 0;
 
+    // Prevent VS Code webview trackFocus null classList errors when replacing
+    // a column that currently contains the active element.
+    blurActiveElementIfContained(existingColumnElement);
+
     // Replace the old element with the new one
     existingColumnElement.parentNode.replaceChild(newColumnElement, existingColumnElement);
 
@@ -1089,6 +1108,10 @@ function renderSingleTask(taskId, taskData, columnId) {
         return false;
     }
 
+    // Prevent VS Code webview trackFocus null classList errors when replacing
+    // a task that currently contains the active element.
+    blurActiveElementIfContained(existingTaskElement);
+
     // Replace the old element with the new one
     existingTaskElement.parentNode.replaceChild(newTaskElement, existingTaskElement);
 
@@ -1100,6 +1123,12 @@ function renderSingleTask(taskId, taskData, columnId) {
     // Update image sources for the new content
     if (typeof updateImageSources === 'function') {
         updateImageSources();
+    }
+
+    // Ensure newly inserted embeds/iframes are hydrated and validated
+    // on targeted task updates (same behavior as full/column renders).
+    if (typeof window._checkRenderedIframes === 'function') {
+        window._checkRenderedIframes();
     }
 
     // Apply stackable bars to this task if needed
@@ -1309,6 +1338,7 @@ function renderBoard(options = null) {
     }
 
     if (!window.cachedBoard) {
+        blurActiveElementIfContained(boardElement);
         boardElement.innerHTML = `
             <div class="empty-board" style="
                 text-align: center;
@@ -1349,6 +1379,7 @@ function renderBoard(options = null) {
         scrollPositions.set(columnId, container.scrollTop);
     });
 
+    blurActiveElementIfContained(boardElement);
     boardElement.innerHTML = '';
 
     // Check if board is valid (has proper kanban header)

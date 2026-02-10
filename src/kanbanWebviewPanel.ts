@@ -463,15 +463,20 @@ export class KanbanWebviewPanel {
         });
 
         this._disposables.push(this._fileRegistry.onDidChangeRegistry((event) => {
+            // DIAGNOSTIC: Log all registry change events
+            logger.warn(`[KanbanWebviewPanel] ⚠️ Registry change event: type="${event.type}", mainPath="${event.mainPath || 'none'}"`);
+
             if (event.type === 'main-removed' || event.type === 'cleared') {
                 const lastUri = this._context.lastDocumentUri;
                 const fallbackPath = event.mainPath
                     || this._fileManager.getDocument()?.uri.fsPath
                     || (lastUri ? vscode.Uri.parse(lastUri).fsPath : undefined);
+                logger.warn(`[KanbanWebviewPanel] Main file context lost - fallbackPath: ${fallbackPath || 'none'}`);
                 this._setFileContextMissing(true, 'main-file-missing', 'other', fallbackPath);
                 return;
             }
             if (event.type === 'main-registered') {
+                logger.debug(`[KanbanWebviewPanel] ✓ Main file registered: ${event.mainPath}`);
                 this._setFileContextMissing(false);
             }
         }));
@@ -535,6 +540,21 @@ export class KanbanWebviewPanel {
             logger.debug('[KanbanWebviewPanel.onDidChangeViewState] visibility changed:', e.webviewPanel.visible);
             if (e.webviewPanel.visible) {
                 KanbanWebviewPanel.lastActivePanel = this;
+
+                // DIAGNOSTIC: Log state before recovery attempt
+                const preRecoveryState = {
+                    hasDocument: !!this._fileManager.getDocument(),
+                    hasMainFile: !!this._fileRegistry.getMainFile(),
+                    documentUri: this._context.documentUri
+                };
+                if (!preRecoveryState.hasDocument || !preRecoveryState.hasMainFile) {
+                    logger.warn(`[KanbanWebviewPanel] Panel became visible with missing context:`, preRecoveryState);
+                }
+
+                // FIX: Try to recover main file context FIRST, before other checks
+                // This ensures we attempt document/registry recovery when returning from background
+                await this._ensureMainFileContext('other');
+
                 this._fileManager.sendFileInfo();
                 this.syncDirtyItems();
                 await this.refreshConfiguration();
@@ -701,7 +721,28 @@ export class KanbanWebviewPanel {
 
     private async _ensureMainFileContext(source: 'load' | 'save' | 'other'): Promise<boolean> {
         const existingMainFile = this._fileRegistry.getMainFile();
-        const document = this._fileManager.getDocument();
+        let document = this._fileManager.getDocument();
+
+        // DIAGNOSTIC: Log state when entering this method
+        if (!existingMainFile || !document) {
+            logger.warn(`[KanbanWebviewPanel] ⚠️ _ensureMainFileContext(${source}) - state check:`);
+            logger.warn(`  existingMainFile: ${existingMainFile?.getPath() || 'MISSING'}`);
+            logger.warn(`  document: ${document?.uri.fsPath || 'MISSING'}`);
+            logger.warn(`  context.documentUri: ${this._context.documentUri || 'undefined'}`);
+        }
+
+        // FIX: If document is missing but we have a persisted URI, try to recover it
+        if (!document && this._context.documentUri && this._boardInitHandler) {
+            try {
+                logger.debug(`[KanbanWebviewPanel] Attempting to recover document from persisted URI: ${this._context.documentUri}`);
+                const uri = vscode.Uri.parse(this._context.documentUri);
+                document = await vscode.workspace.openTextDocument(uri);
+                this._fileManager.setDocument(document);
+                logger.debug(`[KanbanWebviewPanel] ✓ Document recovered successfully`);
+            } catch (error) {
+                logger.error(`[KanbanWebviewPanel] Failed to recover document from URI:`, error);
+            }
+        }
 
         if (existingMainFile && document && existingMainFile.getPath() !== document.uri.fsPath && this._boardInitHandler) {
             logger.warn('[KanbanWebviewPanel] Main file path mismatch, reinitializing context', {
@@ -725,10 +766,11 @@ export class KanbanWebviewPanel {
 
         if (document && this._boardInitHandler) {
             try {
+                logger.debug(`[KanbanWebviewPanel] Reinitializing main file context from document: ${document.uri.fsPath}`);
                 const result = await this._boardInitHandler.initializeFromDocument(document, this._mediaTracker);
                 this._mediaTracker = result.mediaTracker;
             } catch (error) {
-                console.error('[KanbanWebviewPanel] Failed to reinitialize main file context:', error);
+                logger.error('[KanbanWebviewPanel] Failed to reinitialize main file context:', error);
             }
         }
 

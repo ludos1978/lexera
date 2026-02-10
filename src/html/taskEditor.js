@@ -1566,11 +1566,7 @@ class TaskEditor {
                     document.hasFocus()) {
 
                     const activeElement = document.activeElement;
-                    const isEditingElsewhere = activeElement && (
-                        activeElement.classList.contains('task-title-edit') ||
-                        activeElement.classList.contains('task-description-edit') ||
-                        activeElement.classList.contains('column-title-edit')
-                    );
+                    const isEditingElsewhere = this._isInlineEditorElement(activeElement);
                     if (!isEditingElsewhere) {
                         this.save();
                     }
@@ -1667,12 +1663,8 @@ class TaskEditor {
                     document.hasFocus()) {
 
                     const activeElement = document.activeElement;
-                    const isEditingElsewhere = activeElement && (
-                        activeElement.classList.contains('task-title-edit') ||
-                        activeElement.classList.contains('task-description-edit') ||
-                        activeElement.classList.contains('column-title-edit') ||
-                        (activeElement.closest && activeElement.closest('.task-description-wysiwyg'))
-                    );
+                    const isEditingElsewhere = this._isInlineEditorElement(activeElement) ||
+                        Boolean(activeElement?.closest && activeElement.closest('.task-description-wysiwyg'));
                     if (!isEditingElsewhere) {
                         this.save();
                     }
@@ -1774,6 +1766,18 @@ class TaskEditor {
             return;
         }
         this._focusElement(element);
+    }
+
+    _isInlineEditorElement(element) {
+        return Boolean(
+            element &&
+            element.classList &&
+            (
+                element.classList.contains('task-title-edit') ||
+                element.classList.contains('task-description-edit') ||
+                element.classList.contains('column-title-edit')
+            )
+        );
     }
 
     _lockScrollForFrames(element, top, left, frames = 6) {
@@ -2651,6 +2655,17 @@ class TaskEditor {
 
         this.currentEditor.displayElement.style.removeProperty('display');
 
+        // TaskEditor updates bypass boardRenderer's post-render hooks, so ensure
+        // newly injected embeds/iframes are hydrated and validated immediately.
+        if (typeof window.updateImageSources === 'function') {
+            window.updateImageSources();
+        }
+        if (typeof window._checkRenderedIframes === 'function') {
+            window._checkRenderedIframes();
+        } else if (typeof window._hydrateInlineFileEmbeds === 'function') {
+            window._hydrateInlineFileEmbeds(this.currentEditor.displayElement);
+        }
+
         // Keep folded summary text in sync after task description edits.
         if (type === 'task-description') {
             const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
@@ -2736,6 +2751,19 @@ class TaskEditor {
 
         const { element, displayElement, type, wysiwyg, wysiwygContainer } = this.currentEditor;
         const scrollPositions = this._captureScrollPositions(element);
+
+        // Blur focused editor descendants before hiding/removing editor DOM to avoid
+        // VS Code webview trackFocus race conditions.
+        const activeElement = document.activeElement;
+        const activeInsideEditor = Boolean(
+            activeElement &&
+            (activeElement === element ||
+             element.contains(activeElement) ||
+             (wysiwygContainer && wysiwygContainer.contains(activeElement)))
+        );
+        if (activeInsideEditor) {
+            activeElement.blur?.();
+        }
 
         if (!wysiwyg && typeof window.removeSpecialCharOverlay === 'function') {
             window.removeSpecialCharOverlay(element);

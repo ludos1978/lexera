@@ -2121,6 +2121,13 @@ export interface CheckIframeUrlMessage extends BaseMessage {
     url: string;
 }
 
+/** Check if a file path exists and can be resolved (Frontend -> Backend) */
+export interface CheckFileExistsMessage extends RequestMessage {
+    type: 'checkFileExists';
+    path: string;
+    includeDir?: string;
+}
+
 /**
  * Media index status info
  */
@@ -2168,6 +2175,15 @@ export interface IframeUrlCheckResultMessage extends BaseMessage {
     type: 'iframeUrlCheckResult';
     url: string;
     blocked: boolean;
+}
+
+/** Result of file existence check (Backend -> Frontend) */
+export interface FileExistsCheckResultMessage extends ResponseMessage {
+    type: 'fileExistsCheckResult';
+    path: string;
+    exists: boolean;
+    resolvedPath?: string;
+    error?: string;
 }
 
 /**
@@ -2261,6 +2277,7 @@ export type OutgoingMessage =
     | MediaIndexScanCompletedMessage
     | MediaIndexScanCancelledMessage
     | IframeUrlCheckResultMessage
+    | FileExistsCheckResultMessage
     // Search messages
     | ScrollToElementMessage
     | ScrollToElementByIndexMessage
@@ -2422,6 +2439,7 @@ export type IncomingMessage =
     | RequestMediaIndexScanMessage
     | CancelMediaIndexScanMessage
     | CheckIframeUrlMessage
+    | CheckFileExistsMessage
     // Search messages
     | SearchBrokenElementsMessage
     | SearchTextMessage

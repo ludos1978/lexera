@@ -33,6 +33,84 @@ function installCurrentBoardAlias() {
 }
 installCurrentBoardAlias();
 
+/**
+ * Blur the currently focused element if it is inside the provided node.
+ * Prevents VS Code webview focus tracking from touching detached nodes.
+ * IMPORTANT: Never blur if there's an active inline editor - this would close the editor!
+ * @param {Node|null|undefined} node
+ */
+function blurFocusedElementWithin(node) {
+    if (!node) {
+        return;
+    }
+
+    // CRITICAL: Never blur if there's an active inline editor
+    // The taskEditor manages its own focus and blurring it would close the editor
+    if (window.taskEditor?.currentEditor) {
+        return;
+    }
+
+    const activeElement = document.activeElement;
+    if (!activeElement || activeElement === document.body || activeElement === document.documentElement) {
+        return;
+    }
+
+    const containsActive =
+        node === activeElement ||
+        (typeof node.contains === 'function' && node.contains(activeElement));
+
+    if (containsActive) {
+        activeElement.blur?.();
+    }
+}
+
+window.blurFocusedElementWithin = blurFocusedElementWithin;
+
+/**
+ * Install global DOM mutation guards that blur focused descendants before they are removed.
+ * This is a defensive layer for rare VS Code webview trackFocus null classList races.
+ */
+function installFocusSafeDomMutationGuards() {
+    if (window.__kanbanFocusSafeDomMutationsInstalled) {
+        return;
+    }
+    window.__kanbanFocusSafeDomMutationsInstalled = true;
+
+    const originalRemoveChild = Node.prototype.removeChild;
+    if (typeof originalRemoveChild === 'function') {
+        Node.prototype.removeChild = function(child) {
+            blurFocusedElementWithin(child);
+            return originalRemoveChild.call(this, child);
+        };
+    }
+
+    const originalReplaceChild = Node.prototype.replaceChild;
+    if (typeof originalReplaceChild === 'function') {
+        Node.prototype.replaceChild = function(newChild, oldChild) {
+            blurFocusedElementWithin(oldChild);
+            return originalReplaceChild.call(this, newChild, oldChild);
+        };
+    }
+
+    const originalElementRemove = Element.prototype.remove;
+    if (typeof originalElementRemove === 'function') {
+        Element.prototype.remove = function() {
+            blurFocusedElementWithin(this);
+            return originalElementRemove.call(this);
+        };
+    }
+
+    const originalElementReplaceWith = Element.prototype.replaceWith;
+    if (typeof originalElementReplaceWith === 'function') {
+        Element.prototype.replaceWith = function(...nodes) {
+            blurFocusedElementWithin(this);
+            return originalElementReplaceWith.apply(this, nodes);
+        };
+    }
+}
+
+installFocusSafeDomMutationGuards();
+
 // Note: window.tagColors is set by backend in boardUpdate message
 // Do NOT initialize to {} here - it prevents actual config from loading!
 let baseBuildVersion = '';
@@ -2846,6 +2924,10 @@ if (!webviewEventListenersInitialized) {
                 // 1. It's a full refresh (explicit reload) OR
                 // 2. No recent targeted update was done
                 if (!skipDueToRecentTargetedUpdate || message.isFullRefresh) {
+                    if (typeof window.blurFocusedElementWithin === 'function') {
+                        window.blurFocusedElementWithin(document.getElementById('kanban-board'));
+                    }
+
                     // renderBoard() now calls initializeParkedItems() internally
                     if (typeof window.renderBoard === 'function') {
                         window.renderBoard();

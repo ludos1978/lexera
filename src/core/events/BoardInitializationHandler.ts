@@ -18,6 +18,7 @@ import { MediaTracker, ChangedMediaFile } from '../../services/MediaTracker';
 import { PanelContext } from '../../panel/PanelContext';
 import { IncludeFileCoordinator } from '../../panel/IncludeFileCoordinator';
 import { FileSyncHandler } from './FileSyncHandler';
+import { logger } from '../../utils/logger';
 
 /**
  * Dependencies required by BoardInitializationHandler
@@ -89,7 +90,13 @@ export class BoardInitializationHandler {
         if (!mainFile || mainFile.getPath() !== filePath) {
             // Clear existing files if switching to a different file
             if (mainFile && mainFile.getPath() !== filePath) {
+                // DIAGNOSTIC: Log path mismatch that triggers registry clear
+                logger.warn(`[BoardInitializationHandler] ⚠️ PATH MISMATCH - clearing registry`);
+                logger.warn(`[BoardInitializationHandler] Existing main file: "${mainFile.getPath()}"`);
+                logger.warn(`[BoardInitializationHandler] New file path: "${filePath}"`);
                 this._deps.fileRegistry.clear();
+            } else if (!mainFile) {
+                logger.debug(`[BoardInitializationHandler] No existing main file - creating new one for: "${filePath}"`);
             }
 
             // Create new MainKanbanFile instance

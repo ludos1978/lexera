@@ -215,6 +215,14 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         }
 
         const normalizedRelativePath = file.getNormalizedRelativePath();
+        const isMainFile = file.getFileType() === 'main';
+
+        // DIAGNOSTIC: Log main file unregistration with stack trace
+        if (isMainFile) {
+            const stack = new Error().stack?.split('\n').slice(1, 8).join('\n') || 'no stack';
+            logger.warn(`[MarkdownFileRegistry] ⚠️ UNREGISTERING MAIN FILE: ${path}`);
+            logger.warn(`[MarkdownFileRegistry] Unregister called from:\n${stack}`);
+        }
 
         this._files.delete(path);
         this._filesByRelativePath.delete(normalizedRelativePath); // FOUNDATION-1: Use normalized key
@@ -223,7 +231,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         // Dispose the file
         file.dispose();
 
-        if (file.getFileType() === 'main') {
+        if (isMainFile) {
             this._onDidChangeRegistry.fire({
                 type: 'main-removed',
                 mainPath: file.getPath(),
@@ -237,6 +245,13 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      */
     public clear(): void {
         const mainFile = this.getMainFile();
+        const fileCount = this._files.size;
+
+        // DIAGNOSTIC: Log registry clear with stack trace to help identify cause
+        const stack = new Error().stack?.split('\n').slice(1, 8).join('\n') || 'no stack';
+        logger.warn(`[MarkdownFileRegistry] ⚠️ CLEARING REGISTRY - ${fileCount} files will be disposed`);
+        logger.warn(`[MarkdownFileRegistry] Main file was: ${mainFile?.getPath() || 'none'}`);
+        logger.warn(`[MarkdownFileRegistry] Clear called from:\n${stack}`);
 
         // Dispose all files
         for (const file of this._files.values()) {

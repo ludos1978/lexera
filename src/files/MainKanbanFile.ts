@@ -421,6 +421,45 @@ export class MainKanbanFile extends MarkdownFile {
 
         if (expectedJson !== actualJson) {
             const diffIndex = this._findFirstDiffIndex(expectedJson, actualJson);
+
+            // DEBUG: Show ±20 characters around the diff with exact escape sequences
+            const contextStart = Math.max(0, diffIndex - 20);
+            const contextEnd20 = Math.min(Math.max(expectedJson.length, actualJson.length), diffIndex + 20);
+
+            const expectedContext = expectedJson.substring(contextStart, contextEnd20);
+            const actualContext = actualJson.substring(contextStart, contextEnd20);
+
+            // Show exact characters at diff point with visible escape sequences
+            const expectedAtDiff = expectedJson.substring(diffIndex, diffIndex + 10);
+            const actualAtDiff = actualJson.substring(diffIndex, diffIndex + 10);
+
+            console.error('='.repeat(80));
+            console.error('[MainKanbanFile] ROUND-TRIP MISMATCH DEBUG');
+            console.error('='.repeat(80));
+            console.error(`diffIndex: ${diffIndex}`);
+            console.error(`expectedLength: ${expectedJson.length}, actualLength: ${actualJson.length}`);
+            console.error(`difference: ${expectedJson.length - actualJson.length} characters`);
+            console.error('-'.repeat(40));
+            console.error('EXPECTED ±20 chars (raw):');
+            console.error(expectedContext);
+            console.error('-'.repeat(40));
+            console.error('ACTUAL ±20 chars (raw):');
+            console.error(actualContext);
+            console.error('-'.repeat(40));
+            console.error('EXPECTED at diff (JSON escaped):', JSON.stringify(expectedAtDiff));
+            console.error('ACTUAL at diff (JSON escaped):', JSON.stringify(actualAtDiff));
+            console.error('-'.repeat(40));
+
+            // Find which column/task this is in by searching for nearest "content":" before diffIndex
+            const beforeDiff = expectedJson.substring(0, diffIndex);
+            const lastContentMatch = beforeDiff.lastIndexOf('"content":"');
+            if (lastContentMatch !== -1) {
+                const contentPreview = expectedJson.substring(lastContentMatch, Math.min(lastContentMatch + 100, expectedJson.length));
+                console.error('Nearest task content (expected):', contentPreview);
+            }
+
+            console.error('='.repeat(80));
+
             throw new Error(
                 `[MainKanbanFile] Save serialization mismatch for "${this.getRelativePath()}" `
                 + `(diffIndex=${diffIndex}, expectedShapeLength=${expectedJson.length}, actualShapeLength=${actualJson.length}).`

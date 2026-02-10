@@ -5,6 +5,8 @@
  * - getProcessesStatus
  * - requestMediaIndexScan
  * - cancelMediaIndexScan
+ * - checkIframeUrl
+ * - checkFileExists
  *
  * @module commands/ProcessCommands
  */
@@ -12,7 +14,7 @@
 import { SwitchBasedCommand, CommandContext, CommandMetadata, CommandResult, MessageHandler } from './interfaces';
 import { WorkspaceMediaIndex, MediaIndexScanScope } from '../services/WorkspaceMediaIndex';
 import { configService } from '../services/ConfigurationService';
-import { CheckIframeUrlMessage } from '../core/bridge/MessageTypes';
+import { CheckFileExistsMessage, CheckIframeUrlMessage } from '../core/bridge/MessageTypes';
 import * as https from 'https';
 import * as http from 'http';
 
@@ -31,7 +33,8 @@ export class ProcessCommands extends SwitchBasedCommand {
             'getProcessesStatus',
             'requestMediaIndexScan',
             'cancelMediaIndexScan',
-            'checkIframeUrl'
+            'checkIframeUrl',
+            'checkFileExists'
         ],
         priority: 100
     };
@@ -54,6 +57,10 @@ export class ProcessCommands extends SwitchBasedCommand {
         },
         'checkIframeUrl': async (msg, _ctx) => {
             this.handleCheckIframeUrl((msg as CheckIframeUrlMessage).url);
+            return this.success();
+        },
+        'checkFileExists': async (msg, ctx) => {
+            await this.handleCheckFileExists(msg as CheckFileExistsMessage, ctx);
             return this.success();
         }
     };
@@ -191,5 +198,82 @@ export class ProcessCommands extends SwitchBasedCommand {
         req.on('error', () => respond(false));
         req.on('timeout', () => { req.destroy(); respond(false); });
         req.end();
+    }
+
+    /**
+     * Handle file existence preflight check for webview inline file embeds.
+     * Resolves relative paths against include context / active document via FileManager.
+     */
+    private async handleCheckFileExists(message: CheckFileExistsMessage, context: CommandContext): Promise<void> {
+        const requestId = message.requestId;
+        const originalPath = (message.path || '').trim();
+        const includeDir = (message.includeDir || '').trim();
+
+        if (!requestId) {
+            return;
+        }
+
+        const respond = (exists: boolean, resolvedPath?: string, error?: string) => {
+            this.postMessage({
+                type: 'fileExistsCheckResult',
+                requestId,
+                path: originalPath,
+                exists,
+                resolvedPath,
+                error
+            });
+        };
+
+        if (!originalPath) {
+            respond(false, undefined, 'Missing file path');
+            return;
+        }
+
+        const lower = originalPath.toLowerCase();
+        if (
+            lower.startsWith('http://') ||
+            lower.startsWith('https://') ||
+            lower.startsWith('data:') ||
+            lower.startsWith('blob:') ||
+            lower.startsWith('vscode-webview://')
+        ) {
+            respond(true, originalPath);
+            return;
+        }
+
+        let normalizedPath = originalPath;
+        try {
+            normalizedPath = decodeURIComponent(normalizedPath);
+        } catch {
+            // Keep undecoded path fallback
+        }
+        normalizedPath = normalizedPath.split(/[?#]/)[0];
+
+        if (!normalizedPath) {
+            respond(false, undefined, `Invalid file path: ${originalPath}`);
+            return;
+        }
+
+        try {
+            const resolution = await context.fileManager.resolveFilePath(
+                normalizedPath,
+                includeDir ? { includeDir } : undefined
+            );
+
+            if (!resolution) {
+                respond(false, undefined, `Unable to resolve path: ${normalizedPath}`);
+                return;
+            }
+
+            if (!resolution.exists) {
+                respond(false, resolution.resolvedPath, `File not found: ${resolution.resolvedPath}`);
+                return;
+            }
+
+            respond(true, resolution.resolvedPath);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            respond(false, undefined, errorMessage);
+        }
     }
 }

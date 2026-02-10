@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { configService } from './services/ConfigurationService';
 import { HandleFileDropMessage, HandleUriDropMessage, EditorDropPosition } from './core/bridge/MessageTypes';
 import { showError, showInfo } from './services/NotificationService';
+import { logger } from './utils/logger';
 
 export interface FileInfo {
     fileName: string;
@@ -98,7 +99,13 @@ export class FileManager {
             return registryPath;
         }
         if (this._getMainFilePath) {
-            return undefined;
+            // DIAGNOSTIC: Log when registry path lookup fails but callback exists
+            // This indicates the main file may be missing from registry
+            logger.warn(`[FileManager] ⚠️ getFilePath() - _getMainFilePath callback returned undefined`);
+            logger.warn(`[FileManager] Fallback _filePath: ${this._filePath || 'undefined'}`);
+            // CHANGED: Fall back to preserved file path instead of returning undefined
+            // This ensures we still show the file name even if registry is temporarily empty
+            return this._filePath;
         }
         // Return the preserved file path, which persists even when document is closed
         return this._filePath;

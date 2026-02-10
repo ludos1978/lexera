@@ -2,6 +2,7 @@
 
 kanban-plugin: board
 
+fontSize: 1_0x
 ---
 
 ## Normal column
@@ -14,11 +15,11 @@ kanban-plugin: board
 - [ ] different includes
   ==./root/root-include-1.md==
   
-  !!!include(./root/root-include-1.md)!!!
+  ![](./root/root-include-1.md)
 
 ## task includes
-- [ ] !!!include(root/root-include-2.md)!!!
+- [ ] ![](root/root-include-2.md)
 
-## #stack !!!include(aroot/root-include-3.md)!!!
+## !!!include(root/root-include-3.md)!!! #stack
 
 
