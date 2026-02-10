@@ -311,6 +311,46 @@ export interface DashboardConfigUpdatedMessage {
 }
 
 /**
+ * Request to perform a text search
+ */
+export interface DashboardSearchTextMessage {
+    type: 'searchText';
+    query: string;
+    useRegex?: boolean;
+    scope?: string;
+}
+
+/**
+ * Request to navigate to a search result element
+ */
+export interface DashboardNavigateToSearchElementMessage {
+    type: 'navigateToElement';
+    columnId: string;
+    taskId?: string;
+    elementPath?: string;
+    elementType?: string;
+    field?: 'columnTitle' | 'taskContent';
+    matchText?: string;
+    boardUri?: string;
+}
+
+/**
+ * Request to pin/unpin a search
+ */
+export interface DashboardPinSearchMessage {
+    type: 'pinSearch';
+    query: string;
+}
+
+/**
+ * Request to remove a search
+ */
+export interface DashboardRemoveSearchMessage {
+    type: 'removeSearch';
+    query: string;
+}
+
+/**
  * Union type for all dashboard messages from webview to backend
  */
 export type DashboardIncomingMessage =
@@ -324,7 +364,11 @@ export type DashboardIncomingMessage =
     | DashboardTagSearchMessage
     | DashboardAddTagFilterMessage
     | DashboardRemoveTagFilterMessage
-    | DashboardSetSortModeMessage;
+    | DashboardSetSortModeMessage
+    | DashboardSearchTextMessage
+    | DashboardNavigateToSearchElementMessage
+    | DashboardPinSearchMessage
+    | DashboardRemoveSearchMessage;
 
 /**
  * Union type for all dashboard messages from backend to webview

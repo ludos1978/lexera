@@ -6017,12 +6017,12 @@
         {
           "type": "webview",
           "id": "kanbanBoardsSidebar",
-          "name": "Kanban Boards"
+          "name": "Boards"
         },
         {
           "type": "webview",
           "id": "kanbanDashboard",
-          "name": "Kanban Dashboard"
+          "name": "Dashboard"
         }
       ]
     },

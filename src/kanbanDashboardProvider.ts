@@ -31,9 +31,24 @@ import {
 import { DashboardScanner } from './dashboard/DashboardScanner';
 import { BoardRegistryService } from './services/BoardRegistryService';
 import { BoardContentScanner } from './services/BoardContentScanner';
+import { TextMatcher } from './utils/textMatcher';
+import {
+    SearchResultItem,
+    NavigateToElementMessage
+} from './core/bridge/MessageTypes';
 
 /**
- * KanbanDashboardProvider - Sidebar panel for kanban dashboard (results only)
+ * Board that can be searched
+ */
+interface SearchableBoard {
+    uri: string;
+    name: string;
+    board: import('./markdownParser').KanbanBoard;
+    basePath: string;
+}
+
+/**
+ * KanbanDashboardProvider - Sidebar panel for kanban dashboard
  */
 export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kanbanDashboard';
@@ -41,6 +56,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
     private _extensionContext: vscode.ExtensionContext;
+    private _pendingQuery: string | null = null;
     private _disposables: vscode.Disposable[] = [];
 
     constructor(extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
@@ -91,6 +107,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             switch (message.type) {
                 case 'dashboardReady':
                     this._refreshData();
+                    if (this._pendingQuery) {
+                        this._view?.webview.postMessage({ type: 'setSearchQuery', query: this._pendingQuery });
+                        this._pendingQuery = null;
+                    }
                     break;
                 case 'dashboardRefresh':
                     this._refreshData();
@@ -107,6 +127,24 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 case 'dashboardSetSortMode':
                     await BoardRegistryService.getInstance().setSortMode(message.sortMode);
                     break;
+
+                // Search
+                case 'searchText':
+                    await this._handleTextSearch(message.query, {
+                        useRegex: message.useRegex,
+                        scope: message.scope
+                    });
+                    break;
+                case 'navigateToElement':
+                    await this._handleNavigateToSearchElement(message);
+                    break;
+                case 'pinSearch':
+                    await BoardRegistryService.getInstance().toggleSearchPin(message.query);
+                    break;
+                case 'removeSearch':
+                    await BoardRegistryService.getInstance().removeSearch(message.query);
+                    break;
+
                 // Board config messages are now handled by Boards Panel via BoardRegistryService
                 // Keep handlers for backward compat but route through registry
                 case 'dashboardAddBoard':
@@ -283,7 +321,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         this._view.webview.postMessage({
             type: 'dashboardData',
-            data
+            data,
+            recentSearches: registry.recentSearches
         });
     }
 
@@ -415,6 +454,160 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             tag,
             results
         });
+    }
+
+    // ============= Search (moved from KanbanBoardsProvider) =============
+
+    /**
+     * Set a search query from an external command (e.g. [[#tag]] navigation)
+     */
+    public setSearchQuery(query: string): void {
+        this._pendingQuery = query;
+        if (this._view?.webview) {
+            this._view.webview.postMessage({ type: 'setSearchQuery', query });
+            this._pendingQuery = null;
+        }
+    }
+
+    /**
+     * Handle text search
+     */
+    private async _handleTextSearch(query: string, options?: { useRegex?: boolean; scope?: string }): Promise<void> {
+        if (!query || query.trim().length === 0) {
+            this._view?.webview.postMessage({ type: 'searchResults', results: [], searchType: 'text' });
+            return;
+        }
+
+        if (options?.useRegex) {
+            const probe = new TextMatcher(query.trim(), { useRegex: true });
+            if (probe.regexError) {
+                this._view?.webview.postMessage({ type: 'searchError', message: `Invalid regex: ${probe.regexError}` });
+                return;
+            }
+        }
+
+        await BoardRegistryService.getInstance().addSearch(query, options?.useRegex, options?.scope as any);
+
+        const scope = options?.scope || 'active';
+        const boards = await this._collectBoardsForScope(scope);
+
+        if (boards.length === 0) {
+            if (scope === 'active') {
+                this._view?.webview.postMessage({ type: 'searchError', message: 'No kanban board is currently open' });
+            } else {
+                this._view?.webview.postMessage({ type: 'searchError', message: 'No boards available to search' });
+            }
+            return;
+        }
+
+        try {
+            const allResults: SearchResultItem[] = [];
+            for (const searchableBoard of boards) {
+                const scanner = new BoardContentScanner(searchableBoard.basePath);
+                const matches = scanner.searchText(searchableBoard.board, query.trim(), { useRegex: options?.useRegex });
+                const results: SearchResultItem[] = matches.map(match => ({
+                    type: 'text' as const,
+                    matchText: match.matchText,
+                    context: match.context,
+                    location: match.location,
+                    exists: true,
+                    boardUri: boards.length > 1 ? searchableBoard.uri : undefined,
+                    boardName: boards.length > 1 ? searchableBoard.name : undefined
+                }));
+                allResults.push(...results);
+            }
+            this._view?.webview.postMessage({ type: 'searchResults', results: allResults, searchType: 'text' });
+        } catch (error) {
+            this._view?.webview.postMessage({ type: 'searchError', message: `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}` });
+        }
+    }
+
+    /**
+     * Collect boards based on search scope
+     */
+    private async _collectBoardsForScope(scope: string): Promise<SearchableBoard[]> {
+        const boardMap = new Map<string, SearchableBoard>();
+
+        if (scope === 'active') {
+            const panel = KanbanWebviewPanel.getActivePanel();
+            if (panel) {
+                const docUri = panel.getCurrentDocumentUri();
+                if (docUri) {
+                    const board = panel.getBoard();
+                    const basePath = path.dirname(docUri.fsPath);
+                    if (board) {
+                        boardMap.set(docUri.toString(), { uri: docUri.toString(), name: path.basename(docUri.fsPath, '.md'), board, basePath });
+                    }
+                }
+            }
+        } else if (scope === 'open') {
+            const panels = KanbanWebviewPanel.getAllPanels();
+            for (const panel of panels) {
+                const docUri = panel.getCurrentDocumentUri();
+                if (!docUri) continue;
+                const uri = docUri.toString();
+                if (boardMap.has(uri)) continue;
+                const board = panel.getBoard();
+                if (board) {
+                    boardMap.set(uri, { uri, name: path.basename(docUri.fsPath, '.md'), board, basePath: path.dirname(docUri.fsPath) });
+                }
+            }
+        } else {
+            // 'listed' - open panels first, then registered boards
+            const panels = KanbanWebviewPanel.getAllPanels();
+            for (const panel of panels) {
+                const docUri = panel.getCurrentDocumentUri();
+                if (!docUri) continue;
+                const uri = docUri.toString();
+                if (boardMap.has(uri)) continue;
+                const board = panel.getBoard();
+                if (board) {
+                    boardMap.set(uri, { uri, name: path.basename(docUri.fsPath, '.md'), board, basePath: path.dirname(docUri.fsPath) });
+                }
+            }
+            const registeredBoards = BoardRegistryService.getInstance().getEnabledBoards();
+            for (const regBoard of registeredBoards) {
+                if (boardMap.has(regBoard.uri)) continue;
+                try {
+                    if (!fs.existsSync(regBoard.filePath)) continue;
+                    const content = fs.readFileSync(regBoard.filePath, 'utf8');
+                    const parseResult = MarkdownKanbanParser.parseMarkdown(content, regBoard.filePath);
+                    boardMap.set(regBoard.uri, { uri: regBoard.uri, name: path.basename(regBoard.filePath, '.md'), board: parseResult.board, basePath: path.dirname(regBoard.filePath) });
+                } catch (error) {
+                    console.error(`[Dashboard] Failed to load board ${regBoard.uri}:`, error);
+                }
+            }
+        }
+
+        return Array.from(boardMap.values());
+    }
+
+    /**
+     * Handle navigation to element from search results
+     */
+    private async _handleNavigateToSearchElement(message: NavigateToElementMessage): Promise<void> {
+        if (message.boardUri) {
+            try {
+                const uri = vscode.Uri.parse(message.boardUri);
+                let panel = KanbanWebviewPanel.getPanelForDocument(message.boardUri);
+                if (!panel) {
+                    const document = await vscode.workspace.openTextDocument(uri);
+                    KanbanWebviewPanel.createOrShow(this._extensionUri, this._extensionContext, document);
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    panel = KanbanWebviewPanel.getPanelForDocument(message.boardUri);
+                }
+                if (panel) {
+                    panel.scrollToElement(message.columnId, message.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+                    return;
+                }
+            } catch (error) {
+                console.error('[Dashboard] Error opening board for navigation:', error);
+            }
+        }
+        const panel = KanbanWebviewPanel.getActivePanel();
+        if (panel) {
+            panel.scrollToElement(message.columnId, message.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+        }
     }
 
     /**
@@ -710,6 +903,94 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         /* ===========================================
+           Search Section
+           =========================================== */
+        .search-section {
+            padding: 8px;
+            border-bottom: 1px solid var(--vscode-panel-border, transparent);
+        }
+        .search-input-container {
+            display: flex;
+            gap: 4px;
+        }
+        .search-input {
+            flex: 1;
+            height: 26px;
+            padding: 0 8px;
+            border: 1px solid var(--vscode-input-border, transparent);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border-radius: 2px;
+            outline: none;
+            font-size: inherit;
+            min-width: 0;
+        }
+        .search-input:focus {
+            border-color: var(--vscode-focusBorder);
+        }
+        .search-input::placeholder {
+            color: var(--vscode-input-placeholderForeground);
+        }
+        .regex-toggle-btn {
+            width: 26px; height: 26px; padding: 0;
+            border: 1px solid var(--vscode-input-border, transparent);
+            background: transparent; color: var(--vscode-foreground);
+            border-radius: 2px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0.6; flex-shrink: 0;
+        }
+        .regex-toggle-btn:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
+        .regex-toggle-btn.active {
+            opacity: 1;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-color: var(--vscode-button-background);
+        }
+        .regex-icon { font-size: 11px; font-weight: 600; font-family: var(--vscode-editor-font-family, monospace); }
+        .scope-select {
+            height: 26px; font-size: 11px;
+            background: var(--vscode-dropdown-background);
+            color: var(--vscode-dropdown-foreground);
+            border: 1px solid var(--vscode-dropdown-border, transparent);
+            border-radius: 2px; padding: 0 4px; flex-shrink: 0;
+        }
+        .search-btn {
+            width: 26px; height: 26px; padding: 0; border: none;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border-radius: 2px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .search-btn:hover { background: var(--vscode-button-hoverBackground); }
+        .recent-searches { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        .recent-searches:empty { display: none; }
+        .recent-search-item {
+            display: inline-flex; align-items: center; gap: 2px;
+            padding: 1px 4px;
+            background: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+            border-radius: 3px; font-size: 11px; cursor: pointer; max-width: 150px;
+        }
+        .recent-search-item:hover { opacity: 0.9; }
+        .recent-search-item.pinned {
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+        }
+        .recent-search-query { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .recent-search-pin, .recent-search-close { cursor: pointer; opacity: 0.6; font-size: 10px; flex-shrink: 0; }
+        .recent-search-pin:hover, .recent-search-close:hover { opacity: 1; }
+        .close-results-btn {
+            background: none; border: none; cursor: pointer;
+            padding: 2px 4px; color: var(--vscode-foreground); opacity: 0.6; font-size: 12px;
+        }
+        .close-results-btn:hover { opacity: 1; }
+        .live-search-section { border-bottom: 1px solid var(--vscode-panel-border, transparent); }
+        .live-results-list { overflow-y: auto; max-height: 300px; }
+        .highlight { background: var(--vscode-editor-findMatchHighlightBackground); color: var(--vscode-foreground); }
+        .result-icon-broken { color: var(--vscode-errorForeground); }
+
+        /* ===========================================
            Messages & Hints
            =========================================== */
         .empty-message {
@@ -722,6 +1003,40 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="dashboard-container">
+        <!-- Search Section -->
+        <div class="search-section">
+            <div class="search-input-container">
+                <input type="text" class="search-input" placeholder="Search board content..." />
+                <button class="regex-toggle-btn" title="Use Regular Expression">
+                    <span class="regex-icon">.*</span>
+                </button>
+                <select class="scope-select" title="Search Scope">
+                    <option value="active">Active Board</option>
+                    <option value="listed">All Listed</option>
+                    <option value="open">Open Boards</option>
+                </select>
+                <button class="search-btn" title="Search">
+                    <span class="codicon codicon-search"></span>
+                </button>
+            </div>
+            <div class="recent-searches" id="recent-searches"></div>
+        </div>
+
+        <!-- Live Search Results (hidden by default) -->
+        <div class="live-search-section" id="live-search-section" style="display: none;">
+            <div class="tree-row section-header" data-section="liveSearch">
+                <div class="tree-indent"><div class="indent-guide"></div></div>
+                <div class="tree-twistie collapsible expanded"></div>
+                <div class="tree-contents">
+                    <h3>Search Results</h3>
+                </div>
+                <button class="close-results-btn" id="close-live-search" title="Close results">\u2715</button>
+            </div>
+            <div class="section-content" id="live-search-content">
+                <div class="live-results-list" id="live-search-list"></div>
+            </div>
+        </div>
+
         <!-- Sort Mode Toggle -->
         <div class="sort-mode-bar">
             <button class="sort-mode-btn active" data-mode="boardFirst">Board First</button>
@@ -808,6 +1123,18 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             return collapsedGroups.has(key) ? ' style="display: none"' : '';
         }
 
+        // Search state
+        let useRegex = false;
+        let searchDebounceTimer = null;
+        let recentSearchesData = [];
+        const searchInput = document.querySelector('.search-input');
+        const searchBtnEl = document.querySelector('.search-btn');
+        const regexToggleBtn = document.querySelector('.regex-toggle-btn');
+        const scopeSelect = document.querySelector('.scope-select');
+        const recentSearchesContainer = document.getElementById('recent-searches');
+        const liveSearchSection = document.getElementById('live-search-section');
+        const liveSearchList = document.getElementById('live-search-list');
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             // Setup section toggle handlers
@@ -817,6 +1144,36 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     const sectionId = header.getAttribute('data-section');
                     toggleSection(sectionId);
                 });
+            });
+
+            // Setup search
+            searchBtnEl.addEventListener('click', performSearch);
+            searchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') { performSearch(); }
+            });
+            searchInput.addEventListener('input', () => {
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(() => {
+                    if (searchInput.value.length >= 2) { performSearch(); }
+                }, 300);
+            });
+            regexToggleBtn.addEventListener('click', () => {
+                useRegex = !useRegex;
+                regexToggleBtn.classList.toggle('active', useRegex);
+                if (searchInput.value.trim().length >= 2) { performSearch(); }
+            });
+            document.getElementById('close-live-search').addEventListener('click', (e) => {
+                e.stopPropagation();
+                liveSearchSection.style.display = 'none';
+            });
+            document.addEventListener('keydown', (e) => {
+                const isModifier = e.ctrlKey || e.metaKey;
+                if (!isModifier) { return; }
+                if (e.key.toLowerCase() === 'f') {
+                    e.preventDefault();
+                    searchInput.focus();
+                    searchInput.select();
+                }
             });
 
             // Setup refresh button
@@ -841,7 +1198,19 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const message = event.data;
             if (message.type === 'dashboardData') {
                 dashboardData = message.data;
+                recentSearchesData = message.recentSearches || [];
                 renderDashboard();
+                renderRecentSearches();
+            } else if (message.type === 'searchResults') {
+                renderLiveSearchResults(message.results, message.searchType);
+            } else if (message.type === 'searchError') {
+                liveSearchList.innerHTML = '<div class="empty-message" style="color: var(--vscode-errorForeground);">' + escapeHtml(message.message) + '</div>';
+                liveSearchSection.style.display = 'block';
+            } else if (message.type === 'setSearchQuery') {
+                if (message.query) {
+                    searchInput.value = message.query;
+                    performSearch();
+                }
             }
         });
 
@@ -1432,6 +1801,130 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (diff === 1) return 'Tomorrow';
             if (diff < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
             return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
+
+        // ============= Search Functions =============
+
+        function performSearch() {
+            const query = searchInput.value.trim();
+            if (query.length === 0) { return; }
+            const msg = { type: 'searchText', query: query, scope: scopeSelect.value };
+            if (useRegex) { msg.useRegex = true; }
+            vscode.postMessage(msg);
+            liveSearchList.innerHTML = '<div class="empty-message">Searching...</div>';
+            liveSearchSection.style.display = 'block';
+        }
+
+        function renderRecentSearches() {
+            const searches = recentSearchesData || [];
+            if (searches.length === 0) { recentSearchesContainer.innerHTML = ''; return; }
+            let html = '';
+            searches.forEach(function(entry) {
+                const pinnedClass = entry.pinned ? ' pinned' : '';
+                const pinIcon = entry.pinned ? '\\ud83d\\udccc' : '\\ud83d\\udccd';
+                html += '<span class="recent-search-item' + pinnedClass + '" data-query="' + escapeHtml(entry.query) + '">';
+                html += '<span class="recent-search-query">' + escapeHtml(entry.query) + '</span>';
+                html += '<span class="recent-search-pin" data-action="pin" title="' + (entry.pinned ? 'Unpin' : 'Pin') + '">' + pinIcon + '</span>';
+                html += '<span class="recent-search-close" data-action="close" title="Remove">\\u2715</span>';
+                html += '</span>';
+            });
+            recentSearchesContainer.innerHTML = html;
+            recentSearchesContainer.querySelectorAll('.recent-search-item').forEach(function(item) {
+                const query = item.getAttribute('data-query');
+                item.querySelector('.recent-search-query').addEventListener('click', function() {
+                    searchInput.value = query;
+                    performSearch();
+                });
+                item.querySelector('[data-action="pin"]').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    vscode.postMessage({ type: 'pinSearch', query: query });
+                });
+                item.querySelector('[data-action="close"]').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    vscode.postMessage({ type: 'removeSearch', query: query });
+                });
+            });
+        }
+
+        function renderLiveSearchResults(results, searchType) {
+            if (!results || results.length === 0) {
+                liveSearchList.innerHTML = '<div class="empty-message">' +
+                    (searchType === 'broken' ? 'No broken elements found' : 'No matches found') + '</div>';
+                liveSearchSection.style.display = 'block';
+                return;
+            }
+            liveSearchSection.style.display = 'block';
+            const isMultiBoard = results.some(function(r) { return r.boardName; });
+            let html = '';
+            if (isMultiBoard) {
+                const grouped = {};
+                results.forEach(function(r) {
+                    const key = r.boardName || 'Current Board';
+                    if (!grouped[key]) grouped[key] = { boardUri: r.boardUri, items: [] };
+                    grouped[key].items.push(r);
+                });
+                for (const [boardName, data] of Object.entries(grouped)) {
+                    const gKey = 'liveSearch/board/' + boardName;
+                    html += '<div class="tree-group">';
+                    html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(gKey) + '">';
+                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                    html += '<div class="tree-twistie collapsible' + groupExpandedClass(gKey) + '"></div>';
+                    html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + data.items.length + ')</span></div>';
+                    html += '</div>';
+                    html += '<div class="tree-group-items"' + groupItemsStyle(gKey) + '>';
+                    data.items.forEach(function(item) { html += renderLiveSearchItem(item, 3, searchType); });
+                    html += '</div></div>';
+                }
+            } else {
+                results.forEach(function(item) { html += renderLiveSearchItem(item, 2, searchType); });
+            }
+            liveSearchList.innerHTML = html;
+            attachLiveSearchListeners();
+        }
+
+        function renderLiveSearchItem(item, indentLevel, searchType) {
+            const isBroken = searchType === 'broken';
+            let mainContent = '';
+            if (item.path) { mainContent = escapeHtml(item.path); }
+            else if (item.matchText) { mainContent = escapeHtml(item.matchText); }
+            const loc = item.location || {};
+            const locationText = escapeHtml(loc.columnTitle || '') + (loc.taskSummary ? ' / ' + escapeHtml(loc.taskSummary) : '');
+            let html = '<div class="tree-row live-search-item"';
+            html += ' data-column-id="' + escapeHtml(loc.columnId || '') + '"';
+            if (loc.taskId) html += ' data-task-id="' + escapeHtml(loc.taskId) + '"';
+            if (item.boardUri) html += ' data-board-uri="' + escapeHtml(item.boardUri) + '"';
+            if (item.path) html += ' data-element-path="' + escapeHtml(item.path) + '"';
+            html += ' data-element-type="' + escapeHtml(item.type || '') + '"';
+            if (loc.field) html += ' data-field="' + escapeHtml(loc.field) + '"';
+            if (item.matchText) html += ' data-match-text="' + escapeHtml(item.matchText) + '"';
+            html += '>';
+            html += '<div class="tree-indent">';
+            for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            html += '<span class="entry-title' + (isBroken ? ' result-icon-broken' : '') + '">' + mainContent + '</span>';
+            html += '<span class="entry-location">' + locationText + '</span>';
+            html += '</div></div></div>';
+            return html;
+        }
+
+        function attachLiveSearchListeners() {
+            liveSearchList.querySelectorAll('.live-search-item').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    vscode.postMessage({
+                        type: 'navigateToElement',
+                        columnId: item.getAttribute('data-column-id'),
+                        taskId: item.getAttribute('data-task-id') || undefined,
+                        elementPath: item.getAttribute('data-element-path') || undefined,
+                        elementType: item.getAttribute('data-element-type') || undefined,
+                        field: item.getAttribute('data-field') || undefined,
+                        matchText: item.getAttribute('data-match-text') || undefined,
+                        boardUri: item.getAttribute('data-board-uri') || undefined
+                    });
+                });
+            });
+            attachToggleListeners(liveSearchList);
         }
 
         function escapeHtml(text) {

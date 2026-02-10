@@ -10,6 +10,7 @@
   - the search can be words, regex etc.
 
   in the boards add an all boards setting at the top, it should open with a folding button right of the lock button. it allows defining the timeframe and tags for all boards at once. the timeframe on each board has also an option "use default" or the user might change it individually. more tags can be added for each board, but the defaults are used on each board check anyway!
+  make sure the folding state inthe kanban dashboard is not reset every time.
 
 - [ ] if i open a folder link by alt+clicking it and it's available in the workspace explorer. if possible highlight the folder there instead of opening it externally. The default action open is to show in workspace explorer, if that fails it should be opened in the system explorer/finder.
 
