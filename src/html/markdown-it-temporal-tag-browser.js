@@ -209,7 +209,26 @@ window.markdownitTemporalTag = function(md, options) {
         // For minute slots, add an extra attribute to help with line-level styling
         var lineActiveAttr = (tagType === 'minuteSlot' && isActive) ? ' data-temporal-line-active="true"' : '';
 
-        return '<span class="' + classes + activeClass + '" ' + dataAttr + lineActiveAttr + '>' +
+        // Generate tooltip showing resolved date/range
+        var tooltipAttr = '';
+        if (typeof window !== 'undefined' && window.tagUtils && window.tagUtils.resolveTemporalToTooltip) {
+            // Build context text from all temporal_tag tokens in this inline context
+            var contextText = '';
+            if (tokens && tokens.length > 0) {
+                for (var i = 0; i < tokens.length; i++) {
+                    if (tokens[i].type === 'temporal_tag' && tokens[i].content) {
+                        contextText += TEMPORAL_PREFIX + tokens[i].content + ' ';
+                    }
+                }
+            }
+            var tooltip = window.tagUtils.resolveTemporalToTooltip(tagContent, tagType, contextText);
+            if (tooltip) {
+                var escTooltip = tooltip.replace(/[&<>"']/g, function(c) { return escMap[c]; });
+                tooltipAttr = ' title="' + escTooltip + '"';
+            }
+        }
+
+        return '<span class="' + classes + activeClass + '" ' + dataAttr + lineActiveAttr + tooltipAttr + '>' +
             (icon ? '<span class="temporal-icon">' + icon + '</span>' : '') +
             escFull + '</span>';
     };

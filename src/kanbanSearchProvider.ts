@@ -14,6 +14,8 @@ import * as fs from 'fs';
 import { KanbanWebviewPanel } from './kanbanWebviewPanel';
 import { BoardContentScanner, BrokenElement, TextMatch } from './services/BoardContentScanner';
 import { TextMatcher } from './utils/textMatcher';
+import { MarkdownKanbanParser, KanbanBoard } from './markdownParser';
+import { DashboardBoardConfig } from './dashboard/DashboardTypes';
 import {
     SearchResultItem,
     SearchBrokenElementsMessage,
@@ -24,6 +26,16 @@ import {
 } from './core/bridge/MessageTypes';
 
 /**
+ * Represents a board that can be searched
+ */
+interface SearchableBoard {
+    uri: string;
+    name: string;
+    board: KanbanBoard;
+    basePath: string;
+}
+
+/**
  * KanbanSearchProvider - Sidebar panel for searching kanban boards
  */
 export class KanbanSearchProvider implements vscode.WebviewViewProvider {
@@ -32,6 +44,7 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
     private _view?: vscode.WebviewView;
     private _extensionUri: vscode.Uri;
     private _lastResultsPanel: KanbanWebviewPanel | null = null;
+    private _lastResultsBoardUri: string | null = null;  // For multi-board search navigation
     private _pendingQuery: string | null = null;
 
     constructor(extensionUri: vscode.Uri) {
@@ -58,19 +71,22 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
         // Handle messages from the sidebar webview
         webviewView.webview.onDidReceiveMessage(async (message) => {
             switch (message.type) {
-                case 'searchBrokenElements':
-                    await this._handleBrokenElementsSearch();
+                case 'searchBrokenElements': {
+                    const brokenMsg = message as SearchBrokenElementsMessage;
+                    await this._handleBrokenElementsSearch(brokenMsg.searchAllBoards);
                     break;
+                }
                 case 'searchText': {
                     const searchMsg = message as SearchTextMessage;
                     await this._handleTextSearch(searchMsg.query, {
                         useRegex: searchMsg.useRegex,
-                        caseSensitive: searchMsg.caseSensitive
+                        caseSensitive: searchMsg.caseSensitive,
+                        searchAllBoards: searchMsg.searchAllBoards
                     });
                     break;
                 }
                 case 'navigateToElement':
-                    this._handleNavigateToElement(message as NavigateToElementMessage);
+                    await this._handleNavigateToElement(message as NavigateToElementMessage);
                     break;
                 case 'ready':
                     // Webview is ready, check if there's an active panel
@@ -108,13 +124,19 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
     /**
      * Handle broken elements search request
      */
-    private async _handleBrokenElementsSearch(): Promise<void> {
+    private async _handleBrokenElementsSearch(searchAllBoards?: boolean): Promise<void> {
+        if (searchAllBoards) {
+            await this._handleBrokenElementsSearchAllBoards();
+            return;
+        }
+
         const panel = this._getActivePanel();
         if (!panel) {
             this._sendNoActivePanel();
             return;
         }
         this._lastResultsPanel = panel;
+        this._lastResultsBoardUri = null;
 
         const board = panel.getBoard();
         if (!board) {
@@ -147,11 +169,64 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Handle broken elements search across all boards
+     */
+    private async _handleBrokenElementsSearchAllBoards(): Promise<void> {
+        const boards = await this._collectAllBoards();
+        if (boards.length === 0) {
+            this._sendError('No boards available to search');
+            return;
+        }
+
+        this._lastResultsPanel = null;
+        this._lastResultsBoardUri = null;
+
+        try {
+            const allResults: SearchResultItem[] = [];
+
+            for (const searchableBoard of boards) {
+                const scanner = new BoardContentScanner(searchableBoard.basePath);
+                const brokenElements = scanner.findBrokenElements(searchableBoard.board);
+
+                const results: SearchResultItem[] = brokenElements.map(elem => ({
+                    type: elem.type,
+                    path: elem.path,
+                    location: elem.location,
+                    exists: false,
+                    boardUri: searchableBoard.uri,
+                    boardName: searchableBoard.name
+                }));
+
+                allResults.push(...results);
+            }
+
+            this._sendSearchResults(allResults, 'broken');
+        } catch (error) {
+            console.error('[KanbanSearchProvider] Error scanning all boards for broken elements:', error);
+            this._sendError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
      * Handle text search request
      */
-    private async _handleTextSearch(query: string, options?: { useRegex?: boolean; caseSensitive?: boolean }): Promise<void> {
+    private async _handleTextSearch(query: string, options?: { useRegex?: boolean; caseSensitive?: boolean; searchAllBoards?: boolean }): Promise<void> {
         if (!query || query.trim().length === 0) {
             this._sendSearchResults([], 'text');
+            return;
+        }
+
+        // Validate regex before scanning to surface errors to the user
+        if (options?.useRegex) {
+            const probe = new TextMatcher(query.trim(), options);
+            if (probe.regexError) {
+                this._sendError(`Invalid regex: ${probe.regexError}`);
+                return;
+            }
+        }
+
+        if (options?.searchAllBoards) {
+            await this._handleTextSearchAllBoards(query, options);
             return;
         }
 
@@ -161,6 +236,7 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
             return;
         }
         this._lastResultsPanel = panel;
+        this._lastResultsBoardUri = null;
 
         const board = panel.getBoard();
         if (!board) {
@@ -172,15 +248,6 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
         if (!basePath) {
             this._sendError('Could not determine document path');
             return;
-        }
-
-        // Validate regex before scanning to surface errors to the user
-        if (options?.useRegex) {
-            const probe = new TextMatcher(query.trim(), options);
-            if (probe.regexError) {
-                this._sendError(`Invalid regex: ${probe.regexError}`);
-                return;
-            }
         }
 
         try {
@@ -207,9 +274,88 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Handle text search across all boards
+     */
+    private async _handleTextSearchAllBoards(query: string, options?: { useRegex?: boolean; caseSensitive?: boolean }): Promise<void> {
+        const boards = await this._collectAllBoards();
+        if (boards.length === 0) {
+            this._sendError('No boards available to search');
+            return;
+        }
+
+        this._lastResultsPanel = null;
+        this._lastResultsBoardUri = null;
+
+        try {
+            const allResults: SearchResultItem[] = [];
+
+            for (const searchableBoard of boards) {
+                const scanner = new BoardContentScanner(searchableBoard.basePath);
+                const matches = scanner.searchText(
+                    searchableBoard.board,
+                    query.trim(),
+                    options
+                );
+
+                const results: SearchResultItem[] = matches.map(match => ({
+                    type: 'text',
+                    matchText: match.matchText,
+                    context: match.context,
+                    location: match.location,
+                    exists: true,
+                    boardUri: searchableBoard.uri,
+                    boardName: searchableBoard.name
+                }));
+
+                allResults.push(...results);
+            }
+
+            this._sendSearchResults(allResults, 'text');
+        } catch (error) {
+            console.error('[KanbanSearchProvider] Error during multi-board text search:', error);
+            this._sendError(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
      * Handle navigation to element request
      */
-    private _handleNavigateToElement(message: NavigateToElementMessage): void {
+    private async _handleNavigateToElement(message: NavigateToElementMessage): Promise<void> {
+        // If boardUri is specified (multi-board search), open that board first
+        if (message.boardUri) {
+            try {
+                const uri = vscode.Uri.parse(message.boardUri);
+                // Check if we already have a panel for this board
+                let panel = KanbanWebviewPanel.getPanelForDocument(message.boardUri);
+
+                if (!panel) {
+                    // Open the document and create a panel
+                    const document = await vscode.workspace.openTextDocument(uri);
+                    await vscode.window.showTextDocument(document, { preview: false });
+                    // Wait a bit for the panel to be created
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    panel = KanbanWebviewPanel.getPanelForDocument(message.boardUri);
+                }
+
+                if (panel) {
+                    // scrollToElement internally reveals the panel
+                    panel.scrollToElement(
+                        message.columnId,
+                        message.taskId,
+                        true,
+                        message.elementPath,
+                        message.elementType,
+                        message.field,
+                        message.matchText
+                    );
+                    return;
+                }
+            } catch (error) {
+                console.error('[KanbanSearchProvider] Error opening board for navigation:', error);
+            }
+        }
+
+        // Fallback to existing behavior
         const preferredPanel = this._lastResultsPanel && !this._lastResultsPanel.isDisposed()
             ? this._lastResultsPanel
             : undefined;
@@ -226,8 +372,69 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
             true,
             message.elementPath,
             message.elementType,
-            message.field
+            message.field,
+            message.matchText
         );
+    }
+
+    /**
+     * Collect all unique boards from open panels and dashboard config
+     */
+    private async _collectAllBoards(): Promise<SearchableBoard[]> {
+        const boardMap = new Map<string, SearchableBoard>();
+
+        // 1. Collect from open panels
+        const panels = KanbanWebviewPanel.getAllPanels();
+        for (const panel of panels) {
+            const docUri = panel.getCurrentDocumentUri();
+            if (!docUri) { continue; }
+
+            const uri = docUri.toString();
+            if (boardMap.has(uri)) { continue; }
+
+            const board = panel.getBoard();
+            const basePath = this._getBasePath(panel);
+            if (!board || !basePath) { continue; }
+
+            boardMap.set(uri, {
+                uri,
+                name: path.basename(docUri.fsPath, '.md'),
+                board,
+                basePath
+            });
+        }
+
+        // 2. Collect from dashboard config
+        const config = vscode.workspace.getConfiguration('markdown-kanban');
+        const dashboardBoards = config.get<DashboardBoardConfig[]>('dashboard.boards', []);
+
+        for (const boardConfig of dashboardBoards) {
+            if (!boardConfig.enabled) { continue; }
+            if (boardMap.has(boardConfig.uri)) { continue; }
+
+            try {
+                const uri = vscode.Uri.parse(boardConfig.uri);
+                const filePath = uri.fsPath;
+
+                // Check if file exists
+                if (!fs.existsSync(filePath)) { continue; }
+
+                // Read and parse the file
+                const content = fs.readFileSync(filePath, 'utf8');
+                const parseResult = MarkdownKanbanParser.parseMarkdown(content, filePath);
+
+                boardMap.set(boardConfig.uri, {
+                    uri: boardConfig.uri,
+                    name: path.basename(filePath, '.md'),
+                    board: parseResult.board,
+                    basePath: path.dirname(filePath)
+                });
+            } catch (error) {
+                console.error(`[KanbanSearchProvider] Failed to load board ${boardConfig.uri}:`, error);
+            }
+        }
+
+        return Array.from(boardMap.values());
     }
 
     /**
@@ -340,6 +547,14 @@ export class KanbanSearchProvider implements vscode.WebviewViewProvider {
             <button class="search-btn" title="Search">
                 <span class="codicon codicon-search"></span>
             </button>
+        </div>
+
+        <!-- Search All Boards Checkbox -->
+        <div class="search-options">
+            <label class="checkbox-label" title="Search all open boards and boards configured in dashboard">
+                <input type="checkbox" class="search-all-checkbox" />
+                <span>Search all boards</span>
+            </label>
         </div>
 
         <!-- Find Broken Button (for broken mode) -->

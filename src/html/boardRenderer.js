@@ -278,9 +278,17 @@ function getCollapsedTaskTitleText(taskOrContent) {
         ? window.taskContentUtils.getTaskSummaryLine(content)
         : (content.split('\n').find(line => line && line.trim()) || content.split('\n')[0] || '');
 
+    // Check if summary line contains hidden HTML comments
+    const hasHiddenContent = /<!--[\s\S]*?-->/.test(summaryLine);
+
     const summaryText = convertSummaryLineToPlainText(summaryLine);
     if (summaryText) {
-        return summaryText.length > 120 ? summaryText.substring(0, 120).trim() : summaryText;
+        let result = summaryText.length > 120 ? summaryText.substring(0, 120).trim() : summaryText;
+        // Add "..." if there was hidden content (HTML comments) in the summary line
+        if (hasHiddenContent && result && !result.endsWith('...')) {
+            result = result + '...';
+        }
+        return result;
     }
 
     const fallbackText = convertSummaryLineToPlainText(content);

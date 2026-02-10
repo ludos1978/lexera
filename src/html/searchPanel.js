@@ -18,6 +18,7 @@
     const searchInput = document.querySelector('.search-input');
     const searchBtn = document.querySelector('.search-btn');
     const regexToggleBtn = document.querySelector('.regex-toggle-btn');
+    const searchAllCheckbox = document.querySelector('.search-all-checkbox');
     const findBrokenBtn = document.querySelector('.find-broken-btn');
     const statusMessage = document.querySelector('.status-message');
     const resultsEmpty = document.querySelector('.results-empty');
@@ -31,6 +32,7 @@
     let resultElements = [];
     let currentResultIndex = -1;
     let useRegex = false;
+    let searchAllBoards = false;
 
     // Icon mappings for element types
     const typeIcons = {
@@ -69,8 +71,12 @@
 
         // Find broken button
         findBrokenBtn.addEventListener('click', () => {
-            vscode.postMessage({ type: 'searchBrokenElements' });
-            showLoading('Scanning for broken elements...');
+            const msg = { type: 'searchBrokenElements' };
+            if (searchAllBoards) {
+                msg.searchAllBoards = true;
+            }
+            vscode.postMessage(msg);
+            showLoading(searchAllBoards ? 'Scanning all boards for broken elements...' : 'Scanning for broken elements...');
         });
 
         // Regex toggle button
@@ -80,6 +86,17 @@
                 regexToggleBtn.classList.toggle('active', useRegex);
                 // Re-run search with new mode if there's a query
                 if (searchInput.value.trim().length >= 2) {
+                    performTextSearch();
+                }
+            });
+        }
+
+        // Search all boards checkbox
+        if (searchAllCheckbox) {
+            searchAllCheckbox.addEventListener('change', () => {
+                searchAllBoards = searchAllCheckbox.checked;
+                // Re-run search with new mode if there's a query
+                if (currentMode === 'text' && searchInput.value.trim().length >= 2) {
                     performTextSearch();
                 }
             });
@@ -186,8 +203,11 @@
         if (useRegex) {
             msg.useRegex = true;
         }
+        if (searchAllBoards) {
+            msg.searchAllBoards = true;
+        }
         vscode.postMessage(msg);
-        showLoading('Searching...');
+        showLoading(searchAllBoards ? 'Searching all boards...' : 'Searching...');
     }
 
     /**
@@ -252,49 +272,157 @@
         resultsEmpty.style.display = 'none';
         resultsList.style.display = 'block';
 
-        // Group results by type
-        const grouped = {};
-        results.forEach(result => {
-            const type = result.type;
-            if (!grouped[type]) {
-                grouped[type] = [];
-            }
-            grouped[type].push(result);
-        });
+        // Check if this is a multi-board result (has boardName)
+        const isMultiBoard = results.some(r => r.boardName);
 
-        // Render grouped results using tree structure
         let indexCounter = 0;
-        Object.keys(grouped).forEach(type => {
-            const group = grouped[type];
-            const groupEl = createResultGroup(type, group, searchType, indexCounter);
-            indexCounter += group.length;
-            resultsList.appendChild(groupEl);
-        });
+
+        if (isMultiBoard) {
+            // Group by board first, then by type within each board
+            const groupedByBoard = {};
+            results.forEach(result => {
+                const boardKey = result.boardName || 'Current Board';
+                if (!groupedByBoard[boardKey]) {
+                    groupedByBoard[boardKey] = { boardUri: result.boardUri, items: {} };
+                }
+                const type = result.type;
+                if (!groupedByBoard[boardKey].items[type]) {
+                    groupedByBoard[boardKey].items[type] = [];
+                }
+                groupedByBoard[boardKey].items[type].push(result);
+            });
+
+            // Render board groups
+            Object.keys(groupedByBoard).forEach(boardName => {
+                const boardData = groupedByBoard[boardName];
+                const boardGroupEl = createBoardGroup(boardName, boardData.items, searchType, indexCounter);
+                // Count items in this board
+                Object.values(boardData.items).forEach(items => {
+                    indexCounter += items.length;
+                });
+                resultsList.appendChild(boardGroupEl);
+            });
+
+            // Show summary with board count
+            const totalCount = results.length;
+            const boardCount = Object.keys(groupedByBoard).length;
+            if (searchType === 'broken') {
+                showStatus(`Found ${totalCount} broken element${totalCount !== 1 ? 's' : ''} in ${boardCount} board${boardCount !== 1 ? 's' : ''}`, 'warning');
+            } else {
+                showStatus(`Found ${totalCount} match${totalCount !== 1 ? 'es' : ''} in ${boardCount} board${boardCount !== 1 ? 's' : ''}`);
+            }
+        } else {
+            // Single board - group by type only
+            const grouped = {};
+            results.forEach(result => {
+                const type = result.type;
+                if (!grouped[type]) {
+                    grouped[type] = [];
+                }
+                grouped[type].push(result);
+            });
+
+            // Render grouped results using tree structure
+            Object.keys(grouped).forEach(type => {
+                const group = grouped[type];
+                const groupEl = createResultGroup(type, group, searchType, indexCounter);
+                indexCounter += group.length;
+                resultsList.appendChild(groupEl);
+            });
+
+            // Show summary
+            const totalCount = results.length;
+            const typeCount = Object.keys(grouped).length;
+            if (searchType === 'broken') {
+                showStatus(`Found ${totalCount} broken element${totalCount !== 1 ? 's' : ''} in ${typeCount} categor${typeCount !== 1 ? 'ies' : 'y'}`, 'warning');
+            } else {
+                showStatus(`Found ${totalCount} match${totalCount !== 1 ? 'es' : ''}`);
+            }
+        }
 
         if (currentResults.length > 0) {
             navigateToIndex(0, { scroll: false, focus: false });
         }
+    }
 
-        // Show summary
-        const totalCount = results.length;
-        const typeCount = Object.keys(grouped).length;
-        if (searchType === 'broken') {
-            showStatus(`Found ${totalCount} broken element${totalCount !== 1 ? 's' : ''} in ${typeCount} categor${typeCount !== 1 ? 'ies' : 'y'}`, 'warning');
-        } else {
-            showStatus(`Found ${totalCount} match${totalCount !== 1 ? 'es' : ''}`);
+    /**
+     * Create a board group element for multi-board results
+     */
+    function createBoardGroup(boardName, itemsByType, searchType, startIndex) {
+        const group = document.createElement('div');
+        group.className = 'tree-group board-group';
+        group.dataset.board = boardName;
+
+        // Count total items in this board
+        let totalItems = 0;
+        Object.values(itemsByType).forEach(items => {
+            totalItems += items.length;
+        });
+
+        // Check if this group should be folded
+        const isFolded = foldedGroups.has('board:' + boardName);
+        if (isFolded) {
+            group.classList.add('folded');
         }
+
+        // Header with board name
+        const header = document.createElement('div');
+        header.className = 'tree-row tree-group-toggle board-header';
+        header.innerHTML = `
+            <div class="tree-twistie collapsible ${isFolded ? '' : 'expanded'}"></div>
+            <div class="tree-contents">
+                <span class="codicon codicon-file"></span>
+                <span class="tree-label-name board-name">${escapeHtml(boardName)} (${totalItems})</span>
+            </div>
+        `;
+
+        header.addEventListener('click', () => {
+            const isNowFolded = group.classList.toggle('folded');
+            const twistie = header.querySelector('.tree-twistie');
+            if (twistie) {
+                twistie.classList.toggle('expanded', !isNowFolded);
+            }
+            if (isNowFolded) {
+                foldedGroups.add('board:' + boardName);
+            } else {
+                foldedGroups.delete('board:' + boardName);
+            }
+        });
+
+        group.appendChild(header);
+
+        // Items container with type sub-groups
+        const itemsContainer = document.createElement('div');
+        itemsContainer.className = 'tree-group-items';
+
+        let indexCounter = startIndex;
+        Object.keys(itemsByType).forEach(type => {
+            const items = itemsByType[type];
+            const typeGroupEl = createResultGroup(type, items, searchType, indexCounter, true);
+            indexCounter += items.length;
+            itemsContainer.appendChild(typeGroupEl);
+        });
+
+        group.appendChild(itemsContainer);
+        return group;
     }
 
     /**
      * Create a result group element using tree structure
+     * @param {string} type - Result type
+     * @param {Array} items - Results in this group
+     * @param {string} searchType - 'text' or 'broken'
+     * @param {number} startIndex - Starting index for results
+     * @param {boolean} nested - Whether this is nested inside a board group
      */
-    function createResultGroup(type, items, searchType, startIndex = 0) {
+    function createResultGroup(type, items, searchType, startIndex = 0, nested = false) {
         const group = document.createElement('div');
-        group.className = 'tree-group';
+        group.className = 'tree-group' + (nested ? ' nested-group' : '');
         group.dataset.type = type;
 
         // Check if this group should be folded (persisted state)
-        const isFolded = foldedGroups.has(type);
+        const foldKey = nested ? 'nested:' + type : type;
+        const isFolded = foldedGroups.has(foldKey);
         if (isFolded) {
             group.classList.add('folded');
         }
@@ -302,8 +430,11 @@
         // Header using tree-row structure
         const header = document.createElement('div');
         header.className = 'tree-row tree-group-toggle';
+        const indentHtml = nested
+            ? '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>'
+            : '<div class="tree-indent"><div class="indent-guide"></div></div>';
         header.innerHTML = `
-            <div class="tree-indent"><div class="indent-guide"></div></div>
+            ${indentHtml}
             <div class="tree-twistie collapsible ${isFolded ? '' : 'expanded'}"></div>
             <div class="tree-contents">
                 <span class="tree-label-name">${escapeHtml(typeLabels[type] || type)} (${items.length})</span>
@@ -319,9 +450,9 @@
             }
             // Persist fold state
             if (isNowFolded) {
-                foldedGroups.add(type);
+                foldedGroups.add(foldKey);
             } else {
-                foldedGroups.delete(type);
+                foldedGroups.delete(foldKey);
             }
         });
 
@@ -331,7 +462,7 @@
         const itemsContainer = document.createElement('div');
         itemsContainer.className = 'tree-group-items';
         items.forEach((item, offset) => {
-            const itemEl = createResultItem(item, searchType, startIndex + offset);
+            const itemEl = createResultItem(item, searchType, startIndex + offset, nested);
             itemsContainer.appendChild(itemEl);
         });
         group.appendChild(itemsContainer);
@@ -341,8 +472,12 @@
 
     /**
      * Create a result item element using tree-row structure with 2 lines
+     * @param {Object} item - Result item
+     * @param {string} searchType - 'text' or 'broken'
+     * @param {number} resultIndex - Index in results array
+     * @param {boolean} nested - Whether this is nested inside a board group
      */
-    function createResultItem(item, searchType, resultIndex) {
+    function createResultItem(item, searchType, resultIndex, nested = false) {
         const el = document.createElement('div');
         el.className = 'tree-row';
         el.dataset.resultIndex = String(resultIndex);
@@ -362,8 +497,13 @@
         // Location (second line)
         const locationText = formatLocation(item.location);
 
+        // More indent guides for nested items
+        const indentHtml = nested
+            ? '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>'
+            : '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+
         el.innerHTML = `
-            <div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>
+            ${indentHtml}
             <div class="tree-twistie"></div>
             <div class="tree-contents">
                 <div class="tree-label-2line">
@@ -385,14 +525,20 @@
      * Navigate to an element on the board
      */
     function navigateToElement(item) {
-        vscode.postMessage({
+        const msg = {
             type: 'navigateToElement',
             columnId: item.location.columnId,
             taskId: item.location.taskId,
             elementPath: item.path,
             elementType: item.type,
-            field: item.location.field
-        });
+            field: item.location.field,
+            matchText: item.matchText
+        };
+        // Include boardUri for multi-board navigation
+        if (item.boardUri) {
+            msg.boardUri = item.boardUri;
+        }
+        vscode.postMessage(msg);
     }
 
     function logSearchScroll(index, element) {
@@ -410,7 +556,7 @@
 
     function updateActiveResult() {
         resultElements.forEach((el, index) => {
-            if (!el) return;
+            if (!el) { return; }
             el.classList.toggle('active', index === currentResultIndex);
         });
     }
@@ -450,7 +596,7 @@
      * Highlight match in context
      */
     function highlightMatch(context, matchText) {
-        if (!matchText) return escapeHtml(context);
+        if (!matchText) { return escapeHtml(context); }
 
         const escaped = escapeHtml(context);
         const matchEscaped = escapeHtml(matchText);

@@ -2028,6 +2028,8 @@ export interface SearchResultItem {
     context?: string;        // Surrounding text for context
     location: SearchElementLocation;
     exists: boolean;         // For broken detection
+    boardUri?: string;       // Board URI for multi-board search
+    boardName?: string;      // Board display name for multi-board search
 }
 
 /**
@@ -2035,6 +2037,7 @@ export interface SearchResultItem {
  */
 export interface SearchBrokenElementsMessage extends BaseMessage {
     type: 'searchBrokenElements';
+    searchAllBoards?: boolean;
 }
 
 /**
@@ -2045,6 +2048,7 @@ export interface SearchTextMessage extends BaseMessage {
     query: string;
     useRegex?: boolean;
     caseSensitive?: boolean;
+    searchAllBoards?: boolean;
 }
 
 /**
@@ -2057,6 +2061,8 @@ export interface NavigateToElementMessage extends BaseMessage {
     elementPath?: string;
     elementType?: string;
     field?: 'columnTitle' | 'taskContent';
+    matchText?: string;
+    boardUri?: string;  // For multi-board search navigation
 }
 
 /**
@@ -2079,6 +2085,7 @@ export interface ScrollToElementMessage extends BaseMessage {
     elementPath?: string;
     elementType?: string;
     field?: 'columnTitle' | 'taskContent';
+    matchText?: string;
 }
 
 /**

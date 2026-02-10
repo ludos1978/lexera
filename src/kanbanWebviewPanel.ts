@@ -263,7 +263,8 @@ export class KanbanWebviewPanel {
         highlight: boolean = true,
         elementPath?: string,
         elementType?: string,
-        field?: 'columnTitle' | 'taskContent'
+        field?: 'columnTitle' | 'taskContent',
+        matchText?: string
     ): void {
         const message: ScrollToElementMessage = {
             type: 'scrollToElement',
@@ -272,7 +273,8 @@ export class KanbanWebviewPanel {
             highlight,
             elementPath,
             elementType,
-            field
+            field,
+            matchText
         };
 
         // Reveal the panel first

@@ -4363,7 +4363,8 @@ if (!webviewEventListenersInitialized) {
                 message.highlight,
                 message.elementPath,
                 message.elementType,
-                message.field
+                message.field,
+                message.matchText
             );
             break;
 
@@ -4841,8 +4842,8 @@ function scrollToAndHighlightByIndex(columnIndex, taskIndex, highlight = true) {
  * @param {string} [taskId] - Optional task ID to scroll to within the column
  * @param {boolean} [highlight] - Whether to add highlight animation
  */
-function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, elementType, field) {
-    console.log('[scrollToAndHighlight] START columnId:', columnId, 'taskId:', taskId);
+function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, elementType, field, matchText) {
+    console.log('[scrollToAndHighlight] START columnId:', columnId, 'taskId:', taskId, 'matchText:', matchText);
 
     let targetElement = null;
     const columnElement = columnId
@@ -5053,6 +5054,59 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
         return;
     }
 
+    // Unfold collapsed columns and tasks before scrolling
+    if (columnElement) {
+        const isColumnCollapsed = columnElement.classList.contains('collapsed-vertical') ||
+                                   columnElement.classList.contains('collapsed-horizontal');
+        if (isColumnCollapsed) {
+            console.log('[scrollToAndHighlight] Unfolding collapsed column:', columnId);
+            columnElement.classList.remove('collapsed-vertical', 'collapsed-horizontal');
+            const toggle = columnElement.querySelector('.fold-toggle');
+            if (toggle) {
+                toggle.classList.remove('rotated');
+            }
+            if (window.collapsedColumns) {
+                window.collapsedColumns.delete(columnId);
+            }
+            if (window.columnFoldModes) {
+                window.columnFoldModes.delete(columnId);
+            }
+            if (window.saveCurrentFoldingState) {
+                window.saveCurrentFoldingState();
+            }
+        }
+    }
+
+    if (taskElement) {
+        const isTaskCollapsed = taskElement.classList.contains('collapsed');
+        if (isTaskCollapsed) {
+            console.log('[scrollToAndHighlight] Unfolding collapsed task:', taskId);
+            taskElement.classList.remove('collapsed');
+            const toggle = taskElement.querySelector('.task-fold-toggle');
+            if (toggle) {
+                toggle.classList.remove('rotated');
+            }
+            if (window.collapsedTasks) {
+                window.collapsedTasks.delete(taskId);
+            }
+            // Update folded summary text
+            const titleDisplay = taskElement.querySelector('.task-title-display');
+            if (titleDisplay) {
+                titleDisplay.textContent = '';
+            }
+            if (window.saveCurrentFoldingState) {
+                window.saveCurrentFoldingState();
+            }
+            // Recalculate stacked column heights after unfolding
+            if (typeof window.applyStackedColumnStyles === 'function') {
+                const colId = window.getColumnIdFromElement ? window.getColumnIdFromElement(taskElement) : columnId;
+                if (colId) {
+                    window.applyStackedColumnStyles(colId);
+                }
+            }
+        }
+    }
+
     // Scroll the element into view with scroll anchoring
     if (typeof window.logViewMovement === 'function') {
         window.logViewMovement('scrollToAndHighlight', {
@@ -5177,7 +5231,7 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
 
     scrollTarget.scrollIntoView({
         behavior: 'instant',
-        block: 'center',
+        block: 'start',
         inline: 'nearest'
     });
     console.log('[scrollToAndHighlight] After scrollIntoView, rect:', scrollTarget.getBoundingClientRect());
@@ -5214,6 +5268,106 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
             elementsToHighlight.forEach(el => el.classList.remove('search-highlight'));
         }, 2000);
     }
+
+    // Highlight matched text within the content
+    if (matchText && targetElement) {
+        const searchContainer = taskElement || columnElement || targetElement;
+        highlightMatchedText(searchContainer, matchText);
+    }
+}
+
+/**
+ * Highlight matched text within an element by wrapping it with mark tags
+ * @param {HTMLElement} container - The container to search within
+ * @param {string} matchText - The text to highlight
+ */
+function highlightMatchedText(container, matchText) {
+    if (!container || !matchText) return;
+
+    // Remove any existing text highlights first
+    container.querySelectorAll('mark.search-text-match').forEach(mark => {
+        const parent = mark.parentNode;
+        if (parent) {
+            parent.replaceChild(document.createTextNode(mark.textContent), mark);
+            parent.normalize();
+        }
+    });
+
+    const searchText = matchText.toLowerCase();
+    const treeWalker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: (node) => {
+                // Skip text inside editors, scripts, styles
+                const parent = node.parentElement;
+                if (!parent) return NodeFilter.FILTER_REJECT;
+                const tagName = parent.tagName.toLowerCase();
+                if (tagName === 'script' || tagName === 'style' || tagName === 'textarea' || tagName === 'input') {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                if (parent.classList.contains('task-title-edit') || parent.classList.contains('task-description-edit')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                // Only accept nodes that contain the search text
+                if (node.textContent.toLowerCase().includes(searchText)) {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_SKIP;
+            }
+        }
+    );
+
+    const nodesToHighlight = [];
+    let node;
+    while ((node = treeWalker.nextNode())) {
+        nodesToHighlight.push(node);
+    }
+
+    // Highlight matches in each text node
+    nodesToHighlight.forEach(textNode => {
+        const text = textNode.textContent;
+        const lowerText = text.toLowerCase();
+        let startIndex = 0;
+        const fragments = [];
+        let matchIndex;
+
+        while ((matchIndex = lowerText.indexOf(searchText, startIndex)) !== -1) {
+            // Text before match
+            if (matchIndex > startIndex) {
+                fragments.push(document.createTextNode(text.substring(startIndex, matchIndex)));
+            }
+            // The matched text (preserve original case)
+            const mark = document.createElement('mark');
+            mark.className = 'search-text-match';
+            mark.textContent = text.substring(matchIndex, matchIndex + matchText.length);
+            fragments.push(mark);
+            startIndex = matchIndex + matchText.length;
+        }
+
+        // Remaining text after last match
+        if (startIndex < text.length) {
+            fragments.push(document.createTextNode(text.substring(startIndex)));
+        }
+
+        // Replace the text node with fragments
+        if (fragments.length > 0) {
+            const parent = textNode.parentNode;
+            fragments.forEach(fragment => parent.insertBefore(fragment, textNode));
+            parent.removeChild(textNode);
+        }
+    });
+
+    // Remove the text highlights after a timeout
+    setTimeout(() => {
+        container.querySelectorAll('mark.search-text-match').forEach(mark => {
+            const parent = mark.parentNode;
+            if (parent) {
+                parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                parent.normalize();
+            }
+        });
+    }, 5000);
 }
 
 

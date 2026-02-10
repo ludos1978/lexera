@@ -557,6 +557,108 @@ class TagUtils {
     }
 
     /**
+     * Get Monday of a given ISO week
+     * @param {number} week - ISO week number
+     * @param {number} year - Year
+     * @returns {Date} Monday of that week
+     */
+    getDateOfISOWeek(week, year) {
+        const jan4 = new Date(year, 0, 4);
+        const dayOfWeek = jan4.getDay() || 7; // Sunday = 7
+        const monday = new Date(jan4);
+        monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+        return monday;
+    }
+
+    /**
+     * Get a specific weekday of a given ISO week
+     * @param {number} week - ISO week number
+     * @param {number} year - Year
+     * @param {number} weekday - Weekday (0=Sun, 1=Mon, ..., 6=Sat)
+     * @returns {Date} The specific weekday of that week
+     */
+    getWeekdayOfISOWeek(week, year, weekday) {
+        const monday = this.getDateOfISOWeek(week, year);
+        // Monday is weekday 1, so offset from Monday
+        const daysFromMonday = weekday === 0 ? 6 : weekday - 1;
+        const result = new Date(monday);
+        result.setDate(monday.getDate() + daysFromMonday);
+        return result;
+    }
+
+    /**
+     * Format date as DD.MM.YYYY
+     * @param {Date} date - Date to format
+     * @returns {string} Formatted date string
+     */
+    formatDateDE(date) {
+        const day = date.getDate();
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        return `${day}.${month}.${year}`;
+    }
+
+    /**
+     * Resolve a temporal tag to a tooltip string showing the resolved date/range
+     * @param {string} tagContent - The tag content (without @ prefix)
+     * @param {string} tagType - The type of temporal tag (week, weekday, date, time, timeSlot)
+     * @param {string} fullText - The full text containing the tag (to check for combined week+weekday)
+     * @returns {string|null} Tooltip string or null if cannot be resolved
+     */
+    resolveTemporalToTooltip(tagContent, tagType, fullText) {
+        const currentYear = new Date().getFullYear();
+
+        if (tagType === 'week') {
+            // Extract week info
+            const weekInfo = this.extractWeekTag('@' + tagContent);
+            if (!weekInfo) return null;
+
+            // Check if there's a weekday tag in the same text
+            const weekdayNum = this.extractWeekdayTag(fullText);
+
+            if (weekdayNum !== null) {
+                // Week + weekday = specific date
+                const specificDate = this.getWeekdayOfISOWeek(weekInfo.week, weekInfo.year, weekdayNum);
+                return this.formatDateDE(specificDate);
+            } else {
+                // Just week = date range
+                const monday = this.getDateOfISOWeek(weekInfo.week, weekInfo.year);
+                const sunday = new Date(monday);
+                sunday.setDate(monday.getDate() + 6);
+                return `${this.formatDateDE(monday)} - ${this.formatDateDE(sunday)}`;
+            }
+        }
+
+        if (tagType === 'weekday') {
+            // Check if there's a week tag in the same text
+            const weekInfo = this.extractWeekTag(fullText);
+            const weekdayNum = this.extractWeekdayTag('@' + tagContent);
+
+            if (weekInfo && weekdayNum !== null) {
+                // Week + weekday = specific date
+                const specificDate = this.getWeekdayOfISOWeek(weekInfo.week, weekInfo.year, weekdayNum);
+                return this.formatDateDE(specificDate);
+            } else if (weekdayNum !== null) {
+                // Just weekday = this week's weekday
+                const now = new Date();
+                const currentWeek = this.getCurrentWeek();
+                const specificDate = this.getWeekdayOfISOWeek(currentWeek.week, currentWeek.year, weekdayNum);
+                return this.formatDateDE(specificDate);
+            }
+        }
+
+        if (tagType === 'date') {
+            const dateInfo = this.extractDateTag('@' + tagContent);
+            if (dateInfo) {
+                return `${dateInfo.day}.${dateInfo.month}.${dateInfo.year}`;
+            }
+        }
+
+        // For time/timeSlot, no date resolution needed (shows the time itself)
+        return null;
+    }
+
+    /**
      * Parse time string to minutes since midnight
      * @param {string} timeStr - Time string like "10:30", "10pm", "22:00"
      * @returns {number|null} Minutes since midnight or null if invalid
