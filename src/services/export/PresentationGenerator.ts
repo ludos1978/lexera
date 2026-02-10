@@ -202,25 +202,30 @@ export class PresentationGenerator {
 
     /**
      * Convert a single task to slide content string
+     *
+     * SIMPLIFIED: Just pass through task.content as-is.
+     * Parser now keeps raw slide content, so no title/description reconstruction needed.
+     * This preserves all newlines exactly for round-trip consistency.
      */
     private static taskToSlideContent(task: KanbanTask, options: PresentationOptions): string {
-        const { summaryLine, remainingContent } = splitTaskContent(task.content);
-        // Use originalTitle to preserve !!!include(...)!!! syntax (displayTitle has badge placeholders)
-        let title = task.originalTitle ?? summaryLine ?? '';
-        let description = remainingContent ?? '';
+        // Normalize line endings only (CRLF → LF)
+        let content = (task.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
+        // Strip include syntax from first line if requested
         if (options.stripIncludes) {
-            title = title.replace(INCLUDE_SYNTAX.REGEX, '').trim();
+            const lines = content.split('\n');
+            if (lines.length > 0) {
+                lines[0] = lines[0].replace(INCLUDE_SYNTAX.REGEX, '').trim();
+                content = lines.join('\n');
+            }
         }
 
-        // Filter excluded lines from description
+        // Filter excluded lines if specified
         if (options.excludeTags && options.excludeTags.length > 0) {
-            description = this.filterExcludedLines(description, options.excludeTags);
+            content = this.filterExcludedLines(content, options.excludeTags);
         }
 
-        // Slide format: title\n\ndescription
-        // ALWAYS include \n\n even if description is empty (preserves format)
-        return title + '\n\n' + description;
+        return content;
     }
 
     /**

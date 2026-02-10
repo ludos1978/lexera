@@ -1,7 +1,6 @@
 import * as path from 'path';
 import { KanbanTask } from '../../board/KanbanTypes';
 import { IdGenerator } from '../../utils/idGenerator';
-import { mergeLegacyTaskContent } from '../../utils/taskContent';
 
 export interface PresentationSlide {
   title?: string;
@@ -76,26 +75,9 @@ export class PresentationParser {
     const slides: PresentationSlide[] = [];
 
     rawSlides.forEach((slideContent, index) => {
-      // CRITICAL: Process ALL slides - never skip based on content
-      // Empty/whitespace content IS valid content
-
-      const lines = slideContent.split('\n');
-
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL: Column Include Format
+      // SIMPLIFIED: Keep raw slide content as-is
       // ═══════════════════════════════════════════════════════════════════════════
-      //
-      // The column include file format is:
-      //
-      //   ## Title
-      //
-      //   content
-      //   content
-      //
-      //   ---
-      //
-      //   ## Title2
-      //   ...
       //
       // READING: Split on \n\n---\n\n (consumes blank before + --- + blank after)
       // WRITING: Join with \n\n---\n\n
@@ -104,110 +86,15 @@ export class PresentationParser {
       // DO NOT CHANGE THIS WITHOUT UPDATING PresentationGenerator.formatOutput!
       // ═══════════════════════════════════════════════════════════════════════════
 
-      // Count CONSECUTIVE leading empty lines from the start
-      // CRITICAL: Only check for exact empty string, NOT trim
-      let emptyLineCount = 0;
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i] === '') {
-          emptyLineCount++;
-        } else {
-          break; // Stop at first non-empty line
-        }
-      }
-
-      // Get the first 2 lines with content (to determine structure)
-      // CRITICAL: Only check for exact empty string, NOT trim
-      const contentLines: number[] = [];
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i] !== '') {
-          contentLines.push(i);
-          if (contentLines.length >= 2) {
-            break;
-          }
-        }
-      }
-
-      let titleLine: number = -1; // -1 means undefined/no title
-      let descriptionStartLine: number = -1; // -1 means no description
-      const descriptionEndLine: number = lines.length; // Always read to end
-
-      if (contentLines.length >= 1) {
-        // Check empty line count: 0 empty lines = has title, 1+ = no title
-        // (Since split consumes \n\n---\n\n, slides start directly with content)
-        if (emptyLineCount < 1) {
-          // 0 empty lines => first content is title
-          const firstContentLine = lines[contentLines[0]];
-
-          // ERROR CORRECTION: Check if first line contains patterns that indicate
-          // it's part of structured content that should NOT be split
-          // Patterns: Marp column markers (---:, :--:, :---), HTML comments (<!--),
-          // Markdown tables (|...|), or list items (- text)
-          const hasStructuredContentPattern =
-            /---:|:--:|:---|<!--|\|.*\||^-\s/.test(firstContentLine);
-
-          if (hasStructuredContentPattern) {
-            // Treat as no title - all content should stay together
-            titleLine = -1;
-            descriptionStartLine = Math.min(contentLines[0], 3);
-          } else {
-            // Normal case: first content is title
-            titleLine = contentLines[0];
-
-            // CRITICAL: Skip AT MAX ONE empty line between title and content
-            // BUT ONLY if that line is actually empty!
-            const lineAfterTitle = titleLine + 1;
-            if (lineAfterTitle < lines.length && lines[lineAfterTitle] === '') {
-              descriptionStartLine = titleLine + 2; // Skip the one empty line
-            } else {
-              descriptionStartLine = titleLine + 1; // No empty line, start right after title
-            }
-          }
-        } else {
-          // 1+ empty lines => no title, all is description
-          titleLine = -1; // undefined
-          descriptionStartLine = Math.min(contentLines[0], 3);
-        }
-      } else {
-        // No non-whitespace content, but whitespace IS content
-        // CRITICAL: Preserve whitespace-only slides as description
-        titleLine = -1;
-        descriptionStartLine = lines.length > 0 ? 0 : -1;
-      }
-
-      // Extract title - NO TRIMMING
-      let title: string | undefined;
-      if (titleLine !== -1) {
-        title = lines[titleLine];
-      } else {
-        title = undefined;
-      }
-
-      // Extract description - ALL lines from start to end (NO TRIMMING)
-      let description: string;
-      if (descriptionStartLine !== -1 && descriptionStartLine < descriptionEndLine) {
-        const descriptionLines: string[] = [];
-        for (let i = descriptionStartLine; i < descriptionEndLine; i++) {
-          descriptionLines.push(lines[i]);
-        }
-        description = descriptionLines.join('\n');
-      } else {
-        description = '';
-      }
-
       // Restore HTML comments from placeholders
       // CRITICAL: ALL content including comments must be preserved
-      if (title) {
-        title = title.replace(/__COMMENT_PLACEHOLDER_(\d+)__/g, (match, index) => {
-          return comments[parseInt(index)] || match;
-        });
-      }
-      description = description.replace(/__COMMENT_PLACEHOLDER_(\d+)__/g, (match, index) => {
-        return comments[parseInt(index)] || match;
+      const rawContent = slideContent.replace(/__COMMENT_PLACEHOLDER_(\d+)__/g, (match, idx) => {
+        return comments[parseInt(idx)] || match;
       });
 
       slides.push({
-        title,
-        content: description,
+        title: undefined, // No longer used - everything is content
+        content: rawContent,
         slideNumber: index + 1
       });
     });
@@ -222,8 +109,9 @@ export class PresentationParser {
     return slides.map((slide, _index) => {
       const task: KanbanTask = {
         id: IdGenerator.generateTaskId(),
-        // CRITICAL: Use ?? not || - empty string IS valid summary content
-        content: mergeLegacyTaskContent(slide.title ?? '', slide.content)
+        // SIMPLIFIED: Use raw slide content directly - no title/description merge
+        // This preserves all newlines exactly for round-trip consistency
+        content: slide.content
       };
 
       // Add includeContext for dynamic image path resolution

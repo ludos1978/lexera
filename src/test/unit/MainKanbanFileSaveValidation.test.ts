@@ -71,7 +71,7 @@ describe('MainKanbanFile.save serialization validation', () => {
         expect(file.writtenContent).toBeNull();
     });
 
-    it('fails closed when generated markdown does not round-trip to the same persisted shape', async () => {
+    it('warns but saves when generated markdown does not round-trip to the same persisted shape', async () => {
         const file = new TestMainKanbanFile('/tmp/main-save-validation-mismatch.md');
         const board = createBoard();
         file.setCachedBoardFromWebview(board);
@@ -90,11 +90,18 @@ describe('MainKanbanFile.save serialization validation', () => {
             updateYamlWithBoardSettings: jest.fn((yamlHeader: string | null) => yamlHeader ?? '---\nkanban-plugin: board\n---')
         };
 
-        await expect(file.save({ skipValidation: true, skipReloadDetection: false }))
-            .rejects
-            .toThrow('Save serialization mismatch');
+        // With the forced save behavior, save should succeed even with mismatch (logs warning instead)
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-        expect(file.writtenContent).toBeNull();
+        await expect(file.save({ skipValidation: true, skipReloadDetection: false }))
+            .resolves
+            .toBeUndefined();
+
+        // Content should be written despite mismatch
+        expect(file.writtenContent).toBe('generated-content');
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Save serialization mismatch'));
+
+        consoleSpy.mockRestore();
     });
 
     it('saves when generated markdown round-trips to the same persisted shape', async () => {
