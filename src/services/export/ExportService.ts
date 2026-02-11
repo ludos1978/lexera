@@ -204,7 +204,7 @@ export class ExportService {
             return false;
         }
         for (const tag of excludeTags) {
-            const tagPattern = new RegExp(`${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'i');
+            const tagPattern = new RegExp(`${escapeRegExp(tag)}(?=\\s|$)`, 'i');
             if (tagPattern.test(text)) {
                 return true;
             }

@@ -11,7 +11,24 @@ whitespace: 16px
   some long text
   
   Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
-- [ ] andreas-gucklhorn-mawU2PoJWfU-unsplash.jpg #cyan
+- [ ] ## Heading 2 in Tasktitle #hide
+  some long text
+  
+  Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+- [ ] 
+  ## Heading 2 in Tasktitle  #red
+  
+  some long text #green
+  
+  Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. #yellow
+  
+  ## Header #pink
+  
+  Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+- [ ] #hidden-internal-deleted
+- [ ] 
+  andreas-gucklhorn-mawU2PoJWfU-unsplash.jpg #cyan
+  
   ---:
   
   ![](Media/jon-flobrant-rB7-LCa_diU-unsplash.jpg "image"){height=200px}
@@ -24,9 +41,11 @@ whitespace: 16px
   
   :---
   
+  ==hello world==
   
   [^some]: https://www.nouser.org/
 - [ ] 
+  
   Test 7: Pie Chart #idea
   
   ```mermaid
@@ -37,7 +56,8 @@ whitespace: 16px
       "Edge" : 8
   ```
 - [ ] 
-  Test 2: Class Diagram
+  Test 2: Class Diagram #note #hidden
+  
   
   ```plantuml
   class User {

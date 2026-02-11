@@ -248,6 +248,7 @@
                         tag
                     });
                     input.value = '';
+                    input.blur();
                 }
             };
             input.addEventListener('change', addTag);
@@ -375,6 +376,7 @@
                 if (tag) {
                     vscode.postMessage({ type: 'addDefaultTagFilter', tag: tag });
                     tagInput.value = '';
+                    tagInput.blur();
                 }
             };
             tagInput.addEventListener('change', addDefaultTag);
@@ -400,21 +402,26 @@
         const lockBtn = document.getElementById('lock-btn');
         if (lockBtn) {
             const icon = lockBtn.querySelector('.codicon');
-            if (locked) {
-                icon.className = 'codicon codicon-lock';
-                lockBtn.classList.remove('unlocked');
-                lockBtn.title = 'Unlock (allow add/remove)';
-            } else {
-                icon.className = 'codicon codicon-unlock';
-                lockBtn.classList.add('unlocked');
-                lockBtn.title = 'Lock (prevent add/remove)';
+            if (icon) {
+                if (locked) {
+                    icon.className = 'codicon codicon-lock';
+                    lockBtn.classList.remove('unlocked');
+                    lockBtn.title = 'Unlock (allow add/remove)';
+                } else {
+                    icon.className = 'codicon codicon-unlock';
+                    lockBtn.classList.add('unlocked');
+                    lockBtn.title = 'Lock (prevent add/remove)';
+                }
             }
         }
 
-        if (locked) {
-            boardsActions.classList.add('locked');
-        } else {
-            boardsActions.classList.remove('locked');
+        const actions = boardsActions || document.getElementById('boards-actions');
+        if (actions) {
+            if (locked) {
+                actions.classList.add('locked');
+            } else {
+                actions.classList.remove('locked');
+            }
         }
     }
 

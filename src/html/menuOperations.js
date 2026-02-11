@@ -3494,7 +3494,9 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
             for (const column of window.cachedBoard.columns) {
                 const task = column.tasks.find(t => t.id === taskId);
                 if (task) {
-                    titleText = getTaskSummaryLine(task);
+                    titleText = window.taskContentUtils?.getTaskHeader
+                        ? window.taskContentUtils.getTaskHeader(task.content || '')
+                        : (task.content || '').split('\n')[0] || '';
                     break;
                 }
             }

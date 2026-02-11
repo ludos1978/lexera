@@ -150,6 +150,26 @@
         return `${normalizedSummary}\n${normalizedRemaining}`;
     }
 
+    /**
+     * Get the task header: contiguous non-empty lines from the start of content.
+     * Tags in the header apply to the full task (task-level tags).
+     * Tags after the first empty line apply to their line only (line-level tags).
+     * If content starts with an empty line, returns '' (no task header).
+     */
+    function getTaskHeader(contentOrTask) {
+        const content = typeof contentOrTask === 'string'
+            ? contentOrTask
+            : contentOrTask?.content;
+        if (!content) { return ''; }
+        const lines = normalizeTaskContent(content).split('\n');
+        const headerLines = [];
+        for (const line of lines) {
+            if (line.trim() === '') { break; }
+            headerLines.push(line);
+        }
+        return headerLines.join('\n');
+    }
+
     function getTaskSummaryLine(contentOrTask) {
         const content = typeof contentOrTask === 'string'
             ? contentOrTask
@@ -237,6 +257,7 @@
             normalizeTaskContent,
             splitTaskContent,
             mergeTaskContent,
+            getTaskHeader,
             getTaskSummaryLine,
             getTaskRemainingContent,
             ensureTaskContent,
@@ -260,6 +281,7 @@
             normalizeTaskContent,
             splitTaskContent,
             mergeTaskContent,
+            getTaskHeader,
             getTaskSummaryLine,
             getTaskRemainingContent
         });

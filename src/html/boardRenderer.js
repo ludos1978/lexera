@@ -2072,14 +2072,19 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const collapsedTitleText = isCollapsed ? getCollapsedTaskTitleText(task) : '';
     const renderedTitle = collapsedTitleText ? escapeHtml(collapsedTitleText) : '';
 
-    // Extract ALL tags for stacking features from unified content
-    const allTags = getActiveTagsInTitle(taskContent);
+    // Task header = contiguous non-empty lines from start (task-level tags)
+    const taskHeader = window.taskContentUtils?.getTaskHeader
+        ? window.taskContentUtils.getTaskHeader(taskContent)
+        : taskContent.split('\n')[0] || '';
 
-    // Find first tag with border definition
-    const taskBorderTag = getFirstTagWithProperty(taskContent, 'border');
+    // Extract task-level tags from header only (not full content)
+    const allTags = getActiveTagsInTitle(taskHeader);
 
-    // Find first tag with background definition
-    const taskBgTag = getFirstTagWithProperty(taskContent, 'background');
+    // Find first tag with border definition (task-level only)
+    const taskBorderTag = getFirstTagWithProperty(taskHeader, 'border');
+
+    // Find first tag with background definition (task-level only)
+    const taskBgTag = getFirstTagWithProperty(taskHeader, 'background');
 
     // Add separate tag attributes for border and background (skips tags without those properties)
     const borderTagAttribute = taskBorderTag ? ` data-task-border-tag="${taskBorderTag}"` : '';
@@ -2123,8 +2128,8 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
     const columnTitleForTemporal = column?.title || '';
 
-    // Get active temporal attributes with hierarchical gating
-    const activeAttrs = window.getActiveTemporalAttributes(columnTitleForTemporal, taskSummary || '', taskContent || '');
+    // Get active temporal attributes with hierarchical gating (task-level only)
+    const activeAttrs = window.getActiveTemporalAttributes(columnTitleForTemporal, taskSummary || '', taskHeader || '');
 
     // Convert to attribute strings
     for (const [attr, isActive] of Object.entries(activeAttrs)) {
@@ -2143,8 +2148,8 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const taskIncludeErrorClass = hasTaskIncludeError ? 'include-error' : '';
     const taskIncludeErrorAttr = hasTaskIncludeError ? ' data-include-error="true"' : '';
 
-    // Detect #hidden tag for content hiding overlay
-    const isHiddenContent = window.tagUtils?.patterns?.hiddenTag?.test(taskContent) || false;
+    // Detect #hidden tag in task header (task-level tags only)
+    const isHiddenContent = window.tagUtils?.patterns?.hiddenTag?.test(taskHeader) || false;
     const hiddenContentAttr = isHiddenContent ? ' data-hidden-content="true"' : '';
 
     return `
@@ -2981,7 +2986,9 @@ function injectStackableBars(targetElement = null) {
                 for (const column of window.cachedBoard.columns) {
                     const task = column.tasks.find(t => t.id === taskId);
                     if (task) {
-                        titleText = task.content || '';
+                        titleText = window.taskContentUtils?.getTaskHeader
+                            ? window.taskContentUtils.getTaskHeader(task.content || '')
+                            : (task.content || '').split('\n')[0] || '';
                         break;
                     }
                 }
@@ -3006,24 +3013,24 @@ function injectStackableBars(targetElement = null) {
             element.removeAttribute(bgTagAttr);
         }
 
-        // Filter out tags that are ONLY in remaining content (not in summary line) for task elements.
+        // Filter out tags that are ONLY in body content (after first empty line) for task elements.
+        // Task-level tags = contiguous non-empty lines from start (task header)
         if (!isColumn) {
             const taskId = element.getAttribute('data-task-id');
             const task = taskId ? findTaskById(taskId) : null;
 
             if (task) {
                 const contentText = task.content || '';
-                const summaryText = window.taskContentUtils?.getTaskSummaryLine
-                    ? window.taskContentUtils.getTaskSummaryLine(contentText)
-                    : (contentText.split('\n')[0] || '');
-                const remainingText = window.taskContentUtils?.getTaskRemainingContent
-                    ? window.taskContentUtils.getTaskRemainingContent(contentText)
-                    : contentText.split('\n').slice(1).join('\n');
+                const headerText = window.taskContentUtils?.getTaskHeader
+                    ? window.taskContentUtils.getTaskHeader(contentText)
+                    : contentText.split('\n')[0] || '';
+                // Body = everything after the header
+                const bodyText = contentText.substring(headerText.length);
 
-                const summaryTags = new Set(getActiveTagsInTitle(summaryText));
-                const remainingTags = new Set(getActiveTagsInTitle(remainingText));
+                const headerTags = new Set(getActiveTagsInTitle(headerText));
+                const bodyTags = new Set(getActiveTagsInTitle(bodyText));
 
-                tags = tags.filter(tag => summaryTags.has(tag) || !remainingTags.has(tag));
+                tags = tags.filter(tag => headerTags.has(tag) || !bodyTags.has(tag));
             }
         }
 

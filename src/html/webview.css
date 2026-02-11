@@ -7080,8 +7080,9 @@ mark {
     word-break: break-word;
 }
 
-.vscode-dark mark {
-    background-color: rgb(113, 112, 0);
+body.vscode-dark mark,
+body.vscode-high-contrast mark {
+    background-color: rgba(253, 253, 73, 0.25);
     color: var(--vscode-editor-foreground);
 }
 
@@ -7144,6 +7145,19 @@ s {
 .mark-cyan { background-color: rgba(0, 255, 255, 0.1); border-left-color: #00ffff; }
 .mark-magenta { background-color: rgba(255, 0, 255, 0.1); border-left-color: #ff00ff; }
 .mark-yellow { background-color: rgba(255, 255, 0, 0.1); border-left-color: #ffff00; }
+
+body.vscode-dark .mark-red,
+body.vscode-high-contrast .mark-red { background-color: rgba(255, 80, 80, 0.2); border-left-color: #ff6666; }
+body.vscode-dark .mark-green,
+body.vscode-high-contrast .mark-green { background-color: rgba(80, 255, 80, 0.2); border-left-color: #66ff66; }
+body.vscode-dark .mark-blue,
+body.vscode-high-contrast .mark-blue { background-color: rgba(80, 80, 255, 0.2); border-left-color: #6666ff; }
+body.vscode-dark .mark-cyan,
+body.vscode-high-contrast .mark-cyan { background-color: rgba(80, 255, 255, 0.2); border-left-color: #66ffff; }
+body.vscode-dark .mark-magenta,
+body.vscode-high-contrast .mark-magenta { background-color: rgba(255, 80, 255, 0.2); border-left-color: #ff66ff; }
+body.vscode-dark .mark-yellow,
+body.vscode-high-contrast .mark-yellow { background-color: rgba(255, 255, 80, 0.2); border-left-color: #ffff66; }
 
 .center { text-align: center; }
 .center100 { text-align: center; width: 100%; }

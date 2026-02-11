@@ -1,6 +1,7 @@
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
 import { TagUtils, TagVisibility } from '../../utils/tagUtils';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
+import { escapeRegExp } from '../../utils/stringUtils';
 
 /**
  * Options for presentation generation
@@ -351,7 +352,7 @@ export class PresentationGenerator {
             return false;
         }
         for (const tag of excludeTags) {
-            const tagPattern = new RegExp(`${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'i');
+            const tagPattern = new RegExp(`${escapeRegExp(tag)}(?=\\s|$)`, 'i');
             if (tagPattern.test(text)) {
                 return true;
             }

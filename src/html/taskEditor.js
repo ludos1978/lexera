@@ -2578,10 +2578,13 @@ class TaskEditor {
             this.currentEditor.displayElement.textContent = collapsedTitle || '';
         }
 
-        // Update visual tag state
+        // Update visual tag state (task-level tags from header only)
         const taskElement = element.closest('.task-item');
         if (taskElement) {
-            const allTags = window.getActiveTagsInTitle(value);
+            const taskHeaderText = window.taskContentUtils?.getTaskHeader
+                ? window.taskContentUtils.getTaskHeader(value)
+                : value.split('\n')[0] || '';
+            const allTags = window.getActiveTagsInTitle(taskHeaderText);
             const isCollapsed = taskElement.classList.contains('collapsed');
             window.updateVisualTagState(taskElement, allTags, 'task', isCollapsed);
         }
@@ -2696,10 +2699,13 @@ class TaskEditor {
         if (!taskElement) { return; }
 
         const contentText = task.content || '';
-        const titleTags = window.getActiveTagsInTitle(contentText);
+        const taskHeaderText = window.taskContentUtils?.getTaskHeader
+            ? window.taskContentUtils.getTaskHeader(contentText)
+            : contentText.split('\n')[0] || '';
+        const titleTags = window.getActiveTagsInTitle(taskHeaderText);
 
         // Update primary tag
-        const primaryTag = window.extractFirstTag(contentText);
+        const primaryTag = window.extractFirstTag(taskHeaderText);
         if (primaryTag && !primaryTag.startsWith('row') && !primaryTag.startsWith('gather_') && !primaryTag.startsWith('span')) {
             taskElement.setAttribute('data-task-tag', primaryTag);
         } else {

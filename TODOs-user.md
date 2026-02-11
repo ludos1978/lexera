@@ -1,5 +1,7 @@
 - [x] add a tag #hidden which is overlaying the complete task's content with a content hiding overlay. in the tasks burger menu add  a button "reveal content" / "hide content". only after clicking the button then the field is displayed, there must be a burger menu at the top. The tag must be added by the user manually and it's hidden again by default on the next file opening. It's used to hide content when displaying the content by default, requiring the user to explicitly display it within the kanban. it should be exploded from export by default as well!
 
+- [x] if a #tag is on the first line of the content (everything until the first newline), it applies to the full task. any later ones are applied to the line they are on only.
+
 - [ ] Does markdown put lists that are separated by a newline put into separate blocks? I see some curious behaviour in the rendering. A UI has a p within every li, if the list items are newline separeted (but the p i s within the li, not around it). I want the p to be around each newline separated ul.
 
 - [ ] if i open a folder link by alt+clicking it and it's available in the workspace explorer. if possible highlight the folder there instead of opening it externally. The default action open is to show in workspace explorer, if that fails it should be opened in the system explorer/finder.
