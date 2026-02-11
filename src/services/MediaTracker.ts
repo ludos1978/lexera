@@ -22,7 +22,8 @@ import {
     EXCALIDRAW_EXTENSIONS,
     isDrawioFile,
     isExcalidrawFile,
-    DOTTED_EXTENSIONS
+    DOTTED_EXTENSIONS,
+    TEXT_FILE_EXTENSIONS
 } from '../constants/FileExtensions';
 import { getMediaCachePath } from '../constants/FileNaming';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
@@ -30,7 +31,7 @@ import { logger } from '../utils/logger';
 
 interface MediaFileEntry {
     mtime: number;
-    type: 'diagram' | 'image' | 'audio' | 'video' | 'document';
+    type: 'diagram' | 'image' | 'audio' | 'video' | 'document' | 'inlinefile';
 }
 
 interface MediaCacheData {
@@ -43,7 +44,7 @@ interface MediaCacheData {
 export interface ChangedMediaFile {
     path: string;
     absolutePath: string;
-    type: 'diagram' | 'image' | 'audio' | 'video' | 'document';
+    type: 'diagram' | 'image' | 'audio' | 'video' | 'document' | 'inlinefile';
     oldMtime: number | null;
     newMtime: number;
 }
@@ -52,7 +53,10 @@ export class MediaTracker {
     private static readonly CACHE_VERSION = 1;
 
     // Build MEDIA_EXTENSIONS from centralized constants
-    private static readonly MEDIA_EXTENSIONS: Record<string, 'diagram' | 'image' | 'audio' | 'video' | 'document'> = {
+    // Note: inlinefile is spread first so diagram/image/audio/video/document take priority for shared extensions (e.g. .svg)
+    private static readonly MEDIA_EXTENSIONS: Record<string, 'diagram' | 'image' | 'audio' | 'video' | 'document' | 'inlinefile'> = {
+        // Inline/text files (markdown, code, config - embeddable via ![](file.md))
+        ...Object.fromEntries(TEXT_FILE_EXTENSIONS.map(ext => [ext, 'inlinefile' as const])),
         // Diagrams (from centralized extensions)
         ...Object.fromEntries([...DRAWIO_EXTENSIONS, ...EXCALIDRAW_EXTENSIONS].map(ext => [ext, 'diagram' as const])),
         // Images (from centralized DOTTED_EXTENSIONS)
@@ -150,7 +154,7 @@ export class MediaTracker {
      * Get file type from extension
      * Handles compound extensions like .excalidraw.json and .excalidraw.svg
      */
-    private _getMediaType(filePath: string): 'diagram' | 'image' | 'audio' | 'video' | 'document' | null {
+    private _getMediaType(filePath: string): 'diagram' | 'image' | 'audio' | 'video' | 'document' | 'inlinefile' | null {
         const lowerPath = filePath.toLowerCase();
 
         // Check for compound excalidraw extensions first

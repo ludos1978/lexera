@@ -3397,6 +3397,27 @@ if (!webviewEventListenersInitialized) {
                             }
                         });
                     }
+
+                    // Reload inline file embeds (markdown, text, etc.) matching this file
+                    const inlineIframes = document.querySelectorAll('.inline-file-embed-frame-wrapper iframe[data-inline-source]');
+                    const matchingInlineIframes = Array.from(inlineIframes).filter(iframe => {
+                        const src = iframe.getAttribute('data-inline-original-source') || iframe.getAttribute('data-inline-source') || '';
+                        return src.includes(fileName);
+                    });
+                    if (matchingInlineIframes.length > 0) {
+                        console.log(`[mediaFilesChanged] Inline file embed matches for '${fileName}': ${matchingInlineIframes.length}`);
+                        matchingInlineIframes.forEach(iframe => {
+                            // Clear loaded state to force re-fetch
+                            delete iframe.dataset.inlineLoaded;
+                            delete iframe.dataset.inlineStatus;
+                            delete iframe.dataset.inlineRetryScheduled;
+                            delete iframe.dataset.inlineRetryCount;
+                            // Re-hydrate
+                            if (typeof window._hydrateInlineFileEmbeds === 'function') {
+                                window._hydrateInlineFileEmbeds(iframe.parentElement);
+                            }
+                        });
+                    }
                 });
             }
             break;
