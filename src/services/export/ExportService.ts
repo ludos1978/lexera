@@ -196,15 +196,15 @@ export class ExportService {
 
     /**
      * Check if text contains any of the exclude tags
-     * Uses word boundary matching to avoid partial matches (e.g., #export won't match #export-exclude)
+     * Uses (?=\s|$) lookahead to match exact tags, preventing partial matches
+     * (e.g., #hidden won't match #hidden-internal-parked)
      */
     private static hasExcludeTag(text: string, excludeTags: string[]): boolean {
         if (!text || !excludeTags || excludeTags.length === 0) {
             return false;
         }
         for (const tag of excludeTags) {
-            // Use word boundary to match exact tag (e.g., #export-exclude won't match #export)
-            const tagPattern = new RegExp(`${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            const tagPattern = new RegExp(`${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'i');
             if (tagPattern.test(text)) {
                 return true;
             }
@@ -2274,6 +2274,13 @@ export class ExportService {
         try {
             // Clear tracking map for new export
             this.exportedFiles.clear();
+
+            // Always exclude #hidden tagged content from export
+            if (!options.excludeTags) {
+                options.excludeTags = ['#hidden'];
+            } else if (!options.excludeTags.includes('#hidden')) {
+                options.excludeTags = [...options.excludeTags, '#hidden'];
+            }
 
             // Check for cancellation
             if (cancellationToken?.isCancellationRequested) {

@@ -38,9 +38,7 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
 
         // Subscribe to registry events
         this._disposables.push(
-            this._registry.onBoardsChanged(() => this._sendStateToWebview()),
-            this._registry.onSearchesChanged(() => this._sendStateToWebview()),
-            this._registry.onSortModeChanged(() => this._sendStateToWebview())
+            this._registry.onBoardsChanged(() => this._sendStateToWebview())
         );
     }
 
@@ -234,29 +232,14 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
     <div class="boards-container">
         <!-- Boards Section -->
         <div class="boards-section">
-            <div class="section-header" data-section="boards">
-                <div class="tree-twistie collapsible expanded"></div>
-                <span class="section-title">Boards</span>
-                <button class="lock-btn" id="lock-btn" title="Toggle lock">
-                    <span class="codicon codicon-lock"></span>
+            <div id="boards-list"></div>
+            <div class="boards-actions" id="boards-actions">
+                <button class="action-btn" id="add-board-btn" title="Add board">
+                    <span class="codicon codicon-add"></span> Add Board
                 </button>
-                <button class="lock-btn" id="all-boards-toggle-btn" title="All boards settings">
-                    <span class="codicon codicon-settings-gear"></span>
+                <button class="action-btn" id="scan-btn" title="Scan workspace">
+                    <span class="codicon codicon-search"></span> Scan Workspace
                 </button>
-            </div>
-            <div class="section-content" id="boards-content">
-                <div class="all-boards-config" id="all-boards-config" style="display: none;">
-                    <div id="all-boards-config-content"></div>
-                </div>
-                <div id="boards-list"></div>
-                <div class="boards-actions" id="boards-actions">
-                    <button class="action-btn" id="add-board-btn" title="Add board">
-                        <span class="codicon codicon-add"></span> Add Board
-                    </button>
-                    <button class="action-btn" id="scan-btn" title="Scan workspace">
-                        <span class="codicon codicon-search"></span> Scan Workspace
-                    </button>
-                </div>
             </div>
         </div>
     </div>

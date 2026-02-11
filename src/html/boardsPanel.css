@@ -221,6 +221,9 @@ body {
     padding: 2px 4px;
     color: var(--vscode-foreground);
     opacity: 0.6;
+    width: 22px;
+    text-align: center;
+    flex-shrink: 0;
 }
 
 .lock-btn:hover {
@@ -287,7 +290,7 @@ body {
 }
 
 .tree-twistie {
-    width: 16px;
+    width: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -369,7 +372,7 @@ body {
 }
 
 .board-item-header {
-    padding: 0 4px 0 8px;
+    padding: 0 6px 0 12px;
 }
 
 .board-item-header .tree-contents {
@@ -396,19 +399,17 @@ body {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 2px 4px;
+    padding: 0px 0px 0px 3px;
     color: var(--vscode-errorForeground);
     font-size: 12px;
-    opacity: 0;
-    flex-shrink: 0;
-}
-
-.board-item-header:hover .board-remove-btn {
     opacity: 0.6;
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
 }
 
 .board-remove-btn:hover {
-    opacity: 1 !important;
+    opacity: 1;
 }
 
 /* Board config body */
@@ -424,6 +425,7 @@ body {
     display: flex;
     flex-direction: row;
     align-items: center;
+    justify-content: flex-start;
     margin-right: 8px;
     gap: 4px;
     padding: 2px 0;
@@ -474,6 +476,11 @@ body {
     gap: 4px;
 }
 
+.board-tag-filter.inherited {
+    opacity: 0.4;
+    cursor: default;
+}
+
 .board-tag-filter-remove {
     cursor: pointer;
     opacity: 0.7;
@@ -494,6 +501,7 @@ body {
     display: flex;
     flex-direction: row;
     align-items: center;
+    justify-content: flex-start;
     margin-right: 8px;
     gap: 4px;
     padding: 2px 0;
@@ -514,14 +522,15 @@ body {
 /* ============= Board Actions ============= */
 .boards-actions {
     display: flex;
-    gap: 4px;
-    padding: 8px;
+    gap: 2px;
+    padding: 4px 2px;
 }
 
 .action-btn {
-    flex: 1;
     height: 26px;
-    padding: 0 8px;
+    /* width: fit-content;
+    min-width: 26px; */
+    /* padding: 0 8px; */
     border: none;
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
@@ -532,6 +541,7 @@ body {
     justify-content: center;
     gap: 4px;
     font-size: 12px;
+    text-align: left;
 }
 
 .action-btn:hover {

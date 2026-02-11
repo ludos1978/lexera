@@ -613,10 +613,44 @@ function renderInlineFileBody(content, extension) {
     return `<pre class="inline-file-text">${escapeHtml(safeContent)}</pre>`;
 }
 
+/**
+ * Extract inherited CSS custom properties from the parent document
+ * so the iframe can use the same theme variables.
+ */
+function _getInheritedCssVars() {
+    try {
+        const style = getComputedStyle(document.documentElement);
+        const vars = [
+            '--vscode-foreground',
+            '--vscode-editor-background',
+            '--vscode-editor-foreground',
+            '--vscode-font-family',
+            '--vscode-editor-font-family',
+            '--vscode-editor-font-size',
+            '--vscode-textLink-foreground',
+            '--vscode-textLink-activeForeground',
+            '--vscode-textBlockQuote-background',
+            '--vscode-textBlockQuote-border',
+            '--vscode-textCodeBlock-background',
+            '--vscode-textPreformat-foreground',
+            '--vscode-descriptionForeground',
+            '--vscode-errorForeground',
+            '--vscode-panel-border',
+        ];
+        return vars.map(v => {
+            const val = style.getPropertyValue(v).trim();
+            return val ? `${v}: ${val};` : '';
+        }).filter(Boolean).join('\n            ');
+    } catch (_e) {
+        return '';
+    }
+}
+
 function buildInlineFileSrcdoc(content, extension, sourceUrl) {
     const baseHref = getInlineFileBaseHref(sourceUrl);
     const baseTag = baseHref ? `<base href="${escapeHtml(baseHref)}">` : '';
     const bodyHtml = renderInlineFileBody(content, extension);
+    const cssVars = _getInheritedCssVars();
 
     return `<!doctype html>
 <html>
@@ -624,13 +658,16 @@ function buildInlineFileSrcdoc(content, extension, sourceUrl) {
     <meta charset="utf-8">
     ${baseTag}
     <style>
-        :root { color-scheme: light dark; }
+        :root {
+            color-scheme: light dark;
+            ${cssVars}
+        }
         html, body {
             margin: 0;
             padding: 0;
-            background: transparent;
-            color: inherit;
-            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: var(--vscode-editor-background, transparent);
+            color: var(--vscode-foreground, inherit);
+            font-family: var(--vscode-font-family, system-ui, -apple-system, "Segoe UI", sans-serif);
             font-size: 13px;
             line-height: 1.45;
         }
@@ -655,8 +692,55 @@ function buildInlineFileSrcdoc(content, extension, sourceUrl) {
             max-width: 100%;
             height: auto;
         }
+        .inline-file-markdown h1,
+        .inline-file-markdown h2,
+        .inline-file-markdown h3,
+        .inline-file-markdown h4,
+        .inline-file-markdown h5,
+        .inline-file-markdown h6 { margin: 0.25em 0; font-weight: 500; font-size: 1em; }
+        .inline-file-markdown p { margin: 0.5em 0; }
+        .inline-file-markdown ul,
+        .inline-file-markdown ol { margin: 0.125em 0; padding-left: 1.5em; }
+        .inline-file-markdown code {
+            padding: 0.1em 0.3em;
+            border-radius: 3px;
+            font-size: 0.9em;
+            background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.15));
+            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+        }
+        .inline-file-markdown pre {
+            padding: 0.5em;
+            border-radius: 3px;
+            overflow-x: auto;
+            margin: 0.25em 0;
+            background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.15));
+        }
+        .inline-file-markdown pre code {
+            padding: 0;
+            background: none;
+        }
+        .inline-file-markdown a {
+            color: var(--vscode-textLink-foreground, #3794ff);
+            text-decoration: none;
+        }
+        .inline-file-markdown a:hover { text-decoration: underline; }
+        .inline-file-markdown blockquote {
+            margin: 0.5em 0;
+            padding: 0.25em 0.75em;
+            border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(128,128,128,0.5));
+            background: var(--vscode-textBlockQuote-background, transparent);
+        }
+        .inline-file-markdown table {
+            border-collapse: collapse;
+            margin: 0.5em 0;
+        }
+        .inline-file-markdown th,
+        .inline-file-markdown td {
+            border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
+            padding: 4px 8px;
+        }
         .inline-file-error {
-            color: #c62828;
+            color: var(--vscode-errorForeground, #c62828);
             white-space: pre-wrap;
             word-break: break-word;
             font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
@@ -849,7 +933,8 @@ function renderInlineFileIframe(url, originalSrc, alt, title, extension, include
     return `<div class="inline-file-embed-container" data-file-path="${escapedOriginalSrc}" data-inline-type="${escapeHtml(extension || 'file')}">
         <div class="inline-file-embed-header">
             <span class="inline-file-embed-type">${escapeHtml((extension || 'file').replace('.', '').toUpperCase())}</span>
-            <span class="inline-file-embed-label">${escapeHtml(label)}</span>
+            <span class="inline-file-embed-label" data-action="open-inline-file">${escapeHtml(label)}</span>
+            <button class="inline-file-menu-btn" data-action="inlinefile-menu" title="File options">☰</button>
         </div>
         <div class="inline-file-embed-frame-wrapper">
             <iframe src="about:blank" data-inline-source="${escapedUrl}" data-inline-original-source="${escapedOriginalSrc}" data-inline-include-dir="${escapedIncludeDir}" data-inline-extension="${escapeHtml((extension || '').toLowerCase())}" loading="lazy" sandbox="allow-same-origin"></iframe>
@@ -1669,7 +1754,9 @@ async function createEPUBSlideshow(element, filePath, pageCount, fileMtime, incl
     controls.appendChild(nextBtn);
 
     container.appendChild(imageContainer);
-    container.appendChild(controls);
+    if (pageCount > 1) {
+        container.appendChild(controls);
+    }
 
     // Assemble the wrapper with burger menu
     wrapper.appendChild(container);
@@ -1831,7 +1918,9 @@ async function createPDFSlideshow(element, filePath, pageCount, fileMtime, inclu
     }
 
     container.appendChild(imageContainer);
-    container.appendChild(controls);
+    if (pageCount > 1) {
+        container.appendChild(controls);
+    }
 
     // Assemble the wrapper with burger menu
     wrapper.appendChild(container);
@@ -1985,7 +2074,9 @@ async function createDocumentSlideshow(element, filePath, pageCount, fileMtime, 
     }
 
     container.appendChild(imageContainer);
-    container.appendChild(controls);
+    if (pageCount > 1) {
+        container.appendChild(controls);
+    }
 
     wrapper.appendChild(container);
     wrapper.appendChild(menuBtn);
@@ -2822,6 +2913,32 @@ function addDiagramFenceRenderer(md) {
     };
 }
 
+/**
+ * Post-process rendered HTML to split paragraphs at <br> boundaries
+ * when they contain kanban tags. This ensures per-line tag styling
+ * works correctly with CSS :has() selectors.
+ *
+ * Without this, consecutive tagged lines (e.g., #++ and #--) in the same
+ * paragraph would all get the style of whichever tag's CSS rule comes last,
+ * because markdown-it with breaks:true renders them in a single <p> and
+ * CSS :has() matches the entire <p> element.
+ */
+function splitTaggedParagraphs(html) {
+    return html.replace(/<p>([\s\S]*?)<\/p>/g, function(match, inner) {
+        // Only split if paragraph has both a <br> and a kanban-tag
+        if (!inner.includes('<br>') || !inner.includes('kanban-tag')) {
+            return match;
+        }
+        // Split at <br> boundaries (handles <br>, <br/>, <br />, optionally followed by \n)
+        const lines = inner.split(/<br\s*\/?>\n?/);
+        return lines
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .map(line => `<p class="md-tag-line">${line}</p>`)
+            .join('\n');
+    });
+}
+
 function renderMarkdown(text, includeContext) {
     if (!text) {return '';}
 
@@ -2858,6 +2975,9 @@ function renderMarkdown(text, includeContext) {
             // Renderers already registered, proceed to render directly
             const env = { taskCheckboxIndex: 0 };
             let rendered = md.render(text, env);
+
+            // Split paragraphs containing <br> + kanban tags for per-line styling
+            rendered = splitTaggedParagraphs(rendered);
 
             // Trigger PlantUML queue processing after render completes
             if (pendingPlantUMLQueue.length > 0) {
@@ -3829,6 +3949,9 @@ function renderMarkdown(text, includeContext) {
 
         const env = { taskCheckboxIndex: 0 };
         let rendered = md.render(text, env);
+
+        // Split paragraphs containing <br> + kanban tags for per-line styling
+        rendered = splitTaggedParagraphs(rendered);
 
         // Trigger PlantUML queue processing after render completes
         if (pendingPlantUMLQueue.length > 0) {

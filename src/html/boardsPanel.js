@@ -12,10 +12,6 @@
     // DOM Elements
     const boardsList = document.getElementById('boards-list');
     const boardsActions = document.getElementById('boards-actions');
-    const lockBtn = document.getElementById('lock-btn');
-    const allBoardsToggleBtn = document.getElementById('all-boards-toggle-btn');
-    const allBoardsConfig = document.getElementById('all-boards-config');
-    const allBoardsConfigContent = document.getElementById('all-boards-config-content');
     const addBoardBtn = document.getElementById('add-board-btn');
     const scanBtn = document.getElementById('scan-btn');
 
@@ -30,41 +26,12 @@
     // ============= Initialization =============
 
     function init() {
-        // Lock toggle
-        lockBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            vscode.postMessage({ type: 'toggleLock' });
-        });
-
-        // All Boards settings toggle
-        allBoardsToggleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            allBoardsConfigExpanded = !allBoardsConfigExpanded;
-            allBoardsConfig.style.display = allBoardsConfigExpanded ? 'block' : 'none';
-            allBoardsToggleBtn.classList.toggle('active', allBoardsConfigExpanded);
-            if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
-        });
-
         // Add/Scan buttons
         addBoardBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'addBoard' });
         });
         scanBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'scanWorkspace' });
-        });
-
-        // Section toggle
-        document.querySelectorAll('.section-header[data-section]').forEach(header => {
-            header.addEventListener('click', (e) => {
-                if (e.target.closest('button')) { return; }
-                const twistie = header.querySelector('.tree-twistie');
-                const section = header.closest('.boards-section');
-                const content = section ? section.querySelector('.section-content') : null;
-                if (twistie && content) {
-                    twistie.classList.toggle('expanded');
-                    content.classList.toggle('collapsed');
-                }
-            });
         });
 
         // Messages from backend
@@ -82,9 +49,14 @@
         switch (message.type) {
             case 'state':
                 currentState = message;
-                renderBoards();
+                // Skip re-render if an input inside the list is focused
+                const activeEl = document.activeElement;
+                const inputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT') && boardsList.contains(activeEl);
+                if (!inputFocused) {
+                    renderBoards();
+                    if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
+                }
                 renderLockState();
-                if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
                 break;
         }
     }
@@ -104,6 +76,22 @@
         }
 
         let html = '';
+
+        // "All Boards" entry — same markup as board entries, with lock + gear
+        const allBoardsExpanded = allBoardsConfigExpanded;
+        html += '<div class="board-item">';
+        html += '<div class="tree-row board-item-header" id="all-boards-row">';
+        html += '<div class="tree-contents">';
+        html += '<span class="tree-label-name">All Boards</span>';
+        html += '</div>';
+        html += '<button class="lock-btn" id="lock-btn" title="Toggle lock"><span class="codicon codicon-lock"></span></button>';
+        html += '<div class="tree-twistie collapsible board-toggle' + (allBoardsExpanded ? ' expanded' : '') + '" id="all-boards-toggle-btn" title="All boards settings"></div>';
+        html += '</div>';
+        html += '<div class="all-boards-config" id="all-boards-config"' + (allBoardsExpanded ? '' : ' style="display: none;"') + '>';
+        html += '<div id="all-boards-config-content"></div>';
+        html += '</div>';
+        html += '</div>';
+
         boards.forEach(board => {
             const isExpanded = expandedBoards.has(board.filePath);
             const tagFilters = board.config.tagFilters || [];
@@ -152,13 +140,19 @@
             html += '<input type="text" class="board-tag-input" data-board-uri="' + escapeHtml(board.uri) + '" placeholder="Add tag...">';
             html += '</div></div>';
 
-            // Current tag filters
-            if (tagFilters.length > 0) {
+            // Current tag filters (default tags grayed out first, then board-specific)
+            var defaultTags = currentState.defaultTagFilters || [];
+            if (defaultTags.length > 0 || tagFilters.length > 0) {
                 html += '<div class="tree-row board-config-row">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
                 html += '<div class="tree-twistie"></div>';
                 html += '<div class="tree-contents">';
                 html += '<div class="board-tag-filters">';
+                defaultTags.forEach(tag => {
+                    html += '<span class="board-tag-filter inherited">';
+                    html += escapeHtml(tag);
+                    html += '</span>';
+                });
                 tagFilters.forEach(tag => {
                     html += '<span class="board-tag-filter" data-board-uri="' + escapeHtml(board.uri) + '" data-tag="' + escapeHtml(tag) + '">';
                     html += escapeHtml(tag);
@@ -177,8 +171,30 @@
     }
 
     function attachBoardEventListeners() {
+        // "All Boards" lock button
+        const lockBtn = document.getElementById('lock-btn');
+        if (lockBtn) {
+            lockBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                vscode.postMessage({ type: 'toggleLock' });
+            });
+        }
+
+        // "All Boards" settings toggle
+        const allBoardsToggleBtn = document.getElementById('all-boards-toggle-btn');
+        if (allBoardsToggleBtn) {
+            allBoardsToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                allBoardsConfigExpanded = !allBoardsConfigExpanded;
+                const allBoardsConfig = document.getElementById('all-boards-config');
+                if (allBoardsConfig) { allBoardsConfig.style.display = allBoardsConfigExpanded ? 'block' : 'none'; }
+                allBoardsToggleBtn.classList.toggle('expanded', allBoardsConfigExpanded);
+                if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
+            });
+        }
+
         // Board header click to open board
-        boardsList.querySelectorAll('.board-item-header').forEach(header => {
+        boardsList.querySelectorAll('.board-item-header[data-file-path]').forEach(header => {
             header.addEventListener('click', (e) => {
                 if (e.target.closest('.board-remove-btn') || e.target.closest('.board-toggle')) { return; }
                 const filePath = header.dataset.filePath;
@@ -186,8 +202,8 @@
             });
         });
 
-        // Fold button click to toggle config
-        boardsList.querySelectorAll('.board-toggle').forEach(toggle => {
+        // Fold button click to toggle config (per-board only)
+        boardsList.querySelectorAll('.board-item[data-file-path] .board-toggle').forEach(toggle => {
             toggle.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const item = toggle.closest('.board-item');
@@ -340,6 +356,8 @@
             html += '</div></div></div>';
         }
 
+        var allBoardsConfigContent = document.getElementById('all-boards-config-content');
+        if (!allBoardsConfigContent) { return; }
         allBoardsConfigContent.innerHTML = html;
 
         // Event listeners for default config
@@ -379,17 +397,23 @@
         if (!currentState) { return; }
 
         const locked = currentState.locked;
-        const icon = lockBtn.querySelector('.codicon');
+        const lockBtn = document.getElementById('lock-btn');
+        if (lockBtn) {
+            const icon = lockBtn.querySelector('.codicon');
+            if (locked) {
+                icon.className = 'codicon codicon-lock';
+                lockBtn.classList.remove('unlocked');
+                lockBtn.title = 'Unlock (allow add/remove)';
+            } else {
+                icon.className = 'codicon codicon-unlock';
+                lockBtn.classList.add('unlocked');
+                lockBtn.title = 'Lock (prevent add/remove)';
+            }
+        }
 
         if (locked) {
-            icon.className = 'codicon codicon-lock';
-            lockBtn.classList.remove('unlocked');
-            lockBtn.title = 'Unlock (allow add/remove)';
             boardsActions.classList.add('locked');
         } else {
-            icon.className = 'codicon codicon-unlock';
-            lockBtn.classList.add('unlocked');
-            lockBtn.title = 'Lock (prevent add/remove)';
             boardsActions.classList.remove('locked');
         }
     }

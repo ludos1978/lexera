@@ -2317,3 +2317,22 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 - Added `.diff-panel`, `.diff-header`, `.diff-filename`, `.diff-close-btn`, `.diff-content`, `.diff-column`, `.diff-column-header`, `.diff-line` (with `.added`, `.removed`, `.unchanged`, `.filler` variants), `.diff-btn`, `.diff-btn.active` styles.
 
 ---
+
+## Hidden Content Feature (2026-02-11)
+
+### New: `src/html/menuOperations.js`
+- `toggleHiddenContent(taskId)` — Toggles the `data-hidden-revealed` attribute on a task with `#hidden` tag; updates the menu button text between "Reveal content" and "Hide content".
+
+### Modified: `src/html/boardRenderer.js`
+- `createTaskElement()` — Added `#hidden` tag detection using `tagUtils.patterns.hiddenTag`; adds `data-hidden-content="true"` attribute to task-item div; adds conditional "Reveal content" button in burger menu.
+
+### Modified: `src/html/webview.css`
+- Added CSS rules for `.task-item[data-hidden-content="true"]` — content hiding overlay via `::after` pseudo-element on `.task-description-container`; blocks pointer events on hidden description.
+
+### Modified: `src/services/export/ExportService.ts`
+- `export()` — Always adds `#hidden` to `excludeTags` array, ensuring hidden-tagged tasks are excluded from all exports.
+
+### Modified: `src/html/menuOperations.js`
+- `copyTaskAsMarkdown()` — Added `excludeTags: ['#hidden']` to export options to exclude hidden content from copy.
+
+---

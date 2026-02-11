@@ -343,14 +343,15 @@ export class PresentationGenerator {
 
     /**
      * Check if text contains any of the exclude tags
-     * Uses word boundary matching to avoid partial matches
+     * Uses (?=\s|$) lookahead to match exact tags, preventing partial matches
+     * (e.g., #hidden won't match #hidden-internal-parked)
      */
     private static hasExcludeTag(text: string, excludeTags?: string[]): boolean {
         if (!text || !excludeTags || excludeTags.length === 0) {
             return false;
         }
         for (const tag of excludeTags) {
-            const tagPattern = new RegExp(`${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+            const tagPattern = new RegExp(`${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`, 'i');
             if (tagPattern.test(text)) {
                 return true;
             }

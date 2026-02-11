@@ -1755,6 +1755,7 @@ async function copyTaskAsMarkdown(taskId, columnId) {
             scope: 'task',
             format: 'presentation',
             tagVisibility: 'allexcludinglayout',
+            excludeTags: ['#hidden'],
             packAssets: false,
             mergeIncludes: true,
             selection: {
@@ -1771,6 +1772,29 @@ function copyToClipboard(text) {
         navigator.clipboard.writeText(text).then(() => {
             vscode.postMessage({ type: 'showMessage', text: 'Copied to clipboard!' });
         }).catch(err => console.error('Failed to copy:', err));
+    }
+}
+
+// ============================================================================
+// HIDDEN CONTENT TOGGLE
+// ============================================================================
+
+function toggleHiddenContent(taskId) {
+    closeAllMenus();
+    const taskElement = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
+    if (!taskElement) { return; }
+
+    const isRevealed = taskElement.getAttribute('data-hidden-revealed') === 'true';
+    if (isRevealed) {
+        taskElement.removeAttribute('data-hidden-revealed');
+    } else {
+        taskElement.setAttribute('data-hidden-revealed', 'true');
+    }
+
+    // Update the menu button text for next menu open
+    const toggleBtn = taskElement.querySelector('.hidden-content-toggle');
+    if (toggleBtn) {
+        toggleBtn.textContent = isRevealed ? 'Reveal content' : 'Hide content';
     }
 }
 

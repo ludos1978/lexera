@@ -1,14 +1,18 @@
+- [x] add a tag #hidden which is overlaying the complete task's content with a content hiding overlay. in the tasks burger menu add  a button "reveal content" / "hide content". only after clicking the button then the field is displayed, there must be a burger menu at the top. The tag must be added by the user manually and it's hidden again by default on the next file opening. It's used to hide content when displaying the content by default, requiring the user to explicitly display it within the kanban. it should be exploded from export by default as well!
+
 - [ ] Does markdown put lists that are separated by a newline put into separate blocks? I see some curious behaviour in the rendering. A UI has a p within every li, if the list items are newline separeted (but the p i s within the li, not around it). I want the p to be around each newline separated ul.
 
 - [ ] if i open a folder link by alt+clicking it and it's available in the workspace explorer. if possible highlight the folder there instead of opening it externally. The default action open is to show in workspace explorer, if that fails it should be opened in the system explorer/finder.
 
-- [ ] i want to be able to drag eml (emails or links to emails) into the kanban!
+- [ ] i want to be able to drag .eml files (emails or links to emails) into the kanban. can it be added?
 
 - [ ] verify the saving system with the file manager at it's core. what could be improved to make sure all data is consistent and can allways be saved. never ever might anything get lost by not being able to save, overwriting content without user intent or trough data inconsistencies. how can we be 100% sure nothing like this occurs? analyze deeply and all involved systems!!! the file manager ist the hub for the user to verify this and must be very clear in it's explanation of the file(s) states! make sure it is only as complex as absolutely required and remove complexity where you encounter it. Make sure the structure is simple to make debugging easy!
 
-- DO NOT DO ANY AUTOMATIC TEXT CONVERSION! I saw -> get an  arrow!!!
+- [ ] DO NOT DO ANY AUTOMATIC TEXT CONVERSION! I saw -> get an  arrow!!!
 
-- [ ] add comment and note as tags
+- [ ] add "comment" (orange postit color) and "note" (yellow postit color) as tags which highlight in these colors!
+
+- [ ] when tags are added at the beginning of a task or on the first line of visible content, it's considered for the whole task and not for the line!
 
 - [ ] when deleting the top column of a  stack, sometimes the other columns get merged with the previous stack. there seem to be inconsistencies how #stack's tags are analyzed and applied.
 

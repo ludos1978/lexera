@@ -2143,10 +2143,14 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const taskIncludeErrorClass = hasTaskIncludeError ? 'include-error' : '';
     const taskIncludeErrorAttr = hasTaskIncludeError ? ' data-include-error="true"' : '';
 
+    // Detect #hidden tag for content hiding overlay
+    const isHiddenContent = window.tagUtils?.patterns?.hiddenTag?.test(taskContent) || false;
+    const hiddenContentAttr = isHiddenContent ? ' data-hidden-content="true"' : '';
+
     return `
         <div class="${['task-item', isCollapsed ? 'collapsed' : '', headerClasses || '', footerClasses || '', taskIncludeErrorClass].filter(cls => cls && cls.trim()).join(' ')}${loadingClass}"
              data-task-id="${task.id}"
-             data-task-index="${taskIndex}"${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}
+             data-task-index="${taskIndex}"${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
              style="${paddingTopStyle} ${paddingBottomStyle}">
             ${loadingOverlay}
             ${headerBarsHtml}
@@ -2164,6 +2168,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                             <button class="donut-menu-item" onclick="openTaskOverlayEditor('${task.id}', '${columnId}')">
                                 Edit task (overlay)
                             </button>
+                            ${isHiddenContent ? `<button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenContent('${task.id}')">Reveal content</button>` : ''}
                             <div class="donut-menu-divider"></div>
                             <button class="donut-menu-item" onclick="insertTaskBefore('${task.id}', '${columnId}')">Insert card before</button>
                             <button class="donut-menu-item" onclick="insertTaskAfter('${task.id}', '${columnId}')">Insert card after</button>
@@ -2701,7 +2706,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
 // Global click handlers that check for Alt key
 function handleColumnTitleClick(event, columnId) {
     // Don't intercept clicks on media menu buttons - let event delegation handle them
-    const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn');
+    const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn, .inline-file-menu-btn');
     if (menuButton) {
         return; // Let event bubble to document-level event delegation
     }
@@ -2758,7 +2763,7 @@ function handleColumnTitleClick(event, columnId) {
 
 function handleTaskTitleClick(event, element, taskId, columnId) {
     // Don't intercept clicks on media menu buttons - let event delegation handle them
-    const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn');
+    const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn, .inline-file-menu-btn');
     if (menuButton) {
         return; // Let event bubble to document-level event delegation
     }
@@ -2805,7 +2810,7 @@ function handleDescriptionClick(event, element, taskId, columnId) {
     }
 
     // Don't intercept clicks on media menu buttons - let event delegation handle them
-    const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn');
+    const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn, .inline-file-menu-btn');
     if (menuButton) {
         return; // Let event bubble to document-level event delegation
     }

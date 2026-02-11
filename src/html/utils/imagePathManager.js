@@ -713,6 +713,86 @@ function toggleEmbedMenu(container) {
 }
 
 /**
+ * Toggle inline file embed menu (open file, copy path, remove)
+ * @param {HTMLElement} container - The inline-file-embed-container element
+ */
+function toggleInlineFileMenu(container) {
+    closeAllPathMenus();
+    document.getElementById('floating-inline-file-menu')?.remove();
+
+    const button = container.querySelector('.inline-file-menu-btn');
+    if (!button) return;
+
+    const rect = button.getBoundingClientRect();
+    const filePath = container.dataset.filePath || '';
+
+    const menu = document.createElement('div');
+    menu.id = 'floating-inline-file-menu';
+    menu.className = 'image-path-menu visible';
+    menu.style.position = 'fixed';
+    menu.style.top = (rect.bottom + 2) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.style.right = 'auto';
+    menu.style.zIndex = '999999';
+
+    menu.innerHTML = `
+        <button class="image-path-menu-item" data-action="open-inline-file">📄 Open file</button>
+        <button class="image-path-menu-item" data-action="copy-inline-path">📋 Copy path</button>
+        <div class="image-path-menu-divider"></div>
+        <button class="image-path-menu-item" data-action="delete-inline-file">🗑️ Remove embed</button>
+    `;
+
+    menu.dataset.filePath = filePath;
+
+    menu.addEventListener('click', (e) => {
+        const action = e.target.dataset?.action;
+        if (!action) return;
+
+        e.stopPropagation();
+        menu.remove();
+
+        switch (action) {
+            case 'open-inline-file':
+                if (filePath) {
+                    openPath(filePath);
+                }
+                break;
+            case 'copy-inline-path':
+                if (filePath) {
+                    navigator.clipboard.writeText(filePath).catch(err => {
+                        console.error('[InlineFile] Failed to copy path:', err);
+                    });
+                }
+                break;
+            case 'delete-inline-file':
+                vscode.postMessage({
+                    type: 'deleteFromMarkdown',
+                    path: filePath
+                });
+                break;
+        }
+    });
+
+    document.body.appendChild(menu);
+
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.right > window.innerWidth) {
+        menu.style.left = (window.innerWidth - menuRect.width - 10) + 'px';
+    }
+    if (menuRect.bottom > window.innerHeight) {
+        menu.style.top = (rect.top - menuRect.height - 2) + 'px';
+    }
+
+    const closeHandler = (e) => {
+        if (!menu.contains(e.target) && !container.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+}
+
+/**
  * Toggle the not-found menu visibility for any media type
  * @param {HTMLElement} container - The container element
  * @param {'image'|'video'} mediaType - The media type
@@ -844,6 +924,19 @@ const MEDIA_TYPE_CONFIG = {
         menuItemClass: 'embed-menu-item',
         pathDataAttr: 'embedUrl',  // Uses data-embed-url
         mediaLabel: 'embed'
+    },
+    inlinefile: {
+        emoji: '📄',
+        containerClass: 'inline-file-embed-container',
+        notFoundClass: 'inline-file-not-found',
+        notFoundContainerClass: 'inline-file-not-found-container',
+        notFoundTextClass: 'inline-file-not-found-text',
+        notFoundMenuClass: 'inline-file-not-found-menu',
+        brokenClass: 'inline-file-broken',
+        menuBtnClass: 'inline-file-menu-btn',
+        menuItemClass: 'inline-file-menu-item',
+        pathDataAttr: 'filePath',  // Uses data-file-path
+        mediaLabel: 'inline file'
     }
 };
 
@@ -1481,7 +1574,7 @@ function setupMediaPathEventDelegation() {
 
         // Allow toggle-menu and embed-menu to proceed even without filePath
         // (embed-menu gets URL from container data attributes)
-        const menuActions = ['toggle-menu', 'embed-menu'];
+        const menuActions = ['toggle-menu', 'embed-menu', 'inlinefile-menu'];
         if (!filePath && !menuActions.includes(action)) {
             return;
         }
@@ -1516,6 +1609,14 @@ function setupMediaPathEventDelegation() {
             case 'embed-menu':
                 // Handle embed menu toggle
                 toggleEmbedMenu(container);
+                break;
+            case 'inlinefile-menu':
+                // Handle inline file embed menu toggle
+                toggleInlineFileMenu(container);
+                break;
+            case 'open-inline-file':
+                // Open inline file from header click
+                if (filePath) { openPath(filePath); }
                 break;
             case 'reveal':
                 revealPathInExplorer(filePath);
@@ -1900,3 +2001,6 @@ window.copyDiagramCode = copyDiagramCode;
 
 // Embed menus
 window.toggleEmbedMenu = toggleEmbedMenu;
+
+// Inline file menus
+window.toggleInlineFileMenu = toggleInlineFileMenu;
