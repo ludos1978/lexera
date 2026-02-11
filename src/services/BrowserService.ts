@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { configService } from '../services/ConfigurationService';
+import { logger } from '../utils/logger';
 
 /**
  * Platform-specific known Chrome/Chromium paths
@@ -78,11 +79,11 @@ export class BrowserService {
         }
 
         // Attempt to install Playwright chromium
-        console.warn('[BrowserService] No browser found, running: npx playwright install chromium');
+        logger.warn('[BrowserService] No browser found, running: npx playwright install chromium');
         await new Promise<void>((resolve, reject) => {
             exec('npx playwright install chromium', { timeout: 120000 }, (err, stdout, stderr) => {
                 if (err) {
-                    console.error('[BrowserService] Playwright install failed:', stderr);
+                    logger.error('[BrowserService] Playwright install failed:', stderr);
                     reject(err);
                     return;
                 }

@@ -16,6 +16,7 @@ import { PanelContext } from '../../panel/PanelContext';
 import { ConcurrencyManager } from '../../panel/ConcurrencyManager';
 import { IncludeFileCoordinator } from '../../panel/IncludeFileCoordinator';
 import { BoardStore } from '../stores';
+import { logger } from '../../utils/logger';
 
 /**
  * Dependencies required by FileRegistryChangeHandler
@@ -115,7 +116,7 @@ export class FileRegistryChangeHandler {
 
             this._deps.invalidateBoardCache();
             // Use sendBoardUpdate to ensure image mappings are regenerated
-            console.log('[FileRegistryChangeHandler._handleMainFileReloaded] About to call sendBoardUpdate(false, true)');
+            logger.debug('[FileRegistryChangeHandler._handleMainFileReloaded] About to call sendBoardUpdate(false, true)');
             await this._deps.sendBoardUpdate(false, true);
         }
     }

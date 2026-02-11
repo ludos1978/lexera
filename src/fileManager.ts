@@ -478,8 +478,8 @@ export class FileManager {
             }
         } else if (resolution && !resolution.exists) {
             // Log failed image resolution attempts
-            console.warn(`Image not found: ${imagePath}`);
-            console.warn('Attempted paths:', resolution.attemptedPaths);
+            logger.warn(`Image not found: ${imagePath}`);
+            logger.warn('Attempted paths:', resolution.attemptedPaths);
         }
 
         return imagePath;

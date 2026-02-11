@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { safeDecodeURIComponent } from './stringUtils';
+import { logger } from './logger';
 
 /**
  * Safely create a file URI with detailed error logging
@@ -13,13 +14,13 @@ export function safeFileUri(filePath: string, context?: string): vscode.Uri {
     // Check for common issues before calling vscode.Uri.file
     if (!filePath) {
         const error = `${contextStr} Cannot create URI: filePath is empty or undefined`;
-        console.error(`[URI ERROR] ${error}`);
+        logger.error(`[URI ERROR] ${error}`);
         throw new Error(error);
     }
 
     if (typeof filePath !== 'string') {
         const error = `${contextStr} Cannot create URI: filePath is not a string (got ${typeof filePath})`;
-        console.error(`[URI ERROR] ${error}`);
+        logger.error(`[URI ERROR] ${error}`);
         throw new Error(error);
     }
 
@@ -34,7 +35,7 @@ export function safeFileUri(filePath: string, context?: string): vscode.Uri {
             try {
                 return vscode.Uri.parse(filePath);
             } catch (parseError) {
-                console.error(`[URI ERROR] ${contextStr} Failed to parse file:// URI: ${parseError}`);
+                logger.error(`[URI ERROR] ${contextStr} Failed to parse file:// URI: ${parseError}`);
             }
         }
     }
@@ -43,7 +44,7 @@ export function safeFileUri(filePath: string, context?: string): vscode.Uri {
         return vscode.Uri.file(filePath);
     } catch (error) {
         const errorMsg = `${contextStr} Failed to create URI from path "${filePath}": ${error}`;
-        console.error(`[URI ERROR] ${errorMsg}`);
+        logger.error(`[URI ERROR] ${errorMsg}`);
         throw new Error(errorMsg);
     }
 }

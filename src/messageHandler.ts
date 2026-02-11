@@ -16,6 +16,7 @@ import { EditingStoppedMessage, BoardUpdateFromFrontendMessage, IncomingMessage,
 import { CapturedEdit } from './files/FileInterfaces';
 import { STOP_EDITING_TIMEOUT_MS } from './constants/TimeoutConstants';
 import { KeybindingService } from './services/KeybindingService';
+import { logger } from './utils/logger';
 
 /**
  * Simplified dependencies for MessageHandler
@@ -146,7 +147,7 @@ export class MessageHandler {
         const panel = this._deps.getWebviewPanel();
 
         if (!panel || !panel.webview) {
-            console.warn('[requestStopEditing] No panel or webview available');
+            logger.warn('[requestStopEditing] No panel or webview available');
             return null;
         }
 
@@ -154,7 +155,7 @@ export class MessageHandler {
             // Set timeout in case frontend doesn't respond
             const timeout = setTimeout(() => {
                 this._pendingStopEditingRequests.delete(requestId);
-                console.warn('[requestStopEditing] Timeout waiting for frontend response');
+                logger.warn('[requestStopEditing] Timeout waiting for frontend response');
                 resolve(null); // Resolve with null if timeout
             }, STOP_EDITING_TIMEOUT_MS);
 
@@ -170,7 +171,7 @@ export class MessageHandler {
                     captureValue: true  // Tell frontend to capture the edit value
                 });
             } else {
-                console.warn('[MessageHandler] WebviewBridge not available for stopEditing request');
+                logger.warn('[MessageHandler] WebviewBridge not available for stopEditing request');
             }
         });
     }
@@ -183,13 +184,13 @@ export class MessageHandler {
         const { requestId, capturedEdit } = message;
 
         if (!requestId) {
-            console.warn('[handleEditingStopped] No requestId in message');
+            logger.warn('[handleEditingStopped] No requestId in message');
             return;
         }
 
         const pending = this._pendingStopEditingRequests.get(requestId);
         if (!pending) {
-            console.warn(`[handleEditingStopped] No pending request for id: ${requestId}`);
+            logger.warn(`[handleEditingStopped] No pending request for id: ${requestId}`);
             return;
         }
 
@@ -227,14 +228,14 @@ export class MessageHandler {
                 }
                 return;
             }
-            console.warn('[handleEditorShortcut] Snippet not found:', args);
+            logger.warn('[handleEditorShortcut] Snippet not found:', args);
             return;
         }
 
         try {
             await vscode.commands.executeCommand(command, message.args);
         } catch (error) {
-            console.error('[handleEditorShortcut] Failed to execute command:', command, error);
+            logger.error('[handleEditorShortcut] Failed to execute command:', command, error);
         }
     }
 
@@ -244,7 +245,7 @@ export class MessageHandler {
             const result = await this._commandRegistry.execute(message);
             if (result !== null) {
                 if (!result.success) {
-                    console.error(`[MessageHandler] Command failed for ${message.type}:`, result.error);
+                    logger.error(`[MessageHandler] Command failed for ${message.type}:`, result.error);
                     if (message.type === 'saveBoardState') {
                         const bridge = this._deps.getWebviewBridge?.() ?? this._deps.getWebviewPanel()?.getWebviewBridge?.();
                         const payload = {
@@ -274,7 +275,7 @@ export class MessageHandler {
                     bridge.send({ type: 'updateShortcuts', shortcuts });
                 }
             } catch (error) {
-                console.error('[MessageHandler] Failed to send shortcuts:', error);
+                logger.error('[MessageHandler] Failed to send shortcuts:', error);
             }
             return;
         }
@@ -285,7 +286,7 @@ export class MessageHandler {
         }
 
         // Fallback for unregistered message types (should not happen in normal operation)
-        console.error(`[MessageHandler] Unknown message type: ${message.type}`);
+        logger.error(`[MessageHandler] Unknown message type: ${message.type}`);
     }
 
     /**
@@ -298,7 +299,7 @@ export class MessageHandler {
         try {
             const board = message.board;
             if (!board) {
-                console.error('[boardUpdate] No board data provided');
+                logger.error('[boardUpdate] No board data provided');
                 return;
             }
 
@@ -320,7 +321,7 @@ export class MessageHandler {
             this._deps.emitBoardChanged(board, 'edit');
 
         } catch (error) {
-            console.error('[boardUpdate] Error handling board update:', error);
+            logger.error('[boardUpdate] Error handling board update:', error);
         }
     }
 

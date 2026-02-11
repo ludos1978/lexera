@@ -16,6 +16,7 @@ import {
     DiagramRenderResult,
     DiagramFileInfo
 } from '../interfaces/DiagramPlugin';
+import { logger } from '../../utils/logger';
 
 /**
  * Internal CLI service for EPUB operations
@@ -170,7 +171,7 @@ export class EPUBPlugin implements DiagramPlugin {
 
             return pageCount;
         } catch (error) {
-            console.error('[EPUBPlugin] Failed to get page count:', error);
+            logger.error('[EPUBPlugin] Failed to get page count:', error);
             throw error;
         }
     }

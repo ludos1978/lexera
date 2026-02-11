@@ -128,9 +128,9 @@ export class KanbanDiffService implements vscode.Disposable {
         // Listen for changes to the kanban temp file and sync back to registry
         const changeListener = vscode.workspace.onDidChangeTextDocument(e => {
             const isMatch = e.document.uri.fsPath === tempFilePath;
-            console.log(`[KanbanDiffService] onDidChangeTextDocument: match=${isMatch}, tempFilePath="${tempFilePath}"`);
+            logger.debug(`[KanbanDiffService] onDidChangeTextDocument: match=${isMatch}, tempFilePath="${tempFilePath}"`);
             if (isMatch) {
-                console.log(`[KanbanDiffService] onDidChangeTextDocument: calling syncKanbanChangesToRegistry for "${filePath}"`);
+                logger.debug(`[KanbanDiffService] onDidChangeTextDocument: calling syncKanbanChangesToRegistry for "${filePath}"`);
                 this.syncKanbanChangesToRegistry(filePath, e.document.getText());
             }
         });
@@ -158,10 +158,10 @@ export class KanbanDiffService implements vscode.Disposable {
     async closeDiff(filePath: string): Promise<void> {
         const session = this.activeSessions.get(filePath);
         if (!session) {
-            console.log(`[KanbanDiffService] closeDiff: No session for "${filePath}". Active sessions: [${Array.from(this.activeSessions.keys()).join(', ')}]`);
+            logger.debug(`[KanbanDiffService] closeDiff: No session for "${filePath}". Active sessions: [${Array.from(this.activeSessions.keys()).join(', ')}]`);
             return;
         }
-        console.log(`[KanbanDiffService] closeDiff: Closing session ${session.sessionId} for "${filePath}"`);
+        logger.debug(`[KanbanDiffService] closeDiff: Closing session ${session.sessionId} for "${filePath}"`);
 
         // Dispose listeners
         session.disposables.forEach(d => d.dispose());
@@ -188,7 +188,7 @@ export class KanbanDiffService implements vscode.Disposable {
      */
     async closeAllDiffs(): Promise<void> {
         const filePaths = Array.from(this.activeSessions.keys());
-        console.log(`[KanbanDiffService] closeAllDiffs: Closing ${filePaths.length} diff session(s): [${filePaths.join(', ')}]`);
+        logger.debug(`[KanbanDiffService] closeAllDiffs: Closing ${filePaths.length} diff session(s): [${filePaths.join(', ')}]`);
         for (const filePath of filePaths) {
             await this.closeDiff(filePath);
         }
@@ -212,7 +212,7 @@ export class KanbanDiffService implements vscode.Disposable {
 
     private syncKanbanChangesToRegistry(filePath: string, newContent: string): void {
         if (!this.fileRegistry) {
-            console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: No file registry`);
+            logger.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: No file registry`);
             return;
         }
 
@@ -223,29 +223,29 @@ export class KanbanDiffService implements vscode.Disposable {
             // CRITICAL: Mark file to preserve raw content - prevents regeneration from overwriting diff edits
             file.setPreserveRawContent(true);
             const relPath = (file as any).getRelativePath?.() || filePath;
-            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()}, relPath="${relPath}"), preserveRaw=true, hasUnsaved=${file.hasUnsavedChanges()}`);
+            logger.debug(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()}, relPath="${relPath}"), preserveRaw=true, hasUnsaved=${file.hasUnsavedChanges()}`);
         } else {
-            console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: File not found in registry: "${filePath}"`);
+            logger.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: File not found in registry: "${filePath}"`);
             // List all registered files for debugging
             const allFiles = this.fileRegistry.getAll();
-            console.log(`[KanbanDiffService] Registered files: [${allFiles.map((f: any) => f.getRelativePath?.() || f.getPath()).join(', ')}]`);
+            logger.debug(`[KanbanDiffService] Registered files: [${allFiles.map((f: any) => f.getRelativePath?.() || f.getPath()).join(', ')}]`);
         }
 
         // Notify callback with debouncing (300ms) to avoid excessive updates while typing
         if (this.onContentChangedCallback) {
-            console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: scheduling callback for "${filePath}" (debounce 300ms)`);
+            logger.debug(`[KanbanDiffService] syncKanbanChangesToRegistry: scheduling callback for "${filePath}" (debounce 300ms)`);
             if (this.contentChangeDebounceTimer) {
                 clearTimeout(this.contentChangeDebounceTimer);
             }
             this.contentChangeDebounceTimer = setTimeout(() => {
                 this.contentChangeDebounceTimer = null;
                 if (this.onContentChangedCallback) {
-                    console.log(`[KanbanDiffService] syncKanbanChangesToRegistry: invoking callback for "${filePath}"`);
+                    logger.debug(`[KanbanDiffService] syncKanbanChangesToRegistry: invoking callback for "${filePath}"`);
                     this.onContentChangedCallback(filePath, newContent);
                 }
             }, 300);
         } else {
-            console.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: NO callback registered!`);
+            logger.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: NO callback registered!`);
         }
     }
 
@@ -255,7 +255,7 @@ export class KanbanDiffService implements vscode.Disposable {
      */
     private async closeEditorBySession(session: DiffSession): Promise<void> {
         const tempFileName = path.basename(session.tempFilePath);
-        console.log(`[KanbanDiffService] closeEditorBySession: Looking for tabs with tempFile="${tempFileName}" (sessionId=${session.sessionId})`);
+        logger.debug(`[KanbanDiffService] closeEditorBySession: Looking for tabs with tempFile="${tempFileName}" (sessionId=${session.sessionId})`);
 
         const tabsToClose: vscode.Tab[] = [];
 
@@ -271,7 +271,7 @@ export class KanbanDiffService implements vscode.Disposable {
 
                         // Match by our unique temp file name (contains session ID)
                         if (originalPath.includes(tempFileName) || modifiedPath.includes(tempFileName)) {
-                            console.log(`[KanbanDiffService] closeEditorBySession: Found diff tab for session ${session.sessionId}`);
+                            logger.debug(`[KanbanDiffService] closeEditorBySession: Found diff tab for session ${session.sessionId}`);
                             tabsToClose.push(tab);
                         }
                     }
@@ -279,7 +279,7 @@ export class KanbanDiffService implements vscode.Disposable {
                     if ('uri' in tabInput) {
                         const textInput = tabInput as { uri: vscode.Uri };
                         if (textInput.uri?.fsPath?.includes(tempFileName)) {
-                            console.log(`[KanbanDiffService] closeEditorBySession: Found regular tab for session ${session.sessionId}`);
+                            logger.debug(`[KanbanDiffService] closeEditorBySession: Found regular tab for session ${session.sessionId}`);
                             tabsToClose.push(tab);
                         }
                     }
@@ -288,14 +288,14 @@ export class KanbanDiffService implements vscode.Disposable {
         }
 
         if (tabsToClose.length === 0) {
-            console.log(`[KanbanDiffService] closeEditorBySession: No matching tabs found for session ${session.sessionId}`);
+            logger.debug(`[KanbanDiffService] closeEditorBySession: No matching tabs found for session ${session.sessionId}`);
         } else {
-            console.log(`[KanbanDiffService] closeEditorBySession: Closing ${tabsToClose.length} tab(s) for session ${session.sessionId}`);
+            logger.debug(`[KanbanDiffService] closeEditorBySession: Closing ${tabsToClose.length} tab(s) for session ${session.sessionId}`);
             for (const tab of tabsToClose) {
                 try {
                     await vscode.window.tabGroups.close(tab);
                 } catch (e) {
-                    console.warn(`[KanbanDiffService] closeEditorBySession: Error closing tab:`, e);
+                    logger.warn(`[KanbanDiffService] closeEditorBySession: Error closing tab:`, e);
                 }
             }
         }

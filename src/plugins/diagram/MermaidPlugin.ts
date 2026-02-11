@@ -13,6 +13,7 @@ import {
     DiagramRenderOptions,
     DiagramRenderResult
 } from '../interfaces/DiagramPlugin';
+import { logger } from '../../utils/logger';
 
 interface MermaidRenderRequest {
     requestId: string;
@@ -107,7 +108,7 @@ export class MermaidPlugin implements DiagramPlugin {
                 const svg = await this._renderToSVG(codes[i]);
                 results.push(svg);
             } catch (error) {
-                console.error(`[MermaidPlugin] Diagram ${i + 1} failed:`, error);
+                logger.error(`[MermaidPlugin] Diagram ${i + 1} failed:`, error);
                 results.push(null);
             }
         }
@@ -126,7 +127,7 @@ export class MermaidPlugin implements DiagramPlugin {
             request.resolve(svg);
             this._pendingRequests.delete(requestId);
         } else {
-            console.warn(`[MermaidPlugin] Unknown requestId: ${requestId}`);
+            logger.warn(`[MermaidPlugin] Unknown requestId: ${requestId}`);
         }
     }
 
@@ -191,7 +192,7 @@ export class MermaidPlugin implements DiagramPlugin {
                 try {
                     await request();
                 } catch (error) {
-                    console.error('[MermaidPlugin] Queue processing error:', error);
+                    logger.error('[MermaidPlugin] Queue processing error:', error);
                 }
             }
         }

@@ -20,6 +20,7 @@ import {
 } from '../interfaces';
 import { ValidationResult } from '../../shared/interfaces';
 import { EmbedPluginInterface } from '../interfaces/EmbedPlugin';
+import { logger } from '../../utils/logger';
 
 // Re-export for external access
 export { ValidationResult };
@@ -68,7 +69,7 @@ export class PluginRegistry {
                 try {
                     await plugin.activate(context);
                 } catch (error) {
-                    console.error(`[PluginRegistry] Failed to activate import plugin ${plugin.metadata.id}:`, error);
+                    logger.error(`[PluginRegistry] Failed to activate import plugin ${plugin.metadata.id}:`, error);
                 }
             }
         }
@@ -101,12 +102,12 @@ export class PluginRegistry {
         }
 
         if (validation.warnings.length > 0) {
-            console.warn(`[PluginRegistry] Import plugin '${plugin.metadata.id}' warnings:`, validation.warnings);
+            logger.warn(`[PluginRegistry] Import plugin '${plugin.metadata.id}' warnings:`, validation.warnings);
         }
 
         // Check for existing plugin with same ID
         if (this._importPlugins.has(plugin.metadata.id)) {
-            console.warn(`[PluginRegistry] Replacing existing import plugin: ${plugin.metadata.id}`);
+            logger.warn(`[PluginRegistry] Replacing existing import plugin: ${plugin.metadata.id}`);
         }
 
         this._importPlugins.set(plugin.metadata.id, plugin);
@@ -139,7 +140,7 @@ export class PluginRegistry {
         }
 
         if (this._exportPlugins.has(plugin.metadata.id)) {
-            console.warn(`[PluginRegistry] Replacing existing export plugin: ${plugin.metadata.id}`);
+            logger.warn(`[PluginRegistry] Replacing existing export plugin: ${plugin.metadata.id}`);
         }
 
         this._exportPlugins.set(plugin.metadata.id, plugin);
@@ -269,11 +270,11 @@ export class PluginRegistry {
         }
 
         if (validation.warnings.length > 0) {
-            console.warn(`[PluginRegistry] Diagram plugin '${plugin.metadata.id}' warnings:`, validation.warnings);
+            logger.warn(`[PluginRegistry] Diagram plugin '${plugin.metadata.id}' warnings:`, validation.warnings);
         }
 
         if (this._diagramPlugins.has(plugin.metadata.id)) {
-            console.warn(`[PluginRegistry] Replacing existing diagram plugin: ${plugin.metadata.id}`);
+            logger.warn(`[PluginRegistry] Replacing existing diagram plugin: ${plugin.metadata.id}`);
         }
 
         this._diagramPlugins.set(plugin.metadata.id, plugin);
@@ -342,7 +343,7 @@ export class PluginRegistry {
      */
     registerMarkdownPlugin(entry: MarkdownPluginEntry): void {
         if (this._markdownPlugins.has(entry.id)) {
-            console.warn(`[PluginRegistry] Replacing existing markdown plugin: ${entry.id}`);
+            logger.warn(`[PluginRegistry] Replacing existing markdown plugin: ${entry.id}`);
         }
         this._markdownPlugins.set(entry.id, entry);
     }
@@ -377,7 +378,7 @@ export class PluginRegistry {
                 try {
                     await plugin.activate(context);
                 } catch (error) {
-                    console.error(`[PluginRegistry] Failed to activate diagram plugin ${plugin.metadata.id}:`, error);
+                    logger.error(`[PluginRegistry] Failed to activate diagram plugin ${plugin.metadata.id}:`, error);
                 }
             }
         }

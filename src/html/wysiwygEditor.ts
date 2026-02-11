@@ -7,6 +7,7 @@ import { baseKeymap, setBlockType, toggleMark } from 'prosemirror-commands';
 import { inputRules, smartQuotes, ellipsis, emDash } from 'prosemirror-inputrules';
 import { wrapInList } from 'prosemirror-schema-list';
 
+import { logger } from '../utils/logger';
 import { buildProseMirrorSchema } from '../wysiwyg/prosemirrorSchema';
 import { proseMirrorToWysiwygDoc, wysiwygDocToProseMirror } from '../wysiwyg/prosemirrorAdapter';
 import { markdownToWysiwygDoc, wysiwygDocToMarkdown } from '../wysiwyg/pipeline';
@@ -356,7 +357,7 @@ export class WysiwygEditor {
             },
             handleClickOn: (view, pos, node, nodePos, event) => {
                 if (event?.altKey) {
-                    console.log('[WYSIWYG-DEBUG] click', {
+                    logger.debug('[WYSIWYG-DEBUG] click', {
                         nodeType: node?.type?.name,
                         nodePos,
                         clickX: event?.clientX,
@@ -408,7 +409,7 @@ export class WysiwygEditor {
                     const clickX = event?.clientX ?? rect.left;
                     const placeAfter = clickX >= rect.left + rect.width / 2;
                     if (event?.altKey) {
-                        console.log('[WYSIWYG-DEBUG] media block click', { placeAfter, rect });
+                        logger.debug('[WYSIWYG-DEBUG] media block click', { placeAfter, rect });
                     }
                     return convertMediaBlockToInline(view, nodePos, placeAfter);
                 }

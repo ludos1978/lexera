@@ -7,6 +7,7 @@ import { createDisplayTitleWithPlaceholders } from './constants/IncludeConstants
 import { PluginRegistry, IncludeContextLocation } from './plugins';
 import * as fs from 'fs';
 import * as path from 'path';
+import { logger } from './utils/logger';
 
 // Re-export types from KanbanTypes
 export { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
@@ -206,11 +207,11 @@ export class MarkdownKanbanParser {
                     const slideTasks = PresentationParser.parseMarkdownToTasks(fileContent, resolvedPath, mainFilePath);
                     includeTasks.push(...slideTasks);
                   } else {
-                    console.warn(`[Parser] Column include file not found: ${resolvedPath}`);
+                    logger.warn(`[Parser] Column include file not found: ${resolvedPath}`);
                     hasIncludeError = true;
                   }
                 } catch (error) {
-                  console.error(`[Parser] Error processing column include ${filePath}:`, error);
+                  logger.error(`[Parser] Error processing column include ${filePath}:`, error);
                   hasIncludeError = true;
                 }
               }
@@ -376,7 +377,7 @@ export class MarkdownKanbanParser {
     const settings: BoardSettings = {};
 
     if (!yamlHeader) {
-      console.log('[MarkdownKanbanParser.parseBoardSettings] No YAML header');
+      logger.debug('[MarkdownKanbanParser.parseBoardSettings] No YAML header');
       return settings;
     }
 
@@ -411,7 +412,7 @@ export class MarkdownKanbanParser {
       }
     }
 
-    console.log('[MarkdownKanbanParser.parseBoardSettings] Parsed settings:', settings);
+    logger.debug('[MarkdownKanbanParser.parseBoardSettings] Parsed settings:', settings);
     return settings;
   }
 
@@ -420,7 +421,7 @@ export class MarkdownKanbanParser {
    * Adds or updates board setting keys in the frontmatter
    */
   static updateYamlWithBoardSettings(yamlHeader: string | null, settings: BoardSettings): string {
-    console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Input yamlHeader:', yamlHeader ? 'present' : 'null', 'settings:', settings);
+    logger.debug('[MarkdownKanbanParser.updateYamlWithBoardSettings] Input yamlHeader:', yamlHeader ? 'present' : 'null', 'settings:', settings);
 
     if (!yamlHeader) {
       // Create new YAML header with kanban-plugin marker and settings
@@ -437,7 +438,7 @@ export class MarkdownKanbanParser {
         yaml += `${newSettings.join('\n')}\n`;
       }
       yaml += '---';
-      console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Created new YAML:', yaml);
+      logger.debug('[MarkdownKanbanParser.updateYamlWithBoardSettings] Created new YAML:', yaml);
       return yaml;
     }
 
@@ -478,7 +479,7 @@ export class MarkdownKanbanParser {
     }
 
     const updatedYaml = result.join('\n');
-    console.log('[MarkdownKanbanParser.updateYamlWithBoardSettings] Updated YAML:', updatedYaml);
+    logger.debug('[MarkdownKanbanParser.updateYamlWithBoardSettings] Updated YAML:', updatedYaml);
     return updatedYaml;
   }
 
@@ -515,7 +516,7 @@ export class MarkdownKanbanParser {
   }
 
   static generateMarkdown(board: KanbanBoard): string {
-    console.log('[MarkdownKanbanParser.generateMarkdown] Board has yamlHeader:', !!board.yamlHeader, 'boardSettings:', board.boardSettings);
+    logger.debug('[MarkdownKanbanParser.generateMarkdown] Board has yamlHeader:', !!board.yamlHeader, 'boardSettings:', board.boardSettings);
 
     let markdown = '';
 

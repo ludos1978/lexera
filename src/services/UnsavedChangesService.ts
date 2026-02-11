@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import { getUnsavedChangesPath } from '../constants/FileNaming';
 import { confirmSaveOnClose } from './NotificationService';
+import { logger } from '../utils/logger';
 
 /**
  * Result of showing the unsaved changes dialog
@@ -150,7 +151,7 @@ export class UnsavedChangesService {
         }
 
         if (result.failed > 0) {
-            console.error('[UnsavedChangesService] Failed to save some unsaved changes backups:', result.errors.join('; '));
+            logger.error('[UnsavedChangesService] Failed to save some unsaved changes backups:', result.errors.join('; '));
         }
 
         return result;

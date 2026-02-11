@@ -1754,6 +1754,8 @@ export interface OpenLinkMessage extends BaseMessage {
     linkIndex?: number;
     /** Include context for resolving paths in include files */
     includeContext?: LinkIncludeContext;
+    /** When true, force open in OS default tool instead of VS Code (Shift+Alt+click) */
+    forceExternal?: boolean;
 }
 
 /**

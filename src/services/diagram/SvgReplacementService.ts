@@ -8,6 +8,7 @@
  */
 
 import { escapeRegExp } from '../../utils/stringUtils';
+import { logger } from '../../utils/logger';
 
 /**
  * Options for code block replacement
@@ -69,7 +70,7 @@ ${indent}![${altText}](${svgRelativePath})`;
 
     // Check if replacement happened
     if (updatedContent === content) {
-        console.warn(`[SvgReplacementService] No matching ${blockType} block found for replacement`);
+        logger.warn(`[SvgReplacementService] No matching ${blockType} block found for replacement`);
         // Try fuzzy matching as fallback
         return replaceCodeBlockWithSVGFuzzy(content, code, svgRelativePath, options);
     }
@@ -129,7 +130,7 @@ ${code}
     }
 
     // If no fuzzy match found, return original content unchanged
-    console.warn(`[SvgReplacementService] No fuzzy match found for ${blockType}, content unchanged`);
+    logger.warn(`[SvgReplacementService] No fuzzy match found for ${blockType}, content unchanged`);
     return content;
 }
 

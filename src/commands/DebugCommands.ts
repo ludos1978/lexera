@@ -699,30 +699,30 @@ export class DebugCommands extends SwitchBasedCommand {
             const changedFileType = changedFile?.getFileType() || 'unknown';
             const isChangedIncludeFile = changedFileType !== 'main' && changedFileType !== 'unknown';
 
-            console.log(`[DebugCommands] onContentChanged: changedPath="${changedPath}", fileType="${changedFileType}", isIncludeFile=${isChangedIncludeFile}`);
+            logger.debug(`[DebugCommands] onContentChanged: changedPath="${changedPath}", fileType="${changedFileType}", isIncludeFile=${isChangedIncludeFile}`);
             logger.debug(`[DebugCommands] onContentChanged: CALLBACK INVOKED! changedPath="${changedPath}", fileType="${changedFileType}", isIncludeFile=${isChangedIncludeFile}`);
 
             if (isChangedIncludeFile && changedFile) {
                 // For include files: reload from the now-updated file and send targeted update
                 // This preserves raw content without going through board regeneration
-                console.log(`[DebugCommands] onContentChanged: Processing include file change`);
+                logger.debug(`[DebugCommands] onContentChanged: Processing include file change`);
 
                 // Re-parse include file to tasks
                 const mainFile = fileRegistry.getMainFile();
                 // Get board from fileService - board is a getter that returns a function
                 const fileService = panel?._fileService;
-                console.log(`[DebugCommands] onContentChanged: fileService=${!!fileService}, panel=${!!panel}`);
+                logger.debug(`[DebugCommands] onContentChanged: fileService=${!!fileService}, panel=${!!panel}`);
 
                 // Access board via the boardStore directly since 'board' is private
                 const boardStore = (fileService as any)?._deps?.boardStore;
                 const board = boardStore?.getBoard?.();
-                console.log(`[DebugCommands] onContentChanged: boardStore=${!!boardStore}, board=${!!board}, mainFile=${!!mainFile}`);
+                logger.debug(`[DebugCommands] onContentChanged: boardStore=${!!boardStore}, board=${!!board}, mainFile=${!!mainFile}`);
 
                 if (mainFile && board) {
                     const incFile = changedFile as IncludeFile;
                     const incRelPath = incFile.getRelativePath();
                     const incAbsPath = incFile.getPath();
-                    console.log(`[DebugCommands] onContentChanged: incRelPath="${incRelPath}", incAbsPath="${incAbsPath}"`);
+                    logger.debug(`[DebugCommands] onContentChanged: incRelPath="${incRelPath}", incAbsPath="${incAbsPath}"`);
 
                     // Find columns using this include file
                     // Note: column.includeFiles may contain absolute OR relative paths depending on board state
@@ -738,31 +738,31 @@ export class DebugCommands extends SwitchBasedCommand {
                             return { inc, isSameFileRel, isSameFileAbs, exactRel, exactAbs, any: isSameFileRel || isSameFileAbs || exactRel || exactAbs };
                         });
                         const matches = matchResults.some((r: { any: boolean }) => r.any);
-                        console.log(`[DebugCommands] onContentChanged: column "${column.id}" matches=${matches}, matchResults=${JSON.stringify(matchResults)}`);
+                        logger.debug(`[DebugCommands] onContentChanged: column "${column.id}" matches=${matches}, matchResults=${JSON.stringify(matchResults)}`);
 
                         if (matches) {
                             // Parse fresh tasks from updated content
                             const freshTasks = incFile.parseToTasks(column.tasks, column.id, mainFile.getPath());
-                            console.log(`[DebugCommands] onContentChanged: parsed ${freshTasks.length} tasks for column "${column.id}"`);
+                            logger.debug(`[DebugCommands] onContentChanged: parsed ${freshTasks.length} tasks for column "${column.id}"`);
                             column.tasks = freshTasks;
                             columnsUpdated++;
                         }
                     }
-                    console.log(`[DebugCommands] onContentChanged: columnsUpdated=${columnsUpdated}`);
+                    logger.debug(`[DebugCommands] onContentChanged: columnsUpdated=${columnsUpdated}`);
 
                     // Send targeted board update (not full refresh)
                     if (panel?._fileService && columnsUpdated > 0) {
                         panel._fileService.setBoard(board);
                         await panel._fileService.sendBoardUpdate(false, false);
-                        console.log(`[DebugCommands] onContentChanged: board update sent`);
+                        logger.debug(`[DebugCommands] onContentChanged: board update sent`);
                     }
                 } else {
-                    console.log(`[DebugCommands] onContentChanged: SKIP - mainFile=${!!mainFile}, board=${!!board}`);
+                    logger.debug(`[DebugCommands] onContentChanged: SKIP - mainFile=${!!mainFile}, board=${!!board}`);
                 }
             } else if (changedFileType === 'main') {
                 // For main file: re-parse board and refresh UI
                 // CRITICAL: After parsing, must load include files to populate column tasks
-                console.log(`[DebugCommands] onContentChanged (main): re-parsing board`);
+                logger.debug(`[DebugCommands] onContentChanged (main): re-parsing board`);
                 const mainFile = fileRegistry.getMainFile();
                 if (mainFile && panel?._fileService) {
                     mainFile.parseToBoard();
@@ -772,25 +772,25 @@ export class DebugCommands extends SwitchBasedCommand {
                         const mainFilePath = mainFile.getPath();
                         for (const column of freshBoard.columns) {
                             if (column.includeFiles && column.includeFiles.length > 0) {
-                                console.log(`[DebugCommands] onContentChanged (main): loading includes for column "${column.id}": [${column.includeFiles.join(', ')}]`);
+                                logger.debug(`[DebugCommands] onContentChanged (main): loading includes for column "${column.id}": [${column.includeFiles.join(', ')}]`);
                                 // Get include file from registry and parse to tasks
                                 for (const relPath of column.includeFiles) {
                                     const incFile = fileRegistry.getByRelativePath(relPath);
                                     if (incFile && incFile.getFileType() !== 'main') {
                                         const tasks = (incFile as IncludeFile).parseToTasks(column.tasks, column.id, mainFilePath);
                                         column.tasks = tasks;
-                                        console.log(`[DebugCommands] onContentChanged (main): parsed ${tasks.length} tasks from "${relPath}"`);
+                                        logger.debug(`[DebugCommands] onContentChanged (main): parsed ${tasks.length} tasks from "${relPath}"`);
                                     }
                                 }
                             }
                         }
                         panel._fileService.setBoard(freshBoard);
                         await panel._fileService.sendBoardUpdate(false, false);
-                        console.log(`[DebugCommands] onContentChanged (main): board update sent`);
+                        logger.debug(`[DebugCommands] onContentChanged (main): board update sent`);
                     }
                 }
             } else {
-                console.log(`[DebugCommands] onContentChanged: SKIP - unknown file type "${changedFileType}"`);
+                logger.debug(`[DebugCommands] onContentChanged: SKIP - unknown file type "${changedFileType}"`);
             }
         });
 
@@ -828,7 +828,7 @@ export class DebugCommands extends SwitchBasedCommand {
             return this.success();
         }
 
-        console.warn('[DebugCommands] FORCE WRITE ALL: Starting emergency file write operation');
+        logger.warn('[DebugCommands] FORCE WRITE ALL: Starting emergency file write operation');
 
         let backupPath: string | undefined;
         try {
@@ -841,7 +841,7 @@ export class DebugCommands extends SwitchBasedCommand {
                 );
             }
         } catch (error) {
-            console.error('[DebugCommands] Failed to create backup before force write:', error);
+            logger.error('[DebugCommands] Failed to create backup before force write:', error);
         }
 
         try {
@@ -939,7 +939,7 @@ export class DebugCommands extends SwitchBasedCommand {
                         matchKind: matchKind
                     };
                 } catch (error) {
-                    console.warn('[DebugCommands] Failed to generate frontend snapshot hash:', error);
+                    logger.warn('[DebugCommands] Failed to generate frontend snapshot hash:', error);
                 }
             }
 
@@ -959,7 +959,7 @@ export class DebugCommands extends SwitchBasedCommand {
                         savedFileContent = fs.readFileSync(file.getPath(), 'utf8');
                     }
                 } catch (error) {
-                    console.error(`[DebugCommands] Could not read saved file ${file.getPath()}:`, error);
+                    logger.error(`[DebugCommands] Could not read saved file ${file.getPath()}:`, error);
                 }
 
                 canonicalContent = file.getContent();
@@ -968,7 +968,7 @@ export class DebugCommands extends SwitchBasedCommand {
                     try {
                         frontendContent = MarkdownKanbanParser.generateMarkdown(frontendBoard as KanbanBoard);
                     } catch (error) {
-                        console.warn('[DebugCommands] Failed to generate frontend main markdown:', error);
+                        logger.warn('[DebugCommands] Failed to generate frontend main markdown:', error);
                     }
                 } else if (file.getFileType() !== 'main' && frontendBoard) {
                     frontendContent = this.resolveIncludeFrontendContentFromBoard(
@@ -1121,7 +1121,7 @@ export class DebugCommands extends SwitchBasedCommand {
                 await panelAccess.loadMarkdownFile(document, false);
             }
         } catch (error) {
-            console.warn('[DebugCommands] Error clearing panel caches:', error);
+            logger.warn('[DebugCommands] Error clearing panel caches:', error);
         }
 
         this.postMessage({
@@ -1378,7 +1378,7 @@ export class DebugCommands extends SwitchBasedCommand {
         }
         const unique = new Set(contents);
         if (unique.size > 1) {
-            console.warn(`[DebugCommands] ${fileType} include has inconsistent frontend content: ${relativePath}`);
+            logger.warn(`[DebugCommands] ${fileType} include has inconsistent frontend content: ${relativePath}`);
         }
         return contents[0];
     }
@@ -1392,7 +1392,7 @@ export class DebugCommands extends SwitchBasedCommand {
             }
             return { content: MarkdownKanbanParser.generateMarkdown(parsed.board) };
         } catch (error) {
-            console.warn('[DebugCommands] Failed to normalize registry content:', error);
+            logger.warn('[DebugCommands] Failed to normalize registry content:', error);
             return null;
        }
     }
@@ -1410,7 +1410,7 @@ export class DebugCommands extends SwitchBasedCommand {
         }
         const leftLine = this.getLineAtIndex(left, diff.index);
         const rightLine = this.getLineAtIndex(right, diff.index);
-        console.log(label, {
+        logger.debug(label, {
             leftLength: left.length,
             rightLength: right.length,
             diffIndex: diff.index,

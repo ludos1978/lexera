@@ -161,7 +161,7 @@ export class ExportCommands extends SwitchBasedCommand {
                     try {
                         document = await vscode.workspace.openTextDocument(filePath);
                     } catch (error) {
-                        console.error('[ExportCommands.handleExport] Failed to open document from file path:', error);
+                        logger.error('[ExportCommands.handleExport] Failed to open document from file path:', error);
                     }
                 }
             }
@@ -250,7 +250,7 @@ export class ExportCommands extends SwitchBasedCommand {
             });
 
         } catch (error) {
-            console.error('[ExportCommands.handleExport] Error:', error);
+            logger.error('[ExportCommands.handleExport] Error:', error);
             showError(`Export failed: ${getErrorMessage(error)}`);
         }
     }
@@ -287,13 +287,13 @@ export class ExportCommands extends SwitchBasedCommand {
         // Get the main kanban file from the file registry
         const fileRegistry = context.getFileRegistry();
         if (!fileRegistry) {
-            console.error('[ExportCommands] No file registry available for auto-export');
+            logger.error('[ExportCommands] No file registry available for auto-export');
             return;
         }
 
         const mainFile = fileRegistry.getMainFile();
         if (!mainFile) {
-            console.error('[ExportCommands] No main kanban file found for auto-export');
+            logger.error('[ExportCommands] No main kanban file found for auto-export');
             return;
         }
 
@@ -318,7 +318,7 @@ export class ExportCommands extends SwitchBasedCommand {
                     await vscode.env.openExternal(uri);
                 }
             } catch (error) {
-                console.error('[ExportCommands.autoExport] Auto-export failed:', error);
+                logger.error('[ExportCommands.autoExport] Auto-export failed:', error);
                 showError(`Auto-export failed: ${getErrorMessage(error)}`);
             }
         });
@@ -360,10 +360,10 @@ export class ExportCommands extends SwitchBasedCommand {
                     type: 'autoExportStopped'
                 });
             } else {
-                console.warn('[ExportCommands.handleStopAutoExport] No webview panel available to send message');
+                logger.warn('[ExportCommands.handleStopAutoExport] No webview panel available to send message');
             }
         } catch (error) {
-            console.error('[ExportCommands.handleStopAutoExport] Error:', error);
+            logger.error('[ExportCommands.handleStopAutoExport] Error:', error);
             throw error;
         }
     }
@@ -383,7 +383,7 @@ export class ExportCommands extends SwitchBasedCommand {
                 }
             }
         } catch (error) {
-            console.error('[ExportCommands.handleStopAutoExportForOtherKanbanFiles] Error:', error);
+            logger.error('[ExportCommands.handleStopAutoExportForOtherKanbanFiles] Error:', error);
             throw error;
         }
     }
@@ -405,7 +405,7 @@ export class ExportCommands extends SwitchBasedCommand {
                     try {
                         document = await vscode.workspace.openTextDocument(filePath);
                     } catch (error) {
-                        console.error('[ExportCommands.getExportDefaultFolder] Failed to open document from file path:', error);
+                        logger.error('[ExportCommands.getExportDefaultFolder] Failed to open document from file path:', error);
                     }
                 }
 
@@ -419,7 +419,7 @@ export class ExportCommands extends SwitchBasedCommand {
             }
 
             if (!document) {
-                console.error('[ExportCommands.getExportDefaultFolder] No document available for export');
+                logger.error('[ExportCommands.getExportDefaultFolder] No document available for export');
                 return;
             }
 
@@ -429,7 +429,7 @@ export class ExportCommands extends SwitchBasedCommand {
                 folderPath: defaultFolder
             });
         } catch (error) {
-            console.error('[ExportCommands.getExportDefaultFolder] Error:', error);
+            logger.error('[ExportCommands.getExportDefaultFolder] Error:', error);
         }
     }
 
@@ -453,7 +453,7 @@ export class ExportCommands extends SwitchBasedCommand {
                 });
             }
         } catch (error) {
-            console.error('Error selecting export folder:', error);
+            logger.error('Error selecting export folder:', error);
         }
     }
 
@@ -474,7 +474,7 @@ export class ExportCommands extends SwitchBasedCommand {
                 await vscode.commands.executeCommand('revealFileInOS', safeFileUri(exportPath, 'ExportCommands-revealExport'));
             }
         } catch (error) {
-            console.error('Error handling export folder open request:', error);
+            logger.error('Error handling export folder open request:', error);
         }
     }
 
@@ -489,10 +489,10 @@ export class ExportCommands extends SwitchBasedCommand {
             const themes = marpPlugin ? await marpPlugin.getAvailableThemes?.() : ['default'];
 
             if (!this.postMessage({ type: 'marpThemesAvailable', themes: themes })) {
-                console.error('[ExportCommands.handleGetMarpThemes] No webview panel available');
+                logger.error('[ExportCommands.handleGetMarpThemes] No webview panel available');
             }
         } catch (error) {
-            console.error('[ExportCommands.handleGetMarpThemes] Error:', error);
+            logger.error('[ExportCommands.handleGetMarpThemes] Error:', error);
 
             this.postMessage({
                 type: 'marpThemesAvailable',
@@ -511,10 +511,10 @@ export class ExportCommands extends SwitchBasedCommand {
             const themes = marpPlugin ? await marpPlugin.getAvailableThemes?.() : ['default'];
 
             if (!this.postMessage({ type: 'marpThemesAvailable', themes: themes })) {
-                console.error('[ExportCommands.handlePollMarpThemes] Still no webview panel available');
+                logger.error('[ExportCommands.handlePollMarpThemes] Still no webview panel available');
             }
         } catch (error) {
-            console.error('[ExportCommands.handlePollMarpThemes] Error:', error);
+            logger.error('[ExportCommands.handlePollMarpThemes] Error:', error);
         }
     }
 
@@ -525,7 +525,7 @@ export class ExportCommands extends SwitchBasedCommand {
         try {
             await MarpExtensionService.openInMarpPreview(filePath);
         } catch (error) {
-            console.error('[ExportCommands.handleOpenInMarpPreview] Error:', error);
+            logger.error('[ExportCommands.handleOpenInMarpPreview] Error:', error);
             const errorMessage = getErrorMessage(error);
             showError(`Failed to open Marp preview: ${errorMessage}`);
         }
@@ -550,10 +550,10 @@ export class ExportCommands extends SwitchBasedCommand {
                 engineFileExists: engineFileExists,
                 enginePath: enginePath
             })) {
-                console.error('[ExportCommands.handleCheckMarpStatus] No webview panel available');
+                logger.error('[ExportCommands.handleCheckMarpStatus] No webview panel available');
             }
         } catch (error) {
-            console.error('[ExportCommands.handleCheckMarpStatus] Error:', error);
+            logger.error('[ExportCommands.handleCheckMarpStatus] Error:', error);
         }
     }
 
@@ -571,10 +571,10 @@ export class ExportCommands extends SwitchBasedCommand {
                 available: isAvailable,
                 version: version
             })) {
-                console.error('[ExportCommands.handleCheckPandocStatus] No webview panel available');
+                logger.error('[ExportCommands.handleCheckPandocStatus] No webview panel available');
             }
         } catch (error) {
-            console.error('[ExportCommands.handleCheckPandocStatus] Error:', error);
+            logger.error('[ExportCommands.handleCheckPandocStatus] Error:', error);
         }
     }
 
@@ -591,7 +591,7 @@ export class ExportCommands extends SwitchBasedCommand {
                 classes: availableClasses
             });
         } catch (error) {
-            console.error('[ExportCommands.handleGetMarpAvailableClasses] Error:', error);
+            logger.error('[ExportCommands.handleGetMarpAvailableClasses] Error:', error);
         }
     }
 

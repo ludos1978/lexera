@@ -127,7 +127,7 @@ export class ChangeStateMachine {
             };
 
         } catch (error) {
-            console.error('[ChangeStateMachine] Fatal error:', error);
+            logger.error('[ChangeStateMachine] Fatal error:', error);
 
             // CRITICAL: Clear flag on fatal error to prevent cache lock
             if (this._webviewPanel) {
@@ -178,7 +178,7 @@ export class ChangeStateMachine {
             }
 
         } catch (error) {
-            console.error(`[ChangeStateMachine] Error in state ${newState}:`, error);
+            logger.error(`[ChangeStateMachine] Error in state ${newState}:`, error);
             context.result.success = false;
             context.result.error = error instanceof Error ? error : new Error(String(error));
             await this._transitionTo(ChangeState.ERROR, context);
@@ -257,7 +257,7 @@ export class ChangeStateMachine {
                     }
                 }
             } catch (error) {
-                console.error(`[State:VALIDATE] Error capturing edit:`, error);
+                logger.error(`[State:VALIDATE] Error capturing edit:`, error);
             }
         }
 
@@ -306,7 +306,7 @@ export class ChangeStateMachine {
                     await this._fileSaveService.saveFile(file);
                     context.result.updatedFiles.push(file.getRelativePath());
                 } catch (error) {
-                    console.error(`[State:VALIDATE] Error saving ${file.getRelativePath()}:`, error);
+                    logger.error(`[State:VALIDATE] Error saving ${file.getRelativePath()}:`, error);
                 }
             }
         } else {
@@ -355,7 +355,7 @@ export class ChangeStateMachine {
         const resolvedTarget = this._includeProcessor.resolveTarget(switchEvent, board);
 
         if (!resolvedTarget.found) {
-            console.error(`[State:LOAD] Could not find target column/task`);
+            logger.error(`[State:LOAD] Could not find target column/task`);
             return ChangeState.UPDATE;
         }
 
@@ -418,7 +418,7 @@ export class ChangeStateMachine {
                     this._webviewPanel.syncIncludeFilesWithBoard(board);
                 }
             } catch (error) {
-                console.error(`[State:UPDATE] Error syncing file registry:`, error);
+                logger.error(`[State:UPDATE] Error syncing file registry:`, error);
             }
         }
 
@@ -586,9 +586,9 @@ export class ChangeStateMachine {
     }
 
     private async _handleError(context: ChangeContext): Promise<ChangeState> {
-        console.error(`[State:ERROR] ❌ Error during change processing:`, context.result.error);
-        console.error(`[State:ERROR] State history: ${context.stateHistory.join(' → ')}`);
-        console.error(`[State:ERROR] Event type: ${context.event.type}`);
+        logger.error(`[State:ERROR] ❌ Error during change processing:`, context.result.error);
+        logger.error(`[State:ERROR] State history: ${context.stateHistory.join(' → ')}`);
+        logger.error(`[State:ERROR] Event type: ${context.event.type}`);
 
         // Show error dialog to user
         const errorMessage = context.result.error?.message || 'Unknown error';
@@ -599,7 +599,7 @@ export class ChangeStateMachine {
             'OK'
         );
 
-        console.error(`[ChangeStateMachine] Error: ${context.result.error}`);
+        logger.error(`[ChangeStateMachine] Error: ${context.result.error}`);
 
         // Clear cache protection flag in case it was set
         if (this._webviewPanel) {

@@ -22,6 +22,7 @@ import { MediaTracker } from '../../services/MediaTracker';
 import { BoardStore } from '../stores';
 import { WebviewBridge } from '../bridge';
 import { PanelContext } from '../../panel/PanelContext';
+import { logger } from '../../utils/logger';
 
 /**
  * Options for sync operation
@@ -136,7 +137,7 @@ export class FileSyncHandler {
             return result;
 
         } catch (error) {
-            console.error('[FileSyncHandler] Error during sync:', error);
+            logger.error('[FileSyncHandler] Error during sync:', error);
             return result;
         }
     }
@@ -208,7 +209,7 @@ export class FileSyncHandler {
                 changedFiles: changedFiles.map(f => f.path)
             };
         } catch (error) {
-            console.error('[FileSyncHandler] Error checking media files:', error);
+            logger.error('[FileSyncHandler] Error checking media files:', error);
             return { hasChanges: false, changedFiles: [] };
         }
     }

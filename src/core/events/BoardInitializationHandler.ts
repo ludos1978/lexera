@@ -69,7 +69,7 @@ export class BoardInitializationHandler {
         try {
             await mainFile.reload();
         } catch (error) {
-            console.error(`[BoardInitializationHandler] Failed to load MainKanbanFile content:`, error);
+            logger.error(`[BoardInitializationHandler] Failed to load MainKanbanFile content:`, error);
         }
 
         // Step 3: Initialize MediaTracker
@@ -125,17 +125,17 @@ export class BoardInitializationHandler {
 
         // Set up callback for real-time media file change detection
         mediaTracker.setOnMediaChanged((changedFiles) => {
-            console.log(`[BoardInitializationHandler] onMediaChanged callback invoked with ${changedFiles.length} files`);
+            logger.debug(`[BoardInitializationHandler] onMediaChanged callback invoked with ${changedFiles.length} files`);
             this._deps.onMediaChanged(changedFiles);
         });
-        console.log('[BoardInitializationHandler] MediaTracker callback registered');
+        logger.debug('[BoardInitializationHandler] MediaTracker callback registered');
 
         // Update tracked media files from current content
         const content = mainFile.getContent();
         if (content) {
             mediaTracker.updateTrackedFiles(content);
         } else {
-            console.warn(`[BoardInitializationHandler] No content from main file - skipping media tracking`);
+            logger.warn(`[BoardInitializationHandler] No content from main file - skipping media tracking`);
         }
 
         // Setup file watchers for diagram files (real-time change detection)
@@ -150,7 +150,7 @@ export class BoardInitializationHandler {
     private async _loadIncludeFiles(): Promise<void> {
         const board = this._deps.getBoard();
         if (!board || !board.valid) {
-            console.warn(`[BoardInitializationHandler] Skipping include file sync - board not available or invalid`);
+            logger.warn(`[BoardInitializationHandler] Skipping include file sync - board not available or invalid`);
             this._deps.panelContext.setInitialBoardLoad(false);
             return;
         }
@@ -165,12 +165,12 @@ export class BoardInitializationHandler {
             try {
                 await fileSyncHandler.reloadExternallyModifiedFiles({ force: true, skipBoardUpdate: true });
             } catch (error) {
-                console.error('[BoardInitializationHandler] Error loading include content:', error);
+                logger.error('[BoardInitializationHandler] Error loading include content:', error);
             } finally {
                 this._deps.panelContext.setInitialBoardLoad(false);
             }
         } else {
-            console.warn('[BoardInitializationHandler] FileSyncHandler not available');
+            logger.warn('[BoardInitializationHandler] FileSyncHandler not available');
             this._deps.panelContext.setInitialBoardLoad(false);
         }
     }

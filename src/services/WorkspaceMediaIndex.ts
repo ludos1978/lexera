@@ -125,7 +125,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
 
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
-            console.warn('[WorkspaceMediaIndex] No workspace folder found');
+            logger.warn('[WorkspaceMediaIndex] No workspace folder found');
             return;
         }
 
@@ -180,7 +180,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
             logger.debug('[WorkspaceMediaIndex] Initialized successfully');
 
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Failed to initialize:', error);
+            logger.error('[WorkspaceMediaIndex] Failed to initialize:', error);
         }
     }
 
@@ -230,7 +230,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
             }
             stmt.free();
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Error reading metadata:', error);
+            logger.error('[WorkspaceMediaIndex] Error reading metadata:', error);
         }
         return null;
     }
@@ -241,7 +241,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
             this.db.run('INSERT OR REPLACE INTO media_index_meta (key, value) VALUES (?, ?)', [key, value]);
             this.save();
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Error writing metadata:', error);
+            logger.error('[WorkspaceMediaIndex] Error writing metadata:', error);
         }
     }
 
@@ -432,7 +432,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
 
             return results;
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Error finding by hash:', error);
+            logger.error('[WorkspaceMediaIndex] Error finding by hash:', error);
             return [];
         }
     }
@@ -463,7 +463,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
             stmt.free();
             return null;
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Error getting by path:', error);
+            logger.error('[WorkspaceMediaIndex] Error getting by path:', error);
             return null;
         }
     }
@@ -510,7 +510,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
 
             return true;
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Error updating file:', error);
+            logger.error('[WorkspaceMediaIndex] Error updating file:', error);
             return false;
         }
     }
@@ -638,7 +638,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
 
             return { totalFiles, byType };
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Error getting stats:', error);
+            logger.error('[WorkspaceMediaIndex] Error getting stats:', error);
             return { totalFiles: 0, byType: {} };
         }
     }
@@ -688,7 +688,7 @@ export class WorkspaceMediaIndex implements vscode.Disposable {
             const data = this.db.export();
             fs.writeFileSync(this.dbPath, Buffer.from(data));
         } catch (error) {
-            console.error('[WorkspaceMediaIndex] Failed to save database:', error);
+            logger.error('[WorkspaceMediaIndex] Failed to save database:', error);
         }
     }
 

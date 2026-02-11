@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { logger } from './utils/logger';
 
 /**
  * Interface for handlers that respond to document save events
@@ -71,7 +72,7 @@ export class SaveEventDispatcher implements vscode.Disposable {
                 try {
                     await handler.handleSave(document);
                 } catch (error) {
-                    console.error(`[SaveEventDispatcher] Handler '${handler.id}' failed:`, error);
+                    logger.error(`[SaveEventDispatcher] Handler '${handler.id}' failed:`, error);
                     // Continue to other handlers even if one fails
                 }
             }
@@ -85,7 +86,7 @@ export class SaveEventDispatcher implements vscode.Disposable {
      */
     public registerHandler(handler: SaveEventHandler): void {
         if (this.handlers.has(handler.id)) {
-            console.warn(`[SaveEventDispatcher] Handler '${handler.id}' already registered, replacing`);
+            logger.warn(`[SaveEventDispatcher] Handler '${handler.id}' already registered, replacing`);
         }
         this.handlers.set(handler.id, handler);
     }

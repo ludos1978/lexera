@@ -29,6 +29,7 @@ import {
 } from '../core/bridge/MessageTypes';
 import { findColumn } from '../actions/helpers';
 import { TaskActions } from '../actions';
+import { logger } from '../utils/logger';
 
 /**
  * Task Commands Handler
@@ -234,7 +235,7 @@ export class TaskCommands extends SwitchBasedCommand {
 
         const board = context.getCurrentBoard();
         if (!board) {
-            console.error('[TaskCommands] No current board available for strikethrough deletion');
+            logger.error('[TaskCommands] No current board available for strikethrough deletion');
             return this.failure('No current board available');
         }
 

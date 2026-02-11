@@ -15,6 +15,7 @@ import {
     DiagramRenderOptions,
     DiagramRenderResult
 } from '../interfaces/DiagramPlugin';
+import { logger } from '../../utils/logger';
 
 /**
  * Internal CLI service for spreadsheet operations
@@ -142,7 +143,7 @@ class XlsxCLI extends AbstractCLIService {
 
         if (pngFiles.length === 1) {
             if (sheetNumber > 1) {
-                console.warn(`[XlsxPlugin] Requested sheet ${sheetNumber} but only 1 sheet exists`);
+                logger.warn(`[XlsxPlugin] Requested sheet ${sheetNumber} but only 1 sheet exists`);
             }
             return path.join(tempDir, pngFiles[0]);
         }
@@ -167,7 +168,7 @@ class XlsxCLI extends AbstractCLIService {
             return path.join(tempDir, pngFiles[sheetIndex]);
         }
 
-        console.warn(`[XlsxPlugin] Requested sheet ${sheetNumber} not found, returning first sheet`);
+        logger.warn(`[XlsxPlugin] Requested sheet ${sheetNumber} not found, returning first sheet`);
         return path.join(tempDir, pngFiles[0]);
     }
 
@@ -183,7 +184,7 @@ class XlsxCLI extends AbstractCLIService {
                 await fs.promises.unlink(path.join(tempDir, file));
             }
         } catch (error) {
-            console.warn('[XlsxPlugin] Failed to cleanup temp files:', error);
+            logger.warn('[XlsxPlugin] Failed to cleanup temp files:', error);
         }
     }
 }

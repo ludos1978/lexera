@@ -23,6 +23,7 @@ import { BoardChangeTrigger } from '../../core/events';
 import { ActionExecutor, BoardAction, ExecuteOptions, ActionResult } from '../../actions';
 import { getErrorMessage } from '../../utils/stringUtils';
 import * as vscode from 'vscode';
+import { logger } from '../../utils/logger';
 
 /**
  * Parameters for include switch operations
@@ -351,11 +352,11 @@ export abstract class BaseMessageCommand implements MessageCommand {
      * @param context - Command context
      */
     protected async refreshBoard(context: CommandContext): Promise<void> {
-        console.log('[MessageCommand.refreshBoard] START - invalidating cache and calling onBoardUpdate');
+        logger.debug('[MessageCommand.refreshBoard] START - invalidating cache and calling onBoardUpdate');
         context.boardStore.invalidateCache();
-        console.log('[MessageCommand.refreshBoard] Cache invalidated, calling onBoardUpdate');
+        logger.debug('[MessageCommand.refreshBoard] Cache invalidated, calling onBoardUpdate');
         await context.onBoardUpdate();
-        console.log('[MessageCommand.refreshBoard] onBoardUpdate completed');
+        logger.debug('[MessageCommand.refreshBoard] onBoardUpdate completed');
     }
 
     /**
@@ -441,7 +442,7 @@ export abstract class SwitchBasedCommand extends BaseMessageCommand {
             return this.failure(`Unknown ${this.metadata.id} command: ${message.type}`);
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error(`[${this.metadata.id}] Error handling ${message.type}:`, error);
+            logger.error(`[${this.metadata.id}] Error handling ${message.type}:`, error);
             return this.failure(errorMessage);
         }
     }

@@ -26,6 +26,7 @@ import {
 } from '../constants/FileExtensions';
 import { getMediaCachePath } from '../constants/FileNaming';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
+import { logger } from '../utils/logger';
 
 interface MediaFileEntry {
     mtime: number;
@@ -120,7 +121,7 @@ export class MediaTracker {
                 }
             }
         } catch (error) {
-            console.warn(`[MediaTracker] Failed to load cache: ${error}`);
+            logger.warn(`[MediaTracker] Failed to load cache: ${error}`);
         }
 
         // Return empty cache
@@ -141,7 +142,7 @@ export class MediaTracker {
             const cacheContent = JSON.stringify(this._cache, null, 2);
             fs.writeFileSync(this._cachePath, cacheContent, 'utf8');
         } catch (error) {
-            console.error(`[MediaTracker] Failed to save cache:`, error);
+            logger.error(`[MediaTracker] Failed to save cache:`, error);
         }
     }
 
@@ -292,19 +293,19 @@ export class MediaTracker {
     public checkForChanges(triggerCallback: boolean = true): ChangedMediaFile[] {
         const changedFiles: ChangedMediaFile[] = [];
         const fileEntries = Object.entries(this._cache.files);
-        console.log(`[MediaTracker.checkForChanges] Checking ${fileEntries.length} cached files, triggerCallback=${triggerCallback}, hasCallback=${!!this._onMediaChanged}`);
+        logger.debug(`[MediaTracker.checkForChanges] Checking ${fileEntries.length} cached files, triggerCallback=${triggerCallback}, hasCallback=${!!this._onMediaChanged}`);
 
         for (const [relativePath, entry] of fileEntries) {
             const absolutePath = this._resolveMediaPath(relativePath);
             const currentMtime = this._getFileMtime(absolutePath);
 
             if (currentMtime === null) {
-                console.log(`[MediaTracker.checkForChanges] ${relativePath} → file not found (skipping)`);
+                logger.debug(`[MediaTracker.checkForChanges] ${relativePath} → file not found (skipping)`);
                 continue;
             }
 
             if (currentMtime !== entry.mtime) {
-                console.log(`[MediaTracker.checkForChanges] CHANGED: ${relativePath} (${entry.type}) cachedMtime=${entry.mtime} currentMtime=${currentMtime} diff=${currentMtime - entry.mtime}ms`);
+                logger.debug(`[MediaTracker.checkForChanges] CHANGED: ${relativePath} (${entry.type}) cachedMtime=${entry.mtime} currentMtime=${currentMtime} diff=${currentMtime - entry.mtime}ms`);
                 changedFiles.push({
                     path: relativePath,
                     absolutePath: absolutePath,
@@ -323,13 +324,13 @@ export class MediaTracker {
 
             // UNIFIED: Notify through single callback (same path as file watchers)
             if (triggerCallback && this._onMediaChanged) {
-                console.log(`[MediaTracker.checkForChanges] Triggering _onMediaChanged callback with ${changedFiles.length} changed files`);
+                logger.debug(`[MediaTracker.checkForChanges] Triggering _onMediaChanged callback with ${changedFiles.length} changed files`);
                 this._onMediaChanged(changedFiles);
             } else if (changedFiles.length > 0 && !this._onMediaChanged) {
-                console.warn(`[MediaTracker.checkForChanges] ${changedFiles.length} files changed but NO callback set!`);
+                logger.warn(`[MediaTracker.checkForChanges] ${changedFiles.length} files changed but NO callback set!`);
             }
         } else {
-            console.log(`[MediaTracker.checkForChanges] No changes detected`);
+            logger.debug(`[MediaTracker.checkForChanges] No changes detected`);
         }
 
         return changedFiles;
@@ -403,7 +404,7 @@ export class MediaTracker {
                 fs.unlinkSync(this._cachePath);
             }
         } catch (error) {
-            console.warn(`[MediaTracker] Failed to delete cache file: ${error}`);
+            logger.warn(`[MediaTracker] Failed to delete cache file: ${error}`);
         }
     }
 
@@ -487,7 +488,7 @@ export class MediaTracker {
 
             this._fileWatchers.set(relativePath, watcher);
         } catch (error) {
-            console.warn(`[MediaTracker] Failed to watch file ${relativePath}:`, error);
+            logger.warn(`[MediaTracker] Failed to watch file ${relativePath}:`, error);
         }
     }
 

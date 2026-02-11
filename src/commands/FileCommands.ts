@@ -27,6 +27,7 @@ import {
     ResolveAndCopyPathMessage,
     RemoveDeletedItemsFromFilesMessage
 } from '../core/bridge/MessageTypes';
+import { logger } from '../utils/logger';
 
 /**
  * File Commands Handler
@@ -84,7 +85,7 @@ export class FileCommands extends SwitchBasedCommand {
                 content: file.getContent()
             }));
             context.linkHandler.setTrackedFiles(trackedFiles);
-            console.log('[FileCommands] Tracked files set', {
+            logger.debug('[FileCommands] Tracked files set', {
                 fileCount: allFiles.length,
                 hasMainFile: !!fileRegistry.getMainFile()
             });
@@ -126,15 +127,16 @@ export class FileCommands extends SwitchBasedCommand {
      * Flow: Alt+click → openLink message → LinkHandler method → opens or searches.
      */
     private async handleOpenLink(message: OpenLinkMessage, context: CommandContext): Promise<CommandResult> {
-        const { linkType, target, taskId, columnId, linkIndex, includeContext } = message;
+        const { linkType, target, taskId, columnId, linkIndex, includeContext, forceExternal } = message;
 
-        console.log('[FileCommands.handleOpenLink] START', JSON.stringify({
+        logger.debug('[FileCommands.handleOpenLink] START', JSON.stringify({
             linkType,
             target: target?.slice(-30),
             taskId,
             columnId,
             linkIndex,
-            hasIncludeContext: !!includeContext
+            hasIncludeContext: !!includeContext,
+            forceExternal
         }));
 
         // Set up tracked files for all local link types (FILE, IMAGE, WIKI)
@@ -145,7 +147,7 @@ export class FileCommands extends SwitchBasedCommand {
         switch (linkType) {
             case LinkType.FILE:
             case LinkType.IMAGE:
-                await context.linkHandler.handleFileLink(target, taskId, columnId, linkIndex, includeContext);
+                await context.linkHandler.handleFileLink(target, taskId, columnId, linkIndex, includeContext, forceExternal);
                 await this.syncIncludeFileContent(context, target);
                 break;
 
@@ -158,7 +160,7 @@ export class FileCommands extends SwitchBasedCommand {
                 break;
 
             default:
-                console.warn(`[FileCommands.handleOpenLink] Unknown link type: ${linkType}`);
+                logger.warn(`[FileCommands.handleOpenLink] Unknown link type: ${linkType}`);
                 return this.failure(`Unknown link type: ${linkType}`);
         }
 
@@ -224,7 +226,7 @@ export class FileCommands extends SwitchBasedCommand {
             return this.success();
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error(`[FileCommands] Error opening file ${filePath}:`, error);
+            logger.error(`[FileCommands] Error opening file ${filePath}:`, error);
             return this.failure(errorMessage);
         }
     }
@@ -416,7 +418,7 @@ export class FileCommands extends SwitchBasedCommand {
             return this.success();
         } catch (error) {
             const errorMsg = getErrorMessage(error);
-            console.error('[FileCommands] Failed to remove deleted items:', errorMsg);
+            logger.error('[FileCommands] Failed to remove deleted items:', errorMsg);
             return this.failure(`Failed to remove deleted items: ${errorMsg}`);
         }
     }

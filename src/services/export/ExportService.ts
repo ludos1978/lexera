@@ -1034,7 +1034,7 @@ export class ExportService {
                 modifiedContent = this.replaceAssetPath(modifiedContent, asset.originalPath, relativePath);
 
             } catch (error) {
-                console.error(`Failed to copy asset ${asset.originalPath}:`, error);
+                logger.error(`Failed to copy asset ${asset.originalPath}:`, error);
                 notIncludedAssets.push(asset);
             }
         }
@@ -1468,7 +1468,7 @@ export class ExportService {
 
         // Check if the requested column index exists
         if (columnIndex >= columns.length) {
-            console.error(`Column index ${columnIndex} out of range. Found ${columns.length} columns.`);
+            logger.error(`Column index ${columnIndex} out of range. Found ${columns.length} columns.`);
             return null;
         }
 
@@ -1999,7 +1999,7 @@ export class ExportService {
                         logger.debug(`[ExportService] Preprocessed diagrams in include file: ${includeFile}`);
                     }
                 } catch (includeError) {
-                    console.error(`[ExportService] Failed to preprocess include file ${includeFile}:`, includeError);
+                    logger.error(`[ExportService] Failed to preprocess include file ${includeFile}:`, includeError);
                     // Continue with other files
                 }
             }
@@ -2028,7 +2028,7 @@ export class ExportService {
                 };
             }
         } catch (error) {
-            console.error('[ExportService] Diagram preprocessing failed:', error);
+            logger.error('[ExportService] Diagram preprocessing failed:', error);
             showWarning(
                 'Diagram preprocessing failed. Exporting without diagram conversion.'
             );
@@ -2124,7 +2124,7 @@ export class ExportService {
                     marpWatchPath: processedMarkdownPath
                 };
             } catch (error) {
-                console.error(`[kanban.exportService.runMarpConversionNew] Realtime export failed:`, error);
+                logger.error(`[kanban.exportService.runMarpConversionNew] Realtime export failed:`, error);
 
                 // Cleanup on error since Marp didn't start
                 if (preprocessCleanup) {
@@ -2159,7 +2159,7 @@ export class ExportService {
                     exportedPath: outputPath
                 };
             } catch (error) {
-                console.error(`[kanban.exportService.runMarpConversion] Conversion failed:`, error);
+                logger.error(`[kanban.exportService.runMarpConversion] Conversion failed:`, error);
                 return {
                     success: false,
                     message: `Marp conversion failed: ${getErrorMessage(error)}`
@@ -2244,7 +2244,7 @@ export class ExportService {
             if (preprocessCleanup) {
                 await preprocessCleanup();
             }
-            console.error(`[ExportService.runPandocConversion] Conversion failed:`, error);
+            logger.error(`[ExportService.runPandocConversion] Conversion failed:`, error);
             return {
                 success: false,
                 message: `Pandoc conversion failed: ${getErrorMessage(error)}`
@@ -2316,7 +2316,7 @@ export class ExportService {
             return result;
 
         } catch (error) {
-            console.error('[kanban.exportService.export] Export failed:', error);
+            logger.error('[kanban.exportService.export] Export failed:', error);
             return {
                 success: false,
                 message: `Export failed: ${getErrorMessage(error)}`

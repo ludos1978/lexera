@@ -27,6 +27,7 @@
 - Never modify the save data without the users permission.
 
 ## General rules about the code:
+- do debug logs only using the logger class!
 - Make the changes as minimal as necessary to fulfill the request of the user. Do not add any unrequired complexity when implementing features.
 - use KISS when creating code.
 	- create classes if some parts of the data is mostly only handled by the contained functions.

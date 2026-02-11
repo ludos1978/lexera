@@ -2542,18 +2542,10 @@ window.setupColumnResizeObserver = setupColumnResizeObserver;
  * Send unified openLink message to backend
  * @param {string} linkType - One of LinkType values (file, wiki, external, image)
  * @param {string} target - The link target (href, documentName, or src)
- * @param {object} options - Optional: taskId, columnId, linkIndex, includeContext
+ * @param {object} options - Optional: taskId, columnId, linkIndex, includeContext, forceExternal
  */
 function sendOpenLinkMessage(linkType, target, options = {}) {
-    const { taskId, columnId, linkIndex, includeContext } = options;
-    console.log('[boardRenderer.sendOpenLinkMessage]', JSON.stringify({
-        linkType,
-        target: target?.slice?.(-30) || target,
-        taskId,
-        columnId,
-        linkIndex,
-        hasIncludeContext: !!includeContext
-    }));
+    const { taskId, columnId, linkIndex, includeContext, forceExternal } = options;
     vscode.postMessage({
         type: 'openLink',
         linkType,
@@ -2561,7 +2553,8 @@ function sendOpenLinkMessage(linkType, target, options = {}) {
         taskId: taskId || undefined,
         columnId: columnId || undefined,
         linkIndex: linkIndex ?? undefined,
-        includeContext: includeContext || undefined
+        includeContext: includeContext || undefined,
+        forceExternal: forceExternal || undefined
     });
 }
 
@@ -2650,11 +2643,11 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
             }
             // Calculate index for wiki links
             linkIndex = findElementIndex(wikiLink, containerElement, 'data-document');
-            sendOpenLinkMessage(LinkType.WIKI, documentName, { taskId, columnId, linkIndex, includeContext });
+            sendOpenLinkMessage(LinkType.WIKI, documentName, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
     }
-    
+
     // Handle regular links
     if (link) {
         event.preventDefault();
@@ -2667,12 +2660,12 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
                 // Calculate index for file links using the href attribute
                 const hrefAttr = link.getAttribute('data-original-href') ? 'data-original-href' : 'href';
                 linkIndex = findElementIndex(link, containerElement, hrefAttr);
-                sendOpenLinkMessage(LinkType.FILE, href, { taskId, columnId, linkIndex, includeContext });
+                sendOpenLinkMessage(LinkType.FILE, href, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
             }
         }
         return true;
     }
-    
+
     // Handle images
     if (img) {
         event.preventDefault();
@@ -2683,7 +2676,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
             // Calculate index for images using the src attribute
             const srcAttr = img.getAttribute('data-original-src') ? 'data-original-src' : 'src';
             linkIndex = findElementIndex(img, containerElement, srcAttr);
-            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext });
+            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
     }
@@ -2697,7 +2690,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
         if (originalSrc) {
             // Calculate index for image-not-found placeholders
             linkIndex = findElementIndex(imageNotFound, containerElement, 'data-original-src');
-            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext });
+            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
     }

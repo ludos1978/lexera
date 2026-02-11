@@ -12,6 +12,7 @@ import { normalizePathForLookup, isSamePath, getErrorMessage } from '../utils/st
 import { CapturedEdit, IMarkdownFileRegistry } from './FileInterfaces';
 import { getVisibleConflictPath } from '../constants/FileNaming';
 import { SAVE_VERIFICATION_MAX_ATTEMPTS, SAVE_VERIFICATION_RETRY_DELAY_MS } from '../constants/TimeoutConstants';
+import { logger } from '../utils/logger';
 
 /**
  * File change event emitted when file state changes
@@ -223,7 +224,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
         const normalized = path.normalize(relativePath);
         const parentDirCount = (normalized.match(/\.\.\//g) || []).length;
         if (parentDirCount > 3) {
-            console.warn(`[MarkdownFile] ⚠️  Excessive parent directory traversal (${parentDirCount} levels): "${relativePath}"`);
+            logger.warn(`[MarkdownFile] ⚠️  Excessive parent directory traversal (${parentDirCount} levels): "${relativePath}"`);
         }
     }
 
@@ -433,7 +434,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
      */
     public setPreserveRawContent(value: boolean): void {
         if (this._preserveRawContent !== value) {
-            console.log(`[MarkdownFile.setPreserveRawContent] "${this._relativePath}": ${this._preserveRawContent} → ${value}`);
+            logger.debug(`[MarkdownFile.setPreserveRawContent] "${this._relativePath}": ${this._preserveRawContent} → ${value}`);
         }
         this._preserveRawContent = value;
     }
@@ -541,7 +542,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
                     this._lastModified = await this._getFileModifiedTime();
                 }
             } else {
-                console.warn(`[${this.getFileType()}] ⚠ Reload failed - null returned`);
+                logger.warn(`[${this.getFileType()}] ⚠ Reload failed - null returned`);
             }
         } finally {
             // PERFORMANCE: End operation in coordinator
@@ -576,7 +577,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
         // Either mtime or size changed, OR file might be deleted - read content
         const content = await this.readFromDisk();
         if (content === null) {
-            console.error(`[${this.getFileType()}] Read failed`);
+            logger.error(`[${this.getFileType()}] Read failed`);
             return null;
         }
 
@@ -636,7 +637,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             this._emitChange('saved');
         } catch (error) {
             // TRANSACTION: Rollback on failure
-            console.error(`[${this.getFileType()}] Save failed, rolling back:`, error);
+            logger.error(`[${this.getFileType()}] Save failed, rolling back:`, error);
             MarkdownFile._saveTransactionManager.rollbackTransaction(this._path, transactionId);
 
             // Restore original state
@@ -758,7 +759,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             const document = await vscode.workspace.openTextDocument(this._path);
 
             if (!document) {
-                console.error(`[${this.getFileType()}] Cannot create backup - failed to open document: ${this._relativePath}`);
+                logger.error(`[${this.getFileType()}] Cannot create backup - failed to open document: ${this._relativePath}`);
                 return null;
             }
 
@@ -770,12 +771,12 @@ export abstract class MarkdownFile implements vscode.Disposable {
             });
 
             if (!backupPath) {
-                console.warn(`[${this.getFileType()}] Backup creation returned null: ${this._relativePath}`);
+                logger.warn(`[${this.getFileType()}] Backup creation returned null: ${this._relativePath}`);
             }
 
             return backupPath;
         } catch (error) {
-            console.error(`[${this.getFileType()}] Failed to create backup:`, error);
+            logger.error(`[${this.getFileType()}] Failed to create backup:`, error);
             return null;
         }
     }
@@ -830,7 +831,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             await fs.promises.writeFile(backupPath, content, 'utf-8');
             return backupPath;
         } catch (error) {
-            console.error(`[${this.getFileType()}] Failed to write emergency backup to temp:`, error);
+            logger.error(`[${this.getFileType()}] Failed to write emergency backup to temp:`, error);
             return null;
         }
     }
@@ -884,7 +885,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
             throw new Error(`Could not allocate unique visible conflict file path after ${MAX_ATTEMPTS} attempts`);
         } catch (error) {
-            console.error(`[${this.getFileType()}] Failed to create conflict file:`, error);
+            logger.error(`[${this.getFileType()}] Failed to create conflict file:`, error);
             return null;
         }
     }
@@ -913,7 +914,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
         // BUGFIX: Don't create watcher for non-existent files to prevent listener leaks
         // The _exists flag may not be set yet, so also check file system synchronously
         if (!fs.existsSync(watchPath)) {
-            console.warn(`[${this.getFileType()}] Skipping watcher for non-existent file: ${this._relativePath}`);
+            logger.warn(`[${this.getFileType()}] Skipping watcher for non-existent file: ${this._relativePath}`);
             this._exists = false;
             return;
         }
@@ -987,7 +988,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
                 MarkdownFile._activeWatchers.delete(watchPath);
             }
         } else {
-            console.warn(`[${this.getFileType()}] No watcher found in registry for: ${this._relativePath}`);
+            logger.warn(`[${this.getFileType()}] No watcher found in registry for: ${this._relativePath}`);
         }
 
         this._fileWatcher = undefined;
@@ -1016,7 +1017,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
 
         // Mark as having external changes
         this._hasFileSystemChanges = true;
-        console.log(`[MarkdownFile.handleFileSystemEvent] Setting _hasFileSystemChanges=true for "${this._relativePath}" (changeType=${changeType})`);
+        logger.debug(`[MarkdownFile.handleFileSystemEvent] Setting _hasFileSystemChanges=true for "${this._relativePath}" (changeType=${changeType})`);
         this._emitChange('external');
 
         // Delegate to subclass for specific handling
@@ -1061,7 +1062,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             const stat = await fs.promises.stat(this._path);
             return stat.mtime;
         } catch (error) {
-            console.error(`[${this.getFileType()}] Failed to get modified time:`, error);
+            logger.error(`[${this.getFileType()}] Failed to get modified time:`, error);
             return null;
         }
     }
@@ -1219,7 +1220,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
             // already flagged this file before the focus path runs.
             if (!this._hasFileSystemChanges) {
                 this._hasFileSystemChanges = true;
-                console.log(`[MarkdownFile.checkForExternalChanges] Setting _hasFileSystemChanges=true for "${this._relativePath}" (disk != baseline, diskLen=${diskContent.length}, baselineLen=${this._baseline.length})`);
+                logger.debug(`[MarkdownFile.checkForExternalChanges] Setting _hasFileSystemChanges=true for "${this._relativePath}" (disk != baseline, diskLen=${diskContent.length}, baselineLen=${this._baseline.length})`);
                 this._emitChange('external');
             }
         }
@@ -1240,7 +1241,7 @@ export abstract class MarkdownFile implements vscode.Disposable {
     public async forceSyncBaseline(): Promise<void> {
         const diskContent = await this.readFromDisk();
         if (diskContent === null) {
-            console.warn(`[${this.getFileType()}] forceSyncBaseline failed - could not read disk`);
+            logger.warn(`[${this.getFileType()}] forceSyncBaseline failed - could not read disk`);
             return;
         }
 

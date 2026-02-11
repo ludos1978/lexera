@@ -15,6 +15,7 @@ import { PluginRegistry } from './registry/PluginRegistry';
 import { PluginContext, DiagramPluginContext } from './interfaces';
 import { PluginConfigService } from '../services/PluginConfigService';
 import { PLUGIN_CONFIG_SCHEMAS } from '../services/PluginConfigSchema';
+import { logger } from '../utils/logger';
 
 // Import plugins
 import { ColumnIncludePlugin } from './import/ColumnIncludePlugin';
@@ -74,7 +75,7 @@ export class PluginLoader {
         try {
             registry.registerImportPlugin(new ColumnIncludePlugin());
         } catch (error) {
-            console.error('[PluginLoader] Failed to register ColumnIncludePlugin:', error);
+            logger.error('[PluginLoader] Failed to register ColumnIncludePlugin:', error);
         }
 
         // NOTE: Task/regular include plugins are intentionally not registered.
@@ -88,7 +89,7 @@ export class PluginLoader {
             try {
                 registry.registerExportPlugin(new MarpExportPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register MarpExportPlugin:', error);
+                logger.error('[PluginLoader] Failed to register MarpExportPlugin:', error);
             }
         }
 
@@ -98,7 +99,7 @@ export class PluginLoader {
             try {
                 registry.registerExportPlugin(new PandocExportPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register PandocExportPlugin:', error);
+                logger.error('[PluginLoader] Failed to register PandocExportPlugin:', error);
             }
         }
 
@@ -109,7 +110,7 @@ export class PluginLoader {
             try {
                 registry.registerEmbedPlugin(new EmbedPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register EmbedPlugin:', error);
+                logger.error('[PluginLoader] Failed to register EmbedPlugin:', error);
             }
         }
 
@@ -120,7 +121,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new PlantUMLPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register PlantUMLPlugin:', error);
+                logger.error('[PluginLoader] Failed to register PlantUMLPlugin:', error);
             }
         }
 
@@ -129,7 +130,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new MermaidPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register MermaidPlugin:', error);
+                logger.error('[PluginLoader] Failed to register MermaidPlugin:', error);
             }
         }
 
@@ -138,7 +139,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new DrawIOPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register DrawIOPlugin:', error);
+                logger.error('[PluginLoader] Failed to register DrawIOPlugin:', error);
             }
         }
 
@@ -147,7 +148,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new ExcalidrawPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register ExcalidrawPlugin:', error);
+                logger.error('[PluginLoader] Failed to register ExcalidrawPlugin:', error);
             }
         }
 
@@ -156,7 +157,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new PDFPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register PDFPlugin:', error);
+                logger.error('[PluginLoader] Failed to register PDFPlugin:', error);
             }
         }
 
@@ -165,7 +166,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new EPUBPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register EPUBPlugin:', error);
+                logger.error('[PluginLoader] Failed to register EPUBPlugin:', error);
             }
         }
 
@@ -174,7 +175,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new XlsxPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register XlsxPlugin:', error);
+                logger.error('[PluginLoader] Failed to register XlsxPlugin:', error);
             }
         }
 
@@ -183,7 +184,7 @@ export class PluginLoader {
             try {
                 registry.registerDiagramPlugin(new DocumentPlugin());
             } catch (error) {
-                console.error('[PluginLoader] Failed to register DocumentPlugin:', error);
+                logger.error('[PluginLoader] Failed to register DocumentPlugin:', error);
             }
         }
 
@@ -208,7 +209,7 @@ export class PluginLoader {
         const registry = PluginRegistry.getInstance();
 
         if (!this._loaded) {
-            console.warn('[PluginLoader] Plugins not loaded yet, loading now...');
+            logger.warn('[PluginLoader] Plugins not loaded yet, loading now...');
             this.loadBuiltinPlugins();
         }
 

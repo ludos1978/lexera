@@ -23,6 +23,7 @@ import {
 } from '../constants/FileNaming';
 import { DashboardBoardConfig } from '../dashboard/DashboardTypes';
 import { showWarning, showInfo, notificationService } from './NotificationService';
+import { logger } from '../utils/logger';
 
 // ============= Types =============
 
@@ -466,7 +467,7 @@ export class BoardRegistryService implements vscode.Disposable {
                     const files = await this._searchWithRipgrep(folder.uri.fsPath, token);
                     files.forEach(f => candidateFiles.add(f));
                 } catch (error) {
-                    console.error(`[BoardRegistry] Error searching in ${folder.name}:`, error);
+                    logger.error(`[BoardRegistry] Error searching in ${folder.name}:`, error);
                     const fallbackFiles = await this._traditionalSearch(folder.uri.fsPath, token);
                     fallbackFiles.forEach(f => candidateFiles.add(f));
                 }
@@ -565,7 +566,7 @@ export class BoardRegistryService implements vscode.Disposable {
             this._validationCache.set(filePath, { isValid, timestamp: Date.now() });
             return isValid;
         } catch (error) {
-            console.error(`[BoardRegistry] Failed to validate ${filePath}:`, error);
+            logger.error(`[BoardRegistry] Failed to validate ${filePath}:`, error);
             return false;
         }
     }
@@ -790,7 +791,7 @@ export class BoardRegistryService implements vscode.Disposable {
 
         if (e.added.length > 0) {
             this.scanWorkspace().catch(err => {
-                console.error('[BoardRegistry] Auto-scan of new folders failed:', err);
+                logger.error('[BoardRegistry] Auto-scan of new folders failed:', err);
             });
         }
 
@@ -902,7 +903,7 @@ export class BoardRegistryService implements vscode.Disposable {
                     }
                 }
             } catch (error) {
-                console.error(`[BoardRegistry] Failed to load board config for ${dashConfig.uri}:`, error);
+                logger.error(`[BoardRegistry] Failed to load board config for ${dashConfig.uri}:`, error);
             }
         }
     }

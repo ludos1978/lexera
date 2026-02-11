@@ -68,7 +68,7 @@ export class PlantUMLPlugin implements DiagramPlugin {
         return new Promise((resolve, reject) => {
             try {
                 if (!this._isGraphvizInstalled()) {
-                    console.warn('[PlantUMLPlugin] Graphviz not found - some diagrams may not render correctly');
+                    logger.warn('[PlantUMLPlugin] Graphviz not found - some diagrams may not render correctly');
                     this._showGraphvizWarning();
                 }
 

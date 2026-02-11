@@ -57,7 +57,7 @@ export class IncludeFileCoordinator {
     registerBoardIncludeFiles(board: KanbanBoard): void {
         const mainFile = this._deps.fileRegistry.getMainFile();
         if (!mainFile) {
-            console.warn(`[IncludeFileCoordinator] Cannot sync include files - no main file in registry`);
+            logger.warn(`[IncludeFileCoordinator] Cannot sync include files - no main file in registry`);
             return;
         }
 
@@ -131,7 +131,7 @@ export class IncludeFileCoordinator {
         });
 
         if (!result.success) {
-            console.error('[IncludeFileCoordinator] Include switch failed:', result.error);
+            logger.error('[IncludeFileCoordinator] Include switch failed:', result.error);
             throw result.error || new Error('Include switch failed');
         }
     }
@@ -145,7 +145,7 @@ export class IncludeFileCoordinator {
     sendIncludeFileUpdateToFrontend(file: MarkdownFile): void {
         const board = this._deps.getBoard();
         if (!board || !this._deps.getPanel()) {
-            console.warn(`[IncludeFileCoordinator] No board or panel available for update`);
+            logger.warn(`[IncludeFileCoordinator] No board or panel available for update`);
             return;
         }
 
@@ -172,7 +172,7 @@ export class IncludeFileCoordinator {
 
         if (!column) {
             if (isDebug) {
-                console.warn('[kanban.IncludeFileCoordinator.includeColumn.noMatch]', {
+                logger.warn('[kanban.IncludeFileCoordinator.includeColumn.noMatch]', {
                     relativePath,
                     filePath,
                     boardColumns: board.columns.map(c => ({
@@ -187,7 +187,7 @@ export class IncludeFileCoordinator {
         if (column) {
             // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
             if (file.getFileType() === 'main') {
-                console.error(`[IncludeFileCoordinator] BUG: Column include path resolved to MainKanbanFile: ${relativePath}`);
+                logger.error(`[IncludeFileCoordinator] BUG: Column include path resolved to MainKanbanFile: ${relativePath}`);
                 column.tasks = [];
                 column.includeError = true;
                 return;
@@ -220,7 +220,7 @@ export class IncludeFileCoordinator {
             } else {
                 // File doesn't exist - error details shown on hover via include badge
                 // Don't create error task - just show empty column with error badge
-                console.warn(`[IncludeFileCoordinator] Column include file does not exist: ${relativePath}`);
+                logger.warn(`[IncludeFileCoordinator] Column include file does not exist: ${relativePath}`);
                 tasks = [];
                 includeError = true;
             }

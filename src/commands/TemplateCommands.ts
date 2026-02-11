@@ -86,7 +86,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             return this.success({ templateCount: templates.length });
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error('[TemplateCommands.handleGetTemplates] Error:', error);
+            logger.error('[TemplateCommands.handleGetTemplates] Error:', error);
             return this.failure(errorMessage);
         }
     }
@@ -135,7 +135,7 @@ export class TemplateCommands extends SwitchBasedCommand {
                 return await this.applyTemplateWithVariables(message, {}, context);
             }
         } catch (error) {
-            console.error('[TemplateCommands.handleApplyTemplate] Error:', error);
+            logger.error('[TemplateCommands.handleApplyTemplate] Error:', error);
             const errorMsg = getErrorMessage(error);
             showError(`Failed to load template: ${errorMsg}`);
             return this.failure(errorMsg);
@@ -161,7 +161,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             // Get current board
             const currentBoard = context.getCurrentBoard();
             if (!currentBoard) {
-                console.warn('[TemplateCommands.createEmptyColumn] No current board');
+                logger.warn('[TemplateCommands.createEmptyColumn] No current board');
                 return this.failure('No current board');
             }
 
@@ -231,7 +231,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             return this.success({ columnId: emptyColumn.id });
 
         } catch (error) {
-            console.error('[TemplateCommands.createEmptyColumn] Error:', error);
+            logger.error('[TemplateCommands.createEmptyColumn] Error:', error);
             const errorMsg = getErrorMessage(error);
             showError(`Failed to create empty column: ${errorMsg}`);
             return this.failure(errorMsg);
@@ -365,7 +365,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             return this.success({ columnsAdded: columnsWithTags.length });
 
         } catch (error) {
-            console.error('[TemplateCommands.applyTemplateWithVariables] Error:', error);
+            logger.error('[TemplateCommands.applyTemplateWithVariables] Error:', error);
             const errorMsg = getErrorMessage(error);
             showError(`Failed to apply template: ${errorMsg}`);
             return this.failure(errorMsg);

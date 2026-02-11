@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { TemplateParser, TemplateDefinition } from './TemplateParser';
+import { logger } from '../utils/logger';
 
 /**
  * Template summary for UI display
@@ -105,7 +106,7 @@ export class TemplateService {
             // Check if template folder exists
             const stat = await fs.promises.stat(templatePath);
             if (!stat.isDirectory()) {
-                console.warn(`[TemplateService] Template path is not a directory: ${templatePath}`);
+                logger.warn(`[TemplateService] Template path is not a directory: ${templatePath}`);
                 return [];
             }
 
@@ -139,7 +140,7 @@ export class TemplateService {
                         path: templateFolder
                     });
                 } catch (error) {
-                    console.error(`[TemplateService] Failed to parse template at ${templateFolder}:`, error);
+                    logger.error(`[TemplateService] Failed to parse template at ${templateFolder}:`, error);
                     // Still add with folder name as fallback
                     templates.push({
                         name: entry.name,
@@ -152,9 +153,9 @@ export class TemplateService {
 
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-                console.warn(`[TemplateService] Template folder does not exist: ${templatePath}`);
+                logger.warn(`[TemplateService] Template folder does not exist: ${templatePath}`);
             } else {
-                console.error(`[TemplateService] Error scanning templates:`, error);
+                logger.error(`[TemplateService] Error scanning templates:`, error);
             }
             return [];
         }

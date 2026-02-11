@@ -19,6 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { BoardRegistryService } from './services/BoardRegistryService';
 import { KanbanWebviewPanel } from './kanbanWebviewPanel';
+import { logger } from './utils/logger';
 
 /**
  * KanbanBoardsProvider - Boards management sidebar panel
@@ -174,7 +175,7 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             const document = await vscode.workspace.openTextDocument(uri);
             KanbanWebviewPanel.createOrShow(this._extensionUri, this._getExtensionContext(), document);
         } catch (error) {
-            console.error('[BoardsProvider] Error opening board:', error);
+            logger.error('[BoardsProvider] Error opening board:', error);
         }
     }
 

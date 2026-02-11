@@ -128,7 +128,7 @@ export class IncludeLoadingProcessor {
         const mainFile = this._fileRegistry.getMainFile();
 
         if (!fileFactory || !mainFile) {
-            console.error(`[IncludeLoadingProcessor.unifiedLoad] Missing dependencies`);
+            logger.error(`[IncludeLoadingProcessor.unifiedLoad] Missing dependencies`);
             return;
         }
 
@@ -223,7 +223,7 @@ export class IncludeLoadingProcessor {
 
             const file = this._fileRegistry.getByRelativePath(relativePath);
             if (!file) {
-                console.error(`[IncludeLoadingProcessor] File not found after registration: ${relativePath}`);
+                logger.error(`[IncludeLoadingProcessor] File not found after registration: ${relativePath}`);
                 // Mark column as having include error (error details shown on hover via include badge)
                 // Don't create error task - just show empty column with error badge
                 column.includeError = true;
@@ -233,7 +233,7 @@ export class IncludeLoadingProcessor {
             // CRITICAL DEFENSE: Verify this is actually an IncludeFile, not MainKanbanFile
             // This prevents cache corruption if the registry returns the wrong file type
             if (file.getFileType() === 'main') {
-                console.error(`[IncludeLoadingProcessor] BUG: Registry returned MainKanbanFile for include path: ${relativePath}`);
+                logger.error(`[IncludeLoadingProcessor] BUG: Registry returned MainKanbanFile for include path: ${relativePath}`);
                 column.includeError = true;
                 continue;
             }
@@ -259,7 +259,7 @@ export class IncludeLoadingProcessor {
             logger.debug(`[IncludeLoadingProcessor] Checking file existence: relativePath=${relativePath}, absolutePath=${absolutePath}, fileExistsOnDisk=${fileExistsOnDisk}, cachedExists=${includeFile.exists()}`);
             if (!fileExistsOnDisk) {
                 includeFile.setExists(false);  // Update cached state
-                console.warn(`[IncludeLoadingProcessor] File does not exist: ${relativePath}`);
+                logger.warn(`[IncludeLoadingProcessor] File does not exist: ${relativePath}`);
                 // Don't create error task - just show empty column with error badge
                 column.includeError = true;
                 continue;
@@ -268,7 +268,7 @@ export class IncludeLoadingProcessor {
             // THEN: Check for empty content (file exists but is empty)
             const contentLength = includeFile.getContent()?.length || 0;
             if (contentLength === 0) {
-                console.warn(`[IncludeLoadingProcessor] File has no content after reload: ${relativePath}`);
+                logger.warn(`[IncludeLoadingProcessor] File has no content after reload: ${relativePath}`);
                 // Don't create error task - just show empty column with error badge
                 column.includeError = true;
                 continue;
@@ -278,7 +278,7 @@ export class IncludeLoadingProcessor {
 
             // Debug logging
             if (fileTasks.length === 0) {
-                console.warn(`[IncludeLoadingProcessor] File has content (${contentLength} chars) but parsed to 0 tasks: ${relativePath}`);
+                logger.warn(`[IncludeLoadingProcessor] File has content (${contentLength} chars) but parsed to 0 tasks: ${relativePath}`);
             }
 
             tasks.push(...fileTasks);

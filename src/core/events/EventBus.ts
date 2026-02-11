@@ -114,7 +114,7 @@ export class EventBus {
             try {
                 await handler(event);
             } catch (error) {
-                console.error(`[EventBus] Handler error for ${event.type}:`, error);
+                logger.error(`[EventBus] Handler error for ${event.type}:`, error);
                 // Continue to other handlers even if one fails
             }
         }
@@ -126,7 +126,7 @@ export class EventBus {
      */
     public emitSync<T extends AppEvent>(event: T): void {
         this.emit(event).catch(error => {
-            console.error(`[EventBus] Async emit error for ${event.type}:`, error);
+            logger.error(`[EventBus] Async emit error for ${event.type}:`, error);
         });
     }
 

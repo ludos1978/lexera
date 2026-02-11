@@ -13,6 +13,7 @@ import { SaveOptions } from './SaveOptions';
 import { writeFileAtomically } from '../utils/atomicWrite';
 import { sortColumnsByRow } from '../utils/columnUtils';
 import { normalizeTaskContent } from '../utils/taskContent';
+import { logger } from '../utils/logger';
 
 /**
  * Represents the main kanban markdown file.
@@ -212,7 +213,7 @@ export class MainKanbanFile extends MarkdownFile {
             if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
                 this._exists = false;
             }
-            console.error(`[MainKanbanFile] Failed to read file:`, error);
+            logger.error(`[MainKanbanFile] Failed to read file:`, error);
             return null;
         }
     }
@@ -236,7 +237,7 @@ export class MainKanbanFile extends MarkdownFile {
             this._lastModified = new Date();
         } catch (error) {
             this._recordAccessError(error);
-            console.error(`[MainKanbanFile] Failed to write file:`, error);
+            logger.error(`[MainKanbanFile] Failed to write file:`, error);
             throw error;
         }
     }
@@ -330,7 +331,7 @@ export class MainKanbanFile extends MarkdownFile {
                 // Now emit the event
                 this._emitChange('reloaded');
             } else {
-                console.warn(`[MainKanbanFile] ⚠️ Reload failed - null content returned`);
+                logger.warn(`[MainKanbanFile] ⚠️ Reload failed - null content returned`);
             }
         } finally {
             MarkdownFile._watcherCoordinator.endOperation(this._path, 'reload');
@@ -415,7 +416,7 @@ export class MainKanbanFile extends MarkdownFile {
         ).board;
 
         if (!reparsed.valid) {
-            console.warn('[MainKanbanFile] Generated markdown is invalid after save serialization - proceeding with save anyway.');
+            logger.warn('[MainKanbanFile] Generated markdown is invalid after save serialization - proceeding with save anyway.');
             return;
         }
 
@@ -438,35 +439,35 @@ export class MainKanbanFile extends MarkdownFile {
             const expectedAtDiff = expectedJson.substring(diffIndex, diffIndex + 10);
             const actualAtDiff = actualJson.substring(diffIndex, diffIndex + 10);
 
-            console.error('='.repeat(80));
-            console.error('[MainKanbanFile] ROUND-TRIP MISMATCH DEBUG');
-            console.error('='.repeat(80));
-            console.error(`diffIndex: ${diffIndex}`);
-            console.error(`expectedLength: ${expectedJson.length}, actualLength: ${actualJson.length}`);
-            console.error(`difference: ${expectedJson.length - actualJson.length} characters`);
-            console.error('-'.repeat(40));
-            console.error('EXPECTED ±20 chars (raw):');
-            console.error(expectedContext);
-            console.error('-'.repeat(40));
-            console.error('ACTUAL ±20 chars (raw):');
-            console.error(actualContext);
-            console.error('-'.repeat(40));
-            console.error('EXPECTED at diff (JSON escaped):', JSON.stringify(expectedAtDiff));
-            console.error('ACTUAL at diff (JSON escaped):', JSON.stringify(actualAtDiff));
-            console.error('-'.repeat(40));
+            logger.error('='.repeat(80));
+            logger.error('[MainKanbanFile] ROUND-TRIP MISMATCH DEBUG');
+            logger.error('='.repeat(80));
+            logger.error(`diffIndex: ${diffIndex}`);
+            logger.error(`expectedLength: ${expectedJson.length}, actualLength: ${actualJson.length}`);
+            logger.error(`difference: ${expectedJson.length - actualJson.length} characters`);
+            logger.error('-'.repeat(40));
+            logger.error('EXPECTED ±20 chars (raw):');
+            logger.error(expectedContext);
+            logger.error('-'.repeat(40));
+            logger.error('ACTUAL ±20 chars (raw):');
+            logger.error(actualContext);
+            logger.error('-'.repeat(40));
+            logger.error('EXPECTED at diff (JSON escaped):', JSON.stringify(expectedAtDiff));
+            logger.error('ACTUAL at diff (JSON escaped):', JSON.stringify(actualAtDiff));
+            logger.error('-'.repeat(40));
 
             // Find which column/task this is in by searching for nearest "content":" before diffIndex
             const beforeDiff = expectedJson.substring(0, diffIndex);
             const lastContentMatch = beforeDiff.lastIndexOf('"content":"');
             if (lastContentMatch !== -1) {
                 const contentPreview = expectedJson.substring(lastContentMatch, Math.min(lastContentMatch + 100, expectedJson.length));
-                console.error('Nearest task content (expected):', contentPreview);
+                logger.error('Nearest task content (expected):', contentPreview);
             }
 
-            console.error('='.repeat(80));
+            logger.error('='.repeat(80));
 
             // WARNING ONLY - do not block save
-            console.warn(
+            logger.warn(
                 `[MainKanbanFile] Save serialization mismatch for "${this.getRelativePath()}" `
                 + `(diffIndex=${diffIndex}, expectedShapeLength=${expectedJson.length}, actualShapeLength=${actualJson.length}). `
                 + `Proceeding with save anyway.`

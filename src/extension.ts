@@ -13,6 +13,7 @@ import { showError, showWarning, showInfo } from './services/NotificationService
 import { WorkspaceMediaIndex } from './services/WorkspaceMediaIndex';
 import { PluginConfigService } from './services/PluginConfigService';
 import { UnifiedChangeHandler } from './core/UnifiedChangeHandler';
+import { logger } from './utils/logger';
 
 // Re-export for external access
 export { getOutputChannel } from './services/OutputChannelService';
@@ -30,7 +31,7 @@ export function activate(context: vscode.ExtensionContext) {
 		outputChannel.appendLine('[Extension] Plugin system initialized');
 	} catch (error) {
 		outputChannel.appendLine(`[Extension] Warning: Plugin system initialization failed: ${error}`);
-		console.error('[Extension] Plugin system initialization failed:', error);
+		logger.error('[Extension] Plugin system initialization failed:', error);
 	}
 
 	// Initialize per-plugin config service (reads .kanban/{pluginId}.json files)
@@ -60,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const autoScanEnabled = config.sidebar?.autoScan ?? true;
 	if (autoScanEnabled && !registry.hasScanned) {
 		registry.scanWorkspace().catch(err => {
-			console.error('[Extension] Auto-scan failed:', err);
+			logger.error('[Extension] Auto-scan failed:', err);
 		});
 	}
 
@@ -150,7 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
 			try {
 				await Promise.all(allPanels.map(panel => panel.refreshWebviewContent()));
 			} catch (err) {
-				console.error('[kanban.extension.dev-refresh]', err);
+				logger.error('[kanban.extension.dev-refresh]', err);
 			} finally {
 				refreshInProgress = false;
 			}
@@ -481,10 +482,10 @@ export async function deactivate(): Promise<void> {
 				try {
 					const saveResult = await panel.saveToMarkdown(true, true);
 					if (!saveResult.success) {
-						console.warn('[Extension] Save aborted during deactivation:', saveResult.error || 'Unknown save result');
+						logger.warn('[Extension] Save aborted during deactivation:', saveResult.error || 'Unknown save result');
 					}
 				} catch (error) {
-					console.error('[Extension] Save failed during deactivation:', error);
+					logger.error('[Extension] Save failed during deactivation:', error);
 					// Continue anyway - VSCode is closing
 				}
 			}

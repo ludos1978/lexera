@@ -13,6 +13,7 @@ import { MessageCommand, CommandContext, CommandResult } from './interfaces/Mess
 import { IncomingMessage } from '../core/bridge/MessageTypes';
 import { ValidationResult } from '../shared/interfaces';
 import { getErrorMessage } from '../utils/stringUtils';
+import { logger } from '../utils/logger';
 
 // Re-export for external access
 export { ValidationResult };
@@ -52,7 +53,7 @@ export class CommandRegistry {
                 try {
                     await command.initialize(context);
                 } catch (error) {
-                    console.error(`[CommandRegistry] Failed to initialize command ${command.metadata.id}:`, error);
+                    logger.error(`[CommandRegistry] Failed to initialize command ${command.metadata.id}:`, error);
                 }
             }
         }
@@ -87,12 +88,12 @@ export class CommandRegistry {
         }
 
         if (validation.warnings.length > 0) {
-            console.warn(`[CommandRegistry] Command '${command.metadata.id}' warnings:`, validation.warnings);
+            logger.warn(`[CommandRegistry] Command '${command.metadata.id}' warnings:`, validation.warnings);
         }
 
         // Check for existing command with same ID
         if (this._commands.has(command.metadata.id)) {
-            console.warn(`[CommandRegistry] Replacing existing command: ${command.metadata.id}`);
+            logger.warn(`[CommandRegistry] Replacing existing command: ${command.metadata.id}`);
             this.unregister(command.metadata.id);
         }
 
@@ -104,7 +105,7 @@ export class CommandRegistry {
             const existingHandlers = this._messageTypeToCommands.get(messageType) || [];
             if (existingHandlers.length > 0) {
                 const existingIds = existingHandlers.map(existing => existing.metadata.id).join(', ');
-                console.warn(`[CommandRegistry] Message type '${messageType}' already handled by '${existingIds}', adding '${command.metadata.id}'`);
+                logger.warn(`[CommandRegistry] Message type '${messageType}' already handled by '${existingIds}', adding '${command.metadata.id}'`);
             }
 
             const inserted = this._insertByPriority(existingHandlers, command);
@@ -114,7 +115,7 @@ export class CommandRegistry {
         // Initialize if registry is already initialized
         if (this._initialized && this._context && command.initialize) {
             command.initialize(this._context).catch(error => {
-                console.error(`[CommandRegistry] Failed to initialize command ${command.metadata.id}:`, error);
+                logger.error(`[CommandRegistry] Failed to initialize command ${command.metadata.id}:`, error);
             });
         }
     }
@@ -133,7 +134,7 @@ export class CommandRegistry {
         // Dispose command
         if (command.dispose) {
             command.dispose().catch(err =>
-                console.error(`[CommandRegistry] Error disposing command ${commandId}:`, err)
+                logger.error(`[CommandRegistry] Error disposing command ${commandId}:`, err)
             );
         }
 
@@ -196,13 +197,13 @@ export class CommandRegistry {
      */
     async execute(message: IncomingMessage): Promise<CommandResult | null> {
         if (!this._initialized || !this._context) {
-            console.error('[CommandRegistry] Not initialized, cannot execute command');
+            logger.error('[CommandRegistry] Not initialized, cannot execute command');
             return { success: false, error: 'CommandRegistry not initialized' };
         }
 
         const messageType = message.type;
         if (!messageType) {
-            console.error('[CommandRegistry] Message has no type property');
+            logger.error('[CommandRegistry] Message has no type property');
             return { success: false, error: 'Message has no type property' };
         }
 
@@ -219,7 +220,7 @@ export class CommandRegistry {
                 return await command.execute(message, this._context);
             } catch (error) {
                 const errorMessage = getErrorMessage(error);
-                console.error(`[CommandRegistry] Command ${command.metadata.id} failed for message ${messageType}:`, error);
+                logger.error(`[CommandRegistry] Command ${command.metadata.id} failed for message ${messageType}:`, error);
                 return { success: false, error: errorMessage };
             }
         }

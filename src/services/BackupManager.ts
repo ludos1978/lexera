@@ -10,6 +10,7 @@ import {
     getLabeledBackupPath,
     createBackupPattern
 } from '../constants/FileNaming';
+import { logger } from '../utils/logger';
 
 export interface BackupOptions {
     label?: string;           // 'backup', 'conflict', etc.
@@ -53,7 +54,7 @@ export class BackupManager {
         try {
             // Safety check: ensure document is valid
             if (!document) {
-                console.warn('[BackupManager] Cannot create backup - document is undefined');
+                logger.warn('[BackupManager] Cannot create backup - document is undefined');
                 return null;
             }
 
@@ -96,7 +97,7 @@ export class BackupManager {
 
             return backupPath;
         } catch (error) {
-            console.error('[BackupManager] Failed to create backup:', error);
+            logger.error('[BackupManager] Failed to create backup:', error);
             showWarning(`Failed to create backup: ${error}`);
             return null;
         }
@@ -117,7 +118,7 @@ export class BackupManager {
             await this.writeBackupFile(backupPath, content);
             return backupPath;
         } catch (error) {
-            console.error('[BackupManager] Failed to create backup from content:', error);
+            logger.error('[BackupManager] Failed to create backup from content:', error);
             showWarning(`Failed to create backup: ${error}`);
             return null;
         }
@@ -207,7 +208,7 @@ export class BackupManager {
             return backupPath;
 
         } catch (error) {
-            console.error('[BackupManager] Error creating file backup:', error);
+            logger.error('[BackupManager] Error creating file backup:', error);
             return null;
         }
     }
@@ -300,12 +301,12 @@ export class BackupManager {
                     try {
                         fs.unlinkSync(file.path);
                     } catch (error) {
-                        console.error(`[BackupManager] Failed to delete backup ${file.name}:`, error);
+                        logger.error(`[BackupManager] Failed to delete backup ${file.name}:`, error);
                     }
                 }
             }
         } catch (error) {
-            console.error('[BackupManager] Failed to cleanup old backups:', error);
+            logger.error('[BackupManager] Failed to cleanup old backups:', error);
         }
     }
 

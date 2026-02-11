@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { logger } from './logger';
 
 export interface AtomicWriteOptions {
     encoding?: BufferEncoding;
@@ -32,13 +33,13 @@ async function fsyncDirectoryIfPossible(dirPath: string): Promise<void> {
         await dirHandle.sync();
     } catch (error) {
         // Best effort only. Some platforms/filesystems do not support syncing directories.
-        console.warn(`[atomicWrite] Directory fsync skipped for "${dirPath}": ${formatError(error)}`);
+        logger.warn(`[atomicWrite] Directory fsync skipped for "${dirPath}": ${formatError(error)}`);
     } finally {
         if (dirHandle) {
             try {
                 await dirHandle.close();
             } catch (closeError) {
-                console.warn(`[atomicWrite] Failed to close directory handle for "${dirPath}": ${formatError(closeError)}`);
+                logger.warn(`[atomicWrite] Failed to close directory handle for "${dirPath}": ${formatError(closeError)}`);
             }
         }
     }

@@ -9,6 +9,7 @@
 
 import { normalizePathForLookup } from '../utils/stringUtils';
 import { WATCHER_TIMEOUT_MS } from '../constants/TimeoutConstants';
+import { logger } from '../utils/logger';
 
 /**
  * Active operation data
@@ -96,7 +97,7 @@ export class WatcherCoordinator {
         }
 
         if (existing && existing.operation !== operation) {
-            console.warn(
+            logger.warn(
                 `[WatcherCoordinator] Ignored endOperation("${operation}") for ${normalizedPath}; `
                 + `active operation is "${existing.operation}".`
             );
@@ -130,7 +131,7 @@ export class WatcherCoordinator {
     ): Promise<void> {
         return new Promise((resolve, reject) => {
             const timeoutHandle = setTimeout(() => {
-                console.error(`[WatcherCoordinator] Operation "${operation}" timed out on ${normalizedPath}`);
+                logger.error(`[WatcherCoordinator] Operation "${operation}" timed out on ${normalizedPath}`);
                 this.endOperation(filePath, operation);
                 reject(new Error(`Operation timeout: ${operation}`));
             }, timeoutMs);

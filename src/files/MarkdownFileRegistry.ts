@@ -171,7 +171,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         }
 
         for (const displaced of displacedFiles) {
-            console.warn(`[MarkdownFileRegistry] Replacing duplicate file registration: ${displaced.getRelativePath()}`);
+            logger.warn(`[MarkdownFileRegistry] Replacing duplicate file registration: ${displaced.getRelativePath()}`);
             this._removeFileIndexes(displaced);
             displaced.dispose();
         }
@@ -210,7 +210,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
     public unregister(path: string): void {
         const file = this._files.get(path);
         if (!file) {
-            console.warn(`[MarkdownFileRegistry] File not found for unregister: ${path}`);
+            logger.warn(`[MarkdownFileRegistry] File not found for unregister: ${path}`);
             return;
         }
 
@@ -461,7 +461,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
      */
     public async forceWriteAll(): Promise<{ filesWritten: number; errors: string[] }> {
         const allFiles = this.getAll();
-        console.warn(`[MarkdownFileRegistry] FORCE WRITE: Writing ${allFiles.length} files unconditionally`);
+        logger.warn(`[MarkdownFileRegistry] FORCE WRITE: Writing ${allFiles.length} files unconditionally`);
 
         const errors: string[] = [];
         let filesWritten = 0;
@@ -473,7 +473,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                 filesWritten++;
             } catch (error) {
                 const errorMsg = `Failed to write ${file.getRelativePath()}: ${error}`;
-                console.error(`[MarkdownFileRegistry] ${errorMsg}`);
+                logger.error(`[MarkdownFileRegistry] ${errorMsg}`);
                 errors.push(errorMsg);
             }
         }
@@ -564,19 +564,19 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         // Step 1: Get main file
         const mainFile = this.getMainFile();
         if (!mainFile) {
-            console.warn('[MarkdownFileRegistry] generateBoard() - No main file found');
+            logger.warn('[MarkdownFileRegistry] generateBoard() - No main file found');
             return undefined;
         }
 
         // Step 2: Get parsed board from main file (parser will preserve IDs if existingBoard passed)
         const board = mainFile.getBoard(existingBoard);
         if (!board) {
-            console.warn('[MarkdownFileRegistry] generateBoard() - Main file has no board');
+            logger.warn('[MarkdownFileRegistry] generateBoard() - Main file has no board');
             return undefined;
         }
 
         if (!board.valid) {
-            console.warn('[MarkdownFileRegistry] generateBoard() - Board is invalid');
+            logger.warn('[MarkdownFileRegistry] generateBoard() - Board is invalid');
             return board; // Return invalid board so caller can handle
         }
 
@@ -615,7 +615,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
 
                     // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
                     if (file && file.getFileType() === 'main') {
-                        console.error(`[MarkdownFileRegistry] generateBoard() BUG: Include path resolved to MainKanbanFile: ${relativePath}`);
+                        logger.error(`[MarkdownFileRegistry] generateBoard() BUG: Include path resolved to MainKanbanFile: ${relativePath}`);
                         (column as any).includeError = true;
                         continue;
                     }
@@ -627,7 +627,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                         column.tasks = tasks;
                         (column as any).includeError = false;
                     } else if (!fileExistsOnDisk) {
-                        console.warn(`[MarkdownFileRegistry] generateBoard() - Column include ERROR: ${relativePath}`);
+                        logger.warn(`[MarkdownFileRegistry] generateBoard() - Column include ERROR: ${relativePath}`);
                         // Error details shown on hover via include badge
                         // Don't create error task - just show empty column with error badge
                         column.tasks = [];
@@ -687,7 +687,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
             // CRITICAL FIX: Type guard to prevent returning MainKanbanFile as IncludeFile
             // This prevents cache corruption where include content would overwrite main file content
             if (existingByRelative.getFileType() === 'main') {
-                console.warn(`[MarkdownFileRegistry] Cannot include the main kanban file itself: ${relativePath}`);
+                logger.warn(`[MarkdownFileRegistry] Cannot include the main kanban file itself: ${relativePath}`);
                 return undefined;
             }
             if (existingByRelative.getFileType() !== fileType
@@ -705,7 +705,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
             // CRITICAL FIX: Type guard to prevent returning MainKanbanFile as IncludeFile
             // This can happen if include path resolves to the same file as the main kanban file
             if (existingByAbsolute.getFileType() === 'main') {
-                console.warn(`[MarkdownFileRegistry] Cannot include the main kanban file itself (resolved path): ${relativePath} -> ${absolutePath}`);
+                logger.warn(`[MarkdownFileRegistry] Cannot include the main kanban file itself (resolved path): ${relativePath} -> ${absolutePath}`);
                 return undefined;
             }
             // File already exists under a different relative path key
@@ -802,7 +802,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
 
             const mainFile = this.getMainFile();
             if (!mainFile) {
-                console.error(`[MarkdownFileRegistry] Cannot lazy-register - no main file`);
+                logger.error(`[MarkdownFileRegistry] Cannot lazy-register - no main file`);
                 return;
             }
 
@@ -814,7 +814,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
             this.register(includeFile);
             includeFile.startWatching();
         } catch (error) {
-            console.error(`[MarkdownFileRegistry] Error during lazy registration:`, error);
+            logger.error(`[MarkdownFileRegistry] Error during lazy registration:`, error);
         }
     }
 

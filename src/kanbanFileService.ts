@@ -390,7 +390,7 @@ export class KanbanFileService {
             const needsBoard = scope === 'main' || scope === 'all' || syncIncludes;
             if (needsBoard && (!board || !board.valid)) {
                 const error = 'Save aborted: board is missing or invalid.';
-                console.warn(`[KanbanFileService.saveUnified] Cannot save - board missing or invalid (scope=${typeof scope === 'string' ? scope : 'file'})`);
+                logger.warn(`[KanbanFileService.saveUnified] Cannot save - board missing or invalid (scope=${typeof scope === 'string' ? scope : 'file'})`);
                 postSaveResult(false, error);
                 return {
                     success: false,
@@ -500,7 +500,7 @@ export class KanbanFileService {
             const mainFile = mainSaveRequired ? this.fileRegistry.getMainFile() : undefined;
             if (mainSaveRequired && !mainFile) {
                 const error = 'Save aborted: no main file is registered.';
-                console.warn('[KanbanFileService.saveUnified] No main file registered');
+                logger.warn('[KanbanFileService.saveUnified] No main file registered');
                 postSaveResult(false, error);
                 return {
                     success: false,
@@ -530,7 +530,7 @@ export class KanbanFileService {
                         });
                     } catch (error) {
                         const errorMessage = `[KanbanFileService] Failed to save include file ${includeFile.getPath()}: ${getErrorMessage(error)}`;
-                        console.warn(errorMessage);
+                        logger.warn(errorMessage);
                         includeSaveErrors.push(errorMessage);
 
                         const includeFailureError = scope === 'all'
@@ -923,7 +923,7 @@ export class KanbanFileService {
             return { result: 'continue', forceWritePaths: new Set() };
         }
 
-        console.warn(`[KanbanFileService] ${filesWithExternalChanges.length} file(s) have external changes: ${filesWithExternalChanges.map(f => f.label).join(', ')}`);
+        logger.warn(`[KanbanFileService] ${filesWithExternalChanges.length} file(s) have external changes: ${filesWithExternalChanges.map(f => f.label).join(', ')}`);
 
         // Show conflict dialog via webview bridge
         const dialogResult = await this._showPresaveConflictDialog(filesWithExternalChanges);
@@ -1352,7 +1352,7 @@ export class KanbanFileService {
                 });
             }
         } catch (error) {
-            console.error(`[KanbanFileService] Error opening file ${filePath}:`, error);
+            logger.error(`[KanbanFileService] Error opening file ${filePath}:`, error);
         }
     }
 

@@ -99,11 +99,11 @@ export class FileSearchWebview {
         options?: { showOpenMediaFolder?: boolean; sourceFile?: string }
     ): Promise<FileSearchResult | undefined> {
         // Debug: log call stack to identify which code path triggered this
-        console.log('[FileSearchWebview] pickReplacementForBrokenLink CALLER:', new Error().stack?.split('\n').slice(1, 5).join('\n'));
-        console.log('[FileSearchWebview] pickReplacementForBrokenLink OPTIONS:', JSON.stringify({ originalPath: originalPath?.slice(-50), baseDir: baseDir?.slice(-50), sourceFile: options?.sourceFile?.slice(-50), showOpenMediaFolder: options?.showOpenMediaFolder }));
+        logger.debug('[FileSearchWebview] pickReplacementForBrokenLink CALLER:', new Error().stack?.split('\n').slice(1, 5).join('\n'));
+        logger.debug('[FileSearchWebview] pickReplacementForBrokenLink OPTIONS:', JSON.stringify({ originalPath: originalPath?.slice(-50), baseDir: baseDir?.slice(-50), sourceFile: options?.sourceFile?.slice(-50), showOpenMediaFolder: options?.showOpenMediaFolder }));
 
         if (!this._webview) {
-            console.error('[FileSearchWebview] pickReplacementForBrokenLink: webview not set');
+            logger.error('[FileSearchWebview] pickReplacementForBrokenLink: webview not set');
             throw new Error('Webview not set. Call setWebview() first.');
         }
 
@@ -125,7 +125,7 @@ export class FileSearchWebview {
 
             // Send message to show the modal
             // Frontend will trigger initial search via fileSearchQuery message
-            console.log('[FileSearchWebview] Posting fileSearchShow message', {
+            logger.debug('[FileSearchWebview] Posting fileSearchShow message', {
                 originalPath: decodedPath,
                 initialSearch: fileName,
                 sourceFile: options?.sourceFile
@@ -150,7 +150,7 @@ export class FileSearchWebview {
         }
 
         if (!this._webview) {
-            console.error('[FileSearchWebview] Cannot setup listener: webview is undefined');
+            logger.error('[FileSearchWebview] Cannot setup listener: webview is undefined');
             return;
         }
 
@@ -188,7 +188,7 @@ export class FileSearchWebview {
                         break;
                 }
             } catch (error) {
-                console.error('[FileSearchWebview] Error handling message:', message.type, error);
+                logger.error('[FileSearchWebview] Error handling message:', message.type, error);
             }
         });
     }
@@ -370,7 +370,7 @@ export class FileSearchWebview {
             }
             // No fuzzy fallback - for fuzzy matching, user should enable regex mode
         } catch (error) {
-            console.warn('[FileSearchWebview] Workspace search failed:', error);
+            logger.warn('[FileSearchWebview] Workspace search failed:', error);
         }
 
         // Base directory scan (streams results as found)
@@ -414,7 +414,7 @@ export class FileSearchWebview {
                 await scan(this._baseDir);
                 sendBatch(true); // Flush remaining results
             } catch (error) {
-                console.warn('[FileSearchWebview] BaseDir scan failed:', error);
+                logger.warn('[FileSearchWebview] BaseDir scan failed:', error);
             }
         }
 
@@ -475,7 +475,7 @@ export class FileSearchWebview {
                 });
             }
         } catch (error) {
-            console.warn('[FileSearchWebview] Cannot preview file:', error);
+            logger.warn('[FileSearchWebview] Cannot preview file:', error);
         }
     }
 

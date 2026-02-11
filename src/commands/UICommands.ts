@@ -233,7 +233,7 @@ export class UICommands extends SwitchBasedCommand {
     private async handleSaveBoardState(message: SaveBoardStateMessage, context: CommandContext): Promise<CommandResult> {
         const board = message.board;
         if (!board) {
-            console.warn('[UICommands.saveBoardState] No board data received');
+            logger.warn('[UICommands.saveBoardState] No board data received');
             return this.failure('No board data received for save');
         }
 
@@ -285,7 +285,7 @@ export class UICommands extends SwitchBasedCommand {
      */
     private async handleSetPreference(message: SetPreferenceMessage): Promise<CommandResult> {
         if (!message.key) {
-            console.error('[UICommands] setPreference called with undefined key');
+            logger.error('[UICommands] setPreference called with undefined key');
             return this.failure('setPreference requires a key');
         }
         const config = vscode.workspace.getConfiguration('markdown-kanban');
@@ -298,7 +298,7 @@ export class UICommands extends SwitchBasedCommand {
      */
     private async handleSetFilePreference(message: SetFilePreferenceMessage, context: CommandContext): Promise<CommandResult> {
         if (!message.key) {
-            console.error('[UICommands] setFilePreference called with undefined key');
+            logger.error('[UICommands] setFilePreference called with undefined key');
             return this.failure('setFilePreference requires a key');
         }
 
@@ -306,7 +306,7 @@ export class UICommands extends SwitchBasedCommand {
         const targetUri = message.documentUri || documentUriFromManager;
 
         if (!targetUri) {
-            console.error('[UICommands] setFilePreference missing documentUri');
+            logger.error('[UICommands] setFilePreference missing documentUri');
             return this.failure('setFilePreference requires a documentUri');
         }
 
@@ -322,18 +322,18 @@ export class UICommands extends SwitchBasedCommand {
         logger.debug(`[UICommands.setBoardSetting] Received: key=${message.key}, value=${message.value}`);
 
         if (!message.key) {
-            console.error('[UICommands] setBoardSetting called with undefined key');
+            logger.error('[UICommands] setBoardSetting called with undefined key');
             return this.failure('setBoardSetting requires a key');
         }
 
         if (message.value === undefined || message.value === null) {
-            console.error('[UICommands] setBoardSetting called with undefined/null value');
+            logger.error('[UICommands] setBoardSetting called with undefined/null value');
             return this.failure('setBoardSetting requires a value');
         }
 
         const board = context.getCurrentBoard();
         if (!board) {
-            console.error('[UICommands] setBoardSetting: no board available');
+            logger.error('[UICommands] setBoardSetting: no board available');
             return this.failure('setBoardSetting requires a board');
         }
 
@@ -403,13 +403,13 @@ export class UICommands extends SwitchBasedCommand {
      */
     private async handleSetContext(message: SetContextMessage): Promise<CommandResult> {
         if (!message.key) {
-            console.error('[UICommands] setContext called with undefined key');
+            logger.error('[UICommands] setContext called with undefined key');
             return this.failure('setContext requires a key');
         }
         try {
             await vscode.commands.executeCommand('setContext', message.key, message.value);
         } catch (error) {
-            console.error(`[UICommands] Error handling setContext:`, error);
+            logger.error(`[UICommands] Error handling setContext:`, error);
             return this.failure(`setContext failed: ${error}`);
         }
         return this.success();
@@ -433,7 +433,7 @@ export class UICommands extends SwitchBasedCommand {
                 await vscode.commands.executeCommand('markdown-kanban.internal.searchWithQuery', message.query);
             }
         } catch (error) {
-            console.error('[UICommands] Failed to open kanban search panel:', error);
+            logger.error('[UICommands] Failed to open kanban search panel:', error);
         }
         return this.success();
     }

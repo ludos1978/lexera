@@ -5249,9 +5249,12 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
         // - For columns: highlight only inner elements (not the full-height wrapper or stack)
         let elementsToHighlight = [];
 
-        if (taskElement) {
+        // Find the task-item to highlight - either from taskElement or by finding parent of targetElement
+        const taskToHighlight = taskElement || (targetElement ? targetElement.closest('.task-item') : null);
+
+        if (taskToHighlight) {
             // Always highlight the complete task card
-            elementsToHighlight = [taskElement];
+            elementsToHighlight = [taskToHighlight];
         } else if (columnElement) {
             // For column-level highlights, highlight only inner elements
             const innerElements = columnElement.querySelectorAll('.column-header, .column-title, .column-content, .column-footer');

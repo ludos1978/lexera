@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ExportArchivedItemsMessage, OpenArchiveFileMessage } from '../core/bridge/MessageTypes';
+import { logger } from '../utils/logger';
 
 /**
  * Archive Commands Handler
@@ -115,7 +116,7 @@ export class ArchiveCommands extends SwitchBasedCommand {
             return this.success({ exportedCount: items.length, archivePath });
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error('[ArchiveCommands] Error exporting archived items:', error);
+            logger.error('[ArchiveCommands] Error exporting archived items:', error);
 
             // Send error message back to frontend
             this.postMessage({
@@ -168,7 +169,7 @@ export class ArchiveCommands extends SwitchBasedCommand {
             return this.success({ archivePath });
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error('[ArchiveCommands] Error opening archive file:', error);
+            logger.error('[ArchiveCommands] Error opening archive file:', error);
             return this.failure(errorMessage);
         }
     }

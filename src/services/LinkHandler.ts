@@ -16,6 +16,7 @@ import {
     DOTTED_EXTENSIONS
 } from '../constants/FileExtensions';
 import { showError, showWarning, showInfo } from './NotificationService';
+import { logger } from '../utils/logger';
 import { linkReplacementService, ReplacementDependencies } from './LinkReplacementService';
 
 export class LinkHandler {
@@ -82,6 +83,27 @@ export class LinkHandler {
     }
 
     /**
+     * Check if a path is inside any open workspace folder.
+     */
+    private isInWorkspace(resolvedPath: string): boolean {
+        const fileUri = safeFileUri(resolvedPath, 'linkHandler-workspaceCheck');
+        return !!vscode.workspace.getWorkspaceFolder(fileUri);
+    }
+
+    /**
+     * Reveal a file or folder in the VS Code Explorer sidebar.
+     * Falls back to system file explorer if the path is not in the workspace.
+     */
+    private async revealInBestExplorer(resolvedPath: string): Promise<void> {
+        const fileUri = safeFileUri(resolvedPath, 'linkHandler-reveal');
+        if (this.isInWorkspace(resolvedPath)) {
+            await vscode.commands.executeCommand('revealInExplorer', fileUri);
+        } else {
+            await vscode.commands.executeCommand('revealFileInOS', fileUri);
+        }
+    }
+
+    /**
      * Try to open a file externally, with error handling.
      * @returns true if opened successfully, false otherwise
      */
@@ -108,10 +130,11 @@ export class LinkHandler {
     }
 
     /**
-     * Enhanced file link handler with workspace-relative path support
+     * Enhanced file link handler with workspace-relative path support.
+     * @param forceExternal When true (Shift+Alt+click), always open in OS default tool
      */
-    public async handleFileLink(href: string, taskId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution) {
-        console.log('[LinkHandler.handleFileLink] Received context:', JSON.stringify({ taskId, columnId, linkIndex, hasIncludeContext: !!includeContext }));
+    public async handleFileLink(href: string, taskId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution, forceExternal?: boolean) {
+        logger.debug('[LinkHandler.handleFileLink] Received context:', JSON.stringify({ taskId, columnId, linkIndex, hasIncludeContext: !!includeContext, forceExternal }));
         try {
             if (href.startsWith('file://')) {
                 href = vscode.Uri.parse(href).fsPath;
@@ -134,7 +157,7 @@ export class LinkHandler {
                 // Unified behavior: Open an incremental QuickPick and stream results
                 const baseDir = this.resolveBaseDir(includeContext);
                 const sourceFile = this.resolveSourceFile(includeContext);
-                console.log('[LinkHandler.handleFileLink] File not found - showing search', {
+                logger.debug('[LinkHandler.handleFileLink] File not found - showing search', {
                     href,
                     hasIncludeContext: !!includeContext,
                     sourceFile,
@@ -178,16 +201,33 @@ export class LinkHandler {
                     );
                 }
 
-                console.warn(`[LinkHandler] File not found: ${href} (tried ${attemptedPaths.length} paths)`);
+                logger.warn(`[LinkHandler] File not found: ${href} (tried ${attemptedPaths.length} paths)`);
                 return;
             }
 
-            // Rest of the method remains unchanged...
+            // Shift+Alt+click: force open everything in OS default tool
+            if (forceExternal) {
+                try {
+                    const stats = fs.statSync(resolvedPath);
+                    if (stats.isDirectory()) {
+                        await vscode.commands.executeCommand('revealFileInOS', safeFileUri(resolvedPath, 'linkHandler'));
+                    } else {
+                        await vscode.env.openExternal(safeFileUri(resolvedPath, 'linkHandler'));
+                        showInfo(`Opened externally: ${path.basename(resolvedPath)}`);
+                    }
+                } catch (error) {
+                    showError(`Failed to open externally: ${resolvedPath}`);
+                }
+                return;
+            }
+
+            // Normal Alt+click: open in VS Code when possible
             try {
                 const stats = fs.statSync(resolvedPath);
 
                 if (stats.isDirectory()) {
-                    vscode.commands.executeCommand('revealFileInOS', safeFileUri(resolvedPath, 'linkHandler'));
+                    // Directories: reveal in VS Code explorer if in workspace, otherwise system explorer
+                    await this.revealInBestExplorer(resolvedPath);
                     return;
                 }
             } catch (error) {
@@ -204,9 +244,6 @@ export class LinkHandler {
 
             if (isDiagramFile) {
                 try {
-                    // Try to open with VS Code's default handler
-                    // If draw.io or excalidraw extension is installed, it will use that
-                    // Otherwise, VS Code will ask which editor to use
                     const fileUri = safeFileUri(resolvedPath, 'linkHandler');
                     await vscode.commands.executeCommand('vscode.open', fileUri);
 
@@ -216,7 +253,7 @@ export class LinkHandler {
                     );
                     return;
                 } catch (error) {
-                    console.warn(`Could not open diagram in VS Code, trying external: ${resolvedPath}`, error);
+                    logger.warn(`Could not open diagram in VS Code, trying external: ${resolvedPath}`, error);
                     await this.tryOpenExternal(resolvedPath, 'diagram file');
                     return;
                 }
@@ -233,7 +270,7 @@ export class LinkHandler {
                     );
                     return;
                 } catch (error) {
-                    console.warn(`Could not open image in VS Code, trying external: ${resolvedPath}`, error);
+                    logger.warn(`Could not open image in VS Code, trying external: ${resolvedPath}`, error);
                     await this.tryOpenExternal(resolvedPath, 'image file');
                     return;
                 }
@@ -288,30 +325,22 @@ export class LinkHandler {
                         );
                     }
                 } catch (error) {
-                    console.warn(`VS Code couldn't open file, trying OS default: ${resolvedPath}`, error);
-                    try {
-                        await vscode.env.openExternal(safeFileUri(resolvedPath, 'linkHandler'));
-                        showInfo(
-                            `Opened externally: ${path.basename(resolvedPath)}`
-                        );
-                    } catch (externalError) {
-                        showError(`Failed to open file: ${resolvedPath}`);
-                    }
+                    logger.warn(`VS Code couldn't open file, trying OS default: ${resolvedPath}`, error);
+                    await this.tryOpenExternal(resolvedPath, 'text file');
                 }
             } else {
+                // Unknown file type: try VS Code first, then fall back
                 try {
-                    await vscode.env.openExternal(safeFileUri(resolvedPath, 'linkHandler'));
-                    showInfo(
-                        `Opened externally: ${path.basename(resolvedPath)}`
-                    );
+                    const fileUri = safeFileUri(resolvedPath, 'linkHandler');
+                    await vscode.commands.executeCommand('vscode.open', fileUri);
+                    showInfo(`Opened in VS Code: ${path.basename(resolvedPath)}`);
                 } catch (error) {
+                    // VS Code can't handle it, try external or reveal in explorer
                     try {
-                        await vscode.commands.executeCommand('revealFileInOS', safeFileUri(resolvedPath, 'linkHandler'));
-                        showInfo(
-                            `Revealed in file explorer: ${path.basename(resolvedPath)}`
-                        );
-                    } catch (revealError) {
-                        showError(`Failed to open file: ${resolvedPath}`);
+                        await vscode.env.openExternal(safeFileUri(resolvedPath, 'linkHandler'));
+                        showInfo(`Opened externally: ${path.basename(resolvedPath)}`);
+                    } catch (externalError) {
+                        await this.revealInBestExplorer(resolvedPath);
                     }
                 }
             }
@@ -331,10 +360,10 @@ export class LinkHandler {
      * @param fallbackBaseDir - Fallback base directory when document is not available (e.g., wiki links)
      */
     private async applyLinkReplacement(originalPath: string, replacementUri: vscode.Uri, taskId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution, userPathFormat?: 'auto' | 'relative' | 'absolute', fallbackBaseDir?: string) {
-        console.log('[LinkHandler.applyLinkReplacement] Context:', JSON.stringify({ taskId, columnId, linkIndex, hasIncludeContext: !!includeContext, userPathFormat, hasFallbackBaseDir: !!fallbackBaseDir }));
+        logger.debug('[LinkHandler.applyLinkReplacement] Context:', JSON.stringify({ taskId, columnId, linkIndex, hasIncludeContext: !!includeContext, userPathFormat, hasFallbackBaseDir: !!fallbackBaseDir }));
 
         if (!this._replacementDeps) {
-            console.warn('[LinkHandler.applyLinkReplacement] No replacement dependencies set, cannot replace');
+            logger.warn('[LinkHandler.applyLinkReplacement] No replacement dependencies set, cannot replace');
             showWarning('Cannot replace link: replacement service not initialized');
             return;
         }
@@ -349,7 +378,7 @@ export class LinkHandler {
             || (mainFile ? path.dirname(mainFile.getPath()) : undefined);
 
         if (!baseDir) {
-            console.warn('[LinkHandler.applyLinkReplacement] No base directory available (no document, no fallback, no main file)');
+            logger.warn('[LinkHandler.applyLinkReplacement] No base directory available (no document, no fallback, no main file)');
             showWarning('Cannot replace link: no document context');
             return;
         }
@@ -357,7 +386,7 @@ export class LinkHandler {
         // Determine path format: user selection overrides config (unless 'auto')
         const configPathFormat = configService.getPathGenerationMode();
         const pathFormat = (userPathFormat && userPathFormat !== 'auto') ? userPathFormat : configPathFormat;
-        console.log('[LinkHandler.applyLinkReplacement] pathFormat:', pathFormat, '(user:', userPathFormat, ', config:', configPathFormat, '), baseDir:', baseDir);
+        logger.debug('[LinkHandler.applyLinkReplacement] pathFormat:', pathFormat, '(user:', userPathFormat, ', config:', configPathFormat, '), baseDir:', baseDir);
 
         // Use the unified replacement service
         await linkReplacementService.replacePath(
@@ -426,7 +455,7 @@ export class LinkHandler {
                                         preview: false
                                     });
                                 } catch (error) {
-                                    console.error(`[WIKILINK_REUSE] Failed to focus existing document:`, error);
+                                    logger.error(`[WIKILINK_REUSE] Failed to focus existing document:`, error);
                                     // Fallback to opening normally
                                     const document = await vscode.workspace.openTextDocument(resolution.resolvedPath);
                                     await vscode.window.showTextDocument(document, {
@@ -447,23 +476,20 @@ export class LinkHandler {
                                 `Opened wiki link: ${documentName} → ${path.basename(resolution.resolvedPath)}`
                             );
                         } else {
-                            // For binary files (images, videos, etc.), reveal in file explorer or open with default application
+                            // For binary files (images, videos, etc.), try VS Code first, then reveal in explorer
                             try {
-                                await vscode.commands.executeCommand('revealFileInOS', safeFileUri(resolution.resolvedPath, 'linkHandler-resolution'));
-                                showInfo(
-                                    `Opened wiki link: ${documentName} → ${path.basename(resolution.resolvedPath)} (in default application)`
-                                );
-                            } catch (osError) {
-                                // Fallback: try to open with VS Code anyway
-                                await vscode.env.openExternal(safeFileUri(resolution.resolvedPath, 'linkHandler-resolution'));
+                                await vscode.commands.executeCommand('vscode.open', safeFileUri(resolution.resolvedPath, 'linkHandler-resolution'));
                                 showInfo(
                                     `Opened wiki link: ${documentName} → ${path.basename(resolution.resolvedPath)}`
                                 );
+                            } catch (vsCodeError) {
+                                // VS Code can't handle it, reveal in best explorer
+                                await this.revealInBestExplorer(resolution.resolvedPath);
                             }
                         }
                         return;
                     } catch (error) {
-                        console.warn(`Failed to open ${filename}:`, error);
+                        logger.warn(`Failed to open ${filename}:`, error);
                         continue;
                     }
                 }
@@ -475,7 +501,7 @@ export class LinkHandler {
             const baseDir = this.resolveBaseDir(includeContext);
 
             if (!baseDir) {
-                console.warn('[LinkHandler.handleWikiLink] No base directory available, cannot offer replacement');
+                logger.warn('[LinkHandler.handleWikiLink] No base directory available, cannot offer replacement');
                 // Continue to show warning message below
             } else {
                 const result = await this._fileSearchService.pickReplacementForBrokenLink(documentName, baseDir);
@@ -486,7 +512,7 @@ export class LinkHandler {
                 }
             }
         } catch (e) {
-            console.warn('[LinkHandler] Wiki replacement picker failed:', e);
+            logger.warn('[LinkHandler] Wiki replacement picker failed:', e);
         }
 
         // Enhanced error message with workspace context
@@ -513,7 +539,7 @@ export class LinkHandler {
             `Wiki link not found: [[${documentName}]]\n\nTried filenames: ${extensionsList}\n\nSearched in the following locations:\n${pathsList}${hasExtensionNote}${contextInfo}`
         );
 
-        console.warn(`[LinkHandler] Wiki link not found: [[${documentName}]] (tried ${allAttemptedPaths.length} paths)`);
+        logger.warn(`[LinkHandler] Wiki link not found: [[${documentName}]] (tried ${allAttemptedPaths.length} paths)`);
     }
 
     public async handleExternalLink(href: string) {

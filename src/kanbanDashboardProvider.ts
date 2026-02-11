@@ -36,6 +36,7 @@ import {
     SearchResultItem,
     NavigateToElementMessage
 } from './core/bridge/MessageTypes';
+import { logger } from './utils/logger';
 
 /**
  * Board that can be searched
@@ -241,7 +242,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 }
 
             } catch (error) {
-                console.error(`[Dashboard] Error scanning board ${registeredBoard.uri}:`, error);
+                logger.error(`[Dashboard] Error scanning board ${registeredBoard.uri}:`, error);
             }
         }
 
@@ -279,7 +280,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                         });
                     }
                 } catch (error) {
-                    console.error(`[Dashboard] Error executing pinned search "${search.query}" on ${registeredBoard.uri}:`, error);
+                    logger.error(`[Dashboard] Error executing pinned search "${search.query}" on ${registeredBoard.uri}:`, error);
                 }
             }
         }
@@ -365,7 +366,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 board
             };
         } catch (error) {
-            console.error(`[Dashboard] Error scanning board ${boardUri}:`, error);
+            logger.error(`[Dashboard] Error scanning board ${boardUri}:`, error);
             return null;
         }
     }
@@ -386,10 +387,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (panel) {
                 panel.scrollToElementByIndex(columnIndex, taskIndex, true);
             } else {
-                console.error(`[Dashboard] Panel not found for document: ${panelKey}`);
+                logger.error(`[Dashboard] Panel not found for document: ${panelKey}`);
             }
         } catch (error) {
-            console.error(`[Dashboard] Error navigating to task:`, error);
+            logger.error(`[Dashboard] Error navigating to task:`, error);
         }
     }
 
@@ -409,10 +410,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (panel) {
                 panel.scrollToElement(columnId, taskId, true);
             } else {
-                console.error(`[Dashboard] Panel not found for document: ${panelKey}`);
+                logger.error(`[Dashboard] Panel not found for document: ${panelKey}`);
             }
         } catch (error) {
-            console.error(`[Dashboard] Error navigating to element:`, error);
+            logger.error(`[Dashboard] Error navigating to element:`, error);
         }
     }
 
@@ -446,7 +447,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 );
                 results.push(...boardResults);
             } catch (error) {
-                console.error(`[Dashboard] Error searching board ${registeredBoard.uri}:`, error);
+                logger.error(`[Dashboard] Error searching board ${registeredBoard.uri}:`, error);
             }
         }
 
@@ -577,7 +578,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     const parseResult = MarkdownKanbanParser.parseMarkdown(content, regBoard.filePath);
                     boardMap.set(regBoard.uri, { uri: regBoard.uri, name: path.basename(regBoard.filePath, '.md'), board: parseResult.board, basePath: path.dirname(regBoard.filePath) });
                 } catch (error) {
-                    console.error(`[Dashboard] Failed to load board ${regBoard.uri}:`, error);
+                    logger.error(`[Dashboard] Failed to load board ${regBoard.uri}:`, error);
                 }
             }
         }
@@ -604,7 +605,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     return;
                 }
             } catch (error) {
-                console.error('[Dashboard] Error opening board for navigation:', error);
+                logger.error('[Dashboard] Error opening board for navigation:', error);
             }
         }
         const panel = KanbanWebviewPanel.getActivePanel();

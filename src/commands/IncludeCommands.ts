@@ -24,6 +24,7 @@ import { showError } from '../services/NotificationService';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { logger } from '../utils/logger';
 
 /**
  * Include Commands Handler
@@ -210,7 +211,7 @@ export class IncludeCommands extends SwitchBasedCommand {
                 await includeFile.reload();
                 reloadCount++;
             } catch (error) {
-                console.warn(`[IncludeCommands] Failed to reload include file ${includeFile.getRelativePath()}:`, error);
+                logger.warn(`[IncludeCommands] Failed to reload include file ${includeFile.getRelativePath()}:`, error);
             }
         }
 

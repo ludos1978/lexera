@@ -112,7 +112,7 @@ export class BoardSyncHandler {
             try {
                 this._deps.syncIncludeFilesWithBoard(normalizedBoard);
             } catch (error) {
-                console.error('[BoardSyncHandler] Failed to sync include registry from board change:', error);
+                logger.error('[BoardSyncHandler] Failed to sync include registry from board change:', error);
             }
         };
 
@@ -187,7 +187,7 @@ export class BoardSyncHandler {
                         || this._deps.fileRegistry.findByPath(relativePath);
                     if (!file) {
                         if (isDebug && (trigger === 'undo' || trigger === 'redo')) {
-                            console.warn('[kanban.BoardSyncHandler.undoRedo.includeColumnMissing]', {
+                            logger.warn('[kanban.BoardSyncHandler.undoRedo.includeColumnMissing]', {
                                 trigger,
                                 columnId: column.id,
                                 includePath: relativePath,
@@ -200,7 +200,7 @@ export class BoardSyncHandler {
                     // CRITICAL FIX: Type guard to prevent writing to MainKanbanFile
                     // This prevents cache corruption if include path matches main file
                     if (file.getFileType() === 'main') {
-                        console.error(`[BoardSyncHandler] BUG: Refusing to write include content to MainKanbanFile: ${relativePath}`);
+                        logger.error(`[BoardSyncHandler] BUG: Refusing to write include content to MainKanbanFile: ${relativePath}`);
                         continue;
                     }
 
@@ -216,7 +216,7 @@ export class BoardSyncHandler {
 
                     // CRITICAL PROTECTION: Never replace existing content with empty
                     if (!content.trim() && currentContent.trim()) {
-                        console.warn(`[BoardSyncHandler] PROTECTED: Refusing to wipe column content to empty`);
+                        logger.warn(`[BoardSyncHandler] PROTECTED: Refusing to wipe column content to empty`);
                         continue;
                     }
 

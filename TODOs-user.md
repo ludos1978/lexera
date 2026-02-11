@@ -1,20 +1,4 @@
-- [ ] why is there a apply and close button at the bottom if the file manager? this should be done with the execute buttons!!!
-
-- [ ] does markdown put lists that are separated by a newline put into separate blocks?
-
-- [ ] i want to integrate the kanban boards view with the dashboard view and the search.
-  the kanban boards should integrate the boards fuctionality from the dashboard. the configuration which boards are checked for events and tags etc. should be configurable within the kanban boards. Also it should be lockable, so that no board can be added or removed without unlocking. it's locked by default. of course we remove the boards from the dashboard. also add broken embeds and links to the list of elements to that can be automatically checked for. the results should be listed in the dashboard as well.
-
-  the dashboard only lists the results of the boards tags and date results. all results that are shown in the dashboard should be sortable by
-  - "board first", the results are listed below (such as tags etc.)
-  - "tags, dates", all results are merged from all boards and ordered by alphabet / date.
-
-  the search should be more compact. integrate the search field above the kanban boards at the top. the added boards are listed below. Show the search results in the dashboard as one line in the dashboard under a category "search" (or within the boards result if ordered so). It will keep up to 3 searches and it can be pinned, so the search stays in the dashboard. the pinned searches must also be stored with the workspace and restored when re-opened.
-  - the search can search the open board (default) or all boards in (kanban boards) or all currently opened boards.
-  - the search can be words, regex etc.
-
-  in the boards add an all boards setting at the top, it should open with a folding button right of the lock button. it allows defining the timeframe and tags for all boards at once. the timeframe on each board has also an option "use default" or the user might change it individually. more tags can be added for each board, but the defaults are used on each board check anyway!
-  make sure the folding state inthe kanban dashboard is not reset every time.
+- [ ] Does markdown put lists that are separated by a newline put into separate blocks? I see some curious behaviour in the rendering. A UI has a p within every li, if the list items are newline separeted (but the p i s within the li, not around it). I want the p to be around each newline separated ul.
 
 - [ ] if i open a folder link by alt+clicking it and it's available in the workspace explorer. if possible highlight the folder there instead of opening it externally. The default action open is to show in workspace explorer, if that fails it should be opened in the system explorer/finder.
 
@@ -34,13 +18,6 @@
 
 - [ ] can we add some checking mechanism that compares the frontend data with the caches and alerts the user immediately if there are differences which should have been synchronized already? maybe have it active in debug mode only!
 
-- [x] fix the icons according to these changes:
-- in top row columns use the same triangle as in all other folding icons.
-- for background processes use a gear wheel
-- for style presets use a typical font size icon.
-- for files use a floppy disc icon
-- the column icon must be aligned at the top with different length lines downwards.
-
 - [ ] suggest a way how to combine all kinds of tasks. i think of something such as
 #tag & !2025.10.13
 !2025.09.12 | !2025.09.15
@@ -54,61 +31,8 @@ analyze what is currently implemented  regarding all tag parsing searching and s
 
 DO A VERY DETAILED ANALYSIS
 
-- [x] can we have vertical lines of these sizes in front of the Headings?
-- H1 = 5px (1*7px)
-- H2 = 2 * 3px (2*4px + 1*1px = 7px)
-- H3 = 3 * 2px (3*3px + 2*1px = 8px)
-- H4 = 4 * 1.5px (4*2.5px + 3*1px = 13px)
-- h5 = 5 * 1px (5*2px + 4 * 1px = 14px)
-- h6 = 6 * 1px (6*1.5px + 5 * 1px = 14px)
-
-REDO IT: make them have the same full width use something more similar to roman numbers. I , II, III, IV, V, VI but clearly graphics not using a font! so only using lines!
-
 - [ ] if i paste a [[#1]] (or crate the clipboard content from a card / column from the clipboard it inteprets it as a file link and adds a path to it. which breaks it by adding a relative path.
 
-- [x] lets redo the #hidden-internal-clipboard functionality.
-
-First rename #hidden-internal-clipboard to
-We have the tags #hidden-internal-parked and #hidden-internal-deleted tag.
-
-We have a top element for "Park" and one for "Trash"
-
-Any content that is moved to the "Park" or "Cut" from the burger menu:
-- is tagged with #hidden-internal-parked .
-- When it's placed from the "Park" into the board again, the tag is removed (is also removed from the "Park") and is moved to the new location.
-The same happens with deletion of colums and tasks.
-
-To cleanup #hidden-internal-deleted we add a new column "remove deleted" in the file manager for each file.
-If something is moved to the Trash, we check if something has the tag #hidden-internal-parked and warn the user that it's removed from the "Park" when continuing (let the user abort the action).
-
-When parsing and displaying or exporting anything in the board it hides all #hidden-internal-parked (columns and tasks) and #hidden-internal-deleted from visiblity.
-When doing comparisons (diff in the File Manager) the tagged elements are not hidden!
-
-Do you see any conflict that could arise from this funcitonality? One problem might be the #stack tag feature if the columns with #hidden-internal-parked or #hidden-internal-deleted might interfere with it. We might move these columns to the end of the files or add a feature to the stack handling that skips there columns / tasks?
-
-- [x] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
-
-- [x] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
-
-- [ ] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) link . also alt+clicking [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
-
-- [x] i would like to be able to drop external files (desktop, vscode explorer into the inline text editor without leaving it (formost the inline text editor, but also the overlay text editor and the wysiwyg editor), at a specific cursor position it drop it at. if multiple files are dropped they are placed on individual lines for each one. it should place the link directly inline with the same rules and features as if it's creating a new task.
-
-- [x] lets change the file save/load/reload/conflict handling like this:
-  - when the main file or any imported files in the kanban have unsaved modifications:
-    - and when the external file is changed
-  - if the main file or imported file doesnt have any unsaved changes. when any external change is detected (the main or an imported file is modified, NOT A BUFFER CHANGE) the user is asked if he wants to import the changes or ignore them. the user might import them again by going into the file states overview and press reload from file.
-  -
-  - when saving the board, for any external file that is modified (the file has changed since the loading of the data). this can only happen when the user decided to ignore the change (see previous point), or its a race condition. then ask the user if he wants to:
-    - overwrite the file and backup the external changes (moves the outside file to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file )
-    - load the external changes and backup the internal changes (writes internal data to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file)
-    - skip the saving action (and also skip loading the content from the filedata.)
-  - create a dialog with all files that have differences and the actions to be taken if multiple files are affected (use the same dialogue if there is only one file).
-
-
-
-- [ ] could we integrate a basic web viewer inline (shows the page if it's link with ![](weburl) ) . currently it shows "url.com (Alt+click to open)" but it doesnt work. as plugin
-a
 - [ ] what puppeteer features could we now implement that we have added that addon?
 
 - [ ] could we add more formats/features similar to notion?
@@ -153,6 +77,56 @@ a
   - Click handler scrolls using existing `scrollToAndHighlight()` function
   - Can integrate with search to show anchor names
 
+- [ ] add a table editor that allows sorting of content by each category.
+
+- [ ] can this be integrated ? https://github.com/Skarlso/adventure-voter
+
+- [ ] would it be possible to take a screenshot of a webpage if a link is added to the board?
+
+  1. Open Graph images (simplest) - Fetch og:image meta tags from URLs. Most websites provide preview images. No screenshot needed, just an HTTP fetch + HTML parsing.
+  2. Puppeteer/Playwright (full screenshots) - Run headless browser in extension backend to capture actual screenshots. Heavier dependency (~100-400MB), slower, but gives real screenshots.
+
+- [ ] Combined Queries
+
+  A column can have multiple query tags:
+
+  ```markdown
+  - Reto This Week ?@reto ?.w15
+  ```
+
+  Operators
+
+  | Operator | Description | Example |
+  |----------|-------------|---------|
+  | `&` | AND | `#gather_Reto&day<3` |
+  | `\|` | OR | `#gather_Reto\|Anita` |
+  | `=` | EQUAL | `#gather_day=0` |
+  | `!=` | NOT EQUAL | `#gather_weekday!=sat` |
+  | `<` | LESS THAN | `#gather_day<7` |
+  | `>` | GREATER THAN | `#gather_day>0` |
+
+  Date Properties
+
+  | Property | Description | Values |
+  |----------|-------------|--------|
+  | `day` | Days from today | -2, -1, 0, 1, 2, ... |
+  | `weekday` | Day name | mon, tue, wed, ... |
+  | `weekdaynum` | Day number | 1 (Mon) to 7 (Sun) |
+  | `month` | Month name | jan, feb, mar, ... |
+  | `monthnum` | Month number | 1 to 12 |
+
+  ?ungathered
+
+  Collects all cards that didn't match any gather rule:
+
+# --- DONE ---
+
+- [x] when alt+cmd+v (alt+paste) with a path in the buffer it also should create a [last-path-part](/full/path/) link . also alt+clicking [[/full/path]] should work to open a path. lastly [[~/something]] and [](~/path/to) should resolve to something relative to the user folder. possibly even expand all stored environment variables if that is easy to do. suggest what you find a good idea first before implementation!
+
+- [x] could we integrate a basic web viewer inline (shows the page if it's link with ![](weburl) ) . currently it shows "url.com (Alt+click to open)" but it doesnt work.
+
+- [x] why is there a apply and close button at the bottom if the file manager? this should be done with the execute buttons!!!
+
 - [x] add Excourse to the Teaching-Content  tags
 
 - [x] when focussing a search result: activate a scroll locking on the target, if the target position doesnt move for 0.2 seconds, then release the locking on the target. if the user moves the scrollbar or the mouse wheel or uses the arrow keys, release the locking early.
@@ -175,51 +149,75 @@ a
   - **jscpd**: No duplicate code blocks detected
   - **knip**: Reports false positives (needs configuration)
 
-- [ ] add a table editor that allows sorting of content by each category.
 
-- [ ] can this be integrated ? https://github.com/Skarlso/adventure-voter
+- [x] canx we have vertical lines of these sizes in front of the Headings?
+  - H1 = 5px (1*7px)
+  - H2 = 2 * 3px (2*4px + 1*1px = 7px)
+  - H3 = 3 * 2px (3*3px + 2*1px = 8px)
+  - H4 = 4 * 1.5px (4*2.5px + 3*1px = 13px)
+  - h5 = 5 * 1px (5*2px + 4 * 1px = 14px)
+  - h6 = 6 * 1px (6*1.5px + 5 * 1px = 14px)
 
-- [ ] would it be possible to take a screenshot of a webpage if a link is added to the board?
+  REDO IT: make them have the same full width use something more similar to roman numbers. I , II, III, IV, V, VI but clearly graphics not using a font! so only using lines!
 
-  1. Open Graph images (simplest) - Fetch og:image meta tags from URLs. Most websites provide preview images. No screenshot needed, just an HTTP fetch + HTML parsing.
-  2. Puppeteer/Playwright (full screenshots) - Run headless browser in extension backend to capture actual screenshots. Heavier dependency (~100-400MB), slower, but gives real screenshots.
+- [x] lets redo the #hidden-internal-clipboard functionality.
 
-- [ ] #### Combined Queries
+  First rename #hidden-internal-clipboard to
+  We have the tags #hidden-internal-parked and #hidden-internal-deleted tag.
 
-A column can have multiple query tags:
+  We have a top element for "Park" and one for "Trash"
 
-```markdown
-- Reto This Week ?@reto ?.w15
-```
+  Any content that is moved to the "Park" or "Cut" from the burger menu:
+  - is tagged with #hidden-internal-parked .
+  - When it's placed from the "Park" into the board again, the tag is removed (is also removed from the "Park") and is moved to the new location.
+  The same happens with deletion of colums and tasks.
 
-### Operators
+  To cleanup #hidden-internal-deleted we add a new column "remove deleted" in the file manager for each file.
+  If something is moved to the Trash, we check if something has the tag #hidden-internal-parked and warn the user that it's removed from the "Park" when continuing (let the user abort the action).
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `&` | AND | `#gather_Reto&day<3` |
-| `\|` | OR | `#gather_Reto\|Anita` |
-| `=` | EQUAL | `#gather_day=0` |
-| `!=` | NOT EQUAL | `#gather_weekday!=sat` |
-| `<` | LESS THAN | `#gather_day<7` |
-| `>` | GREATER THAN | `#gather_day>0` |
+  When parsing and displaying or exporting anything in the board it hides all #hidden-internal-parked (columns and tasks) and #hidden-internal-deleted from visiblity.
+  When doing comparisons (diff in the File Manager) the tagged elements are not hidden!
 
-### Date Properties
+  Do you see any conflict that could arise from this funcitonality? One problem might be the #stack tag feature if the columns with #hidden-internal-parked or #hidden-internal-deleted might interfere with it. We might move these columns to the end of the files or add a feature to the stack handling that skips there columns / tasks?
 
-| Property | Description | Values |
-|----------|-------------|--------|
-| `day` | Days from today | -2, -1, 0, 1, 2, ... |
-| `weekday` | Day name | mon, tue, wed, ... |
-| `weekdaynum` | Day number | 1 (Mon) to 7 (Sun) |
-| `month` | Month name | jan, feb, mar, ... |
-| `monthnum` | Month number | 1 to 12 |
+- [x] add a drop target in the top view (next to card and column sources), where i can drop tasks and columns. The tasks/columns are removed from the board. The data is placed at the end of the kanban file data with a #hidden-internal-clipboard tags in case the system crashes while editing. The user can drag them down into the kanban again at any time. When loading all items the have the #hidden-internal-clipboard are placed into the header and can be placed anywhere in the board!
 
-### ?ungathered
+- [x] if a column header has a time/date such as !kw13 and the title of the task has no time and within the task there is a time !10:00-10:30 then it should only highlight during this week!
 
-Collects all cards that didn't match any gather rule:
+- [x] i would like to be able to drop external files (desktop, vscode explorer into the inline text editor without leaving it (formost the inline text editor, but also the overlay text editor and the wysiwyg editor), at a specific cursor position it drop it at. if multiple files are dropped they are placed on individual lines for each one. it should place the link directly inline with the same rules and features as if it's creating a new task.
 
----
+- [x] lets change the file save/load/reload/conflict handling like this:
+  - when the main file or any imported files in the kanban have unsaved modifications:
+    - and when the external file is changed
+  - if the main file or imported file doesnt have any unsaved changes. when any external change is detected (the main or an imported file is modified, NOT A BUFFER CHANGE) the user is asked if he wants to import the changes or ignore them. the user might import them again by going into the file states overview and press reload from file.
+  -
+  - when saving the board, for any external file that is modified (the file has changed since the loading of the data). this can only happen when the user decided to ignore the change (see previous point), or its a race condition. then ask the user if he wants to:
+    - overwrite the file and backup the external changes (moves the outside file to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file )
+    - load the external changes and backup the internal changes (writes internal data to a {filename}-conflict-|{datetime}.md and show a popup to allow opening the conflict file)
+    - skip the saving action (and also skip loading the content from the filedata.)
+  - create a dialog with all files that have differences and the actions to be taken if multiple files are affected (use the same dialogue if there is only one file).
 
-# DONE
+- [x] fix the icons according to these changes:
+  - in top row columns use the same triangle as in all other folding icons.
+  - for background processes use a gear wheel
+  - for style presets use a typical font size icon.
+  - for files use a floppy disc icon
+  - the column icon must be aligned at the top with different length lines downwards.
+
+
+- [x] I want to integrate the kanban boards view with the dashboard view and the search.
+  the kanban boards should integrate the boards fuctionality from the dashboard. the configuration which boards are checked for events and tags etc. should be configurable within the kanban boards. Also it should be lockable, so that no board can be added or removed without unlocking. it's locked by default. of course we remove the boards from the dashboard. also add broken embeds and links to the list of elements to that can be automatically checked for. the results should be listed in the dashboard as well.
+
+  the dashboard only lists the results of the boards tags and date results. all results that are shown in the dashboard should be sortable by
+  - "board first", the results are listed below (such as tags etc.)
+  - "tags, dates", all results are merged from all boards and ordered by alphabet / date.
+
+  the search should be more compact. integrate the search field above the kanban boards at the top. the added boards are listed below. Show the search results in the dashboard as one line in the dashboard under a category "search" (or within the boards result if ordered so). It will keep up to 3 searches and it can be pinned, so the search stays in the dashboard. the pinned searches must also be stored with the workspace and restored when re-opened.
+  - the search can search the open board (default) or all boards in (kanban boards) or all currently opened boards.
+  - the search can be words, regex etc.
+
+  in the boards add an all boards setting at the top, it should open with a folding button right of the lock button. it allows defining the timeframe and tags for all boards at once. the timeframe on each board has also an option "use default" or the user might change it individually. more tags can be added for each board, but the defaults are used on each board check anyway!
+  make sure the folding state inthe kanban dashboard is not reset every time.
 
 - [x] How could we combine a deadline and a task (- [ ]) with a date so the user must check the task (- [ ]) or remove it. othervise it shows in the dashboard. We show all deadlines, the ones in the past as red! Suggest a simple and well integrated solution, which likely uses the dashboard, but somehow we must activate it so it's filtered from the boards. Maybe something like:
   - [ ] !{timedate} : which will be shown while its not checked. If there is a year in the date use this exact date. If there is no year in the timedate, assume it's a date within the last {duration_of_year-6Months} .

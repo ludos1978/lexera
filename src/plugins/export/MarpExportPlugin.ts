@@ -232,7 +232,7 @@ export class MarpExportPlugin implements ExportPlugin {
 
             return themes.sort();
         } catch (err) {
-            console.error('[kanban.MarpExportPlugin.getAvailableThemes] Failed to get available themes:', err);
+            logger.error('[kanban.MarpExportPlugin.getAvailableThemes] Failed to get available themes:', err);
             return ['default'];
         }
     }
@@ -296,7 +296,7 @@ export class MarpExportPlugin implements ExportPlugin {
             const cli = await import('@marp-team/marp-cli');
             return !!cli.marpCli;
         } catch (err) {
-            console.error('[kanban.MarpExportPlugin] Marp CLI not available:', err);
+            logger.error('[kanban.MarpExportPlugin] Marp CLI not available:', err);
             return false;
         }
     }
@@ -361,13 +361,13 @@ export class MarpExportPlugin implements ExportPlugin {
                         const output = data.toString();
                         stderrOutput += output;
                         if (output.includes('[ERROR]') || output.includes('Error:')) {
-                            console.error(`[kanban.MarpExportPlugin] ${output}`);
+                            logger.error(`[kanban.MarpExportPlugin] ${output}`);
                         }
                     });
                 }
 
                 marpProcess.on('error', (error) => {
-                    console.error(`[kanban.MarpExportPlugin] Process error:`, error);
+                    logger.error(`[kanban.MarpExportPlugin] Process error:`, error);
                     vscode.window.showErrorMessage(`Marp export failed: ${error.message}`);
                 });
 
@@ -405,13 +405,13 @@ export class MarpExportPlugin implements ExportPlugin {
                             const output = data.toString();
                             stderrOutput += output;
                             if (output.includes('[ERROR]') || output.includes('Error:')) {
-                                console.error(`[kanban.MarpExportPlugin] ${output}`);
+                                logger.error(`[kanban.MarpExportPlugin] ${output}`);
                             }
                         });
                     }
 
                     marpProcess.on('error', (error) => {
-                        console.error(`[kanban.MarpExportPlugin] Process error:`, error);
+                        logger.error(`[kanban.MarpExportPlugin] Process error:`, error);
                         reject(error);
                     });
 
@@ -434,7 +434,7 @@ export class MarpExportPlugin implements ExportPlugin {
             }
 
         } catch (error) {
-            console.error('[kanban.MarpExportPlugin] Export failed:', error);
+            logger.error('[kanban.MarpExportPlugin] Export failed:', error);
             throw error;
         }
     }
@@ -458,7 +458,7 @@ export class MarpExportPlugin implements ExportPlugin {
             try {
                 process.kill(pid, 'SIGTERM');
             } catch (error) {
-                console.error(`[kanban.MarpExportPlugin] Failed to kill process ${pid}:`, error);
+                logger.error(`[kanban.MarpExportPlugin] Failed to kill process ${pid}:`, error);
             }
         }
     }
@@ -473,7 +473,7 @@ export class MarpExportPlugin implements ExportPlugin {
                     fs.unlinkSync(filePath);
                 }
             } catch (error) {
-                console.warn(`[kanban.MarpExportPlugin] Failed to cleanup preprocessed file:`, error);
+                logger.warn(`[kanban.MarpExportPlugin] Failed to cleanup preprocessed file:`, error);
             }
         }
     }
@@ -511,7 +511,7 @@ export class MarpExportPlugin implements ExportPlugin {
         if (enginePath && fs.existsSync(enginePath)) {
             args.push('--engine', enginePath);
         } else {
-            console.warn(`[kanban.MarpExportPlugin] Engine file not found: ${enginePath}`);
+            logger.warn(`[kanban.MarpExportPlugin] Engine file not found: ${enginePath}`);
         }
 
         // Theme
@@ -617,7 +617,7 @@ export class MarpExportPlugin implements ExportPlugin {
                 try {
                     fs.copyFileSync(srcFilePath, distFilePath);
                 } catch (err) {
-                    console.warn(`[kanban.MarpExportPlugin] Failed to copy ${file} to dist:`, err);
+                    logger.warn(`[kanban.MarpExportPlugin] Failed to copy ${file} to dist:`, err);
                 }
             }
         }
@@ -636,7 +636,7 @@ export class MarpExportPlugin implements ExportPlugin {
         const postProcessorPath = path.join(engineDir, 'handout-postprocess.js');
 
         if (!fs.existsSync(postProcessorPath)) {
-            console.warn(`[kanban.MarpExportPlugin] Handout post-processor not found: ${postProcessorPath}`);
+            logger.warn(`[kanban.MarpExportPlugin] Handout post-processor not found: ${postProcessorPath}`);
             return;
         }
 
@@ -667,13 +667,13 @@ export class MarpExportPlugin implements ExportPlugin {
                 if (code === 0) {
                     resolve();
                 } else {
-                    console.error(`[MarpExportPlugin] Handout post-processing failed: ${stderr}`);
+                    logger.error(`[MarpExportPlugin] Handout post-processing failed: ${stderr}`);
                     resolve();
                 }
             });
 
             postProcess.on('error', (error) => {
-                console.error('[kanban.MarpExportPlugin] Handout post-processing error:', error);
+                logger.error('[kanban.MarpExportPlugin] Handout post-processing error:', error);
                 resolve();
             });
         });
@@ -708,7 +708,7 @@ export class MarpExportPlugin implements ExportPlugin {
             if (fs.existsSync(resolvedPath)) {
                 resolvedPaths.push(resolvedPath);
             } else {
-                console.warn(`[kanban.MarpExportPlugin] Configured theme directory not found: ${resolvedPath}`);
+                logger.warn(`[kanban.MarpExportPlugin] Configured theme directory not found: ${resolvedPath}`);
             }
         }
 

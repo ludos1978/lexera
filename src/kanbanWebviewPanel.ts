@@ -200,11 +200,11 @@ export class KanbanWebviewPanel {
                     await kanbanPanel.loadMarkdownFile(document);
                     logger.debug('[KanbanWebviewPanel.revive] loadMarkdownFile completed');
                 } catch (err) {
-                    console.error('[KanbanWebviewPanel.revive] Failed to revive document:', err);
+                    logger.error('[KanbanWebviewPanel.revive] Failed to revive document:', err);
                 }
             })();
         } else {
-            console.warn('[KanbanWebviewPanel.revive] No valid documentPath in state or globalState fallback');
+            logger.warn('[KanbanWebviewPanel.revive] No valid documentPath in state or globalState fallback');
         }
     }
 
@@ -280,15 +280,15 @@ export class KanbanWebviewPanel {
         // Reveal the panel first
         this._panel.reveal(undefined, false);
 
-        console.log('[KanbanWebviewPanel.scrollToElement] webviewReady:', this._context.webviewReady, 'columnId:', columnId, 'taskId:', taskId);
+        logger.debug('[KanbanWebviewPanel.scrollToElement] webviewReady:', this._context.webviewReady, 'columnId:', columnId, 'taskId:', taskId);
 
         if (this._context.webviewReady) {
             // Webview is ready, send immediately
-            console.log('[KanbanWebviewPanel.scrollToElement] Sending immediately');
+            logger.debug('[KanbanWebviewPanel.scrollToElement] Sending immediately');
             this._panel.webview.postMessage(message);
         } else {
             // Queue the request to be sent when webview is ready
-            console.log('[KanbanWebviewPanel.scrollToElement] Queueing for later');
+            logger.debug('[KanbanWebviewPanel.scrollToElement] Queueing for later');
             this._pendingScrollRequest = message;
         }
     }
@@ -312,13 +312,13 @@ export class KanbanWebviewPanel {
         // Reveal the panel first
         this._panel.reveal(undefined, false);
 
-        console.log('[KanbanWebviewPanel.scrollToElementByIndex] webviewReady:', this._context.webviewReady, 'columnIndex:', columnIndex, 'taskIndex:', taskIndex);
+        logger.debug('[KanbanWebviewPanel.scrollToElementByIndex] webviewReady:', this._context.webviewReady, 'columnIndex:', columnIndex, 'taskIndex:', taskIndex);
 
         if (this._context.webviewReady) {
-            console.log('[KanbanWebviewPanel.scrollToElementByIndex] Sending immediately');
+            logger.debug('[KanbanWebviewPanel.scrollToElementByIndex] Sending immediately');
             this._panel.webview.postMessage(message);
         } else {
-            console.log('[KanbanWebviewPanel.scrollToElementByIndex] Queueing for later');
+            logger.debug('[KanbanWebviewPanel.scrollToElementByIndex] Queueing for later');
             this._pendingScrollRequest = message;
         }
     }
@@ -463,10 +463,10 @@ export class KanbanWebviewPanel {
             panelContext: this._context, getFileSyncHandler: () => this._fileSyncHandler,
             getBoard: () => this.getBoard(), getPanel: () => this._panel,
             onMediaChanged: (files) => {
-                console.log(`[KanbanWebviewPanel] onMediaChanged fired with ${files.length} files:`, files.map(f => `${f.path} (${f.type})`));
+                logger.debug(`[KanbanWebviewPanel] onMediaChanged fired with ${files.length} files:`, files.map(f => `${f.path} (${f.type})`));
                 const hasPanel = !!this._panel;
                 const hasWebview = !!this._panel?.webview;
-                console.log(`[KanbanWebviewPanel] onMediaChanged panel=${hasPanel} webview=${hasWebview}`);
+                logger.debug(`[KanbanWebviewPanel] onMediaChanged panel=${hasPanel} webview=${hasWebview}`);
                 this._panel?.webview.postMessage({
                     type: 'mediaFilesChanged', changedFiles: files.map(f => ({ path: f.path, absolutePath: f.absolutePath, type: f.type }))
                 });
@@ -598,7 +598,7 @@ export class KanbanWebviewPanel {
             try {
                 await this._messageHandler.handleMessage(message);
             } catch (error) {
-                console.error(`[PANEL] Error handling message ${message.type}:`, error);
+                logger.error(`[PANEL] Error handling message ${message.type}:`, error);
             }
         }, null, this._disposables);
 
@@ -635,13 +635,13 @@ export class KanbanWebviewPanel {
                 const scrollRequest = this._pendingScrollRequest;
                 this._pendingScrollRequest = null;
                 // Delay to ensure DOM has been updated with board content
-                console.log('[KanbanWebviewPanel._handleWebviewReady] Will send pending scroll in 500ms:', scrollRequest);
+                logger.debug('[KanbanWebviewPanel._handleWebviewReady] Will send pending scroll in 500ms:', scrollRequest);
                 setTimeout(() => {
-                    console.log('[KanbanWebviewPanel._handleWebviewReady] NOW sending pending scroll request:', scrollRequest);
+                    logger.debug('[KanbanWebviewPanel._handleWebviewReady] NOW sending pending scroll request:', scrollRequest);
                     this._panel.webview.postMessage(scrollRequest);
                 }, 500);
             } else {
-                console.log('[KanbanWebviewPanel._handleWebviewReady] No pending scroll request');
+                logger.debug('[KanbanWebviewPanel._handleWebviewReady] No pending scroll request');
             }
         };
 
@@ -765,7 +765,7 @@ export class KanbanWebviewPanel {
                 const result = await this._boardInitHandler.initializeFromDocument(document, this._mediaTracker);
                 this._mediaTracker = result.mediaTracker;
             } catch (error) {
-                console.error('[KanbanWebviewPanel] Failed to reinitialize main file context (path mismatch):', error);
+                logger.error('[KanbanWebviewPanel] Failed to reinitialize main file context (path mismatch):', error);
             }
         }
 

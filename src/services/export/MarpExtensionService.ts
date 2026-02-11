@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { logger } from '../../utils/logger';
 
 /**
  * Service to interact with the Marp VSCode extension
@@ -32,7 +33,7 @@ export class MarpExtensionService {
             try {
                 await extension.activate();
             } catch (err) {
-                console.error('[kanban.MarpExtensionService] Failed to activate Marp extension:', err);
+                logger.error('[kanban.MarpExtensionService] Failed to activate Marp extension:', err);
                 return false;
             }
         }
@@ -51,7 +52,7 @@ export class MarpExtensionService {
         const fileExists = fs.existsSync(filePath);
 
         if (!fileExists) {
-            console.error(`[kanban.MarpExtensionService.openInMarpPreview] ❌ File not found: ${filePath}`);
+            logger.error(`[kanban.MarpExtensionService.openInMarpPreview] ❌ File not found: ${filePath}`);
             throw new Error(`File not found: ${filePath}`);
         }
 
@@ -145,7 +146,7 @@ export class MarpExtensionService {
             const command = `marp.export.${format}`;
             await vscode.commands.executeCommand(command, uri);
         } catch (err) {
-            console.error(`[kanban.MarpExtensionService] Failed to export via Marp extension:`, err);
+            logger.error(`[kanban.MarpExtensionService] Failed to export via Marp extension:`, err);
 
             // Fallback: Show message directing user to export manually
             vscode.window.showInformationMessage(

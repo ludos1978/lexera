@@ -12,6 +12,7 @@ import { safeDecodeURIComponent } from '../utils/stringUtils';
 import { generateTimestamp } from '../constants/FileNaming';
 import { writeFileAtomically } from '../utils/atomicWrite';
 import { SaveOptions } from './SaveOptions';
+import { logger } from '../utils/logger';
 
 /**
  * Include file types supported by the plugin system
@@ -135,10 +136,10 @@ export class IncludeFile extends MarkdownFile {
         } catch (error) {
             this._recordAccessError(error);
             if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
-                console.warn(`[${this.getFileType()}] File not found: ${this._absolutePath}`);
+                logger.warn(`[${this.getFileType()}] File not found: ${this._absolutePath}`);
                 this._exists = false;
             } else {
-                console.error(`[${this.getFileType()}] Failed to read file:`, error);
+                logger.error(`[${this.getFileType()}] Failed to read file:`, error);
             }
             return null;
         }
@@ -163,7 +164,7 @@ export class IncludeFile extends MarkdownFile {
             this._lastModified = new Date();
         } catch (error) {
             this._recordAccessError(error);
-            console.error(`[${this.getFileType()}] Failed to write file:`, error);
+            logger.error(`[${this.getFileType()}] Failed to write file:`, error);
             throw error;
         }
     }
@@ -248,7 +249,7 @@ export class IncludeFile extends MarkdownFile {
 
             return backupPath;
         } catch (error) {
-            console.error(`[${this.getFileType()}] Failed to create backup:`, error);
+            logger.error(`[${this.getFileType()}] Failed to create backup:`, error);
             return null;
         }
     }

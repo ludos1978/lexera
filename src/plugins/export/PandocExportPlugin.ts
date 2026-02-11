@@ -324,7 +324,7 @@ export class PandocExportPlugin implements ExportPlugin {
                 }
 
                 pandocProcess.on('error', (error) => {
-                    console.error(`[PandocExportPlugin] Process error:`, error);
+                    logger.error(`[PandocExportPlugin] Process error:`, error);
                     reject(new Error(`Failed to start Pandoc: ${error.message}`));
                 });
 
@@ -334,13 +334,13 @@ export class PandocExportPlugin implements ExportPlugin {
                         resolve();
                     } else {
                         const errorMessage = stderrOutput.trim() || `Exit code ${code}`;
-                        console.error(`[PandocExportPlugin] Export failed:`, errorMessage);
+                        logger.error(`[PandocExportPlugin] Export failed:`, errorMessage);
                         reject(new Error(`Pandoc export failed: ${errorMessage}`));
                     }
                 });
             });
         } catch (error) {
-            console.error('[PandocExportPlugin] Export failed:', error);
+            logger.error('[PandocExportPlugin] Export failed:', error);
             throw error;
         }
     }

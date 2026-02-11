@@ -29,6 +29,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import { logger } from '../utils/logger';
 
 const configService = ConfigurationService.getInstance();
 
@@ -178,7 +179,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
                 dropPosition: dropPosition
             });
         } catch (error) {
-            console.error('[ClipboardCommands] Error saving clipboard image:', error);
+            logger.error('[ClipboardCommands] Error saving clipboard image:', error);
             this.postMessage({ type: 'clipboardImageSaved',
                 success: false,
                 error: getErrorMessage(error),
@@ -215,7 +216,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
                 dropPosition: dropPosition
             });
         } catch (error) {
-            console.error('[ClipboardCommands] Error saving clipboard image with path:', error);
+            logger.error('[ClipboardCommands] Error saving clipboard image with path:', error);
             this.postMessage({ type: 'clipboardImageSaved',
                 success: false,
                 error: getErrorMessage(error),
@@ -259,7 +260,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
                 cursorPosition: cursorPosition
             });
         } catch (error) {
-            console.error('[ClipboardCommands] Error pasting image into field:', error);
+            logger.error('[ClipboardCommands] Error pasting image into field:', error);
             this.postMessage({ type: 'imagePastedIntoField',
                 success: false,
                 error: getErrorMessage(error),
@@ -288,7 +289,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
 
             return this._copyToMediaFolder(sourcePath, fileData, originalFileName, dropPosition, directory, baseFileName, isImage, includeContext, context);
         } catch (error) {
-            console.error('[ClipboardCommands] Error handling file:', error);
+            logger.error('[ClipboardCommands] Error handling file:', error);
             this._sendFileDropError(getErrorMessage(error), dropPosition, isImage, fileData !== null, context);
         }
     }
@@ -360,7 +361,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
                 includeContext: includeContext ?? undefined
             });
         } catch (error) {
-            console.error('[ClipboardCommands] Error in file drop dialogue:', error);
+            logger.error('[ClipboardCommands] Error in file drop dialogue:', error);
             this._sendFileDropError(getErrorMessage(error), dropPosition, isImage, !hasSourcePath, context);
         }
     }
@@ -372,7 +373,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
             const { directory, baseFileName } = this._getDropTargetPaths(context, includeContext ?? null);
             await this._copyToMediaFolder(sourcePath, null, fileName, dropPosition, directory, baseFileName, isImage, includeContext ?? null, context);
         } catch (error) {
-            console.error('[ClipboardCommands] Error in file drop copy:', error);
+            logger.error('[ClipboardCommands] Error in file drop copy:', error);
             this._sendFileDropError(getErrorMessage(error), dropPosition, isImage, false, context);
         }
     }
@@ -384,7 +385,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
             const { directory } = this._getDropTargetPaths(context, includeContext ?? null);
             this._sendLinkMessage(sourcePath, fileName, dropPosition, directory, isImage, includeContext ?? null, context);
         } catch (error) {
-            console.error('[ClipboardCommands] Error in file drop link:', error);
+            logger.error('[ClipboardCommands] Error in file drop link:', error);
             this._sendFileDropError(getErrorMessage(error), dropPosition, isImage, false, context);
         }
     }
@@ -405,7 +406,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
 
             this._sendLinkMessage(filePath, fileName, dropPosition, directory, isImage, includeContext ?? null, context);
         } catch (error) {
-            console.error('[ClipboardCommands] Error linking existing file:', error);
+            logger.error('[ClipboardCommands] Error linking existing file:', error);
             this._sendFileDropError(getErrorMessage(error), dropPosition, isImage, true, context);
         }
     }
@@ -417,7 +418,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
 
             await vscode.commands.executeCommand('revealFileInOS', safeFileUri(mediaFolderPath, 'ClipboardCommands-revealMedia'));
         } catch (error) {
-            console.error('[ClipboardCommands] Error opening media folder:', error);
+            logger.error('[ClipboardCommands] Error opening media folder:', error);
             showError(`Failed to open media folder: ${getErrorMessage(error)}`);
         }
     }
@@ -469,7 +470,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
             this._sendLinkMessage(selectedFilePath, fileName, dropPosition, directory, isImage, includeContext, context);
 
         } catch (error) {
-            console.error('[ClipboardCommands] Error searching for dropped file:', error);
+            logger.error('[ClipboardCommands] Error searching for dropped file:', error);
             showError(`Failed to search for file: ${getErrorMessage(error)}`);
         }
     }
@@ -598,7 +599,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
             showInfo(`Created ${diagramTypeLabel} diagram: ${fullFileName}`);
 
         } catch (error) {
-            console.error('[ClipboardCommands] Error creating diagram file:', error);
+            logger.error('[ClipboardCommands] Error creating diagram file:', error);
             this.postMessage({
                 type: 'diagramFileCreated',
                 success: false,

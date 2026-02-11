@@ -1,5 +1,6 @@
 import { MarkdownFile } from '../files/MarkdownFile';
 import { WebviewBridge } from './bridge/WebviewBridge';
+import { logger } from '../utils/logger';
 
 /**
  * Unified External Change Handler — Batched notification system
@@ -115,7 +116,7 @@ export class UnifiedChangeHandler {
 
             if (files.length > 0) {
                 this._showBatchedImportDialog(files).catch(error => {
-                    console.error('[UnifiedChangeHandler] Failed to show batched import dialog:', error);
+                    logger.error('[UnifiedChangeHandler] Failed to show batched import dialog:', error);
                 });
             }
         }, COALESCE_WINDOW_MS));
@@ -132,13 +133,13 @@ export class UnifiedChangeHandler {
         const panelId = files[0].getConflictResolver().panelId;
 
         if (!this._panelLookup) {
-            console.warn('[UnifiedChangeHandler] Panel lookup not registered, cannot send notification');
+            logger.warn('[UnifiedChangeHandler] Panel lookup not registered, cannot send notification');
             return;
         }
 
         const webviewBridge = this._panelLookup.getWebviewBridge(panelId);
         if (!webviewBridge) {
-            console.warn('[UnifiedChangeHandler] WebviewBridge not found, panelId:', panelId);
+            logger.warn('[UnifiedChangeHandler] WebviewBridge not found, panelId:', panelId);
             return;
         }
 

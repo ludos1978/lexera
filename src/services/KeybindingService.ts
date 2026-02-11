@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { logger } from '../utils/logger';
 
 /**
  * VS Code keybinding entry structure from keybindings.json
@@ -93,7 +94,7 @@ export class KeybindingService {
             Object.assign(shortcutMap, extensionShortcuts);
 
         } catch (error) {
-            console.error('[KeybindingService] Failed to load shortcuts:', error);
+            logger.error('[KeybindingService] Failed to load shortcuts:', error);
         }
 
         return shortcutMap;
@@ -213,7 +214,7 @@ export class KeybindingService {
             return keybindings;
 
         } catch (error) {
-            console.error('[KeybindingService] Failed to load VS Code keybindings:', error);
+            logger.error('[KeybindingService] Failed to load VS Code keybindings:', error);
             return [];
         }
     }
@@ -230,7 +231,7 @@ export class KeybindingService {
                 this._loadSnippetFilesFromDir(workspaceSnippetDir, snippets);
             }
         } catch (error) {
-            console.error('[KeybindingService] Failed to load snippets:', error);
+            logger.error('[KeybindingService] Failed to load snippets:', error);
         }
         return snippets;
     }
@@ -268,7 +269,7 @@ export class KeybindingService {
             const parsed = JSON.parse(jsonContent);
             return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
         } catch (error) {
-            console.error('[KeybindingService] Failed to read snippet file:', filePath, error);
+            logger.error('[KeybindingService] Failed to read snippet file:', filePath, error);
             return null;
         }
     }
@@ -281,7 +282,7 @@ export class KeybindingService {
             }
             return null;
         } catch (error) {
-            console.error('[KeybindingService] Failed to get user keybindings path:', error);
+            logger.error('[KeybindingService] Failed to get user keybindings path:', error);
             return null;
         }
     }
@@ -294,7 +295,7 @@ export class KeybindingService {
             }
             return null;
         } catch (error) {
-            console.error('[KeybindingService] Failed to get workspace keybindings path:', error);
+            logger.error('[KeybindingService] Failed to get workspace keybindings path:', error);
             return null;
         }
     }
@@ -315,7 +316,7 @@ export class KeybindingService {
             }
             return null;
         } catch (error) {
-            console.error('[KeybindingService] Failed to get workspace snippet dir:', error);
+            logger.error('[KeybindingService] Failed to get workspace snippet dir:', error);
             return null;
         }
     }

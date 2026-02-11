@@ -223,7 +223,7 @@ export class WebviewUpdateService {
      */
     public async refreshAllConfiguration(): Promise<void> {
         if (!this._deps.hasPanel()) {
-            console.warn('[WebviewUpdateService] Cannot refresh configuration - panel is null');
+            logger.warn('[WebviewUpdateService] Cannot refresh configuration - panel is null');
             return;
         }
 
@@ -251,7 +251,7 @@ export class WebviewUpdateService {
             this._deps.webviewBridge.send(configMessage);
 
         } catch (error) {
-            console.error('[WebviewUpdateService] Failed to refresh view configuration:', error);
+            logger.error('[WebviewUpdateService] Failed to refresh view configuration:', error);
         }
     }
 
@@ -269,7 +269,7 @@ export class WebviewUpdateService {
             };
             this._deps.webviewBridge.send(shortcutsMessage);
         } catch (error) {
-            console.error('[WebviewUpdateService] Failed to send shortcuts to webview:', error);
+            logger.error('[WebviewUpdateService] Failed to send shortcuts to webview:', error);
         }
     }
 

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import * as vscode from 'vscode';
 import { EXTERNAL_SERVICE_TIMEOUT_MS } from '../../constants/TimeoutConstants';
+import { logger } from '../../utils/logger';
 
 /**
  * Abstract base class for CLI-based export services
@@ -125,14 +126,14 @@ export abstract class AbstractCLIService {
                 this.cliPath = cliPath;
                 this.isCliAvailable = true;
                 this.availabilityChecked = true;
-                console.log(`[${this.getServiceName()}] Found CLI at: ${cliPath}`);
+                logger.debug(`[${this.getServiceName()}] Found CLI at: ${cliPath}`);
                 return true;
             }
         }
 
         this.availabilityChecked = true;
         this.isCliAvailable = false;
-        console.warn(`[${this.getServiceName()}] ${this.getDefaultCliName()} CLI not found. Tried: ${pathsToTry.join(', ')}. Configure markdown-kanban.${this.getConfigKey()} in settings.`);
+        logger.warn(`[${this.getServiceName()}] ${this.getDefaultCliName()} CLI not found. Tried: ${pathsToTry.join(', ')}. Configure markdown-kanban.${this.getConfigKey()} in settings.`);
         return false;
     }
 
@@ -238,7 +239,7 @@ export abstract class AbstractCLIService {
 
             child.on('error', (error) => {
                 clearTimeout(timer);
-                console.error(`[${this.getServiceName()}] Process error:`, error);
+                logger.error(`[${this.getServiceName()}] Process error:`, error);
                 reject(error);
             });
 
@@ -287,7 +288,7 @@ export abstract class AbstractCLIService {
 
             child.on('error', (error) => {
                 clearTimeout(timer);
-                console.error(`[${this.getServiceName()}] Process error:`, error);
+                logger.error(`[${this.getServiceName()}] Process error:`, error);
                 reject(error);
             });
 
@@ -296,7 +297,7 @@ export abstract class AbstractCLIService {
 
                 try {
                     if (code !== 0) {
-                        console.error(`[${this.getServiceName()}] Conversion failed:`, stderr);
+                        logger.error(`[${this.getServiceName()}] Conversion failed:`, stderr);
                         if (cleanupOnError && fs.existsSync(outputPath)) {
                             fs.unlinkSync(outputPath);
                         }
@@ -306,9 +307,9 @@ export abstract class AbstractCLIService {
 
                     if (!fs.existsSync(outputPath)) {
                         const errorMsg = `${this.getDefaultCliName()} exited successfully but did not create output file: ${outputPath}`;
-                        console.error(`[${this.getServiceName()}]`, errorMsg);
+                        logger.error(`[${this.getServiceName()}]`, errorMsg);
                         if (stderr) {
-                            console.error(`[${this.getServiceName()}] stderr output:`, stderr);
+                            logger.error(`[${this.getServiceName()}] stderr output:`, stderr);
                         }
                         reject(new Error(errorMsg));
                         return;
@@ -324,7 +325,7 @@ export abstract class AbstractCLIService {
 
                     resolve(data);
                 } catch (error) {
-                    console.error(`[${this.getServiceName()}] Failed to read output:`, error);
+                    logger.error(`[${this.getServiceName()}] Failed to read output:`, error);
                     reject(error);
                 }
             });

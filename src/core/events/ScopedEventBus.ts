@@ -39,7 +39,7 @@ export class ScopedEventBus {
      */
     emit<T extends object>(event: string, data: T): void {
         if (this._disposed) {
-            console.warn(`[ScopedEventBus:${this._panelId}] Attempted to emit on disposed bus: ${event}`);
+            logger.warn(`[ScopedEventBus:${this._panelId}] Attempted to emit on disposed bus: ${event}`);
             return;
         }
 
@@ -58,11 +58,11 @@ export class ScopedEventBus {
                 // Handle async handlers - don't await, just catch errors
                 if (result instanceof Promise) {
                     result.catch(err => {
-                        console.error(`[ScopedEventBus:${this._panelId}] Async handler error for ${event}:`, err);
+                        logger.error(`[ScopedEventBus:${this._panelId}] Async handler error for ${event}:`, err);
                     });
                 }
             } catch (err) {
-                console.error(`[ScopedEventBus:${this._panelId}] Handler error for ${event}:`, err);
+                logger.error(`[ScopedEventBus:${this._panelId}] Handler error for ${event}:`, err);
             }
         }
     }
@@ -73,7 +73,7 @@ export class ScopedEventBus {
      */
     on<T>(event: string, handler: EventHandler<T>): () => void {
         if (this._disposed) {
-            console.warn(`[ScopedEventBus:${this._panelId}] Attempted to subscribe on disposed bus: ${event}`);
+            logger.warn(`[ScopedEventBus:${this._panelId}] Attempted to subscribe on disposed bus: ${event}`);
             return () => {};
         }
 

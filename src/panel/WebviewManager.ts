@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { KanbanBoard } from '../markdownParser';
 import { configService } from '../services/ConfigurationService';
+import { logger } from '../utils/logger';
 
 /**
  * Dependencies required by WebviewManager
@@ -299,7 +300,7 @@ export class WebviewManager {
                     );
                 }
             } catch (error) {
-                console.warn('[WebviewManager] Failed to load local markdown-it:', error);
+                logger.warn('[WebviewManager] Failed to load local markdown-it:', error);
             }
         }
 

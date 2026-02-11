@@ -1722,10 +1722,20 @@ function handleColumnIncludeClick(event, filePath) {
         event.preventDefault();
         event.stopPropagation();
 
-        vscode.postMessage({
-            type: 'openIncludeFile',
-            filePath: filePath
-        });
+        if (event.shiftKey) {
+            // Shift+Alt+click: force open in system file explorer
+            vscode.postMessage({
+                type: 'openLink',
+                linkType: LinkType.FILE,
+                target: filePath,
+                forceExternal: true
+            });
+        } else {
+            vscode.postMessage({
+                type: 'openIncludeFile',
+                filePath: filePath
+            });
+        }
     }
 }
 

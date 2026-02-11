@@ -9,6 +9,7 @@
 
 import { normalizePathForLookup } from '../utils/stringUtils';
 import { TRANSACTION_TIMEOUT_MS } from '../constants/TimeoutConstants';
+import { logger } from '../utils/logger';
 
 /**
  * State captured at the start of a save transaction
@@ -60,7 +61,7 @@ export class SaveTransactionManager {
 
         // Set timeout for transaction
         const timeout = setTimeout(() => {
-            console.error(`[SaveTransaction] Transaction ${transactionId} timed out for ${normalizedPath}`);
+            logger.error(`[SaveTransaction] Transaction ${transactionId} timed out for ${normalizedPath}`);
             this.rollbackTransaction(filePath, transactionId);
         }, TRANSACTION_TIMEOUT_MS);
 
@@ -82,7 +83,7 @@ export class SaveTransactionManager {
         const transaction = this.activeTransactions.get(normalizedPath);
 
         if (!transaction || transaction.transactionId !== transactionId) {
-            console.error(`[SaveTransaction] Cannot commit - transaction ${transactionId} not found for ${normalizedPath}`);
+            logger.error(`[SaveTransaction] Cannot commit - transaction ${transactionId} not found for ${normalizedPath}`);
             return false;
         }
 
@@ -99,7 +100,7 @@ export class SaveTransactionManager {
         const transaction = this.activeTransactions.get(normalizedPath);
 
         if (!transaction || transaction.transactionId !== transactionId) {
-            console.error(`[SaveTransaction] Cannot rollback - transaction ${transactionId} not found for ${normalizedPath}`);
+            logger.error(`[SaveTransaction] Cannot rollback - transaction ${transactionId} not found for ${normalizedPath}`);
             return false;
         }
 

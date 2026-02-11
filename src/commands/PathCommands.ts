@@ -355,12 +355,35 @@ export class PathCommands extends SwitchBasedCommand {
 
         try {
             const fileUri = safeFileUri(resolvedPath, 'PathCommands-openPath');
-            // Use openExternal to open with the system's default application
-            await vscode.env.openExternal(fileUri);
-            return this.success({ opened: true, path: resolvedPath });
+
+            // Try to open in VS Code first (handles text, images, diagrams, etc.)
+            try {
+                const stats = fs.statSync(resolvedPath);
+                if (stats.isDirectory()) {
+                    // Directories: reveal in VS Code explorer if in workspace
+                    if (vscode.workspace.getWorkspaceFolder(fileUri)) {
+                        await vscode.commands.executeCommand('revealInExplorer', fileUri);
+                    } else {
+                        await vscode.commands.executeCommand('revealFileInOS', fileUri);
+                    }
+                    return this.success({ opened: true, path: resolvedPath });
+                }
+            } catch {
+                // stat failed, try opening anyway
+            }
+
+            // Try VS Code open for files
+            try {
+                await vscode.commands.executeCommand('vscode.open', fileUri);
+                return this.success({ opened: true, path: resolvedPath });
+            } catch {
+                // Fall back to system default
+                await vscode.env.openExternal(fileUri);
+                return this.success({ opened: true, path: resolvedPath });
+            }
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error(`[PathCommands] Error opening path:`, error);
+            logger.error(`[PathCommands] Error opening path:`, error);
             return this.failure(`Failed to open file: ${errorMessage}`);
         }
     }
@@ -463,13 +486,15 @@ export class PathCommands extends SwitchBasedCommand {
             });
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error(`[PathCommands] Error searching for file:`, error);
+            logger.error(`[PathCommands] Error searching for file:`, error);
             return this.failure(`Failed to search for file: ${errorMessage}`);
         }
     }
 
     /**
-     * Reveal a file path in the system file explorer (Finder on macOS, Explorer on Windows)
+     * Reveal a file path in the best explorer.
+     * If the path is inside the workspace, reveals in VS Code's Explorer sidebar.
+     * Otherwise, reveals in the system file explorer (Finder on macOS, Explorer on Windows).
      */
     private async handleRevealPathInExplorer(
         message: RevealPathInExplorerMessage,
@@ -486,12 +511,17 @@ export class PathCommands extends SwitchBasedCommand {
             const parentDir = path.dirname(resolvedPath);
             if (fs.existsSync(parentDir)) {
                 try {
-                    await vscode.commands.executeCommand('revealFileInOS', safeFileUri(parentDir, 'PathCommands-revealParentFolder'));
+                    const parentUri = safeFileUri(parentDir, 'PathCommands-revealParentFolder');
+                    if (vscode.workspace.getWorkspaceFolder(parentUri)) {
+                        await vscode.commands.executeCommand('revealInExplorer', parentUri);
+                    } else {
+                        await vscode.commands.executeCommand('revealFileInOS', parentUri);
+                    }
                     showInfo(`File not found. Opened parent folder: ${path.basename(parentDir)}`);
                     return this.success({ revealed: true, path: parentDir, fallbackToParent: true });
                 } catch (error) {
                     const errorMessage = getErrorMessage(error);
-                    console.error(`[PathCommands] Error revealing parent folder:`, error);
+                    logger.error(`[PathCommands] Error revealing parent folder:`, error);
                     showWarning(`File not found and failed to open parent folder: ${errorMessage}`);
                     return this.failure(`File not found and failed to open parent folder: ${errorMessage}`);
                 }
@@ -502,11 +532,16 @@ export class PathCommands extends SwitchBasedCommand {
         }
 
         try {
-            await vscode.commands.executeCommand('revealFileInOS', safeFileUri(resolvedPath, 'PathCommands-revealInExplorer'));
+            const fileUri = safeFileUri(resolvedPath, 'PathCommands-revealInExplorer');
+            if (vscode.workspace.getWorkspaceFolder(fileUri)) {
+                await vscode.commands.executeCommand('revealInExplorer', fileUri);
+            } else {
+                await vscode.commands.executeCommand('revealFileInOS', fileUri);
+            }
             return this.success({ revealed: true, path: resolvedPath });
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error(`[PathCommands] Error revealing path in explorer:`, error);
+            logger.error(`[PathCommands] Error revealing path in explorer:`, error);
             showWarning(`Failed to reveal in file explorer: ${errorMessage}`);
             return this.failure(`Failed to reveal in file explorer: ${errorMessage}`);
         }
@@ -903,7 +938,7 @@ export class PathCommands extends SwitchBasedCommand {
             foundFile.setContent(newContent, false);
         } catch (error) {
             const errorMessage = getErrorMessage(error);
-            console.error(`[PathCommands] Error applying edit:`, error);
+            logger.error(`[PathCommands] Error applying edit:`, error);
             return this.failure(`Failed to delete element: ${errorMessage}`);
         }
 

@@ -17,6 +17,7 @@ import { configService } from '../services/ConfigurationService';
 import { CheckFileExistsMessage, CheckIframeUrlMessage } from '../core/bridge/MessageTypes';
 import * as https from 'https';
 import * as http from 'http';
+import { logger } from '../utils/logger';
 
 /**
  * Process Commands Handler
@@ -100,7 +101,7 @@ export class ProcessCommands extends SwitchBasedCommand {
     private async handleRequestMediaIndexScan(context: CommandContext): Promise<void> {
         const mediaIndex = WorkspaceMediaIndex.getInstance();
         if (!mediaIndex) {
-            console.warn('[ProcessCommands] MediaIndex not available');
+            logger.warn('[ProcessCommands] MediaIndex not available');
             return;
         }
 
@@ -126,7 +127,7 @@ export class ProcessCommands extends SwitchBasedCommand {
                 totalFiles: stats.totalFiles
             });
         } catch (error) {
-            console.error('[ProcessCommands] Scan failed:', error);
+            logger.error('[ProcessCommands] Scan failed:', error);
             // Scan was cancelled or failed
             this.postMessage({ type: 'mediaIndexScanCancelled' });
         }

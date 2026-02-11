@@ -277,7 +277,7 @@ export class DiagramPreprocessor {
     ): Promise<RenderedDiagram[]> {
         const plugin = this._registry.findDiagramPluginForCodeBlock('plantuml');
         if (!plugin || !plugin.renderCodeBlock) {
-            console.error('[DiagramPreprocessor] PlantUML plugin not available');
+            logger.error('[DiagramPreprocessor] PlantUML plugin not available');
             return [];
         }
 
@@ -303,7 +303,7 @@ export class DiagramPreprocessor {
                     originalBlock: diagram.fullMatch
                 };
             } catch (error) {
-                console.error(`[DiagramPreprocessor] ❌ Failed to render ${diagram.id}:`, error);
+                logger.error(`[DiagramPreprocessor] ❌ Failed to render ${diagram.id}:`, error);
                 return null;
             }
         });
@@ -324,7 +324,7 @@ export class DiagramPreprocessor {
 
         // Check if plugin is ready
         if (!mermaidPlugin || !mermaidPlugin.isReady?.()) {
-            console.error('[DiagramPreprocessor] ❌ Mermaid plugin not ready (no webview)');
+            logger.error('[DiagramPreprocessor] ❌ Mermaid plugin not ready (no webview)');
             showError(
                 'Cannot export Mermaid diagrams: Please open the Kanban board view first, then try exporting again.'
             );
@@ -336,7 +336,7 @@ export class DiagramPreprocessor {
 
         // Render via plugin (handles queuing and responses)
         if (!mermaidPlugin.renderBatch) {
-            console.error('[DiagramPreprocessor] ❌ Mermaid plugin does not support renderBatch');
+            logger.error('[DiagramPreprocessor] ❌ Mermaid plugin does not support renderBatch');
             return [];
         }
         const svgs = await mermaidPlugin.renderBatch(codes);
@@ -360,7 +360,7 @@ export class DiagramPreprocessor {
                 });
 
             } else {
-                console.error(`[DiagramPreprocessor] ❌ No SVG returned for ${diagram.id}`);
+                logger.error(`[DiagramPreprocessor] ❌ No SVG returned for ${diagram.id}`);
             }
         }
 
@@ -404,7 +404,7 @@ export class DiagramPreprocessor {
         const renderPromises = diagrams.map(async (diagram) => {
             try {
                 if (!diagram.filePath) {
-                    console.error(`[DiagramPreprocessor] ❌ No file path for ${diagram.id}`);
+                    logger.error(`[DiagramPreprocessor] ❌ No file path for ${diagram.id}`);
                     return null;
                 }
 
@@ -415,7 +415,7 @@ export class DiagramPreprocessor {
 
                 // Check if file exists
                 if (!fs.existsSync(absolutePath)) {
-                    console.error(`[DiagramPreprocessor] ❌ File not found: ${absolutePath}`);
+                    logger.error(`[DiagramPreprocessor] ❌ File not found: ${absolutePath}`);
                     return null;
                 }
 
@@ -449,7 +449,7 @@ export class DiagramPreprocessor {
                 if (diagram.title) result.title = diagram.title;
                 return result;
             } catch (error) {
-                console.error(`[DiagramPreprocessor] Failed to render ${diagram.id}:`, error);
+                logger.error(`[DiagramPreprocessor] Failed to render ${diagram.id}:`, error);
                 return null;
             }
         });
@@ -471,7 +471,7 @@ export class DiagramPreprocessor {
     ): Promise<RenderedDiagram[]> {
         const plugin = this._registry.findDiagramPluginById('drawio');
         if (!plugin || !plugin.renderFile) {
-            console.error('[DiagramPreprocessor] Draw.io plugin not available');
+            logger.error('[DiagramPreprocessor] Draw.io plugin not available');
             return [];
         }
 
@@ -501,7 +501,7 @@ export class DiagramPreprocessor {
     ): Promise<RenderedDiagram[]> {
         const plugin = this._registry.findDiagramPluginById('excalidraw');
         if (!plugin || !plugin.renderFile) {
-            console.error('[DiagramPreprocessor] Excalidraw plugin not available');
+            logger.error('[DiagramPreprocessor] Excalidraw plugin not available');
             return [];
         }
 
@@ -533,7 +533,7 @@ export class DiagramPreprocessor {
         const renderPromises = diagrams.map(async (diagram) => {
             try {
                 if (!diagram.filePath) {
-                    console.error(`[DiagramPreprocessor] ❌ No file path for ${diagram.id}`);
+                    logger.error(`[DiagramPreprocessor] ❌ No file path for ${diagram.id}`);
                     return null;
                 }
 
@@ -544,7 +544,7 @@ export class DiagramPreprocessor {
 
                 // Check if file exists
                 if (!fs.existsSync(absolutePath)) {
-                    console.error(`[DiagramPreprocessor] ❌ File not found: ${absolutePath}`);
+                    logger.error(`[DiagramPreprocessor] ❌ File not found: ${absolutePath}`);
                     return null;
                 }
 
@@ -593,7 +593,7 @@ export class DiagramPreprocessor {
                 if (diagram.title) result.title = diagram.title;
                 return result;
             } catch (error) {
-                console.error(`[DiagramPreprocessor] Failed to render ${diagram.id}:`, error);
+                logger.error(`[DiagramPreprocessor] Failed to render ${diagram.id}:`, error);
                 return null;
             }
         });

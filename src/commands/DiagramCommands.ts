@@ -36,6 +36,7 @@ import { DiagramPlugin } from '../plugins/interfaces/DiagramPlugin';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import { logger } from '../utils/logger';
 
 /**
  * Diagram Commands Handler
@@ -163,7 +164,7 @@ export class DiagramCommands extends SwitchBasedCommand {
         const panel = context.getWebviewPanel();
 
         if (!panel || !panel.webview) {
-            console.error('[DiagramCommands.handleRenderPlantUML] No panel or webview available');
+            logger.error('[DiagramCommands.handleRenderPlantUML] No panel or webview available');
             return;
         }
 
@@ -201,7 +202,7 @@ export class DiagramCommands extends SwitchBasedCommand {
             });
 
         } catch (error) {
-            console.error('[PlantUML Backend] Render error:', error);
+            logger.error('[PlantUML Backend] Render error:', error);
 
             this.postMessage({
                 type: 'plantUMLRenderError',
@@ -290,7 +291,7 @@ export class DiagramCommands extends SwitchBasedCommand {
             }
 
         } catch (error) {
-            console.error(`[${capitalizedType}] Conversion failed:`, error);
+            logger.error(`[${capitalizedType}] Conversion failed:`, error);
             const panel = context.getWebviewPanel();
             if (panel && panel.webview) {
                 this.postMessage({
@@ -339,7 +340,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: 'drawioRenderSuccess', requestId, svgDataUrl: dataUrl, fileMtime });
         } catch (error) {
-            console.error('[DrawIO Backend] Render error:', error);
+            logger.error('[DrawIO Backend] Render error:', error);
             this.postMessage({ type: 'drawioRenderError', requestId, error: getErrorMessage(error) });
         }
     }
@@ -436,7 +437,7 @@ export class DiagramCommands extends SwitchBasedCommand {
                 }
             }
         } catch (error) {
-            console.warn(`[${logPrefix}] Cache cleanup warning:`, error);
+            logger.warn(`[${logPrefix}] Cache cleanup warning:`, error);
         }
     }
 
@@ -564,7 +565,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: 'excalidrawRenderSuccess', requestId, svgDataUrl: dataUrl, fileMtime });
         } catch (error) {
-            console.error('[Excalidraw Backend] Render error:', error);
+            logger.error('[Excalidraw Backend] Render error:', error);
             this.postMessage({ type: 'excalidrawRenderError', requestId, error: getErrorMessage(error) });
         }
     }
@@ -623,7 +624,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: 'pdfPageRenderSuccess', requestId, pngDataUrl: dataUrl, fileMtime });
         } catch (error) {
-            console.error('[PDF Backend] Render error:', error);
+            logger.error('[PDF Backend] Render error:', error);
             this.postMessage({ type: 'pdfPageRenderError', requestId, error: getErrorMessage(error) });
         }
     }
@@ -654,7 +655,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: successType, requestId, pageCount: info.pageCount, fileMtime });
         } catch (error) {
-            console.error(`[${fileType} Info] Error:`, error);
+            logger.error(`[${fileType} Info] Error:`, error);
             this.postMessage({ type: errorType, requestId, error: getErrorMessage(error) });
         }
     }
@@ -687,7 +688,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: 'epubPageRenderSuccess', requestId, pngDataUrl: dataUrl, fileMtime });
         } catch (error) {
-            console.error('[EPUB Backend] Render error:', error);
+            logger.error('[EPUB Backend] Render error:', error);
             this.postMessage({ type: 'epubPageRenderError', requestId, error: getErrorMessage(error) });
         }
     }
@@ -721,7 +722,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: 'xlsxRenderSuccess', requestId, pngDataUrl: dataUrl, fileMtime });
         } catch (error) {
-            console.error('[XLSX Backend] Render error:', error);
+            logger.error('[XLSX Backend] Render error:', error);
             this.postMessage({ type: 'xlsxRenderError', requestId, error: getErrorMessage(error) });
         }
     }
@@ -752,7 +753,7 @@ export class DiagramCommands extends SwitchBasedCommand {
 
             this.postMessage({ type: 'documentPageRenderSuccess', requestId, pngDataUrl: dataUrl, fileMtime });
         } catch (error) {
-            console.error('[Document Backend] Render error:', error);
+            logger.error('[Document Backend] Render error:', error);
             this.postMessage({ type: 'documentPageRenderError', requestId, error: getErrorMessage(error) });
         }
     }
@@ -795,7 +796,7 @@ export class DiagramCommands extends SwitchBasedCommand {
             await fs.promises.mkdir(cacheDir, { recursive: true });
             await fs.promises.writeFile(path.join(cacheDir, `${codeHash}.svg`), svg, 'utf8');
         } catch (error) {
-            console.warn('[Mermaid Backend] Cache write warning:', error);
+            logger.warn('[Mermaid Backend] Cache write warning:', error);
         }
     }
 }
