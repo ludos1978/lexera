@@ -13,7 +13,6 @@
  */
 
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
-import { getTaskSummaryLine } from '../utils/taskContent';
 import {
     extractDate,
     extractPersonNames,
@@ -383,9 +382,15 @@ export class GatherQueryEngine {
      * Sort column tasks by name
      */
     private _sortColumnByName(column: KanbanColumn): void {
+        // Helper to get first non-empty line as summary
+        const getFirstLine = (content: string | undefined): string => {
+            const lines = (content || '').replace(/\r\n/g, '\n').split('\n');
+            return lines.find(line => line.trim().length > 0) ?? lines[0] ?? '';
+        };
+
         column.tasks.sort((a, b) => {
-            const titleA = getTaskSummaryLine(a.content);
-            const titleB = getTaskSummaryLine(b.content);
+            const titleA = getFirstLine(a.content);
+            const titleB = getFirstLine(b.content);
             return titleA.localeCompare(titleB);
         });
     }

@@ -20,7 +20,6 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import { MainKanbanFile } from '../files/MainKanbanFile';
 import { IncludeFile } from '../files/IncludeFile';
 import { logger } from '../utils/logger';
-import { mergeLegacyTaskContent, splitTaskContent } from '../utils/taskContent';
 
 /**
  * Interface for webview panel dependencies needed by this processor
@@ -142,8 +141,10 @@ export class IncludeLoadingProcessor {
             task.includeFiles = [];
             task.includeError = false;
             if (newTitle !== undefined) {
-                const currentBody = splitTaskContent(task.content || '').remainingContent;
-                task.content = mergeLegacyTaskContent(newTitle, currentBody);
+                // Replace first line with new title, preserve rest of content
+                const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
+                lines[0] = newTitle;
+                task.content = lines.join('\n');
                 task.originalTitle = newTitle;
                 task.displayTitle = newTitle;
             }
@@ -173,7 +174,7 @@ export class IncludeLoadingProcessor {
             task.includeMode = false;
             task.content = '';
             if (newTitle !== undefined) {
-                task.content = mergeLegacyTaskContent(newTitle, '');
+                task.content = newTitle;
                 task.originalTitle = newTitle;
                 task.displayTitle = newTitle.replace(INCLUDE_SYNTAX.REGEX, '').trim();
             }

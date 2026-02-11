@@ -282,23 +282,22 @@ function getDefaultAction(file) {
     const state = getFileStateFlags(file);
 
     if (state.isMissing || state.isInaccessible) {
-        return '';
+        return 'skip';
     }
 
     if (state.isReadOnlyInclude) {
         if (state.hasAnyUnsaved) {
             return 'load_external_backup_mine';
         }
-        return state.hasExternal ? 'load_external' : '';
+        return state.hasExternal ? 'load_external' : 'skip';
     }
 
     switch (openMode) {
         case 'save_conflict':
-            // Safety default: preserve disk version in a visible backup before overwrite.
             if (state.hasExternal && state.hasEditorUnsaved) {
                 return 'load_external_backup_mine';
             }
-            return state.hasExternal ? 'overwrite_backup_external' : '';
+            return state.hasExternal ? 'overwrite_backup_external' : 'skip';
         case 'reload_request':
             if (state.hasAnyUnsaved) {
                 return 'load_external_backup_mine';
@@ -309,12 +308,24 @@ function getDefaultAction(file) {
                 return 'load_external_backup_mine';
             }
             if (state.hasExternal && state.hasAnyUnsaved) {
-                // Both sides changed — save kanban content but backup the external version
                 return 'overwrite_backup_external';
             }
-            return state.hasExternal ? 'load_external' : '';
+            return state.hasExternal ? 'load_external' : 'skip';
         default:
-            return '';
+            // Browse mode — pick a safe default based on file state
+            if (state.hasEditorUnsaved) {
+                return 'load_external_backup_mine';
+            }
+            if (state.hasExternal && state.hasInternalChanges) {
+                return 'overwrite_backup_external';
+            }
+            if (state.hasExternal) {
+                return 'load_external';
+            }
+            if (state.hasInternalChanges) {
+                return 'overwrite';
+            }
+            return 'skip';
     }
 }
 
@@ -467,32 +478,6 @@ function cancelConflictResolution() {
     hideFileManager();
 }
 
-function applyConflictResolution() {
-    if (inFlightFiles.size > 0) {
-        showFileManagerNotice('Wait for running file actions to finish before applying the conflict resolution.', 'warn', 5000);
-        return;
-    }
-    if (staleActionFiles.size > 0) {
-        showFileManagerNotice('Some actions timed out. Refresh file states before applying the conflict resolution.', 'warn', 5000);
-        refreshFileManager();
-        return;
-    }
-
-    if (conflictId && window.vscode) {
-        const resolutions = buildConflictResolutions();
-        const hasPendingActions = resolutions.some(resolution => resolution.action !== 'skip');
-
-        window.vscode.postMessage({
-            type: 'conflictResolution',
-            conflictId: conflictId,
-            cancelled: !hasPendingActions,
-            snapshotToken: conflictSnapshotToken || undefined,
-            perFileResolutions: resolutions
-        });
-    }
-    hideFileManager();
-}
-
 function clearResolutionForFile(filePath) {
     if (!filePath) return;
     perFileResolutions.delete(resolutionKey(filePath));
@@ -573,7 +558,7 @@ function getSnapshotStatus() {
         label: resolveMode ? 'Snapshot: locked, ready' : 'Snapshot: ready',
         cssClass: 'snapshot-ready',
         title: resolveMode
-            ? 'Conflict snapshot is locked for this dialog. Use "Apply Selected & Close" to apply selected actions.'
+            ? 'Conflict snapshot is locked for this dialog. Use per-file ▶ or Apply All to execute actions.'
             : 'Action snapshot is ready.'
     };
 }
@@ -620,16 +605,6 @@ function createDialogContent() {
                     ${createUnifiedTable()}
                 </div>
             </div>
-            ${isResolve ? `
-                <div class="conflict-footer">
-                    <div class="conflict-footer-content">
-                        <div class="conflict-footer-buttons">
-                            <button onclick="cancelConflictResolution()" class="conflict-btn conflict-btn-cancel">Close Without Applying</button>
-                            <button onclick="applyConflictResolution()" class="conflict-btn">Apply Selected & Close</button>
-                        </div>
-                    </div>
-                </div>
-            ` : ''}
         </div>
     `;
 }
@@ -923,10 +898,8 @@ function createUnifiedTable() {
         const actionOptions = actions.map(a =>
             `<option value="${a.value}" ${a.value === currentAction ? 'selected' : ''}>${a.label}</option>`
         ).join('');
-        const execDisabled = rowActionDisabled || dialogMode === 'resolve';
-        const execTitle = dialogMode === 'resolve'
-            ? 'In resolve dialogs, selected actions apply when you close the dialog.'
-            : 'Execute action now';
+        const execDisabled = rowActionDisabled;
+        const execTitle = 'Execute action now';
 
         // --- File column ---
         const dirPath = file.relativePath.includes('/')
@@ -1062,7 +1035,7 @@ function createUnifiedTable() {
                     </div>
                     <div class="legend-item">
                         <span class="legend-icon">Resolve Mode</span>
-                        <span class="legend-text">Choose actions per file, then use "Apply Selected & Close" to apply exactly once.</span>
+                        <span class="legend-text">Choose actions per file and execute with ▶, or use Apply All to run all at once.</span>
                     </div>
                 </div>
             </div>
@@ -1855,12 +1828,6 @@ function executeAction(buttonElement) {
 
     window.kanbanDebug?.warn('[FileManager.executeAction] Dispatching action', { filePath, action });
 
-    if (dialogMode === 'resolve') {
-        showFileManagerNotice('Action selected. Use "Apply Selected & Close" to run selected conflict actions.', 'info', 3000);
-        updateDialogContent(true);
-        return;
-    }
-
     if (action === 'skip') {
         showFileManagerNotice('Skip selected. No file action executed.', 'info', 2500);
         updateDialogContent(true);
@@ -1914,53 +1881,12 @@ function executeAllActions() {
         return;
     }
 
-    const targetFiles = dialogMode === 'resolve'
-        ? conflictFiles
-        : buildUnifiedFileList();
+    const targetFiles = buildUnifiedFileList();
 
     window.kanbanDebug?.warn('[FileManager.executeAllActions] Dispatching action', { action, fileCount: targetFiles.length });
 
     if (!targetFiles || targetFiles.length === 0) {
         window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: No files available for apply-all action');
-        return;
-    }
-
-    if (dialogMode === 'resolve') {
-        if (!window.vscode) {
-            window.kanbanDebug?.warn('[FileManager.executeAllActions] ABORTED: window.vscode undefined (resolve mode)');
-            return;
-        }
-        if (!conflictId) {
-            showFileManagerNotice('Conflict context missing. Close and reopen the dialog.', 'error', 5000);
-            return;
-        }
-        if (!conflictSnapshotToken) {
-            showFileManagerNotice('Conflict snapshot missing. Reopen the conflict dialog before applying all.', 'warn', 5000);
-            return;
-        }
-
-        const resolutions = targetFiles.map(file => {
-            const allowed = getActionsForFile(file).some(item => item.value === action);
-            return {
-                path: file.path,
-                action: allowed ? action : 'skip'
-            };
-        });
-
-        if (!resolutions.some(resolution => resolution.action !== 'skip')) {
-            showFileManagerNotice('Selected action is not valid for the current file states.', 'warn', 4000);
-            return;
-        }
-
-        window.vscode.postMessage({
-            type: 'conflictResolution',
-            conflictId: conflictId,
-            cancelled: false,
-            snapshotToken: conflictSnapshotToken,
-            perFileResolutions: resolutions
-        });
-
-        hideFileManager();
         return;
     }
 
@@ -2128,7 +2054,6 @@ function initializeFileManager() {
     window.openUnifiedDialog = openUnifiedDialog;
     window.requestOpenFileDialog = requestOpenFileDialog;
     window.cancelConflictResolution = cancelConflictResolution;
-    window.applyConflictResolution = applyConflictResolution;
     window.onConflictActionChange = onConflictActionChange;
     window.onConflictApplyAll = onConflictApplyAll;
     window.closeDialog = closeDialog;

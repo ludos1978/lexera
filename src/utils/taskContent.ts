@@ -1,17 +1,9 @@
 /**
  * Utilities for unified task content.
  *
- * Task markdown representation still uses:
- * - checkbox line for the summary line
- * - indented lines for the remaining content
- *
- * Internally, tasks store a single `content` string.
+ * Task content is now stored as a single unified string.
+ * No title/description split - content is preserved exactly as-is.
  */
-
-export interface TaskContentParts {
-    summaryLine: string;
-    remainingContent: string;
-}
 
 function normalizeLineEndings(value: string): string {
     return value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -24,9 +16,19 @@ export function normalizeTaskContent(value: string | undefined | null): string {
     return normalizeLineEndings(value);
 }
 
-/**
- * Merge legacy split values into unified content.
- */
+// ============================================================================
+// DEPRECATED: The following functions are no longer used.
+// They were part of the legacy title/description split system.
+// Keeping them temporarily for backwards compatibility with tests.
+// ============================================================================
+
+/** @deprecated No longer used - content is unified */
+export interface TaskContentParts {
+    summaryLine: string;
+    remainingContent: string;
+}
+
+/** @deprecated No longer used - content is unified */
 export function mergeLegacyTaskContent(title?: string, description?: string): string {
     const normalizedTitle = normalizeTaskContent(title);
     const normalizedDescription = normalizeTaskContent(description);
@@ -47,9 +49,7 @@ export function mergeLegacyTaskContent(title?: string, description?: string): st
     return `${normalizedTitle}\n${normalizedDescription}`;
 }
 
-/**
- * Split unified content into markdown-compatible summary + remainder.
- */
+/** @deprecated No longer used - content is unified */
 export function splitTaskContent(content: string | undefined | null): TaskContentParts {
     const normalized = normalizeTaskContent(content);
     if (!normalized) {
@@ -63,10 +63,7 @@ export function splitTaskContent(content: string | undefined | null): TaskConten
     };
 }
 
-/**
- * Returns a folded-summary candidate.
- * Uses the first non-empty line, then falls back to the first line.
- */
+/** @deprecated No longer used - content is unified */
 export function getTaskSummaryLine(content: string | undefined | null): string {
     const normalized = normalizeTaskContent(content);
     if (!normalized) {

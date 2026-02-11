@@ -5244,16 +5244,24 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
 
     // Add highlight animation if requested
     if (highlight) {
-        // For column-level highlights, highlight only inner elements (not the full-height wrapper or stack)
-        const isColumnElement = targetElement.classList.contains('kanban-full-height-column');
-        let elementsToHighlight = [targetElement];
+        // Determine the element to highlight:
+        // - For tasks: always highlight the whole task-item, not inner elements
+        // - For columns: highlight only inner elements (not the full-height wrapper or stack)
+        let elementsToHighlight = [];
 
-        if (isColumnElement) {
-            // Highlight only the inner column parts: header, title, content, footer
-            const innerElements = targetElement.querySelectorAll('.column-header, .column-title, .column-content, .column-footer');
+        if (taskElement) {
+            // Always highlight the complete task card
+            elementsToHighlight = [taskElement];
+        } else if (columnElement) {
+            // For column-level highlights, highlight only inner elements
+            const innerElements = columnElement.querySelectorAll('.column-header, .column-title, .column-content, .column-footer');
             if (innerElements.length > 0) {
                 elementsToHighlight = Array.from(innerElements);
+            } else {
+                elementsToHighlight = [columnElement];
             }
+        } else {
+            elementsToHighlight = [targetElement];
         }
 
         // Remove any existing highlight

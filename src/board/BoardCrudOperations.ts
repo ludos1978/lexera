@@ -5,7 +5,7 @@
 
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
 import { IdGenerator } from '../utils/idGenerator';
-import { getTaskSummaryLine, normalizeTaskContent } from '../utils/taskContent';
+import { normalizeTaskContent } from '../utils/taskContent';
 import {
     applyColumnOrder,
     buildColumnOrderAfterMove,
@@ -385,16 +385,22 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
+        // Helper to get first line of content as summary
+        const getFirstLine = (content: string | undefined): string => {
+            const lines = (content || '').replace(/\r\n/g, '\n').split('\n');
+            return lines.find(line => line.trim().length > 0) ?? lines[0] ?? '';
+        };
+
         if (sortType === 'title') {
             column.tasks.sort((a, b) => {
-                const titleA = getTaskSummaryLine(a.content);
-                const titleB = getTaskSummaryLine(b.content);
+                const titleA = getFirstLine(a.content);
+                const titleB = getFirstLine(b.content);
                 return titleA.localeCompare(titleB);
             });
         } else if (sortType === 'numericTag') {
             column.tasks.sort((a, b) => {
-                const numA = extractNumericTag(getTaskSummaryLine(a.content));
-                const numB = extractNumericTag(getTaskSummaryLine(b.content));
+                const numA = extractNumericTag(getFirstLine(a.content));
+                const numB = extractNumericTag(getFirstLine(b.content));
 
                 if (numA === null && numB === null) return 0;
                 if (numA === null) return 1;

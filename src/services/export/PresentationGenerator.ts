@@ -1,7 +1,6 @@
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
 import { TagUtils, TagVisibility } from '../../utils/tagUtils';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
-import { splitTaskContent } from '../../utils/taskContent';
 
 /**
  * Options for presentation generation
@@ -156,33 +155,26 @@ export class PresentationGenerator {
             const tasks = this.filterTasks(column.tasks, options);
 
             for (const task of tasks) {
-                const { summaryLine, remainingContent } = splitTaskContent(task.content);
-                // Task title (plain text, like presentation format)
-                // Use originalTitle to preserve !!!include(...)!!! syntax (displayTitle has badge placeholders)
-                let title = task.originalTitle ?? summaryLine ?? '';
+                // SIMPLIFIED: Use task.content directly, no title/description split
+                let content = (task.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+                // Strip include syntax if requested
                 if (options.stripIncludes) {
-                    title = title.replace(INCLUDE_SYNTAX.REGEX, '').trim();
+                    content = content.replace(INCLUDE_SYNTAX.REGEX, '').trim();
                 }
-
-                if (title) {
-                    lines.push(title, '');
-                }
-
-                // Task content
-                let description = remainingContent ?? '';
 
                 // Apply tag filtering if specified
                 if (options.tagVisibility && options.tagVisibility !== 'all') {
-                    description = TagUtils.processMarkdownContent(description, options.tagVisibility);
+                    content = TagUtils.processMarkdownContent(content, options.tagVisibility);
                 }
 
-                // Filter excluded lines from description
+                // Filter excluded lines
                 if (options.excludeTags && options.excludeTags.length > 0) {
-                    description = this.filterExcludedLines(description, options.excludeTags);
+                    content = this.filterExcludedLines(content, options.excludeTags);
                 }
 
-                if (description) {
-                    lines.push(description, '');
+                if (content) {
+                    lines.push(content, '');
                 }
 
                 // Page break after task

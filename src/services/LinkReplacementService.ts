@@ -28,7 +28,6 @@ import { showInfo, showWarning } from './NotificationService';
 import { logger } from '../utils/logger';
 import { PathFormat } from './FileSearchWebview';
 import { extractIncludeFiles } from '../constants/IncludeConstants';
-import { splitTaskContent } from '../utils/taskContent';
 
 /**
  * Options for path replacement operations
@@ -761,8 +760,9 @@ export class LinkReplacementService {
                 const taskBaseDir = task.includeContext?.includeDir || mainFileDir;
                 const oldContent = task.content || '';
                 const newContent = this._applyAllReplacements(oldContent, replacements, taskBaseDir, options.pathFormat);
-                const oldTitle = splitTaskContent(oldContent).summaryLine;
-                const newTitle = splitTaskContent(newContent).summaryLine;
+                // Get first line as title for include switch detection
+                const oldTitle = oldContent.replace(/\r\n/g, '\n').split('\n')[0] || '';
+                const newTitle = newContent.replace(/\r\n/g, '\n').split('\n')[0] || '';
 
                 // Check for include switch
                 const hadIncludeSwitch = await this._handleIncludeSwitchIfNeeded(

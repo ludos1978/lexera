@@ -23,7 +23,6 @@ import { escapeRegExp, getErrorMessage, toForwardSlashes } from '../../utils/str
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
 import { MarkdownKanbanParser } from '../../markdownParser';
 import { logger } from '../../utils/logger';
-import { getTaskSummaryLine, splitTaskContent } from '../../utils/taskContent';
 
 /**
  * Export options - SINGLE unified system for ALL exports
@@ -1501,13 +1500,14 @@ export class ExportService {
             let kanbanContent = '';
             const tasks = PresentationParser.slidesToTasks(slides);
             for (const task of tasks) {
-                const { summaryLine, remainingContent } = splitTaskContent(task.content);
+                // Split content into lines, first line is task summary, rest is indented description
+                const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
+                const summaryLine = lines[0] || '';
                 kanbanContent += `- [ ] ${summaryLine}\n`;
-                if (remainingContent) {
-                    // Indent description lines
-                    const descLines = remainingContent.split('\n');
-                    for (const line of descLines) {
-                        kanbanContent += `  ${line}\n`;
+                if (lines.length > 1) {
+                    // Indent remaining lines as description
+                    for (let i = 1; i < lines.length; i++) {
+                        kanbanContent += `  ${lines[i]}\n`;
                     }
                 }
             }
@@ -1571,7 +1571,10 @@ export class ExportService {
                 // Extract from tasks
                 if (column.tasks) {
                     for (const task of column.tasks) {
-                        const taskTitleClean = escapeRegExp(getTaskSummaryLine(task.content));
+                        // Get first non-empty line as task summary
+                        const taskLines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
+                        const taskSummary = taskLines.find(line => line.trim().length > 0) ?? taskLines[0] ?? '';
+                        const taskTitleClean = escapeRegExp(taskSummary);
                         const taskRegex = new RegExp(`<!-- _class: ([^>]+) -->\\s*- \\[[ x]\\] ${taskTitleClean}`, 'm');
                         const taskMatch = markdown.match(taskRegex);
 

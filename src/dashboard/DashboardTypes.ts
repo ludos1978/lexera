@@ -318,6 +318,7 @@ export interface DashboardSearchTextMessage {
     query: string;
     useRegex?: boolean;
     scope?: string;
+    saveSearch?: boolean;
 }
 
 /**

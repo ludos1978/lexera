@@ -6567,7 +6567,7 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 .markdown-content h6::before {
   content: "";
   display: inline-block;
-  width: 16px;
+  width: 10px;
   height: 1cap;
   margin-right: 2px;
   vertical-align: middle;
@@ -6615,8 +6615,9 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 /* Bold - before and after */
 .markdown-content strong::before, .markdown-content strong::after,
 .markdown-content b::before, .markdown-content b::after {
-  content: "*"; display: inline-block;
-  width: 12px; height: 14px;
+  content: "**"; display: inline-block;
+  /* width: 12px;  */
+  height: 14px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 9px !important; font-weight: bold;
   background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
@@ -6629,8 +6630,9 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 /* Italic - before and after */
 .markdown-content em::before, .markdown-content em::after,
 .markdown-content i::before, .markdown-content i::after {
-  content: "_"; display: inline-block;
-  width: 12px; height: 14px;
+  content: "*"; display: inline-block;
+  /* width: 12px;  */
+  height: 14px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 9px !important; font-style: normal;
   background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
@@ -6645,7 +6647,8 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 .markdown-content s::before, .markdown-content s::after,
 .markdown-content strike::before, .markdown-content strike::after {
   content: "~"; display: inline-block;
-  width: 12px; height: 14px;
+  /* width: 12px;  */
+  height: 14px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 9px !important;
   background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
@@ -6657,8 +6660,9 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 
 /* Inline code - before and after */
 .markdown-content code::before, .markdown-content code::after {
-  content: "`"; display: inline-block;
-  width: 12px; height: 14px;
+  content: "```"; display: inline-block;
+  /* width: 12px;  */
+  height: 14px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 10px !important; font-weight: bold;
   background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
@@ -6670,20 +6674,22 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 .markdown-content pre code::before, .markdown-content pre code::after { display: none; }
 
 /* Preformatted text / Code block - only before */
-.markdown-content pre::before {
+/* .markdown-content pre::before {
   content: "{}"; display: inline-block; float: left;
-  width: 20px; height: 16px; margin-right: 6px; margin-top: 2px;
+  width: 20px; 
+  height: 16px; margin-right: 6px; margin-top: 2px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 9px !important; font-weight: bold;
   background: rgba(45, 45, 45, 0.6); color: rgba(255, 255, 255, 0.8);
   text-align: center; line-height: 16px !important;
   vertical-align: top; opacity: 0.7;
-}
+} */
 
 /* Underline - before and after */
 .markdown-content u::before, .markdown-content u::after {
   content: "u"; display: inline-block;
-  width: 12px; height: 14px;
+  /* width: 12px;  */
+  height: 14px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 8px !important; font-weight: bold;
   background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
@@ -6696,21 +6702,24 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 
 /* Mark/Highlight - before and after */
 .markdown-content mark::before, .markdown-content mark::after {
-  content: "="; display: inline-block;
-  width: 14px; height: 14px;
+  content: "=="; display: inline-block;
+  /* width: 14px;  */
+  height: 14px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 9px !important; font-weight: bold;
   background: rgba(255, 235, 59, 0.4); color: rgba(51, 51, 51, 0.7);
-  vertical-align: text-bottom;
+  vertical-align: text-top;
   line-height: 14px !important;
-  vertical-align: middle; opacity: 0.6;
+  opacity: 0.6;
 }
 .markdown-content mark::before { margin-right: 2px; }
 .markdown-content mark::after { margin-left: 2px; }
 
 /* Links - before and after with brackets */
 .markdown-content a::before, .markdown-content a::after {
-  display: inline; width: 10px; height: 14px;
+  display: inline; 
+  /* width: 10px;  */
+  height: 14px;
   border: 1px solid rgba(74, 144, 226, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 10px !important; font-weight: bold;
   background: rgba(227, 242, 253, 0.6); color: rgba(25, 118, 210, 0.7);
@@ -6723,7 +6732,9 @@ kanban-full-height-column collapsed-vertical .kanban-person-tag::before {
 /* Superscript/Subscript - before and after */
 .markdown-content sup::before, .markdown-content sup::after,
 .markdown-content sub::before, .markdown-content sub::after {
-  display: inline-block; width: 10px; height: 12px;
+  display: inline-block; 
+  /* width: 10px;  */
+  height: 12px;
   border: 1px solid rgba(102, 102, 102, 0.5); border-radius: 2px;
   font-family: monospace; font-size: 8px !important; font-weight: bold;
   background: rgba(240, 240, 240, 0.6); color: rgba(51, 51, 51, 0.7);
@@ -6984,16 +6995,16 @@ body.font-family-consolas {
 
 /* Mark/highlight styling */
 mark {
-    background-color: var(--vscode-editor-findMatchHighlightBackground, #ffaa88);
+    background-color: #fdfd49;
     color: var(--vscode-editor-foreground);
-    padding: 1px 2px;
+    /* padding: 1px 2px; */
     border-radius: 2px;
     display: inline-block;
     word-break: break-word;
 }
 
 .vscode-dark mark {
-    background-color: var(--vscode-editor-findMatchHighlightBackground, #885533);
+    background-color: rgb(113, 112, 0);
     color: var(--vscode-editor-foreground);
 }
 
@@ -9159,73 +9170,6 @@ figcaption {
 .conflict-no-action {
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
-}
-
-/* Conflict footer */
-.conflict-footer {
-    border-top: 2px solid var(--vscode-gitDecoration-modifiedResourceForeground);
-    padding: 12px 16px;
-    background: var(--vscode-sideBar-background);
-}
-
-.conflict-footer-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-}
-
-.conflict-apply-all {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-}
-
-.conflict-apply-all label {
-    color: var(--vscode-descriptionForeground);
-    white-space: nowrap;
-}
-
-.conflict-apply-all select {
-    padding: 4px 6px;
-    font-size: 11px;
-    background: var(--vscode-dropdown-background);
-    color: var(--vscode-dropdown-foreground);
-    border: 1px solid var(--vscode-dropdown-border);
-    border-radius: 3px;
-}
-
-.conflict-footer-buttons {
-    display: flex;
-    gap: 8px;
-}
-
-.conflict-btn {
-    padding: 6px 16px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.conflict-btn-cancel {
-    background: var(--button-secondary-background);
-    color: var(--button-secondary-foreground);
-}
-
-.conflict-btn-cancel:hover {
-    background: var(--button-secondary-background-hover);
-}
-
-.conflict-btn-resolve {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-}
-
-.conflict-btn-resolve:hover {
-    background: var(--vscode-button-hoverBackground);
 }
 
 /* Marp Global Settings Button and Menu */

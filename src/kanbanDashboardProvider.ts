@@ -132,7 +132,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 case 'searchText':
                     await this._handleTextSearch(message.query, {
                         useRegex: message.useRegex,
-                        scope: message.scope
+                        scope: message.scope,
+                        saveSearch: message.saveSearch
                     });
                     break;
                 case 'navigateToElement':
@@ -472,7 +473,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     /**
      * Handle text search
      */
-    private async _handleTextSearch(query: string, options?: { useRegex?: boolean; scope?: string }): Promise<void> {
+    private async _handleTextSearch(query: string, options?: { useRegex?: boolean; scope?: string; saveSearch?: boolean }): Promise<void> {
         if (!query || query.trim().length === 0) {
             this._view?.webview.postMessage({ type: 'searchResults', results: [], searchType: 'text' });
             return;
@@ -486,7 +487,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             }
         }
 
-        await BoardRegistryService.getInstance().addSearch(query, options?.useRegex, options?.scope as any);
+        if (options?.saveSearch) {
+            await BoardRegistryService.getInstance().addSearch(query, options?.useRegex, options?.scope as any);
+        }
 
         const scope = options?.scope || 'active';
         const boards = await this._collectBoardsForScope(scope);
@@ -913,6 +916,11 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             display: flex;
             gap: 4px;
         }
+        .search-options-row {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
         .search-input {
             flex: 1;
             height: 26px;
@@ -1007,6 +1015,11 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         <div class="search-section">
             <div class="search-input-container">
                 <input type="text" class="search-input" placeholder="Search board content..." />
+                <button class="search-btn" title="Search">
+                    <span class="codicon codicon-search"></span>
+                </button>
+            </div>
+            <div class="search-options-row">
                 <button class="regex-toggle-btn" title="Use Regular Expression">
                     <span class="regex-icon">.*</span>
                 </button>
@@ -1015,9 +1028,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     <option value="listed">All Listed</option>
                     <option value="open">Open Boards</option>
                 </select>
-                <button class="search-btn" title="Search">
-                    <span class="codicon codicon-search"></span>
-                </button>
             </div>
             <div class="recent-searches" id="recent-searches"></div>
         </div>
@@ -1044,13 +1054,13 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             <button class="refresh-btn" id="refresh-btn" title="Refresh">↻</button>
         </div>
 
-        <!-- Pinned Search Results Section -->
+        <!-- Pinned Searches Section -->
         <div class="section">
             <div class="tree-row section-header" data-section="search">
                 <div class="tree-indent"><div class="indent-guide"></div></div>
                 <div class="tree-twistie collapsible expanded"></div>
                 <div class="tree-contents">
-                    <h3>Search Results</h3>
+                    <h3>Pinned Searches</h3>
                 </div>
             </div>
             <div class="section-content" id="search-content">
@@ -1147,20 +1157,20 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             });
 
             // Setup search
-            searchBtnEl.addEventListener('click', performSearch);
+            searchBtnEl.addEventListener('click', () => { performSearch(true); });
             searchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') { performSearch(); }
+                if (e.key === 'Enter') { performSearch(true); }
             });
             searchInput.addEventListener('input', () => {
                 clearTimeout(searchDebounceTimer);
                 searchDebounceTimer = setTimeout(() => {
-                    if (searchInput.value.length >= 2) { performSearch(); }
+                    if (searchInput.value.length >= 2) { performSearch(false); }
                 }, 300);
             });
             regexToggleBtn.addEventListener('click', () => {
                 useRegex = !useRegex;
                 regexToggleBtn.classList.toggle('active', useRegex);
-                if (searchInput.value.trim().length >= 2) { performSearch(); }
+                if (searchInput.value.trim().length >= 2) { performSearch(false); }
             });
             document.getElementById('close-live-search').addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1209,7 +1219,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             } else if (message.type === 'setSearchQuery') {
                 if (message.query) {
                     searchInput.value = message.query;
-                    performSearch();
+                    performSearch(true);
                 }
             }
         });
@@ -1805,11 +1815,12 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         // ============= Search Functions =============
 
-        function performSearch() {
+        function performSearch(saveSearch) {
             const query = searchInput.value.trim();
             if (query.length === 0) { return; }
             const msg = { type: 'searchText', query: query, scope: scopeSelect.value };
             if (useRegex) { msg.useRegex = true; }
+            if (saveSearch) { msg.saveSearch = true; }
             vscode.postMessage(msg);
             liveSearchList.innerHTML = '<div class="empty-message">Searching...</div>';
             liveSearchSection.style.display = 'block';
@@ -1833,7 +1844,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 const query = item.getAttribute('data-query');
                 item.querySelector('.recent-search-query').addEventListener('click', function() {
                     searchInput.value = query;
-                    performSearch();
+                    performSearch(false);
                 });
                 item.querySelector('[data-action="pin"]').addEventListener('click', function(e) {
                     e.stopPropagation();

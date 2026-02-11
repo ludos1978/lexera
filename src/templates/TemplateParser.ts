@@ -214,20 +214,15 @@ export class TemplateParser {
         let currentTask: TemplateTask | null = null;
         let descriptionLines: string[] = [];
 
-        const mergeTaskContent = (summaryLine: string, description: string): string => {
-            if (!description) {
-                return summaryLine;
-            }
-            return `${summaryLine}\n${description}`;
-        };
-
         const flushTaskDescription = (): void => {
             if (!currentTask || descriptionLines.length === 0) {
                 return;
             }
-            const summaryLine = currentTask.content.split('\n')[0] || '';
+            // Append description lines to content (first line is already set as summary)
             const description = descriptionLines.join('\n').trim();
-            currentTask.content = mergeTaskContent(summaryLine, description);
+            if (description) {
+                currentTask.content = currentTask.content + '\n' + description;
+            }
             descriptionLines = [];
         };
 

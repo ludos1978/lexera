@@ -14,7 +14,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ExportArchivedItemsMessage, OpenArchiveFileMessage } from '../core/bridge/MessageTypes';
-import { splitTaskContent } from '../utils/taskContent';
 
 /**
  * Archive Commands Handler
@@ -249,18 +248,17 @@ archived: true
      */
     private formatTaskForExport(task: { content?: string; completed?: boolean }, archiveTag: string): string {
         const checkbox = task.completed ? '- [x]' : '- [ ]';
-        const normalizedContent = task.content || '';
-        const { summaryLine, remainingContent } = splitTaskContent(normalizedContent);
-        const cleanTitle = this.removeInternalTags(summaryLine || '');
-        const cleanDescription = this.removeInternalTags(remainingContent || '');
+        const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
 
+        // First line is summary, rest is description
+        const cleanTitle = this.removeInternalTags(lines[0] || '');
         let result = `${checkbox} ${cleanTitle} ${archiveTag}`;
 
-        // Add description as indented content if present
-        if (cleanDescription) {
-            const descriptionLines = cleanDescription.split('\n');
-            for (const line of descriptionLines) {
-                result += '\n    ' + line;
+        // Add remaining lines as indented description
+        if (lines.length > 1) {
+            for (let i = 1; i < lines.length; i++) {
+                const cleanLine = this.removeInternalTags(lines[i]);
+                result += '\n    ' + cleanLine;
             }
         }
 

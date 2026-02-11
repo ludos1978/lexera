@@ -15,7 +15,6 @@ import {
 } from './DashboardTypes';
 import { TextMatcher } from '../utils/textMatcher';
 import { logger } from '../utils/logger';
-import { getTaskSummaryLine, splitTaskContent } from '../utils/taskContent';
 
 // Date locale configuration - matches frontend tagUtils.js
 let dateLocale: string = 'de-DE';
@@ -244,7 +243,9 @@ export class DashboardScanner {
             for (const task of column.tasks || []) {
                 totalTasks++;
                 const taskText = task.content || '';
-                const taskSummary = getTaskSummaryLine(task.content);
+                // Get first non-empty line as task summary
+                const taskLines = taskText.replace(/\r\n/g, '\n').split('\n');
+                const taskSummary = taskLines.find(line => line.trim().length > 0) ?? taskLines[0] ?? '';
                 const taskTitleTemporals = this._extractTemporalInfo(taskSummary);
                 // Use first temporal result for task context (usually there's only one)
                 const taskTitleTemporal = taskTitleTemporals.length > 0 ? taskTitleTemporals[0] : null;
@@ -651,7 +652,8 @@ export class DashboardScanner {
             let taskIndex = 0;
             for (const task of column.tasks || []) {
                 const taskText = task.content || '';
-                const { summaryLine } = splitTaskContent(task.content);
+                // Get first line as task summary
+                const summaryLine = taskText.replace(/\r\n/g, '\n').split('\n')[0] || '';
                 const tags = TextMatcher.extractTags(taskText);
 
                 // Check if any tag in task matches the search (exact match)

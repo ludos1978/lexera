@@ -18,7 +18,6 @@ import { KanbanBoard, KanbanColumn, KanbanTask } from '../board/KanbanTypes';
 import { MarkdownPatterns, HtmlPatterns, DiagramPatterns, isUrl } from '../shared/regexPatterns';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
 import { TextMatcher, TextMatcherOptions } from '../utils/textMatcher';
-import { getTaskSummaryLine } from '../utils/taskContent';
 
 /**
  * Types of embedded elements that can be scanned
@@ -92,7 +91,12 @@ export class BoardContentScanner {
     }
 
     private _getTaskSummary(task: KanbanTask): string {
-        return task.displayTitle || getTaskSummaryLine(task.content);
+        if (task.displayTitle) {
+            return task.displayTitle;
+        }
+        // Get first non-empty line as summary
+        const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
+        return lines.find(line => line.trim().length > 0) ?? lines[0] ?? '';
     }
 
     private _buildColumnLocation(column: KanbanColumn, field: ElementLocation['field']): ElementLocation {

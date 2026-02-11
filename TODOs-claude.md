@@ -11,7 +11,7 @@
 The saving system is robust with all critical safety mechanisms in place:
 
 | Mechanism | Status |
-|-----------|--------|
+| --- | --- |
 | Atomic writes (temp + fsync + rename) | ✅ 6 retries |
 | Post-write verification | ✅ 5 retries, 120ms delays |
 | Round-trip validation | ✅ `_validateGeneratedMarkdownRoundTrip()` |

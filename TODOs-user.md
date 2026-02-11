@@ -1,3 +1,7 @@
+- [ ] why is there a apply and close button at the bottom if the file manager? this should be done with the execute buttons!!!
+
+- [ ] does markdown put lists that are separated by a newline put into separate blocks?
+
 - [ ] i want to integrate the kanban boards view with the dashboard view and the search.
   the kanban boards should integrate the boards fuctionality from the dashboard. the configuration which boards are checked for events and tags etc. should be configurable within the kanban boards. Also it should be lockable, so that no board can be added or removed without unlocking. it's locked by default. of course we remove the boards from the dashboard. also add broken embeds and links to the list of elements to that can be automatically checked for. the results should be listed in the dashboard as well.
 
