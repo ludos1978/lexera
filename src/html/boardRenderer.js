@@ -1845,6 +1845,13 @@ function createColumnElement(column, columnIndex) {
     columnDiv.setAttribute('data-row', getColumnRow(column.title));
     columnDiv.setAttribute('data-column-sticky', hasStickyTag ? 'true' : 'false');
 
+    // Set primary tag attribute (first non-layout tag) - must match updateVisualTagState behavior
+    // This drives default style exclusion via :not([data-column-tag]) selectors
+    const primaryTag = allTags.find(t => !t.startsWith('row') && !t.startsWith('gather_') && !t.startsWith('span') && t !== 'stack' && t !== 'sticky');
+    if (primaryTag) {
+        columnDiv.setAttribute('data-column-tag', primaryTag);
+    }
+
     // Add separate tag attributes for border and background (skips tags without those properties)
     if (columnBorderTag) {
         columnDiv.setAttribute('data-column-border-tag', columnBorderTag);
@@ -2086,6 +2093,11 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     // Find first tag with background definition (task-level only)
     const taskBgTag = getFirstTagWithProperty(taskHeader, 'background');
 
+    // Set primary tag attribute (first non-layout tag) - must match updateVisualTagState behavior
+    // This drives default style exclusion via :not([data-task-tag]) selectors
+    const taskPrimaryTag = allTags.find(t => !t.startsWith('row') && !t.startsWith('gather_') && !t.startsWith('span') && t !== 'stack' && t !== 'sticky');
+    const primaryTagAttribute = taskPrimaryTag ? ` data-task-tag="${taskPrimaryTag}"` : '';
+
     // Add separate tag attributes for border and background (skips tags without those properties)
     const borderTagAttribute = taskBorderTag ? ` data-task-border-tag="${taskBorderTag}"` : '';
     const bgTagAttribute = taskBgTag ? ` data-task-bg-tag="${taskBgTag}"` : '';
@@ -2155,7 +2167,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     return `
         <div class="${['task-item', isCollapsed ? 'collapsed' : '', headerClasses || '', footerClasses || '', taskIncludeErrorClass].filter(cls => cls && cls.trim()).join(' ')}${loadingClass}"
              data-task-id="${task.id}"
-             data-task-index="${taskIndex}"${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
+             data-task-index="${taskIndex}"${primaryTagAttribute}${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
              style="${paddingTopStyle} ${paddingBottomStyle}">
             ${loadingOverlay}
             ${headerBarsHtml}
@@ -2703,6 +2715,18 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
             sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
+    }
+
+    // Handle embedded documents (PDF, EPUB, Document slideshows)
+    const slideshowWrapper = target.closest('.pdf-slideshow-wrapper');
+    if (slideshowWrapper) {
+        const embeddedPath = slideshowWrapper.dataset.filePath;
+        if (embeddedPath) {
+            event.preventDefault();
+            event.stopPropagation();
+            sendOpenLinkMessage(LinkType.FILE, embeddedPath, { taskId, columnId, includeContext, forceExternal: event.shiftKey });
+            return true;
+        }
     }
 
     return false;
