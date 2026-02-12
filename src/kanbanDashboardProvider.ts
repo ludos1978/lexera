@@ -662,35 +662,30 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         /* ===========================================
-           Sort Mode Toggle
+           Sort Mode Dropdown
            =========================================== */
         .sort-mode-bar {
             display: flex;
             gap: 4px;
             padding: 4px 8px;
             border-bottom: 1px solid var(--vscode-panel-border, transparent);
+            align-items: center;
         }
-        .sort-mode-btn {
+        .sort-mode-select {
             flex: 1;
-            height: 22px;
-            padding: 0 6px;
-            border: 1px solid var(--vscode-button-secondaryBackground);
-            background: transparent;
-            color: var(--vscode-foreground);
+            height: 26px;
+            padding: 0 8px;
+            border: 1px solid var(--vscode-input-border, transparent);
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
             border-radius: 2px;
+            outline: none;
+            font-size: inherit;
             cursor: pointer;
-            font-size: 11px;
-            opacity: 0.7;
+            min-width: 0;
         }
-        .sort-mode-btn:hover {
-            opacity: 1;
-            background: var(--vscode-list-hoverBackground);
-        }
-        .sort-mode-btn.active {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            border-color: var(--vscode-button-background);
-            opacity: 1;
+        .sort-mode-select:focus {
+            border-color: var(--vscode-focusBorder);
         }
 
         /* ===========================================
@@ -1048,10 +1043,12 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             </div>
         </div>
 
-        <!-- Sort Mode Toggle -->
+        <!-- Sort Mode Dropdown -->
         <div class="sort-mode-bar">
-            <button class="sort-mode-btn active" data-mode="boardFirst">Board First</button>
-            <button class="sort-mode-btn" data-mode="merged">Merged</button>
+            <select class="sort-mode-select" id="sort-mode-select">
+                <option value="boardFirst">Board First</option>
+                <option value="merged">Merged</option>
+            </select>
             <button class="refresh-btn" id="refresh-btn" title="Refresh">↻</button>
         </div>
 
@@ -1193,12 +1190,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 refresh();
             });
 
-            // Setup sort mode buttons
-            document.querySelectorAll('.sort-mode-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const mode = btn.getAttribute('data-mode');
-                    setSortMode(mode);
-                });
+            // Setup sort mode dropdown
+            document.getElementById('sort-mode-select').addEventListener('change', (e) => {
+                setSortMode(e.target.value);
             });
 
             vscode.postMessage({ type: 'dashboardReady' });
@@ -1237,9 +1231,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function updateSortModeButtons() {
             const mode = dashboardData.sortMode || 'boardFirst';
-            document.querySelectorAll('.sort-mode-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
-            });
+            const select = document.getElementById('sort-mode-select');
+            if (select) { select.value = mode; }
         }
 
         function renderUpcomingItems() {

@@ -2695,8 +2695,8 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
         return true;
     }
 
-    // Handle images
-    if (img) {
+    // Handle images (skip if inside a slideshow — handled below)
+    if (img && !img.closest('.pdf-slideshow-wrapper')) {
         event.preventDefault();
         event.stopPropagation();
         const originalSrc = img.getAttribute('data-original-src') || img.getAttribute('src');

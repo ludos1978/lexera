@@ -2567,7 +2567,7 @@ function showFileDropDialogue(options) {
 
     // Option 3: Search for file in workspace (always available)
     buttons.push({
-        text: 'Search for file',
+        text: 'Automatic path fix',
         primary: primaryAction === 'search',
         action: () => {
             if (applyAllCheckbox?.checked) {

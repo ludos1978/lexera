@@ -537,7 +537,7 @@ function togglePathMenu(container, filePath, mediaType) {
     // Extract alt/label text for web search (from data attribute, child img, or filename)
     const altText = container.dataset.altText || container.querySelector('img')?.alt || container.querySelector('video')?.title || '';
     const escapedAltText = altText.replace(/'/g, "\\'").replace(/"/g, '\\"');
-    const webSearchHtml = `<button class="image-path-menu-item" onclick="event.stopPropagation(); webSearchForImage('${escapedAltText}', '${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🌐 Web Search</button>`;
+    const webSearchHtml = `<button class="image-path-menu-item" onclick="event.stopPropagation(); webSearchForImage('${escapedAltText}', '${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🌐 Web-Search File</button>`;
 
     // Build frontend cache status inline
     const renderType = getRenderTypeFromPath(filePath);
@@ -563,8 +563,9 @@ function togglePathMenu(container, filePath, mediaType) {
         ${titleHtml}
         <button class="image-path-menu-item${openDisabled ? ' disabled' : ''}" ${openDisabled ? 'disabled' : `onclick="event.stopPropagation(); openPath('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}')"`}>📄 Open</button>
         <button class="image-path-menu-item" onclick="event.stopPropagation(); revealPathInExplorer('${escapedPath}')">🔍 Reveal in File Explorer</button>
-        <button class="image-path-menu-item" onclick="event.stopPropagation(); searchForFile('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🔎 Search for File</button>
-        <button class="image-path-menu-item" onclick="event.stopPropagation(); browseForImage('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">📂 Browse for File</button>
+        <div class="image-path-menu-divider"></div>
+        <button class="image-path-menu-item" onclick="event.stopPropagation(); searchForFile('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🔎 Automatic Path Fix</button>
+        <button class="image-path-menu-item" onclick="event.stopPropagation(); browseForImage('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">📂 Manual Path Fix</button>
         ${webSearchHtml}
         <div class="image-path-menu-divider"></div>
         <button class="image-path-menu-item${isAbsolutePath ? '' : ' disabled'}" ${isAbsolutePath ? `onclick="event.stopPropagation(); convertSinglePath('${escapedPath}', 'relative', true)"` : 'disabled'}>📁 Convert to Relative</button>
@@ -1070,13 +1071,14 @@ function createBrokenPathMatcher(brokenPaths) {
  * @returns {string} Menu HTML
  */
 function generateBrokenMediaMenuHtml(htmlEscapedPath, isAbsolutePath, config, mediaType) {
-    const webSearchBtn = `<button class="${config.menuItemClass}" data-action="web-search">🌐 Web Search</button>`;
+    const webSearchBtn = `<button class="${config.menuItemClass}" data-action="web-search">🌐 Web-Search File</button>`;
     return `
         <div class="${config.notFoundMenuClass}" data-is-absolute="${isAbsolutePath}">
             <button class="${config.menuItemClass} disabled" disabled>📄 Open</button>
             <button class="${config.menuItemClass}" data-action="reveal">🔍 Reveal in File Explorer</button>
-            <button class="${config.menuItemClass}" data-action="search">🔎 Search for File</button>
-            <button class="${config.menuItemClass}" data-action="browse">📂 Browse for File</button>
+            <div class="${config.menuItemClass.replace('-item', '-divider')}"></div>
+            <button class="${config.menuItemClass}" data-action="search">🔎 Automatic Path Fix</button>
+            <button class="${config.menuItemClass}" data-action="browse">📂 Manual Path Fix</button>
             ${webSearchBtn}
             <div class="${config.menuItemClass.replace('-item', '-divider')}"></div>
             <button class="${config.menuItemClass}${isAbsolutePath ? '' : ' disabled'}" data-action="to-relative" ${isAbsolutePath ? '' : 'disabled'}>📁 Convert to Relative</button>
@@ -1309,9 +1311,10 @@ function upgradeSimpleImageNotFoundPlaceholder(simpleSpan) {
         <div class="image-not-found-menu" data-is-absolute="${isAbsolutePath}">
             <button class="image-path-menu-item disabled" disabled>📄 Open</button>
             <button class="image-path-menu-item" data-action="reveal">🔍 Reveal in File Explorer</button>
-            <button class="image-path-menu-item" data-action="search">🔎 Search for File</button>
-            <button class="image-path-menu-item" data-action="browse">📂 Browse for File</button>
-            <button class="image-path-menu-item" data-action="web-search">🌐 Web Search</button>
+            <div class="image-path-menu-divider"></div>
+            <button class="image-path-menu-item" data-action="search">🔎 Automatic Path Fix</button>
+            <button class="image-path-menu-item" data-action="browse">📂 Manual Path Fix</button>
+            <button class="image-path-menu-item" data-action="web-search">🌐 Web-Search File</button>
             <div class="image-path-menu-divider"></div>
             <button class="image-path-menu-item${isAbsolutePath ? '' : ' disabled'}" data-action="to-relative" ${isAbsolutePath ? '' : 'disabled'}>📁 Convert to Relative</button>
             <button class="image-path-menu-item${isAbsolutePath ? ' disabled' : ''}" data-action="to-absolute" ${isAbsolutePath ? 'disabled' : ''}>📂 Convert to Absolute</button>
@@ -1373,9 +1376,9 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
             openBtn.removeAttribute('onclick');
         }
 
-        // Find the "Search for File" button and enable it
+        // Find the "Automatic Path Fix" button and enable it
         const searchBtn = Array.from(existingMenu.querySelectorAll('.image-path-menu-item')).find(
-            btn => btn.textContent.includes('Search')
+            btn => btn.textContent.includes('Automatic Path Fix')
         );
         if (searchBtn) {
             searchBtn.classList.remove('disabled');
@@ -1387,9 +1390,9 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
             };
         }
 
-        // Find the "Browse for File" button and enable it
+        // Find the "Manual Path Fix" button and enable it
         const browseBtn = Array.from(existingMenu.querySelectorAll('.image-path-menu-item')).find(
-            btn => btn.textContent.includes('Browse')
+            btn => btn.textContent.includes('Manual Path Fix')
         );
         if (browseBtn) {
             browseBtn.classList.remove('disabled');
@@ -1401,11 +1404,11 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
             };
         }
 
-        // Add "Web Search" button after Browse button
+        // Add "Web-Search File" button after Manual Path Fix button
         const webSearchBtn = document.createElement('button');
         webSearchBtn.className = 'image-path-menu-item';
         webSearchBtn.dataset.action = 'web-search';
-        webSearchBtn.textContent = '🌐 Web Search';
+        webSearchBtn.textContent = '🌐 Web-Search File';
         webSearchBtn.onclick = function(e) {
             e.stopPropagation();
             const altText = overlayContainer.dataset.altText || '';

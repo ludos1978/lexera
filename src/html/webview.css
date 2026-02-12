@@ -1949,11 +1949,6 @@ body.small-card-fonts .task-title-container .markdown-content img {
     width: 32px;
 }
 
-.kanban-full-height-column.collapsed-vertical .column-title-section {
-	flex-direction: column !important;
-	align-items: center;
-}
-
 /* Note: .column-footer is defined later in the file with complete styling */
 
 .column-content {
@@ -2075,8 +2070,14 @@ body.small-card-fonts .task-title-container .markdown-content img {
 }
 
 /* Column title section */
+.kanban-full-height-column.collapsed-vertical .column-title-section {
+	flex-direction: column !important;
+	align-items: center;
+  padding: var(--whitespace-div4) 0px;
+}
+
 .column-title-section {
-  padding: 0 var(--whitespace-div2); /* left & right */
+  padding: 0 var(--whitespace-div4); /* left & right */
   display: flex;
   /* align-items: flex-start; */
 	align-items: center;
@@ -3022,7 +3023,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 .task-section {
   max-height: inherit;
   max-width: inherit;
-  display: flex;
+  display: inline;
   flex-direction: column;
   outline: none;
 }
@@ -4459,17 +4460,19 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 
 /* Vertical fold: rotate text vertically */
 .kanban-full-height-column.collapsed-vertical .column-title-text {
-  writing-mode: vertical-rl;
+  width: min-content;
+  writing-mode: sideways-rl;
   transform: rotate(180deg);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  width: 100%;
+  /* align-items: center; */
+  /* justify-content: center; */
+  /* flex: 1; */
+  /* width: 100%; */
   padding: 5px 0;
-  margin: 0;
-  gap: 4px;
+  /* margin: 0; */
+  /* gap: 4px; */
   white-space: nowrap;
+  rotate:-90deg;
 }
 
 /* Horizontal fold: keep text horizontal but narrow */
