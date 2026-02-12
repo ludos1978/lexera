@@ -2722,16 +2722,19 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: flex;
 }
 
+/* Hidden content reveal button - only visible when #hidden tag is active */
+.task-item:not([data-hidden-content="true"]) .hidden-content-toggle,
+.kanban-full-height-column:not([data-hidden-content="true"]) .hidden-content-toggle {
+  display: none;
+}
+
 /* Hidden content overlay - tasks with #hidden tag */
 .task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-container {
   position: relative;
-  overflow: hidden;
-  max-height: 60px;
-  min-height: 40px;
 }
 
 .task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-container::after {
-  content: 'Content hidden';
+  content: 'Content hidden — use the menu to show the contents';
   position: absolute;
   top: 0;
   left: 0;
@@ -2741,17 +2744,67 @@ figure:has(.diagram-placeholder .image-not-found) {
   align-items: center;
   justify-content: center;
   background: var(--vscode-editor-background);
-  opacity: 0.92;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  font-size: 12px;
+  z-index: var(--z-base);
+}
+
+/* Prevent selecting/editing hidden content */
+.task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-display {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Hide title when collapsed task has #hidden tag */
+.task-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-title-container {
+  position: relative;
+}
+
+.task-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-title-display {
+  color: transparent;
+  user-select: none;
+  pointer-events: none;
+}
+
+.task-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-title-container::after {
+  content: '(hidden content)';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--vscode-descriptionForeground);
   font-style: italic;
   font-size: 12px;
   pointer-events: none;
+}
+
+/* Hidden content overlay - columns with #hidden tag */
+.kanban-full-height-column[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .column-content {
+  position: relative;
+}
+
+.kanban-full-height-column[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .column-content::after {
+  content: 'Content hidden — use the menu to show the contents';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  font-size: 12px;
   z-index: var(--z-base);
 }
 
-/* Prevent editing hidden content */
-.task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-display {
+/* Prevent interaction with hidden column content */
+.kanban-full-height-column[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .column-content .task-item {
   pointer-events: none;
+  user-select: none;
 }
 
 .task-header {

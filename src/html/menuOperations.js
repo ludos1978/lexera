@@ -1798,6 +1798,24 @@ function toggleHiddenContent(taskId) {
     }
 }
 
+function toggleHiddenColumnContent(columnId) {
+    closeAllMenus();
+    const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
+    if (!columnElement) { return; }
+
+    const isRevealed = columnElement.getAttribute('data-hidden-revealed') === 'true';
+    if (isRevealed) {
+        columnElement.removeAttribute('data-hidden-revealed');
+    } else {
+        columnElement.setAttribute('data-hidden-revealed', 'true');
+    }
+
+    const toggleBtn = columnElement.querySelector('.hidden-content-toggle');
+    if (toggleBtn) {
+        toggleBtn.textContent = isRevealed ? 'Reveal content' : 'Hide content';
+    }
+}
+
 // ============================================================================
 // TASK AND COLUMN OPERATIONS
 // ============================================================================
@@ -3519,6 +3537,15 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
         element.setAttribute(bgTagAttr, bgTag);
     } else {
         element.removeAttribute(bgTagAttr);
+    }
+
+    // Update hidden content state (#hidden tag)
+    const hasHiddenTag = allTags.includes('hidden');
+    if (hasHiddenTag) {
+        element.setAttribute('data-hidden-content', 'true');
+    } else {
+        element.removeAttribute('data-hidden-content');
+        element.removeAttribute('data-hidden-revealed');
     }
 
     // Update all visual tag elements immediately (headers, footers, borders, badges)

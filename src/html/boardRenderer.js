@@ -1832,6 +1832,9 @@ function createColumnElement(column, columnIndex) {
     // Check for #sticky tag to determine sticky state (default: false = not sticky)
     const hasStickyTag = /#sticky\b/i.test(column.title);
 
+    // Check for #hidden tag to hide column content
+    const isColumnHidden = window.tagUtils?.patterns?.hiddenTag?.test(column.title) || false;
+
     // Column include error: ONLY when ALL THREE conditions are met:
     // 1. Column has includeFiles (it's actually a column include)
     // 2. Column has includeMode === true (parsing recognized it as include)
@@ -1844,6 +1847,9 @@ function createColumnElement(column, columnIndex) {
     columnDiv.setAttribute('data-column-index', columnIndex);
     columnDiv.setAttribute('data-row', getColumnRow(column.title));
     columnDiv.setAttribute('data-column-sticky', hasStickyTag ? 'true' : 'false');
+    if (isColumnHidden) {
+        columnDiv.setAttribute('data-hidden-content', 'true');
+    }
 
     // Set primary tag attribute (first non-layout tag) - must match updateVisualTagState behavior
     // This drives default style exclusion via :not([data-column-tag]) selectors
@@ -1915,6 +1921,7 @@ function createColumnElement(column, columnIndex) {
 								<div class="donut-menu">
 										<button class="donut-menu-btn" onmousedown="event.preventDefault();" onclick="toggleDonutMenu(event, this)">☰</button>
 										<div class="donut-menu-dropdown">
+												<button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenColumnContent('${column.id}')">Reveal content</button>
 												<button class="donut-menu-item" onclick="insertColumnBefore('${column.id}')">Insert column before</button>
 												<button class="donut-menu-item" onclick="insertColumnAfter('${column.id}')">Insert column after</button>
 												<button class="donut-menu-item" onclick="duplicateColumn('${column.id}')">Duplicate column</button>
@@ -2185,7 +2192,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                             <button class="donut-menu-item" onclick="openTaskOverlayEditor('${task.id}', '${columnId}')">
                                 Edit task (overlay)
                             </button>
-                            ${isHiddenContent ? `<button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenContent('${task.id}')">Reveal content</button>` : ''}
+                            <button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenContent('${task.id}')">Reveal content</button>
                             <div class="donut-menu-divider"></div>
                             <button class="donut-menu-item" onclick="insertTaskBefore('${task.id}', '${columnId}')">Insert card before</button>
                             <button class="donut-menu-item" onclick="insertTaskAfter('${task.id}', '${columnId}')">Insert card after</button>
