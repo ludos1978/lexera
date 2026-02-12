@@ -1599,8 +1599,8 @@ async function getEPUBInfo(filePath, includeDir) {
     });
 }
 
-function queueEPUBSlideshow(id, filePath, includeDir) {
-    pendingDiagramQueue.push({ id, filePath, diagramType: 'epub-slideshow', includeDir, timestamp: Date.now() });
+function queueEPUBSlideshow(id, filePath, includeDir, alt = '', title = '') {
+    pendingDiagramQueue.push({ id, filePath, diagramType: 'epub-slideshow', includeDir, alt, title, timestamp: Date.now() });
 }
 
 // ============= DOCUMENT RENDERING FUNCTIONS =============
@@ -1689,33 +1689,50 @@ function queueDocumentSlideshow(id, filePath, includeDir, initialPage = 1, alt =
 }
 
 /**
- * Create interactive EPUB slideshow with navigation controls
- * @param {HTMLElement} element - Container element
- * @param {string} filePath - Path to EPUB file
- * @param {number} pageCount - Total number of pages
- * @param {number} fileMtime - File modification time for caching
- * @param {string} [includeDir] - Directory of include file for relative path resolution
+ * Shared slideshow builder for PDF, EPUB, and Document embeds.
+ * @param {HTMLElement} element - Container element to replace
+ * @param {object} config - Slideshow configuration
+ * @param {string} config.filePath - Path to the file
+ * @param {number} config.pageCount - Total number of pages
+ * @param {string} config.idPrefix - Slideshow ID prefix (e.g. 'pdf-slideshow')
+ * @param {string} config.dataPathAttr - Data attribute name for file path (e.g. 'data-pdf-path')
+ * @param {string} config.altLabel - Label for img alt text (e.g. 'PDF')
+ * @param {string} config.errorEmoji - Emoji for broken media placeholder
+ * @param {function} config.renderPage - Async function(filePath, pageNumber, includeDir) returning { pngDataUrl }
+ * @param {string} [config.includeDir] - Directory of include file
+ * @param {number} [config.initialPage=1] - Starting page number
+ * @param {string} [config.alt=''] - Alt text from markdown (shown in burger menu)
+ * @param {string} [config.title=''] - Title/description from markdown (shown as tooltip)
  */
-async function createEPUBSlideshow(element, filePath, pageCount, fileMtime, includeDir) {
-    // Create unique ID for this slideshow
-    const slideshowId = `epub-slideshow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+async function createMediaSlideshow(element, config) {
+    const {
+        filePath, pageCount, idPrefix, dataPathAttr, altLabel, errorEmoji,
+        renderPage, includeDir, initialPage = 1, alt = '', title = ''
+    } = config;
 
-    // Initial state: page 1
-    let currentPage = 1;
+    const slideshowId = `${idPrefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const startPage = Math.max(1, Math.min(initialPage, pageCount));
+    let currentPage = startPage;
 
-    // Create slideshow container with overlay wrapper for burger menu
+    // Wrapper with burger menu overlay
     const wrapper = document.createElement('span');
     wrapper.className = 'image-path-overlay-container pdf-slideshow-wrapper';
     wrapper.dataset.filePath = filePath;
+    if (title) { wrapper.title = title; }
+    if (alt) { wrapper.dataset.altText = alt; }
 
+    // Slideshow container
     const container = document.createElement('div');
-    container.className = 'pdf-slideshow';  // Reuse PDF slideshow CSS
+    container.className = 'pdf-slideshow';
     container.id = slideshowId;
-    container.setAttribute('data-epub-path', filePath);
+    container.setAttribute(dataPathAttr, filePath);
     container.setAttribute('data-page-count', pageCount);
     container.setAttribute('data-current-page', currentPage);
+    if (initialPage > 1) {
+        container.setAttribute('data-initial-page', startPage);
+    }
 
-    // Burger menu button for path operations
+    // Burger menu
     const menuBtn = document.createElement('button');
     menuBtn.className = 'image-menu-btn';
     menuBtn.title = 'Path options';
@@ -1729,11 +1746,11 @@ async function createEPUBSlideshow(element, filePath, pageCount, fileMtime, incl
 
     // Image container
     const imageContainer = document.createElement('div');
-    imageContainer.className = 'pdf-slideshow-image';  // Reuse PDF slideshow CSS
+    imageContainer.className = 'pdf-slideshow-image';
 
-    // Controls container
+    // Navigation controls (only for multi-page)
     const controls = document.createElement('div');
-    controls.className = 'pdf-slideshow-controls';  // Reuse PDF slideshow CSS
+    controls.className = 'pdf-slideshow-controls';
 
     const prevBtn = document.createElement('button');
     prevBtn.className = 'pdf-slideshow-btn pdf-slideshow-prev';
@@ -1753,33 +1770,31 @@ async function createEPUBSlideshow(element, filePath, pageCount, fileMtime, incl
     controls.appendChild(pageInfo);
     controls.appendChild(nextBtn);
 
+    // Assemble DOM
     container.appendChild(imageContainer);
     if (pageCount > 1) {
         container.appendChild(controls);
     }
-
-    // Assemble the wrapper with burger menu
     wrapper.appendChild(container);
     wrapper.appendChild(menuBtn);
 
-    // Replace placeholder with slideshow
     element.innerHTML = '';
     element.appendChild(wrapper);
 
+    // Page loading with cache
     const pageCache = new Map();
 
     const loadPage = async (pageNumber) => {
         try {
             const cachedUrl = pageCache.get(pageNumber);
             if (cachedUrl) {
-                imageContainer.innerHTML = `<img src="${cachedUrl}" alt="EPUB page ${pageNumber}" class="diagram-rendered" />`;
+                imageContainer.innerHTML = `<img src="${cachedUrl}" alt="${altLabel} page ${pageNumber}" class="diagram-rendered" />`;
             } else {
                 imageContainer.innerHTML = '<div class="pdf-slideshow-loading">Loading page...</div>';
-
-                const result = await renderEPUBPage(filePath, pageNumber, includeDir);
+                const result = await renderPage(filePath, pageNumber, includeDir);
                 const { pngDataUrl } = result;
                 pageCache.set(pageNumber, pngDataUrl);
-                imageContainer.innerHTML = `<img src="${pngDataUrl}" alt="EPUB page ${pageNumber}" class="diagram-rendered" />`;
+                imageContainer.innerHTML = `<img src="${pngDataUrl}" alt="${altLabel} page ${pageNumber}" class="diagram-rendered" />`;
             }
 
             // Trigger height recalculation after image loads
@@ -1806,349 +1821,64 @@ async function createEPUBSlideshow(element, filePath, pageCount, fileMtime, incl
             nextBtn.disabled = (currentPage === pageCount);
 
         } catch (error) {
-            console.error(`[EPUB Slideshow] Failed to load page ${pageNumber}:`, error);
+            console.error(`[${altLabel} Slideshow] Failed to load page ${pageNumber}:`, error);
             const shortPath = typeof getShortDisplayPath === 'function' ? getShortDisplayPath(filePath) : filePath.split('/').pop() || filePath;
             imageContainer.innerHTML = '';
             imageContainer.appendChild(createBrokenMediaPlaceholder(
-                filePath, '📚',
-                `Failed to load EPUB page ${pageNumber}: ${filePath}`,
+                filePath, errorEmoji,
+                `Failed to load ${altLabel.toLowerCase()} page ${pageNumber}: ${filePath}`,
                 `${shortPath} (page ${pageNumber})`
             ));
         }
     };
 
-    prevBtn.onclick = (e) => {
+    prevBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (currentPage > 1) {
-            loadPage(currentPage - 1);
-        }
-    };
+        if (currentPage > 1) { loadPage(currentPage - 1); }
+    });
 
-    nextBtn.onclick = (e) => {
+    nextBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (currentPage < pageCount) {
-            loadPage(currentPage + 1);
-        }
-    };
+        if (currentPage < pageCount) { loadPage(currentPage + 1); }
+    });
 
-    // Load first page
-    await loadPage(1);
+    await loadPage(startPage);
 }
 
-/**
- * Create interactive PDF slideshow with navigation controls
- * @param {HTMLElement} element - Container element
- * @param {string} filePath - Path to PDF file
- * @param {number} pageCount - Total number of pages
- * @param {number} fileMtime - File modification time for caching
- * @param {string} [includeDir] - Directory of include file for relative path resolution
- * @param {number} [initialPage=1] - Starting page number (1-indexed)
- * @param {string} [alt=''] - Alt text from markdown (displayed as title)
- * @param {string} [title=''] - Title/description from markdown (displayed as tooltip)
- */
+/** Create EPUB slideshow — thin wrapper around createMediaSlideshow */
+async function createEPUBSlideshow(element, filePath, pageCount, fileMtime, includeDir, alt = '', title = '') {
+    return createMediaSlideshow(element, {
+        filePath, pageCount, includeDir, alt, title,
+        idPrefix: 'epub-slideshow',
+        dataPathAttr: 'data-epub-path',
+        altLabel: 'EPUB',
+        errorEmoji: '📚',
+        renderPage: renderEPUBPage
+    });
+}
+
+/** Create PDF slideshow — thin wrapper around createMediaSlideshow */
 async function createPDFSlideshow(element, filePath, pageCount, fileMtime, includeDir, initialPage = 1, alt = '', title = '') {
-    // Create unique ID for this slideshow
-    const slideshowId = `pdf-slideshow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Initial state: clamp initial page to valid range
-    const startPage = Math.max(1, Math.min(initialPage, pageCount));
-    let currentPage = startPage;
-
-    // Create slideshow container with overlay wrapper for burger menu
-    const wrapper = document.createElement('span');
-    wrapper.className = 'image-path-overlay-container pdf-slideshow-wrapper';
-    wrapper.dataset.filePath = filePath;
-    // Add tooltip from title/description if provided
-    if (title) {
-        wrapper.title = title;
-    }
-
-    const container = document.createElement('div');
-    container.className = 'pdf-slideshow';
-    container.id = slideshowId;
-    container.setAttribute('data-pdf-path', filePath);
-    container.setAttribute('data-page-count', pageCount);
-    container.setAttribute('data-current-page', currentPage);
-    container.setAttribute('data-initial-page', startPage);
-
-    // Burger menu button for path operations
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'image-menu-btn';
-    menuBtn.title = 'Path options';
-    menuBtn.textContent = '☰';
-    menuBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (typeof togglePathMenu === 'function') {
-            togglePathMenu(wrapper, filePath, 'image');
-        }
-    };
-
-    // Image container
-    const imageContainer = document.createElement('div');
-    imageContainer.className = 'pdf-slideshow-image';
-
-    // Controls container
-    const controls = document.createElement('div');
-    controls.className = 'pdf-slideshow-controls';
-
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'pdf-slideshow-btn pdf-slideshow-prev';
-    prevBtn.innerHTML = '◀ Prev';
-    prevBtn.disabled = (currentPage === 1);
-
-    const pageInfo = document.createElement('span');
-    pageInfo.className = 'pdf-slideshow-page-info';
-    pageInfo.textContent = `Page ${currentPage} of ${pageCount}`;
-
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'pdf-slideshow-btn pdf-slideshow-next';
-    nextBtn.innerHTML = 'Next ▶';
-    nextBtn.disabled = (currentPage === pageCount);
-
-    controls.appendChild(prevBtn);
-    controls.appendChild(pageInfo);
-    controls.appendChild(nextBtn);
-
-    // Add alt text as title header if provided
-    if (alt) {
-        const titleHeader = document.createElement('div');
-        titleHeader.className = 'pdf-slideshow-title';
-        titleHeader.textContent = alt;
-        container.appendChild(titleHeader);
-    }
-
-    container.appendChild(imageContainer);
-    if (pageCount > 1) {
-        container.appendChild(controls);
-    }
-
-    // Assemble the wrapper with burger menu
-    wrapper.appendChild(container);
-    wrapper.appendChild(menuBtn);
-
-    // Replace placeholder with slideshow
-    element.innerHTML = '';
-    element.appendChild(wrapper);
-
-    const pageCache = new Map();
-
-    const loadPage = async (pageNumber) => {
-        try {
-            const cachedUrl = pageCache.get(pageNumber);
-            if (cachedUrl) {
-                imageContainer.innerHTML = `<img src="${cachedUrl}" alt="PDF page ${pageNumber}" class="diagram-rendered" />`;
-            } else {
-                imageContainer.innerHTML = '<div class="pdf-slideshow-loading">Loading page...</div>';
-
-                const result = await renderPDFPage(filePath, pageNumber, includeDir);
-                const { pngDataUrl } = result;
-                pageCache.set(pageNumber, pngDataUrl);
-                imageContainer.innerHTML = `<img src="${pngDataUrl}" alt="PDF page ${pageNumber}" class="diagram-rendered" />`;
-            }
-
-            // Trigger height recalculation after image loads
-            const img = imageContainer.querySelector('img');
-            if (img) {
-                const triggerRecalc = () => {
-                    const columnElement = imageContainer.closest('.kanban-full-height-column');
-                    const columnId = columnElement?.getAttribute('data-column-id');
-                    if (typeof window.applyStackedColumnStyles === 'function') {
-                        window.applyStackedColumnStyles(columnId);
-                    }
-                };
-                if (img.complete) {
-                    requestAnimationFrame(triggerRecalc);
-                } else {
-                    img.onload = triggerRecalc;
-                }
-            }
-
-            currentPage = pageNumber;
-            container.setAttribute('data-current-page', currentPage);
-            pageInfo.textContent = `Page ${currentPage} of ${pageCount}`;
-            prevBtn.disabled = (currentPage === 1);
-            nextBtn.disabled = (currentPage === pageCount);
-
-        } catch (error) {
-            console.error(`[PDF Slideshow] Failed to load page ${pageNumber}:`, error);
-            const shortPath = typeof getShortDisplayPath === 'function' ? getShortDisplayPath(filePath) : filePath.split('/').pop() || filePath;
-            imageContainer.innerHTML = '';
-            imageContainer.appendChild(createBrokenMediaPlaceholder(
-                filePath, '📄',
-                `Failed to load PDF page ${pageNumber}: ${filePath}`,
-                `${shortPath} (page ${pageNumber})`
-            ));
-        }
-    };
-
-    prevBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (currentPage > 1) {
-            loadPage(currentPage - 1);
-        }
+    return createMediaSlideshow(element, {
+        filePath, pageCount, includeDir, initialPage, alt, title,
+        idPrefix: 'pdf-slideshow',
+        dataPathAttr: 'data-pdf-path',
+        altLabel: 'PDF',
+        errorEmoji: '📄',
+        renderPage: renderPDFPage
     });
-
-    nextBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (currentPage < pageCount) {
-            loadPage(currentPage + 1);
-        }
-    });
-
-    // Load initial page (defaults to 1, can be specified via ?p=N query param)
-    await loadPage(startPage);
 }
 
-/**
- * Create interactive document slideshow with navigation controls
- * @param {HTMLElement} element - Container element
- * @param {string} filePath - Path to document file (DOCX, DOC, ODT, PPTX, PPT, ODP)
- * @param {number} pageCount - Total number of pages
- * @param {number} fileMtime - File modification time for caching
- * @param {string} [includeDir] - Directory of include file for relative path resolution
- * @param {number} [initialPage=1] - Starting page number (1-indexed)
- * @param {string} [alt=''] - Alt text from markdown (displayed as title)
- * @param {string} [title=''] - Title/description from markdown (displayed as tooltip)
- */
+/** Create Document slideshow — thin wrapper around createMediaSlideshow */
 async function createDocumentSlideshow(element, filePath, pageCount, fileMtime, includeDir, initialPage = 1, alt = '', title = '') {
-    const slideshowId = `document-slideshow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    const startPage = Math.max(1, Math.min(initialPage, pageCount));
-    let currentPage = startPage;
-
-    const wrapper = document.createElement('span');
-    wrapper.className = 'image-path-overlay-container pdf-slideshow-wrapper';
-    wrapper.dataset.filePath = filePath;
-    if (title) {
-        wrapper.title = title;
-    }
-
-    const container = document.createElement('div');
-    container.className = 'pdf-slideshow';
-    container.id = slideshowId;
-    container.setAttribute('data-document-path', filePath);
-    container.setAttribute('data-page-count', pageCount);
-    container.setAttribute('data-current-page', currentPage);
-    container.setAttribute('data-initial-page', startPage);
-
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'image-menu-btn';
-    menuBtn.title = 'Path options';
-    menuBtn.textContent = '☰';
-    menuBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (typeof togglePathMenu === 'function') {
-            togglePathMenu(wrapper, filePath, 'image');
-        }
-    };
-
-    const imageContainer = document.createElement('div');
-    imageContainer.className = 'pdf-slideshow-image';
-
-    const controls = document.createElement('div');
-    controls.className = 'pdf-slideshow-controls';
-
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'pdf-slideshow-btn pdf-slideshow-prev';
-    prevBtn.innerHTML = '◀ Prev';
-    prevBtn.disabled = (currentPage === 1);
-
-    const pageInfo = document.createElement('span');
-    pageInfo.className = 'pdf-slideshow-page-info';
-    pageInfo.textContent = `Page ${currentPage} of ${pageCount}`;
-
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'pdf-slideshow-btn pdf-slideshow-next';
-    nextBtn.innerHTML = 'Next ▶';
-    nextBtn.disabled = (currentPage === pageCount);
-
-    controls.appendChild(prevBtn);
-    controls.appendChild(pageInfo);
-    controls.appendChild(nextBtn);
-
-    if (alt) {
-        const titleHeader = document.createElement('div');
-        titleHeader.className = 'pdf-slideshow-title';
-        titleHeader.textContent = alt;
-        container.appendChild(titleHeader);
-    }
-
-    container.appendChild(imageContainer);
-    if (pageCount > 1) {
-        container.appendChild(controls);
-    }
-
-    wrapper.appendChild(container);
-    wrapper.appendChild(menuBtn);
-
-    element.innerHTML = '';
-    element.appendChild(wrapper);
-
-    const pageCache = new Map();
-
-    const loadPage = async (pageNumber) => {
-        try {
-            const cachedUrl = pageCache.get(pageNumber);
-            if (cachedUrl) {
-                imageContainer.innerHTML = `<img src="${cachedUrl}" alt="Document page ${pageNumber}" class="diagram-rendered" />`;
-            } else {
-                imageContainer.innerHTML = '<div class="pdf-slideshow-loading">Loading page...</div>';
-
-                const result = await renderDocumentPage(filePath, pageNumber, includeDir);
-                const { pngDataUrl } = result;
-                pageCache.set(pageNumber, pngDataUrl);
-                imageContainer.innerHTML = `<img src="${pngDataUrl}" alt="Document page ${pageNumber}" class="diagram-rendered" />`;
-            }
-
-            const img = imageContainer.querySelector('img');
-            if (img) {
-                const triggerRecalc = () => {
-                    const columnElement = imageContainer.closest('.kanban-full-height-column');
-                    const columnId = columnElement?.getAttribute('data-column-id');
-                    if (typeof window.applyStackedColumnStyles === 'function') {
-                        window.applyStackedColumnStyles(columnId);
-                    }
-                };
-                if (img.complete) {
-                    requestAnimationFrame(triggerRecalc);
-                } else {
-                    img.onload = triggerRecalc;
-                }
-            }
-
-            currentPage = pageNumber;
-            container.setAttribute('data-current-page', currentPage);
-            pageInfo.textContent = `Page ${currentPage} of ${pageCount}`;
-            prevBtn.disabled = (currentPage === 1);
-            nextBtn.disabled = (currentPage === pageCount);
-
-        } catch (error) {
-            console.error(`[Document Slideshow] Failed to load page ${pageNumber}:`, error);
-            const shortPath = typeof getShortDisplayPath === 'function' ? getShortDisplayPath(filePath) : filePath.split('/').pop() || filePath;
-            imageContainer.innerHTML = '';
-            imageContainer.appendChild(createBrokenMediaPlaceholder(
-                filePath, '📄',
-                `Failed to load document page ${pageNumber}: ${filePath}`,
-                `${shortPath} (page ${pageNumber})`
-            ));
-        }
-    };
-
-    prevBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (currentPage > 1) {
-            loadPage(currentPage - 1);
-        }
+    return createMediaSlideshow(element, {
+        filePath, pageCount, includeDir, initialPage, alt, title,
+        idPrefix: 'document-slideshow',
+        dataPathAttr: 'data-document-path',
+        altLabel: 'Document',
+        errorEmoji: '📄',
+        renderPage: renderDocumentPage
     });
-
-    nextBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (currentPage < pageCount) {
-            loadPage(currentPage + 1);
-        }
-    });
-
-    await loadPage(startPage);
 }
 
 /**
@@ -2199,7 +1929,7 @@ async function processDiagramQueue() {
                 const { pageCount, fileMtime } = epubInfo;
 
                 // Create slideshow UI
-                await createEPUBSlideshow(element, item.filePath, pageCount, fileMtime, item.includeDir);
+                await createEPUBSlideshow(element, item.filePath, pageCount, fileMtime, item.includeDir, item.alt || '', item.title || '');
                 continue;
             }
 
@@ -3667,11 +3397,12 @@ function renderMarkdown(text, includeContext) {
                 // Create unique ID for this EPUB slideshow
                 const epubId = createUniqueId('epub-slideshow');
 
-                // Queue for async slideshow creation (pass includeDir for relative path resolution)
-                queueEPUBSlideshow(epubId, originalSrc, includeDir);
+                // Queue for async slideshow creation (pass includeDir, alt, title)
+                queueEPUBSlideshow(epubId, originalSrc, includeDir, alt, title);
 
                 // Return placeholder immediately (synchronous)
-                return createLoadingPlaceholder(epubId, 'diagram-placeholder', 'Loading EPUB slideshow...');
+                const epubDisplayLabel = alt || 'EPUB slideshow';
+                return createLoadingPlaceholder(epubId, 'diagram-placeholder', `Loading ${epubDisplayLabel}...`);
             }
 
             // Check if this is a diagram file that needs special rendering

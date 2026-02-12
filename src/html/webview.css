@@ -9511,15 +9511,16 @@ figcaption {
   box-sizing: border-box;
 }
 
-.pdf-slideshow-title {
-  padding: 8px 12px;
-  background: var(--vscode-textBlockQuote-background, rgba(0, 0, 0, 0.1));
-  border-bottom: 1px solid var(--vscode-panel-border);
-  font-size: 13px;
-  font-weight: 500;
+.image-path-menu-title {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--vscode-foreground);
-  text-align: center;
-  order: -1; /* Display before image container */
+  border-bottom: 1px solid var(--vscode-menu-separatorBackground, #454545);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
 }
 
 .pdf-slideshow-btn {

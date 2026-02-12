@@ -555,7 +555,12 @@ function togglePathMenu(container, filePath, mediaType) {
             </div>`;
     }
 
+    // Show document title at top of menu if available (only from explicit alt text, not auto-generated)
+    const docTitle = container.dataset.altText || '';
+    const titleHtml = docTitle ? `<div class="image-path-menu-title">${docTitle.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : '';
+
     menu.innerHTML = `
+        ${titleHtml}
         <button class="image-path-menu-item${openDisabled ? ' disabled' : ''}" ${openDisabled ? 'disabled' : `onclick="event.stopPropagation(); openPath('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}')"`}>📄 Open</button>
         <button class="image-path-menu-item" onclick="event.stopPropagation(); revealPathInExplorer('${escapedPath}')">🔍 Reveal in File Explorer</button>
         <button class="image-path-menu-item" onclick="event.stopPropagation(); searchForFile('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🔎 Search for File</button>
