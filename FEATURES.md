@@ -180,11 +180,22 @@ The include statement can be added to the Column Header (best for large presenta
 
 - Tags and with a empty character (space, tab) or any of the reserved Characters (& | ! - ..)
 
+### Special Tags with functionality
+
+Tags are used in the background for various purposes. 
+
+- archived, deleted (but not cleaned up) and the parking position are done by adding tags.
+- #stack makes a column stay below the last column. 
+- #row{number} puts a column in a certain row.
+- #title makes the column title appear above it with colors.
+- #hidden makes a column or task hidden with an overlay that must be unlocked (think passwords in a content presentation) . this is no security feature, only a visibility feature!
+
+
 ### Date-Tags (@)
 
 - @Tags are used for Dates, Times, Weekdays
 
-### Reserved Characters in Hash and Date Tags
+### Reserved Characters in and after Date Tags
 
 - AND     &
 - OR      |

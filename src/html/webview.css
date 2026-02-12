@@ -904,7 +904,7 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  padding: 2px 6px;
+  padding: 2px 2px;
   margin: 0;
   height: 22px;
   min-height: 22px;
@@ -2095,6 +2095,10 @@ body.small-card-fonts .task-title-container .markdown-content img {
   /* min-width: 0;
   display: flex;
   flex-direction: column; */
+}
+
+.kanban-full-height-column.collapsed-vertical .column-title-container {
+  margin-left: 0px;
 }
 
 /* Column title text */
@@ -4470,9 +4474,19 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   /* width: 100%; */
   padding: 5px 0;
   /* margin: 0; */
-  /* gap: 4px; */
+  gap: 4px;
   white-space: nowrap;
-  rotate:-90deg;
+  /* rotate:-90deg; */
+}
+
+.kanban-full-height-column.collapsed-vertical .markdown-content ::before {
+  rotate: 90deg;
+}
+
+.kanban-full-height-column.collapsed-vertical .kanban-tag,
+.kanban-full-height-column.collapsed-vertical .kanban-temporal-tag {
+  padding: 1px;
+  margin: 3px;
 }
 
 /* Horizontal fold: keep text horizontal but narrow */

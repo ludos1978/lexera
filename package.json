@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.202.5",
+  "version": "0.202.9",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -2459,24 +2459,6 @@
                   "background": "#9B233580",
                   "text": "#ffffff",
                   "backgroundDark": "#9B2335"
-                }
-              },
-              "preparation": {
-                "border": {
-                  "style": "solid",
-                  "width": "2px",
-                  "position": "full",
-                  "color": "#999933"
-                },
-                "light": {
-                  "background": "#56B4E980",
-                  "text": "#000000",
-                  "backgroundDark": "#56B4E9"
-                },
-                "dark": {
-                  "background": "#56B4E980",
-                  "text": "#ffffff",
-                  "backgroundDark": "#56B4E9"
                 }
               },
               "communication": {
