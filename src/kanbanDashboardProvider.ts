@@ -235,8 +235,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                             boardName,
                             columnTitle: elem.location.columnTitle,
                             taskSummary: elem.location.taskSummary,
-                            columnId: elem.location.columnId,
-                            taskId: elem.location.taskId
+                            columnIndex: elem.location.columnIndex,
+                            taskIndex: elem.location.taskIndex
                         });
                     }
                 }
@@ -998,10 +998,20 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
            Messages & Hints
            =========================================== */
         .empty-message {
-            text-align: left;
-            padding: 2px 0px 2px 32px;
+            display: flex;
+            align-items: stretch;
+            padding: 2px 0px;
             font-size: 11px;
             color: var(--vscode-descriptionForeground);
+            line-height: 22px;
+        }
+        .empty-message .tree-indent {
+            display: flex;
+            flex-shrink: 0;
+            align-self: stretch;
+        }
+        .empty-message .empty-message-text {
+            padding-left: 4px;
         }
     </style>
 </head>
@@ -1062,7 +1072,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 </div>
             </div>
             <div class="section-content" id="search-content">
-                <div class="empty-message" id="search-empty">No pinned searches</div>
+                <div class="empty-message" id="search-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No pinned searches</span></div>
                 <div id="search-list"></div>
             </div>
         </div>
@@ -1077,7 +1087,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 </div>
             </div>
             <div class="section-content" id="upcoming-content">
-                <div class="empty-message" id="upcoming-empty">No upcoming items</div>
+                <div class="empty-message" id="upcoming-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No upcoming items</span></div>
                 <div id="upcoming-list"></div>
             </div>
         </div>
@@ -1092,7 +1102,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 </div>
             </div>
             <div class="section-content" id="tagged-content">
-                <div class="empty-message" id="tagged-empty">No tag filters configured</div>
+                <div class="empty-message" id="tagged-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No tag filters configured</span></div>
                 <div id="tagged-list"></div>
             </div>
         </div>
@@ -1107,7 +1117,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 </div>
             </div>
             <div class="section-content" id="broken-content">
-                <div class="empty-message" id="broken-empty">No broken elements</div>
+                <div class="empty-message" id="broken-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No broken elements</span></div>
                 <div id="broken-list"></div>
             </div>
         </div>
@@ -1593,8 +1603,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderBrokenItem(item, indentLevel) {
             let html = '<div class="tree-row broken-item" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
-            if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
+            html += 'data-column-index="' + item.columnIndex + '"';
+            if (item.taskIndex !== undefined && item.taskIndex !== null) html += ' data-task-index="' + item.taskIndex + '"';
             html += '>';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1614,9 +1624,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.broken-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnId = item.getAttribute('data-column-id');
-                    const taskId = item.getAttribute('data-task-id') || undefined;
-                    navigateToElement(boardUri, columnId, taskId);
+                    const columnIndex = parseInt(item.getAttribute('data-column-index'), 10);
+                    const taskIndexAttr = item.getAttribute('data-task-index');
+                    const taskIndex = taskIndexAttr !== null ? parseInt(taskIndexAttr, 10) : undefined;
+                    navigateToTask(boardUri, columnIndex, taskIndex);
                 });
             });
             attachToggleListeners(container);

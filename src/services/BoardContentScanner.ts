@@ -29,8 +29,10 @@ export type ElementType = 'image' | 'include' | 'link' | 'media' | 'diagram';
  */
 export interface ElementLocation {
     columnId: string;
+    columnIndex: number;
     columnTitle: string;
     taskId?: string;
+    taskIndex?: number;
     taskSummary?: string;
     field: 'columnTitle' | 'taskContent';
 }
@@ -99,19 +101,22 @@ export class BoardContentScanner {
         return lines.find(line => line.trim().length > 0) ?? lines[0] ?? '';
     }
 
-    private _buildColumnLocation(column: KanbanColumn, field: ElementLocation['field']): ElementLocation {
+    private _buildColumnLocation(column: KanbanColumn, columnIndex: number, field: ElementLocation['field']): ElementLocation {
         return {
             columnId: column.id,
+            columnIndex,
             columnTitle: this._getColumnTitle(column),
             field
         };
     }
 
-    private _buildTaskLocation(column: KanbanColumn, task: KanbanTask, field: ElementLocation['field']): ElementLocation {
+    private _buildTaskLocation(column: KanbanColumn, columnIndex: number, task: KanbanTask, taskIndex: number, field: ElementLocation['field']): ElementLocation {
         return {
             columnId: column.id,
+            columnIndex,
             columnTitle: this._getColumnTitle(column),
             taskId: task.id,
+            taskIndex,
             taskSummary: this._getTaskSummary(task),
             field
         };
@@ -134,8 +139,9 @@ export class BoardContentScanner {
     extractElements(board: KanbanBoard): ExtractedElement[] {
         const elements: ExtractedElement[] = [];
 
-        for (const column of board.columns) {
-            const columnLocation = this._buildColumnLocation(column, 'columnTitle');
+        for (let columnIndex = 0; columnIndex < board.columns.length; columnIndex++) {
+            const column = board.columns[columnIndex];
+            const columnLocation = this._buildColumnLocation(column, columnIndex, 'columnTitle');
 
             // Determine column include base path if column is from an include file
             let columnIncludeBasePath: string | undefined;
@@ -155,8 +161,9 @@ export class BoardContentScanner {
             }
 
             // Check tasks
-            for (const task of column.tasks) {
-                const taskLocation = this._buildTaskLocation(column, task, 'taskContent');
+            for (let taskIndex = 0; taskIndex < column.tasks.length; taskIndex++) {
+                const task = column.tasks[taskIndex];
+                const taskLocation = this._buildTaskLocation(column, columnIndex, task, taskIndex, 'taskContent');
 
                 // Determine task include base path:
                 // 1. Use task's own includeContext if available
@@ -221,7 +228,8 @@ export class BoardContentScanner {
         }
 
         // Also check for columns/tasks with includeError flag
-        for (const column of board.columns) {
+        for (let colIdx = 0; colIdx < board.columns.length; colIdx++) {
+            const column = board.columns[colIdx];
             if (column.includeError && column.includeFiles) {
                 // Check if we already have this include in broken list
                 const alreadyTracked = broken.some(b =>
@@ -230,7 +238,7 @@ export class BoardContentScanner {
                 );
 
                 if (!alreadyTracked && column.includeFiles.length > 0) {
-                    const columnLocation = this._buildColumnLocation(column, 'columnTitle');
+                    const columnLocation = this._buildColumnLocation(column, colIdx, 'columnTitle');
                     for (const includePath of column.includeFiles) {
                         const resolvedPath = this._resolvePath(includePath);
                         if (!fs.existsSync(resolvedPath)) {
@@ -244,7 +252,6 @@ export class BoardContentScanner {
                     }
                 }
             }
-
         }
 
         return broken;
@@ -282,28 +289,29 @@ export class BoardContentScanner {
             return ctx;
         };
 
-        for (const column of board.columns) {
+        for (let columnIndex = 0; columnIndex < board.columns.length; columnIndex++) {
+            const column = board.columns[columnIndex];
             // Search column title
             const columnTitle = this._getColumnTitle(column);
             if (matcher.matches(prepareText(columnTitle))) {
                 matches.push({
                     matchText: query,
                     context: buildContext(columnTitle),
-                    location: this._buildColumnLocation(column, 'columnTitle')
+                    location: this._buildColumnLocation(column, columnIndex, 'columnTitle')
                 });
             }
 
             // Search tasks
-            for (const task of column.tasks) {
+            for (let taskIndex = 0; taskIndex < column.tasks.length; taskIndex++) {
+                const task = column.tasks[taskIndex];
                 const taskContent = task.content || '';
                 if (matcher.matches(prepareText(taskContent))) {
                     matches.push({
                         matchText: query,
                         context: buildContext(taskContent),
-                        location: this._buildTaskLocation(column, task, 'taskContent')
+                        location: this._buildTaskLocation(column, columnIndex, task, taskIndex, 'taskContent')
                     });
                 }
-
             }
         }
 

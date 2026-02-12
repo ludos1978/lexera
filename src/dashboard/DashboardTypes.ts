@@ -116,10 +116,10 @@ export interface DashboardBrokenElement {
     columnTitle: string;
     /** Task summary if in a task */
     taskSummary?: string;
-    /** Column ID for navigation */
-    columnId: string;
-    /** Task ID for navigation */
-    taskId?: string;
+    /** Column index for position-based navigation */
+    columnIndex: number;
+    /** Task index for position-based navigation */
+    taskIndex?: number;
 }
 
 /**

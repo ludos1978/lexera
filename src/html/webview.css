@@ -4481,6 +4481,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 
 .kanban-full-height-column.collapsed-vertical .markdown-content ::before {
   rotate: 90deg;
+  margin-bottom: 2px;
 }
 
 .kanban-full-height-column.collapsed-vertical .kanban-tag,
@@ -8515,6 +8516,10 @@ figcaption {
     font-size: 12px;
     padding: 4px;
     white-space: nowrap;
+}
+
+th {
+  text-align: left;
 }
 
 .files-table tbody tr.files-table-actions td {
