@@ -39,6 +39,7 @@ class ConfigManager {
             htmlContentRenderMode: 'html',
             showMarpSettings: true,
             showSpecialCharacters: false,
+            enableTypographer: false,
             wysiwygEnabled: false,
             overlayEditorEnabled: false,
             overlayEditorDefaultMode: 'markdown',

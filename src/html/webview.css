@@ -4468,7 +4468,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   writing-mode: sideways-rl;
   transform: rotate(180deg);
   display: flex;
-  /* align-items: center; */
+  align-items: center;
   /* justify-content: center; */
   /* flex: 1; */
   /* width: 100%; */

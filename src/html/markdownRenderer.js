@@ -8,6 +8,7 @@ const logMermaid = DEBUG_MERMAID ? console.log.bind(console, '[Mermaid]') : () =
 let cachedMarkdownIt = null;
 let cachedHtmlCommentMode = null;
 let cachedHtmlContentMode = null;
+let cachedEnableTypographer = null;
 
 function createUniqueId(prefix) {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -1050,11 +1051,11 @@ function renderWebPreview(url, alt, title) {
 // All plugins are loaded uniformly via window.* globals from <script> tags.
 // The plugin manifest (markdownPluginManifest.ts) is the single source of truth
 // for plugin IDs, priorities, and window global names.
-function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode) {
+function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, enableTypographer) {
     const md = window.markdownit({
         html: true,
         linkify: false,
-        typographer: true,
+        typographer: !!enableTypographer,
         breaks: true
     });
 
@@ -2684,17 +2685,20 @@ function renderMarkdown(text, includeContext) {
         // Get HTML rendering settings
         const htmlCommentRenderMode = window.configManager?.getConfig('htmlCommentRenderMode', 'hidden') ?? 'hidden';
         const htmlContentRenderMode = window.configManager?.getConfig('htmlContentRenderMode', 'html') ?? 'html';
+        const enableTypographer = window.configManager?.getConfig('enableTypographer', false) ?? false;
 
         // Use cached markdown-it instance for performance
         // Only recreate if settings changed or first call
         const needsRecreate = !cachedMarkdownIt ||
                               cachedHtmlCommentMode !== htmlCommentRenderMode ||
-                              cachedHtmlContentMode !== htmlContentRenderMode;
+                              cachedHtmlContentMode !== htmlContentRenderMode ||
+                              cachedEnableTypographer !== enableTypographer;
 
         if (needsRecreate) {
-            cachedMarkdownIt = createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode);
+            cachedMarkdownIt = createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, enableTypographer);
             cachedHtmlCommentMode = htmlCommentRenderMode;
             cachedHtmlContentMode = htmlContentRenderMode;
+            cachedEnableTypographer = enableTypographer;
         }
 
         const md = cachedMarkdownIt;

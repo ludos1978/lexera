@@ -2441,18 +2441,8 @@ function updateColumnDisplayImmediate(columnId, newTitle, isActive, tagName) {
     const editElement = columnElement.querySelector('.column-title-edit');
     if (editElement) editElement.value = newTitle;
 
-    // Update data attributes (tag, all-tags) using shared utility
-    const allTags = window.menuUtils.updateTagDataAttributes(columnElement, newTitle, 'column');
-
-    // Update temporal attributes using shared utility
-    window.menuUtils.updateTemporalAttributes(columnElement, newTitle, 'column');
-
-    // Update border/background tag attributes and stackable bars
-    if (window.injectStackableBars) {
-        window.injectStackableBars(columnElement);
-    }
-
-    // Update visual tag state
+    // Single source of truth: updateVisualTagState handles all tag/temporal attributes
+    const allTags = window.getActiveTagsInTitle(newTitle);
     if (window.updateVisualTagState) {
         const isCollapsed = columnElement.classList.contains('collapsed');
         window.updateVisualTagState(columnElement, allTags, 'column', isCollapsed);
@@ -2488,23 +2478,8 @@ function updateTaskDisplayImmediate(taskId, newTitle, isActive, tagName) {
     const editElement = taskElement.querySelector('.task-title-edit');
     if (editElement) editElement.value = newTitle;
 
-    // Update data attributes (tag, all-tags) using shared utility
-    const allTags = window.menuUtils.updateTagDataAttributes(taskElement, newTitle, 'task');
-
-    // Update temporal attributes with hierarchical gating using shared utility
-    const found = window.menuUtils.findTaskInBoard(taskId);
-    const context = found ? {
-        columnTitle: found.column.title || '',
-        taskDescription: getTaskRemainingContent(found.task)
-    } : {};
-    window.menuUtils.updateTemporalAttributes(taskElement, newTitle, 'task', context);
-
-    // Update border/background tag attributes and stackable bars
-    if (window.injectStackableBars) {
-        window.injectStackableBars(taskElement);
-    }
-
-    // Update visual tag state
+    // Single source of truth: updateVisualTagState handles all tag/temporal attributes
+    const allTags = window.getActiveTagsInTitle(newTitle);
     if (window.updateVisualTagState) {
         const isCollapsed = taskElement.classList.contains('collapsed');
         window.updateVisualTagState(taskElement, allTags, 'task', isCollapsed);
@@ -3546,6 +3521,32 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
     } else {
         element.removeAttribute('data-hidden-content');
         element.removeAttribute('data-hidden-revealed');
+    }
+
+    // Update temporal attributes (current day/week/weekday/hour/time)
+    if (window.menuUtils?.updateTemporalAttributes) {
+        if (elementType === 'column') {
+            window.menuUtils.updateTemporalAttributes(element, titleText, 'column');
+        } else {
+            // For tasks, get context for hierarchical gating
+            const taskId = element.getAttribute('data-task-id');
+            let columnTitle = '';
+            let taskDescription = '';
+            if (window.cachedBoard?.columns && taskId) {
+                for (const col of window.cachedBoard.columns) {
+                    const task = col.tasks.find(t => t.id === taskId);
+                    if (task) {
+                        columnTitle = col.title || '';
+                        taskDescription = task.content || '';
+                        break;
+                    }
+                }
+            }
+            const summary = window.taskContentUtils?.getTaskSummaryLine
+                ? window.taskContentUtils.getTaskSummaryLine(titleText)
+                : (titleText.split('\n')[0] || '');
+            window.menuUtils.updateTemporalAttributes(element, summary, 'task', { columnTitle, taskDescription });
+        }
     }
 
     // Update all visual tag elements immediately (headers, footers, borders, badges)

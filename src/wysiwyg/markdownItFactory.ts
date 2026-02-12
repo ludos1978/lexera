@@ -32,10 +32,13 @@ export type WysiwygMarkdownItOptions = {
 };
 
 export function createWysiwygMarkdownIt(options: WysiwygMarkdownItOptions = {}): MarkdownIt {
+    const enableTypographer = (typeof window !== 'undefined' && (window as any).configManager)
+        ? (window as any).configManager.getConfig('enableTypographer', false)
+        : false;
     const md = new MarkdownIt({
         html: true,
         linkify: false,
-        typographer: true,
+        typographer: !!enableTypographer,
         breaks: true
     });
 

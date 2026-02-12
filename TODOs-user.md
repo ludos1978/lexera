@@ -1,12 +1,14 @@
-- [ ] i would like to be able to fold a stack to be minimized in width. it should add a fold button on top of each stack. it lists only the titles as blocks with a defineable width height that are put into one vertical block. it should look similar to the vertical folded column.
+- [ ] #later i would like to be able to fold a stack to be minimized in width. it should add a fold button on top of each stack. it lists only the titles as blocks with a defineable width height that are put into one vertical block. it should look similar to the vertical folded column.
 
 - [ ] maybe we could integrate this: https://www.reddit.com/r/LocalLLaMA/comments/1r2f56h/microsoftmarkitdown/
+
+- [ ] could we integrate something like this? https://github.com/17twenty/inamate
 
 - [ ] could we integrate this, so docx documents could be included and editable as well!
 
 - [ ] if the column has a tag #title the text is put in the column header with a colored background. The colors is defined by the index of the #title tag (first title tag get color 1, second color tag gets color 2). colors are from a hsv model with strong colors!
 
-- [ ] alt+clicking on a pdf should open the document (using the default rulews to open embedded files/links)
+- [x] alt+clicking on a pdf should open the document (using the default rulews to open embedded files/links)
 
 - [x] add a tag #hidden which is overlaying the complete task's content with a content hiding overlay. in the tasks burger menu add  a button "reveal content" / "hide content". only after clicking the button then the field is displayed, there must be a burger menu at the top. The tag must be added by the user manually and it's hidden again by default on the next file opening. It's used to hide content when displaying the content by default, requiring the user to explicitly display it within the kanban. it should be exploded from export by default as well!
 

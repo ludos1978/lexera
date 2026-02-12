@@ -161,9 +161,13 @@ export class WysiwygEditor {
         });
         let pmDoc = normalizeEditableDoc(schema, wysiwygDocToProseMirror(schema, initialDoc));
 
+        const enableTypographer = (typeof window !== 'undefined' && (window as any).configManager)
+            ? (window as any).configManager.getConfig('enableTypographer', false)
+            : false;
+        const typographerRules = enableTypographer ? smartQuotes.concat(ellipsis, emDash) : [];
         const plugins = [
             history(),
-            inputRules({ rules: smartQuotes.concat(ellipsis, emDash, buildMarkdownInputRules(schema)) }),
+            inputRules({ rules: typographerRules.concat(buildMarkdownInputRules(schema)) }),
             keymap({
                 Tab: (state, dispatch) => {
                     const indent = '  ';

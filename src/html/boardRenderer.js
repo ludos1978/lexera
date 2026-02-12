@@ -1832,8 +1832,8 @@ function createColumnElement(column, columnIndex) {
     // Check for #sticky tag to determine sticky state (default: false = not sticky)
     const hasStickyTag = /#sticky\b/i.test(column.title);
 
-    // Check for #hidden tag to hide column content
-    const isColumnHidden = window.tagUtils?.patterns?.hiddenTag?.test(column.title) || false;
+    // Check for #hidden tag to hide column content (consistent with updateVisualTagState)
+    const isColumnHidden = allTags.includes('hidden');
 
     // Column include error: ONLY when ALL THREE conditions are met:
     // 1. Column has includeFiles (it's actually a column include)
@@ -2167,8 +2167,8 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const taskIncludeErrorClass = hasTaskIncludeError ? 'include-error' : '';
     const taskIncludeErrorAttr = hasTaskIncludeError ? ' data-include-error="true"' : '';
 
-    // Detect #hidden tag in task header (task-level tags only)
-    const isHiddenContent = window.tagUtils?.patterns?.hiddenTag?.test(taskHeader) || false;
+    // Detect #hidden tag in task header (consistent with updateVisualTagState)
+    const isHiddenContent = allTags.includes('hidden');
     const hiddenContentAttr = isHiddenContent ? ' data-hidden-content="true"' : '';
 
     return `

@@ -36,6 +36,7 @@ export interface KanbanConfiguration {
     arrowKeyFocusScroll: string;
     showMarpSettings: boolean;
     showSpecialCharacters: boolean;
+    enableTypographer: boolean;
     wysiwygEnabled: boolean;
     overlayEditorEnabled: boolean;
     overlayEditorDefaultMode: 'markdown' | 'dual' | 'wysiwyg';
@@ -120,6 +121,7 @@ export class ConfigurationService {
         arrowKeyFocusScroll: 'center',
         showMarpSettings: true,
         showSpecialCharacters: false,
+        enableTypographer: false,
         wysiwygEnabled: false,
         overlayEditorEnabled: false,
         overlayEditorDefaultMode: 'markdown',
@@ -335,6 +337,7 @@ export class ConfigurationService {
             pathGeneration: this.getConfig('pathGeneration'),
             showMarpSettings: this.getConfig('showMarpSettings'),
             showSpecialCharacters: this.getConfig('showSpecialCharacters'),
+            enableTypographer: this.getConfig('enableTypographer'),
             wysiwygEnabled: this.getConfig('wysiwygEnabled'),
             overlayEditorEnabled: this.getConfig('overlayEditorEnabled'),
             overlayEditorDefaultMode: this.getConfig('overlayEditorDefaultMode'),

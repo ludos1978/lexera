@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.202.9",
+  "version": "0.202.11",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -399,6 +399,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show visual markers for whitespace characters inside cards."
+        },
+        "markdown-kanban.enableTypographer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic text conversions (smart quotes, arrows, em-dashes, ellipsis) in the markdown renderer and WYSIWYG editor."
         },
         "markdown-kanban.wysiwygEnabled": {
           "type": "boolean",
