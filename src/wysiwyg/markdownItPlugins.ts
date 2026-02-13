@@ -366,6 +366,78 @@ export function htmlCommentPlugin(md: MarkdownIt): void {
     md.block.ruler.before('html_block', 'html_comment_block', parseHtmlCommentBlock);
 }
 
+/**
+ * Table widths plugin - uses dash count in separator row for proportional column widths.
+ * Only activates when alignment markers (:) are present.
+ * Without alignment markers, table columns use automatic width (default behavior).
+ */
+export function tableWidthsPlugin(md: MarkdownIt): void {
+    md.core.ruler.push('table_widths', function(state: any) {
+        const tokens = state.tokens;
+        const lines: string[] = state.src.split('\n');
+
+        for (let i = 0; i < tokens.length; i++) {
+            if (tokens[i].type !== 'table_open') { continue; }
+
+            const map = tokens[i].map;
+            if (!map) { continue; }
+
+            const separatorLine = lines[map[0] + 1];
+            if (!separatorLine) { continue; }
+
+            let cols = separatorLine.split('|');
+            if (cols.length > 0 && cols[0].trim() === '') { cols.shift(); }
+            if (cols.length > 0 && cols[cols.length - 1].trim() === '') { cols.pop(); }
+            cols = cols.map(c => c.trim());
+            if (cols.length === 0) { continue; }
+
+            const hasAlignment = cols.some(c => c.startsWith(':') || c.endsWith(':'));
+            if (!hasAlignment) { continue; }
+
+            const dashCounts = cols.map(c => {
+                let count = 0;
+                for (let k = 0; k < c.length; k++) {
+                    if (c[k] === '-') { count++; }
+                }
+                return count;
+            });
+
+            const totalDashes = dashCounts.reduce((a, b) => a + b, 0);
+            if (totalDashes === 0) { continue; }
+
+            const widths = dashCounts.map(d => d / totalDashes * 100);
+
+            const aligns = cols.map(c => {
+                const left = c.startsWith(':');
+                const right = c.endsWith(':');
+                if (left && right) { return 'center'; }
+                if (right) { return 'right'; }
+                if (left) { return 'left'; }
+                return null;
+            });
+
+            tokens[i].attrJoin('style', 'table-layout: fixed; width: 100%;');
+
+            let colIndex = 0;
+            for (let j = i + 1; j < tokens.length; j++) {
+                if (tokens[j].type === 'table_close') { break; }
+                if (tokens[j].type === 'tr_open') { colIndex = 0; }
+
+                if (tokens[j].type === 'th_open' || tokens[j].type === 'td_open') {
+                    if (colIndex < widths.length) {
+                        let style = `width: ${widths[colIndex].toFixed(2)}%;`;
+                        if (aligns[colIndex]) {
+                            style += ` text-align: ${aligns[colIndex]};`;
+                        }
+                        tokens[j].attrSet('style', style);
+                    }
+                    colIndex++;
+                }
+            }
+        }
+    });
+}
+
 export type IncludePluginOptions = {
     includeRe?: RegExp;
 };

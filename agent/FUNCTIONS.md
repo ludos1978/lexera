@@ -483,7 +483,14 @@ Owns all embed/iframe logic: config access, export transforms, webview config sy
 ### Modified: `src/services/export/ExportService.ts`
 - `applyEmbedTransform()` - DELETED, moved to EmbedPlugin.transformForExport()
 - `isImagePath()` - DELETED, moved to EmbedPlugin.isImagePath()
-- `applyContentTransformations()` - (MODIFIED) Now delegates embed transforms to EmbedPlugin via PluginRegistry
+- `applyContentTransformations()` - (MODIFIED) Now delegates embed transforms to EmbedPlugin via PluginRegistry. Also calls applyTableWidthTransform for proportional table widths.
+- `applyTableWidthTransform()` - Pre-renders markdown tables with alignment markers (proportional widths) to HTML for Marp export. Uses markdown-it + tableWidthsPlugin.
+
+### New: `src/html/markdown-it-table-widths-browser.js`
+- `tableWidthsPlugin(md)` - Browser markdown-it plugin. Core ruler that post-processes table tokens: when separator row has alignment markers (:), counts dashes per column for proportional width ratios. Sets table-layout:fixed and width percentages on th/td.
+
+### New: `src/wysiwyg/markdownItPlugins.ts` - tableWidthsPlugin
+- `tableWidthsPlugin(md)` - TypeScript version of the table widths plugin for WYSIWYG and Node.js export contexts. Same logic as the browser version.
 - Removed unused imports: `isEmbedUrl`, `parseAttributeBlock` from regexPatterns
 
 ### Modified: `src/services/WebviewUpdateService.ts`

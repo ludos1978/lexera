@@ -1158,6 +1158,10 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, 
     if (typeof window.markdownItImageAttrs !== 'undefined') {
         md.use(window.markdownItImageAttrs);
     }
+    // Table proportional widths: dash count in separator defines column width ratios
+    if (typeof window.markdownitTableWidths !== 'undefined') {
+        md.use(window.markdownitTableWidths);
+    }
     if (typeof window.markdownItMediaCustom !== 'undefined') {
         md.use(window.markdownItMediaCustom, {
             controls: true,
@@ -1177,6 +1181,7 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, 
 // - markdown-it-enhanced-strikethrough-browser.js (window.markdownitEnhancedStrikethrough)
 // - markdown-it-speaker-note-browser.js     (window.markdownitSpeakerNote)
 // - markdown-it-html-comment-browser.js     (window.markdownitHtmlComment)
+// - markdown-it-table-widths-browser.js     (window.markdownitTableWidths)
 // See Phase 5 in TODOs-plugin.md for details.
 
 // MEMORY SAFETY: Cache size limits to prevent unbounded growth

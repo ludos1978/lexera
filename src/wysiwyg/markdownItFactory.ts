@@ -17,7 +17,8 @@ import {
     temporalTagPlugin,
     speakerNotePlugin,
     htmlCommentPlugin,
-    includePlugin
+    includePlugin,
+    tableWidthsPlugin
 } from './markdownItPlugins';
 
 /**
@@ -48,6 +49,7 @@ export function createWysiwygMarkdownIt(options: WysiwygMarkdownItOptions = {}):
         .use(speakerNotePlugin)
         .use(htmlCommentPlugin)
         .use(includePlugin)
+        .use(tableWidthsPlugin)
         .use(markdownItMulticolumn)
         .use(markdownItMark)
         .use(markdownItSub)

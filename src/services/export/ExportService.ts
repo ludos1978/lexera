@@ -23,6 +23,8 @@ import { escapeRegExp, getErrorMessage, toForwardSlashes } from '../../utils/str
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
 import { MarkdownKanbanParser } from '../../markdownParser';
 import { logger } from '../../utils/logger';
+import MarkdownIt from 'markdown-it';
+import { tableWidthsPlugin } from '../../wysiwyg/markdownItPlugins';
 
 /**
  * Export options - SINGLE unified system for ALL exports
@@ -520,6 +522,65 @@ export class ExportService {
      * @param content - Markdown content
      * @returns Transformed content with visible captions
      */
+    /**
+     * Pre-render markdown tables that use proportional widths (alignment markers with dash counts)
+     * to HTML, so Marp's own renderer preserves the width ratios.
+     * Tables without alignment markers are left as markdown (automatic width).
+     */
+    private static applyTableWidthTransform(content: string): string {
+        const lines = content.split('\n');
+        const result: string[] = [];
+        let i = 0;
+
+        while (i < lines.length) {
+            // A table row must contain |
+            if (!lines[i].includes('|') || i + 1 >= lines.length) {
+                result.push(lines[i]);
+                i++;
+                continue;
+            }
+
+            // Check if next line is a valid separator row (dashes with optional colons)
+            const sepLine = lines[i + 1];
+            if (!sepLine || !/^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(sepLine)) {
+                result.push(lines[i]);
+                i++;
+                continue;
+            }
+
+            // Parse separator columns to check for alignment markers
+            let cols = sepLine.split('|');
+            if (cols.length > 0 && cols[0].trim() === '') { cols.shift(); }
+            if (cols.length > 0 && cols[cols.length - 1].trim() === '') { cols.pop(); }
+            const trimmedCols = cols.map(c => c.trim());
+            const hasAlignment = trimmedCols.some(c => c.startsWith(':') || c.endsWith(':'));
+
+            if (!hasAlignment) {
+                // No proportional widths, leave as markdown
+                result.push(lines[i]);
+                i++;
+                continue;
+            }
+
+            // Collect all lines of this table
+            const tableLines: string[] = [lines[i], lines[i + 1]];
+            let j = i + 2;
+            while (j < lines.length && lines[j].includes('|') && lines[j].trim() !== '') {
+                tableLines.push(lines[j]);
+                j++;
+            }
+
+            // Render with markdown-it + tableWidthsPlugin to get HTML with inline width styles
+            const md = new MarkdownIt({ html: true });
+            md.use(tableWidthsPlugin);
+            const html = md.render(tableLines.join('\n'));
+            result.push(html.trimEnd());
+            i = j;
+        }
+
+        return result.join('\n');
+    }
+
     private static applyMediaCaptionTransform(content: string): string {
         // Do NOT modify the content - captions should be handled by markdown-it-image-figures
         // plugin in the Marp engine, not by extracting them here
@@ -555,10 +616,13 @@ export class ExportService {
             result = this.applyHtmlContentTransform(result, options.htmlContentMode);
         }
 
-        // 4. Media captions - convert ![alt](url "caption") to show caption below media
+        // 4. Proportional table widths - pre-render tables with alignment markers to HTML
+        result = this.applyTableWidthTransform(result);
+
+        // 5. Media captions - convert ![alt](url "caption") to show caption below media
         result = this.applyMediaCaptionTransform(result);
 
-        // 5. Embed handling - different behavior based on output format
+        // 6. Embed handling - different behavior based on output format
         // SKIP for copy mode - keep original markdown syntax
         const embedPlugin = PluginRegistry.getInstance().getEmbedPlugin();
         if (embedPlugin && options.mode !== 'copy') {

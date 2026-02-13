@@ -2043,8 +2043,8 @@ body.small-card-fonts .task-title-container .markdown-content img {
 .column-title::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--whitespace-div2);
+  right: var(--whitespace-div2);
   height: 1px;
   background-image: repeating-linear-gradient(
     90deg,
@@ -2096,7 +2096,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
   display: flex;
   /* align-items: flex-start; */
 	align-items: center;
-  gap: var(--whitespace-div4);
+  gap: var(--whitespace-div8);
   flex: 1;
   min-width: 0;
   margin-top: 0;
@@ -3078,6 +3078,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 /* Task description */
 .task-description-container {
   /* margin-top: 4px; */
+  margin-left: 4px;
   order: 3;
   flex: 1 1 auto;
 }
@@ -3109,8 +3110,8 @@ figure:has(.diagram-placeholder .image-not-found) {
   box-sizing: border-box;
   cursor: pointer;
   /* padding: 0px 8px; */
-  padding-left: 4px;
-  padding-right: 4px;
+  /* padding-left: 4px;
+  padding-right: 4px; */
   min-height: 20px;
   line-height: 1.4;
   overflow-wrap: break-word;
@@ -3853,12 +3854,15 @@ body.section-height-limited .task-section figure img {
   border: 1px solid var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   border-radius: 4px;
+  box-sizing: border-box;
   /* padding: 3px 6px 3px 6px; */
   font-size: 12px;
   font-weight: 500;
   display: flex;
   gap: 4px;
   padding: 0px 0px 0px 4px;
+
+  height: 18px;
   align-items: center;
 }
 
@@ -6534,6 +6538,13 @@ body.week-highlight-glow .task-item[data-current-week="true"] {
   padding: var(--whitespace) 0;
   white-space: nowrap;
 }
+
+.kanban-full-height-column.collapsed-vertical .header-bar-header[data-title-bar="true"]:not(:empty),
+.kanban-full-height-column.collapsed-vertical .footer-bar-header[data-title-bar="true"]:not(:empty) {
+  padding: var(--whitespace) 0;
+}
+
+/* .kanban-full-height-column.collapsed-vertical .header-bar:has() */
 
 .kanban-full-height-column .corner-badge,
 .kanban-full-height-column [class*="corner-badge-"] {
