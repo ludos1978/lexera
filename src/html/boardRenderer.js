@@ -3140,7 +3140,28 @@ function injectStackableBars(targetElement = null) {
                     }
                 }
 
-                // Compute color from sequential index using golden angle
+                // Strip all tags (not just layout tags) and markdown formatting for plain text
+                if (labelText) {
+                    labelText = labelText
+                        .replace(/!!!include\(([^)]+)\)!!!/g, (_, path) => path.split('/').pop().replace(/\.[^.]+$/, '')) // !!!include(path)!!! → filename
+                        .replace(/#[a-zA-Z0-9_][a-zA-Z0-9_-]*/g, '')  // #tags
+                        .replace(/@[^\s]+/g, '')                        // @temporal
+                        .replace(/\?\#[^\s]+/g, '')                     // ?#query tags
+                        .replace(/\*\*([^*]+)\*\*/g, '$1')             // **bold**
+                        .replace(/\*([^*]+)\*/g, '$1')                  // *italic*
+                        .replace(/__([^_]+)__/g, '$1')                  // __bold__
+                        .replace(/_([^_]+)_/g, '$1')                    // _italic_
+                        .replace(/~~([^~]+)~~/g, '$1')                  // ~~strikethrough~~
+                        .replace(/==([^=]+)==/g, '$1')                  // ==highlight==
+                        .replace(/`([^`]+)`/g, '$1')                    // `code`
+                        .replace(/^#{1,6}\s+/, '')                      // ## headings
+                        .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target, alias) => alias || target) // [[links]]
+                        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')       // [links](url)
+                        .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')        // ![images](url)
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                }
+
                 const barClass = tag === 'header' ? 'header-bar' : 'footer-bar';
                 const bar = document.createElement('div');
                 bar.className = `${barClass} ${barClass}-${tag}`;
@@ -3301,50 +3322,97 @@ function assignTitleBarColors() {
 
     const dark = typeof window.isDarkTheme === 'function' ? window.isDarkTheme() : true;
     const value = dark ? 0.2 : 0.8;
+    const colorUtils = window.colorUtils;
+    const editorBg = typeof window.getEditorBackground === 'function' ? window.getEditorBackground() : (dark ? '#1e1e1e' : '#ffffff');
 
-    const titleBars = document.querySelectorAll('[data-title-bar="true"]');
-    titleBars.forEach((bar, index) => {
-        const hue = (index * GOLDEN_ANGLE) % 360;
-        const bgColor = hsvToHex(hue, 0.5, value);
-        const textColor = window.colorUtils ? window.colorUtils.getContrastText(bgColor) : '#ffffff';
+    // Clean up old data-title-color-index from all elements
+    document.querySelectorAll('[data-title-color-index]').forEach(el => el.removeAttribute('data-title-color-index'));
 
-        bar.style.background = bgColor;
-        bar.style.color = textColor;
-        bar.style.height = '20px';
-        bar.style.fontSize = '10px';
-        bar.style.fontWeight = 'bold';
-        bar.style.display = 'flex';
-        bar.style.alignItems = 'center';
-        bar.style.justifyContent = 'center';
-
-        // Apply matching border to parent column/task — same structure as tag border system
-        const column = bar.closest('.kanban-full-height-column');
-        if (column) {
-            const borderVal = `1px solid ${bgColor}`;
-            const header = column.querySelector('.column-header');
-            const content = column.querySelector('.column-content');
-            const footer = column.querySelector('.column-footer');
-            if (header) {
-                header.style.borderLeft = borderVal;
-                header.style.borderRight = borderVal;
-                header.style.borderTop = borderVal;
-            }
-            if (content) {
-                content.style.borderLeft = borderVal;
-                content.style.borderRight = borderVal;
-            }
-            if (footer) {
-                footer.style.borderLeft = borderVal;
-                footer.style.borderRight = borderVal;
-                footer.style.borderBottom = borderVal;
-            }
-        } else {
-            const task = bar.closest('.task-item');
-            if (task) {
-                task.style.border = `1px solid ${bgColor}`;
-            }
-        }
+    // Group bars by parent element so header+footer on same element share one color
+    const parentMap = new Map();
+    document.querySelectorAll('[data-title-bar="true"]').forEach(bar => {
+        const parent = bar.closest('.kanban-full-height-column, .task-item');
+        if (!parent) return;
+        if (!parentMap.has(parent)) parentMap.set(parent, []);
+        parentMap.get(parent).push(bar);
     });
+
+    // Generate CSS rules per color index — same approach as generateTagStyles / ensureTagStyleExists
+    let css = '';
+    let parentIndex = 0;
+    parentMap.forEach((bars, parent) => {
+        const idx = parentIndex;
+        const hue = (idx * GOLDEN_ANGLE) % 360;
+        const bgColor = hsvToHex(hue, 0.5, value);
+        const textColor = colorUtils ? colorUtils.getContrastText(bgColor) : '#ffffff';
+        const brightColor = hsvToHex(hue, 0.8, 0.85);
+        const tintedBg = colorUtils ? colorUtils.interpolateColor(editorBg, brightColor, 0.15) : editorBg;
+        const collapsedBg = colorUtils ? colorUtils.interpolateColor(editorBg, brightColor, 0.2) : editorBg;
+        const border = `1px solid ${bgColor}`;
+
+        // Set data attribute on parent element
+        parent.setAttribute('data-title-color-index', String(idx));
+
+        // Bar styles (header-bar / footer-bar with data-title-bar)
+        css += `[data-title-color-index="${idx}"] [data-title-bar="true"] {
+    background: ${bgColor} !important;
+    color: ${textColor} !important;
+    height: 20px;
+    font-size: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}\n`;
+
+        // Column background + border (same structure as tag bg/border system)
+        css += `.kanban-full-height-column[data-title-color-index="${idx}"] .column-header {
+    background-color: ${tintedBg} !important;
+    border-left: ${border} !important;
+    border-right: ${border} !important;
+    border-top: ${border} !important;
+}
+.kanban-full-height-column[data-title-color-index="${idx}"] .column-title {
+    background-color: ${tintedBg} !important;
+}
+.kanban-full-height-column[data-title-color-index="${idx}"] .column-content {
+    background-color: ${tintedBg} !important;
+    border-left: ${border} !important;
+    border-right: ${border} !important;
+}
+.kanban-full-height-column[data-title-color-index="${idx}"] .column-footer {
+    background-color: ${tintedBg} !important;
+    border-left: ${border} !important;
+    border-right: ${border} !important;
+    border-bottom: ${border} !important;
+}
+.kanban-full-height-column.collapsed[data-title-color-index="${idx}"] .column-header {
+    background-color: ${collapsedBg} !important;
+}
+.kanban-full-height-column.collapsed[data-title-color-index="${idx}"] .column-title {
+    background-color: ${collapsedBg} !important;
+}
+.kanban-full-height-column.collapsed[data-title-color-index="${idx}"] .column-footer {
+    background-color: ${collapsedBg} !important;
+}\n`;
+
+        // Task background + border (same structure as tag card system)
+        css += `.task-item[data-title-color-index="${idx}"] {
+    background-color: ${tintedBg} !important;
+    border: ${border} !important;
+}\n`;
+
+        parentIndex++;
+    });
+
+    // Inject CSS into dedicated style element (create or update)
+    let styleEl = document.getElementById('title-tag-styles');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'title-tag-styles';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = css;
 }
 
 // isDarkTheme moved to utils/tagStyleManager.js

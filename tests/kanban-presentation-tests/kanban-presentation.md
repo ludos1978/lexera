@@ -4,14 +4,15 @@ kanban-plugin: board
 
 fontSize: 1_0x
 whitespace: 16px
+fontFamily: poppins
 ---
 
 ## Column Title #footer #header
-- [ ] Task Title #header #footer #inprogress
-  
+- [ ] Task Title #header #footer
   more of the text
+- [ ] [[#1]]
 
-## # Heading 1 in Columntitle #green #todo #stack
+## # Heading 1 in Columntitle #footer #header #stack
 - [ ] ## Heading 2 in Tasktitle #export-exclude
   some long text
   
@@ -20,7 +21,7 @@ whitespace: 16px
   some long text
   
   Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
-- [ ] ## Heading 2 in Tasktitle #title
+- [ ] ## Heading 2 in Tasktitle #header #todo 
   
   some long text #green
   
@@ -30,7 +31,8 @@ whitespace: 16px
   
   Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 - [ ] #hidden-internal-deleted
-- [ ] 
+- [ ] #comment
+  
   andreas-gucklhorn-mawU2PoJWfU-unsplash.jpg #cyan
   
   ---:

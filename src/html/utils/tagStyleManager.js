@@ -18,6 +18,34 @@
 // Cache CSS variables for performance
 let cachedEditorBg = null;
 
+// Built-in functional tag configs (merged as defaults — user configs take priority)
+const BUILTIN_TAG_CONFIGS = {
+    comment: {
+        light: { background: '#FF9800' },
+        dark: { background: '#E65100' },
+        card: {
+            light: { background: '#FF9800', backgroundDark: '#E65100' },
+            dark: { background: '#E65100', backgroundDark: '#BF360C' }
+        },
+        column: {
+            light: { background: '#FF9800', backgroundDark: '#E65100' },
+            dark: { background: '#E65100', backgroundDark: '#BF360C' }
+        }
+    },
+    note: {
+        light: { background: '#FFEB3B' },
+        dark: { background: '#F9A825' },
+        card: {
+            light: { background: '#FFEB3B', backgroundDark: '#F9A825' },
+            dark: { background: '#F9A825', backgroundDark: '#F57F17' }
+        },
+        column: {
+            light: { background: '#FFEB3B', backgroundDark: '#F9A825' },
+            dark: { background: '#F9A825', backgroundDark: '#F57F17' }
+        }
+    }
+};
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -709,6 +737,18 @@ function generateTagStyles() {
  * Side effects: Modifies document.head with style element
  */
 function applyTagStyles() {
+
+    // Merge built-in tag configs as defaults (user configs take priority)
+    if (BUILTIN_TAG_CONFIGS) {
+        window.tagColors = window.tagColors || {};
+        for (const [tagName, config] of Object.entries(BUILTIN_TAG_CONFIGS)) {
+            // Only add if not already configured by user (check flat and grouped)
+            const existing = getTagConfig(tagName);
+            if (!existing) {
+                window.tagColors[tagName] = config;
+            }
+        }
+    }
 
     // Remove existing dynamic styles
     const existingStyles = document.getElementById('dynamic-tag-styles');
