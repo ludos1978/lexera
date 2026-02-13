@@ -2190,46 +2190,44 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                 <div class="task-title-container">
                 <div class="task-title-display">${renderedTitle}</div>
                 </div>
-                <div class="task-menu-container">
-                    <div class="donut-menu">
-                        <button class="donut-menu-btn" onmousedown="event.preventDefault();" onclick="toggleDonutMenu(event, this)">☰</button>
-                        <div class="donut-menu-dropdown">
-                            <button class="donut-menu-item" onclick="openTaskOverlayEditor('${task.id}', '${columnId}')">
-                                Edit task (overlay)
-                            </button>
-                            <button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenContent('${task.id}')">Reveal content</button>
-                            <div class="donut-menu-divider"></div>
-                            <button class="donut-menu-item" onclick="insertTaskBefore('${task.id}', '${columnId}')">Insert card before</button>
-                            <button class="donut-menu-item" onclick="insertTaskAfter('${task.id}', '${columnId}')">Insert card after</button>
-                            <button class="donut-menu-item" onclick="duplicateTask('${task.id}', '${columnId}')">Duplicate card</button>
-                            <div class="donut-menu-divider"></div>
-                            <button class="donut-menu-item" onclick="parkTaskFromMenu('${task.id}', '${columnId}')">Park card</button>
-                            <button class="donut-menu-item" onclick="archiveTaskFromMenu('${task.id}', '${columnId}')">Archive card</button>
-                            <button class="donut-menu-item danger" onclick="deleteTask('${task.id}', '${columnId}')">Delete card</button>
-                            <!-- Move options commented out - use drag & drop instead
-                            <div class="donut-menu-divider"></div>
-                            <div class="donut-menu-item has-submenu" data-submenu-type="move" data-id="${task.id}" data-type="task" data-column-id="${columnId}">
-                                Move
-                            </div>
-                            <div class="donut-menu-item has-submenu" data-submenu-type="move-to-list" data-id="${task.id}" data-type="task" data-column-id="${columnId}">
-                                Move to list
-                            </div>
-                            -->
-                            <div class="donut-menu-divider"></div>
-                            ${generateTagMenuItems(task.id, 'task', columnId)}
-                            <div class="donut-menu-divider"></div>
-                            <div class="donut-menu-item has-submenu" data-submenu-type="marp-classes" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
-                                Marp Classes
-                            </div>
-                            <div class="donut-menu-item has-submenu" data-submenu-type="marp-colors" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
-                                Marp Colors
-                            </div>
-                            <div class="donut-menu-item has-submenu" data-submenu-type="marp-header-footer" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
-                                Marp Header & Footer
-                            </div>
-                            <div class="donut-menu-divider"></div>
-                            <button class="donut-menu-item" onclick="copyTaskAsMarkdown('${task.id}', '${columnId}')">Copy as markdown</button>
+                <div class="donut-menu">
+                    <button class="donut-menu-btn" onmousedown="event.preventDefault();" onclick="toggleDonutMenu(event, this)">☰</button>
+                    <div class="donut-menu-dropdown">
+                        <button class="donut-menu-item" onclick="openTaskOverlayEditor('${task.id}', '${columnId}')">
+                            Edit task (overlay)
+                        </button>
+                        <button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenContent('${task.id}')">Reveal content</button>
+                        <div class="donut-menu-divider"></div>
+                        <button class="donut-menu-item" onclick="insertTaskBefore('${task.id}', '${columnId}')">Insert card before</button>
+                        <button class="donut-menu-item" onclick="insertTaskAfter('${task.id}', '${columnId}')">Insert card after</button>
+                        <button class="donut-menu-item" onclick="duplicateTask('${task.id}', '${columnId}')">Duplicate card</button>
+                        <div class="donut-menu-divider"></div>
+                        <button class="donut-menu-item" onclick="parkTaskFromMenu('${task.id}', '${columnId}')">Park card</button>
+                        <button class="donut-menu-item" onclick="archiveTaskFromMenu('${task.id}', '${columnId}')">Archive card</button>
+                        <button class="donut-menu-item danger" onclick="deleteTask('${task.id}', '${columnId}')">Delete card</button>
+                        <!-- Move options commented out - use drag & drop instead
+                        <div class="donut-menu-divider"></div>
+                        <div class="donut-menu-item has-submenu" data-submenu-type="move" data-id="${task.id}" data-type="task" data-column-id="${columnId}">
+                            Move
                         </div>
+                        <div class="donut-menu-item has-submenu" data-submenu-type="move-to-list" data-id="${task.id}" data-type="task" data-column-id="${columnId}">
+                            Move to list
+                        </div>
+                        -->
+                        <div class="donut-menu-divider"></div>
+                        ${generateTagMenuItems(task.id, 'task', columnId)}
+                        <div class="donut-menu-divider"></div>
+                        <div class="donut-menu-item has-submenu" data-submenu-type="marp-classes" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
+                            Marp Classes
+                        </div>
+                        <div class="donut-menu-item has-submenu" data-submenu-type="marp-colors" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
+                            Marp Colors
+                        </div>
+                        <div class="donut-menu-item has-submenu" data-submenu-type="marp-header-footer" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
+                            Marp Header & Footer
+                        </div>
+                        <div class="donut-menu-divider"></div>
+                        <button class="donut-menu-item" onclick="copyTaskAsMarkdown('${task.id}', '${columnId}')">Copy as markdown</button>
                     </div>
                 </div>
             </div>

@@ -370,7 +370,7 @@ function generateTagStyles() {
     background-color: ${lineBgAlpha} !important;
     border-left: 2px solid ${themeColors.background} !important;
     padding: 2px 4px !important;
-    margin: 2px 0 !important;
+    /*margin: 2px 0 !important;*/
     border-radius: 3px !important;
 }\n`;
 
