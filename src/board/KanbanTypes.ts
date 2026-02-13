@@ -51,7 +51,6 @@ export interface BoardSettings {
   tagVisibility?: string;
   taskMinHeight?: string;
   sectionHeight?: string;
-  taskSectionHeight?: string;
   fontSize?: string;
   fontFamily?: string;
   whitespace?: string;

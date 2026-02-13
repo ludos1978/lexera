@@ -27,7 +27,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
   - whitespace options (2px to 32px)
   - taskMinHeight options (auto, 50px to 600px)
   - sectionHeight options (auto, 50px to 600px)
-  - taskSectionHeight options (auto, 50px to 400px)
+
   - stickyStackMode options (none, first-stack, all-stacks)
   - tagVisibility options (all, none, excludelayout, allexcludinglayout)
   - htmlCommentRenderMode options (show, hide)

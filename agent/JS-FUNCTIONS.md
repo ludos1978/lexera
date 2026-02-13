@@ -77,8 +77,6 @@ if (!isEditing) {
 - src_html_webview-setTaskMinHeight - Set task minimum height
 - src_html_webview-applySectionHeight - Apply section height
 - src_html_webview-setSectionHeight - Set section height
-- src_html_webview-applyTaskSectionHeight - Apply task section height
-- src_html_webview-setTaskSectionHeight - Set task section height
 - src_html_webview-detectRowsFromBoard - Detect number of rows from board data
 - src_html_webview-getColumnRow - Get row number from column title
 - src_html_webview-updateColumnRowTag - Update column row tag

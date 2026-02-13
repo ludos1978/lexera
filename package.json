@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.203.3",
+  "version": "0.204.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -154,7 +154,6 @@
                 "columnWidth": "250px",
                 "cardHeight": "auto",
                 "sectionHeight": "auto",
-                "taskSectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "0_5x",
                 "whitespace": "8px",
@@ -169,7 +168,6 @@
                 "columnWidth": "350px",
                 "cardHeight": "auto",
                 "sectionHeight": "auto",
-                "taskSectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "1x",
                 "whitespace": "8px",
@@ -184,7 +182,6 @@
                 "columnWidth": "650px",
                 "cardHeight": "auto",
                 "sectionHeight": "auto",
-                "taskSectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "1_5x",
                 "whitespace": "24px",
@@ -199,7 +196,6 @@
                 "columnWidth": "33percent",
                 "cardHeight": "auto",
                 "sectionHeight": "auto",
-                "taskSectionHeight": "auto",
                 "fontSize": "1x",
                 "whitespace": "8px",
                 "rowHeight": "50vh",
@@ -214,7 +210,6 @@
                 "columnWidth": "500px",
                 "cardHeight": "auto",
                 "sectionHeight": "auto",
-                "taskSectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "1_25x",
                 "whitespace": "16px",
@@ -250,10 +245,6 @@
                   "sectionHeight": {
                     "type": "string",
                     "description": "Section height setting"
-                  },
-                  "taskSectionHeight": {
-                    "type": "string",
-                    "description": "Task section height setting"
                   },
                   "fontSize": {
                     "type": "string",

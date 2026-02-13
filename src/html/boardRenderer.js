@@ -3374,6 +3374,8 @@ function assignTitleBarColors() {
 }
 .kanban-full-height-column[data-title-color-index="${idx}"] .column-title {
     background-color: ${tintedBg} !important;
+    border-left: ${border} !important;
+    border-right: ${border} !important;
 }
 .kanban-full-height-column[data-title-color-index="${idx}"] .column-content {
     background-color: ${tintedBg} !important;

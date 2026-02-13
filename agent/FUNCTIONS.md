@@ -2336,3 +2336,25 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 - `copyTaskAsMarkdown()` — Added `excludeTags: ['#hidden']` to export options to exclude hidden content from copy.
 
 ---
+
+### New: Batch Settings Update (Performance Optimization)
+
+### New: `src/html/webview.js`
+- `beginBatchSettingsUpdate()` — Enables batch mode: sets `applyingInitialConfig=true` to suppress per-setter renders and initializes `_batchedBoardSettings` to queue save messages.
+- `endBatchSettingsUpdate()` — Ends batch mode: resets `applyingInitialConfig`, sends all queued settings as a single `setBoardSettings` message, triggers one render, and restores column width.
+
+### Modified: `src/html/webview.js`
+- `saveBoardSetting()` — Now batch-aware: when `_batchedBoardSettings` exists, queues settings instead of sending immediately.
+- `applyLayoutPreset()` — Now wraps all settings in `beginBatchSettingsUpdate()/endBatchSettingsUpdate()` for a single render + single file save instead of multiple.
+
+### New: `src/core/bridge/MessageTypes.ts`
+- `SetBoardSettingsMessage` — Batch version of `SetBoardSettingMessage`; carries `settings: Record<string, string | number>`.
+
+### New: `src/commands/UICommands.ts`
+- `handleSetBoardSetting()` — Delegates to handleSetBoardSettings by wrapping single key/value into a settings object.
+- `handleSetBoardSettings()` — Validates, applies all settings to board in one pass, and does a single file save.
+
+### New: `src/html/webview.js`
+- `rerenderAndRestoreColumnWidth()` — Re-renders the board and restores column width via setTimeout. Skipped during initial config. Used by applyTagVisibility, applyHtmlCommentRenderMode, applyHtmlContentRenderMode, endBatchSettingsUpdate.
+
+---

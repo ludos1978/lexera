@@ -3,9 +3,8 @@
   --whitespace-mul2: calc(var(--whitespace) * 2);
   --whitespace-div2: calc(var(--whitespace) / 2);
   --whitespace-div4: calc(var(--whitespace) / 4);
+  --whitespace-div8: calc(var(--whitespace) / 8);
   --task-height: auto;
-  --task-section-min-height: auto;
-  --task-section-max-height: auto;
   --column-width: 450px;
   --collapsed-column-width: 40px;
 
@@ -1957,7 +1956,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
   /* This contains the actual visual column with border and background */
   display: flex;
   flex-direction: column;
-  padding: var(--whitespace-div4) var(--whitespace-div4) 0 var(--whitespace-div4);
+  padding: 0 var(--whitespace-div4) 0 var(--whitespace-div4);
   flex: 1 1 auto;
   /* background-color: var(--vscode-editor-background); */
   /* border-radius: 0 0 var(--whitespace-div4) var(--whitespace-div4); */
@@ -1968,7 +1967,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
   overflow-x: visible;
   max-height: min-content;
   background-color: var(--column-background);
-  gap: var(--whitespace-div2);
+  /* gap: var(--whitespace-div2); */
 }
 
 .header-bars-container,
@@ -2089,6 +2088,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
   min-width: 0;
   margin-top: 0;
   width: -webkit-fill-available;
+  margin-bottom: var(--whitespace-div4);
 }
 
 /* Title container that should expand to fill available space */
@@ -2637,7 +2637,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 .task-item {
   /* background-color: var(--task-background); */
   border-radius: 4px;
-	gap: var(--whitespace-div4);
+	gap: var(--whitespace-div8);
   margin-bottom: var(--whitespace-div2);
   min-height: var(--task-height);
   transition: all 0.2s ease;
@@ -2646,7 +2646,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  margin-bottom: 0px;
+  margin-bottom: var(--whitespace-div4);
   /* padding-bottom: 4px; */
 }
 
@@ -3051,17 +3051,6 @@ figure:has(.diagram-placeholder .image-not-found) {
 body.section-height-limited .task-section {
   max-height: var(--section-max-height, auto);
   min-height: var(--section-min-height, auto);
-  max-width: -webkit-fill-available;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Apply task-section specific min/max height when task-section-height-limited class is active */
-body.task-section-height-limited .task-section {
-  min-height: var(--task-section-min-height, auto);
-  max-height: var(--task-section-max-height, auto);
   max-width: -webkit-fill-available;
   overflow-y: auto;
   overflow-x: hidden;
@@ -4501,7 +4490,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 
 /* Horizontal fold: keep text horizontal but narrow */
 .kanban-full-height-column.collapsed-horizontal .column-title-text {
-  display: flex;
+  /* display: flex; */
   align-items: center;
   flex: 1;
   width: 100%;
@@ -6222,25 +6211,25 @@ blockquote {
 /* Positioning for each corner - horizontal by default */
 .corner-badges-container.top-left {
   top: 0px;
-  left: -8px;
+  left: -7px;
   flex-direction: row;
 }
 
 .corner-badges-container.top-right {
   top: 0px;
-  right: -8px;
+  right: -7px;
   flex-direction: row;
 }
 
 .corner-badges-container.bottom-left {
   bottom: -8px;
-  left: -8px;
+  left: -7px;
   flex-direction: row;
 }
 
 .corner-badges-container.bottom-right {
   bottom: -8px;
-  right: -8px;
+  right: -7px;
   flex-direction: row;
 }
 
@@ -6289,12 +6278,9 @@ blockquote {
   color: var(--vscode-badge-foreground, #ffffff) !important;
 }
 
-/* Adjust corner badge positioning to account for padding */
-.kanban-full-height-column .corner-badge,
-.kanban-full-height-column [class*="corner-badge-"] {
-  /* Override inline styles to push badges outside padding area */
-  margin-top: calc(var(--whitespace) * -1) !important;
-  margin-right: calc(var(--whitespace) * -1) !important;
+/* Adjust corner badge container positioning to account for column padding */
+.kanban-full-height-column .corner-badges-container {
+  margin-top: calc(var(--whitespace) * -1);
 }
 
 .corner-badge[data-badge-index="1"] {
@@ -6416,13 +6402,15 @@ body.week-highlight-glow .task-item[data-current-week="true"] {
   border-width: 0;
 }
 
-/* Collapsed column label sizing */
-.kanban-full-height-column.collapsed-vertical.has-header-label,
-.kanban-full-height-column.collapsed-vertical.has-footer-label,
-.kanban-full-height-column.collapsed-vertical.has-header-label.has-footer-label {
-  width: 80px !important;
-  min-width: 80px !important;
-  max-width: 80px !important;
+/* Collapsed-vertical column: rotate header/footer bar text to match vertical title orientation */
+.kanban-full-height-column.collapsed-vertical .header-bar,
+.kanban-full-height-column.collapsed-vertical .footer-bar {
+  writing-mode: sideways-rl;
+  transform: rotate(180deg);
+  height: auto !important;
+  width: 100%;
+  padding: var(--whitespace) 0;
+  white-space: nowrap;
 }
 
 .kanban-full-height-column:not(.collapsed-vertical):not(.collapsed-horizontal) .column-content {

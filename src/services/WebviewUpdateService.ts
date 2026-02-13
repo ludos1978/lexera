@@ -305,7 +305,6 @@ export class WebviewUpdateService {
                 'tagVisibility',
                 'taskMinHeight',
                 'sectionHeight',
-                'taskSectionHeight',
                 'fontSize',
                 'fontFamily',
                 'whitespace',

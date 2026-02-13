@@ -62,7 +62,6 @@ export interface BoardUpdateMessage extends BaseMessage {
     tagVisibility: string;
     taskMinHeight: string;
     sectionHeight: string;
-    taskSectionHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
@@ -1049,7 +1048,6 @@ export type BoardSettingKey =
     | 'tagVisibility'
     | 'taskMinHeight'
     | 'sectionHeight'
-    | 'taskSectionHeight'
     | 'fontSize'
     | 'fontFamily'
     | 'whitespace'
@@ -1064,6 +1062,15 @@ export interface SetBoardSettingMessage extends BaseMessage {
     type: 'setBoardSetting';
     key: BoardSettingKey;
     value: string | number;
+}
+
+/**
+ * Set multiple board settings at once - batch version of setBoardSetting
+ * Used by layout presets to apply all settings in a single file write
+ */
+export interface SetBoardSettingsMessage extends BaseMessage {
+    type: 'setBoardSettings';
+    settings: Record<string, string | number>;
 }
 
 /**
@@ -2378,6 +2385,7 @@ export type IncomingMessage =
     | SetPreferenceMessage
     | SetFilePreferenceMessage
     | SetBoardSettingMessage
+    | SetBoardSettingsMessage
     | SetContextMessage
     | RequestConfigurationRefreshMessage
     | OpenSearchPanelMessage

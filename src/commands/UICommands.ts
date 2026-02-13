@@ -23,7 +23,9 @@ import {
     UpdateColumnContentExtendedMessage,
     OpenSearchPanelMessage,
     SetFilePreferenceMessage,
-    SetBoardSettingMessage
+    SetBoardSettingMessage,
+    SetBoardSettingsMessage,
+    BoardSettingKey
 } from '../core/bridge/MessageTypes';
 import { ResolvedTarget } from '../core/stores/BoardStore';
 import { KanbanBoard } from '../markdownParser';
@@ -55,6 +57,7 @@ export class UICommands extends SwitchBasedCommand {
             'setPreference',
             'setFilePreference',
             'setBoardSetting',
+            'setBoardSettings',
             'setContext',
             'requestConfigurationRefresh',
             'openSearchPanel'
@@ -77,6 +80,7 @@ export class UICommands extends SwitchBasedCommand {
         'setPreference': (msg, _ctx) => this.handleSetPreference(msg as SetPreferenceMessage),
         'setFilePreference': (msg, ctx) => this.handleSetFilePreference(msg as SetFilePreferenceMessage, ctx),
         'setBoardSetting': (msg, ctx) => this.handleSetBoardSetting(msg as SetBoardSettingMessage, ctx),
+        'setBoardSettings': (msg, ctx) => this.handleSetBoardSettings(msg as SetBoardSettingsMessage, ctx),
         'setContext': (msg, _ctx) => this.handleSetContext(msg as SetContextMessage),
         'requestConfigurationRefresh': (_msg, ctx) => this.handleRequestConfigurationRefresh(ctx),
         'openSearchPanel': (msg, ctx) => this.handleOpenSearchPanel(msg as OpenSearchPanelMessage, ctx)
@@ -316,85 +320,89 @@ export class UICommands extends SwitchBasedCommand {
 
     /**
      * Handle setBoardSetting command
-     * Updates board settings in the YAML frontmatter and saves the file
+     * Delegates to handleSetBoardSettings for unified validation and save logic
      */
     private async handleSetBoardSetting(message: SetBoardSettingMessage, context: CommandContext): Promise<CommandResult> {
-        logger.debug(`[UICommands.setBoardSetting] Received: key=${message.key}, value=${message.value}`);
-
         if (!message.key) {
             logger.error('[UICommands] setBoardSetting called with undefined key');
             return this.failure('setBoardSetting requires a key');
         }
-
         if (message.value === undefined || message.value === null) {
             logger.error('[UICommands] setBoardSetting called with undefined/null value');
             return this.failure('setBoardSetting requires a value');
         }
 
-        const board = context.getCurrentBoard();
-        if (!board) {
-            logger.error('[UICommands] setBoardSetting: no board available');
-            return this.failure('setBoardSetting requires a board');
+        return this.handleSetBoardSettings(
+            { type: 'setBoardSettings', settings: { [message.key]: message.value } } as SetBoardSettingsMessage,
+            context
+        );
+    }
+
+    /**
+     * Handle setBoardSettings command (batch version)
+     * Applies all settings in one pass and does a single file save
+     */
+    private async handleSetBoardSettings(message: SetBoardSettingsMessage, context: CommandContext): Promise<CommandResult> {
+        logger.debug(`[UICommands.setBoardSettings] Received batch: ${Object.keys(message.settings).join(', ')}`);
+
+        if (!message.settings || Object.keys(message.settings).length === 0) {
+            return this.success();
         }
 
-        logger.debug(`[UICommands.setBoardSetting] Board before update - yamlHeader exists: ${!!board.yamlHeader}, boardSettings:`, board.boardSettings);
+        const board = context.getCurrentBoard();
+        if (!board) {
+            logger.error('[UICommands] setBoardSettings: no board available');
+            return this.failure('setBoardSettings requires a board');
+        }
 
-        // Initialize boardSettings if not present
         if (!board.boardSettings) {
             board.boardSettings = {};
         }
 
-        // Update the setting with strict value typing
-        if (message.key === 'layoutRows' || message.key === 'maxRowHeight') {
-            const numericValue = typeof message.value === 'number' ? message.value : Number(message.value);
-            if (!Number.isFinite(numericValue)) {
-                return this.failure(`Invalid ${message.key} value: ${String(message.value)}`);
-            }
-
-            if (message.key === 'layoutRows') {
-                if (numericValue < 1) {
-                    return this.failure(`Invalid layoutRows value: ${String(message.value)}`);
+        // Apply all settings in one pass (same validation as handleSetBoardSetting)
+        for (const [key, value] of Object.entries(message.settings)) {
+            if (key === 'layoutRows' || key === 'maxRowHeight') {
+                const numericValue = typeof value === 'number' ? value : Number(value);
+                if (!Number.isFinite(numericValue)) {
+                    logger.warn(`[UICommands.setBoardSettings] Skipping invalid ${key} value: ${String(value)}`);
+                    continue;
                 }
-                board.boardSettings.layoutRows = Math.floor(numericValue);
+                if (key === 'layoutRows') {
+                    if (numericValue < 1) { continue; }
+                    board.boardSettings.layoutRows = Math.floor(numericValue);
+                } else {
+                    if (numericValue < 0) { continue; }
+                    board.boardSettings.maxRowHeight = Math.floor(numericValue);
+                }
             } else {
-                if (numericValue < 0) {
-                    return this.failure(`Invalid maxRowHeight value: ${String(message.value)}`);
+                if (typeof value !== 'string') {
+                    logger.warn(`[UICommands.setBoardSettings] Skipping ${key}: expected string, got ${typeof value}`);
+                    continue;
                 }
-                board.boardSettings.maxRowHeight = Math.floor(numericValue);
+                board.boardSettings[key as Exclude<BoardSettingKey, 'layoutRows' | 'maxRowHeight'>] = value;
             }
-        } else {
-            if (typeof message.value !== 'string') {
-                return this.failure(`Invalid ${message.key} value type. Expected string.`);
-            }
-            board.boardSettings[message.key] = message.value;
         }
 
-        logger.debug(`[UICommands.setBoardSetting] Board after update - boardSettings:`, board.boardSettings);
-
-        // Update the board in the store
         context.setBoard(board);
 
         try {
             const mainFile = context.getFileRegistry?.()?.getMainFile();
             if (mainFile) {
-                // Persist only the main file for board settings (YAML frontmatter),
-                // so include save constraints cannot block this metadata write.
                 mainFile.setCachedBoardFromWebview(board);
                 await context.fileSaveService.saveFile(mainFile, undefined, {
                     source: 'ui-edit',
                     skipReloadDetection: true
                 });
             } else {
-                // Fallback to legacy full save path when registry context is unavailable.
                 await context.onSaveToMarkdown();
             }
         } catch (error) {
             const messageText = getErrorMessage(error);
-            notifyError(`Failed to save board setting "${message.key}": ${messageText}`);
-            return this.failure(`setBoardSetting failed: ${messageText}`);
+            notifyError(`Failed to save board settings: ${messageText}`);
+            return this.failure(`setBoardSettings failed: ${messageText}`);
         }
 
-        logger.debug(`[UICommands.setBoardSetting] Saved to markdown`);
+        logger.debug(`[UICommands.setBoardSettings] Saved to markdown`);
         return this.success();
     }
 

@@ -686,7 +686,7 @@ graph TD
 
 **Section Heights:**
 - Control individual section heights
-- Settings: `sectionHeight`, `taskSectionHeight`
+- Setting: `sectionHeight`
 
 ### Typography
 
@@ -844,7 +844,6 @@ When search panel is open:
 | `columnWidth` | "350px" | Default column width |
 | `taskMinHeight` | "auto" | Minimum card height |
 | `sectionHeight` | "auto" | Section height |
-| `taskSectionHeight` | "auto" | Task section height |
 | `whitespace` | "4px" | Padding/spacing |
 | `fontSize` | "normal" | Text size |
 | `fontFamily` | "system" | Font family |

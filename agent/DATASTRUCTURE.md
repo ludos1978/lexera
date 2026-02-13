@@ -446,7 +446,6 @@ interface KanbanConfiguration {
     tagColors: { [key: string]: string };
     taskMinHeight: string;
     sectionHeight: string;
-    taskSectionHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
@@ -501,7 +500,6 @@ interface ConfigurationDefaults {
     maxRowHeight: number;
     taskMinHeight: string;
     sectionHeight: string;
-    taskSectionHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;

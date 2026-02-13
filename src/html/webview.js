@@ -1226,7 +1226,6 @@ const BOARD_SETTING_KEYS = new Set([
     'tagVisibility',
     'taskMinHeight',
     'sectionHeight',
-    'taskSectionHeight',
     'fontSize',
     'fontFamily',
     'whitespace',
@@ -1241,6 +1240,7 @@ function saveBoardSetting(settingKey, value) {
         return;
     }
 
+    // Update local cache
     if (window.cachedBoard) {
         if (!window.cachedBoard.boardSettings) {
             window.cachedBoard.boardSettings = {};
@@ -1248,11 +1248,39 @@ function saveBoardSetting(settingKey, value) {
         window.cachedBoard.boardSettings[settingKey] = value;
     }
 
+    // Batch mode: queue instead of sending
+    if (window._batchedBoardSettings) {
+        window._batchedBoardSettings[settingKey] = value;
+        return;
+    }
+
+    // Normal mode: send immediately
     vscode.postMessage({
         type: 'setBoardSetting',
         key: settingKey,
         value: value
     });
+}
+
+function beginBatchSettingsUpdate() {
+    window.applyingInitialConfig = true;
+    window._batchedBoardSettings = {};
+}
+
+function endBatchSettingsUpdate() {
+    window.applyingInitialConfig = false;
+
+    // Single batch save to backend
+    const batched = window._batchedBoardSettings;
+    window._batchedBoardSettings = null;
+    if (batched && Object.keys(batched).length > 0) {
+        vscode.postMessage({ type: 'setBoardSettings', settings: batched });
+    }
+
+    // Single render + column width restoration
+    rerenderAndRestoreColumnWidth();
+
+    updateAllMenuIndicators();
 }
 
 function applyAndSaveSetting(configKey, value, applyFunction, options = {}) {
@@ -1641,14 +1669,23 @@ function setColumnWidth(size) {
 
 
 
-// Function to set layout rows
 /**
- * Sets the number of rows in the kanban layout
- * Purpose: Switch between single and multi-row layouts
- * Used by: Layout menu selections
- * @param {number} rows - Number of rows (1, 2, or 3)
- * Side effects: Updates board layout, triggers re-render
+ * Re-render the board and restore column width afterwards.
+ * Skipped during initial config to avoid duplicate renders.
  */
+function rerenderAndRestoreColumnWidth() {
+    if (window.cachedBoard && !window.applyingInitialConfig) {
+        if (typeof window.renderBoard === 'function') {
+            window.renderBoard();
+        }
+        setTimeout(() => {
+            if (window.currentColumnWidth && window.applyColumnWidth) {
+                window.applyColumnWidth(window.currentColumnWidth, true);
+            }
+        }, 50);
+    }
+}
+
 // Refactored layout rows functions using styleManager
 function applyLayoutRows(rows) {
     // Skip if value unchanged to avoid unnecessary re-renders
@@ -1746,24 +1783,14 @@ function applyRowHeight(height) {
     }
 }
 
-// Refactored row height functions using styleManager
+// High-level row height setter: stores value, updates CSS variable, updates DOM
 function applyRowHeightSetting(height) {
     currentRowHeight = height;
     window.currentRowHeight = height;
 
-    // Convert percentage values to viewport units
-    let cssValue = height;
-    if (height.includes('percent')) {
-        const percent = parseInt(height.replace('percent', ''));
-        cssValue = `${percent}vh`;
-    }
-
-    styleManager.applyRowHeight(cssValue === 'auto' ? 'auto' : cssValue);
-
-    // Also call applyRowHeight if defined elsewhere
-    if (typeof applyRowHeight === 'function') {
-        applyRowHeight(height);
-    }
+    const cssValue = getCSS('rowHeight', height);
+    styleManager.applyRowHeight(cssValue);
+    applyRowHeight(height);
 }
 
 function setRowHeight(height) {
@@ -1825,19 +1852,7 @@ function applyTagVisibility(setting) {
     // Add the selected tag visibility class
     document.body.classList.add(`tag-visibility-${setting}`);
 
-    // Trigger re-render to apply text filtering changes (skip during initial config to avoid duplicate renders)
-    if (window.cachedBoard && !window.applyingInitialConfig) {
-        if (typeof window.renderBoard === 'function') {
-            window.renderBoard();
-        }
-
-        // Preserve column width after re-render
-        setTimeout(() => {
-            if (window.currentColumnWidth && window.applyColumnWidth) {
-                window.applyColumnWidth(window.currentColumnWidth, true);
-            }
-        }, 50);
-    }
+    rerenderAndRestoreColumnWidth();
 }
 
 function setTagVisibility(setting) {
@@ -1854,19 +1869,7 @@ function applyHtmlCommentRenderMode(mode) {
         window.configManager.cache.set('htmlCommentRenderMode', mode);
     }
 
-    // Trigger re-render to apply changes (skip during initial config to avoid duplicate renders)
-    if (window.cachedBoard && !window.applyingInitialConfig) {
-        if (typeof window.renderBoard === 'function') {
-            window.renderBoard();
-        }
-
-        // Preserve column width after re-render
-        setTimeout(() => {
-            if (window.currentColumnWidth && window.applyColumnWidth) {
-                window.applyColumnWidth(window.currentColumnWidth, true);
-            }
-        }, 50);
-    }
+    rerenderAndRestoreColumnWidth();
 }
 
 function setHtmlCommentRenderMode(mode) {
@@ -1882,19 +1885,7 @@ function applyHtmlContentRenderMode(mode) {
         window.configManager.cache.set('htmlContentRenderMode', mode);
     }
 
-    // Trigger re-render to apply changes (skip during initial config to avoid duplicate renders)
-    if (window.cachedBoard && !window.applyingInitialConfig) {
-        if (typeof window.renderBoard === 'function') {
-            window.renderBoard();
-        }
-
-        // Preserve column width after re-render
-        setTimeout(() => {
-            if (window.currentColumnWidth && window.applyColumnWidth) {
-                window.applyColumnWidth(window.currentColumnWidth, true);
-            }
-        }, 50);
-    }
+    rerenderAndRestoreColumnWidth();
 }
 
 function setHtmlContentRenderMode(mode) {
@@ -1955,18 +1946,6 @@ function applySectionHeight(height) {
 
 function setSectionHeight(height) {
     applyAndSaveSetting('sectionHeight', height, applySectionHeight);
-}
-
-// Task section height functions
-function applyTaskSectionHeight(height) {
-    window.currentTaskSectionHeight = height;
-
-    // Use styleManager to apply task section height
-    styleManager.applyTaskSectionHeight(height);
-}
-
-function setTaskSectionHeight(height) {
-    applyAndSaveSetting('taskSectionHeight', height, applyTaskSectionHeight);
 }
 
 // Function to detect row tags from board
@@ -2698,13 +2677,6 @@ if (!webviewEventListenersInitialized) {
                     applySectionHeight(message.sectionHeight);
                 } else {
                     applySectionHeight('auto'); // Default fallback
-                }
-
-                // Update task section height with the value from configuration
-                if (message.taskSectionHeight) {
-                    applyTaskSectionHeight(message.taskSectionHeight);
-                } else {
-                    applyTaskSectionHeight('auto'); // Default fallback
                 }
 
                 // Update font size with the value from configuration
@@ -6356,10 +6328,9 @@ function applyLayoutPreset(presetKey) {
     const preset = layoutPresets[presetKey];
     if (!preset) { return; }
 
-    // Track if any height-related settings changed
-    let needsRecalculation = false;
+    beginBatchSettingsUpdate();
 
-    // Apply each setting in the preset
+    // Apply each setting — renders suppressed, saves queued
     Object.entries(preset.settings).forEach(([settingKey, value]) => {
         switch (settingKey) {
             case 'columnWidth':
@@ -6367,15 +6338,9 @@ function applyLayoutPreset(presetKey) {
                 break;
             case 'cardHeight':
                 setTaskMinHeight(value);
-                needsRecalculation = true;
                 break;
             case 'sectionHeight':
                 setSectionHeight(value);
-                needsRecalculation = true;
-                break;
-            case 'taskSectionHeight':
-                setTaskSectionHeight(value);
-                needsRecalculation = true;
                 break;
             case 'fontSize':
                 setFontSize(value);
@@ -6385,11 +6350,9 @@ function applyLayoutPreset(presetKey) {
                 break;
             case 'layoutRows':
                 setLayoutRows(value);
-                needsRecalculation = true; // layoutRows already triggers renderBoard internally
                 break;
             case 'rowHeight':
                 setRowHeight(value);
-                needsRecalculation = true;
                 break;
             case 'stickyStackMode':
                 setStickyStackMode(value);
@@ -6409,35 +6372,19 @@ function applyLayoutPreset(presetKey) {
         }
     });
 
-    // Store the current preset for backend config
     window.currentLayoutPreset = presetKey;
-
-    // Send to backend
     saveBoardSetting('layoutPreset', presetKey);
 
-    // Close the menu
+    endBatchSettingsUpdate(); // ONE render + ONE batch save
+
+    // Close menu, update indicators
     const dropdown = document.getElementById('layout-presets-dropdown');
     const button = document.getElementById('layout-presets-btn');
     if (dropdown && button) {
         dropdown.classList.remove('show');
         button.classList.remove('active');
     }
-
-    // Update all menu indicators
-    updateAllMenuIndicators();
     updateLayoutPresetsActiveState();
-
-    // Recalculate board layout if any height-related settings changed
-    // Note: layoutRows already triggers renderBoard internally, but we need to ensure
-    // other height changes also trigger recalculation
-    if (needsRecalculation && window.cachedBoard) {
-        // Use setTimeout to ensure all CSS changes are applied first
-        setTimeout(() => {
-            if (typeof window.renderBoard === 'function') {
-                window.renderBoard(); // Full board re-render to recalculate positions
-            }
-        }, 50);
-    }
 }
 
 /**

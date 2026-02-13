@@ -48,18 +48,6 @@ const baseOptions = {
         { label: "Full Screen", value: "100percent", css: "80vh" }
     ],
 
-    // Task section height options
-    taskSectionHeight: [
-        { label: "Auto", value: "auto", css: "auto" },
-        { label: "Small", value: "150px", css: "150px", separator: true },
-        { label: "Medium", value: "300px", css: "300px" },
-        { label: "Large", value: "500px", css: "500px" },
-        { label: "1/3 Screen", value: "33percent", css: "17vh", separator: true },
-        { label: "1/2 Screen", value: "50percent", css: "33vh" },
-        { label: "2/3 Screen", value: "66percent", css: "48vh" },
-        { label: "Full Screen", value: "100percent", css: "80vh" }
-    ],
-
     // Row height options
     rowHeight: [
         { label: "Auto", value: "auto", css: "auto" },
@@ -170,7 +158,6 @@ const menuConfig = {
     columnWidth: null, // Generated
     cardHeight: null, // Generated
     sectionHeight: null, // Generated
-    taskSectionHeight: null, // Generated
     rowHeight: null, // Generated
     whitespace: null, // Generated
     fontSize: null, // Generated
@@ -197,7 +184,7 @@ const menuConfig = {
 };
 
 // Generate menu configurations from base options
-['columnWidth', 'cardHeight', 'sectionHeight', 'taskSectionHeight', 'rowHeight', 'whitespace', 'fontSize', 'layoutRows', 'stickyStackMode', 'tagVisibility', 'htmlCommentRenderMode', 'htmlContentRenderMode', 'arrowKeyFocusScroll'].forEach(key => {
+['columnWidth', 'cardHeight', 'sectionHeight', 'rowHeight', 'whitespace', 'fontSize', 'layoutRows', 'stickyStackMode', 'tagVisibility', 'htmlCommentRenderMode', 'htmlContentRenderMode', 'arrowKeyFocusScroll'].forEach(key => {
     if (baseOptions[key]) {
         menuConfig[key] = baseOptions[key].map(option => {
             const result = {
@@ -234,8 +221,6 @@ function getCurrentSettingValue(configKey) {
             return window.currentTaskMinHeight || 'auto';
         case 'sectionHeight':
             return window.currentSectionHeight || 'auto';
-        case 'taskSectionHeight':
-            return window.currentTaskSectionHeight || 'auto';
         case 'whitespace':
             return window.currentWhitespace || '8px';
         case 'fontSize':
@@ -296,7 +281,6 @@ function updateAllMenuIndicators() {
         { selector: '[data-menu="columnWidth"]', config: 'columnWidth', function: 'setColumnWidth' },
         { selector: '[data-menu="cardHeight"]', config: 'cardHeight', function: 'setTaskMinHeight' },
         { selector: '[data-menu="sectionHeight"]', config: 'sectionHeight', function: 'setSectionHeight' },
-        { selector: '[data-menu="taskSectionHeight"]', config: 'taskSectionHeight', function: 'setTaskSectionHeight' },
         { selector: '[data-menu="whitespace"]', config: 'whitespace', function: 'setWhitespace' },
         { selector: '[data-menu="fontSize"]', config: 'fontSize', function: 'setFontSize' },
         { selector: '[data-menu="fontFamily"]', config: 'fontFamily', function: 'setFontFamily' },

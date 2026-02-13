@@ -170,21 +170,6 @@ styleManager.applySectionHeight = function(height) {
     }
 };
 
-styleManager.applyTaskSectionHeight = function(height) {
-    // Convert value to CSS using getCSS helper
-    const actualHeight = typeof window.getCSS === 'function' ? window.getCSS('taskSectionHeight', height) : height;
-
-    // Set both min and max height to the same value for fixed height
-    this.setCSSVariable('task-section-min-height', actualHeight);
-    this.setCSSVariable('task-section-max-height', actualHeight);
-
-    if (height !== 'auto') {
-        document.body.classList.add('task-section-height-limited');
-    } else {
-        document.body.classList.remove('task-section-height-limited');
-    }
-};
-
 // Global window exposure
 if (typeof window !== 'undefined') {
     window.styleManager = styleManager;

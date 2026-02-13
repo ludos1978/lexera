@@ -25,7 +25,6 @@ const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'tagVisibility',
   'taskMinHeight',
   'sectionHeight',
-  'taskSectionHeight',
   'fontSize',
   'fontFamily',
   'whitespace',
