@@ -3441,6 +3441,7 @@ window.archiveColumnFromMenu = archiveColumnFromMenu;
 
 // Update visual tag state - handles borders and other tag-based styling
 function updateVisualTagState(element, allTags, elementType, isCollapsed) {
+    if (!element || !element.classList) return;
 
     // Update primary tag attribute (for primary styling like borders)
     const primaryTag = allTags.length > 0 ? allTags[0] : null;
@@ -3552,6 +3553,11 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
     // Update all visual tag elements immediately (headers, footers, borders, badges)
     updateAllVisualTagElements(element, allTags, elementType);
 
+    // Re-inject header/footer bars after updateAllVisualTagElements cleanup
+    if (window.injectStackableBars) {
+        window.injectStackableBars(element);
+    }
+
     // Force a style recalculation to ensure CSS changes are applied immediately
     element.offsetHeight; // Trigger reflow
 
@@ -3559,6 +3565,7 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
 
 // Comprehensive function to update ALL visual tag elements immediately
 function updateAllVisualTagElements(element, allTags, elementType) {
+    if (!element || !element.classList) return;
 
     // 0. UPDATE TITLE DISPLAY for elements with includes
     if (elementType === 'column') {

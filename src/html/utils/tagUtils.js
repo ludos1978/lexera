@@ -63,6 +63,8 @@ class TagUtils {
             spanTag: new RegExp(`${P.H}span(\\d+)(?=\\s|$)`, 'gi'),
             stackTag: new RegExp(`${P.H}stack(?=\\s|$)`, 'gi'),
             stickyTag: new RegExp(`${P.H}sticky(?=\\s|$)`, 'gi'),
+            headerTag: new RegExp(`${P.H}header(?=\\s|$)`, 'gi'),
+            footerTag: new RegExp(`${P.H}footer(?=\\s|$)`, 'gi'),
             includeTag: new RegExp(`${P.H}include:([^\\s]+)`, 'i'),
 
             // QUERY TAGS - start with ? followed by tag type prefix (# or @)
@@ -112,10 +114,10 @@ class TagUtils {
         this.prefixStripRegex = new RegExp(`^[${escapeRegex(TAG_PREFIXES.HASH + TAG_PREFIXES.PERSON + TAG_PREFIXES.TEMPORAL + TAG_PREFIXES.QUERY)}]`);
 
         // Layout tags that should not be displayed
-        this.layoutTags = ['row', 'span', 'stack', 'sticky', 'fold', 'archive', 'hidden', 'include'];
+        this.layoutTags = ['row', 'span', 'stack', 'sticky', 'fold', 'archive', 'hidden', 'include', 'header', 'footer'];
 
         // Tags that should be excluded from menus
-        this.excludedTags = ['ungathered', 'fold', 'archive', 'hidden'];
+        this.excludedTags = ['ungathered', 'fold', 'archive', 'hidden', 'header', 'footer'];
     }
 
     /**
@@ -1474,12 +1476,14 @@ class TagUtils {
                 return text;
             case 'standard':
             case 'allexcludinglayout':
-                // Remove layout tags only (#span, #row, #stack, #sticky)
+                // Remove layout tags only (#span, #row, #stack, #sticky, #header, #footer)
                 return text
                     .replace(this.patterns.rowTag, '')
                     .replace(this.patterns.spanTag, '')
                     .replace(this.patterns.stackTag, '')
                     .replace(this.patterns.stickyTag, '')
+                    .replace(this.patterns.headerTag, '')
+                    .replace(this.patterns.footerTag, '')
                     .replace(/\s+/g, ' ')
                     .trim();
             case 'custom':
@@ -1490,6 +1494,8 @@ class TagUtils {
                     .replace(this.patterns.spanTag, '')
                     .replace(this.patterns.stackTag, '')
                     .replace(this.patterns.stickyTag, '')
+                    .replace(this.patterns.headerTag, '')
+                    .replace(this.patterns.footerTag, '')
                     .replace(/\s+/g, ' ')
                     .trim();
             case 'mentions':

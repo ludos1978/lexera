@@ -1743,6 +1743,10 @@ function renderBoard(options = null) {
             }
         });
 
+        // Re-inject header/footer bars after updateAllVisualTagElements cleanup
+        if (typeof injectStackableBars === 'function') {
+            injectStackableBars();
+        }
     }, 20);
 
     if (typeof window.updateActiveSpecialCharOverlay === 'function') {
@@ -2083,8 +2087,6 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     }
 
     const isCollapsed = window.collapsedTasks.has(task.id);
-    const collapsedTitleText = isCollapsed ? getCollapsedTaskTitleText(task) : '';
-    const renderedTitle = collapsedTitleText ? escapeHtml(collapsedTitleText) : '';
 
     // Task header = contiguous non-empty lines from start (task-level tags)
     const taskHeader = window.taskContentUtils?.getTaskHeader
@@ -2093,6 +2095,9 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
 
     // Extract task-level tags from header only (not full content)
     const allTags = getActiveTagsInTitle(taskHeader);
+
+    const collapsedTitleText = isCollapsed ? getCollapsedTaskTitleText(task) : '';
+    const renderedTitle = collapsedTitleText ? escapeHtml(collapsedTitleText) : '';
 
     // Find first tag with border definition (task-level only)
     const taskBorderTag = getFirstTagWithProperty(taskHeader, 'border');
@@ -3103,6 +3108,58 @@ function injectStackableBars(targetElement = null) {
         
         // Collect header and footer bars
         tags.forEach(tag => {
+            // Handle #header / #footer layout tags — auto-colored bars with title text
+            if (tag === 'header' || tag === 'footer') {
+                // Get display title text for the label
+                let labelText = '';
+                if (isColumn) {
+                    const columnId = element.getAttribute('data-column-id');
+                    if (window.cachedBoard?.columns && columnId) {
+                        const col = window.cachedBoard.columns.find(c => c.id === columnId);
+                        if (col) {
+                            labelText = window.removeTagsForDisplay
+                                ? window.removeTagsForDisplay(col.title)
+                                : col.title || '';
+                        }
+                    }
+                } else {
+                    const taskId = element.getAttribute('data-task-id');
+                    if (window.cachedBoard?.columns && taskId) {
+                        for (const col of window.cachedBoard.columns) {
+                            const task = col.tasks.find(t => t.id === taskId);
+                            if (task) {
+                                const summary = window.taskContentUtils?.getTaskSummaryLine
+                                    ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
+                                    : (task.content || '').split('\n')[0] || '';
+                                labelText = window.removeTagsForDisplay
+                                    ? window.removeTagsForDisplay(summary)
+                                    : summary;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Compute color from sequential index using golden angle
+                const barClass = tag === 'header' ? 'header-bar' : 'footer-bar';
+                const bar = document.createElement('div');
+                bar.className = `${barClass} ${barClass}-${tag}`;
+                bar.setAttribute('data-title-bar', 'true');
+
+                if (labelText) {
+                    bar.textContent = labelText;
+                }
+
+                if (tag === 'header') {
+                    headerBars.push(bar);
+                    if (labelText && isColumn) { hasHeaderLabel = true; }
+                } else {
+                    footerBars.push(bar);
+                    if (labelText && isColumn) { hasFooterLabel = true; }
+                }
+                return;
+            }
+
             const config = getTagConfig(tag);
 
             if (config && config.headerBar) {
@@ -3212,8 +3269,82 @@ function injectStackableBars(targetElement = null) {
         }
     });
 
+    // Assign colors to #header/#footer title bars using golden angle HSV distribution
+    assignTitleBarColors();
+
     // Force a full reflow to ensure all bars are laid out
     void document.body.offsetHeight;
+}
+
+/**
+ * Assign auto-generated colors to #header/#footer title bars.
+ * Uses golden angle (137.508°) for visually distinct hue distribution.
+ */
+function assignTitleBarColors() {
+    const GOLDEN_ANGLE = 137.508;
+
+    function hsvToHex(h, s, v) {
+        h = ((h % 360) + 360) % 360;
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let r, g, b;
+        if (h < 60)       { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else               { r = c; g = 0; b = x; }
+        const toHex = (val) => Math.round((val + m) * 255).toString(16).padStart(2, '0');
+        return '#' + toHex(r) + toHex(g) + toHex(b);
+    }
+
+    const dark = typeof window.isDarkTheme === 'function' ? window.isDarkTheme() : true;
+    const value = dark ? 0.2 : 0.8;
+
+    const titleBars = document.querySelectorAll('[data-title-bar="true"]');
+    titleBars.forEach((bar, index) => {
+        const hue = (index * GOLDEN_ANGLE) % 360;
+        const bgColor = hsvToHex(hue, 0.5, value);
+        const textColor = window.colorUtils ? window.colorUtils.getContrastText(bgColor) : '#ffffff';
+
+        bar.style.background = bgColor;
+        bar.style.color = textColor;
+        bar.style.height = '20px';
+        bar.style.fontSize = '10px';
+        bar.style.fontWeight = 'bold';
+        bar.style.display = 'flex';
+        bar.style.alignItems = 'center';
+        bar.style.justifyContent = 'center';
+
+        // Apply matching border to parent column/task — same structure as tag border system
+        const column = bar.closest('.kanban-full-height-column');
+        if (column) {
+            const borderVal = `1px solid ${bgColor}`;
+            const header = column.querySelector('.column-header');
+            const content = column.querySelector('.column-content');
+            const footer = column.querySelector('.column-footer');
+            if (header) {
+                header.style.borderLeft = borderVal;
+                header.style.borderRight = borderVal;
+                header.style.borderTop = borderVal;
+            }
+            if (content) {
+                content.style.borderLeft = borderVal;
+                content.style.borderRight = borderVal;
+            }
+            if (footer) {
+                footer.style.borderLeft = borderVal;
+                footer.style.borderRight = borderVal;
+                footer.style.borderBottom = borderVal;
+            }
+        } else {
+            const task = bar.closest('.task-item');
+            if (task) {
+                task.style.border = `1px solid ${bgColor}`;
+            }
+        }
+    });
 }
 
 // isDarkTheme moved to utils/tagStyleManager.js
