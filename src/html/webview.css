@@ -1968,6 +1968,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
   overflow-x: visible;
   max-height: min-content;
   background-color: var(--column-background);
+  gap: var(--whitespace-div2);
 }
 
 .header-bars-container,
@@ -2062,7 +2063,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
 }
 
 .column-footer {
-	padding-top: var(--whitespace-div4);
+	/* padding-top: var(--whitespace-div4); */
   background-color: var(--column-background);
 	position: sticky;
   min-height: 4px;
@@ -2645,7 +2646,8 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  /* padding-bottom: var(--whitespace-div2); */
+  margin-bottom: 0px;
+  /* padding-bottom: 4px; */
 }
 
 /* CRITICAL FIX: Prevent task content from being draggable (only drag handle should be draggable) */
@@ -2708,9 +2710,9 @@ figure:has(.diagram-placeholder .image-not-found) {
   max-height: var(--task-height) !important;
 }
 
-.task-item:last-child {
+/* .task-item:last-child {
   margin-bottom: 0;
-}
+} */
 
 .task-item:hover {
   border: none;
@@ -2849,7 +2851,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   width: 18px;
   height: 18px;
   font-size: 14px;
-  margin: 4px 0px;
+  margin: 0px;
 }
 
 .drag-handle:hover,
@@ -2894,7 +2896,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 4px 0px;
+  margin: 0px;
 }
 
 .collapse-toggle:hover,
@@ -2931,7 +2933,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   /* line-height: 1.4; */
   word-break: break-word;
   overflow-wrap: break-word;
-  padding: 2px 4px;
+  padding: 0px 4px;
   border: 1px solid transparent;
   border-radius: 3px;
   box-sizing: border-box;
