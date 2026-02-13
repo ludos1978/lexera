@@ -140,8 +140,19 @@ Column templates allow creating templates of multiple columns that can be droppe
 - Media index scan
 - Media index cancel
 
+### Markdown Format features
+
+| A | B | C |
+|:-|:--|:---|
+| X | Y | Z |
+
+will split the table in a ratio 1 : 2 : 3
+
+this mode is only active if you use :-  -:  or :-:  the number of -'s defines the ratios.
+
 
 ### WYSIWYG Editor
+
 - if a text is selected and the link-button or the image-button is clicked, the text is classified (filename/path vs normal text) and placed in the right part of the link, keeping the selection.
 - if a text is selected and any of the styling buttons are pressed, the style is applied and the selection stays.
 - link/image/include/wiki elements are editable via the burger menu.
@@ -159,7 +170,7 @@ Column templates allow creating templates of multiple columns that can be droppe
 ### Markdown / Marp file including
 
 Using the !!!include(filename.md)!!! a Marp presentation can be imported and directly edited from within the Kanban Board.
-The include statement can be added to the Column Header (best for large presentations), the Task Header (smaller data) or directly into a Task Content (content is read-only).
+The include statement can be added to the Column Header.
 
 ### Markdown Features
 
@@ -178,7 +189,7 @@ The include statement can be added to the Column Header (best for large presenta
 - Tag configuration can be used in templates and formatting.
 - Can be used for users as well (#reto)
 
-- Tags and with a empty character (space, tab) or any of the reserved Characters (& | ! - ..)
+- Tags and with a empty character (space, tab) or any of the reserved Characters ( & | ! - )
 
 ### Special Tags with functionality
 
@@ -187,13 +198,14 @@ Tags are used in the background for various purposes.
 - archived, deleted (but not cleaned up) and the parking position are done by adding tags.
 - #stack makes a column stay below the last column. 
 - #row{number} puts a column in a certain row.
-- #title makes the column title appear above it with colors.
+- #header or #footer makes the column title appear above / below it with colors.
 - #hidden makes a column or task hidden with an overlay that must be unlocked (think passwords in a content presentation) . this is no security feature, only a visibility feature!
 
 
 ### Date-Tags (@)
 
 - @Tags are used for Dates, Times, Weekdays
+
 
 ### Reserved Characters in and after Date Tags
 
@@ -234,20 +246,41 @@ Examples:
 - Manual sorting via drag & drop.
 - Optional sorting tools from the top bar.
 
-### Visual File Embeddings
+### File Embeddings
 
 Files can be embedded using ![alt-text](/path/to/file.jpg "text to image") . All browser supported images are working, also videos (only a few audio codecs) and DrawIo and Excalidraw.
 
 A Burger Menu allows modification of path. Seaching for alternatives if a filepath is broken.
 
-### PDF
+Supported formats for embedding:
+- markdown
+- pixel image formats : png, jpg
+- vector image formats : svg, excalidraw, draw.io
+- mp4 (not all video and audio codes, vscode limitation)
+- pdf
+- xlsx
+- audio files (not tested)
 
-- PDF page previews
-- PDF slideshows
+Multi page documents receive a button.
+
+### File embedding parameters
+
+Parameters can be added using
+
+\!\[\]\{*parameters*\}
+
+- mp4
+  - start=01:23 : starts the video at 1min 23s
+- pdf
+  - page=20 : select a page from a document
+- pixel image formats
+  - width=200px : define the width of an image
+
 
 ### DrawIo, Excalidraw
 
 These types of diagrams can be directly added to the board, they will render to a cached image which is displayed in the Kanban. Alt+Clicking allows to edit them. A burger menu allows other modifications of the filename.
+
 
 ### Mermaid & PlantUML
 

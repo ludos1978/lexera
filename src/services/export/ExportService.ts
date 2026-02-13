@@ -581,6 +581,55 @@ export class ExportService {
         return result.join('\n');
     }
 
+    /**
+     * Insert list breakers (<!-- -->) between list items separated by blank lines,
+     * so Marp's markdown-it splits them into separate lists instead of one loose list.
+     */
+    private static applyListSplitTransform(content: string): string {
+        const lines = content.split('\n');
+        const result: string[] = [];
+
+        let inListContext = false;
+        let listIndent = 0;
+        let blankBuffer: string[] = [];
+
+        for (const line of lines) {
+            const isBlank = line.trim() === '';
+            const itemMatch = line.match(/^([ \t]*)(?:[-*+]|\d+[.)]) /);
+            const isListItem = !!itemMatch;
+
+            if (isBlank) {
+                blankBuffer.push(line);
+                continue;
+            }
+
+            if (isListItem && inListContext && blankBuffer.length > 0 && (itemMatch![1].length <= listIndent)) {
+                // Blank lines between list items at same/lesser indent → insert breaker
+                result.push(...blankBuffer);
+                result.push('<!-- -->');
+            } else {
+                result.push(...blankBuffer);
+            }
+            blankBuffer = [];
+
+            result.push(line);
+
+            if (isListItem) {
+                inListContext = true;
+                listIndent = itemMatch![1].length;
+            } else {
+                // Check if continuation line (indented beyond list marker)
+                const lineIndent = (line.match(/^([ \t]*)/) || ['', ''])[1].length;
+                if (!inListContext || lineIndent <= listIndent) {
+                    inListContext = false;
+                }
+            }
+        }
+
+        result.push(...blankBuffer);
+        return result.join('\n');
+    }
+
     private static applyMediaCaptionTransform(content: string): string {
         // Do NOT modify the content - captions should be handled by markdown-it-image-figures
         // plugin in the Marp engine, not by extracting them here
@@ -619,10 +668,13 @@ export class ExportService {
         // 4. Proportional table widths - pre-render tables with alignment markers to HTML
         result = this.applyTableWidthTransform(result);
 
-        // 5. Media captions - convert ![alt](url "caption") to show caption below media
+        // 5. List split - insert breakers between list items separated by blank lines
+        result = this.applyListSplitTransform(result);
+
+        // 6. Media captions - convert ![alt](url "caption") to show caption below media
         result = this.applyMediaCaptionTransform(result);
 
-        // 6. Embed handling - different behavior based on output format
+        // 7. Embed handling - different behavior based on output format
         // SKIP for copy mode - keep original markdown syntax
         const embedPlugin = PluginRegistry.getInstance().getEmbedPlugin();
         if (embedPlugin && options.mode !== 'copy') {

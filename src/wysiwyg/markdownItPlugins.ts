@@ -367,6 +367,136 @@ export function htmlCommentPlugin(md: MarkdownIt): void {
 }
 
 /**
+ * List split plugin - splits loose lists (with blank lines between items) into
+ * separate tight lists. Each contiguous block of list items becomes its own list.
+ */
+export function listSplitPlugin(md: MarkdownIt): void {
+    md.core.ruler.push('list_split', function(state: any) {
+        const tokens = state.tokens;
+        const newTokens: any[] = [];
+        let i = 0;
+
+        while (i < tokens.length) {
+            const token = tokens[i];
+
+            if (token.type !== 'bullet_list_open' && token.type !== 'ordered_list_open') {
+                newTokens.push(token);
+                i++;
+                continue;
+            }
+
+            const listOpenType = token.type;
+            const listCloseType = listOpenType.replace('_open', '_close');
+            const listTag = token.tag;
+            const listMarkup = token.markup;
+            const listAttrs = token.attrs;
+
+            let depth = 1;
+            let listCloseIdx = -1;
+            for (let j = i + 1; j < tokens.length; j++) {
+                if (tokens[j].type === listOpenType) { depth++; }
+                if (tokens[j].type === listCloseType) {
+                    depth--;
+                    if (depth === 0) { listCloseIdx = j; break; }
+                }
+            }
+
+            if (listCloseIdx === -1) {
+                newTokens.push(token);
+                i++;
+                continue;
+            }
+
+            const items: { openIdx: number; closeIdx: number; map: number[] | null }[] = [];
+            depth = 0;
+            let currentItemOpen = -1;
+            for (let j = i + 1; j < listCloseIdx; j++) {
+                if (tokens[j].type === 'list_item_open') {
+                    if (depth === 0) { currentItemOpen = j; }
+                    depth++;
+                }
+                if (tokens[j].type === 'list_item_close') {
+                    depth--;
+                    if (depth === 0 && currentItemOpen >= 0) {
+                        items.push({ openIdx: currentItemOpen, closeIdx: j, map: tokens[currentItemOpen].map });
+                        currentItemOpen = -1;
+                    }
+                }
+            }
+
+            if (items.length < 2) {
+                for (let j = i; j <= listCloseIdx; j++) { newTokens.push(tokens[j]); }
+                i = listCloseIdx + 1;
+                continue;
+            }
+
+            // Check if the source line immediately before each item's start is blank.
+            // markdown-it includes trailing blank lines in the preceding item's map range.
+            const splitAfter = new Set<number>();
+            const lines: string[] = state.src.split('\n');
+            for (let k = 1; k < items.length; k++) {
+                if (items[k].map) {
+                    const lineBeforeItem = items[k].map![0] - 1;
+                    if (lineBeforeItem >= 0 && lines[lineBeforeItem].trim() === '') {
+                        splitAfter.add(k - 1);
+                    }
+                }
+            }
+
+            if (splitAfter.size === 0) {
+                for (let j = i; j <= listCloseIdx; j++) { newTokens.push(tokens[j]); }
+                i = listCloseIdx + 1;
+                continue;
+            }
+
+            const groups: number[][] = [[]];
+            for (let k = 0; k < items.length; k++) {
+                groups[groups.length - 1].push(k);
+                if (splitAfter.has(k)) { groups.push([]); }
+            }
+
+            for (const group of groups) {
+                let isTight = true;
+                for (const idx of group) {
+                    const item = items[idx];
+                    let pCount = 0;
+                    for (let j = item.openIdx + 1; j < item.closeIdx; j++) {
+                        if (tokens[j].type === 'paragraph_open') { pCount++; }
+                    }
+                    if (pCount > 1) { isTight = false; break; }
+                }
+
+                const openToken = new state.Token(listOpenType, listTag, 1);
+                openToken.markup = listMarkup;
+                if (listAttrs) { openToken.attrs = listAttrs.slice(); }
+                openToken.block = true;
+                newTokens.push(openToken);
+
+                for (const idx of group) {
+                    const item = items[idx];
+                    for (let j = item.openIdx; j <= item.closeIdx; j++) {
+                        const t = tokens[j];
+                        if (isTight && (t.type === 'paragraph_open' || t.type === 'paragraph_close')) {
+                            t.hidden = true;
+                        }
+                        newTokens.push(t);
+                    }
+                }
+
+                const closeToken = new state.Token(listCloseType, listTag, -1);
+                closeToken.markup = listMarkup;
+                closeToken.block = true;
+                newTokens.push(closeToken);
+            }
+
+            i = listCloseIdx + 1;
+        }
+
+        state.tokens = newTokens;
+    });
+}
+
+/**
  * Table widths plugin - uses dash count in separator row for proportional column widths.
  * Only activates when alignment markers (:) are present.
  * Without alignment markers, table columns use automatic width (default behavior).

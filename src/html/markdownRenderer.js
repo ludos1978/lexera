@@ -1162,6 +1162,10 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, 
     if (typeof window.markdownitTableWidths !== 'undefined') {
         md.use(window.markdownitTableWidths);
     }
+    // List split: blank lines between list items produce separate tight lists
+    if (typeof window.markdownitListSplit !== 'undefined') {
+        md.use(window.markdownitListSplit);
+    }
     if (typeof window.markdownItMediaCustom !== 'undefined') {
         md.use(window.markdownItMediaCustom, {
             controls: true,
@@ -1182,6 +1186,7 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, 
 // - markdown-it-speaker-note-browser.js     (window.markdownitSpeakerNote)
 // - markdown-it-html-comment-browser.js     (window.markdownitHtmlComment)
 // - markdown-it-table-widths-browser.js     (window.markdownitTableWidths)
+// - markdown-it-list-split-browser.js       (window.markdownitListSplit)
 // See Phase 5 in TODOs-plugin.md for details.
 
 // MEMORY SAFETY: Cache size limits to prevent unbounded growth

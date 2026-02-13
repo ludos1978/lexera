@@ -18,7 +18,8 @@ import {
     speakerNotePlugin,
     htmlCommentPlugin,
     includePlugin,
-    tableWidthsPlugin
+    tableWidthsPlugin,
+    listSplitPlugin
 } from './markdownItPlugins';
 
 /**
@@ -50,6 +51,7 @@ export function createWysiwygMarkdownIt(options: WysiwygMarkdownItOptions = {}):
         .use(htmlCommentPlugin)
         .use(includePlugin)
         .use(tableWidthsPlugin)
+        .use(listSplitPlugin)
         .use(markdownItMulticolumn)
         .use(markdownItMark)
         .use(markdownItSub)

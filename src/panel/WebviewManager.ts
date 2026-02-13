@@ -389,6 +389,7 @@ export class WebviewManager {
             'markdown-it-image-figures-browser.js',
             'markdown-it-image-attrs-browser.js',
             'markdown-it-table-widths-browser.js',
+            'markdown-it-list-split-browser.js',
             'markdown-it-wiki-links-browser.js',
             'markdown-it-tag-browser.js',
             'markdown-it-task-checkbox-browser.js',

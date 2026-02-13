@@ -491,6 +491,15 @@ Owns all embed/iframe logic: config access, export transforms, webview config sy
 
 ### New: `src/wysiwyg/markdownItPlugins.ts` - tableWidthsPlugin
 - `tableWidthsPlugin(md)` - TypeScript version of the table widths plugin for WYSIWYG and Node.js export contexts. Same logic as the browser version.
+
+### New: `src/html/markdown-it-list-split-browser.js`
+- `listSplitPlugin(md)` - Browser markdown-it plugin. Core ruler that splits loose lists (with blank lines between items) into separate tight lists. Each contiguous block of items becomes its own `<ul>`/`<ol>` without `<p>` wrapping.
+
+### New: `src/wysiwyg/markdownItPlugins.ts` - listSplitPlugin
+- `listSplitPlugin(md)` - TypeScript version of the list split plugin for WYSIWYG and Node.js contexts.
+
+### Modified: `src/services/export/ExportService.ts` - applyListSplitTransform
+- `applyListSplitTransform()` - Pre-processes markdown for Marp export: inserts `<!-- -->` between list items separated by blank lines to force Marp's markdown-it to create separate lists.
 - Removed unused imports: `isEmbedUrl`, `parseAttributeBlock` from regexPatterns
 
 ### Modified: `src/services/WebviewUpdateService.ts`

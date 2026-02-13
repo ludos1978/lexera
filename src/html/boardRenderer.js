@@ -634,7 +634,15 @@ function generateTagMenuItems(id, type, columnId = null) {
 
     let menuHtml = '';
     let hasAnyTags = false;
-    
+
+    // Special tags group — always first, always visible
+    hasAnyTags = true;
+    menuHtml += `
+        <div class="donut-menu-item has-submenu" data-submenu-type="tags" data-group="special" data-id="${id}" data-type="${type}" data-column-id="${columnId || ''}" style="display: flex; align-items: center;">
+            <span>Special</span>
+        </div>
+    `;
+
     // Get enabled categories based on element type
     const enabledCategories = type === 'column'
         ? (window.enabledTagCategoriesColumn || {})

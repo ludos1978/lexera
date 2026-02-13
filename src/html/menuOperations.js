@@ -628,7 +628,9 @@ class SimpleMenuManager {
             // Get current element's active tags to ensure they're always shown
             const activeTags = this.getActiveTagsForElement(type, id, columnId);
 
-            if (group === 'custom') {
+            if (group === 'special') {
+                tags = ['header', 'footer', 'hidden'];
+            } else if (group === 'custom') {
                 tags = window.getUserAddedTags();
             } else {
                 const groupValue = tagConfig[group];
@@ -3300,6 +3302,31 @@ function updateTagCategoryCounts(id, type, columnId = null) {
         }
     });
     
+    // Update special tag group count
+    const specialMenuItem = activeDropdown.querySelector('[data-group="special"]');
+    if (specialMenuItem) {
+        const specialTags = ['header', 'footer', 'hidden'];
+        const activeSpecialCount = specialTags.filter(tag =>
+            activeTags.includes(tag.toLowerCase())
+        ).length;
+
+        let specialCountBadge = specialMenuItem.querySelector('.menu-count-badge');
+        if (activeSpecialCount > 0) {
+            if (specialCountBadge) {
+                specialCountBadge.textContent = activeSpecialCount;
+            } else {
+                const badge = document.createElement('span');
+                badge.className = 'menu-count-badge';
+                badge.textContent = activeSpecialCount;
+                specialMenuItem.appendChild(badge);
+            }
+        } else {
+            if (specialCountBadge) {
+                specialCountBadge.remove();
+            }
+        }
+    }
+
     // Update custom tag group count
     const customMenuItem = activeDropdown.querySelector('[data-group="custom"]');
     if (customMenuItem) {
