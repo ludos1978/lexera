@@ -1226,13 +1226,23 @@ export class ExportService {
         // Clean the path (remove title attributes)
         const cleanPath = filePath.replace(/\s+"[^"]*"$/, '').replace(/\s+'[^']*'$/, '');
 
+        // Separate anchor fragment (e.g., "filename.md#heading" -> "filename.md" + "#heading")
+        const anchorIndex = cleanPath.indexOf('#');
+        const pathPart = anchorIndex >= 0 ? cleanPath.substring(0, anchorIndex) : cleanPath;
+        const anchorPart = anchorIndex >= 0 ? cleanPath.substring(anchorIndex) : '';
+
+        // Pure anchor reference (e.g., [[#1]]) - no file path to resolve
+        if (!pathPart) {
+            return link;
+        }
+
         // Check if it's an absolute path or URL
-        if (this.isAbsolutePath(cleanPath) || this.isUrl(cleanPath)) {
+        if (this.isAbsolutePath(pathPart) || this.isUrl(pathPart)) {
             return link; // Don't modify absolute paths or URLs
         }
 
         // Step 1: Convert the original relative path to absolute (relative to source directory)
-        const absoluteTargetPath = path.resolve(sourceDir, cleanPath);
+        const absoluteTargetPath = path.resolve(sourceDir, pathPart);
 
         // Step 2: Define the absolute path of the exported markdown file
         const exportedFilePath = path.join(exportFolder, fileBasename + '.md');
@@ -1241,12 +1251,12 @@ export class ExportService {
         const exportedFileDir = path.dirname(exportedFilePath);
         const relativePath = toForwardSlashes(path.relative(exportedFileDir, absoluteTargetPath));
 
-        // Rebuild the link with the new path, preserving the title attribute
+        // Rebuild the link with the new path, preserving anchor fragment and title attribute
         if (link.match(/^<(?:img|video|audio)/i)) {
             // Already handled above
             return link;
         } else {
-            return `${linkStart}${relativePath}${titleAttr}${linkEnd}`;
+            return `${linkStart}${relativePath}${anchorPart}${titleAttr}${linkEnd}`;
         }
     }
 
