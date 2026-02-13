@@ -1956,7 +1956,9 @@ body.small-card-fonts .task-title-container .markdown-content img {
   /* This contains the actual visual column with border and background */
   display: flex;
   flex-direction: column;
-  padding: 0 var(--whitespace-div4) 0 var(--whitespace-div4);
+  padding-left:  var(--whitespace-div4);
+  padding-right:  var(--whitespace-div4);
+  /* padding: 0 var(--whitespace-div4) 0 var(--whitespace-div4); */
   flex: 1 1 auto;
   /* background-color: var(--vscode-editor-background); */
   /* border-radius: 0 0 var(--whitespace-div4) var(--whitespace-div4); */
@@ -2054,12 +2056,12 @@ body.small-card-fonts .task-title-container .markdown-content img {
 }
 
 .column-title::before {
-  top: 0;
+  margin-top: 0;
 }
 
-.column-title::after {
+/* .column-title::after {
   bottom: 0;
-}
+} */
 
 .column-footer {
 	/* padding-top: var(--whitespace-div4); */
@@ -2075,7 +2077,7 @@ body.small-card-fonts .task-title-container .markdown-content img {
 .kanban-full-height-column.collapsed-vertical .column-title-section {
 	flex-direction: column !important;
 	align-items: center;
-  padding: var(--whitespace-div4) 0px;
+  /* padding: var(--whitespace-div4) 0px; */
 }
 
 .column-title-section {
@@ -2088,8 +2090,9 @@ body.small-card-fonts .task-title-container .markdown-content img {
   min-width: 0;
   margin-top: 0;
   width: -webkit-fill-available;
-  margin-bottom: var(--whitespace-div4);
+  /* margin-bottom: var(--whitespace-div4); */
 }
+
 
 /* Title container that should expand to fill available space */
 .column-title-container {
@@ -2638,7 +2641,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   /* background-color: var(--task-background); */
   border-radius: 4px;
 	gap: var(--whitespace-div8);
-  margin-bottom: var(--whitespace-div2);
+  /* margin-bottom: var(--whitespace-div2); */
   min-height: var(--task-height);
   transition: all 0.2s ease;
   position: relative;
@@ -2646,9 +2649,57 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  margin-bottom: var(--whitespace-div4);
+  /* margin-bottom: var(--whitespace-div4); */
   /* padding-bottom: 4px; */
 }
+
+/* --- tasks spacer --- */
+
+.task-item:first-child {
+  margin-top: var(--whitespace-div4);
+}
+
+/* .task-item {
+  margin-bottom: var(--whitespace-div4);
+} */
+
+.task-item:last-child {
+  margin-bottom: 0;
+}
+
+.column-footer {
+  padding-top: var(--whitespace-div4);
+}
+
+.column-content {
+  gap: var(--whitespace-div2);
+  /* padding: 0 var(--whitespace-div4) 0 var(--whitespace-div4); */
+  padding-bottom: 0px;
+  margin: 0;
+}
+
+.kanban-full-height-column:not(.collapsed-vertical):not(.collapsed-horizontal) .column-content {
+  /* padding: 0 var(--whitespace-div4) var(--whitespace-div4) var(--whitespace-div4); */
+}
+
+.task-item:not(:first-child)::after {
+  content: '';
+  position: absolute;
+  top: calc(0px - var(--whitespace-div4) - 1px);
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: repeating-linear-gradient(
+    to right,
+    #000 0,
+    var(--vscode-panel-border) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+/* --- tasks spacer --- end --- */
+
 
 /* CRITICAL FIX: Prevent task content from being draggable (only drag handle should be draggable) */
 /* This prevents text selections from being dragged and creating unintended tasks */
@@ -4534,21 +4585,6 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   background: linear-gradient(var(--vscode-panel-border), var(--vscode-panel-border)) no-repeat 0 4px / 100% 1px;
 }
 
-.task-item:not(:first-child)::after {
-    content: '';
-    position: absolute;
-    top: calc(0px - var(--whitespace-div4));
-    left: 0;
-    width: 100%;
-    height: 1px;
-    background: repeating-linear-gradient(
-        to right,
-        var(--vscode-panel-border) 0,
-        var(--vscode-panel-border) 4px,
-        transparent 4px,
-        transparent 8px
-    );
-}
 
 /* END style with only lines not with borders */
 
@@ -5675,6 +5711,16 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   margin: 0.5em 0;
 }
 
+.column-title-text p,
+.column-title-text h1,
+.column-title-text h2,
+.column-title-text h3,
+.column-title-text h4,
+.column-title-text h5,
+.column-title-text h6 {
+  margin: 0;
+}
+
 .markdown-content ul,
 .markdown-content ol {
   margin: 0.125em 0;
@@ -6411,10 +6457,6 @@ body.week-highlight-glow .task-item[data-current-week="true"] {
   width: 100%;
   padding: var(--whitespace) 0;
   white-space: nowrap;
-}
-
-.kanban-full-height-column:not(.collapsed-vertical):not(.collapsed-horizontal) .column-content {
-  margin: 0;
 }
 
 .kanban-full-height-column .corner-badge,
