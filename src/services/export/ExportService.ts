@@ -1503,9 +1503,6 @@ export class ExportService {
         // This ensures all markdown files (main and included) get tag filtering
         filteredContent = this.applyTagFiltering(filteredContent, options.tagVisibility);
 
-        // Apply content transformations (speaker notes, HTML comments, HTML content)
-        filteredContent = this.applyContentTransformations(filteredContent, options);
-
         // Convert based on format option AND convertToPresentation flag
         // Formats: 'kanban', 'presentation', or 'document'
         // IMPORTANT: Only convert if convertToPresentation is true
@@ -1539,6 +1536,11 @@ export class ExportService {
             filteredContent = PresentationGenerator.toDocument(board, pageBreaks, {});
         }
         // format === 'kanban' or 'keep' → keep as-is
+
+        // Apply content transformations AFTER format conversion
+        // (must run on presentation/document content, not kanban format,
+        // because list-split and table-width transforms would corrupt kanban structure)
+        filteredContent = this.applyContentTransformations(filteredContent, options);
 
         return {
             exportedContent: filteredContent,
