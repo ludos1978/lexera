@@ -874,7 +874,13 @@ function ensureTagStyleExists(tagName) {
             newStyles += `.kanban-full-height-column[data-column-border-tag="${tagName}"] .column-header {
                 border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }
+.kanban-full-height-column[data-column-border-tag="${tagName}"] .column-title {
+                border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
+            }
 .kanban-full-height-column[data-column-border-tag="${tagName}"] .column-content {
+                border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
+            }
+.kanban-full-height-column[data-column-border-tag="${tagName}"] .column-footer {
                 border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }
 .task-item[data-task-border-tag="${tagName}"] {
@@ -882,11 +888,23 @@ function ensureTagStyleExists(tagName) {
             }\n`;
         } else {
             newStyles += `.kanban-full-height-column[data-column-border-tag="${tagName}"] .column-header {
-                border: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-right: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-top: ${borderWidth} ${borderStyle} ${borderColor} !important;
+            }
+.kanban-full-height-column[data-column-border-tag="${tagName}"] .column-title {
+                border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-right: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }
 .kanban-full-height-column[data-column-border-tag="${tagName}"] .column-content {
-                border: ${borderWidth} ${borderStyle} ${borderColor} !important;
-                border-top: none !important;
+                border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-right: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-bottom: none !important;
+            }
+.kanban-full-height-column[data-column-border-tag="${tagName}"] .column-footer {
+                border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-right: ${borderWidth} ${borderStyle} ${borderColor} !important;
+                border-bottom: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }
 .task-item[data-task-border-tag="${tagName}"] {
                 border: ${borderWidth} ${borderStyle} ${borderColor} !important;
