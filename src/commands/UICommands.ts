@@ -433,10 +433,8 @@ export class UICommands extends SwitchBasedCommand {
 
     private async handleOpenSearchPanel(message: OpenSearchPanelMessage, _context: CommandContext): Promise<CommandResult> {
         try {
-            // kanbanSearch.focus auto-reveals the view container, so we don't need
-            // workbench.view.extension.kanbanBoards (which triggers expensive
-            // onDidChangeVisibility refreshes on sibling views like the dashboard).
-            await vscode.commands.executeCommand('kanbanSearch.focus');
+            // Focus the dashboard panel which contains the search field
+            await vscode.commands.executeCommand('kanbanDashboard.focus');
             if (message.query) {
                 await vscode.commands.executeCommand('markdown-kanban.internal.searchWithQuery', message.query);
             }
