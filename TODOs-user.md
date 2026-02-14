@@ -1,3 +1,28 @@
+- [ ] add a feature to the burger menu to rename and or move embedded files. the user can enter (using a explorer view) a new folder and a different filename. after that the file is moved there.
+
+- [x] verify and make absolutely sure that the defaults when nothing is defined are like this (make it easily defineable)!
+  - column width 450px
+  - card height auto
+  - section height auto
+  - whitespace 16px
+  - font size 1x
+  - font family poppins
+  - layout rows 1
+  - row height auto
+
+  - sticky stack mode title only
+  - tag visibility all excluding layout
+  - html comment rendering as text
+  - html content rendering as text
+
+  - show marp settings on
+
+  - show special characters on
+  - enable wysiwyg editor off
+  - enable overlay editor off
+
+  - debug off
+
 - [ ] #later i would like to be able to fold a stack to be minimized in width. it should add a fold button on top of each stack. it lists only the titles as blocks with a defineable width height that are put into one vertical block. it should look similar to the vertical folded column.
 
 - [ ] maybe we could integrate this: https://www.reddit.com/r/LocalLLaMA/comments/1r2f56h/microsoftmarkitdown/

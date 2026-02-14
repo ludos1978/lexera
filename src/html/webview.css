@@ -2094,9 +2094,8 @@ body.small-card-fonts .task-title-container .markdown-content img {
 .column-title-section {
   padding: 0 var(--whitespace-div4); /* left & right */
   display: flex;
-  /* align-items: flex-start; */
 	align-items: center;
-  gap: var(--whitespace-div8);
+  gap: var(--whitespace-div4);
   flex: 1;
   min-width: 0;
   margin-top: 0;
@@ -5788,6 +5787,11 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 
 .markdown-content p {
   padding: 0.5em 0;
+}
+
+.markdown-content li > p {
+    padding: 0;
+    margin: 0;
 }
 
 .column-title-text p,

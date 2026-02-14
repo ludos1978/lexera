@@ -3,14 +3,25 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-whitespace: 16px
+whitespace: 24px
 fontFamily: poppins
 ---
 
 ## Column Title #footer #header
 - [ ] Task Title #header #footer
   more of the text
-- [ ] [[#1]]
+  
+  [[#0]]
+  
+  [[#1]]
+- [ ] [[#1]] #blocked
+  
+- [ ] #idea
+  
+- [ ] - a
+  - b
+  
+  - c
 
 ## # Heading 1 in Columntitle #footer #header #stack
 - [ ] ## Heading 2 in Tasktitle #export-exclude
@@ -81,9 +92,9 @@ fontFamily: poppins
   User <|-- Admin
   ```
 
-## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!!
+## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
 
-## # A #red
+## # A #1 #red
 - [ ] #pink
   ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
 - [ ] ## Include # #orange
