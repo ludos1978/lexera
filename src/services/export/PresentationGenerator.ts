@@ -15,7 +15,7 @@ export interface PresentationOptions {
     filterIncludes?: boolean;
     /** Tag visibility settings */
     tagVisibility?: TagVisibility;
-    /** Tags that exclude content from export (e.g., ['#export-exclude', '#private']) */
+    /** Tags that exclude content from export (e.g., ['#exclude', '#private']) */
     excludeTags?: string[];
     /** Marp-specific options (theme, directives) */
     marp?: MarpOptions;

@@ -3780,6 +3780,7 @@ body.section-height-limited .task-section figure img {
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
+  margin-top: var(--whitespace-div2);
 }
 
 .add-task-btn:hover {
@@ -5033,6 +5034,11 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 .form-input:focus {
   outline: none;
   border-color: var(--vscode-focusBorder);
+}
+
+.form-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #888);
+  font-style: italic;
 }
 
 .modal-actions {

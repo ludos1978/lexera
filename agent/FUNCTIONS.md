@@ -50,12 +50,14 @@ Standalone WebDAV server for bookmark sync via Floccus.
 - `packages/ludos-sync/src/adapters/BookmarkProperties.ts-BookmarkProperties` — Nephele Properties for XBEL resources
   - `get(name)` / `set(name, value)` — Get/set WebDAV properties
 
-- `packages/ludos-sync/src/fileWatcher.ts-BoardFileWatcher` — File watcher + XBEL cache
-  - `addBoard(filePath)` — Start watching a board file
+- `packages/ludos-sync/src/fileWatcher.ts-BoardFileWatcher` — File watcher + XBEL/iCal cache
+  - `addBoard(filePath, xbelName?, options?)` — Start watching a board file (supports calendar options)
   - `removeBoard(filePath)` — Stop watching a board file
   - `applyXbelToBoard(filePath, xbelXml)` — Apply incoming XBEL to board (mutex, atomic write)
   - `getBoardState(filePath)` — Get current board state + XBEL cache
   - `getAllBoardStates()` — Get all tracked board states
+  - `getBoardByCalendarSlug(slug)` — Find board state by calendar slug
+  - `getCalendarBoards()` — Get all boards with calendar sync configured
 
 - `packages/ludos-sync/src/config.ts-ConfigManager` — Config file management (.kanban/sync.json)
   - `getConfig()` / `save()` / `ensureConfigExists()` — CRUD operations
@@ -74,6 +76,33 @@ Standalone WebDAV server for bookmark sync via Floccus.
 - `packages/ludos-sync/src/serviceInstaller.ts` — OS service registration
   - `installService(configPath)` — Register as launchd/systemd/schtasks
   - `uninstallService()` — Remove OS startup service
+
+### CalDAV Calendar Sync (2026-02-15)
+
+- `packages/shared/src/temporalParser.ts` — Pure temporal parsing functions (dates, weeks, times, weekdays)
+  - `setDateLocale(locale)` — Set date locale for parsing
+  - `isLocaleDayFirst()` — Check if locale uses DD.MM.YYYY format
+  - `parseDateTag(tagContent)` — Parse @date tag to Date
+  - `parseWeekTag(tagContent)` — Parse @week tag to Monday of that week
+  - `getDateOfISOWeek(week, year)` — Get Monday of ISO week
+  - `getWeekdayOfISOWeek(week, year, weekday)` — Get specific weekday of ISO week
+  - `parseWeekdayName(name)` — Parse weekday name to JS number (0=Sun..6=Sat)
+  - `getISOWeek(date)` — Get ISO week number for a date
+  - `extractTemporalInfo(text)` — Extract all temporal tags from text, returns TemporalInfo[]
+
+- `packages/ludos-sync/src/mappers/IcalMapper.ts-IcalMapper` — KanbanColumn[] → iCalendar VTODO/VEVENT mapping
+  - `columnsToIcalTasks(columns, boardSlug)` — Convert columns to IcalTask[]
+  - `generateCalendar(tasks, calendarName)` — Generate full VCALENDAR string
+  - `generateComponent(task)` — Generate single VEVENT/VTODO component
+  - `generateSingleIcs(task)` — Generate single .ics file wrapping one component
+
+- `packages/ludos-sync/src/middleware/caldavMiddleware.ts-createCaldavRouter(boardWatcher, basePath)` — CalDAV Express Router
+  - PROPFIND /principal/ — DAV principal + calendar-home-set discovery
+  - PROPFIND /calendars/ — List calendar collections (one per board)
+  - PROPFIND /calendars/:slug/ — List .ics members with etags
+  - GET /calendars/:slug/:uid.ics — Individual VTODO/VEVENT resource
+  - GET /calendars/:slug/ — Full calendar download
+  - REPORT /calendars/:slug/ — Calendar-query with time-range filter
 
 ### New Files in Extension: `src/sync/`
 

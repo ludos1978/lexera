@@ -3426,6 +3426,7 @@ function assignTitleBarColors() {
 // isDarkTheme moved to utils/tagStyleManager.js
 
 // Make functions globally available
+window.assignTitleBarColors = assignTitleBarColors;
 window.handleColumnTitleClick = handleColumnTitleClick;
 window.handleTaskTitleClick = handleTaskTitleClick;
 window.handleDescriptionClick = handleDescriptionClick;

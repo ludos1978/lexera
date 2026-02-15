@@ -10,22 +10,29 @@ This document provides a comprehensive overview of all interfaces, types, classe
 
 ### `packages/shared/src/kanbanTypes.ts` (Shared)
 Sync-relevant subset of kanban types shared between extension and ludos-sync:
-- `KanbanTask` — { id, content }
+- `KanbanTask` — { id, content, checked? }
 - `KanbanColumn` — { id, title, tasks }
 - `KanbanBoard` — { valid, title, columns, yamlHeader, kanbanFooter, boardSettings }
 - `BoardSettings` — Per-board YAML settings
+
+### `packages/shared/src/temporalParser.ts` (Shared, 2026-02-15)
+- `TemporalInfo` — { tag, date?, week?, year?, weekday?, timeSlot?, hasExplicitDate?, checkboxState? }
 
 ### `packages/ludos-sync/src/mappers/XbelMapper.ts`
 - `XbelBookmark` — { id, title, href, description? }
 - `XbelFolder` — { id, title, bookmarks }
 - `XbelRoot` — { folders }
 
+### `packages/ludos-sync/src/mappers/IcalMapper.ts` (2026-02-15)
+- `IcalTask` — { uid, type, summary, description?, dtstart?, dtend?, due?, status, percentComplete?, categories, columnTitle }
+
 ### `packages/ludos-sync/src/config.ts`
-- `BoardSyncConfig` — { file, columnMapping }
-- `SyncConfig` — { port, bookmarks: { enabled, boards }, calendar: { enabled, boards } }
+- `BoardSyncConfig` — { file, xbelName?, columnMapping }
+- `CalendarBoardSyncConfig` — { file, calendarSlug?, calendarName? }
+- `SyncConfig` — { port, bookmarks: { enabled, boards: BoardSyncConfig[] }, calendar: { enabled, boards: CalendarBoardSyncConfig[] } }
 
 ### `packages/ludos-sync/src/fileWatcher.ts`
-- `BoardState` — { filePath, board, xbelCache, etag, lastModified }
+- `BoardState` — { filePath, xbelName, board, xbelCache, etag, lastModified, calendarSlug?, calendarName?, icalCache?, icalEtag?, icalTasks? }
 
 ### `packages/ludos-sync/src/server.ts`
 - `ServerInfo` — { port, address }

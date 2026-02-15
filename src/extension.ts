@@ -446,14 +446,35 @@ export function activate(context: vscode.ExtensionContext) {
 
 	if (syncEnabled) {
 		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-		const resolvedConfigPath = require('path').resolve(workspaceRoot, syncConfigPath);
-		const configBridge = new SyncConfigBridge(resolvedConfigPath);
+		// Use default config path when setting is empty or default placeholder
+		const configBridge = new SyncConfigBridge(syncConfigPath && syncConfigPath !== '.kanban/sync.json' ? require('path').resolve(workspaceRoot, syncConfigPath) : undefined);
 		const processManager = new SyncProcessManager(configBridge);
 		const statusBar = new SyncStatusBar(processManager);
 
 		statusBar.activate();
 		context.subscriptions.push(statusBar);
 		context.subscriptions.push(processManager);
+
+		// Sync workspace boards to shared config
+		const workspaceKey = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (workspaceKey) {
+			const syncBoardsToConfig = () => {
+				const boards = registry.getBoards().map(b => ({
+					file: b.filePath,
+					name: require('path').basename(b.filePath, '.md'),
+				}));
+				configBridge.syncWorkspaceBoards(workspaceKey, boards);
+			};
+
+			// Initial sync on startup
+			syncBoardsToConfig();
+
+			// Sync on board changes
+			const boardChangeListener = registry.onBoardsChanged(() => {
+				syncBoardsToConfig();
+			});
+			context.subscriptions.push(boardChangeListener);
+		}
 
 		// Auto-start if configured
 		if (syncAutoStart) {

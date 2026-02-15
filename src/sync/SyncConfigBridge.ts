@@ -11,34 +11,40 @@ import * as os from 'os';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 
-export interface BoardSyncConfig {
+export interface WorkspaceBoardConfig {
   file: string;
+  name?: string;
+  bookmarkSync?: boolean;
+  calendarSync?: boolean;
   xbelName?: string;
-  columnMapping: 'per-folder';
+  calendarSlug?: string;
+  calendarName?: string;
+}
+
+export interface WorkspaceConfig {
+  boards: WorkspaceBoardConfig[];
 }
 
 export interface SyncConfig {
   port: number;
   bookmarks: {
     enabled: boolean;
-    boards: BoardSyncConfig[];
   };
   calendar: {
     enabled: boolean;
-    boards: BoardSyncConfig[];
   };
+  workspaces: Record<string, WorkspaceConfig>;
 }
 
 const DEFAULT_CONFIG: SyncConfig = {
   port: 0,
   bookmarks: {
     enabled: true,
-    boards: [],
   },
   calendar: {
     enabled: false,
-    boards: [],
   },
+  workspaces: {},
 };
 
 export class SyncConfigBridge {
@@ -82,48 +88,27 @@ export class SyncConfigBridge {
   }
 
   /**
-   * Add a board file to the bookmark sync config.
+   * Sync the boards for a specific workspace into the shared config.
+   * Replaces only this workspace's entry, preserving other workspaces.
    */
-  addBoardForSync(boardFilePath: string): void {
+  syncWorkspaceBoards(workspaceKey: string, boards: Array<{ file: string; name: string }>): void {
     const config = this.readConfig();
-    const relativePath = path.relative(path.dirname(this.configPath), boardFilePath);
 
-    const alreadyExists = config.bookmarks.boards.some(b => b.file === relativePath || b.file === boardFilePath);
-    if (alreadyExists) return;
+    if (!config.workspaces) {
+      config.workspaces = {};
+    }
 
-    config.bookmarks.boards.push({
-      file: relativePath,
-      columnMapping: 'per-folder',
-    });
+    config.workspaces[workspaceKey] = {
+      boards: boards.map(b => ({
+        file: b.file,
+        name: b.name,
+        bookmarkSync: true,
+        calendarSync: true,
+      })),
+    };
 
     this.writeConfig(config);
-    logger.debug(`[SyncConfigBridge] Added board for sync: ${relativePath}`);
-  }
-
-  /**
-   * Remove a board file from the bookmark sync config.
-   */
-  removeBoardFromSync(boardFilePath: string): void {
-    const config = this.readConfig();
-    const relativePath = path.relative(path.dirname(this.configPath), boardFilePath);
-
-    config.bookmarks.boards = config.bookmarks.boards.filter(
-      b => b.file !== relativePath && b.file !== boardFilePath
-    );
-
-    this.writeConfig(config);
-    logger.debug(`[SyncConfigBridge] Removed board from sync: ${relativePath}`);
-  }
-
-  /**
-   * Check if a board is configured for sync.
-   */
-  isBoardSynced(boardFilePath: string): boolean {
-    const config = this.readConfig();
-    const relativePath = path.relative(path.dirname(this.configPath), boardFilePath);
-    return config.bookmarks.boards.some(
-      b => b.file === relativePath || b.file === boardFilePath
-    );
+    logger.debug(`[SyncConfigBridge] Synced ${boards.length} board(s) for workspace: ${workspaceKey}`);
   }
 
   /**

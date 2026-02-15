@@ -10,9 +10,9 @@ This document catalogs ALL singleton instances, global state, and data instances
 
 ### ludos-sync Standalone Instances
 - `ConfigManager` — Per-process config manager reading .kanban/sync.json
-- `BoardFileWatcher.boardStates` — Map<string, BoardState> tracking board files and XBEL caches
+- `BoardFileWatcher.boardStates` — Map<string, BoardState> tracking board files, XBEL caches, and iCal caches
 - `BoardFileWatcher.watchers` — Map<string, FSWatcher> for chokidar file watchers
-- `SyncServer.httpServer` — HTTP server instance (Express + Nephele)
+- `SyncServer.httpServer` — HTTP server instance (Express + Nephele + CalDAV router)
 
 ### VS Code Extension Sync Instances (created in extension.ts when sync.enabled=true)
 - `SyncConfigBridge` — Instance created per workspace, reads/writes .kanban/sync.json

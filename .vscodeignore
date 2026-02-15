@@ -1,43 +1,78 @@
-# Exclude source code and test files
+# Source & build tooling (esbuild bundles into dist/)
 src/**/*.ts
-src/test/**
-*.map
-
-# Exclude build tools and config
-esbuild.js
+src/test/
+out/
 tsconfig.json
-eslint.config.mjs
+.vscode/
+.vscode-test/
+.vscode-test.mjs
 
-# Exclude large dev-only dependencies
-node_modules/typescript/**
-node_modules/eslint/**
-node_modules/@typescript-eslint/**
-node_modules/jest/**
-node_modules/@jest/**
-node_modules/@marp-team/**
-node_modules/chromium/**
-node_modules/.bin/**
-node_modules/@babel/**
-node_modules/@types/**
-node_modules/ts-jest/**
-node_modules/esbuild/**
-node_modules/@esbuild/**
+# Dependencies (bundled by esbuild)
+node_modules/
+node_modules_backup/
 
-# Exclude lock files and git
-.git
+# Monorepo packages (not part of the extension)
+packages/
+
+# Tests
+tests/
+
+# CI / editor config
+.claude/
+.github/
 .gitignore
+.eslintrc*
+.prettierrc*
+eslint.config.mjs
+jest.config.js
+
+# Build & dev scripts
+build.sh
+bespoke.js
+esbuild.js
+migrate_tags.py
+scripts/
 pnpm-lock.yaml
-package-lock.json
 
-# Exclude development docs
-CHANGELOG.md
+# Dev docs & notes
+agent/
+docs/
+AGENT*.md
+CLAUDE.md
+TODO*.md
+.TODOs*
+ToTest.md
+WebDav-Feature.md
+README-kanban.md
 
-# Exclude tests and tmp from build
-tests/**
-tmp/**
+# Dist build artifacts not needed at runtime
+dist/esbuild.js
+dist/watch.js
+dist/src/html/wysiwygEditor.ts
+src/html/icons/generate-css.js
+dist/src/html/icons/generate-css.js
 
-# Ensure necessary static resources are included
-!src/html/**
-!imgs/**
-!node_modules/@vscode/codicons/**
-node_modules_backup/**
+# Source maps (optional — remove to reduce size)
+**/*.map
+
+# Marp engine dev artifacts
+marp-engine/engine/setup.bat
+marp-engine/engine/setup.command
+marp-engine/engine/node_modules_installed_packages.txt
+.marp/
+
+# Caches & generated
+*-cache/
+__pycache__/
+logs/
+tmp/
+_Export/
+tools/
+
+# OS files
+.DS_Store
+
+# Media & packaging artifacts
+*.mp4
+*.zip
+*.vsix

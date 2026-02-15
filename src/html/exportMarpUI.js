@@ -145,8 +145,8 @@ function filterTagsForExport(text, tagVisibility = 'allexcludinglayout') {
 /**
  * Parse comma-separated exclude tags input into an array of normalized tags
  * Ensures each tag starts with # and trims whitespace
- * @param {string} input - Comma-separated tags (e.g., "#export-exclude, private, #draft")
- * @returns {string[]} Array of normalized tags (e.g., ["#export-exclude", "#private", "#draft"])
+ * @param {string} input - Comma-separated tags (e.g., "#exclude, private, #draft")
+ * @returns {string[]} Array of normalized tags (e.g., ["#exclude", "#private", "#draft"])
  */
 function parseExcludeTags(input) {
     if (!input || !input.trim()) {
@@ -340,11 +340,11 @@ function initializeExportTree(preSelectNodeId = null) {
     const excludeTagsInput = document.getElementById('export-exclude-tags');
     if (excludeEnabledCheckbox) {
         const savedEnabled = localStorage.getItem('kanban-export-exclude-enabled');
-        excludeEnabledCheckbox.checked = savedEnabled === 'true';
+        excludeEnabledCheckbox.checked = savedEnabled !== null ? savedEnabled === 'true' : true;
     }
     if (excludeTagsInput) {
         const savedTags = localStorage.getItem('kanban-export-exclude-tags');
-        if (savedTags) {
+        if (savedTags !== null) {
             excludeTagsInput.value = savedTags;
         }
     }

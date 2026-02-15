@@ -127,15 +127,30 @@ function _isIframeBlocked(url) {
  * Single source of truth for fallback markup, used both during markdown rendering
  * (returns string) and for live DOM replacement (via _replaceIframeWithFallback).
  * @param {string} url - The blocked URL
+ * @param {string} [reason] - Optional reason text override
  * @returns {string} Fallback HTML string
  */
-function _renderIframeFallback(url) {
+function _renderIframeFallback(url, reason) {
     const escapedUrl = escapeHtml(url);
+    const message = reason || 'Cannot display preview — this site doesn\'t allow iframe embedding';
     return '<div class="web-preview-fallback">' +
         '<span class="web-preview-fallback-icon">⚠️</span>' +
-        '<span class="web-preview-fallback-text">Cannot display preview — this site doesn\'t allow iframe embedding</span>' +
+        '<span class="web-preview-fallback-text">' + message + '</span>' +
         '<a class="web-preview-fallback-link" href="' + escapedUrl + '" target="_blank" rel="noopener noreferrer">Open in browser</a>' +
         '</div>';
+}
+
+/**
+ * Check if a URL uses an insecure protocol (http://) that CSP will block.
+ * @param {string} url - The URL to check
+ * @returns {boolean} True if the URL is http:// (not https://)
+ */
+function _isInsecureUrl(url) {
+    try {
+        return new URL(url).protocol === 'http:';
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -188,7 +203,7 @@ window._checkRenderedIframes = function() {
 
     iframes.forEach(function(iframe) {
         const src = iframe.getAttribute('src');
-        if (!src || !src.startsWith('http') || _isIframeBlocked(src)) return;
+        if (!src || !src.startsWith('http') || _isIframeBlocked(src) || _isInsecureUrl(src)) return;
         try {
             const origin = new URL(src).origin;
             if (!(origin in urlPerOrigin)) {
@@ -956,6 +971,11 @@ function renderEmbed(embedInfo, originalSrc, alt, title) {
     const { url, fallback, width, height, frameborder, allowfullscreen, loading, allow, referrerpolicy, customAttrs } = embedInfo;
     const sanitizedAllow = sanitizeIframeAllowPolicy(allow);
 
+    // Block http:// URLs — CSP only allows https: for frame-src
+    if (_isInsecureUrl(url)) {
+        return `<div class="embed-container"><div class="embed-frame-wrapper">${_renderIframeFallback(url, 'Cannot embed — insecure connection (http). Only https URLs can be embedded.')}</div></div>`;
+    }
+
     // If URL's origin is known to block iframes, render fallback immediately (no blank flash)
     if (_isIframeBlocked(url)) {
         return `<div class="embed-container"><div class="embed-frame-wrapper">${_renderIframeFallback(url)}</div></div>`;
@@ -1026,6 +1046,12 @@ function renderEmbed(embedInfo, originalSrc, alt, title) {
  * @returns {string} HTML for the web preview container
  */
 function renderWebPreview(url, alt, title) {
+    // Block http:// URLs — CSP only allows https: for frame-src
+    if (_isInsecureUrl(url)) {
+        const captionHtml = title ? `<div class="web-preview-caption media-caption">${escapeHtml(title)}</div>` : '';
+        return `<div class="web-preview-container">${_renderIframeFallback(url, 'Cannot embed — insecure connection (http). Only https URLs can be embedded.')}${captionHtml}</div>`;
+    }
+
     // If URL's origin is known to block iframes, render fallback immediately (no blank flash)
     if (_isIframeBlocked(url)) {
         const captionHtml = title ? `<div class="web-preview-caption media-caption">${escapeHtml(title)}</div>` : '';

@@ -1,3 +1,7 @@
+- [ ] can you add an optional username / password for the webdav access? also an option username password that is really required in the config.
+
+- [ ] automatic path fix changes the filename!!!! it should only ever change paths, never filenames. it might only be happening when i use "replace all paths with the same directory" . but this MUST NEVER HAPPEN, only paths might get modified!
+
 - [ ] add a feature to the burger menu to rename and or move embedded files. the user can enter (using a explorer view) a new folder and a different filename. after that the file is moved there.
 
 - [x] verify and make absolutely sure that the defaults when nothing is defined are like this (make it easily defineable)!

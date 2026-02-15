@@ -5384,6 +5384,10 @@ if (typeof MutationObserver !== 'undefined') {
             if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                 // Check if the body class actually changed (theme change)
                 window.updateTagStylesForTheme();
+                // Re-generate header/footer title bar colors for new theme
+                if (typeof window.assignTitleBarColors === 'function') {
+                    window.assignTitleBarColors();
+                }
             }
         });
     });

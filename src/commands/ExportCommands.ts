@@ -73,6 +73,9 @@ export class ExportCommands extends SwitchBasedCommand {
     // Track active operations for progress reporting
     private _activeOperations = new Map<string, { type: string, startTime: number }>();
 
+    // Cancel any in-flight export when a new one starts
+    private _currentExportCts: vscode.CancellationTokenSource | null = null;
+
     protected handlers: Record<string, MessageHandler> = {
         'export': (msg, ctx) => this.handleExportWithTracking(msg, ctx),
         'stopAutoExport': async (_msg, ctx) => { await this.handleStopAutoExport(ctx); return this.success(); },
@@ -88,17 +91,33 @@ export class ExportCommands extends SwitchBasedCommand {
     };
 
     /**
-     * Handle export with operation tracking
+     * Handle export with operation tracking.
+     * Cancels any in-flight export before starting a new one.
      */
     private async handleExportWithTracking(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
+        // Cancel previous in-flight export
+        if (this._currentExportCts) {
+            this._currentExportCts.cancel();
+            this._currentExportCts.dispose();
+            this._currentExportCts = null;
+        }
+
+        const cts = new vscode.CancellationTokenSource();
+        this._currentExportCts = cts;
+
         const exportId = `export_${Date.now()}`;
         await this.startOperation(exportId, 'export', 'Exporting...', context);
         try {
-            await this.handleExport((message as any).options as NewExportOptions, context, exportId);
+            await this.handleExport((message as any).options as NewExportOptions, context, exportId, cts);
             await this.endOperation(exportId, context);
         } catch (error) {
             await this.endOperation(exportId, context);
             throw error;
+        } finally {
+            if (this._currentExportCts === cts) {
+                this._currentExportCts = null;
+            }
+            cts.dispose();
         }
         return this.success();
     }
@@ -151,7 +170,7 @@ export class ExportCommands extends SwitchBasedCommand {
     /**
      * Unified export handler - handles ALL export operations
      */
-    private async handleExport(options: NewExportOptions, context: CommandContext, operationId?: string): Promise<void> {
+    private async handleExport(options: NewExportOptions, context: CommandContext, operationId?: string, cts?: vscode.CancellationTokenSource): Promise<void> {
         try {
             // Get document (with fallback to file path if document is closed)
             let document = context.fileManager.getDocument();
@@ -201,51 +220,69 @@ export class ExportCommands extends SwitchBasedCommand {
                 title: `Exporting...`,
                 cancellable: true
             }, async (progress, token) => {
-                // Check for cancellation before starting
-                if (token.isCancellationRequested) {
-                    showInfo('Export cancelled.');
-                    return;
-                }
-
-                if (operationId) {
-                    await this.updateOperationProgress(operationId, 20, context, 'Processing content...');
-                }
-                progress.report({ increment: 20, message: 'Processing content...' });
-
-                // Check for cancellation before export
-                if (token.isCancellationRequested) {
-                    showInfo('Export cancelled.');
-                    return;
-                }
-
-                const result = await ExportService.export(document!, options, board, webviewPanel, token);
-
-                // Check for cancellation after export
-                if (token.isCancellationRequested) {
-                    showInfo('Export cancelled.');
-                    return;
-                }
-
-                if (operationId) {
-                    await this.updateOperationProgress(operationId, 90, context, 'Finalizing...');
-                }
-                progress.report({ increment: 80, message: 'Finalizing...' });
-
-                // Send result to webview
-                this.postMessage({
-                    type: 'exportResult',
-                    result: result
+                // Link: if the external CTS fires, treat this progress as cancelled too
+                const ctsListener = cts?.token.onCancellationRequested(() => {
+                    // Nothing to do — we check isCancelled below
                 });
 
-                if (operationId) {
-                    await this.updateOperationProgress(operationId, 100, context);
-                }
+                const isCancelled = () => token.isCancellationRequested || (cts?.token.isCancellationRequested ?? false);
 
-                // Show result message
-                if (result.success) {
-                    showInfo(result.message);
-                } else {
-                    showError(result.message);
+                // Forward user's cancel-button click to the shared CTS so
+                // the next export start also sees this one as done
+                const userCancelListener = token.onCancellationRequested(() => {
+                    cts?.cancel();
+                });
+
+                try {
+                    // Check for cancellation before starting
+                    if (isCancelled()) {
+                        showInfo('Export cancelled.');
+                        return;
+                    }
+
+                    if (operationId) {
+                        await this.updateOperationProgress(operationId, 20, context, 'Processing content...');
+                    }
+                    progress.report({ increment: 20, message: 'Processing content...' });
+
+                    // Check for cancellation before export
+                    if (isCancelled()) {
+                        showInfo('Export cancelled.');
+                        return;
+                    }
+
+                    const result = await ExportService.export(document!, options, board, webviewPanel, cts?.token ?? token);
+
+                    // Check for cancellation after export
+                    if (isCancelled()) {
+                        showInfo('Export cancelled.');
+                        return;
+                    }
+
+                    if (operationId) {
+                        await this.updateOperationProgress(operationId, 90, context, 'Finalizing...');
+                    }
+                    progress.report({ increment: 80, message: 'Finalizing...' });
+
+                    // Send result to webview
+                    this.postMessage({
+                        type: 'exportResult',
+                        result: result
+                    });
+
+                    if (operationId) {
+                        await this.updateOperationProgress(operationId, 100, context);
+                    }
+
+                    // Show result message
+                    if (result.success) {
+                        showInfo(result.message);
+                    } else {
+                        showError(result.message);
+                    }
+                } finally {
+                    ctsListener?.dispose();
+                    userCancelListener.dispose();
                 }
             });
 

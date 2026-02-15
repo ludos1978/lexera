@@ -11,6 +11,7 @@ import * as crypto from 'crypto';
 import { watch as chokidarWatch, FSWatcher } from 'chokidar';
 import { SharedMarkdownParser, KanbanBoard, KanbanColumn } from '@ludos/shared';
 import { XbelMapper, XbelRoot } from './mappers/XbelMapper';
+import { IcalMapper, IcalTask } from './mappers/IcalMapper';
 import { log } from './logger';
 
 export interface BoardState {
@@ -20,6 +21,11 @@ export interface BoardState {
   xbelCache: string;
   etag: string;
   lastModified: Date;
+  calendarSlug?: string;
+  calendarName?: string;
+  icalCache?: string;
+  icalEtag?: string;
+  icalTasks?: IcalTask[];
 }
 
 export class BoardFileWatcher {
@@ -36,16 +42,30 @@ export class BoardFileWatcher {
   /**
    * Start watching a board file.
    * @param xbelName Custom XBEL filename (e.g. "bookmarks.xbel"). If omitted, derived from .md filename.
+   * @param options Optional calendar config: { calendarSlug, calendarName }
    */
-  addBoard(filePath: string, xbelName?: string): void {
+  addBoard(filePath: string, xbelName?: string, options?: { calendarSlug?: string; calendarName?: string }): void {
     const resolved = path.resolve(filePath);
-    if (this.watchers.has(resolved)) return;
+
+    // If already watching, merge calendar options into existing state
+    if (this.watchers.has(resolved)) {
+      if (options?.calendarSlug) {
+        const state = this.boardStates.get(resolved);
+        if (state && !state.calendarSlug) {
+          state.calendarSlug = options.calendarSlug;
+          state.calendarName = options.calendarName || state.calendarName;
+          // Regenerate iCal cache for existing board
+          this.updateIcalCache(state);
+        }
+      }
+      return;
+    }
 
     // Compute the XBEL filename: use configured name, or derive from .md filename
     const effectiveXbelName = xbelName || path.basename(resolved, '.md') + '.xbel';
 
     // Initial load
-    this.loadBoard(resolved, effectiveXbelName);
+    this.loadBoard(resolved, effectiveXbelName, options);
 
     // Watch for changes
     const watcher = chokidarWatch(resolved, {
@@ -60,7 +80,12 @@ export class BoardFileWatcher {
         return;
       }
       log.info(`Board file changed externally: ${resolved}`);
-      this.loadBoard(resolved, effectiveXbelName);
+      // Preserve calendar config across reloads
+      const existingState = this.boardStates.get(resolved);
+      this.loadBoard(resolved, effectiveXbelName, {
+        calendarSlug: existingState?.calendarSlug,
+        calendarName: existingState?.calendarName,
+      });
       if (this.onBoardChanged) {
         this.onBoardChanged(resolved);
       }
@@ -97,7 +122,7 @@ export class BoardFileWatcher {
    * Load/reload a board file from disk.
    * Creates the file with a minimal kanban board if it doesn't exist.
    */
-  private loadBoard(filePath: string, xbelName: string): void {
+  private loadBoard(filePath: string, xbelName: string, options?: { calendarSlug?: string; calendarName?: string }): void {
     try {
       if (!fs.existsSync(filePath)) {
         this.createEmptyBoard(filePath);
@@ -115,21 +140,46 @@ export class BoardFileWatcher {
       const xbelXml = XbelMapper.generateXbel(xbelRoot);
       const etag = this.computeEtag(xbelXml);
 
-      this.boardStates.set(filePath, {
+      const state: BoardState = {
         filePath,
         xbelName,
         board,
         xbelCache: xbelXml,
         etag,
         lastModified: new Date(),
-      });
+        calendarSlug: options?.calendarSlug,
+        calendarName: options?.calendarName,
+      };
+
+      // Generate iCal cache if calendar sync is configured
+      if (state.calendarSlug) {
+        this.updateIcalCache(state);
+      }
+
+      this.boardStates.set(filePath, state);
 
       log.info(`Board loaded: ${filePath} (${board.columns.length} columns, etag=${etag})`);
       log.verbose(`Board "${board.title}" columns: [${board.columns.map(c => c.title).join(', ')}]`);
       log.verbose(`XBEL cache: ${xbelXml.length} bytes`);
+      if (state.icalCache) {
+        log.verbose(`iCal cache: ${state.icalCache.length} bytes, ${state.icalTasks?.length} tasks`);
+      }
     } catch (err) {
       log.error(`Failed to load board ${filePath}:`, err);
     }
+  }
+
+  /**
+   * Generate/update iCal cache for a board state.
+   */
+  private updateIcalCache(state: BoardState): void {
+    if (!state.calendarSlug) return;
+    const tasks = IcalMapper.columnsToIcalTasks(state.board.columns, state.calendarSlug);
+    const calName = state.calendarName || state.board.title || state.calendarSlug;
+    const ical = IcalMapper.generateCalendar(tasks, calName);
+    state.icalTasks = tasks;
+    state.icalCache = ical;
+    state.icalEtag = this.computeEtag(ical);
   }
 
   /**
@@ -161,6 +211,23 @@ export class BoardFileWatcher {
    */
   getAllBoardStates(): BoardState[] {
     return Array.from(this.boardStates.values());
+  }
+
+  /**
+   * Find a board state by its calendar slug.
+   */
+  getBoardByCalendarSlug(slug: string): BoardState | undefined {
+    for (const state of this.boardStates.values()) {
+      if (state.calendarSlug === slug) return state;
+    }
+    return undefined;
+  }
+
+  /**
+   * Get all board states that have calendar sync configured.
+   */
+  getCalendarBoards(): BoardState[] {
+    return Array.from(this.boardStates.values()).filter(s => !!s.calendarSlug);
   }
 
   /**
@@ -216,14 +283,22 @@ export class BoardFileWatcher {
       const newXbelXml = XbelMapper.generateXbel(newXbelRoot);
       const newEtag = this.computeEtag(newXbelXml);
 
-      this.boardStates.set(resolved, {
+      const updatedState: BoardState = {
         filePath: resolved,
         xbelName: state.xbelName,
         board: currentBoard,
         xbelCache: newXbelXml,
         etag: newEtag,
         lastModified: new Date(),
-      });
+        calendarSlug: state.calendarSlug,
+        calendarName: state.calendarName,
+      };
+
+      if (updatedState.calendarSlug) {
+        this.updateIcalCache(updatedState);
+      }
+
+      this.boardStates.set(resolved, updatedState);
     });
 
     this.mutex.set(resolved, operation.catch(() => {}));

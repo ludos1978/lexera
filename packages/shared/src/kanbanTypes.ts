@@ -11,6 +11,7 @@
 export interface KanbanTask {
   id: string;
   content: string;
+  checked?: boolean;
 }
 
 export interface KanbanColumn {

@@ -22,8 +22,8 @@ describe('ConfigManager', () => {
 
     expect(config.port).toBe(0);
     expect(config.bookmarks.enabled).toBe(true);
-    expect(config.bookmarks.boards).toEqual([]);
     expect(config.calendar.enabled).toBe(false);
+    expect(config.workspaces).toEqual({});
   });
 
   it('should create config file on ensureConfigExists', () => {
@@ -35,14 +35,16 @@ describe('ConfigManager', () => {
     expect(raw.port).toBe(0);
   });
 
-  it('should read existing config', () => {
+  it('should read existing config with workspaces', () => {
     const dir = path.dirname(configPath);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify({
       port: 8080,
-      bookmarks: {
-        enabled: true,
-        boards: [{ file: '../my-board.md', columnMapping: 'per-folder' }]
+      bookmarks: { enabled: true },
+      workspaces: {
+        '/project-a': {
+          boards: [{ file: '/project-a/kanban.md', name: 'My Board' }]
+        }
       }
     }), 'utf8');
 
@@ -50,40 +52,44 @@ describe('ConfigManager', () => {
     const config = mgr.getConfig();
 
     expect(config.port).toBe(8080);
-    expect(config.bookmarks.boards).toHaveLength(1);
-    expect(config.bookmarks.boards[0].file).toBe('../my-board.md');
+    expect(Object.keys(config.workspaces)).toHaveLength(1);
+    expect(config.workspaces['/project-a'].boards[0].file).toBe('/project-a/kanban.md');
   });
 
-  it('should resolve board file paths relative to config', () => {
+  it('should list all board files across workspaces', () => {
     const dir = path.dirname(configPath);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify({
       port: 0,
-      bookmarks: {
-        enabled: true,
-        boards: [{ file: '../my-board.md', columnMapping: 'per-folder' }]
+      bookmarks: { enabled: true },
+      workspaces: {
+        '/project-a': {
+          boards: [{ file: '/project-a/kanban.md' }]
+        },
+        '/project-b': {
+          boards: [{ file: '/project-b/tasks.md' }]
+        }
       }
     }), 'utf8');
 
     const mgr = new ConfigManager(configPath);
-    const boardFiles = mgr.getBookmarkBoardFiles();
+    const boardFiles = mgr.getAllBoardFiles();
 
-    expect(boardFiles).toHaveLength(1);
-    expect(boardFiles[0]).toBe(path.resolve(dir, '../my-board.md'));
+    expect(boardFiles).toHaveLength(2);
+    expect(boardFiles).toContain(path.resolve('/project-a/kanban.md'));
+    expect(boardFiles).toContain(path.resolve('/project-b/tasks.md'));
   });
 
-  it('should return empty array when bookmarks disabled', () => {
+  it('should return empty array when no workspaces configured', () => {
     const dir = path.dirname(configPath);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify({
       port: 0,
-      bookmarks: {
-        enabled: false,
-        boards: [{ file: '../my-board.md', columnMapping: 'per-folder' }]
-      }
+      bookmarks: { enabled: false },
+      workspaces: {}
     }), 'utf8');
 
     const mgr = new ConfigManager(configPath);
-    expect(mgr.getBookmarkBoardFiles()).toEqual([]);
+    expect(mgr.getAllBoardFiles()).toEqual([]);
   });
 });

@@ -18,34 +18,40 @@ export function getDefaultConfigPath(): string {
   return path.join(configDir, 'ludos-sync', 'sync.json');
 }
 
-export interface BoardSyncConfig {
+export interface WorkspaceBoardConfig {
   file: string;
+  name?: string;
+  bookmarkSync?: boolean;
+  calendarSync?: boolean;
   xbelName?: string;
-  columnMapping: 'per-folder';
+  calendarSlug?: string;
+  calendarName?: string;
+}
+
+export interface WorkspaceConfig {
+  boards: WorkspaceBoardConfig[];
 }
 
 export interface SyncConfig {
   port: number;
   bookmarks: {
     enabled: boolean;
-    boards: BoardSyncConfig[];
   };
   calendar: {
     enabled: boolean;
-    boards: BoardSyncConfig[];
   };
+  workspaces: Record<string, WorkspaceConfig>;
 }
 
 const DEFAULT_CONFIG: SyncConfig = {
   port: 0,
   bookmarks: {
     enabled: true,
-    boards: [],
   },
   calendar: {
     enabled: false,
-    boards: [],
   },
+  workspaces: {},
 };
 
 export class ConfigManager {
@@ -65,9 +71,15 @@ export class ConfigManager {
         const raw = fs.readFileSync(this.configPath, 'utf8');
         const parsed = JSON.parse(raw);
         const config = { ...DEFAULT_CONFIG, ...parsed };
-        log.verbose(`Config loaded: port=${config.port}, bookmarks.enabled=${config.bookmarks.enabled}, ${config.bookmarks.boards.length} board(s)`);
-        for (const board of config.bookmarks.boards) {
-          log.verbose(`  Board: file="${board.file}" xbelName="${board.xbelName || '(auto)'}" mapping=${board.columnMapping}`);
+        const workspaceKeys = Object.keys(config.workspaces || {});
+        const totalBoards = workspaceKeys.reduce((sum, key) => sum + (config.workspaces[key]?.boards?.length || 0), 0);
+        log.verbose(`Config loaded: port=${config.port}, bookmarks.enabled=${config.bookmarks?.enabled}, calendar.enabled=${config.calendar?.enabled}, ${workspaceKeys.length} workspace(s), ${totalBoards} board(s)`);
+        for (const wsKey of workspaceKeys) {
+          const ws = config.workspaces[wsKey];
+          log.verbose(`  Workspace: ${wsKey} (${ws.boards?.length || 0} boards)`);
+          for (const board of ws.boards || []) {
+            log.verbose(`    Board: file="${board.file}" name="${board.name || '(none)'}" bookmarkSync=${board.bookmarkSync ?? true} calendarSync=${board.calendarSync ?? true}`);
+          }
         }
         return config;
       }
@@ -143,10 +155,15 @@ export class ConfigManager {
   }
 
   /**
-   * Get all configured board file paths for bookmark sync.
+   * Get all configured board file paths across all workspaces.
    */
-  getBookmarkBoardFiles(): string[] {
-    if (!this.config.bookmarks.enabled) return [];
-    return this.config.bookmarks.boards.map(b => path.resolve(path.dirname(this.configPath), b.file));
+  getAllBoardFiles(): string[] {
+    const files: string[] = [];
+    for (const ws of Object.values(this.config.workspaces || {})) {
+      for (const board of ws.boards || []) {
+        files.push(path.resolve(board.file));
+      }
+    }
+    return files;
   }
 }

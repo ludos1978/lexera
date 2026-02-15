@@ -12,6 +12,7 @@ import { BookmarkAdapter } from './adapters/BookmarkAdapter';
 import { LocalhostAuth } from './auth/LocalhostAuth';
 import { BoardFileWatcher } from './fileWatcher';
 import { ConfigManager, SyncConfig } from './config';
+import { createCaldavRouter } from './middleware/caldavMiddleware';
 import { log } from './logger';
 
 export interface ServerInfo {
@@ -67,6 +68,25 @@ export class SyncServer {
       log.info('Bookmarks sync is disabled in config');
     }
 
+    // Mount CalDAV server at /caldav/ for calendar sync
+    if (config.calendar.enabled) {
+      log.verbose('Calendar sync enabled, mounting CalDAV at /caldav/');
+
+      // .well-known/caldav discovery redirect
+      this.app.all('/.well-known/caldav', (_req, res) => {
+        res.redirect(301, '/caldav/principal/');
+      });
+
+      // Parse XML bodies for CalDAV
+      this.app.use('/caldav', express.text({ type: ['application/xml', 'text/xml'], limit: '1mb' }));
+
+      // Mount CalDAV router
+      const caldavRouter = createCaldavRouter(this.boardWatcher, '/caldav');
+      this.app.use('/caldav', caldavRouter);
+    } else {
+      log.info('Calendar sync is disabled in config');
+    }
+
     // Health check endpoint
     this.app.get('/status', (_req, res) => {
       const boards = this.boardWatcher.getAllBoardStates();
@@ -96,6 +116,10 @@ export class SyncServer {
           };
           log.info(`Server started on http://localhost:${addr.port}`);
           log.info(`Bookmarks endpoint: http://localhost:${addr.port}/bookmarks/`);
+          if (config.calendar.enabled) {
+            log.info(`CalDAV endpoint: http://localhost:${addr.port}/caldav/`);
+            log.info(`CalDAV discovery: http://localhost:${addr.port}/.well-known/caldav`);
+          }
           resolve(this.serverInfo);
         } else {
           reject(new Error('Failed to get server address'));
@@ -135,14 +159,30 @@ export class SyncServer {
   }
 
   private setupBoardWatchers(config: SyncConfig): void {
-    const configDir = path.dirname(this.configManager.getConfigPath());
-    const boards = config.bookmarks.enabled ? config.bookmarks.boards : [];
-    log.verbose(`Config dir: ${configDir}, ${boards.length} board(s) configured`);
-    for (const boardConfig of boards) {
-      const filePath = path.resolve(configDir, boardConfig.file);
-      const xbelName = boardConfig.xbelName || path.basename(filePath, '.md') + '.xbel';
-      this.boardWatcher.addBoard(filePath, boardConfig.xbelName);
-      log.info(`Watching board: ${filePath} -> ${xbelName}`);
+    const workspaces = config.workspaces || {};
+    const workspaceKeys = Object.keys(workspaces);
+    log.verbose(`${workspaceKeys.length} workspace(s) configured`);
+
+    for (const wsKey of workspaceKeys) {
+      const ws = workspaces[wsKey];
+      for (const board of ws.boards || []) {
+        const filePath = path.resolve(board.file);
+        const wantBookmarks = config.bookmarks?.enabled && board.bookmarkSync !== false;
+        const wantCalendar = config.calendar?.enabled && board.calendarSync !== false;
+
+        if (wantBookmarks) {
+          const xbelName = board.xbelName || path.basename(filePath, '.md') + '.xbel';
+          this.boardWatcher.addBoard(filePath, board.xbelName);
+          log.info(`Watching board (bookmarks): ${filePath} -> ${xbelName}`);
+        }
+
+        if (wantCalendar) {
+          const slug = board.calendarSlug || path.basename(filePath, '.md');
+          const name = board.calendarName;
+          this.boardWatcher.addBoard(filePath, undefined, { calendarSlug: slug, calendarName: name });
+          log.info(`Watching board (calendar): ${filePath} -> slug=${slug}`);
+        }
+      }
     }
 
     // Watch config file for changes

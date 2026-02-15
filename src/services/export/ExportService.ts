@@ -62,7 +62,7 @@ export interface NewExportOptions {
     // TRANSFORMATIONS
     mergeIncludes?: boolean;
     tagVisibility: TagVisibility;
-    excludeTags?: string[];  // Tags that exclude content from export (e.g., ['#export-exclude', '#private'])
+    excludeTags?: string[];  // Tags that exclude content from export (e.g., ['#exclude', '#private'])
 
     // PACKING & LINK HANDLING
     linkHandlingMode?: 'rewrite-only' | 'pack-linked' | 'pack-all' | 'no-modify';

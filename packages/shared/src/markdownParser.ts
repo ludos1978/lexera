@@ -135,10 +135,12 @@ export class SharedMarkdownParser {
         }
 
         if (currentColumn) {
-          const taskSummary = line.substring(6); // skip "- [ ] "
+          const checked = /^- \[[xX]\] /.test(line);
+          const taskSummary = line.substring(6); // skip "- [ ] " or "- [x] "
           currentTask = {
             id: generateId('task'),
-            content: taskSummary
+            content: taskSummary,
+            ...(checked ? { checked: true } : {})
           };
           collectingDescription = true;
         }
@@ -212,7 +214,8 @@ export class SharedMarkdownParser {
         const contentLines = normalizedContent.split('\n');
         const summaryLine = contentLines[0] || '';
 
-        markdown += `- [ ] ${summaryLine}\n`;
+        const checkbox = task.checked ? '- [x] ' : '- [ ] ';
+        markdown += `${checkbox}${summaryLine}\n`;
 
         if (contentLines.length > 1) {
           for (let i = 1; i < contentLines.length; i++) {

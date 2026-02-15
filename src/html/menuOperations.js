@@ -629,7 +629,7 @@ class SimpleMenuManager {
             const activeTags = this.getActiveTagsForElement(type, id, columnId);
 
             if (group === 'special') {
-                tags = ['header', 'footer', 'hidden'];
+                tags = ['header', 'footer', 'hidden', 'exclude'];
             } else if (group === 'custom') {
                 tags = window.getUserAddedTags();
             } else {
@@ -3305,7 +3305,7 @@ function updateTagCategoryCounts(id, type, columnId = null) {
     // Update special tag group count
     const specialMenuItem = activeDropdown.querySelector('[data-group="special"]');
     if (specialMenuItem) {
-        const specialTags = ['header', 'footer', 'hidden'];
+        const specialTags = ['header', 'footer', 'hidden', 'exclude'];
         const activeSpecialCount = specialTags.filter(tag =>
             activeTags.includes(tag.toLowerCase())
         ).length;
