@@ -108,9 +108,8 @@ Standalone WebDAV server for bookmark sync via Floccus.
 
 - `src/sync/SyncConfigBridge.ts-SyncConfigBridge` — Bridge between VS Code settings and .kanban/sync.json
   - `readConfig()` / `writeConfig(config)` — Read/write sync config
-  - `addBoardForSync(boardFilePath)` — Register board for sync
-  - `removeBoardFromSync(boardFilePath)` — Unregister board from sync
-  - `isBoardSynced(boardFilePath)` — Check if board is synced
+  - `syncWorkspaceBoards(workspaceKey, boards, calendarEnabled)` — Sync boards with per-board calendarSync/calendarName, sets calendar.enabled
+  - `static slugify(name)` — Generate URL-safe slug from a name
 
 - `src/sync/SyncProcessManager.ts-SyncProcessManager` — Spawn/detect ludos-sync process
   - `isRunning()` — Probe localhost status endpoint
@@ -147,8 +146,10 @@ Singleton shared data layer for board management. Single source of truth for boa
 - `getBoardByPath(filePath)` / `getBoardByUri(uri)` — Lookup board
 - `addBoard(uri)` / `removeBoard(filePath)` / `removeBoardByUri(uri)` / `clearBoards()` — Board CRUD
 - `reorderBoards(draggedPaths, targetPath)` — Drag & drop reorder
-- `updateBoardConfig(uri, updates)` / `addTagFilter(uri, tag)` / `removeTagFilter(uri, tag)` — Board config
+- `updateBoardConfig(uri, updates)` / `addTagFilter(uri, tag)` / `removeTagFilter(uri, tag)` — Board config (updates includes calendarSharing)
 - `locked` / `setLocked(locked)` — Lock state (prevents add/remove)
+- `defaultCalendarSharing` / `setDefaultCalendarSharing(mode)` — Global calendar sharing default ('workspace' | 'board' | 'disabled')
+- `getEffectiveCalendarSharing(board)` — Resolves per-board 'default' to global setting
 - `scanWorkspace()` / `isKanbanFile(filePath)` — Workspace scanning with ripgrep
 - `recentSearches` / `addSearch(query, useRegex, scope)` / `toggleSearchPin(query)` / `removeSearch(query)` / `getPinnedSearches()` — Search management
 - `sortMode` / `setSortMode(mode)` — Dashboard sort mode ('boardFirst' | 'merged')

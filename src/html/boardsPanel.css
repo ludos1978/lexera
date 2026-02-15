@@ -438,7 +438,9 @@ body {
     flex-shrink: 0;
 }
 
-.timeframe-select {
+.timeframe-select,
+.calendar-sharing-select,
+.default-calendar-sharing-select {
     font-size: 0.9em;
     background: var(--vscode-dropdown-background);
     color: var(--vscode-dropdown-foreground);
@@ -446,6 +448,11 @@ body {
     border-radius: 3px;
     padding: 1px 2px;
     width: 100px;
+}
+
+.calendar-sharing-select,
+.default-calendar-sharing-select {
+    width: 140px;
 }
 
 .board-tag-input {
@@ -550,12 +557,6 @@ body {
 
 .boards-actions.locked {
     display: none;
-}
-
-.sync-actions {
-    display: flex;
-    gap: 2px;
-    padding: 4px 2px;
 }
 
 /* ============= Search Results ============= */

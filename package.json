@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.217.4",
+  "version": "0.218.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -5980,14 +5980,9 @@
         "default": true,
         "description": "Automatically scan workspace for kanban boards on first activation"
       },
-      "markdown-kanban.sync.enabled": {
-        "type": "boolean",
-        "default": false,
-        "description": "Enable local WebDAV sync server (ludos-sync) integration"
-      },
       "markdown-kanban.sync.autoStart": {
         "type": "boolean",
-        "default": false,
+        "default": true,
         "description": "Auto-spawn ludos-sync when VS Code opens if not already running"
       },
       "markdown-kanban.sync.configPath": {

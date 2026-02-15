@@ -90,7 +90,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                     await this._registry.updateBoardConfig(message.boardUri, {
                         timeframe: message.timeframe,
                         tagFilters: message.tagFilters,
-                        enabled: message.enabled
+                        enabled: message.enabled,
+                        calendarSharing: message.calendarSharing
                     });
                     break;
                 case 'addTagFilter':
@@ -104,16 +105,14 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                 case 'setDefaultTimeframe':
                     await this._registry.setDefaultTimeframe(message.timeframe);
                     break;
+                case 'setDefaultCalendarSharing':
+                    await this._registry.setDefaultCalendarSharing(message.mode);
+                    break;
                 case 'addDefaultTagFilter':
                     await this._registry.addDefaultTagFilter(message.tag);
                     break;
                 case 'removeDefaultTagFilter':
                     await this._registry.removeDefaultTagFilter(message.tag);
-                    break;
-
-                // Sync
-                case 'syncBoards':
-                    vscode.commands.executeCommand('markdown-kanban.sync.updateConfig');
                     break;
 
                 // Ready
@@ -144,8 +143,6 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             config: b.config
         }));
 
-        const syncEnabled = vscode.workspace.getConfiguration('markdown-kanban').get<boolean>('sync.enabled', false);
-
         this._view.webview.postMessage({
             type: 'state',
             boards: boardsData,
@@ -154,8 +151,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             sortMode: this._registry.sortMode,
             defaultTimeframe: this._registry.defaultTimeframe,
             defaultTagFilters: this._registry.defaultTagFilters,
-            hasActivePanel: KanbanWebviewPanel.getAllPanels().length > 0,
-            syncEnabled
+            defaultCalendarSharing: this._registry.defaultCalendarSharing,
+            hasActivePanel: KanbanWebviewPanel.getAllPanels().length > 0
         });
     }
 
@@ -247,11 +244,6 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                 </button>
                 <button class="action-btn" id="scan-btn" title="Scan workspace">
                     <span class="codicon codicon-search"></span> Scan Workspace
-                </button>
-            </div>
-            <div class="sync-actions" id="sync-actions" style="display: none;">
-                <button class="action-btn" id="sync-btn" title="Update sync service config">
-                    <span class="codicon codicon-sync"></span> Update Sync
                 </button>
             </div>
         </div>

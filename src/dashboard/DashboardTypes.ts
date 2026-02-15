@@ -6,6 +6,20 @@
  */
 
 /**
+ * Calendar sharing mode: how this board is exposed via CalDAV
+ * - 'workspace': calendar named after the workspace
+ * - 'board': calendar named after the board file
+ * - 'disabled': no calendar sharing
+ */
+export type CalendarSharingMode = 'workspace' | 'board' | 'disabled';
+
+/**
+ * Per-board calendar sharing setting.
+ * 'default' inherits from the All Boards global setting.
+ */
+export type CalendarSharingPerBoard = 'default' | CalendarSharingMode;
+
+/**
  * Configuration for a single board in the dashboard
  */
 export interface DashboardBoardConfig {
@@ -17,6 +31,8 @@ export interface DashboardBoardConfig {
     tagFilters: string[];
     /** Whether this board is enabled in the dashboard */
     enabled: boolean;
+    /** Calendar sharing mode ('default' inherits All Boards setting) */
+    calendarSharing?: CalendarSharingPerBoard;
 }
 
 /**

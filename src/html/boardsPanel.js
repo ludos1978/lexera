@@ -14,8 +14,6 @@
     const boardsActions = document.getElementById('boards-actions');
     const addBoardBtn = document.getElementById('add-board-btn');
     const scanBtn = document.getElementById('scan-btn');
-    const syncBtn = document.getElementById('sync-btn');
-    const syncActions = document.getElementById('sync-actions');
 
     // State
     let currentState = null;
@@ -34,9 +32,6 @@
         });
         scanBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'scanWorkspace' });
-        });
-        syncBtn.addEventListener('click', () => {
-            vscode.postMessage({ type: 'syncBoards' });
         });
 
         // Messages from backend
@@ -62,7 +57,6 @@
                     if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
                 }
                 renderLockState();
-                syncActions.style.display = currentState.syncEnabled ? '' : 'none';
                 break;
         }
     }
@@ -134,6 +128,25 @@
             html += '<option value="3"' + (board.config.timeframe === 3 ? ' selected' : '') + '>3 days</option>';
             html += '<option value="7"' + (board.config.timeframe === 7 ? ' selected' : '') + '>7 days</option>';
             html += '<option value="30"' + (board.config.timeframe === 30 ? ' selected' : '') + '>30 days</option>';
+            html += '</select>';
+            html += '</div></div>';
+
+            // Calendar sharing row
+            html += '<div class="tree-row board-config-row">';
+            html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents">';
+            html += '<span class="board-config-label">Calendar:</span>';
+            var boardCalendar = board.config.calendarSharing || 'default';
+            var defaultCal = currentState.defaultCalendarSharing || 'disabled';
+            var defaultCalLabel = defaultCal === 'workspace' ? 'Workspace name'
+                : defaultCal === 'board' ? 'Board name'
+                : 'Disabled';
+            html += '<select class="calendar-sharing-select" data-board-uri="' + escapeHtml(board.uri) + '">';
+            html += '<option value="default"' + (boardCalendar === 'default' ? ' selected' : '') + '>Default (' + defaultCalLabel + ')</option>';
+            html += '<option value="workspace"' + (boardCalendar === 'workspace' ? ' selected' : '') + '>As workspace name</option>';
+            html += '<option value="board"' + (boardCalendar === 'board' ? ' selected' : '') + '>As board name</option>';
+            html += '<option value="disabled"' + (boardCalendar === 'disabled' ? ' selected' : '') + '>Disabled</option>';
             html += '</select>';
             html += '</div></div>';
 
@@ -243,6 +256,17 @@
             });
         });
 
+        // Calendar sharing selects (per-board)
+        boardsList.querySelectorAll('.calendar-sharing-select').forEach(select => {
+            select.addEventListener('change', () => {
+                vscode.postMessage({
+                    type: 'updateBoardConfig',
+                    boardUri: select.dataset.boardUri,
+                    calendarSharing: select.value
+                });
+            });
+        });
+
         // Tag input
         boardsList.querySelectorAll('.board-tag-input').forEach(input => {
             const addTag = () => {
@@ -338,6 +362,20 @@
         html += '</select>';
         html += '</div></div>';
 
+        // Calendar sharing row
+        var defaultCalSharing = currentState.defaultCalendarSharing || 'disabled';
+        html += '<div class="tree-row board-config-row">';
+        html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+        html += '<div class="tree-twistie"></div>';
+        html += '<div class="tree-contents">';
+        html += '<span class="board-config-label">Calendar:</span>';
+        html += '<select class="default-calendar-sharing-select">';
+        html += '<option value="workspace"' + (defaultCalSharing === 'workspace' ? ' selected' : '') + '>As workspace name</option>';
+        html += '<option value="board"' + (defaultCalSharing === 'board' ? ' selected' : '') + '>As board name</option>';
+        html += '<option value="disabled"' + (defaultCalSharing === 'disabled' ? ' selected' : '') + '>Disabled</option>';
+        html += '</select>';
+        html += '</div></div>';
+
         // Tags input row
         html += '<div class="tree-row board-config-row">';
         html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
@@ -372,6 +410,13 @@
         if (tfSelect) {
             tfSelect.addEventListener('change', function() {
                 vscode.postMessage({ type: 'setDefaultTimeframe', timeframe: parseInt(tfSelect.value) });
+            });
+        }
+
+        var calSelect = allBoardsConfigContent.querySelector('.default-calendar-sharing-select');
+        if (calSelect) {
+            calSelect.addEventListener('change', function() {
+                vscode.postMessage({ type: 'setDefaultCalendarSharing', mode: calSelect.value });
             });
         }
 

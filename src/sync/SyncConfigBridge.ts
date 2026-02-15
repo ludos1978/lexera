@@ -94,25 +94,45 @@ export class SyncConfigBridge {
   /**
    * Sync the boards for a specific workspace into the shared config.
    * Replaces only this workspace's entry, preserving other workspaces.
+   * Each board can specify calendarSync and calendarName individually.
+   * calendarEnabled controls the top-level calendar.enabled flag.
    */
-  syncWorkspaceBoards(workspaceKey: string, boards: Array<{ file: string; name: string }>): void {
+  syncWorkspaceBoards(
+    workspaceKey: string,
+    boards: Array<{ file: string; name: string; calendarSync: boolean; calendarSlug?: string; calendarName?: string }>,
+    calendarEnabled: boolean
+  ): void {
     const config = this.readConfig();
 
     if (!config.workspaces) {
       config.workspaces = {};
     }
 
+    config.calendar.enabled = calendarEnabled;
+
     config.workspaces[workspaceKey] = {
       boards: boards.map(b => ({
         file: b.file,
         name: b.name,
         bookmarkSync: true,
-        calendarSync: true,
+        calendarSync: b.calendarSync,
+        calendarSlug: b.calendarSlug,
+        calendarName: b.calendarName,
       })),
     };
 
     this.writeConfig(config);
-    logger.debug(`[SyncConfigBridge] Synced ${boards.length} board(s) for workspace: ${workspaceKey}`);
+    logger.debug(`[SyncConfigBridge] Synced ${boards.length} board(s) for workspace: ${workspaceKey}, calendar.enabled=${calendarEnabled}`);
+  }
+
+  /**
+   * Generate a URL-safe slug from a name.
+   */
+  static slugify(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   }
 
   /**

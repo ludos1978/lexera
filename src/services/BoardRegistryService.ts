@@ -21,7 +21,7 @@ import {
     isBackupFile,
     isConflictFile
 } from '../constants/FileNaming';
-import { DashboardBoardConfig } from '../dashboard/DashboardTypes';
+import { DashboardBoardConfig, CalendarSharingMode, CalendarSharingPerBoard } from '../dashboard/DashboardTypes';
 import { showWarning, showInfo, notificationService } from './NotificationService';
 import { logger } from '../utils/logger';
 
@@ -74,6 +74,7 @@ export class BoardRegistryService implements vscode.Disposable {
     // Default config (All Boards settings)
     private _defaultTimeframe: 3 | 7 | 30 = 7;
     private _defaultTagFilters: string[] = [];
+    private _defaultCalendarSharing: CalendarSharingMode = 'disabled';
 
     // Sort mode
     private _sortMode: DashboardSortMode = 'boardFirst';
@@ -329,7 +330,7 @@ export class BoardRegistryService implements vscode.Disposable {
      */
     async updateBoardConfig(
         uri: string,
-        updates: { timeframe?: 0 | 3 | 7 | 30; tagFilters?: string[]; enabled?: boolean }
+        updates: { timeframe?: 0 | 3 | 7 | 30; tagFilters?: string[]; enabled?: boolean; calendarSharing?: CalendarSharingPerBoard }
     ): Promise<void> {
         const board = this.getBoardByUri(uri);
         if (!board) { return; }
@@ -337,6 +338,7 @@ export class BoardRegistryService implements vscode.Disposable {
         if (updates.timeframe !== undefined) { board.config.timeframe = updates.timeframe; }
         if (updates.tagFilters !== undefined) { board.config.tagFilters = updates.tagFilters; }
         if (updates.enabled !== undefined) { board.config.enabled = updates.enabled; }
+        if (updates.calendarSharing !== undefined) { board.config.calendarSharing = updates.calendarSharing; }
 
         await this._saveBoardConfigs();
         this._onBoardsChanged.fire();
@@ -434,6 +436,27 @@ export class BoardRegistryService implements vscode.Disposable {
             }
         }
         return Array.from(tags);
+    }
+
+    // ============= Calendar Sharing (All Boards Default) =============
+
+    get defaultCalendarSharing(): CalendarSharingMode { return this._defaultCalendarSharing; }
+
+    async setDefaultCalendarSharing(mode: CalendarSharingMode): Promise<void> {
+        this._defaultCalendarSharing = mode;
+        await this._context.workspaceState.update('kanbanBoards.defaultCalendarSharing', mode);
+        this._onBoardsChanged.fire();
+    }
+
+    /**
+     * Get the effective calendar sharing mode for a board (resolves 'default' to global setting)
+     */
+    getEffectiveCalendarSharing(board: RegisteredBoard): CalendarSharingMode {
+        const perBoard = board.config.calendarSharing;
+        if (!perBoard || perBoard === 'default') {
+            return this._defaultCalendarSharing;
+        }
+        return perBoard;
     }
 
     // ============= Scan (migrated from KanbanSidebarProvider) =============
@@ -851,6 +874,7 @@ export class BoardRegistryService implements vscode.Disposable {
         const configDefault = this._getDefaultTimeframe();
         this._defaultTimeframe = this._context.workspaceState.get<3 | 7 | 30>('kanbanBoards.defaultTimeframe', configDefault);
         this._defaultTagFilters = this._context.workspaceState.get<string[]>('kanbanBoards.defaultTagFilters', []);
+        this._defaultCalendarSharing = this._context.workspaceState.get<CalendarSharingMode>('kanbanBoards.defaultCalendarSharing', 'disabled');
 
         // Build boards map from stored file paths
         for (const filePath of storedFiles) {

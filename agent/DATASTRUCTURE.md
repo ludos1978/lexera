@@ -40,6 +40,11 @@ Sync-relevant subset of kanban types shared between extension and ludos-sync:
 ### `src/sync/SyncConfigBridge.ts`
 - `BoardSyncConfig` / `SyncConfig` — VS Code side copies of sync config types
 
+### `src/dashboard/DashboardTypes.ts` (Calendar Sharing, 2026-02-15)
+- `CalendarSharingMode` — 'workspace' | 'board' | 'disabled'
+- `CalendarSharingPerBoard` — 'default' | CalendarSharingMode
+- `DashboardBoardConfig.calendarSharing?` — Per-board calendar sharing setting
+
 ---
 
 ## IMPORTANT: Include Syntax System
@@ -1106,6 +1111,7 @@ type DashboardSortMode = 'boardFirst' | 'merged';
 - `kanbanBoards.locked` — Lock state (prevents add/remove)
 - `kanbanBoards.searches` — Recent/pinned searches
 - `kanbanBoards.sortMode` — Dashboard sort mode
+- `kanbanBoards.defaultCalendarSharing` — Default calendar sharing mode ('workspace' | 'board' | 'disabled')
 
 ### `/src/dashboard/DashboardTypes.ts` (MODIFIED 2026-02-10)
 

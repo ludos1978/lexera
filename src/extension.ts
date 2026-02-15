@@ -440,11 +440,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// --- Sync Server Integration ---
 	const syncConfig = vscode.workspace.getConfiguration('markdown-kanban');
-	const syncEnabled = syncConfig.get<boolean>('sync.enabled', false);
 	const syncAutoStart = syncConfig.get<boolean>('sync.autoStart', false);
 	const syncConfigPath = syncConfig.get<string>('sync.configPath', '.kanban/sync.json');
 
-	if (syncEnabled) {
+	{
 		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
 		// Use default config path when setting is empty or default placeholder
 		const configBridge = new SyncConfigBridge(syncConfigPath && syncConfigPath !== '.kanban/sync.json' ? require('path').resolve(workspaceRoot, syncConfigPath) : undefined);
@@ -457,13 +456,28 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Sync workspace boards to shared config
 		const workspaceKey = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		const workspaceName = vscode.workspace.workspaceFolders?.[0]?.name || 'workspace';
 		const syncBoardsToConfig = () => {
 			if (!workspaceKey) { return; }
-			const boards = registry.getBoards().map(b => ({
-				file: b.filePath,
-				name: require('path').basename(b.filePath, '.md'),
-			}));
-			configBridge.syncWorkspaceBoards(workspaceKey, boards);
+			let anyCalendarEnabled = false;
+			const boards = registry.getBoards().map(b => {
+				const boardName = require('path').basename(b.filePath, '.md');
+				const effectiveCalendar = registry.getEffectiveCalendarSharing(b);
+				const calendarSync = effectiveCalendar !== 'disabled';
+				if (calendarSync) { anyCalendarEnabled = true; }
+				const calendarName = effectiveCalendar === 'workspace' ? workspaceName
+					: effectiveCalendar === 'board' ? boardName
+					: undefined;
+				const calendarSlug = calendarName ? SyncConfigBridge.slugify(calendarName) : undefined;
+				return {
+					file: b.filePath,
+					name: boardName,
+					calendarSync,
+					calendarSlug,
+					calendarName,
+				};
+			});
+			configBridge.syncWorkspaceBoards(workspaceKey, boards, anyCalendarEnabled);
 		};
 
 		// Initial sync on startup
