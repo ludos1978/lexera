@@ -393,6 +393,36 @@ export class LinkReplacementService {
     }
 
     /**
+     * Build the encoded replacement path, preserving the original filename exactly.
+     * Only the directory portion is re-encoded; the filename stays as it appeared
+     * in the markdown to avoid changing e.g. spaces, parens, or unicode encoding.
+     *
+     * @param newRelativePath - The computed new relative (or absolute) path (decoded)
+     * @param originalPathInMarkdown - The path string as it appeared in the markdown
+     */
+    private _buildEncodedPath(newRelativePath: string, originalPathInMarkdown: string): string {
+        // Extract the original filename exactly as it appeared in markdown
+        const normalized = originalPathInMarkdown.replace(/\\/g, '/');
+        const lastSlash = normalized.lastIndexOf('/');
+        const originalFilename = lastSlash >= 0
+            ? originalPathInMarkdown.substring(lastSlash + 1)
+            : originalPathInMarkdown;
+
+        // Compute the new directory portion (everything except the filename)
+        const newBasename = path.basename(newRelativePath);
+        const newDirPortion = newRelativePath.slice(0, newRelativePath.length - newBasename.length);
+
+        // Encode only the directory portion, then append the preserved filename
+        if (!newDirPortion) {
+            return originalFilename;
+        }
+        // Strip trailing separator before encoding, then add it back
+        const dirToEncode = newDirPortion.replace(/[/\\]+$/, '');
+        const encodedDir = encodeFilePath(dirToEncode);
+        return encodedDir + '/' + originalFilename;
+    }
+
+    /**
      * Find a single path in the files
      */
     private _findSinglePath(
@@ -572,12 +602,17 @@ export class LinkReplacementService {
                     fileDir,
                     pathFormat
                 );
-                const encodedNewPath = encodeFilePath(newRelativePath);
+                // Preserve the original filename exactly as it appeared in markdown.
+                // Only re-encode the directory portion to avoid changing filename encoding
+                // (e.g. spaces, parens, unicode characters).
+                const encodedNewPath = this._buildEncodedPath(newRelativePath, oldPath);
 
                 let newContent = LinkOperations.replaceSingleLink(content, oldPath, encodedNewPath, 0);
 
                 if (newContent === content && replacement.decodedOldPath !== oldPath) {
-                    newContent = LinkOperations.replaceSingleLink(content, replacement.decodedOldPath, encodedNewPath, 0);
+                    // Fallback: match using decoded path, but preserve decoded filename
+                    const decodedEncodedNewPath = this._buildEncodedPath(newRelativePath, replacement.decodedOldPath);
+                    newContent = LinkOperations.replaceSingleLink(content, replacement.decodedOldPath, decodedEncodedNewPath, 0);
                 }
 
                 // Fallback: if replaceSingleLink didn't match any link pattern,
@@ -821,17 +856,18 @@ export class LinkReplacementService {
     ): string {
         let result = text;
         for (const [, replacement] of replacements) {
-            const encodedNewPath = encodeFilePath(
-                this._computeReplacementPath(
-                    replacement.oldPath,
-                    replacement.newAbsolutePath,
-                    baseDir,
-                    pathFormat
-                )
+            const newRelativePath = this._computeReplacementPath(
+                replacement.oldPath,
+                replacement.newAbsolutePath,
+                baseDir,
+                pathFormat
             );
+            // Preserve original filename exactly — only re-encode directory portion
+            const encodedNewPath = this._buildEncodedPath(newRelativePath, replacement.oldPath);
             let newResult = LinkOperations.replaceSingleLink(result, replacement.oldPath, encodedNewPath, 0);
             if (newResult === result && replacement.decodedOldPath !== replacement.oldPath) {
-                newResult = LinkOperations.replaceSingleLink(result, replacement.decodedOldPath, encodedNewPath, 0);
+                const decodedEncodedNewPath = this._buildEncodedPath(newRelativePath, replacement.decodedOldPath);
+                newResult = LinkOperations.replaceSingleLink(result, replacement.decodedOldPath, decodedEncodedNewPath, 0);
             }
             // Fallback: broader regex replacement for board model text
             if (newResult === result && result.includes(replacement.oldPath)) {

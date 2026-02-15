@@ -51,11 +51,40 @@ export class SyncServer {
       next();
     });
 
+    // Basic Auth middleware when credentials are configured
+    if (config.auth) {
+      const { username, password } = config.auth;
+      log.info('Basic Auth enabled for all endpoints');
+      this.app.use((req, res, next) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Basic ')) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
+          res.status(401).send('Authentication required');
+          return;
+        }
+        const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+        const colonIndex = decoded.indexOf(':');
+        if (colonIndex === -1) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
+          res.status(401).send('Authentication required');
+          return;
+        }
+        const reqUser = decoded.slice(0, colonIndex);
+        const reqPass = decoded.slice(colonIndex + 1);
+        if (reqUser !== username || reqPass !== password) {
+          res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
+          res.status(401).send('Invalid credentials');
+          return;
+        }
+        next();
+      });
+    }
+
     // Mount Nephele WebDAV server at /bookmarks/
     if (config.bookmarks.enabled) {
       log.verbose('Bookmarks sync enabled, mounting WebDAV at /bookmarks/');
       const bookmarkAdapter = new BookmarkAdapter(this.boardWatcher);
-      const localhostAuth = new LocalhostAuth();
+      const localhostAuth = new LocalhostAuth(config.auth);
 
       this.app.use(
         '/bookmarks',

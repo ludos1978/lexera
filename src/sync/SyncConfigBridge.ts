@@ -27,6 +27,10 @@ export interface WorkspaceConfig {
 
 export interface SyncConfig {
   port: number;
+  auth?: {
+    username: string;
+    password: string;
+  };
   bookmarks: {
     enabled: boolean;
   };

@@ -34,6 +34,10 @@ export interface WorkspaceConfig {
 
 export interface SyncConfig {
   port: number;
+  auth?: {
+    username: string;
+    password: string;
+  };
   bookmarks: {
     enabled: boolean;
   };
@@ -73,7 +77,7 @@ export class ConfigManager {
         const config = { ...DEFAULT_CONFIG, ...parsed };
         const workspaceKeys = Object.keys(config.workspaces || {});
         const totalBoards = workspaceKeys.reduce((sum, key) => sum + (config.workspaces[key]?.boards?.length || 0), 0);
-        log.verbose(`Config loaded: port=${config.port}, bookmarks.enabled=${config.bookmarks?.enabled}, calendar.enabled=${config.calendar?.enabled}, ${workspaceKeys.length} workspace(s), ${totalBoards} board(s)`);
+        log.verbose(`Config loaded: port=${config.port}, auth=${config.auth ? 'enabled' : 'disabled'}, bookmarks.enabled=${config.bookmarks?.enabled}, calendar.enabled=${config.calendar?.enabled}, ${workspaceKeys.length} workspace(s), ${totalBoards} board(s)`);
         for (const wsKey of workspaceKeys) {
           const ws = config.workspaces[wsKey];
           log.verbose(`  Workspace: ${wsKey} (${ws.boards?.length || 0} boards)`);
