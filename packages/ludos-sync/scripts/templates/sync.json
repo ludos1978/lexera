@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    "ludos-sync configuration template",
+    "",
+    "Copy this file to ~/.config/ludos-sync/sync.json (or any path you pass via --config).",
+    "The server watches this file — changes are picked up automatically.",
+    "",
+    "port:  0 = auto-select a free port. Set a fixed number (e.g. 8080)",
+    "       if you want a stable URL for Floccus.",
+    "",
+    "bookmarks.boards[].file:",
+    "  Path to the kanban .md file, relative to this config file.",
+    "",
+    "bookmarks.boards[].xbelName:",
+    "  Filename Floccus writes to (default: derived from .md filename).",
+    "  Example: if xbelName is 'bookmarks.xbel', configure Floccus with",
+    "    http://localhost:<port>/bookmarks/bookmarks.xbel",
+    "",
+    "bookmarks.boards[].columnMapping:",
+    "  'per-folder' = each XBEL folder becomes its own kanban column.",
+    "",
+    "calendar: reserved for future CalDAV support (not yet implemented)."
+  ],
+
+  "port": 8080,
+
+  "bookmarks": {
+    "enabled": true,
+    "boards": [
+      {
+        "file": "../bookmarks.md",
+        "xbelName": "bookmarks.xbel",
+        "columnMapping": "per-folder"
+      }
+    ]
+  },
+
+  "calendar": {
+    "enabled": false,
+    "boards": []
+  }
+}

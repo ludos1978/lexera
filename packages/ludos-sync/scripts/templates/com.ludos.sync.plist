@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ludos-sync macOS launchd service template
+
+  SETUP:
+  1. Copy this file to ~/Library/LaunchAgents/
+     cp com.ludos.sync.plist ~/Library/LaunchAgents/
+
+  2. Edit the 3 paths below marked with CHANGE_ME:
+     - Path to your Node.js binary     (run: which node)
+     - Path to cli.js in this package   (dist/cli.js)
+     - Path to your sync config file    (~/.config/ludos-sync/sync.json)
+
+  3. Load the service:
+     launchctl load ~/Library/LaunchAgents/com.ludos.sync.plist
+
+  COMMANDS:
+     launchctl start com.ludos.sync       Start now
+     launchctl stop com.ludos.sync        Stop
+     launchctl unload ~/Library/LaunchAgents/com.ludos.sync.plist   Disable
+     tail -f ~/.ludos-sync.log            View logs
+
+  UNINSTALL:
+     launchctl unload ~/Library/LaunchAgents/com.ludos.sync.plist
+     rm ~/Library/LaunchAgents/com.ludos.sync.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ludos.sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- CHANGE_ME: path to node (run: which node) -->
+        <string>/usr/local/bin/node</string>
+
+        <!-- CHANGE_ME: absolute path to ludos-sync cli.js -->
+        <string>/path/to/packages/ludos-sync/dist/cli.js</string>
+
+        <string>start</string>
+        <string>--config</string>
+
+        <!-- CHANGE_ME: absolute path to your sync config -->
+        <string>/Users/CHANGE_ME/.config/ludos-sync/sync.json</string>
+    </array>
+
+    <!-- Start when the user logs in -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it crashes -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Throttle restarts: wait 10s between crashes -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Log files -->
+    <key>StandardOutPath</key>
+    <string>/Users/CHANGE_ME/.ludos-sync.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/CHANGE_ME/.ludos-sync.err.log</string>
+
+    <!-- Optional: set working directory -->
+    <!-- <key>WorkingDirectory</key> -->
+    <!-- <string>/path/to/your/workspace</string> -->
+</dict>
+</plist>

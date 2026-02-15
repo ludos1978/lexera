@@ -2,7 +2,22 @@
 
 This document catalogs ALL singleton instances, global state, and data instances (actual runtime instances, not just type definitions) in the Markdown Kanban Obsidian extension.
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-14
+
+---
+
+## WebDAV Sync Instances (2026-02-14)
+
+### ludos-sync Standalone Instances
+- `ConfigManager` — Per-process config manager reading .kanban/sync.json
+- `BoardFileWatcher.boardStates` — Map<string, BoardState> tracking board files and XBEL caches
+- `BoardFileWatcher.watchers` — Map<string, FSWatcher> for chokidar file watchers
+- `SyncServer.httpServer` — HTTP server instance (Express + Nephele)
+
+### VS Code Extension Sync Instances (created in extension.ts when sync.enabled=true)
+- `SyncConfigBridge` — Instance created per workspace, reads/writes .kanban/sync.json
+- `SyncProcessManager` — Instance managing ludos-sync child process lifecycle
+- `SyncStatusBar` — Status bar item showing server state, polls every 30s
 
 ---
 

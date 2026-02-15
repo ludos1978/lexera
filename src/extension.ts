@@ -14,6 +14,9 @@ import { WorkspaceMediaIndex } from './services/WorkspaceMediaIndex';
 import { PluginConfigService } from './services/PluginConfigService';
 import { UnifiedChangeHandler } from './core/UnifiedChangeHandler';
 import { logger } from './utils/logger';
+import { SyncConfigBridge } from './sync/SyncConfigBridge';
+import { SyncProcessManager } from './sync/SyncProcessManager';
+import { SyncStatusBar } from './sync/SyncStatusBar';
 
 // Re-export for external access
 export { getOutputChannel } from './services/OutputChannelService';
@@ -434,6 +437,62 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(configChangeListener);
+
+	// --- Sync Server Integration ---
+	const syncConfig = vscode.workspace.getConfiguration('markdown-kanban');
+	const syncEnabled = syncConfig.get<boolean>('sync.enabled', false);
+	const syncAutoStart = syncConfig.get<boolean>('sync.autoStart', false);
+	const syncConfigPath = syncConfig.get<string>('sync.configPath', '.kanban/sync.json');
+
+	if (syncEnabled) {
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+		const resolvedConfigPath = require('path').resolve(workspaceRoot, syncConfigPath);
+		const configBridge = new SyncConfigBridge(resolvedConfigPath);
+		const processManager = new SyncProcessManager(configBridge);
+		const statusBar = new SyncStatusBar(processManager);
+
+		statusBar.activate();
+		context.subscriptions.push(statusBar);
+		context.subscriptions.push(processManager);
+
+		// Auto-start if configured
+		if (syncAutoStart) {
+			processManager.start().then((port) => {
+				if (port) {
+					outputChannel.appendLine(`[Extension] Sync server started on port ${port}`);
+				}
+				statusBar.refresh();
+			}).catch(err => {
+				logger.error('[Extension] Failed to auto-start sync server:', err);
+			});
+		}
+
+		// Register sync commands
+		context.subscriptions.push(
+			vscode.commands.registerCommand('markdown-kanban.sync.start', async () => {
+				const port = await processManager.start();
+				if (port) {
+					showInfo(`Ludos Sync started on port ${port}`);
+				} else {
+					showWarning('Failed to start Ludos Sync. Is ludos-sync installed?');
+				}
+				statusBar.refresh();
+			}),
+			vscode.commands.registerCommand('markdown-kanban.sync.stop', async () => {
+				await processManager.stop();
+				showInfo('Ludos Sync stopped.');
+				statusBar.refresh();
+			}),
+			vscode.commands.registerCommand('markdown-kanban.sync.status', async () => {
+				const status = await processManager.getStatus();
+				if (status.running) {
+					showInfo(`Ludos Sync running on port ${status.port}. ${status.boards?.length || 0} boards tracked.`);
+				} else {
+					showInfo('Ludos Sync is not running.');
+				}
+			})
+		);
+	}
 
 	// If current active editor is markdown, auto-activate kanban
 	if (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.languageId === 'markdown') {

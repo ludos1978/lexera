@@ -2,7 +2,36 @@
 
 This document provides a comprehensive overview of all interfaces, types, classes, and enums that define data structures in the Markdown Kanban codebase.
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-14
+
+---
+
+## WebDAV Sync Structures (2026-02-14)
+
+### `packages/shared/src/kanbanTypes.ts` (Shared)
+Sync-relevant subset of kanban types shared between extension and ludos-sync:
+- `KanbanTask` — { id, content }
+- `KanbanColumn` — { id, title, tasks }
+- `KanbanBoard` — { valid, title, columns, yamlHeader, kanbanFooter, boardSettings }
+- `BoardSettings` — Per-board YAML settings
+
+### `packages/ludos-sync/src/mappers/XbelMapper.ts`
+- `XbelBookmark` — { id, title, href, description? }
+- `XbelFolder` — { id, title, bookmarks }
+- `XbelRoot` — { folders }
+
+### `packages/ludos-sync/src/config.ts`
+- `BoardSyncConfig` — { file, columnMapping }
+- `SyncConfig` — { port, bookmarks: { enabled, boards }, calendar: { enabled, boards } }
+
+### `packages/ludos-sync/src/fileWatcher.ts`
+- `BoardState` — { filePath, board, xbelCache, etag, lastModified }
+
+### `packages/ludos-sync/src/server.ts`
+- `ServerInfo` — { port, address }
+
+### `src/sync/SyncConfigBridge.ts`
+- `BoardSyncConfig` / `SyncConfig` — VS Code side copies of sync config types
 
 ---
 

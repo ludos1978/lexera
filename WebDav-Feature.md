@@ -380,6 +380,12 @@ Everything else is new code in the `src/sync/` directory. The adapter reads/writ
 ## 13. Open Questions
 
 1. **Column mapping strategy:** Should all XBEL folders map to one "Bookmarks" column, or should each folder become its own column? (Configurable — default: single column)
+  - each folder a column
 2. **Task identity:** How to reliably match a bookmark to an existing task after edits? XBEL has no stable ID across syncs. Options: match by URL (most reliable for bookmarks), match by title+URL combo, or store XBEL ID as a hidden tag.
+  - add the xbel id as hidden tag or as alt text for the link and add the label as description text ![alt-text](https://link.to/ "label-text"){optional parameters}
 3. **Include files:** Should bookmarks synced into an include-mode column write to the include file or the main file? (Recommendation: skip include-mode columns for sync)
+  - write to a main file.
 4. **Multiple boards:** If multiple kanban boards are open, which one receives synced bookmarks? (Recommendation: configurable per-board, off by default, user explicitly enables per board)
+  - the user can select a board which it syncs to
+
+I want the webdav-toolkit to be able to be run independently from the kanban. Vscode doesnt need to run to be available to the programms that need access (bookmark sync, calendar sync, etc.). This toolkit also has a config that defines the files it syncs to the individual elements. This config might be modified by the vscode toolkit (to include boards that are added into the dashboard). 

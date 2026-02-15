@@ -1,0 +1,11 @@
+{
+  "port": 0,
+  "bookmarks": {
+    "enabled": true,
+    "boards": []
+  },
+  "calendar": {
+    "enabled": false,
+    "boards": []
+  }
+}

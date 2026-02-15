@@ -1,0 +1,52 @@
+# ludos-sync systemd user service template
+#
+# SETUP:
+# 1. Copy this file to ~/.config/systemd/user/
+#    mkdir -p ~/.config/systemd/user
+#    cp ludos-sync.service ~/.config/systemd/user/
+#
+# 2. Edit the 3 paths below marked with CHANGE_ME:
+#    - Path to your Node.js binary        (run: which node)
+#    - Path to cli.js in this package      (dist/cli.js)
+#    - Path to your sync config file       (~/.config/ludos-sync/sync.json)
+#
+# 3. Enable and start:
+#    systemctl --user daemon-reload
+#    systemctl --user enable ludos-sync
+#    systemctl --user start ludos-sync
+#
+# COMMANDS:
+#    systemctl --user status ludos-sync       Check status
+#    systemctl --user stop ludos-sync         Stop
+#    systemctl --user restart ludos-sync      Restart
+#    journalctl --user -u ludos-sync -f       View logs
+#
+# UNINSTALL:
+#    systemctl --user stop ludos-sync
+#    systemctl --user disable ludos-sync
+#    rm ~/.config/systemd/user/ludos-sync.service
+#    systemctl --user daemon-reload
+
+[Unit]
+Description=Ludos Sync WebDAV Server
+Documentation=https://github.com/ludos1978/ludos-vscode-markdown-kanban
+After=network.target
+
+[Service]
+Type=simple
+
+# CHANGE_ME: full path to node and cli.js and your config
+ExecStart=/usr/bin/node /path/to/packages/ludos-sync/dist/cli.js start --config %h/.config/ludos-sync/sync.json
+
+Restart=on-failure
+RestartSec=5
+
+# Optional: set working directory
+# WorkingDirectory=/path/to/your/workspace
+
+# Log to home directory
+StandardOutput=append:%h/.ludos-sync.log
+StandardError=append:%h/.ludos-sync.err.log
+
+[Install]
+WantedBy=default.target

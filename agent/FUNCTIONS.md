@@ -9,6 +9,101 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-14) - WebDAV Sync Toolkit (ludos-sync)
+
+New standalone WebDAV sync server and VS Code integration for bidirectional bookmark sync via Floccus.
+
+### New Package: `packages/shared/`
+Shared types and parser between VS Code extension and ludos-sync.
+- `packages/shared/src/kanbanTypes.ts` — KanbanTask, KanbanColumn, KanbanBoard, BoardSettings interfaces (sync-relevant subset)
+- `packages/shared/src/markdownParser.ts-SharedMarkdownParser` — Lightweight kanban markdown parser/generator (no VS Code deps)
+  - `parseMarkdown(content)` — Parse markdown into KanbanBoard
+  - `generateMarkdown(board)` — Generate markdown from KanbanBoard
+  - `updateYamlWithBoardSettings(yamlHeader, settings)` — Update YAML frontmatter with board settings
+
+### New Package: `packages/ludos-sync/`
+Standalone WebDAV server for bookmark sync via Floccus.
+
+- `packages/ludos-sync/src/mappers/XbelMapper.ts-XbelMapper` — Bidirectional XBEL XML ↔ KanbanColumn/KanbanTask mapping
+  - `parseXbel(xml)` — Parse XBEL XML to structured XbelRoot
+  - `generateXbel(root)` — Generate XBEL XML from structured data
+  - `xbelToColumns(root)` — Convert XBEL folders to kanban columns
+  - `columnsToXbel(columns)` — Convert kanban columns to XBEL folders
+  - `mergeXbelIntoColumns(incoming, existing)` — Merge incoming XBEL into existing columns by XBEL ID
+  - `extractXbelId(content)` — Extract XBEL ID from task link title attribute
+
+- `packages/ludos-sync/src/auth/LocalhostAuth.ts-LocalhostAuth` — Nephele authenticator: accept localhost only
+  - `authenticate(request, response)` — Check remote address is 127.0.0.1/::1
+  - `cleanAuthentication(request, response)` — No-op cleanup
+
+- `packages/ludos-sync/src/adapters/BookmarkAdapter.ts-BookmarkAdapter` — Nephele Adapter mapping WebDAV URLs to XBEL resources
+  - `getResource(url, baseUrl)` — Get existing XBEL resource by URL
+  - `newResource(url, baseUrl)` — Create new resource shell for PUT
+  - `isAuthorized(url, method, baseUrl, user)` — Always true (localhost auth handles it)
+
+- `packages/ludos-sync/src/adapters/BookmarkResource.ts-BookmarkResource` — Nephele Resource for XBEL files
+  - `getStream()` — Serve XBEL XML content
+  - `setStream(input, user)` — Receive XBEL from Floccus, update board file
+  - `getInternalMembers(user)` — List all tracked boards as .xbel files
+  - `getEtag()` — Return ETag for optimistic concurrency
+
+- `packages/ludos-sync/src/adapters/BookmarkProperties.ts-BookmarkProperties` — Nephele Properties for XBEL resources
+  - `get(name)` / `set(name, value)` — Get/set WebDAV properties
+
+- `packages/ludos-sync/src/fileWatcher.ts-BoardFileWatcher` — File watcher + XBEL cache
+  - `addBoard(filePath)` — Start watching a board file
+  - `removeBoard(filePath)` — Stop watching a board file
+  - `applyXbelToBoard(filePath, xbelXml)` — Apply incoming XBEL to board (mutex, atomic write)
+  - `getBoardState(filePath)` — Get current board state + XBEL cache
+  - `getAllBoardStates()` — Get all tracked board states
+
+- `packages/ludos-sync/src/config.ts-ConfigManager` — Config file management (.kanban/sync.json)
+  - `getConfig()` / `save()` / `ensureConfigExists()` — CRUD operations
+  - `watch(callback)` — Watch config for external changes
+  - `getBookmarkBoardFiles()` — Get resolved board file paths
+
+- `packages/ludos-sync/src/server.ts-SyncServer` — Express + Nephele lifecycle
+  - `start()` — Start HTTP server with bookmark WebDAV endpoint
+  - `stop()` — Stop server and all watchers
+  - `getServerInfo()` — Get running port/address
+
+- `packages/ludos-sync/src/cli.ts` — CLI entry point (commander)
+  - Commands: start (default), status, install, uninstall
+  - Options: --config, --port
+
+- `packages/ludos-sync/src/serviceInstaller.ts` — OS service registration
+  - `installService(configPath)` — Register as launchd/systemd/schtasks
+  - `uninstallService()` — Remove OS startup service
+
+### New Files in Extension: `src/sync/`
+
+- `src/sync/SyncConfigBridge.ts-SyncConfigBridge` — Bridge between VS Code settings and .kanban/sync.json
+  - `readConfig()` / `writeConfig(config)` — Read/write sync config
+  - `addBoardForSync(boardFilePath)` — Register board for sync
+  - `removeBoardFromSync(boardFilePath)` — Unregister board from sync
+  - `isBoardSynced(boardFilePath)` — Check if board is synced
+
+- `src/sync/SyncProcessManager.ts-SyncProcessManager` — Spawn/detect ludos-sync process
+  - `isRunning()` — Probe localhost status endpoint
+  - `start()` — Spawn detached ludos-sync child process
+  - `stop()` — Send SIGTERM to spawned process
+  - `getStatus()` — Get server status info
+
+- `src/sync/SyncStatusBar.ts-SyncStatusBar` — Status bar indicator
+  - `activate()` — Start showing + polling
+  - `refresh()` — Update display based on server status
+
+### Modified: `src/extension.ts`
+- Added sync imports and initialization in activate()
+- Registers sync commands: markdown-kanban.sync.start, .stop, .status
+- Auto-starts ludos-sync when sync.enabled + sync.autoStart are true
+
+### Modified: `package.json`
+- Added settings: markdown-kanban.sync.enabled, .autoStart, .configPath
+- Added commands: markdown-kanban.sync.start, .stop, .status
+
+---
+
 ## Recent Updates (2026-02-10) - Unified Boards Panel + Dashboard Refactor
 
 Unified 3 separate sidebar views into 2-panel layout:
