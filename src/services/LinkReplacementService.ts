@@ -186,21 +186,27 @@ export class LinkReplacementService {
         // Apply board updates
         await this._applyBoardUpdates(deps, board, modifiedFiles, mainFile, replacements, options);
 
-        // Calculate result path
-        const firstReplacement = replacements.values().next().value;
-        const resultNewPath = firstReplacement ? this._computeReplacementPath(
-            firstReplacement.oldPath,
-            firstReplacement.newAbsolutePath,
+        // Calculate result path — use the replacement for the actual broken path,
+        // not just the first Map entry (which could be an unrelated file in the
+        // same directory that doesn't need fixing).
+        const brokenPathReplacement = replacements.get(brokenPath)
+            || Array.from(replacements.values()).find(r =>
+                r.decodedOldPath === safeDecodeURIComponent(brokenPath)
+            );
+        const notificationReplacement = brokenPathReplacement || replacements.values().next().value;
+        const resultNewPath = notificationReplacement ? this._computeReplacementPath(
+            notificationReplacement.oldPath,
+            notificationReplacement.newAbsolutePath,
             path.dirname(mainFile.getPath()),
             options.pathFormat
         ) : '';
 
         // Send notifications
-        if (firstReplacement) {
+        if (notificationReplacement) {
             deps.webviewBridge.send({
                 type: 'pathReplaced',
                 originalPath: brokenPath,
-                actualPath: firstReplacement.oldPath,
+                actualPath: notificationReplacement.oldPath,
                 newPath: resultNewPath,
                 taskId: options.taskId,
                 columnId: options.columnId
@@ -541,6 +547,13 @@ export class LinkReplacementService {
                 if (pathDir === brokenDir || relativeDirMatch) {
                     const filename = path.basename(decodedPath);
                     const newAbsPath = path.join(newDir, filename);
+
+                    // Skip if old and new resolve to the same absolute path (no-op).
+                    // This prevents non-broken paths from polluting the replacements map
+                    // and causing wrong notifications to the webview.
+                    if (path.normalize(absolutePath) === path.normalize(newAbsPath)) {
+                        continue;
+                    }
 
                     try {
                         if (fs.existsSync(newAbsPath)) {

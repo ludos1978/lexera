@@ -23,20 +23,20 @@ function basicAuth(username: string, password: string): string {
 }
 
 describe('LocalhostAuth', () => {
-  describe('without credentials', () => {
+  describe('without credentials (accept everything)', () => {
     const auth = new LocalhostAuth();
 
-    it('should accept 127.0.0.1', async () => {
+    it('should accept 127.0.0.1 without auth header', async () => {
       const user = await auth.authenticate(mockRequest('127.0.0.1'), {} as any);
       expect(user.username).toBe('localhost');
     });
 
-    it('should accept ::1', async () => {
+    it('should accept ::1 without auth header', async () => {
       const user = await auth.authenticate(mockRequest('::1'), {} as any);
       expect(user.username).toBe('localhost');
     });
 
-    it('should accept ::ffff:127.0.0.1', async () => {
+    it('should accept ::ffff:127.0.0.1 without auth header', async () => {
       const user = await auth.authenticate(mockRequest('::ffff:127.0.0.1'), {} as any);
       expect(user.username).toBe('localhost');
     });

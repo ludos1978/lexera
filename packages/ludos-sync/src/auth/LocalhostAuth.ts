@@ -39,34 +39,36 @@ export class LocalhostAuth implements Authenticator {
       );
     }
 
-    if (this.credentials) {
-      const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Basic ')) {
-        log.verbose('Auth rejected: missing Basic Auth header');
-        throw new UnauthorizedError('Authentication required');
-      }
-
-      const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
-      const colonIndex = decoded.indexOf(':');
-      if (colonIndex === -1) {
-        log.verbose('Auth rejected: malformed Basic Auth header');
-        throw new UnauthorizedError('Authentication required');
-      }
-
-      const username = decoded.slice(0, colonIndex);
-      const password = decoded.slice(colonIndex + 1);
-
-      if (username !== this.credentials.username || password !== this.credentials.password) {
-        log.warn(`Auth rejected: invalid credentials for user "${username}"`);
-        throw new UnauthorizedError('Invalid credentials');
-      }
-
-      log.verbose(`Auth accepted: ${remoteAddress} (user: ${username})`);
-      return { username };
+    // When no credentials configured, accept everything
+    if (!this.credentials) {
+      log.verbose(`Auth accepted: ${remoteAddress}`);
+      return { username: 'localhost' };
     }
 
-    log.verbose(`Auth accepted: ${remoteAddress}`);
-    return { username: 'localhost' };
+    // Credentials configured — require valid Basic Auth
+    const authHeader = request.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
+      log.verbose('Auth rejected: missing Basic Auth header');
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+    const colonIndex = decoded.indexOf(':');
+    if (colonIndex === -1) {
+      log.verbose('Auth rejected: malformed Basic Auth header');
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const username = decoded.slice(0, colonIndex);
+    const password = decoded.slice(colonIndex + 1);
+
+    if (username !== this.credentials.username || password !== this.credentials.password) {
+      log.warn(`Auth rejected: invalid credentials for user "${username}"`);
+      throw new UnauthorizedError('Invalid credentials');
+    }
+
+    log.verbose(`Auth accepted: ${remoteAddress} (user: ${username})`);
+    return { username };
   }
 
   async cleanAuthentication(_request: Request, _response: AuthResponse): Promise<void> {

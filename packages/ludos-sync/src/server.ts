@@ -51,7 +51,7 @@ export class SyncServer {
       next();
     });
 
-    // Basic Auth middleware when credentials are configured
+    // Basic Auth middleware — only active when auth credentials are configured
     if (config.auth) {
       const { username, password } = config.auth;
       log.info('Basic Auth enabled for all endpoints');
