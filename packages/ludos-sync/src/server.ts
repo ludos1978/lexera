@@ -98,23 +98,20 @@ export class SyncServer {
     }
 
     // Mount CalDAV server at /caldav/ for calendar sync
-    if (config.calendar.enabled) {
-      log.verbose('Calendar sync enabled, mounting CalDAV at /caldav/');
+    // Always mount so it becomes available when calendar is enabled dynamically via config change
+    log.verbose('Mounting CalDAV at /caldav/ (boards served dynamically based on config)');
 
-      // .well-known/caldav discovery redirect
-      this.app.all('/.well-known/caldav', (_req, res) => {
-        res.redirect(301, '/caldav/principal/');
-      });
+    // .well-known/caldav discovery redirect
+    this.app.all('/.well-known/caldav', (_req, res) => {
+      res.redirect(301, '/caldav/principal/');
+    });
 
-      // Parse XML bodies for CalDAV
-      this.app.use('/caldav', express.text({ type: ['application/xml', 'text/xml'], limit: '1mb' }));
+    // Parse XML bodies for CalDAV
+    this.app.use('/caldav', express.text({ type: ['application/xml', 'text/xml'], limit: '1mb' }));
 
-      // Mount CalDAV router
-      const caldavRouter = createCaldavRouter(this.boardWatcher, '/caldav');
-      this.app.use('/caldav', caldavRouter);
-    } else {
-      log.info('Calendar sync is disabled in config');
-    }
+    // Mount CalDAV router
+    const caldavRouter = createCaldavRouter(this.boardWatcher, '/caldav');
+    this.app.use('/caldav', caldavRouter);
 
     // Health check endpoint
     this.app.get('/status', (_req, res) => {
@@ -145,10 +142,8 @@ export class SyncServer {
           };
           log.info(`Server started on http://localhost:${addr.port}`);
           log.info(`Bookmarks endpoint: http://localhost:${addr.port}/bookmarks/`);
-          if (config.calendar.enabled) {
-            log.info(`CalDAV endpoint: http://localhost:${addr.port}/caldav/`);
-            log.info(`CalDAV discovery: http://localhost:${addr.port}/.well-known/caldav`);
-          }
+          log.info(`CalDAV endpoint: http://localhost:${addr.port}/caldav/`);
+          log.info(`CalDAV discovery: http://localhost:${addr.port}/.well-known/caldav`);
           resolve(this.serverInfo);
         } else {
           reject(new Error('Failed to get server address'));
