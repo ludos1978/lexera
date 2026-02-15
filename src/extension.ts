@@ -457,19 +457,20 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Sync workspace boards to shared config
 		const workspaceKey = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		const syncBoardsToConfig = () => {
+			if (!workspaceKey) { return; }
+			const boards = registry.getBoards().map(b => ({
+				file: b.filePath,
+				name: require('path').basename(b.filePath, '.md'),
+			}));
+			configBridge.syncWorkspaceBoards(workspaceKey, boards);
+		};
+
+		// Initial sync on startup
+		syncBoardsToConfig();
+
+		// Sync on board changes
 		if (workspaceKey) {
-			const syncBoardsToConfig = () => {
-				const boards = registry.getBoards().map(b => ({
-					file: b.filePath,
-					name: require('path').basename(b.filePath, '.md'),
-				}));
-				configBridge.syncWorkspaceBoards(workspaceKey, boards);
-			};
-
-			// Initial sync on startup
-			syncBoardsToConfig();
-
-			// Sync on board changes
 			const boardChangeListener = registry.onBoardsChanged(() => {
 				syncBoardsToConfig();
 			});
@@ -490,6 +491,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Register sync commands
 		context.subscriptions.push(
+			vscode.commands.registerCommand('markdown-kanban.sync.updateConfig', () => {
+				syncBoardsToConfig();
+				showInfo('Sync config updated.');
+			}),
 			vscode.commands.registerCommand('markdown-kanban.sync.start', async () => {
 				const port = await processManager.start();
 				if (port) {

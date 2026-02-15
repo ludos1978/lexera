@@ -9,6 +9,7 @@ tsconfig.json
 
 # Dependencies (bundled by esbuild)
 node_modules/
+!node_modules/@vscode/codicons/
 node_modules_backup/
 
 # Monorepo packages (not part of the extension)

@@ -110,12 +110,32 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
     next();
   });
 
-  router.all('*', (req: Request, res: Response, next) => {
+  router.use((req: Request, res: Response, next) => {
     if (req.method === 'OPTIONS') {
       res.status(200).end();
       return;
     }
     next();
+  });
+
+  // -- PROPFIND / (root discovery) --
+  router.all('/', (req: Request, res: Response) => {
+    if (req.method !== 'PROPFIND') {
+      res.status(405).end();
+      return;
+    }
+
+    log.verbose(`[CalDAV] PROPFIND /`);
+
+    const responses = [
+      davResponse(`${basePath}/`, [
+        `<D:resourcetype><D:collection/></D:resourcetype>`,
+        `<D:current-user-principal><D:href>${basePath}/principal/</D:href></D:current-user-principal>`,
+        `<D:displayname>Ludos Kanban CalDAV</D:displayname>`,
+      ]),
+    ];
+
+    res.status(207).type('application/xml; charset=utf-8').send(multistatus(responses));
   });
 
   // -- PROPFIND /principal/ --

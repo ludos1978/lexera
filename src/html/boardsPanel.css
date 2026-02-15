@@ -552,6 +552,12 @@ body {
     display: none;
 }
 
+.sync-actions {
+    display: flex;
+    gap: 2px;
+    padding: 4px 2px;
+}
+
 /* ============= Search Results ============= */
 .search-results-section {
     border-bottom: 1px solid var(--vscode-panel-border, transparent);

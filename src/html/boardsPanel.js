@@ -14,6 +14,8 @@
     const boardsActions = document.getElementById('boards-actions');
     const addBoardBtn = document.getElementById('add-board-btn');
     const scanBtn = document.getElementById('scan-btn');
+    const syncBtn = document.getElementById('sync-btn');
+    const syncActions = document.getElementById('sync-actions');
 
     // State
     let currentState = null;
@@ -32,6 +34,9 @@
         });
         scanBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'scanWorkspace' });
+        });
+        syncBtn.addEventListener('click', () => {
+            vscode.postMessage({ type: 'syncBoards' });
         });
 
         // Messages from backend
@@ -57,6 +62,7 @@
                     if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
                 }
                 renderLockState();
+                syncActions.style.display = currentState.syncEnabled ? '' : 'none';
                 break;
         }
     }
