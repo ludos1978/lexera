@@ -177,11 +177,14 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       `<D:displayname>Calendars</D:displayname>`,
     ]));
 
-    // List calendar collections if depth > 0
+    // List calendar collections if depth > 0 (deduplicated by slug)
     if (depth !== '0') {
       const calBoards = boardWatcher.getCalendarBoards();
+      const seenSlugs = new Set<string>();
       for (const board of calBoards) {
         const slug = board.calendarSlug!;
+        if (seenSlugs.has(slug)) continue;
+        seenSlugs.add(slug);
         const name = board.calendarName || board.board.title || slug;
         responses.push(davResponse(`${basePath}/calendars/${slug}/`, [
           `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
@@ -204,30 +207,38 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
 
     const slug = String(req.params.slug);
     const depth = getDepth(req);
-    const board = boardWatcher.getBoardByCalendarSlug(slug);
+    // Aggregate tasks from ALL boards sharing this slug (workspace mode)
+    const boards = boardWatcher.getBoardsByCalendarSlug(slug);
 
-    if (!board || !board.icalTasks) {
+    if (boards.length === 0) {
       log.verbose(`[CalDAV] ${req.method} /calendars/${slug}/ -> 404`);
       res.status(404).send('Calendar not found');
       return;
     }
 
-    log.verbose(`[CalDAV] ${req.method} /calendars/${slug}/ depth=${depth} tasks=${board.icalTasks.length}`);
+    // Merge tasks from all boards with this slug
+    let allTasks: import('../mappers/IcalMapper').IcalTask[] = [];
+    for (const b of boards) {
+      if (b.icalTasks) { allTasks = allTasks.concat(b.icalTasks); }
+    }
+
+    log.verbose(`[CalDAV] ${req.method} /calendars/${slug}/ depth=${depth} boards=${boards.length} tasks=${allTasks.length}`);
 
     // If REPORT, check for calendar-query time-range filter
-    let filteredTasks = board.icalTasks;
+    let filteredTasks = allTasks;
     if (req.method === 'REPORT' && req.body) {
-      filteredTasks = applyCalendarQueryFilter(String(req.body), board.icalTasks);
+      filteredTasks = applyCalendarQueryFilter(String(req.body), allTasks);
     }
 
     const responses: string[] = [];
-    const name = board.calendarName || board.board.title || slug;
+    const firstBoard = boards[0];
+    const name = firstBoard.calendarName || firstBoard.board.title || slug;
 
     // The collection itself
     responses.push(davResponse(`${basePath}/calendars/${slug}/`, [
       `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
       `<D:displayname>${escapeXml(name)}</D:displayname>`,
-      `<CS:getctag>${escapeXml(board.icalEtag || '"empty"')}</CS:getctag>`,
+      `<CS:getctag>${escapeXml(firstBoard.icalEtag || '"empty"')}</CS:getctag>`,
       `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
     ]));
 
@@ -259,14 +270,20 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
   router.get('/calendars/:slug/:uid.ics', (req: Request, res: Response) => {
     const slug = String(req.params.slug);
     const uid = String(req.params.uid);
-    const board = boardWatcher.getBoardByCalendarSlug(slug);
+    const boards = boardWatcher.getBoardsByCalendarSlug(slug);
 
-    if (!board || !board.icalTasks) {
+    if (boards.length === 0) {
       res.status(404).send('Calendar not found');
       return;
     }
 
-    const task = board.icalTasks.find(t => t.uid === uid);
+    // Search across all boards sharing this slug
+    let task: import('../mappers/IcalMapper').IcalTask | undefined;
+    for (const b of boards) {
+      task = b.icalTasks?.find(t => t.uid === uid);
+      if (task) break;
+    }
+
     if (!task) {
       res.status(404).send('Resource not found');
       return;
@@ -284,19 +301,28 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
   // -- GET /calendars/:slug/ (full calendar) --
   router.get('/calendars/:slug/', (req: Request, res: Response) => {
     const slug = String(req.params.slug);
-    const board = boardWatcher.getBoardByCalendarSlug(slug);
+    const boards = boardWatcher.getBoardsByCalendarSlug(slug);
 
-    if (!board || !board.icalCache) {
+    if (boards.length === 0) {
       res.status(404).send('Calendar not found');
       return;
     }
 
-    log.verbose(`[CalDAV] GET /calendars/${slug}/ (full calendar, ${board.icalCache.length} bytes)`);
+    // Merge tasks from all boards and generate combined calendar
+    let allTasks: import('../mappers/IcalMapper').IcalTask[] = [];
+    for (const b of boards) {
+      if (b.icalTasks) { allTasks = allTasks.concat(b.icalTasks); }
+    }
+    const firstBoard = boards[0];
+    const calName = firstBoard.calendarName || firstBoard.board.title || slug;
+    const fullCal = IcalMapper.generateCalendar(allTasks, calName);
+
+    log.verbose(`[CalDAV] GET /calendars/${slug}/ (full calendar, ${boards.length} boards, ${allTasks.length} tasks, ${fullCal.length} bytes)`);
 
     res.status(200)
       .type('text/calendar; charset=utf-8')
-      .set('ETag', board.icalEtag || '"empty"')
-      .send(board.icalCache);
+      .set('ETag', firstBoard.icalEtag || '"empty"')
+      .send(fullCal);
   });
 
   // Catch-all for unsupported methods

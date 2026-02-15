@@ -2,12 +2,14 @@
  * Maps KanbanColumn[] to iCalendar VTODO/VEVENT components.
  *
  * Mapping rules:
- *   Task with @HH:MM-HH:MM time range + date → VEVENT (DTSTART + DTEND)
- *   Task with @date or @week only (no time range) → VTODO (DUE date)
- *   Task with no temporal tags → VTODO (undated)
- *   - [x] checked → STATUS:COMPLETED, PERCENT-COMPLETE:100
- *   - [ ] unchecked → STATUS:NEEDS-ACTION
+ *   Task with any date/week/time → VEVENT (visible on calendar)
+ *   Task with no temporal tags   → skipped (not added to calendar)
+ *   checked (task.checked=true) → STATUS:COMPLETED, PERCENT-COMPLETE:100
+ *   unchecked → STATUS:NEEDS-ACTION
  *   #tag in content → CATEGORIES
+ *
+ * Note: SharedMarkdownParser strips the "- [ ] " checkbox prefix from
+ * task.content. Checked state comes from the task.checked boolean field.
  *
  * UID: SHA-256 hash of boardSlug + columnTitle + firstLine, truncated to 16 hex chars.
  * Time handling: Floating time (no timezone suffix).
@@ -77,11 +79,12 @@ function formatIcalDateTime(date: Date, hours: number, minutes: number): string 
 }
 
 /**
- * Generate a stable UID from board slug, column title, and task first line.
+ * Generate a stable UID from board identifier, column title, task first line,
+ * and occurrence index (to disambiguate identical tasks in the same column).
  */
-function generateUid(boardSlug: string, columnTitle: string, firstLine: string): string {
+function generateUid(boardId: string, columnTitle: string, firstLine: string, occurrence: number): string {
   const hash = crypto.createHash('sha256')
-    .update(`${boardSlug}\0${columnTitle}\0${firstLine}`)
+    .update(`${boardId}\0${columnTitle}\0${firstLine}\0${occurrence}`)
     .digest('hex')
     .substring(0, 16);
   return hash;
@@ -130,14 +133,24 @@ export class IcalMapper {
 
   /**
    * Convert kanban columns into an array of IcalTask objects.
+   *
+   * @param boardId Unique identifier per board (e.g. file path) used for UID generation.
+   *   This ensures tasks from different boards get distinct UIDs even when
+   *   multiple boards share the same calendar slug (workspace mode).
    */
-  static columnsToIcalTasks(columns: KanbanColumn[], boardSlug: string): IcalTask[] {
+  static columnsToIcalTasks(columns: KanbanColumn[], boardId: string): IcalTask[] {
     const tasks: IcalTask[] = [];
+    // Track occurrences of (columnTitle, firstLine) to disambiguate identical tasks
+    const occurrences = new Map<string, number>();
 
     for (const column of columns) {
       for (const task of column.tasks) {
-        const icalTask = this.mapTask(task, column.title, boardSlug);
-        tasks.push(icalTask);
+        const firstLine = (task.content || '').split('\n')[0] || '';
+        const key = `${column.title}\0${firstLine}`;
+        const occ = occurrences.get(key) || 0;
+        occurrences.set(key, occ + 1);
+        const mapped = this.mapTask(task, column.title, boardId, occ);
+        tasks.push(...mapped);
       }
     }
 
@@ -146,27 +159,75 @@ export class IcalMapper {
   }
 
   /**
-   * Map a single KanbanTask to an IcalTask.
+   * Strip `- [ ]` / `- [x]` checkbox prefix from text.
    */
-  private static mapTask(task: KanbanTask, columnTitle: string, boardSlug: string): IcalTask {
+  private static stripCheckbox(text: string): string {
+    return text.replace(/^\s*- \[[xX ]\]\s*/, '');
+  }
+
+  /**
+   * Strip @temporal tags (dates, weeks, weekdays, time ranges) from text.
+   */
+  private static stripTemporalTags(text: string): string {
+    return text
+      // Time ranges: @09:00-17:00, @0900-1700
+      .replace(/@\d{1,2}:\d{2}-\d{1,2}:\d{2}/g, '')
+      .replace(/@\d{4}-\d{4}/g, '')
+      // 4-digit time: @1230
+      .replace(/@\d{4}(?![-./\d])/g, '')
+      // AM/PM time: @12pm, @9am
+      .replace(/@\d{1,2}(?:am|pm)/gi, '')
+      // Date tags: @DD.MM.YYYY, @YYYY-MM-DD, @DD.MM
+      .replace(/@\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?/g, '')
+      // Year tags: @Y2026, @J2026
+      .replace(/@[YyJj]\d{4}/g, '')
+      // Week tags with OR syntax: @kw8|kw38, @KW8, @W4, @2025-W4
+      .replace(/@(?:\d{4}[-.]?)?(?:[wW]|[kK][wW])\d{1,2}(?:\|(?:[wW]|[kK][wW])?\d{1,2})*/g, '')
+      // Weekday tags: @mon, @friday
+      .replace(/@(?:mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/gi, '')
+      // Clean up extra whitespace
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Build a clean summary by stripping checkbox and temporal tags.
+   */
+  private static cleanSummary(text: string): string {
+    return this.stripTemporalTags(this.stripCheckbox(text));
+  }
+
+  /**
+   * Map a single KanbanTask to exactly one IcalTask entry.
+   *
+   * SharedMarkdownParser strips the "- [ ] " checkbox prefix from task.content,
+   * so all kanban tasks are checkboxes. The checked/unchecked status comes from
+   * task.checked instead.
+   *
+   * Mapping rules:
+   *   Any task with a date/week/time  → VEVENT (visible on calendar)
+   *   No temporal tags                → skipped (not added to calendar)
+   *   Checked status always applied via task.checked field.
+   */
+  private static mapTask(task: KanbanTask, columnTitle: string, boardId: string, occurrence: number): IcalTask[] {
     const content = task.content || '';
     const lines = content.split('\n');
     const firstLine = lines[0] || '';
     const description = lines.length > 1 ? lines.slice(1).join('\n').trim() : undefined;
 
-    const uid = generateUid(boardSlug, columnTitle, firstLine);
+    const uid = generateUid(boardId, columnTitle, firstLine, occurrence);
     const temporals = extractTemporalInfo(firstLine);
     const temporal: TemporalInfo | null = temporals.length > 0 ? temporals[0] : null;
 
     const hashTags = extractHashTags(content);
-    // Add column title as a category
     const categories = [columnTitle, ...hashTags];
 
     const checked = task.checked === true;
-    const status = checked ? 'COMPLETED' : 'NEEDS-ACTION';
+    const summary = this.cleanSummary(firstLine);
 
-    // Determine type: VEVENT if has time range + date, otherwise VTODO
-    let type: 'VEVENT' | 'VTODO' = 'VTODO';
+    // Determine temporal data
+    let hasTimeRange = false;
+    let hasDate = false;
     let dtstart: string | undefined;
     let dtend: string | undefined;
     let due: string | undefined;
@@ -175,30 +236,44 @@ export class IcalMapper {
       const timeRange = temporal.timeSlot ? parseTimeRange(temporal.timeSlot) : null;
 
       if (timeRange && temporal.date && temporal.hasExplicitDate) {
-        // VEVENT: has time range + explicit date
-        type = 'VEVENT';
+        // Specific date + time range → timed event
+        hasTimeRange = true;
+        hasDate = true;
         dtstart = formatIcalDateTime(temporal.date, timeRange.startH, timeRange.startM);
         dtend = formatIcalDateTime(temporal.date, timeRange.endH, timeRange.endM);
+      } else if (temporal.week !== undefined && temporal.weekday === undefined && temporal.date && temporal.hasExplicitDate) {
+        // Week tag without specific weekday → all-day event spanning the full week (Mon–Sun)
+        hasDate = true;
+        const monday = temporal.date; // extractTemporalInfo returns Monday for week-only tags
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 7);
+        dtstart = formatIcalDate(monday);
+        dtend = formatIcalDate(sunday); // iCal DATE DTEND is exclusive
+        due = formatIcalDate(monday);
       } else if (temporal.date && temporal.hasExplicitDate) {
-        // VTODO with DUE date
+        // Single date → due date
+        hasDate = true;
+        dtstart = formatIcalDate(temporal.date);
         due = formatIcalDate(temporal.date);
       }
-      // else: no explicit date → undated VTODO (no DUE)
     }
 
-    return {
+    // Only tasks with dates appear in the calendar — undated tasks are skipped
+    if (!hasDate) {
+      return [];
+    }
+
+    return [{
       uid,
-      type,
-      summary: firstLine,
+      type: 'VEVENT',
+      summary,
       description,
       dtstart,
       dtend,
-      due,
-      status,
-      percentComplete: checked ? 100 : undefined,
+      status: checked ? 'COMPLETED' : 'CONFIRMED',
       categories,
       columnTitle,
-    };
+    }];
   }
 
   /**
@@ -232,10 +307,13 @@ export class IcalMapper {
     lines.push(`SUMMARY:${escapeIcalText(task.summary)}`);
 
     if (task.dtstart) {
-      lines.push(`DTSTART:${task.dtstart}`);
+      // All-day events use VALUE=DATE (8 chars), timed events use datetime (15+ chars)
+      const isAllDay = task.dtstart.length === 8;
+      lines.push(isAllDay ? `DTSTART;VALUE=DATE:${task.dtstart}` : `DTSTART:${task.dtstart}`);
     }
     if (task.dtend) {
-      lines.push(`DTEND:${task.dtend}`);
+      const isAllDay = task.dtend.length === 8;
+      lines.push(isAllDay ? `DTEND;VALUE=DATE:${task.dtend}` : `DTEND:${task.dtend}`);
     }
     if (task.due) {
       lines.push(`DUE;VALUE=DATE:${task.due}`);

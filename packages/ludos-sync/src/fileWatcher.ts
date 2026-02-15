@@ -174,7 +174,9 @@ export class BoardFileWatcher {
    */
   private updateIcalCache(state: BoardState): void {
     if (!state.calendarSlug) return;
-    const tasks = IcalMapper.columnsToIcalTasks(state.board.columns, state.calendarSlug);
+    // Use filePath as boardId so tasks from different boards get unique UIDs
+    // even when multiple boards share the same calendar slug (workspace mode)
+    const tasks = IcalMapper.columnsToIcalTasks(state.board.columns, state.filePath);
     const calName = state.calendarName || state.board.title || state.calendarSlug;
     const ical = IcalMapper.generateCalendar(tasks, calName);
     state.icalTasks = tasks;
@@ -214,13 +216,25 @@ export class BoardFileWatcher {
   }
 
   /**
-   * Find a board state by its calendar slug.
+   * Find a board state by its calendar slug (returns first match).
    */
   getBoardByCalendarSlug(slug: string): BoardState | undefined {
     for (const state of this.boardStates.values()) {
       if (state.calendarSlug === slug) return state;
     }
     return undefined;
+  }
+
+  /**
+   * Get ALL board states matching a calendar slug.
+   * Multiple boards share a slug when "As workspace name" is used.
+   */
+  getBoardsByCalendarSlug(slug: string): BoardState[] {
+    const result: BoardState[] = [];
+    for (const state of this.boardStates.values()) {
+      if (state.calendarSlug === slug) result.push(state);
+    }
+    return result;
   }
 
   /**

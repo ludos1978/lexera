@@ -140,7 +140,15 @@ export class SyncServer {
             port: addr.port,
             address: addr.address,
           };
+
+          // Summary of loaded boards
+          const allBoards = this.boardWatcher.getAllBoardStates();
+          const calBoards = this.boardWatcher.getCalendarBoards();
+          const totalTasks = calBoards.reduce((sum, b) => sum + (b.icalTasks?.length || 0), 0);
+          const calSlugs = new Set(calBoards.map(b => b.calendarSlug));
+
           log.info(`Server started on http://localhost:${addr.port}`);
+          log.info(`Loaded ${allBoards.length} board(s): ${calBoards.length} with calendar sync (${totalTasks} tasks across ${calSlugs.size} calendar(s))`);
           log.info(`Bookmarks endpoint: http://localhost:${addr.port}/bookmarks/`);
           log.info(`CalDAV endpoint: http://localhost:${addr.port}/caldav/`);
           log.info(`CalDAV discovery: http://localhost:${addr.port}/.well-known/caldav`);
