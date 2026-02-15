@@ -25,9 +25,9 @@ This markdown editor contains to many features.
 
 ## Screenshot
 
-![](./imgs/screenshot-20251207-1.png)
+![](./web/screenshot-20251207-1.png)
 
-![](./imgs/screenshot-20251207-2.png)
+![](./web/screenshot-20251207-2.png)
 
 ---
 
