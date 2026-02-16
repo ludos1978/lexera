@@ -19,6 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { BoardRegistryService } from './services/BoardRegistryService';
 import { KanbanWebviewPanel } from './kanbanWebviewPanel';
+import { MarkdownKanbanParser } from './markdownParser';
 import { logger } from './utils/logger';
 
 /**
@@ -115,6 +116,11 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                     await this._registry.removeDefaultTagFilter(message.tag);
                     break;
 
+                // Board color
+                case 'setBoardColor':
+                    await this._handleSetBoardColor(message.filePath, message.color, message.settingKey || 'boardColor');
+                    break;
+
                 // Ready
                 case 'ready':
                     this._sendStateToWebview();
@@ -136,12 +142,34 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
         if (!this._view) { return; }
 
         const boards = this._registry.getBoards();
-        const boardsData = boards.map(b => ({
-            filePath: b.filePath,
-            uri: b.uri,
-            name: path.basename(b.filePath, '.md'),
-            config: b.config
-        }));
+        const colorKeyRegex = /^(boardColor|boardColorDark|boardColorLight):\s*['"]?(#[0-9A-Fa-f]{3,8})['"]?\s*$/gm;
+        const boardsData = boards.map(b => {
+            let boardColor: string | undefined;
+            let boardColorDark: string | undefined;
+            let boardColorLight: string | undefined;
+            try {
+                const content = fs.readFileSync(b.filePath, 'utf8');
+                const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
+                if (yamlMatch) {
+                    let m;
+                    colorKeyRegex.lastIndex = 0;
+                    while ((m = colorKeyRegex.exec(yamlMatch[1])) !== null) {
+                        if (m[1] === 'boardColor') { boardColor = m[2]; }
+                        else if (m[1] === 'boardColorDark') { boardColorDark = m[2]; }
+                        else if (m[1] === 'boardColorLight') { boardColorLight = m[2]; }
+                    }
+                }
+            } catch { /* file unreadable, skip */ }
+            return {
+                filePath: b.filePath,
+                uri: b.uri,
+                name: path.basename(b.filePath, '.md'),
+                config: b.config,
+                boardColor,
+                boardColorDark,
+                boardColorLight
+            };
+        });
 
         this._view.webview.postMessage({
             type: 'state',
@@ -169,6 +197,28 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             for (const uri of fileUris) {
                 await this._registry.addBoard(uri);
             }
+        }
+    }
+
+    private async _handleSetBoardColor(filePath: string, color: string, settingKey: string = 'boardColor'): Promise<void> {
+        const validKeys = ['boardColor', 'boardColorDark', 'boardColorLight'];
+        if (!validKeys.includes(settingKey)) { return; }
+        try {
+            const content = fs.readFileSync(filePath, 'utf8');
+            const parseResult = MarkdownKanbanParser.parseMarkdown(content);
+            const board = parseResult.board;
+            if (!board.boardSettings) { board.boardSettings = {}; }
+            if (color) {
+                (board.boardSettings as any)[settingKey] = color;
+            } else {
+                delete (board.boardSettings as any)[settingKey];
+            }
+            const updatedYaml = MarkdownKanbanParser.updateYamlWithBoardSettings(board.yamlHeader, board.boardSettings);
+            const updatedContent = content.replace(/^---[\s\S]*?---/, updatedYaml);
+            fs.writeFileSync(filePath, updatedContent, 'utf8');
+            this._sendStateToWebview();
+        } catch (error) {
+            logger.error('[BoardsProvider] Error setting board color:', error);
         }
     }
 

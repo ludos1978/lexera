@@ -29,7 +29,10 @@ const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'whitespace',
   'htmlCommentRenderMode',
   'htmlContentRenderMode',
-  'arrowKeyFocusScroll'
+  'arrowKeyFocusScroll',
+  'boardColor',
+  'boardColorDark',
+  'boardColorLight'
 ];
 
 let nextId = 1;

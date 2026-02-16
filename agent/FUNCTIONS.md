@@ -2508,3 +2508,64 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 - `rerenderAndRestoreColumnWidth()` — Re-renders the board and restores column width via setTimeout. Skipped during initial config. Used by applyTagVisibility, applyHtmlCommentRenderMode, applyHtmlContentRenderMode, endBatchSettingsUpdate.
 
 ---
+
+## Recent Updates (2026-02-16) - Board Color Feature
+
+Per-board color stored in YAML frontmatter (`boardColor: #hex`), shown as tint on kanban view and color dots in sidebar/dashboard.
+
+### Modified: `packages/shared/src/kanbanTypes.ts` + `src/board/KanbanTypes.ts`
+- Added `boardColor?: string` to `BoardSettings`
+
+### Modified: `src/core/bridge/MessageTypes.ts`
+- Added `'boardColor'` to `BoardSettingKey` union
+- Added `boardColor?: string` to `BoardUpdateMessage`
+
+### Modified: `packages/shared/src/markdownParser.ts` + `src/markdownParser.ts`
+- Added `'boardColor'` to `BOARD_SETTING_KEYS` array
+
+### Modified: `src/services/WebviewUpdateService.ts`
+- Added `'boardColor'` to `boardSettingKeys` in `_applyDocumentPreferences()`
+
+### New: `src/html/webview.js`
+- `applyBoardColor(color)` — Sets `--board-color`, `--board-color-rgb`, `--board-color-opacity` CSS custom properties on both `#kanban-container` (0.06 opacity) and `#file-info-bar` header (0.15 opacity); clears them when no color is set.
+
+### Modified: `src/html/webview.css`
+- `#kanban-container` gains `background-color: rgba(var(--board-color-rgb), var(--board-color-opacity, 0))` for subtle board tint
+- `.file-info-bar` gains same `background-color` rule for header tinting
+
+### Modified: `src/kanbanBoardsProvider.ts`
+- `_sendStateToWebview()` — Now reads `boardColor` from YAML frontmatter via regex and includes it in board data
+- `_handleSetBoardColor(filePath, color)` — Reads board file, updates `boardSettings.boardColor` via `updateYamlWithBoardSettings()`, writes file back
+
+### Modified: `src/html/boardsPanel.js`
+- `hexToRgba(hex, alpha)` — Converts hex color to rgba string for background tinting
+- `renderBoards()` — Adds color dot `<span class="board-color-dot">` before board name when `boardColor` is set
+- `renderBoards()` — Applies background tint (0.12 opacity) to `.board-item-header` via inline style when `boardColor` is set
+- `renderBoards()` — Adds "Color:" config row with `<input type="color">` picker and clear button
+- `attachBoardEventListeners()` — Handles `change` on color picker, `click` on clear button → sends `setBoardColor` message
+
+### Modified: `src/html/boardsPanel.css`
+- `.board-color-dot` — 8x8 circle indicator
+- `.board-color-input` — Color picker styling
+- `.board-color-clear` — Clear button styling
+
+### Modified: `src/dashboard/DashboardTypes.ts`
+- Added `boardColor?: string` to `BoardTagSummary`
+
+### Modified: `src/kanbanDashboardProvider.ts`
+- `_scanBoard()` — Extracts `board.boardSettings.boardColor` and attaches to summary
+- `hexToRgba(hex, alpha)` — Inline JS helper: converts hex color to rgba string
+- `getBoardColor(boardName)` — Inline JS helper: looks up board color from `dashboardData.boardSummaries`
+- `boardColorDot(boardName)` — Inline JS helper: returns color dot HTML or empty string
+- `boardColorStyle(boardName)` — Inline JS helper: returns inline `background-color` style (0.1 opacity) or empty string
+- `renderUpcomingBoardFirst()`, `renderTaggedBoardFirst()`, `renderBrokenBoardFirst()`, search results — Board group headers now include `boardColorDot()` and `boardColorStyle()` for background tinting
+- Inline CSS: `.board-color-dot` style for dashboard
+
+---
+
+## Bug Fix (2026-02-16) - Path Replacement DOM Update
+
+### Modified: `src/html/utils/imagePathManager.js`
+- `updatePathInDOM(oldPath, newPath, direction)` — Now tracks which tasks/columns were modified during cached board path replacement and calls `renderSingleTask()`/`renderSingleColumn()` to re-render their DOM. Previously only updated the JS data model without refreshing the visible DOM, causing tasks/columns to appear stale after automatic link replacement.
+
+---

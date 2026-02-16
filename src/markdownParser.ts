@@ -30,7 +30,10 @@ const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'whitespace',
   'htmlCommentRenderMode',
   'htmlContentRenderMode',
-  'arrowKeyFocusScroll'
+  'arrowKeyFocusScroll',
+  'boardColor',
+  'boardColorDark',
+  'boardColorLight'
 ];
 
 export class MarkdownKanbanParser {

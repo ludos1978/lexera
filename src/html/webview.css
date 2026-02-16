@@ -62,7 +62,7 @@
 body {
   font-family: var(--vscode-font-family);
   color: var(--vscode-foreground);
-  background-color: var(--board-background);
+  background-color: var(--board-color, var(--board-background));
   margin: 0;
   padding: 0;
   overflow: hidden; /* Prevent body scroll - container handles it */
@@ -74,7 +74,7 @@ body {
 
 /* File info bar - fixed at top */
 .file-info-bar {
-  /* background-color: var(--board-background); */
+  background-color: var(--board-color, var(--board-background));
   border-bottom: 1px solid var(--vscode-panel-border);
   padding: var(--whitespace-div2);
   position: fixed;

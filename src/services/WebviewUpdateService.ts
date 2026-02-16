@@ -310,7 +310,10 @@ export class WebviewUpdateService {
                 'whitespace',
                 'htmlCommentRenderMode',
                 'htmlContentRenderMode',
-                'arrowKeyFocusScroll'
+                'arrowKeyFocusScroll',
+                'boardColor',
+                'boardColorDark',
+                'boardColorLight'
             ];
 
             for (const key of boardSettingKeys) {

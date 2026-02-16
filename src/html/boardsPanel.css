@@ -662,3 +662,40 @@ body {
 .board-name {
     font-weight: 500;
 }
+
+/* ============= Board Color ============= */
+
+.board-color-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.board-color-group .codicon {
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+.board-color-input {
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 3px;
+    cursor: pointer;
+    background: none;
+}
+
+.board-color-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--vscode-errorForeground);
+    font-size: 11px;
+    opacity: 0.6;
+    padding: 0 2px;
+}
+
+.board-color-clear:hover {
+    opacity: 1;
+}

@@ -1231,7 +1231,10 @@ const BOARD_SETTING_KEYS = new Set([
     'whitespace',
     'htmlCommentRenderMode',
     'htmlContentRenderMode',
-    'arrowKeyFocusScroll'
+    'arrowKeyFocusScroll',
+    'boardColor',
+    'boardColorDark',
+    'boardColorLight'
 ]);
 
 function saveBoardSetting(settingKey, value) {
@@ -1890,6 +1893,21 @@ function applyHtmlContentRenderMode(mode) {
 
 function setHtmlContentRenderMode(mode) {
     applyAndSaveSetting('htmlContentRenderMode', mode, applyHtmlContentRenderMode);
+}
+
+/**
+ * Apply board color to the kanban background.
+ * Picks the dark or light color based on current theme.
+ */
+function applyBoardColor(colorLegacy, colorDark, colorLight) {
+    if (!document.body) return;
+    const dark = typeof window.isDarkTheme === 'function' ? window.isDarkTheme() : true;
+    const color = dark ? (colorDark || colorLegacy) : (colorLight || colorLegacy);
+    if (color) {
+        document.body.style.setProperty('--board-color', color);
+    } else {
+        document.body.style.removeProperty('--board-color');
+    }
 }
 
 // Arrow key focus scroll setting
@@ -2819,6 +2837,9 @@ if (!webviewEventListenersInitialized) {
                     currentArrowKeyFocusScroll = 'center'; // Default fallback
                     window.currentArrowKeyFocusScroll = 'center';
                 }
+
+                // Apply board color tint
+                applyBoardColor(message.boardColor, message.boardColorDark, message.boardColorLight);
 
                 // Update all menu indicators after settings are applied
                 updateAllMenuIndicators();

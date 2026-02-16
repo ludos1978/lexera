@@ -361,6 +361,17 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 timeframe
             );
 
+            // Attach board colors from YAML frontmatter to the summary
+            if (board.boardSettings?.boardColor) {
+                scanResult.summary.boardColor = board.boardSettings.boardColor;
+            }
+            if (board.boardSettings?.boardColorDark) {
+                scanResult.summary.boardColorDark = board.boardSettings.boardColorDark;
+            }
+            if (board.boardSettings?.boardColorLight) {
+                scanResult.summary.boardColorLight = board.boardSettings.boardColorLight;
+            }
+
             return {
                 ...scanResult,
                 board
@@ -772,6 +783,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             text-overflow: ellipsis;
             white-space: nowrap;
             flex-shrink: 1;
+        }
+        .board-color-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+            margin-right: 4px;
         }
         .tree-label-description {
             opacity: 0.6;
@@ -1266,6 +1285,26 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             }
         }
 
+        function getBoardColor(boardName) {
+            if (!dashboardData || !dashboardData.boardSummaries) return '';
+            const summary = dashboardData.boardSummaries.find(s => s.boardName === boardName);
+            if (!summary) return '';
+            const isDark = document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast'));
+            return (isDark ? (summary.boardColorDark || summary.boardColor) : (summary.boardColorLight || summary.boardColor)) || '';
+        }
+
+        function boardColorDot(boardName) {
+            const color = getBoardColor(boardName);
+            if (!color) return '';
+            return '<span class="board-color-dot" style="background-color: ' + escapeHtml(color) + ';"></span>';
+        }
+
+        function boardColorStyle(boardName) {
+            const color = getBoardColor(boardName);
+            if (!color) return '';
+            return ' style="background-color: ' + escapeHtml(color) + ';"';
+        }
+
         function renderUpcomingBoardFirst(container, items) {
             // Group by board, then by date within each board
             const boards = {};
@@ -1278,10 +1317,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             for (const [boardName, boardItems] of Object.entries(boards)) {
                 const boardKey = 'upcoming/board/' + boardName;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
+                html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(boardKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                 html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
-                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
                 html += '</div>';
                 html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
 
@@ -1433,10 +1472,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             for (const [boardName, tagGroups] of Object.entries(boards)) {
                 const boardKey = 'tagged/board/' + boardName;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
+                html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(boardKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                 html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
-                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + '</span></div>';
+                html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + '</span></div>';
                 html += '</div>';
                 html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
 
@@ -1557,10 +1596,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             for (const [boardName, boardItems] of Object.entries(boards)) {
                 const boardKey = 'broken/board/' + boardName;
                 html += '<div class="tree-group">';
-                html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
+                html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(boardKey) + '">';
                 html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                 html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
-                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
                 html += '</div>';
                 html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
                 boardItems.forEach(item => {
@@ -1678,10 +1717,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     for (const [boardName, boardItems] of Object.entries(boards)) {
                         const boardKey = queryKey + '/board/' + boardName;
                         html += '<div class="tree-group">';
-                        html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(boardKey) + '">';
+                        html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(boardKey) + '">';
                         html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                         html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
-                        html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                        html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
                         html += '</div>';
                         html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
                         boardItems.forEach(item => {

@@ -57,6 +57,9 @@ export interface BoardSettings {
   htmlCommentRenderMode?: string;
   htmlContentRenderMode?: string;
   arrowKeyFocusScroll?: string;
+  boardColor?: string;
+  boardColorDark?: string;
+  boardColorLight?: string;
 }
 
 export interface KanbanBoard {

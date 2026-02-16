@@ -100,7 +100,11 @@
             html += '<div class="board-item" data-file-path="' + escapeHtml(board.filePath) + '">';
 
             // Header row
+            var isDark = document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast'));
+            var activeColor = isDark ? (board.boardColorDark || board.boardColor) : (board.boardColorLight || board.boardColor);
+            var headerStyle = activeColor ? ' style="background-color: ' + escapeHtml(activeColor) + ';"' : '';
             html += '<div class="tree-row board-item-header"' +
+                headerStyle +
                 (canDrag ? ' draggable="true"' : '') +
                 ' data-file-path="' + escapeHtml(board.filePath) + '"' +
                 ' data-board-uri="' + escapeHtml(board.uri) + '">';
@@ -148,6 +152,31 @@
             html += '<option value="board"' + (boardCalendar === 'board' ? ' selected' : '') + '>As board name</option>';
             html += '<option value="disabled"' + (boardCalendar === 'disabled' ? ' selected' : '') + '>Disabled</option>';
             html += '</select>';
+            html += '</div></div>';
+
+            // Color row — Dark + Light on same line
+            html += '<div class="tree-row board-config-row">';
+            html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents">';
+            html += '<span class="board-config-label">Theme:</span>';
+            html += '<span class="board-color-group">';
+            var darkVal = board.boardColorDark || board.boardColor || '#000000';
+            var lightVal = board.boardColorLight || board.boardColor || '#ffffff';
+            var hasDark = board.boardColorDark || board.boardColor;
+            var hasLight = board.boardColorLight || board.boardColor;
+            html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" value="' + escapeHtml(darkVal) + '">';
+            if (hasDark) {
+                html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" title="Clear">✕</button>';
+            }
+            html += '</span>';
+            html += '<span class="board-color-group">';
+            html += '<span class="codicon codicon-sun" title="Light mode"></span>';
+            html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" value="' + escapeHtml(lightVal) + '">';
+            if (hasLight) {
+                html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" title="Clear">✕</button>';
+            }
+            html += '</span>';
             html += '</div></div>';
 
             // Tags input row
@@ -284,6 +313,31 @@
             input.addEventListener('change', addTag);
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+            });
+        });
+
+        // Color picker
+        boardsList.querySelectorAll('.board-color-input').forEach(input => {
+            input.addEventListener('change', () => {
+                vscode.postMessage({
+                    type: 'setBoardColor',
+                    filePath: input.dataset.filePath,
+                    settingKey: input.dataset.settingKey || 'boardColor',
+                    color: input.value
+                });
+            });
+        });
+
+        // Color clear button
+        boardsList.querySelectorAll('.board-color-clear').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                vscode.postMessage({
+                    type: 'setBoardColor',
+                    filePath: btn.dataset.filePath,
+                    settingKey: btn.dataset.settingKey || 'boardColor',
+                    color: ''
+                });
             });
         });
 

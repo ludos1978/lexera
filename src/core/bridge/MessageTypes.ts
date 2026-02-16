@@ -99,6 +99,9 @@ export interface BoardUpdateMessage extends BaseMessage {
     version?: string;
     debugMode?: boolean;
     focusTargets?: FocusTarget[];
+    boardColor?: string;
+    boardColorDark?: string;
+    boardColorLight?: string;
 }
 
 /**
@@ -1053,7 +1056,10 @@ export type BoardSettingKey =
     | 'whitespace'
     | 'htmlCommentRenderMode'
     | 'htmlContentRenderMode'
-    | 'arrowKeyFocusScroll';
+    | 'arrowKeyFocusScroll'
+    | 'boardColor'
+    | 'boardColorDark'
+    | 'boardColorLight';
 
 /**
  * Set board setting - stores in YAML frontmatter of the markdown file

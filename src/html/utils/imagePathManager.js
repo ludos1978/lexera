@@ -1494,37 +1494,66 @@ function updatePathInDOM(oldPath, newPath, direction) {
     // Update the cached board data (used for editing)
     if (window.cachedBoard) {
         let boardUpdated = false;
+        const modifiedColumns = [];
+        const modifiedTasks = [];
 
         // Update paths in all columns and tasks
         window.cachedBoard.columns.forEach(column => {
+            let columnModified = false;
+            // Update column title
+            if (column.title && column.title.includes(oldPath)) {
+                column.title = column.title.split(oldPath).join(newPath);
+                columnModified = true;
+            }
             // Update column description/markdown
             if (column.markdown && column.markdown.includes(oldPath)) {
                 column.markdown = column.markdown.split(oldPath).join(newPath);
-                boardUpdated = true;
+                columnModified = true;
             }
             if (column.description && column.description.includes(oldPath)) {
                 column.description = column.description.split(oldPath).join(newPath);
+                columnModified = true;
+            }
+
+            if (columnModified) {
                 boardUpdated = true;
+                modifiedColumns.push(column);
             }
 
             // Update tasks
             if (column.tasks) {
                 column.tasks.forEach(task => {
+                    let taskModified = false;
                     if (task.markdown && task.markdown.includes(oldPath)) {
                         task.markdown = task.markdown.split(oldPath).join(newPath);
-                        boardUpdated = true;
+                        taskModified = true;
                     }
                     if (task.content && task.content.includes(oldPath)) {
                         task.content = task.content.split(oldPath).join(newPath);
+                        taskModified = true;
+                    }
+                    if (taskModified) {
                         boardUpdated = true;
+                        modifiedTasks.push({ task, columnId: column.id });
                     }
                 });
             }
         });
 
         if (boardUpdated) {
-            // Mark as having unsaved changes
             window.hasUnsavedChanges = true;
+
+            // Re-render modified tasks/columns so the DOM reflects the updated paths
+            modifiedTasks.forEach(({ task, columnId }) => {
+                if (typeof window.renderSingleTask === 'function') {
+                    window.renderSingleTask(task.id, task, columnId);
+                }
+            });
+            modifiedColumns.forEach(column => {
+                if (typeof window.renderSingleColumn === 'function') {
+                    window.renderSingleColumn(column.id, column);
+                }
+            });
         }
     }
 }

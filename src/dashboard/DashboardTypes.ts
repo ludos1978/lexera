@@ -109,6 +109,10 @@ export interface BoardTagSummary {
     totalTasks: number;
     /** Number of tasks with temporal tags */
     temporalTasks: number;
+    /** Board color from YAML frontmatter */
+    boardColor?: string;
+    boardColorDark?: string;
+    boardColorLight?: string;
 }
 
 /**
