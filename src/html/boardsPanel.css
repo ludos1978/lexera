@@ -375,6 +375,11 @@ body {
     padding: 0 6px 0 12px;
 }
 
+.board-item-header.active-board {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
 .board-item-header .tree-contents {
     flex-direction: row;
     align-items: center;

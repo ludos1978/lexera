@@ -6005,12 +6005,12 @@
         {
           "type": "webview",
           "id": "kanbanBoardsSidebar",
-          "name": "Boards"
+          "name": "Kanban Boards"
         },
         {
           "type": "webview",
           "id": "kanbanDashboard",
-          "name": "Dashboard"
+          "name": "Kanban Dashboard"
         }
       ]
     },

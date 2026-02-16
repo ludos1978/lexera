@@ -1,3 +1,7 @@
+- [ ] rename the kanban boards: boards view to kanban boards (without anything after that!). and the kanban boards: dashboard to kanban dashboard (nothing after that!).
+
+- [ ] it still often blurs if i want to select something or open a dropdown or similar! it closes everything very quickly. check what could be the source of this! analyze all possible reasons, do a detailed analysis! /debug we have tried solving this problem 5 times already. FIND A SOLUTION!
+
 - [ ] change the "update sync" to it be a option in "all boards" and each individual board. the individual board takes the "all boards" the default option. the options for the new "calendar/task sharing" are "as workspace name", "as board name", "disabled"
 
 - [x] can you add an optional username / password for the webdav access? also an option username password that is really required in the config.

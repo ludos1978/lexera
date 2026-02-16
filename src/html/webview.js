@@ -1899,15 +1899,29 @@ function setHtmlContentRenderMode(mode) {
  * Apply board color to the kanban background.
  * Picks the dark or light color based on current theme.
  */
+let _boardColorLegacy = null, _boardColorDark = null, _boardColorLight = null;
+
 function applyBoardColor(colorLegacy, colorDark, colorLight) {
+    if (arguments.length > 0) {
+        _boardColorLegacy = colorLegacy;
+        _boardColorDark = colorDark;
+        _boardColorLight = colorLight;
+    }
     if (!document.body) return;
     const dark = typeof window.isDarkTheme === 'function' ? window.isDarkTheme() : true;
-    const color = dark ? (colorDark || colorLegacy) : (colorLight || colorLegacy);
+    const color = dark ? (_boardColorDark || _boardColorLegacy) : (_boardColorLight || _boardColorLegacy);
     if (color) {
         document.body.style.setProperty('--board-color', color);
     } else {
         document.body.style.removeProperty('--board-color');
     }
+}
+
+// Re-apply board color when VS Code theme changes (dark ↔ light)
+if (typeof MutationObserver !== 'undefined') {
+    new MutationObserver(() => {
+        applyBoardColor();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 }
 
 // Arrow key focus scroll setting

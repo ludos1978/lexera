@@ -49,6 +49,9 @@ export class KanbanWebviewPanel {
     private static panelStates: Map<string, PersistedPanelState> = new Map();
     private static lastActivePanel: KanbanWebviewPanel | null = null;
 
+    private static _onDidChangeActivePanel = new vscode.EventEmitter<void>();
+    public static readonly onDidChangeActivePanel = KanbanWebviewPanel._onDidChangeActivePanel.event;
+
     public static readonly viewType = 'markdownKanbanPanel';
 
     private readonly _panel: vscode.WebviewPanel;
@@ -133,6 +136,9 @@ export class KanbanWebviewPanel {
             KanbanWebviewPanel.panels.set(docUri, kanbanPanel);
             kanbanPanel.loadMarkdownFile(document);
         }
+
+        KanbanWebviewPanel.lastActivePanel = kanbanPanel;
+        KanbanWebviewPanel._onDidChangeActivePanel.fire();
     }
 
     private static _buildResourceRoots(extensionUri: vscode.Uri, document?: vscode.TextDocument): vscode.Uri[] {
@@ -551,6 +557,7 @@ export class KanbanWebviewPanel {
             logger.debug('[KanbanWebviewPanel.onDidChangeViewState] visibility changed:', e.webviewPanel.visible);
             if (e.webviewPanel.visible) {
                 KanbanWebviewPanel.lastActivePanel = this;
+                KanbanWebviewPanel._onDidChangeActivePanel.fire();
 
                 // DIAGNOSTIC: Log state before recovery attempt
                 const preRecoveryState = {
@@ -895,6 +902,7 @@ export class KanbanWebviewPanel {
         if (KanbanWebviewPanel.lastActivePanel === this) {
             KanbanWebviewPanel.lastActivePanel = null;
         }
+        KanbanWebviewPanel._onDidChangeActivePanel.fire();
 
         if (!this._unsavedChangesService) return this.dispose();
 
@@ -972,6 +980,7 @@ export class KanbanWebviewPanel {
         if (KanbanWebviewPanel.lastActivePanel === this) {
             KanbanWebviewPanel.lastActivePanel = null;
         }
+        KanbanWebviewPanel._onDidChangeActivePanel.fire();
 
         this._fileRegistry.getMainFile()?.discardChanges();
         this._context.setClosingPrevented(false);

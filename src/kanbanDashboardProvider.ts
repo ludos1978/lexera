@@ -1385,7 +1385,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderUpcomingItem(item, indentLevel) {
             const overdueClass = item.isOverdue ? ' overdue' : '';
-            let html = '<div class="tree-row upcoming-item' + overdueClass + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            let html = '<div class="tree-row upcoming-item' + overdueClass + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
             html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1532,7 +1532,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderTaggedItem(item, indentLevel) {
             const isColumnMatch = item.taskIndex === -1;
-            let html = '<div class="tree-row tag-search-result' + (isColumnMatch ? ' column-match' : '') + '" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            let html = '<div class="tree-row tag-search-result' + (isColumnMatch ? ' column-match' : '') + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
             html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1641,7 +1641,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         function renderBrokenItem(item, indentLevel) {
-            let html = '<div class="tree-row broken-item" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            let html = '<div class="tree-row broken-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
             html += 'data-column-index="' + item.columnIndex + '"';
             if (item.taskIndex !== undefined && item.taskIndex !== null) html += ' data-task-index="' + item.taskIndex + '"';
             html += '>';
@@ -1742,7 +1742,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         function renderSearchItem(item, indentLevel) {
-            let html = '<div class="tree-row search-result-item" data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            let html = '<div class="tree-row search-result-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
             html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
             if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
             html += '>';
@@ -1921,10 +1921,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 for (const [boardName, data] of Object.entries(grouped)) {
                     const gKey = 'liveSearch/board/' + boardName;
                     html += '<div class="tree-group">';
-                    html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(gKey) + '">';
+                    html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(gKey) + '">';
                     html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
                     html += '<div class="tree-twistie collapsible' + groupExpandedClass(gKey) + '"></div>';
-                    html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(boardName) + ' (' + data.items.length + ')</span></div>';
+                    html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + ' (' + data.items.length + ')</span></div>';
                     html += '</div>';
                     html += '<div class="tree-group-items"' + groupItemsStyle(gKey) + '>';
                     data.items.forEach(function(item) { html += renderLiveSearchItem(item, 3, searchType); });
@@ -1944,7 +1944,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             else if (item.matchText) { mainContent = escapeHtml(item.matchText); }
             const loc = item.location || {};
             const locationText = escapeHtml(loc.columnTitle || '') + (loc.taskSummary ? ' / ' + escapeHtml(loc.taskSummary) : '');
-            let html = '<div class="tree-row live-search-item"';
+            let html = '<div class="tree-row live-search-item"' + (item.boardName ? boardColorStyle(item.boardName) : '');
             html += ' data-column-id="' + escapeHtml(loc.columnId || '') + '"';
             if (loc.taskId) html += ' data-task-id="' + escapeHtml(loc.taskId) + '"';
             if (item.boardUri) html += ' data-board-uri="' + escapeHtml(item.boardUri) + '"';

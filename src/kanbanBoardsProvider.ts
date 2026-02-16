@@ -39,7 +39,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
 
         // Subscribe to registry events
         this._disposables.push(
-            this._registry.onBoardsChanged(() => this._sendStateToWebview())
+            this._registry.onBoardsChanged(() => this._sendStateToWebview()),
+            KanbanWebviewPanel.onDidChangeActivePanel(() => this._sendStateToWebview())
         );
     }
 
@@ -171,6 +172,9 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             };
         });
 
+        const activePanel = KanbanWebviewPanel.getActivePanel();
+        const activeBoardUri = activePanel?.getCurrentDocumentUri()?.toString();
+
         this._view.webview.postMessage({
             type: 'state',
             boards: boardsData,
@@ -180,7 +184,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             defaultTimeframe: this._registry.defaultTimeframe,
             defaultTagFilters: this._registry.defaultTagFilters,
             defaultCalendarSharing: this._registry.defaultCalendarSharing,
-            hasActivePanel: KanbanWebviewPanel.getAllPanels().length > 0
+            hasActivePanel: KanbanWebviewPanel.getAllPanels().length > 0,
+            activeBoardUri
         });
     }
 

@@ -2694,7 +2694,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
         event.stopPropagation();
         const href = link.getAttribute('data-original-href') || link.getAttribute('href');
         if (href && href !== '#') {
-            if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href) && !href.startsWith('file:')) {
                 sendOpenLinkMessage(LinkType.EXTERNAL, href);
             } else {
                 // Calculate index for file links using the href attribute

@@ -4476,7 +4476,7 @@ button.file-bar-menu-item {
 .kanban-column-stack .kanban-full-height-column .column-title,
 .kanban-column-stack .kanban-full-height-column .column-footer {
   position: sticky;
-  background: var(--column-background);
+  background: transparent;
   z-index: 100;
 }
 
@@ -8429,7 +8429,7 @@ figcaption {
 .file-manager-timestamp {
     color: var(--vscode-descriptionForeground);
     font-size: 10px;
-    white-space: nowrap;
+    overflow-wrap: break-word;
     opacity: 0.8;
 }
 
@@ -8438,7 +8438,7 @@ figcaption {
     border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
     padding: 1px 6px;
-    white-space: nowrap;
+    overflow-wrap: break-word;
 }
 
 .file-manager-snapshot-status.snapshot-ready {

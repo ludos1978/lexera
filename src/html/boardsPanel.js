@@ -103,7 +103,8 @@
             var isDark = document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast'));
             var activeColor = isDark ? (board.boardColorDark || board.boardColor) : (board.boardColorLight || board.boardColor);
             var headerStyle = activeColor ? ' style="background-color: ' + escapeHtml(activeColor) + ';"' : '';
-            html += '<div class="tree-row board-item-header"' +
+            var isActiveBoard = currentState.activeBoardUri && currentState.activeBoardUri === board.uri;
+            html += '<div class="tree-row board-item-header' + (isActiveBoard ? ' active-board' : '') + '"' +
                 headerStyle +
                 (canDrag ? ' draggable="true"' : '') +
                 ' data-file-path="' + escapeHtml(board.filePath) + '"' +
@@ -132,6 +133,8 @@
             html += '<option value="3"' + (board.config.timeframe === 3 ? ' selected' : '') + '>3 days</option>';
             html += '<option value="7"' + (board.config.timeframe === 7 ? ' selected' : '') + '>7 days</option>';
             html += '<option value="30"' + (board.config.timeframe === 30 ? ' selected' : '') + '>30 days</option>';
+            html += '<option value="90"' + (board.config.timeframe === 90 ? ' selected' : '') + '>90 days</option>';
+            html += '<option value="180"' + (board.config.timeframe === 180 ? ' selected' : '') + '>180 days</option>';
             html += '</select>';
             html += '</div></div>';
 
@@ -160,21 +163,21 @@
             html += '<div class="tree-twistie"></div>';
             html += '<div class="tree-contents">';
             html += '<span class="board-config-label">Theme:</span>';
-            html += '<span class="board-color-group">';
             var darkVal = board.boardColorDark || board.boardColor || '#000000';
             var lightVal = board.boardColorLight || board.boardColor || '#ffffff';
             var hasDark = board.boardColorDark || board.boardColor;
             var hasLight = board.boardColorLight || board.boardColor;
-            html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" value="' + escapeHtml(darkVal) + '">';
-            if (hasDark) {
-                html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" title="Clear">✕</button>';
-            }
-            html += '</span>';
             html += '<span class="board-color-group">';
             html += '<span class="codicon codicon-sun" title="Light mode"></span>';
             html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" value="' + escapeHtml(lightVal) + '">';
             if (hasLight) {
                 html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" title="Clear">✕</button>';
+            }
+            html += '</span>';
+            html += '<span class="board-color-group">';
+            html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" value="' + escapeHtml(darkVal) + '">';
+            if (hasDark) {
+                html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" title="Clear">✕</button>';
             }
             html += '</span>';
             html += '</div></div>';
