@@ -81,6 +81,20 @@ function escapeXml(str: string): string {
 }
 
 /**
+ * Deduplicate tasks when merging from multiple boards sharing a calendar slug.
+ * Tasks with the same summary + dtstart are considered duplicates; keep only the first.
+ */
+function deduplicateTasks(tasks: import('../mappers/IcalMapper').IcalTask[]): import('../mappers/IcalMapper').IcalTask[] {
+  const seen = new Set<string>();
+  return tasks.filter(task => {
+    const key = `${task.summary}\0${task.dtstart || ''}\0${task.dtend || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Parse requested property names from PROPFIND body.
  * Returns null if no specific props requested (allprop).
  */
@@ -216,13 +230,15 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       return;
     }
 
-    // Merge tasks from all boards with this slug
+    // Merge tasks from all boards with this slug, deduplicating cross-board duplicates
     let allTasks: import('../mappers/IcalMapper').IcalTask[] = [];
     for (const b of boards) {
       if (b.icalTasks) { allTasks = allTasks.concat(b.icalTasks); }
     }
+    const beforeDedup = allTasks.length;
+    allTasks = deduplicateTasks(allTasks);
 
-    log.verbose(`[CalDAV] ${req.method} /calendars/${slug}/ depth=${depth} boards=${boards.length} tasks=${allTasks.length}`);
+    log.verbose(`[CalDAV] ${req.method} /calendars/${slug}/ depth=${depth} boards=${boards.length} tasks=${allTasks.length} (deduped from ${beforeDedup})`);
 
     // If REPORT, check for calendar-query time-range filter
     let filteredTasks = allTasks;
@@ -308,11 +324,12 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       return;
     }
 
-    // Merge tasks from all boards and generate combined calendar
+    // Merge tasks from all boards, deduplicating cross-board duplicates
     let allTasks: import('../mappers/IcalMapper').IcalTask[] = [];
     for (const b of boards) {
       if (b.icalTasks) { allTasks = allTasks.concat(b.icalTasks); }
     }
+    allTasks = deduplicateTasks(allTasks);
     const firstBoard = boards[0];
     const calName = firstBoard.calendarName || firstBoard.board.title || slug;
     const fullCal = IcalMapper.generateCalendar(allTasks, calName);

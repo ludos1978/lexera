@@ -175,7 +175,21 @@
       "Bash(npx stylelint:*)",
       "Bash(gh api:*)",
       "Bash(vsce ls:*)",
-      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/.vscodeignore << 'VSCODEIGNORE'\n# Source & build tooling\nsrc/**/*.ts\nout/\ntsconfig.json\n.vscode/\n.vscode-test/\n.vscode-test.mjs\n\n# Monorepo packages \\(not part of the extension\\)\npackages/\n\n# Tests\ntests/\n\n# Agent / docs\nagent/\nAGENT*.md\nCLAUDE.md\nTODO*.md\n.TODOs*\n\n# Dev files\n.gitignore\n.eslintrc*\n.prettierrc*\n*.vsix\n\n# Caches & generated\n*-cache/\ndrawio-cache/\nplantuml-cache/\nmermaid-cache/\nxlsx-cache/\nexcalidraw-cache/\n__pycache__/\nlogs/\ntmp/\n_Export/\ntools/\n\n# OS files\n.DS_Store\n\n# Media artifacts\n*.mp4\n*.zip\nVSCODEIGNORE)"
+      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/.vscodeignore << 'VSCODEIGNORE'\n# Source & build tooling\nsrc/**/*.ts\nout/\ntsconfig.json\n.vscode/\n.vscode-test/\n.vscode-test.mjs\n\n# Monorepo packages \\(not part of the extension\\)\npackages/\n\n# Tests\ntests/\n\n# Agent / docs\nagent/\nAGENT*.md\nCLAUDE.md\nTODO*.md\n.TODOs*\n\n# Dev files\n.gitignore\n.eslintrc*\n.prettierrc*\n*.vsix\n\n# Caches & generated\n*-cache/\ndrawio-cache/\nplantuml-cache/\nmermaid-cache/\nxlsx-cache/\nexcalidraw-cache/\n__pycache__/\nlogs/\ntmp/\n_Export/\ntools/\n\n# OS files\n.DS_Store\n\n# Media artifacts\n*.mp4\n*.zip\nVSCODEIGNORE)",
+      "Bash(git push:*)",
+      "Bash(curl:*)",
+      "Bash(./build-sync.sh:*)",
+      "Bash(pgrep:*)",
+      "Bash(lsof:*)",
+      "Bash(bc:*)",
+      "Bash(ps:*)",
+      "Bash(# Check a specific task that should only exist once across all boards # Let''s find a task unique to one board grep -rn \"\"ImmTec\"\" /Users/rspoerri/_SYNC/Hochschulen/HSLU/_KURSE/_00_Studiengang_ImmTec/_ImmTec_Kanban.md)",
+      "Bash(bash:*)",
+      "Bash(for:*)",
+      "Bash(do if grep -q \"Mentoring\" \"$f\")",
+      "Bash(then echo \"MATCH: $f\")",
+      "Bash(pkill:*)",
+      "Bash(kill:*)"
     ],
     "deny": [],
     "ask": []

@@ -145,6 +145,89 @@ export function getISOWeek(date: Date): number {
 }
 
 /**
+ * A temporal match resolved with inheritance context.
+ * Produced by resolveTaskTemporals().
+ */
+export interface ResolvedTemporal {
+    lineContent: string;
+    temporal: TemporalInfo;
+    effectiveDate: Date;
+    effectiveWeek?: number;
+    effectiveWeekday?: number;
+}
+
+/**
+ * Resolve temporal tags for all lines in a task, with hierarchical inheritance.
+ *
+ * Processes each line of taskContent, calling extractTemporalInfo per line.
+ * Time-only tags (no explicit date) inherit their date from the task title
+ * temporal context or the column temporal context.
+ *
+ * Used by both DashboardScanner and IcalMapper to ensure identical behavior.
+ *
+ * @param taskContent  Full task content (may be multi-line)
+ * @param columnTemporal  Temporal info extracted from the column title (or null)
+ */
+export function resolveTaskTemporals(
+    taskContent: string,
+    columnTemporal: TemporalInfo | null
+): ResolvedTemporal[] {
+    const results: ResolvedTemporal[] = [];
+    const lines = taskContent.split('\n');
+
+    // Extract task title temporal from first line
+    const titleLine = lines[0] || '';
+    const titleTemporals = extractTemporalInfo(titleLine);
+    const titleTemporal = titleTemporals.length > 0 ? titleTemporals[0] : null;
+
+    // Track task-level temporal context (updated as lines are processed)
+    let taskTemporalContext: TemporalInfo | null =
+        (titleTemporal?.hasExplicitDate && titleTemporal.date) ? titleTemporal : null;
+
+    for (const line of lines) {
+        const lineTemporals = extractTemporalInfo(line);
+        if (lineTemporals.length === 0) continue;
+
+        for (const lineTemporal of lineTemporals) {
+            let effectiveDate = lineTemporal.date;
+            let effectiveWeek = lineTemporal.week;
+            const effectiveWeekday = lineTemporal.weekday;
+            let hasEffectiveDate = lineTemporal.hasExplicitDate === true;
+
+            // Time-only tags inherit date from task title or column
+            if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
+                if (taskTemporalContext?.date) {
+                    effectiveDate = taskTemporalContext.date;
+                    effectiveWeek = taskTemporalContext.week;
+                    hasEffectiveDate = true;
+                } else if (columnTemporal?.date && columnTemporal.hasExplicitDate) {
+                    effectiveDate = columnTemporal.date;
+                    effectiveWeek = columnTemporal.week;
+                    hasEffectiveDate = true;
+                }
+            }
+
+            // Update task temporal context for subsequent lines
+            if (lineTemporal.hasExplicitDate && lineTemporal.date) {
+                taskTemporalContext = lineTemporal;
+            }
+
+            if (!hasEffectiveDate || !effectiveDate) continue;
+
+            results.push({
+                lineContent: line.trim(),
+                temporal: lineTemporal,
+                effectiveDate,
+                effectiveWeek,
+                effectiveWeekday,
+            });
+        }
+    }
+
+    return results;
+}
+
+/**
  * Result of extracting temporal information from text.
  */
 export interface TemporalInfo {

@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.219.0",
+  "version": "0.220.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -6221,6 +6221,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@ludos/shared": "file:packages/shared",
     "@excalidraw/excalidraw": "^0.17.0",
     "@excalidraw/utils": "^0.1.2",
     "@marp-team/marp-cli": "^4.2.3",

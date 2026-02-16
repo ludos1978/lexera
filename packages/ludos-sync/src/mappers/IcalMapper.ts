@@ -1,22 +1,23 @@
 /**
- * Maps KanbanColumn[] to iCalendar VTODO/VEVENT components.
+ * Maps KanbanColumn[] to iCalendar VEVENT components.
  *
- * Mapping rules:
- *   Task with any date/week/time → VEVENT (visible on calendar)
- *   Task with no temporal tags   → skipped (not added to calendar)
- *   checked (task.checked=true) → STATUS:COMPLETED, PERCENT-COMPLETE:100
- *   unchecked → STATUS:NEEDS-ACTION
+ * Mapping rules (matching DashboardScanner behavior):
+ *   Each line with a temporal tag → separate VEVENT
+ *   Temporal inheritance: column → task title → line (same as dashboard)
+ *   Time-only tags inherit date from task title or column
+ *   Lines without temporal tags → skipped
+ *   checked (task.checked=true) → STATUS:COMPLETED
  *   #tag in content → CATEGORIES
  *
  * Note: SharedMarkdownParser strips the "- [ ] " checkbox prefix from
  * task.content. Checked state comes from the task.checked boolean field.
  *
- * UID: SHA-256 hash of boardSlug + columnTitle + firstLine, truncated to 16 hex chars.
+ * UID: SHA-256 hash of boardId + columnTitle + lineContent + occurrence.
  * Time handling: Floating time (no timezone suffix).
  */
 
 import * as crypto from 'crypto';
-import { KanbanColumn, KanbanTask, extractTemporalInfo, TemporalInfo } from '@ludos/shared';
+import { KanbanColumn, KanbanTask, extractTemporalInfo, resolveTaskTemporals, TemporalInfo } from '@ludos/shared';
 import { log } from '../logger';
 
 export interface IcalTask {
@@ -134,28 +135,46 @@ export class IcalMapper {
   /**
    * Convert kanban columns into an array of IcalTask objects.
    *
+   * Uses resolveTaskTemporals() from @ludos/shared — the same function
+   * DashboardScanner uses — to ensure identical temporal resolution.
+   *
    * @param boardId Unique identifier per board (e.g. file path) used for UID generation.
-   *   This ensures tasks from different boards get distinct UIDs even when
-   *   multiple boards share the same calendar slug (workspace mode).
    */
   static columnsToIcalTasks(columns: KanbanColumn[], boardId: string): IcalTask[] {
-    const tasks: IcalTask[] = [];
-    // Track occurrences of (columnTitle, firstLine) to disambiguate identical tasks
+    const results: IcalTask[] = [];
     const occurrences = new Map<string, number>();
 
     for (const column of columns) {
+      const columnTemporals = extractTemporalInfo(column.title || '');
+      const columnTemporal = columnTemporals.length > 0 ? columnTemporals[0] : null;
+
       for (const task of column.tasks) {
-        const firstLine = (task.content || '').split('\n')[0] || '';
-        const key = `${column.title}\0${firstLine}`;
-        const occ = occurrences.get(key) || 0;
-        occurrences.set(key, occ + 1);
-        const mapped = this.mapTask(task, column.title, boardId, occ);
-        tasks.push(...mapped);
+        const content = task.content || '';
+        const hashTags = extractHashTags(content);
+        const categories = [column.title, ...hashTags];
+        const checked = task.checked === true;
+        const taskSummaryLine = content.split('\n')[0] || '';
+
+        // Shared temporal resolution (same logic as DashboardScanner)
+        const resolved = resolveTaskTemporals(content, columnTemporal);
+
+        for (const r of resolved) {
+          const occKey = `${column.title}\0${r.lineContent}`;
+          const occ = occurrences.get(occKey) || 0;
+          occurrences.set(occKey, occ + 1);
+          const uid = generateUid(boardId, column.title, r.lineContent, occ);
+
+          const summary = this.cleanSummary(r.lineContent || taskSummaryLine);
+          const event = this.buildEvent(uid, summary, r.effectiveDate, r.temporal, r.effectiveWeek, r.effectiveWeekday, checked, categories, column.title);
+          if (event) {
+            results.push(event);
+          }
+        }
       }
     }
 
-    log.verbose(`[IcalMapper] Mapped ${tasks.length} tasks (${tasks.filter(t => t.type === 'VEVENT').length} events, ${tasks.filter(t => t.type === 'VTODO').length} todos)`);
-    return tasks;
+    log.verbose(`[IcalMapper] Mapped ${results.length} events from ${columns.length} columns`);
+    return results;
   }
 
   /**
@@ -198,82 +217,49 @@ export class IcalMapper {
   }
 
   /**
-   * Map a single KanbanTask to exactly one IcalTask entry.
-   *
-   * SharedMarkdownParser strips the "- [ ] " checkbox prefix from task.content,
-   * so all kanban tasks are checkboxes. The checked/unchecked status comes from
-   * task.checked instead.
-   *
-   * Mapping rules:
-   *   Any task with a date/week/time  → VEVENT (visible on calendar)
-   *   No temporal tags                → skipped (not added to calendar)
-   *   Checked status always applied via task.checked field.
+   * Build a single VEVENT from resolved temporal data.
    */
-  private static mapTask(task: KanbanTask, columnTitle: string, boardId: string, occurrence: number): IcalTask[] {
-    const content = task.content || '';
-    const lines = content.split('\n');
-    const firstLine = lines[0] || '';
-    const description = lines.length > 1 ? lines.slice(1).join('\n').trim() : undefined;
-
-    const uid = generateUid(boardId, columnTitle, firstLine, occurrence);
-    const temporals = extractTemporalInfo(firstLine);
-    const temporal: TemporalInfo | null = temporals.length > 0 ? temporals[0] : null;
-
-    const hashTags = extractHashTags(content);
-    const categories = [columnTitle, ...hashTags];
-
-    const checked = task.checked === true;
-    const summary = this.cleanSummary(firstLine);
-
-    // Determine temporal data
-    let hasTimeRange = false;
-    let hasDate = false;
+  private static buildEvent(
+    uid: string, summary: string, effectiveDate: Date,
+    lineTemporal: TemporalInfo, effectiveWeek: number | undefined,
+    effectiveWeekday: number | undefined,
+    checked: boolean, categories: string[], columnTitle: string
+  ): IcalTask | null {
     let dtstart: string | undefined;
     let dtend: string | undefined;
     let due: string | undefined;
 
-    if (temporal) {
-      const timeRange = temporal.timeSlot ? parseTimeRange(temporal.timeSlot) : null;
+    const timeRange = lineTemporal.timeSlot ? parseTimeRange(lineTemporal.timeSlot) : null;
 
-      if (timeRange && temporal.date && temporal.hasExplicitDate) {
-        // Specific date + time range → timed event
-        hasTimeRange = true;
-        hasDate = true;
-        dtstart = formatIcalDateTime(temporal.date, timeRange.startH, timeRange.startM);
-        dtend = formatIcalDateTime(temporal.date, timeRange.endH, timeRange.endM);
-      } else if (temporal.week !== undefined && temporal.weekday === undefined && temporal.date && temporal.hasExplicitDate) {
-        // Week tag without specific weekday → all-day event spanning the full week (Mon–Sun)
-        hasDate = true;
-        const monday = temporal.date; // extractTemporalInfo returns Monday for week-only tags
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 7);
-        dtstart = formatIcalDate(monday);
-        dtend = formatIcalDate(sunday); // iCal DATE DTEND is exclusive
-        due = formatIcalDate(monday);
-      } else if (temporal.date && temporal.hasExplicitDate) {
-        // Single date → due date
-        hasDate = true;
-        dtstart = formatIcalDate(temporal.date);
-        due = formatIcalDate(temporal.date);
-      }
+    if (timeRange) {
+      // Date + time range → timed event
+      dtstart = formatIcalDateTime(effectiveDate, timeRange.startH, timeRange.startM);
+      dtend = formatIcalDateTime(effectiveDate, timeRange.endH, timeRange.endM);
+    } else if (effectiveWeek !== undefined && effectiveWeekday === undefined) {
+      // Week tag without specific weekday → all-day event spanning the full week (Mon–Sun)
+      const monday = effectiveDate;
+      const nextMonday = new Date(monday);
+      nextMonday.setDate(monday.getDate() + 7);
+      dtstart = formatIcalDate(monday);
+      dtend = formatIcalDate(nextMonday); // iCal DATE DTEND is exclusive
+      due = formatIcalDate(monday);
+    } else {
+      // Single date → all-day event
+      dtstart = formatIcalDate(effectiveDate);
+      due = formatIcalDate(effectiveDate);
     }
 
-    // Only tasks with dates appear in the calendar — undated tasks are skipped
-    if (!hasDate) {
-      return [];
-    }
-
-    return [{
+    return {
       uid,
       type: 'VEVENT',
       summary,
-      description,
       dtstart,
       dtend,
+      due,
       status: checked ? 'COMPLETED' : 'CONFIRMED',
       categories,
       columnTitle,
-    }];
+    };
   }
 
   /**

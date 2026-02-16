@@ -89,11 +89,13 @@ Standalone WebDAV server for bookmark sync via Floccus.
   - `parseWeekdayName(name)` — Parse weekday name to JS number (0=Sun..6=Sat)
   - `getISOWeek(date)` — Get ISO week number for a date
   - `extractTemporalInfo(text)` — Extract all temporal tags from text, returns TemporalInfo[]
+  - `resolveTaskTemporals(taskContent, columnTemporal)` — Resolve temporal tags for all lines in a task with inheritance (column → title → line). Used by both DashboardScanner and IcalMapper.
 
-- `packages/ludos-sync/src/mappers/IcalMapper.ts-IcalMapper` — KanbanColumn[] → iCalendar VTODO/VEVENT mapping
-  - `columnsToIcalTasks(columns, boardSlug)` — Convert columns to IcalTask[]
+- `packages/ludos-sync/src/mappers/IcalMapper.ts-IcalMapper` — KanbanColumn[] → iCalendar VEVENT mapping (mirrors DashboardScanner behavior)
+  - `columnsToIcalTasks(columns, boardId)` — Convert columns to IcalTask[], processes each line with temporal inheritance (column → task title → line)
+  - `buildEvent(uid, summary, date, temporal, ...)` — Build single VEVENT from resolved temporal data
   - `generateCalendar(tasks, calendarName)` — Generate full VCALENDAR string
-  - `generateComponent(task)` — Generate single VEVENT/VTODO component
+  - `generateComponent(task)` — Generate single VEVENT component
   - `generateSingleIcs(task)` — Generate single .ics file wrapping one component
 
 - `packages/ludos-sync/src/middleware/caldavMiddleware.ts-createCaldavRouter(boardWatcher, basePath)` — CalDAV Express Router
@@ -352,10 +354,17 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 
 ---
 
+## Recent Updates (2026-02-15) - Unified Temporal Parsing
+
+### Modified: `src/dashboard/DashboardScanner.ts`
+- `DashboardScanner._extractTemporalInfo` — REMOVED. Now uses `extractTemporalInfo()` from `@ludos/shared`.
+- `DashboardScanner.setDateLocale(locale)` — Now delegates to `setDateLocale()` from `@ludos/shared`.
+- Local duplicate functions REMOVED: `isLocaleDayFirst`, `parseDateTag`, `parseWeekTag`, `getDateOfISOWeek`, `getWeekdayOfISOWeek`, `parseWeekdayName`, `getISOWeek`, `dateLocale` variable.
+- Both the extension dashboard and ludos-sync CalDAV now use the same `extractTemporalInfo()` from `packages/shared/src/temporalParser.ts`.
+
 ## Recent Updates (2026-02-03) - Deadline Checkbox Tasks in Dashboard
 
 ### Modified: `src/dashboard/DashboardScanner.ts`
-- `DashboardScanner._extractTemporalInfo(text)` — (MODIFIED) Added `checkboxState` to return type ('unchecked' | 'checked' | 'none'). Detects if temporal tag is on a line starting with `- [ ]` or `- [x]` checkbox.
 - `DashboardScanner.scanBoard()` — (MODIFIED) Skips tasks with checked deadline checkboxes (`- [x] !date`). Includes overdue unchecked deadline tasks. Adds `isOverdue` flag to results.
 
 ### Modified: `src/dashboard/DashboardTypes.ts`
