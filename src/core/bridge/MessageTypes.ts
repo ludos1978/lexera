@@ -2253,6 +2253,11 @@ export interface VscodeDiffClosedMessage extends BaseMessage {
     filePath: string;
 }
 
+export interface ThemeChangedMessage extends BaseMessage {
+    type: 'themeChanged';
+    isDark: boolean;
+}
+
 // ============= TYPE UNIONS =============
 
 /**
@@ -2309,7 +2314,9 @@ export type OutgoingMessage =
     // External changes notification
     | ExternalChangesDetectedMessage
     // Diff messages
-    | VscodeDiffClosedMessage;
+    | VscodeDiffClosedMessage
+    // Theme messages
+    | ThemeChangedMessage;
 
 /**
  * All incoming message types (Frontend → Backend)

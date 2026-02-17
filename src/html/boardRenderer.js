@@ -332,8 +332,6 @@ function getBoardElement() {
     return cachedBoardElement;
 }
 
-// cachedEditorBg, getEditorBackground moved to utils/tagStyleManager.js
-
 /**
  * Gets the column ID for any element by traversing up the DOM tree
  * This avoids storing redundant data-column-id on task elements
@@ -444,9 +442,6 @@ function wrapTaskSections(html) {
     }).join('');
 }
 
-// applyTagStyles, ensureTagStyleExists moved to utils/tagStyleManager.js
-
-
 
 /**
  * Debounced board rendering to prevent performance issues
@@ -467,8 +462,6 @@ function debouncedRenderBoard() {
 
 // applyDefaultFoldingState, setDefaultFoldingState, getGlobalColumnFoldState,
 // toggleAllColumns, updateGlobalColumnFoldButton, applyFoldingStates
-// moved to utils/columnFoldingManager.js
-
 // Helper function to get active tags in a title
 /**
  * Extracts all active tag names from text (without # symbol)
@@ -1801,8 +1794,6 @@ function renderBoard(options = null) {
     // - Runs querySelectorAll on every scroll event
 }
 
-// getFoldAllButtonState, toggleAllTasksInColumn, updateFoldAllButton moved to utils/columnFoldingManager.js
-
 /**
  * Creates HTML element for a single column
  * Purpose: Generates column structure with header, tasks, footer
@@ -2288,8 +2279,6 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     `;
 }
 
-// updateTagStylesForTheme moved to utils/tagStyleManager.js
-
 function initializeFile() {
     vscode.postMessage({
         type: 'initializeFile'
@@ -2300,15 +2289,6 @@ function updateImageSources() {
     // This function would handle updating image sources if needed
     // Currently handled by the backend processing
 }
-
-// toggleAllColumns, isColumnCollapsed, toggleColumnCollapse moved to utils/columnFoldingManager.js
-
-// isInVerticalStack and getDefaultFoldMode moved to utils/stackLayoutManager.js
-
-// applyStackedColumnStyles moved to utils/stackLayoutManager.js
-
-// reorganizeStacksForColumn, enforceFoldModesForStacks moved to utils/stackLayoutManager.js
-
 
 // COLUMN RESIZE OBSERVER: Automatically updates stack layout when column content changes
 // This handles all dynamic content: images, diagrams, text changes, etc.
@@ -2604,12 +2584,6 @@ window.observeColumnForResize = observeColumnForResize;
 
 // Export setup function
 window.setupColumnResizeObserver = setupColumnResizeObserver;
-
-// updateStackLayoutDebounced, updateStackLayout, setupStackedColumnScrollHandler
-// and their window exports moved to utils/stackLayoutManager.js
-
-
-// toggleTaskCollapseById, toggleTaskCollapse moved to utils/columnFoldingManager.js
 
 // LinkType is defined in utils/imagePathManager.js (loaded first)
 
@@ -3023,8 +2997,6 @@ function toggleMarkdownTaskCheckbox(text, targetIndex) {
     });
 }
 
-// getTagConfig, generateTagStyles moved to utils/tagStyleManager.js
-
 // Function to inject header, footer bars, and border text after render
 // Modified injectStackableBars function
 function injectStackableBars(targetElement = null) {
@@ -3361,7 +3333,7 @@ function assignTitleBarColors() {
         return '#' + toHex(r) + toHex(g) + toHex(b);
     }
 
-    const dark = typeof window.isDarkTheme === 'function' ? window.isDarkTheme() : true;
+    const dark = window.isDarkTheme();
     const value = dark ? 0.2 : 0.8;
     const colorUtils = window.colorUtils;
     const editorBg = typeof window.getEditorBackground === 'function' ? window.getEditorBackground() : (dark ? '#1e1e1e' : '#ffffff');
@@ -3458,8 +3430,6 @@ function assignTitleBarColors() {
     styleEl.textContent = css;
 }
 
-// isDarkTheme moved to utils/tagStyleManager.js
-
 // Make functions globally available
 window.assignTitleBarColors = assignTitleBarColors;
 window.handleColumnTitleClick = handleColumnTitleClick;
@@ -3471,8 +3441,6 @@ window.getActiveTagsInTitle = getActiveTagsInTitle;
 window.generateTagMenuItems = generateTagMenuItems;
 window.generateGroupTagItems = generateGroupTagItems;
 window.generateFlatTagItems = generateFlatTagItems;
-
-// getTagConfig now provided by utils/tagStyleManager.js
 
 // Function to remove all tags from a card or column
 /**
@@ -3600,22 +3568,17 @@ function updateColumnTaskCount(columnId) {
     }
 }
 
-// updateColumnFoldState moved to utils/columnFoldingManager.js
-
 // Function to update both task count and fold state after task moves
 function updateColumnDisplay(columnId) {
     updateColumnTaskCount(columnId);
     window.updateColumnFoldState(columnId);
 }
 
-// toggleTaskCollapse, toggleAllTasksInColumn now exported from utils/columnFoldingManager.js
 window.updateColumnDisplay = updateColumnDisplay;
 
 // Expose rendering functions for include file updates
 window.renderSingleColumn = renderSingleColumn;
 window.injectStackableBars = injectStackableBars;
-// isDarkTheme now provided by utils/tagStyleManager.js
-
 window.getAllTagsInUse = getAllTagsInUse;
 window.getUserAddedTags = getUserAddedTags;
 

@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.222.0",
+  "version": "0.222.6",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -375,6 +375,11 @@
           "type": "string",
           "default": "allow-scripts allow-same-origin allow-forms allow-popups",
           "description": "Sandbox policy for web preview iframes. Controls what the embedded page is allowed to do."
+        },
+        "markdown-kanban.embed.openAutomatically": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, browser embeds (iframes) load immediately. When disabled (default), embeds show a lightweight placeholder button that loads the iframe on click."
         },
         "markdown-kanban.openLinksInNewTab": {
           "type": "boolean",

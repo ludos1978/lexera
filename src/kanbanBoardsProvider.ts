@@ -41,7 +41,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
         // Subscribe to registry events
         this._disposables.push(
             this._registry.onBoardsChanged(() => this._sendStateToWebview()),
-            KanbanWebviewPanel.onDidChangeActivePanel(() => this._sendStateToWebview())
+            KanbanWebviewPanel.onDidChangeActivePanel(() => this._sendStateToWebview()),
+            vscode.window.onDidChangeActiveColorTheme(() => this._sendStateToWebview())
         );
     }
 
@@ -187,6 +188,9 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
         const activePanel = KanbanWebviewPanel.getActivePanel();
         const activeBoardUri = activePanel?.getCurrentDocumentUri()?.toString();
 
+        const themeKind = vscode.window.activeColorTheme.kind;
+        const isDark = themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast;
+
         this._view.webview.postMessage({
             type: 'state',
             boards: boardsData,
@@ -197,7 +201,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             defaultTagFilters: this._registry.defaultTagFilters,
             defaultCalendarSharing: this._registry.defaultCalendarSharing,
             hasActivePanel: KanbanWebviewPanel.getAllPanels().length > 0,
-            activeBoardUri
+            activeBoardUri,
+            isDark
         });
     }
 
@@ -228,7 +233,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             if (color) {
                 (board.boardSettings as any)[settingKey] = color;
             } else {
-                delete (board.boardSettings as any)[settingKey];
+                // Set to empty string so updateYamlWithBoardSettings removes the line
+                (board.boardSettings as any)[settingKey] = '';
             }
             const updatedYaml = MarkdownKanbanParser.updateYamlWithBoardSettings(board.yamlHeader, board.boardSettings);
             const updatedContent = content.replace(/^---[\s\S]*?---/, updatedYaml);
@@ -280,6 +286,12 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
         const stringUtilsUri = webview.asWebviewUri(
             vscode.Uri.joinPath(assetRoot, 'utils', 'stringUtils.js')
         );
+        const colorUtilsUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(assetRoot, 'utils', 'colorUtils.js')
+        );
+        const colorPickerUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(assetRoot, 'utils', 'colorPickerComponent.js')
+        );
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(assetRoot, 'boardsPanel.js')
         );
@@ -317,6 +329,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
     </div>
 
     <script nonce="${nonce}" src="${stringUtilsUri}"></script>
+    <script nonce="${nonce}" src="${colorUtilsUri}"></script>
+    <script nonce="${nonce}" src="${colorPickerUri}"></script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

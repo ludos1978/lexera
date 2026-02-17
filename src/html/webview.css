@@ -2430,6 +2430,34 @@ figure:has(.diagram-placeholder .image-not-found) {
   border: none;
 }
 
+/* Embed placeholder overlay — shown when openAutomatically is false */
+.embed-activate-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: var(--vscode-editor-background);
+  cursor: pointer;
+}
+
+.embed-activate-btn {
+  padding: 12px 24px;
+  border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.05));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  cursor: pointer;
+  font-size: 0.9em;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embed-activate-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.1));
+}
+
 /* Responsive embed height adjustments */
 @media (max-width: 600px) {
   .embed-frame-wrapper {

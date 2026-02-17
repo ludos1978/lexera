@@ -54,6 +54,14 @@ export class EmbedPlugin implements EmbedPluginInterface {
     }
 
     /**
+     * Get whether embeds should load automatically
+     */
+    getOpenAutomatically(): boolean {
+        const config = this.getConfig();
+        return config?.openAutomatically ?? false;
+    }
+
+    /**
      * Get web preview configuration from config
      */
     getWebPreviewConfig(): { enabled: boolean; mode: 'embed' | 'iframe'; height: string; sandbox: string } {
@@ -69,10 +77,11 @@ export class EmbedPlugin implements EmbedPluginInterface {
     /**
      * Get config subset for frontend webview sync
      */
-    getWebviewConfig(): { knownDomains: string[]; defaultIframeAttributes: Record<string, string | boolean | number>; webPreview: { enabled: boolean; mode: string; height: string; sandbox: string } } {
+    getWebviewConfig(): { knownDomains: string[]; defaultIframeAttributes: Record<string, string | boolean | number>; openAutomatically: boolean; webPreview: { enabled: boolean; mode: string; height: string; sandbox: string } } {
         return {
             knownDomains: this.getKnownDomains(),
             defaultIframeAttributes: this.getDefaultIframeAttributes(),
+            openAutomatically: this.getOpenAutomatically(),
             webPreview: this.getWebPreviewConfig()
         };
     }

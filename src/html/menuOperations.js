@@ -2497,18 +2497,17 @@ function updateTaskDisplayImmediate(taskId, newTitle, isActive, tagName) {
 
 function updateTagChipStyle(button, tagName, isActive) {
     const config = window.getTagConfig ? window.getTagConfig(tagName) : null;
-    const isDarkTheme = document.body.classList.contains('vscode-dark') || 
-                       document.body.classList.contains('vscode-high-contrast');
-    
+    const isDark = window.isDarkTheme();
+
     let bgColor = '#666';
     let textColor = '#fff';
-    
+
     if (config) {
-        const themeKey = isDarkTheme ? 'dark' : 'light';
+        const themeKey = isDark ? 'dark' : 'light';
         const themeColors = config[themeKey] || config.light || {};
         bgColor = themeColors.background || '#666';
         textColor = themeColors.text || '#fff';
-    } else if (isDarkTheme) {
+    } else if (isDark) {
         bgColor = '#555';
         textColor = '#ddd';
     } else {
@@ -3009,10 +3008,8 @@ function updateTagButtonAppearance(id, type, tagName, isActive) {
     let bgDark = null;
     
     if (config) {
-        const isDarkTheme = document.body.classList.contains('vscode-dark') || 
-                           document.body.classList.contains('vscode-high-contrast');
-        const themeKey = isDarkTheme ? 'dark' : 'light';
-        
+        const themeKey = window.isDarkTheme() ? 'dark' : 'light';
+
         // Use the appropriate color config based on type (card or column)
         let colorConfig = null;
         if (type === 'column' && config.column) {
@@ -3133,9 +3130,7 @@ function updateCornerBadgesImmediate(elementId, elementType, newTitle) {
 
             if (config && config.cornerBadge) {
                 // Get theme colors for this tag
-                const isDarkTheme = document.body.classList.contains('vscode-dark') ||
-                                    document.body.classList.contains('vscode-high-contrast');
-                const themeKey = isDarkTheme ? 'dark' : 'light';
+                const themeKey = window.isDarkTheme() ? 'dark' : 'light';
                 const themeColors = config[themeKey] || config.light || {};
 
                 // Fallback to themeColors.background if badge.color is not defined (like other tags)
@@ -3753,10 +3748,7 @@ function updateAllVisualTagElements(element, allTags, elementType) {
             allTags.forEach(tag => {
                 const config = window.getTagConfig(tag);
                 if (config && config.cornerBadge) {
-                    // Get theme colors for this tag
-                    const isDarkTheme = document.body.classList.contains('vscode-dark') ||
-                                        document.body.classList.contains('vscode-high-contrast');
-                    const themeKey = isDarkTheme ? 'dark' : 'light';
+                    const themeKey = window.isDarkTheme() ? 'dark' : 'light';
                     const themeColors = config[themeKey] || config.light || {};
 
                     // Fallback to themeColors.background if badge.color is not defined (like other tags)

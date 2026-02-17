@@ -455,7 +455,10 @@ export class MarkdownKanbanParser {
         // Update existing setting only when explicitly provided.
         // If missing from `settings`, preserve existing YAML value to avoid accidental data loss.
         if (settingsToAdd[key] !== undefined) {
-          result.push(`${key}: ${String(settingsToAdd[key])}`);
+          // Empty string means "remove this setting" — skip the line
+          if (settingsToAdd[key] !== '') {
+            result.push(`${key}: ${String(settingsToAdd[key])}`);
+          }
           delete settingsToAdd[key];
         } else {
           result.push(line);
@@ -471,7 +474,7 @@ export class MarkdownKanbanParser {
       const newSettings: string[] = [];
       for (const key of BOARD_SETTING_KEYS) {
         const value = settingsToAdd[key];
-        if (value !== undefined) {
+        if (value !== undefined && value !== '') {
           newSettings.push(`${key}: ${String(value)}`);
         }
       }

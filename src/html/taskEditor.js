@@ -1639,7 +1639,7 @@ class TaskEditor {
 
     _setupWysiwygHandlers(editor, wysiwygContainer, containerElement) {
         const dom = editor.getViewDom();
-        dom._ignoreNextRootBlur = true;
+        dom._ignoreNextRootBlur = false; // disabled for testing - was true to handle VS Code webview focus quirk
 
         dom.addEventListener('blur', () => {
             if (this.isTransitioning) { return; }
@@ -2061,7 +2061,7 @@ class TaskEditor {
         if (wysiwygContext?.editor) {
             this._setupWysiwygHandlers(wysiwygContext.editor, wysiwygContext.container, containerElement);
         } else {
-            editElement._ignoreNextRootBlur = true;
+            editElement._ignoreNextRootBlur = false; // disabled for testing - was true to handle VS Code webview focus quirk
             this._setupInputHandler(editElement, containerElement);
             this._setupBlurHandler(editElement);
             this._setupMouseHandlers(editElement);

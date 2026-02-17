@@ -2005,7 +2005,7 @@ function applyBoardColor(colorLegacy, colorDark, colorLight) {
         _boardColorLight = colorLight;
     }
     if (!document.body) return;
-    const dark = typeof window.isDarkTheme === 'function' ? window.isDarkTheme() : true;
+    const dark = window.isDarkTheme();
     const color = dark ? (_boardColorDark || _boardColorLegacy) : (_boardColorLight || _boardColorLegacy);
     if (color) {
         document.body.style.setProperty('--board-color', color);
@@ -2014,12 +2014,9 @@ function applyBoardColor(colorLegacy, colorDark, colorLight) {
     }
 }
 
-// Re-apply board color when VS Code theme changes (dark ↔ light)
-if (typeof MutationObserver !== 'undefined') {
-    new MutationObserver(() => {
-        applyBoardColor();
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-}
+// Board color theme observer removed — applyBoardColor() is now called
+// from the document.body class observer (line ~5462) which correctly
+// detects VS Code theme changes on the <body> element.
 
 // Arrow key focus scroll setting
 let currentArrowKeyFocusScroll = 'center'; // Default to center
@@ -2941,6 +2938,11 @@ if (!webviewEventListenersInitialized) {
                     window.currentArrowKeyFocusScroll = 'center';
                 }
 
+                // Set authoritative theme from backend before applying board color
+                if (message.isDark !== undefined && typeof window.setIsDark === 'function') {
+                    window.setIsDark(message.isDark);
+                }
+
                 // Apply board color tint
                 applyBoardColor(message.boardColor, message.boardColorDark, message.boardColorLight);
 
@@ -3194,6 +3196,18 @@ if (!webviewEventListenersInitialized) {
             // Cache shortcuts for taskEditor to use
             window.cachedShortcuts = message.shortcuts || {};
             break;
+
+        case 'themeChanged': {
+            if (typeof window.setIsDark === 'function') {
+                window.setIsDark(message.isDark);
+            }
+            window.updateTagStylesForTheme();
+            applyBoardColor();
+            if (typeof window.assignTitleBarColors === 'function') {
+                window.assignTitleBarColors();
+            }
+            break;
+        }
 
         case 'configurationUpdate': {
             // ⚠️ CONFIGURATION REFRESH - Cache all workspace settings
@@ -5460,6 +5474,8 @@ if (typeof MutationObserver !== 'undefined') {
             if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                 // Check if the body class actually changed (theme change)
                 window.updateTagStylesForTheme();
+                // Re-apply board color for the new theme (dark ↔ light)
+                applyBoardColor();
                 // Re-generate header/footer title bar colors for new theme
                 if (typeof window.assignTitleBarColors === 'function') {
                     window.assignTitleBarColors();

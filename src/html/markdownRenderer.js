@@ -409,6 +409,9 @@ let webPreviewConfig = {
     sandbox: 'allow-scripts allow-same-origin allow-forms allow-popups'
 };
 
+// Whether embeds load automatically or show a placeholder button first
+let embedOpenAutomatically = false;
+
 /**
  * Update embed configuration from settings
  * Called when configuration is received from the extension
@@ -426,10 +429,48 @@ function updateEmbedConfig(config) {
     if (config && config.webPreview && typeof config.webPreview === 'object') {
         webPreviewConfig = { ...webPreviewConfig, ...config.webPreview };
     }
+    if (config && typeof config.openAutomatically === 'boolean') {
+        embedOpenAutomatically = config.openAutomatically;
+    }
 }
 
 // Expose the config update function globally for the webview to call
 window.updateEmbedConfig = updateEmbedConfig;
+
+/**
+ * Render an embed placeholder overlay instead of an iframe.
+ * The placeholder shows a button that, when clicked, activates the real iframe.
+ * @param {string} url - The URL to display and eventually load
+ * @param {string} iframeHtml - The full iframe HTML to insert on activation
+ * @returns {string} HTML for the placeholder overlay
+ */
+function _renderEmbedPlaceholder(url, iframeHtml) {
+    let displayUrl = url;
+    try {
+        displayUrl = new URL(url).hostname.replace('www.', '');
+    } catch (e) { /* keep full url */ }
+    const escapedIframeHtml = escapeHtml(iframeHtml);
+    return `<div class="embed-activate-overlay" data-iframe-html="${escapedIframeHtml}">
+        <button class="embed-activate-btn" title="${escapeHtml(url)}">Open ${escapeHtml(displayUrl)}</button>
+    </div>`;
+}
+
+// Delegated click handler for embed placeholder activation
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.embed-activate-btn');
+    if (!btn) return;
+    const overlay = btn.closest('.embed-activate-overlay');
+    if (!overlay) return;
+    const iframeHtml = overlay.getAttribute('data-iframe-html');
+    if (!iframeHtml) return;
+    // Create a temporary container to parse the iframe HTML
+    const temp = document.createElement('div');
+    temp.innerHTML = iframeHtml;
+    const iframe = temp.firstElementChild;
+    if (iframe) {
+        overlay.replaceWith(iframe);
+    }
+});
 
 /**
  * Convert a domain pattern (with wildcards) to a regex
@@ -1031,7 +1072,7 @@ function renderEmbed(embedInfo, originalSrc, alt, title) {
             <button class="embed-menu-btn" data-action="embed-menu" title="Embed options">☰</button>
         </div>
         <div class="embed-frame-wrapper">
-            <iframe ${iframeAttrs}></iframe>
+            ${embedOpenAutomatically ? `<iframe ${iframeAttrs}></iframe>` : _renderEmbedPlaceholder(url, `<iframe ${iframeAttrs}></iframe>`)}
         </div>
         ${captionHtml}
     </div>`;
@@ -1065,8 +1106,10 @@ function renderWebPreview(url, alt, title) {
     const captionHtml = title ? `<div class="web-preview-caption media-caption">${escapeHtml(title)}</div>` : '';
     const titleAttr = alt ? ` title="${escapeHtml(alt)}"` : '';
 
+    const iframeHtml = `<iframe src="${escapedUrl}" sandbox="${escapeHtml(sandbox)}" width="100%" height="${escapeHtml(height)}" frameborder="0" loading="lazy"${titleAttr} onerror="window._handleIframeError(this,'${escapedUrl.replace(/'/g, "\\'")}')"></iframe>`;
+
     return `<div class="web-preview-container">
-        <iframe src="${escapedUrl}" sandbox="${escapeHtml(sandbox)}" width="100%" height="${escapeHtml(height)}" frameborder="0" loading="lazy"${titleAttr} onerror="window._handleIframeError(this,'${escapedUrl.replace(/'/g, "\\'")}')"></iframe>
+        ${embedOpenAutomatically ? iframeHtml : _renderEmbedPlaceholder(url, iframeHtml)}
         ${captionHtml}
     </div>`;
 }

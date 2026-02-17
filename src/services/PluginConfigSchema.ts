@@ -28,6 +28,7 @@ export interface EmbedPluginConfig {
     knownDomains: string[];
     defaultIframeAttributes: Record<string, string | boolean | number>;
     exportHandling: 'url' | 'fallback' | 'remove';
+    openAutomatically: boolean;
     webPreview: {
         enabled: boolean;
         mode: 'embed' | 'iframe';
@@ -119,6 +120,7 @@ export const PLUGIN_CONFIG_SCHEMAS: Record<string, PluginConfigSchemaEntry> = {
                 referrerpolicy: 'strict-origin-when-cross-origin'
             },
             exportHandling: 'url',
+            openAutomatically: false,
             webPreview: {
                 enabled: true,
                 mode: 'embed',
@@ -130,6 +132,7 @@ export const PLUGIN_CONFIG_SCHEMAS: Record<string, PluginConfigSchemaEntry> = {
             knownDomains: 'embed.knownDomains',
             defaultIframeAttributes: 'embed.defaultIframeAttributes',
             exportHandling: 'embed.exportHandling',
+            openAutomatically: 'embed.openAutomatically',
             'webPreview.enabled': 'embed.webPreview.enabled',
             'webPreview.mode': 'embed.webPreview.mode',
             'webPreview.height': 'embed.webPreview.height',

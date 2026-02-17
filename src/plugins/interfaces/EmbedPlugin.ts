@@ -36,6 +36,7 @@ export interface EmbedPluginInterface {
     getWebviewConfig(): {
         knownDomains: string[];
         defaultIframeAttributes: Record<string, string | boolean | number>;
+        openAutomatically: boolean;
         webPreview: { enabled: boolean; mode: string; height: string; sandbox: string };
     };
 

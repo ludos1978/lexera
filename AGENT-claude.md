@@ -1,4 +1,6 @@
 ## Most important RULEs
+- Never guess anything, allways verify the code.
+- DONT USE TIMING IN ANY CIRCUMSTANCE EXCEPT WHEN THERE IS NO ALTERNATIVE. YOU MUST ASK FOR PERMISSION FROM THE USER TO ADD TIMING BASED CODE!!! EVERY TIME!!!
 - Dont modify the AGENT.md, except on explicit user request which must mention the AGENT.md filename!
 - Dont solve problems that are not given explicitly in the task. If additional changes are required to make it work the way to intend, then you are obliged to ask the user for permission.
 - for any new function you want to create, explain why you need to add a new one and why you cannot modify the most similar ones to be reused. You must verify all functions for similar features and logic before adding any new function. This is very important!

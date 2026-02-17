@@ -181,9 +181,15 @@ export class WebviewUpdateService {
         // BoardUpdateMessage type matches getBoardViewConfig() output
         logger.debug('[WebviewUpdateService._sendBoardUpdateMessage] viewConfig.columnWidth:', (viewConfig as any).columnWidth);
 
+        // Include authoritative theme kind from VS Code API
+        // (body class can be stale with retainContextWhenHidden)
+        const themeKind = vscode.window.activeColorTheme.kind;
+        const isDark = themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast;
+
         const message = {
             type: 'boardUpdate' as const,
             board: board,
+            isDark,
             ...(mainFilePath && { mainFilePath }),
             ...(viewConfig as Partial<BoardUpdateMessage>),
             // Optional fields for full board loads

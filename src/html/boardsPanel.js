@@ -180,7 +180,7 @@
             html += '<div class="board-item" data-file-path="' + escapeHtml(board.filePath) + '">';
 
             // Header row
-            var isDark = document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast'));
+            var isDark = currentState.isDark !== undefined ? currentState.isDark : (document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')));
             var activeColor = isDark ? (board.boardColorDark || board.boardColor) : (board.boardColorLight || board.boardColor);
             var headerStyle = activeColor ? ' style="background-color: ' + escapeHtml(activeColor) + ';"' : '';
             var isActiveBoard = currentState.activeBoardUri && currentState.activeBoardUri === board.uri;
@@ -249,13 +249,14 @@
             var hasLight = board.boardColorLight || board.boardColor;
             html += '<span class="board-color-group">';
             html += '<span class="codicon codicon-sun" title="Light mode"></span>';
-            html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" value="' + escapeHtml(lightVal) + '">';
+            html += '<div class="color-picker-swatch" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" data-color="' + escapeHtml(lightVal) + '" style="background-color: ' + escapeHtml(lightVal) + ';"></div>';
             if (hasLight) {
                 html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorLight" title="Clear">✕</button>';
             }
             html += '</span>';
             html += '<span class="board-color-group">';
-            html += '<input type="color" class="board-color-input" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" value="' + escapeHtml(darkVal) + '">';
+            html += '<span class="codicon codicon-color-mode" title="Dark mode"></span>';
+            html += '<div class="color-picker-swatch" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" data-color="' + escapeHtml(darkVal) + '" style="background-color: ' + escapeHtml(darkVal) + ';"></div>';
             if (hasDark) {
                 html += '<button class="board-color-clear" data-file-path="' + escapeHtml(board.filePath) + '" data-setting-key="boardColorDark" title="Clear">✕</button>';
             }
@@ -399,14 +400,21 @@
             });
         });
 
-        // Color picker
-        boardsList.querySelectorAll('.board-color-input').forEach(input => {
-            input.addEventListener('change', () => {
-                vscode.postMessage({
-                    type: 'setBoardColor',
-                    filePath: input.dataset.filePath,
-                    settingKey: input.dataset.settingKey || 'boardColor',
-                    color: input.value
+        // Color picker swatches
+        boardsList.querySelectorAll('.color-picker-swatch').forEach(swatch => {
+            swatch.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const color = swatch.dataset.color || '#000000';
+                window.colorPickerComponent.open(swatch, color, (newColor) => {
+                    _markInteracting();
+                    swatch.style.backgroundColor = newColor;
+                    swatch.dataset.color = newColor;
+                    vscode.postMessage({
+                        type: 'setBoardColor',
+                        filePath: swatch.dataset.filePath,
+                        settingKey: swatch.dataset.settingKey || 'boardColor',
+                        color: newColor
+                    });
                 });
             });
         });
@@ -415,6 +423,13 @@
         boardsList.querySelectorAll('.board-color-clear').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                // Update sibling swatch visually
+                const group = btn.closest('.board-color-group');
+                const swatch = group ? group.querySelector('.color-picker-swatch') : null;
+                if (swatch) {
+                    swatch.style.backgroundColor = '';
+                    swatch.dataset.color = '';
+                }
                 vscode.postMessage({
                     type: 'setBoardColor',
                     filePath: btn.dataset.filePath,

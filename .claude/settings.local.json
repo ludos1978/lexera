@@ -189,7 +189,8 @@
       "Bash(do if grep -q \"Mentoring\" \"$f\")",
       "Bash(then echo \"MATCH: $f\")",
       "Bash(pkill:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(npx esbuild:*)"
     ],
     "deny": [],
     "ask": []

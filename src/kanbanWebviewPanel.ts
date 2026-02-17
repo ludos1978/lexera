@@ -614,6 +614,11 @@ export class KanbanWebviewPanel {
                 void this._refreshFileContextOnFocus();
             }
         }));
+
+        this._disposables.push(vscode.window.onDidChangeActiveColorTheme((theme) => {
+            const isDark = theme.kind === vscode.ColorThemeKind.Dark || theme.kind === vscode.ColorThemeKind.HighContrast;
+            this._webviewBridge.send({ type: 'themeChanged', isDark });
+        }));
     }
 
     private async _refreshFileContextOnFocus(): Promise<void> {

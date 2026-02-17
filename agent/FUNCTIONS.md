@@ -9,6 +9,40 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-17) - Custom HSL Color Picker
+
+### Modified: `src/html/utils/colorUtils.js`
+Added HSL/HSV conversion methods to the existing `ColorUtils` class:
+- `rgbToHsl(r, g, b)` → `{h: 0-360, s: 0-100, l: 0-100}`
+- `hslToRgb(h, s, l)` → `{r, g, b}` (0-255)
+- `hexToHsl(hex)` → `{h, s, l}` or null
+- `hslToHex(h, s, l)` → hex string
+- `rgbToHsv(r, g, b)` → `{h: 0-360, s: 0-100, v: 0-100}`
+- `hsvToRgb(h, s, v)` → `{r, g, b}` (0-255)
+
+### New File: `src/html/utils/colorPickerComponent.js`
+Reusable custom color picker popup (singleton on `window.colorPickerComponent`).
+- `open(triggerElement, initialHexColor, onChangeCallback)` — opens popup anchored to trigger
+- `close()` — closes popup
+- `isOpen()` — returns boolean
+- Internal HSV model; display defaults to HSL mode
+- Mode toggle cycles HSL → RGB → Hex
+- Canvas gradient area (204x150) + hue bar (204x12)
+- Self-injects CSS via `<style id="color-picker-styles">`
+
+### Modified: `src/kanbanBoardsProvider.ts`
+- Added `colorUtilsUri` and `colorPickerUri` script loading in `_getHtmlForWebview()`
+
+### Modified: `src/html/boardsPanel.js`
+- Replaced `<input type="color" class="board-color-input">` with `<div class="color-picker-swatch">` in rendering
+- Replaced `.board-color-input` change listener with `.color-picker-swatch` click listener using `window.colorPickerComponent.open()`
+- Clear button now updates sibling swatch visually
+
+### Modified: `src/html/boardsPanel.css`
+- Replaced `.board-color-input` styles with `.color-picker-swatch` styles
+
+---
+
 ## Recent Updates (2026-02-14) - WebDAV Sync Toolkit (ludos-sync)
 
 New standalone WebDAV sync server and VS Code integration for bidirectional bookmark sync via Floccus.
@@ -24,13 +58,15 @@ Shared types and parser between VS Code extension and ludos-sync.
 ### New Package: `packages/ludos-sync/`
 Standalone WebDAV server for bookmark sync via Floccus.
 
-- `packages/ludos-sync/src/mappers/XbelMapper.ts-XbelMapper` — Bidirectional XBEL XML ↔ KanbanColumn/KanbanTask mapping
-  - `parseXbel(xml)` — Parse XBEL XML to structured XbelRoot
-  - `generateXbel(root)` — Generate XBEL XML from structured data
-  - `xbelToColumns(root)` — Convert XBEL folders to kanban columns
-  - `columnsToXbel(columns)` — Convert kanban columns to XBEL folders
-  - `mergeXbelIntoColumns(incoming, existing)` — Merge incoming XBEL into existing columns by XBEL ID
-  - `extractXbelId(content)` — Extract XBEL ID from task link title attribute
+- `packages/ludos-sync/src/mappers/XbelMapper.ts-XbelMapper` — Bidirectional XBEL XML ↔ KanbanColumn/KanbanTask mapping. Top-level folders=columns, sub-folder paths=task titles, bookmarks aggregated as links per task.
+  - `parseXbel(xml)` — Parse XBEL XML into tree of XbelFolder nodes (preserves nesting)
+  - `generateXbel(root)` — Generate nested XBEL XML from tree structure
+  - `xbelToColumns(root)` — Convert XBEL tree to kanban columns (sub-paths as task first lines, aggregated bookmark links)
+  - `columnsToXbel(columns)` — Convert kanban columns to nested XBEL tree (parses sub-paths + links from tasks)
+  - `mergeXbelIntoColumns(incoming, existing)` — Merge incoming XBEL into existing columns by sub-path matching
+  - `extractXbelId(content)` — Extract first XBEL ID from task content
+  - `extractXbelIds(content)` — Extract all XBEL IDs from multi-line task content
+  - `extractTaskSubPath(content)` — Extract sub-path from task's first line (empty if first line is a link)
 
 - `packages/ludos-sync/src/auth/LocalhostAuth.ts-LocalhostAuth` — Nephele authenticator: accept localhost only
   - `authenticate(request, response)` — Check remote address is 127.0.0.1/::1

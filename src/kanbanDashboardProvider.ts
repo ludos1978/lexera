@@ -84,6 +84,12 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 this._refreshData();
             })
         );
+
+        this._disposables.push(
+            vscode.window.onDidChangeActiveColorTheme(() => {
+                this._refreshData();
+            })
+        );
     }
 
     /**
@@ -321,10 +327,14 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             sortMode
         };
 
+        const themeKind = vscode.window.activeColorTheme.kind;
+        const isDark = themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast;
+
         this._view.webview.postMessage({
             type: 'dashboardData',
             data,
-            recentSearches: registry.recentSearches
+            recentSearches: registry.recentSearches,
+            isDark
         });
     }
 
@@ -1148,6 +1158,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         let dashboardData = null;
+        let isDarkTheme = false;
 
         // Fold state tracking - persists across re-renders
         const collapsedGroups = new Set();
@@ -1233,6 +1244,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (message.type === 'dashboardData') {
                 dashboardData = message.data;
                 recentSearchesData = message.recentSearches || [];
+                if (message.isDark !== undefined) { isDarkTheme = message.isDark; }
                 renderDashboard();
                 renderRecentSearches();
             } else if (message.type === 'searchResults') {
@@ -1289,8 +1301,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (!dashboardData || !dashboardData.boardSummaries) return '';
             const summary = dashboardData.boardSummaries.find(s => s.boardName === boardName);
             if (!summary) return '';
-            const isDark = document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast'));
-            return (isDark ? (summary.boardColorDark || summary.boardColor) : (summary.boardColorLight || summary.boardColor)) || '';
+            return (isDarkTheme ? (summary.boardColorDark || summary.boardColor) : (summary.boardColorLight || summary.boardColor)) || '';
         }
 
         function boardColorDot(boardName) {

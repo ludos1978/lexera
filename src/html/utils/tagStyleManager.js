@@ -63,12 +63,20 @@ function getEditorBackground() {
 }
 
 /**
- * Helper function to check if dark theme is active
+ * Helper function to check if dark theme is active.
+ * Uses the authoritative value sent from the VS Code backend via
+ * vscode.window.activeColorTheme.kind, because the webview body class
+ * can be unreliable in production builds.
  * @returns {boolean} True if dark theme is active
  */
+let _isDarkFromBackend = null;
 function isDarkTheme() {
+    if (_isDarkFromBackend !== null) return _isDarkFromBackend;
     return document.body.classList.contains('vscode-dark') ||
            document.body.classList.contains('vscode-high-contrast');
+}
+function setIsDark(value) {
+    _isDarkFromBackend = value;
 }
 
 // ============================================================================
@@ -209,8 +217,7 @@ function generateTagStyles() {
         return '';
     }
 
-    const isDark = document.body.classList.contains('vscode-dark') ||
-                        document.body.classList.contains('vscode-high-contrast');
+    const isDark = isDarkTheme();
     const themeKey = isDark ? 'dark' : 'light';
 
     let styles = '';
@@ -789,8 +796,7 @@ function ensureTagStyleExists(tagName) {
         return;
     }
 
-    const isDark = document.body.classList.contains('vscode-dark') ||
-                        document.body.classList.contains('vscode-high-contrast');
+    const isDark = isDarkTheme();
     const themeKey = isDark ? 'dark' : 'light';
 
     // Check if style already exists
@@ -1047,6 +1053,7 @@ function updateTagStylesForTheme() {
 
 window.getEditorBackground = getEditorBackground;
 window.isDarkTheme = isDarkTheme;
+window.setIsDark = setIsDark;
 window.getTagConfig = getTagConfig;
 window.generateTagStyles = generateTagStyles;
 window.applyTagStyles = applyTagStyles;

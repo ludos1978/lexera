@@ -153,6 +153,9 @@ class ColorUtils {
      * @returns {boolean} True if dark mode is active
      */
     _isDarkMode() {
+        if (typeof window !== 'undefined' && typeof window.isDarkTheme === 'function') {
+            return window.isDarkTheme();
+        }
         if (typeof document !== 'undefined' && document.body) {
             return document.body.classList.contains('vscode-dark') ||
                    document.body.classList.contains('vscode-high-contrast');
@@ -243,6 +246,127 @@ class ColorUtils {
         // Multiple layered shadows at same position create a crisp outline effect
         const shadow = `${outlineColor} 0px 0px ${blurRadius}px`;
         return Array(layers).fill(shadow).join(', ');
+    }
+
+    /**
+     * Convert RGB to HSL
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @returns {Object} {h: 0-360, s: 0-100, l: 0-100}
+     */
+    rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const l = (max + min) / 2;
+        if (max === min) return { h: 0, s: 0, l: Math.round(l * 100) };
+        const d = max - min;
+        const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        let h;
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+        return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+    }
+
+    /**
+     * Convert HSL to RGB
+     * @param {number} h - Hue (0-360)
+     * @param {number} s - Saturation (0-100)
+     * @param {number} l - Lightness (0-100)
+     * @returns {Object} {r, g, b} each 0-255
+     */
+    hslToRgb(h, s, l) {
+        h /= 360; s /= 100; l /= 100;
+        if (s === 0) {
+            const v = Math.round(l * 255);
+            return { r: v, g: v, b: v };
+        }
+        const hue2rgb = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1/6) return p + (q - p) * 6 * t;
+            if (t < 1/2) return q;
+            if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return {
+            r: Math.round(hue2rgb(p, q, h + 1/3) * 255),
+            g: Math.round(hue2rgb(p, q, h) * 255),
+            b: Math.round(hue2rgb(p, q, h - 1/3) * 255)
+        };
+    }
+
+    /**
+     * Convert hex to HSL
+     * @param {string} hex - Hex color string
+     * @returns {Object|null} {h, s, l} or null if invalid
+     */
+    hexToHsl(hex) {
+        const rgb = this.hexToRgb(hex);
+        if (!rgb) return null;
+        return this.rgbToHsl(rgb.r, rgb.g, rgb.b);
+    }
+
+    /**
+     * Convert HSL to hex
+     * @param {number} h - Hue (0-360)
+     * @param {number} s - Saturation (0-100)
+     * @param {number} l - Lightness (0-100)
+     * @returns {string} Hex color string with #
+     */
+    hslToHex(h, s, l) {
+        const rgb = this.hslToRgb(h, s, l);
+        return this.rgbToHex(rgb.r, rgb.g, rgb.b);
+    }
+
+    /**
+     * Convert RGB to HSV
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @returns {Object} {h: 0-360, s: 0-100, v: 0-100}
+     */
+    rgbToHsv(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const d = max - min;
+        const v = max;
+        const s = max === 0 ? 0 : d / max;
+        if (max === min) return { h: 0, s: 0, v: Math.round(v * 100) };
+        let h;
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+        return { h: Math.round(h * 360), s: Math.round(s * 100), v: Math.round(v * 100) };
+    }
+
+    /**
+     * Convert HSV to RGB
+     * @param {number} h - Hue (0-360)
+     * @param {number} s - Saturation (0-100)
+     * @param {number} v - Value (0-100)
+     * @returns {Object} {r, g, b} each 0-255
+     */
+    hsvToRgb(h, s, v) {
+        h /= 360; s /= 100; v /= 100;
+        const i = Math.floor(h * 6);
+        const f = h * 6 - i;
+        const p = v * (1 - s);
+        const q = v * (1 - f * s);
+        const t = v * (1 - (1 - f) * s);
+        let r, g, b;
+        switch (i % 6) {
+            case 0: r = v; g = t; b = p; break;
+            case 1: r = q; g = v; b = p; break;
+            case 2: r = p; g = v; b = t; break;
+            case 3: r = p; g = q; b = v; break;
+            case 4: r = t; g = p; b = v; break;
+            case 5: r = v; g = p; b = q; break;
+        }
+        return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
     }
 
     /**
