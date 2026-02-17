@@ -2322,16 +2322,15 @@ class TaskEditor {
         if (stackChanged && typeof window.reorganizeStacksForColumn === 'function') {
             window.reorganizeStacksForColumn(columnId);
         } else {
-            // Other layout changes need full re-render
-            const savedEditor = this.currentEditor;
-            this.currentEditor = null;
-
-            if (typeof window.renderBoard === 'function' && window.cachedBoard) {
-                window.renderBoard();
-            }
-            this._requestStackLayoutRecalc(null, true);
-
-            this.currentEditor = savedEditor;
+            // Other layout changes need full re-render — defer until editing ends
+            window._pendingBoardRender = () => {
+                if (typeof window.renderBoard === 'function' && window.cachedBoard) {
+                    window.renderBoard();
+                }
+                if (typeof this._requestStackLayoutRecalc === 'function') {
+                    this._requestStackLayoutRecalc(null, true);
+                }
+            };
         }
     }
 

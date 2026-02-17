@@ -40,28 +40,15 @@ installCurrentBoardAlias();
  * @param {Node|null|undefined} node
  */
 function blurFocusedElementWithin(node) {
-    if (!node) {
-        return;
-    }
-
-    // CRITICAL: Never blur if there's an active inline editor
-    // The taskEditor manages its own focus and blurring it would close the editor
-    if (window.taskEditor?.currentEditor) {
-        return;
-    }
-
+    if (!node) { return; }
     const activeElement = document.activeElement;
-    if (!activeElement || activeElement === document.body || activeElement === document.documentElement) {
-        return;
-    }
-
-    const containsActive =
-        node === activeElement ||
-        (typeof node.contains === 'function' && node.contains(activeElement));
-
-    if (containsActive) {
-        activeElement.blur?.();
-    }
+    if (!activeElement || activeElement === document.body || activeElement === document.documentElement) { return; }
+    const containsActive = node === activeElement || (typeof node.contains === 'function' && node.contains(activeElement));
+    if (!containsActive) { return; }
+    // Protect focused form elements (inputs, textareas, contentEditable)
+    const tag = activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || activeElement.contentEditable === 'true') { return; }
+    activeElement.blur?.();
 }
 
 window.blurFocusedElementWithin = blurFocusedElementWithin;
@@ -143,6 +130,13 @@ let _pendingBoardRender = null;
 let _fullRenderCount = 0;
 let _skippedRenderCount = 0;
 
+// Expose _pendingBoardRender on window so overlay editor can trigger it on close
+Object.defineProperty(window, '_pendingBoardRender', {
+    get() { return _pendingBoardRender; },
+    set(v) { _pendingBoardRender = v; },
+    configurable: true
+});
+
 /**
  * Compute a structural fingerprint of board data.
  * Used to detect when board data actually changed vs redundant updates.
@@ -176,6 +170,9 @@ function isUserInteracting() {
     if (window.taskEditor?.currentEditor) return true;
     if (window.taskOverlayEditor?.isVisible?.()) return true;
 
+    // If interaction guard timer is running, user was recently interacting
+    if (_interactionGuardTimer) return true;
+
     const active = document.activeElement;
     if (active && active !== document.body && active !== document.documentElement) {
         const tag = active.tagName;
@@ -195,6 +192,15 @@ function isUserInteracting() {
 }
 
 /**
+ * Check specifically if the user is in an active editing session
+ * (inline editor or overlay editor). This is a stronger check than
+ * isUserInteracting - editing should NEVER be interrupted.
+ */
+function isEditing() {
+    return !!(window.taskEditor?.currentEditor || window.taskEditor?.isTransitioning || window.taskOverlayEditor?.isVisible?.());
+}
+
+/**
  * Signal that the user is interacting with the UI.
  * Defers any pending board renders until interaction ends.
  */
@@ -202,13 +208,20 @@ function markUserInteracting() {
     if (_interactionGuardTimer) clearTimeout(_interactionGuardTimer);
     _interactionGuardTimer = setTimeout(() => {
         _interactionGuardTimer = null;
+        // NEVER fire a deferred render while actively editing
+        if (isEditing()) {
+            if (_pendingBoardRender) {
+                window.kanbanDebug.log('[RENDER-GUARD] Still editing, keeping deferred render pending');
+            }
+            return;
+        }
         if (_pendingBoardRender) {
             const render = _pendingBoardRender;
             _pendingBoardRender = null;
             window.kanbanDebug.log('[RENDER-GUARD] Executing deferred render after interaction ended');
             render();
         }
-    }, 400);
+    }, 600);
 }
 
 function describeScrollTarget(element) {
@@ -1695,6 +1708,15 @@ window.isTaskEditorActive = false;
 window.setTaskEditorActive = function (isActive) {
     window.isTaskEditorActive = Boolean(isActive);
     updateActiveSpecialCharOverlay();
+
+    // When editing ends, execute any deferred render
+    if (!isActive && _pendingBoardRender && !isEditing()) {
+        const render = _pendingBoardRender;
+        _pendingBoardRender = null;
+        window.kanbanDebug.log('[RENDER-GUARD] Editing ended — executing deferred render');
+        // Use requestAnimationFrame to let editor cleanup complete first
+        requestAnimationFrame(() => render());
+    }
 };
 
 /**
@@ -2358,13 +2380,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupDragAndDrop();
 });
 
-// Helper function to check if we're currently in editing mode
-function isCurrentlyEditing() {
-    return window.taskEditor && window.taskEditor.currentEditor && 
-           window.taskEditor.currentEditor.element && 
-           window.taskEditor.currentEditor.element.style.display !== 'none';
-}
-
 // Queue focus actions until after render completes (avoids focusing on stale DOM)
 if (!window.postRenderFocusQueue) {
     window.postRenderFocusQueue = [];
@@ -2659,8 +2674,10 @@ if (!webviewEventListenersInitialized) {
 
             const previousBoard = window.cachedBoard;
 
-            // Clear card focus when board is updated
-            focusCard(null);
+            // Clear card focus when board is updated - but not during editing
+            if (!isEditing()) {
+                focusCard(null);
+            }
 
             // Initialize cache system - this is the SINGLE source of truth
             const isInitialLoad = !window.cachedBoard;
@@ -2992,7 +3009,6 @@ if (!webviewEventListenersInitialized) {
 
             // Save folding state before re-render
             saveCurrentFoldingState();
-            const isEditing = window.taskEditor && window.taskEditor.currentEditor;
 
             // Check if a targeted update was recently done - skip full render if so
             const timeSinceTargetedUpdate = Date.now() - lastTargetedUpdateTime;
@@ -3005,7 +3021,8 @@ if (!webviewEventListenersInitialized) {
                 _prevBoardFingerprint = newBoardFingerprint;
             }
 
-            if (!isEditing && !shouldSkipRender) {
+            // Render decision — renderBoard() internally skips+defers if inline editor is active
+            if (!shouldSkipRender) {
                 window.kanbanDebug.log('[RENDER-DEBUG] boardUpdate decision', {
                     isFullRefresh: message.isFullRefresh,
                     boardDataChanged,
@@ -3064,9 +3081,9 @@ if (!webviewEventListenersInitialized) {
                     };
 
                     // Check if user is interacting with UI (dropdowns, inputs, etc.)
-                    // Defer render to avoid destroying focus - unless it's a forced full refresh
+                    // Defer render to avoid destroying focus — only initial load bypasses
                     const userBusy = isUserInteracting();
-                    if (userBusy && !isFullRefresh && !isInitialLoad) {
+                    if (userBusy && !isInitialLoad) {
                         window.kanbanDebug.log('[RENDER-GUARD] Deferring board render - user is interacting');
                         _pendingBoardRender = doFullBoardRender;
                     } else {
@@ -3291,7 +3308,6 @@ if (!webviewEventListenersInitialized) {
             }
 
             // Regenerate burger menus with updated tag categories
-            // This updates the tag menu items without a full board re-render
             if (typeof window.regenerateAllBurgerMenus === 'function') {
                 window.regenerateAllBurgerMenus();
             }
@@ -3705,11 +3721,10 @@ if (!webviewEventListenersInitialized) {
                 const columnToRevert = window.cachedBoard.columns.find(c => c.id === message.columnId);
                 if (columnToRevert) {
                     columnToRevert.title = message.title;
-                    // Clear any pending changes for this column
                     if (window.pendingColumnChanges && window.pendingColumnChanges.has(message.columnId)) {
                         window.pendingColumnChanges.delete(message.columnId);
                     }
-                    // Re-render the column to show reverted title
+                    // renderSingleColumn skips+defers if it contains the inline editor
                     if (typeof window.renderSingleColumn === 'function') {
                         window.renderSingleColumn(message.columnId, columnToRevert);
                     } else if (typeof window.renderBoard === 'function') {
@@ -3730,21 +3745,16 @@ if (!webviewEventListenersInitialized) {
             break;
         case 'templateApplied':
             // Template was applied successfully
-            // Use SAME approach as insertColumnAtPosition (via handleTemplateApplied in dragDrop.js):
-            // 1. Render (columns at end)
-            // 2. Move columns to correct DOM position
-            // 3. syncColumnDataToDOMOrder()
-            // 4. finalizeColumnDrop() which calls normalizeAllStackTags()
             if (message.board) {
                 window.cachedBoard = message.board;
                 if (window.taskContentUtils?.hydrateBoardTasks) {
                     window.taskContentUtils.hydrateBoardTasks(window.cachedBoard);
                 }
+
+                // renderBoard skips+defers internally if inline editor is active
                 if (typeof window.renderBoard === 'function') {
                     window.renderBoard();
                 }
-
-                // Use the SAME function from dragDrop.js that has access to syncColumnDataToDOMOrder and finalizeColumnDrop
                 requestAnimationFrame(() => {
                     if (typeof window.handleTemplateApplied === 'function') {
                         window.handleTemplateApplied(message);
@@ -3843,9 +3853,9 @@ if (!webviewEventListenersInitialized) {
                         });
                     }
 
-                    // Check if user is currently editing
-                    const isEditing = window.taskEditor && window.taskEditor.currentEditor;
-                    const isEditingThisColumn = isEditing &&
+                    // Check if user is currently editing (inline or overlay)
+                    const isCurrentlyEditing = window.taskEditor?.currentEditor || window.taskOverlayEditor?.isVisible?.();
+                    const isEditingThisColumn = window.taskEditor?.currentEditor &&
                         window.taskEditor.currentEditor.type === 'column-title' &&
                         window.taskEditor.currentEditor.columnId === message.columnId;
 
@@ -3865,40 +3875,26 @@ if (!webviewEventListenersInitialized) {
                         }
                     }
 
-                    // CRITICAL: Always render when receiving include content or tasks
-                    // Even if user is editing, new include content MUST be shown
                     const hasIncludeContent = message.includeMode || message.includeFiles;
                     const hasNewTasks = message.tasks && message.tasks.length > 0;
-                    const forceRender = hasIncludeContent || hasNewTasks;
 
                     window.kanbanDebug.log('[kanban.webview.updateColumnContent.render]', {
                         columnId: message.columnId,
-                        isEditing: !!isEditing,
-                        forceRender: !!forceRender,
+                        isEditing: !!isCurrentlyEditing,
                         hasIncludeContent: !!hasIncludeContent,
                         hasNewTasks: !!hasNewTasks
                     });
 
-                    if (!isEditing || forceRender) {
-                        // If forcing render while editing, save current editor state
-                        if (isEditing && forceRender) {
-                            // Save and close current editor to prevent conflicts
-                            if (window.taskEditor && window.taskEditor.saveAndClose) {
-                                window.taskEditor.saveAndClose();
-                            }
-                        }
-
+                    {
                         // Re-render just this column
+                        // renderSingleColumn skips+defers if it contains the inline editor
                         if (typeof window.renderSingleColumn === 'function') {
                             window.renderSingleColumn(message.columnId, column);
-                        } else {
-                            if (typeof window.renderBoard === 'function') {
-                                window.renderBoard();
-                            }
+                        } else if (typeof window.renderBoard === 'function') {
+                            window.renderBoard();
                         }
 
                         // Unfold column if it's collapsed and we just received include content
-                        // This ensures user can see the newly loaded content immediately
                         if (hasIncludeContent && window.collapsedColumns && window.collapsedColumns.has(message.columnId)) {
                             const columnElement = document.querySelector(`[data-column-id="${message.columnId}"]`);
                             if (columnElement) {
@@ -3907,11 +3903,9 @@ if (!webviewEventListenersInitialized) {
                                 if (toggle) toggle.classList.remove('rotated');
                                 window.collapsedColumns.delete(message.columnId);
                                 if (window.columnFoldModes) window.columnFoldModes.delete(message.columnId);
-                                // Update global fold button state
                                 if (typeof window.updateGlobalColumnFoldButton === 'function') {
                                     window.updateGlobalColumnFoldButton();
                                 }
-                                // Save updated folding state
                                 if (window.saveCurrentFoldingState) window.saveCurrentFoldingState();
                             }
                         }
@@ -3943,15 +3937,6 @@ if (!webviewEventListenersInitialized) {
                         window.kanbanDebug.log('[TARGETED-UPDATE] updateColumnContent completed', {
                             columnId: message.columnId,
                             timestamp: lastTargetedUpdateTime
-                        });
-                    } else {
-
-                        // OPTIMIZATION 1: Tell backend this render was skipped
-                        vscode.postMessage({
-                            type: 'renderSkipped',
-                            reason: 'editing',
-                            itemType: 'column',
-                            itemId: message.columnId
                         });
                     }
                 }
@@ -4025,9 +4010,9 @@ if (!webviewEventListenersInitialized) {
                         foundTask.includeError = taskData.includeError;
                     }
 
-                    // Check if user is currently editing - if so, handle carefully
-                    const isEditing = window.taskEditor && window.taskEditor.currentEditor;
-                    const isEditingThisTask = isEditing && window.taskEditor.currentEditor.taskId === message.taskId;
+                    // Check if user is currently editing (inline or overlay) — never interrupt
+                    const isCurrentlyEditing = window.taskEditor?.currentEditor || window.taskOverlayEditor?.isVisible?.();
+                    const isEditingThisTask = window.taskEditor?.currentEditor && window.taskEditor.currentEditor.taskId === message.taskId;
 
                     // CRITICAL FIX: Update editor field value when content changes (e.g., path replacement)
                     // This ensures the edit field reflects the latest content after replacements
@@ -4078,50 +4063,33 @@ if (!webviewEventListenersInitialized) {
                         }
                     }
 
-                    if (!isEditing) {
-                        // Re-render just this task to reflect the update (not the entire column)
-                        if (typeof window.renderSingleTask === 'function') {
-                            window.renderSingleTask(message.taskId, foundTask, foundColumn.id);
-                        } else if (typeof renderSingleColumn === 'function') {
-                            // Fallback to column render if task render not available
-                            renderSingleColumn(foundColumn.id, foundColumn);
-                        } else {
-                            if (typeof window.renderBoard === 'function') {
-                                window.renderBoard();
-                            }
-                        }
+                    // renderSingleTask skips+defers if the task contains the inline editor
+                    if (typeof window.renderSingleTask === 'function') {
+                        window.renderSingleTask(message.taskId, foundTask, foundColumn.id);
+                    } else if (typeof renderSingleColumn === 'function') {
+                        renderSingleColumn(foundColumn.id, foundColumn);
+                    } else if (typeof window.renderBoard === 'function') {
+                        window.renderBoard();
+                    }
 
-                        // Recalculate stacked column heights after task content update (only this stack)
-                        if (typeof window.applyStackedColumnStyles === 'function') {
-                            requestAnimationFrame(() => {
-                                window.applyStackedColumnStyles(foundColumn.id);
-                            });
-                        }
-
-                        // OPTIMIZATION 3: Confirm successful render
-                        vscode.postMessage({
-                            type: 'renderCompleted',
-                            itemType: 'task',
-                            itemId: message.taskId
-                        });
-
-                        // Record targeted update timestamp to skip redundant full renders
-                        lastTargetedUpdateTime = Date.now();
-                        window.kanbanDebug.log('[TARGETED-UPDATE] updateTaskContent completed', {
-                            taskId: message.taskId,
-                            columnId: foundColumn.id,
-                            timestamp: lastTargetedUpdateTime
-                        });
-                    } else {
-
-                        // OPTIMIZATION 1: Tell backend this render was skipped
-                        vscode.postMessage({
-                            type: 'renderSkipped',
-                            reason: 'editing',
-                            itemType: 'task',
-                            itemId: message.taskId
+                    if (typeof window.applyStackedColumnStyles === 'function') {
+                        requestAnimationFrame(() => {
+                            window.applyStackedColumnStyles(foundColumn.id);
                         });
                     }
+
+                    vscode.postMessage({
+                        type: 'renderCompleted',
+                        itemType: 'task',
+                        itemId: message.taskId
+                    });
+
+                    lastTargetedUpdateTime = Date.now();
+                    window.kanbanDebug.log('[TARGETED-UPDATE] updateTaskContent completed', {
+                        taskId: message.taskId,
+                        columnId: foundColumn.id,
+                        timestamp: lastTargetedUpdateTime
+                    });
                 }
             }
             break;
@@ -4173,12 +4141,12 @@ if (!webviewEventListenersInitialized) {
                 }
 
                 // Re-render all dirty columns (after cache is updated)
+                // renderBoard/renderSingleColumn/renderSingleTask skip+defer if inline editor is in the way
                 const renderedColumnIds = new Set();
                 if (message.columns.length > 0) {
                     const columnIds = message.columns.map(col => col.columnId).filter(id => id);
                     if (columnIds.length > 0) {
                         window.renderBoard({ columns: columnIds });
-                        // Track which columns were rendered (they include all their tasks)
                         columnIds.forEach(id => renderedColumnIds.add(id));
                     }
                 }

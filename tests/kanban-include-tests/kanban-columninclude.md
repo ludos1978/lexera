@@ -3,6 +3,9 @@
 kanban-plugin: board
 
 fontSize: 1_0x
+boardColor: #b3ffe2
+boardColorDark: #001900
+boardColorLight: #f5fff5
 ---
 
 ## !!!include(./root/root-include-1.md)!!!

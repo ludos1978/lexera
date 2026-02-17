@@ -1544,6 +1544,7 @@ function updatePathInDOM(oldPath, newPath, direction) {
             window.hasUnsavedChanges = true;
 
             // Re-render modified tasks/columns so the DOM reflects the updated paths
+            // renderSingleTask/renderSingleColumn skip elements containing the inline editor
             modifiedTasks.forEach(({ task, columnId }) => {
                 if (typeof window.renderSingleTask === 'function') {
                     window.renderSingleTask(task.id, task, columnId);

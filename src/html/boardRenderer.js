@@ -33,16 +33,32 @@ function insertHtmlNodes(htmlString, referenceElement, position = 'before') {
 /**
  * Blur focused element if it is inside a container that is about to be replaced/cleared.
  * Prevents occasional VS Code webview trackFocus null classList errors.
+ * Safe to call at any time — automatically protects active editors and form elements.
  * @param {HTMLElement|null} container
  */
 function blurActiveElementIfContained(container) {
-    if (!container) {
-        return;
-    }
+    if (!container) { return; }
     const activeElement = document.activeElement;
-    if (activeElement && container.contains(activeElement)) {
-        activeElement.blur?.();
-    }
+    if (!activeElement || activeElement === document.body || activeElement === document.documentElement) { return; }
+    if (!container.contains(activeElement)) { return; }
+    // Protect focused form elements (inputs, textareas, contentEditable)
+    const tag = activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || activeElement.contentEditable === 'true') { return; }
+    activeElement.blur?.();
+}
+
+/**
+ * Check if an element contains the active inline editor.
+ * The overlay editor is independent DOM (outside the board), so it never blocks re-renders.
+ * @param {HTMLElement} element
+ * @returns {boolean}
+ */
+function containsInlineEditor(element) {
+    if (!element) { return false; }
+    // Also treat transitioning (title→description) as editing to prevent gap
+    if (window.taskEditor?.isTransitioning) { return true; }
+    const editorEl = window.taskEditor?.currentEditor?.element;
+    return !!(editorEl && element.contains(editorEl));
 }
 
 // Make folding state variables global for persistence
@@ -930,6 +946,14 @@ function renderSingleColumn(columnId, columnData) {
     // Find the existing column element (must target the column root, not nested elements)
     const matchingColumns = Array.from(document.querySelectorAll(`.kanban-full-height-column[data-column-id="${columnId}"]`));
     const existingColumnElement = matchingColumns[0];
+
+    // Skip if this column contains the inline editor — defer until editing ends
+    if (existingColumnElement && containsInlineEditor(existingColumnElement)) {
+        window.kanbanDebug?.log('[renderSingleColumn] Skipped — column contains inline editor', columnId);
+        window._pendingBoardRender = () => renderSingleColumn(columnId, columnData);
+        return;
+    }
+
     if (!existingColumnElement) {
         console.warn('[kanban.boardRenderer.renderSingleColumn.missing-element]', {
             columnId: columnId,
@@ -1090,6 +1114,13 @@ function renderSingleTask(taskId, taskData, columnId) {
     const existingTaskElement = document.querySelector(`[data-task-id="${taskId}"]`);
     if (!existingTaskElement) {
         return false;
+    }
+
+    // Skip if this task contains the inline editor — defer until editing ends
+    if (containsInlineEditor(existingTaskElement)) {
+        window.kanbanDebug?.log('[renderSingleTask] Skipped — task contains inline editor', taskId);
+        window._pendingBoardRender = () => renderSingleTask(taskId, taskData, columnId);
+        return true; // Report success to prevent fallback to full render
     }
 
     // Get the task index from the existing element
@@ -1305,8 +1336,11 @@ function renderBoard(options = null) {
     // Apply tag styles first
     applyTagStyles();
 
-    // Check if we're currently editing - if so, skip the render
-    if (window.taskEditor && window.taskEditor.currentEditor) {
+    // Skip full render if inline editor is active — it would be destroyed by innerHTML=''
+    // Overlay editor is safe (independent DOM outside the board).
+    if (window.taskEditor?.currentEditor) {
+        window.kanbanDebug?.log('[renderBoard] Skipped full render — inline editor active');
+        window._pendingBoardRender = () => renderBoard(options);
         return;
     }
 

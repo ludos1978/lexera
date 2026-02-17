@@ -10,7 +10,7 @@ Modify this line a
 
 ---
 
-#export-exclude
+#exclude
 
 ![](Media/jon-flobrant-rB7-LCa_diU-unsplash.jpg "test")
 

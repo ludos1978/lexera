@@ -733,6 +733,14 @@
         if (dropHandler && typeof dropHandler.detach === 'function') {
             dropHandler.detach();
         }
+
+        // Execute any deferred render now that overlay editing has ended
+        if (window._pendingBoardRender && typeof window._pendingBoardRender === 'function') {
+            const render = window._pendingBoardRender;
+            window._pendingBoardRender = null;
+            window.kanbanDebug?.log('[RENDER-GUARD] Overlay closed — executing deferred render');
+            requestAnimationFrame(() => render());
+        }
     }
 
     function handleSave() {

@@ -3,6 +3,8 @@
 kanban-plugin: board
 
 fontSize: 1_0x
+boardColorLight: #fff5ff
+boardColorDark: #110019
 ---
 
 ## #ungathered

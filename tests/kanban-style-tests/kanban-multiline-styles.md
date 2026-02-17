@@ -3,6 +3,8 @@
 kanban-plugin: board
 
 fontSize: 1_0x
+boardColorDark: #191900
+boardColorLight: #fffff5
 ---
 
 ## #todo

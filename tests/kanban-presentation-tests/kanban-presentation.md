@@ -5,6 +5,9 @@ kanban-plugin: board
 fontSize: 1_0x
 whitespace: 24px
 fontFamily: poppins
+boardColor: #ffadad
+boardColorDark: #000033
+boardColorLight: #f5f5ff
 ---
 
 ## Column Title #footer #header
@@ -24,7 +27,7 @@ fontFamily: poppins
   - c
 
 ## # Heading 1 in Columntitle #footer #header #stack
-- [ ] ## Heading 2 in Tasktitle #export-exclude
+- [ ] ## Heading 2 in Tasktitle #exclude
   some long text
   
   Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.

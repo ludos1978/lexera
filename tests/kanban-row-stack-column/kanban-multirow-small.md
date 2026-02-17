@@ -2,6 +2,7 @@
 
 kanban-plugin: board
 
+fontSize: 1_0x
 ---
 
 ## Row 1 - Stack 1 - Col 1
