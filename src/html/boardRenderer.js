@@ -41,9 +41,10 @@ function blurActiveElementIfContained(container) {
     const activeElement = document.activeElement;
     if (!activeElement || activeElement === document.body || activeElement === document.documentElement) { return; }
     if (!container.contains(activeElement)) { return; }
-    // Protect focused form elements (inputs, textareas, contentEditable)
+    // Protect focused form elements (inputs, textareas, contentEditable and its children)
     const tag = activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || activeElement.contentEditable === 'true') { return; }
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') { return; }
+    if (activeElement.contentEditable === 'true' || activeElement.closest?.('[contenteditable="true"]')) { return; }
     activeElement.blur?.();
 }
 
@@ -1290,17 +1291,12 @@ function renderBoard(options = null) {
     // Debug: Log who called renderBoard with stack trace
     if (window.kanbanDebug?.enabled) {
         const stack = new Error().stack?.split('\n').slice(2, 6).map(s => s.trim()).join(' <- ');
-        const isInteracting = typeof isUserInteracting === 'function' ? isUserInteracting() : false;
-        console.log('[RENDER-DEBUG] renderBoard called', {
+        window.kanbanDebug.log('[renderBoard]', {
             options: options ? JSON.stringify(options) : 'full',
             columns: window.cachedBoard?.columns?.length ?? 0,
             editing: Boolean(window.taskEditor?.currentEditor),
-            userInteracting: isInteracting,
             caller: stack
         });
-        if (!options && isInteracting) {
-            console.warn('[RENDER-WARNING] Full board re-render triggered while user is interacting!');
-        }
     }
     if (typeof window.logViewMovement === 'function') {
         window.logViewMovement('renderBoard.start', {

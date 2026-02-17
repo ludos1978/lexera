@@ -45,9 +45,10 @@ function blurFocusedElementWithin(node) {
     if (!activeElement || activeElement === document.body || activeElement === document.documentElement) { return; }
     const containsActive = node === activeElement || (typeof node.contains === 'function' && node.contains(activeElement));
     if (!containsActive) { return; }
-    // Protect focused form elements (inputs, textareas, contentEditable)
+    // Protect focused form elements (inputs, textareas, contentEditable and its children)
     const tag = activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || activeElement.contentEditable === 'true') { return; }
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') { return; }
+    if (activeElement.contentEditable === 'true' || activeElement.closest?.('[contenteditable="true"]')) { return; }
     activeElement.blur?.();
 }
 
@@ -127,8 +128,6 @@ window.kanbanDebug = window.kanbanDebug || {
 let _prevBoardFingerprint = '';
 let _interactionGuardTimer = null;
 let _pendingBoardRender = null;
-let _fullRenderCount = 0;
-let _skippedRenderCount = 0;
 
 // Expose _pendingBoardRender on window so overlay editor can trigger it on close
 Object.defineProperty(window, '_pendingBoardRender', {
@@ -2652,17 +2651,6 @@ if (!webviewEventListenersInitialized) {
             break;
         }
         case 'boardUpdate':
-            // DEBUG: Log boardUpdate during editing
-            if (window.kanbanDebug?.enabled) {
-                const isEditing = window.taskEditor && window.taskEditor.currentEditor;
-                console.log('[BOARD-UPDATE]', {
-                    isEditing,
-                    editorType: window.taskEditor?.currentEditor?.type,
-                    isFullRefresh: message.isFullRefresh,
-                    timestamp: performance.now()
-                });
-            }
-
             // CRITICAL: Set currentFilePath BEFORE any rendering starts
             // This is needed for image path resolution in markdown content.
             // We set it here (not in updateFileInfo) because boardUpdate processing
@@ -3038,11 +3026,6 @@ if (!webviewEventListenersInitialized) {
                     (!skipDueToRecentTargetedUpdate || isFullRefresh)) {
 
                     const doFullBoardRender = () => {
-                        _fullRenderCount++;
-                        window.kanbanDebug.log('[RENDER] Full board re-render #' + _fullRenderCount +
-                            ' (skipped ' + _skippedRenderCount + ' since last)');
-                        _skippedRenderCount = 0;
-
                         if (typeof window.blurFocusedElementWithin === 'function') {
                             window.blurFocusedElementWithin(document.getElementById('kanban-board'));
                         }
@@ -3089,12 +3072,8 @@ if (!webviewEventListenersInitialized) {
                     } else {
                         doFullBoardRender();
                     }
-                } else if (!boardDataChanged) {
-                    _skippedRenderCount++;
-                    window.kanbanDebug.log('[RENDER-SKIP] Board data unchanged, skipping render (skip #' + _skippedRenderCount + ')');
                 } else {
-                    _skippedRenderCount++;
-                    window.kanbanDebug.log('[RENDER-SKIP] Skipping full render due to recent targeted update');
+                    window.kanbanDebug.log('[RENDER-SKIP] Board data unchanged or recent targeted update');
                 }
             }
 
@@ -3853,10 +3832,7 @@ if (!webviewEventListenersInitialized) {
                         });
                     }
 
-                    // Check if user is currently editing (inline or overlay)
-                    const isCurrentlyEditing = window.taskEditor?.currentEditor || window.taskOverlayEditor?.isVisible?.();
-                    const isEditingThisColumn = window.taskEditor?.currentEditor &&
-                        window.taskEditor.currentEditor.type === 'column-title' &&
+                    const isEditingThisColumn = window.taskEditor?.currentEditor?.type === 'column-title' &&
                         window.taskEditor.currentEditor.columnId === message.columnId;
 
                     // CRITICAL FIX: Update editor field value when content changes (e.g., path replacement)
@@ -3880,65 +3856,59 @@ if (!webviewEventListenersInitialized) {
 
                     window.kanbanDebug.log('[kanban.webview.updateColumnContent.render]', {
                         columnId: message.columnId,
-                        isEditing: !!isCurrentlyEditing,
                         hasIncludeContent: !!hasIncludeContent,
                         hasNewTasks: !!hasNewTasks
                     });
 
-                    {
-                        // Re-render just this column
-                        // renderSingleColumn skips+defers if it contains the inline editor
-                        if (typeof window.renderSingleColumn === 'function') {
-                            window.renderSingleColumn(message.columnId, column);
-                        } else if (typeof window.renderBoard === 'function') {
-                            window.renderBoard();
-                        }
+                    // Re-render just this column
+                    // renderSingleColumn skips+defers if it contains the inline editor
+                    if (typeof window.renderSingleColumn === 'function') {
+                        window.renderSingleColumn(message.columnId, column);
+                    } else if (typeof window.renderBoard === 'function') {
+                        window.renderBoard();
+                    }
 
-                        // Unfold column if it's collapsed and we just received include content
-                        if (hasIncludeContent && window.collapsedColumns && window.collapsedColumns.has(message.columnId)) {
-                            const columnElement = document.querySelector(`[data-column-id="${message.columnId}"]`);
-                            if (columnElement) {
-                                columnElement.classList.remove('collapsed-vertical', 'collapsed-horizontal');
-                                const toggle = columnElement.querySelector('.collapse-toggle');
-                                if (toggle) toggle.classList.remove('rotated');
-                                window.collapsedColumns.delete(message.columnId);
-                                if (window.columnFoldModes) window.columnFoldModes.delete(message.columnId);
-                                if (typeof window.updateGlobalColumnFoldButton === 'function') {
-                                    window.updateGlobalColumnFoldButton();
-                                }
-                                if (window.saveCurrentFoldingState) window.saveCurrentFoldingState();
+                    // Unfold column if it's collapsed and we just received include content
+                    if (hasIncludeContent && window.collapsedColumns && window.collapsedColumns.has(message.columnId)) {
+                        const columnElement = document.querySelector(`[data-column-id="${message.columnId}"]`);
+                        if (columnElement) {
+                            columnElement.classList.remove('collapsed-vertical', 'collapsed-horizontal');
+                            const toggle = columnElement.querySelector('.collapse-toggle');
+                            if (toggle) toggle.classList.remove('rotated');
+                            window.collapsedColumns.delete(message.columnId);
+                            if (window.columnFoldModes) window.columnFoldModes.delete(message.columnId);
+                            if (typeof window.updateGlobalColumnFoldButton === 'function') {
+                                window.updateGlobalColumnFoldButton();
                             }
+                            if (window.saveCurrentFoldingState) window.saveCurrentFoldingState();
                         }
+                    }
 
-                        // Inject header/footer bars after rendering
-                        if (typeof window.injectStackableBars === 'function') {
-                            requestAnimationFrame(() => {
-                                window.injectStackableBars();
-                            });
-                        }
-
-                        // Recalculate stacked column heights after include content update
-                        // Only update this column's stack for efficiency
-                        if (typeof window.applyStackedColumnStyles === 'function') {
-                            requestAnimationFrame(() => {
-                                window.applyStackedColumnStyles(message.columnId);
-                            });
-                        }
-
-                        // OPTIMIZATION 3: Confirm successful render
-                        vscode.postMessage({
-                            type: 'renderCompleted',
-                            itemType: 'column',
-                            itemId: message.columnId
-                        });
-
-                        // Record targeted update timestamp to skip redundant full renders
-                        lastTargetedUpdateTime = Date.now();
-                        window.kanbanDebug.log('[TARGETED-UPDATE] updateColumnContent completed', {
-                            columnId: message.columnId,
-                            timestamp: lastTargetedUpdateTime
+                    // Inject header/footer bars after rendering
+                    if (typeof window.injectStackableBars === 'function') {
+                        requestAnimationFrame(() => {
+                            window.injectStackableBars();
                         });
                     }
+
+                    // Recalculate stacked column heights after include content update
+                    if (typeof window.applyStackedColumnStyles === 'function') {
+                        requestAnimationFrame(() => {
+                            window.applyStackedColumnStyles(message.columnId);
+                        });
+                    }
+
+                    vscode.postMessage({
+                        type: 'renderCompleted',
+                        itemType: 'column',
+                        itemId: message.columnId
+                    });
+
+                    lastTargetedUpdateTime = Date.now();
+                    window.kanbanDebug.log('[TARGETED-UPDATE] updateColumnContent completed', {
+                        columnId: message.columnId,
+                        timestamp: lastTargetedUpdateTime
+                    });
                 }
             break;
         case 'updateTaskContent':
@@ -4010,9 +3980,7 @@ if (!webviewEventListenersInitialized) {
                         foundTask.includeError = taskData.includeError;
                     }
 
-                    // Check if user is currently editing (inline or overlay) — never interrupt
-                    const isCurrentlyEditing = window.taskEditor?.currentEditor || window.taskOverlayEditor?.isVisible?.();
-                    const isEditingThisTask = window.taskEditor?.currentEditor && window.taskEditor.currentEditor.taskId === message.taskId;
+                    const isEditingThisTask = window.taskEditor?.currentEditor?.taskId === message.taskId;
 
                     // CRITICAL FIX: Update editor field value when content changes (e.g., path replacement)
                     // This ensures the edit field reflects the latest content after replacements
@@ -4192,14 +4160,11 @@ if (!webviewEventListenersInitialized) {
                         originalValue: current.originalValue
                     };
                 } else if (typeof editor.save === 'function') {
-                    // SAVE mode: normal save will close the editor internally
+                    // SAVE mode: save() calls closeEditor() internally
                     editor.save();
-                }
-
-                if (typeof editor.closeEditor === 'function') {
+                } else if (typeof editor.closeEditor === 'function') {
+                    // No save available, just close
                     editor.closeEditor();
-                } else {
-                    editor.currentEditor = null;
                 }
             }
 
@@ -5830,19 +5795,8 @@ function insertFileLink(fileInfo) {
             }
         }
         
-        // Focus back on the element
+        // Focus back on the element — keep editing open after insertion
         element.focus();
-        
-        // Save the changes immediately
-        setTimeout(() => {
-            if (element.classList.contains('task-title-edit') || element.classList.contains('task-description-edit')) {
-                if (taskEditor.currentEditor && taskEditor.currentEditor.element === element) {
-                    taskEditor.save();
-                }
-            } else if (element.classList.contains('column-title-edit')) {
-                element.blur();
-            }
-        }, 50);
         
         vscode.postMessage({ type: 'showMessage', text: `Inserted ${isImage ? 'image' : 'file'} link: ${fileName}` });
     } else {

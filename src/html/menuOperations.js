@@ -1633,9 +1633,7 @@ function toggleColumnStack(columnId) {
         }
     }
 
-    // Close all menus before full board re-render
-    // CRITICAL: renderBoard() destroys and recreates all DOM elements
-    // This breaks hover detection, so we must close menus first
+    // Close all menus before full board re-render (prevents stale hover state)
     if (typeof closeAllMenus === 'function') {
         closeAllMenus();
     }

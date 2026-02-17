@@ -1567,7 +1567,9 @@ class TaskEditor {
 
                     const activeElement = document.activeElement;
                     const isEditingElsewhere = this._isInlineEditorElement(activeElement);
-                    if (!isEditingElsewhere) {
+                    // Don't auto-save if focus moved to a modal/dialog (it will return)
+                    const isInModal = activeElement?.closest?.('.modal-overlay, .template-dialog-overlay, .input-modal, [role="dialog"]');
+                    if (!isEditingElsewhere && !isInModal) {
                         this.save();
                     }
                 }
@@ -1665,7 +1667,9 @@ class TaskEditor {
                     const activeElement = document.activeElement;
                     const isEditingElsewhere = this._isInlineEditorElement(activeElement) ||
                         Boolean(activeElement?.closest && activeElement.closest('.task-description-wysiwyg'));
-                    if (!isEditingElsewhere) {
+                    // Don't auto-save if focus moved to a modal/dialog (it will return)
+                    const isInModal = activeElement?.closest?.('.modal-overlay, .template-dialog-overlay, .input-modal, [role="dialog"]');
+                    if (!isEditingElsewhere && !isInModal) {
                         this.save();
                     }
                 }
