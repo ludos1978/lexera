@@ -1259,12 +1259,17 @@ function renderBoard(options = null) {
     // Debug: Log who called renderBoard with stack trace
     if (window.kanbanDebug?.enabled) {
         const stack = new Error().stack?.split('\n').slice(2, 6).map(s => s.trim()).join(' <- ');
+        const isInteracting = typeof isUserInteracting === 'function' ? isUserInteracting() : false;
         console.log('[RENDER-DEBUG] renderBoard called', {
             options: options ? JSON.stringify(options) : 'full',
             columns: window.cachedBoard?.columns?.length ?? 0,
             editing: Boolean(window.taskEditor?.currentEditor),
+            userInteracting: isInteracting,
             caller: stack
         });
+        if (!options && isInteracting) {
+            console.warn('[RENDER-WARNING] Full board re-render triggered while user is interacting!');
+        }
     }
     if (typeof window.logViewMovement === 'function') {
         window.logViewMovement('renderBoard.start', {
@@ -1381,7 +1386,7 @@ function renderBoard(options = null) {
     const containerScrollLeft = containerElement?.scrollLeft || 0;
 
     // Debug: Log captured scroll values
-    console.log('[renderBoard] Captured scroll positions:', {
+    window.kanbanDebug?.log('[renderBoard] Captured scroll positions:', {
         boardScrollTop,
         boardScrollLeft,
         containerScrollTop,

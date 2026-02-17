@@ -135,6 +135,82 @@ window.kanbanDebug = window.kanbanDebug || {
     }
 };
 
+// ============= Smart Update System =============
+// Prevents unnecessary full board re-renders that destroy focus, dropdowns, etc.
+let _prevBoardFingerprint = '';
+let _interactionGuardTimer = null;
+let _pendingBoardRender = null;
+let _fullRenderCount = 0;
+let _skippedRenderCount = 0;
+
+/**
+ * Compute a structural fingerprint of board data.
+ * Used to detect when board data actually changed vs redundant updates.
+ */
+function computeBoardFingerprint(board) {
+    if (!board || !board.columns) return '';
+    try {
+        return JSON.stringify(board.columns.map(c => ({
+            id: c.id,
+            t: c.title,
+            im: c.includeMode,
+            ie: c.includeError,
+            lc: c.isLoadingContent,
+            tc: (c.tasks || []).length,
+            tasks: (c.tasks || []).map(t => ({
+                id: t.id,
+                c: t.content,
+                tg: t.tags
+            }))
+        })));
+    } catch (e) {
+        return '';
+    }
+}
+
+/**
+ * Check if the user is actively interacting with UI elements that would be
+ * disrupted by a full board re-render (dropdowns, inputs, color pickers, etc.).
+ */
+function isUserInteracting() {
+    if (window.taskEditor?.currentEditor) return true;
+    if (window.taskOverlayEditor?.isVisible?.()) return true;
+
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== document.documentElement) {
+        const tag = active.tagName;
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return true;
+        if (active.contentEditable === 'true') return true;
+        if (active.closest('[role="menu"], [role="listbox"], .dropdown-content, .popup')) return true;
+    }
+
+    // Check for open dropdown menus
+    const openMenus = document.querySelectorAll(
+        '.dropdown-content.show, .clipboard-drop-dropdown.show, .trash-drop-dropdown.show, ' +
+        '.archive-drop-dropdown.show, .layout-presets-dropdown.show, .clipboard-preview.show'
+    );
+    if (openMenus.length > 0) return true;
+
+    return false;
+}
+
+/**
+ * Signal that the user is interacting with the UI.
+ * Defers any pending board renders until interaction ends.
+ */
+function markUserInteracting() {
+    if (_interactionGuardTimer) clearTimeout(_interactionGuardTimer);
+    _interactionGuardTimer = setTimeout(() => {
+        _interactionGuardTimer = null;
+        if (_pendingBoardRender) {
+            const render = _pendingBoardRender;
+            _pendingBoardRender = null;
+            window.kanbanDebug.log('[RENDER-GUARD] Executing deferred render after interaction ended');
+            render();
+        }
+    }, 400);
+}
+
 function describeScrollTarget(element) {
     if (!element) return null;
     const column = element.closest ? element.closest('[data-column-id]') : null;
@@ -2011,6 +2087,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     webviewEventListenersInitialized = true;
 
+    // Interaction tracking: detect user interactions to defer renders during active use
+    // Capture phase ensures we see events before they're handled/stopped
+    document.addEventListener('mousedown', markUserInteracting, true);
+    document.addEventListener('focusin', markUserInteracting, true);
+    document.addEventListener('input', markUserInteracting, true);
+    document.addEventListener('change', markUserInteracting, true);
+    document.addEventListener('keydown', markUserInteracting, true);
+
     // DEBUG: Global scroll listener to catch all scroll events (respects debug mode)
     (function setupScrollDebug() {
         const container = document.getElementById('kanban-container');
@@ -2910,66 +2994,90 @@ if (!webviewEventListenersInitialized) {
             saveCurrentFoldingState();
             const isEditing = window.taskEditor && window.taskEditor.currentEditor;
 
-
             // Check if a targeted update was recently done - skip full render if so
             const timeSinceTargetedUpdate = Date.now() - lastTargetedUpdateTime;
             const skipDueToRecentTargetedUpdate = timeSinceTargetedUpdate < TARGETED_UPDATE_SKIP_WINDOW;
 
+            // SMART UPDATE: Compare board fingerprint to detect actual data changes
+            const newBoardFingerprint = computeBoardFingerprint(window.cachedBoard);
+            const boardDataChanged = newBoardFingerprint !== _prevBoardFingerprint;
+            if (boardDataChanged || isInitialLoad || isFullRefresh) {
+                _prevBoardFingerprint = newBoardFingerprint;
+            }
+
             if (!isEditing && !shouldSkipRender) {
-                // Log the decision
-                console.log('[RENDER-DEBUG] boardUpdate decision', {
+                window.kanbanDebug.log('[RENDER-DEBUG] boardUpdate decision', {
                     isFullRefresh: message.isFullRefresh,
-                    applyDefaultFolding: message.applyDefaultFolding,
-                    hasSkipRender: Boolean(message.skipRender || message.board?.skipRender),
+                    boardDataChanged,
                     columnCount: message.board?.columns?.length ?? 0,
-                    timeSinceTargetedUpdate: timeSinceTargetedUpdate,
-                    skipDueToRecentTargetedUpdate: skipDueToRecentTargetedUpdate,
-                    willRender: !skipDueToRecentTargetedUpdate || message.isFullRefresh
+                    timeSinceTargetedUpdate,
+                    skipDueToRecentTargetedUpdate
                 });
 
                 // Only do full render if:
-                // 1. It's a full refresh (explicit reload) OR
-                // 2. No recent targeted update was done
-                if (!skipDueToRecentTargetedUpdate || message.isFullRefresh) {
-                    if (typeof window.blurFocusedElementWithin === 'function') {
-                        window.blurFocusedElementWithin(document.getElementById('kanban-board'));
-                    }
+                // 1. Board data actually changed (fingerprint comparison) OR it's initial/full refresh
+                // 2. No recent targeted update (unless full refresh)
+                if ((boardDataChanged || isInitialLoad || isFullRefresh) &&
+                    (!skipDueToRecentTargetedUpdate || isFullRefresh)) {
 
-                    // renderBoard() now calls initializeParkedItems() internally
-                    if (typeof window.renderBoard === 'function') {
-                        window.renderBoard();
-                    }
+                    const doFullBoardRender = () => {
+                        _fullRenderCount++;
+                        window.kanbanDebug.log('[RENDER] Full board re-render #' + _fullRenderCount +
+                            ' (skipped ' + _skippedRenderCount + ' since last)');
+                        _skippedRenderCount = 0;
 
-                    // Cache broken element paths for re-use after include content re-renders
-                    // Unified structure: { link?: string[], image?: string[], video?: string[] }
-                    if (message.brokenElements) {
-                        window._cachedBrokenElements = message.brokenElements;
-                    }
-
-                    // Mark broken elements after render completes
-                    requestAnimationFrame(() => {
-                        if (typeof window.markBrokenElements === 'function' && window._cachedBrokenElements) {
-                            const broken = window._cachedBrokenElements;
-                            if (broken.link?.length > 0) {
-                                window.markBrokenElements(broken.link, 'link');
-                            }
-                            if (broken.image?.length > 0) {
-                                window.markBrokenElements(broken.image, 'image', window.handleMediaNotFound);
-                            }
-                            if (broken.video?.length > 0) {
-                                window.markBrokenElements(broken.video, 'video', window.handleMediaNotFound);
-                            }
+                        if (typeof window.blurFocusedElementWithin === 'function') {
+                            window.blurFocusedElementWithin(document.getElementById('kanban-board'));
                         }
-                    });
 
-                    // Apply default folding if this is from an external change
-                    if (message.applyDefaultFolding) {
-                        setTimeout(() => {
-                            applyDefaultFoldingToNewDocument();
-                        }, 100); // Wait for render to complete
+                        if (typeof window.renderBoard === 'function') {
+                            window.renderBoard();
+                        }
+
+                        // Cache broken element paths for re-use after include content re-renders
+                        if (message.brokenElements) {
+                            window._cachedBrokenElements = message.brokenElements;
+                        }
+
+                        // Mark broken elements after render completes
+                        requestAnimationFrame(() => {
+                            if (typeof window.markBrokenElements === 'function' && window._cachedBrokenElements) {
+                                const broken = window._cachedBrokenElements;
+                                if (broken.link?.length > 0) {
+                                    window.markBrokenElements(broken.link, 'link');
+                                }
+                                if (broken.image?.length > 0) {
+                                    window.markBrokenElements(broken.image, 'image', window.handleMediaNotFound);
+                                }
+                                if (broken.video?.length > 0) {
+                                    window.markBrokenElements(broken.video, 'video', window.handleMediaNotFound);
+                                }
+                            }
+                        });
+
+                        // Apply default folding if this is from an external change
+                        if (message.applyDefaultFolding) {
+                            setTimeout(() => {
+                                applyDefaultFoldingToNewDocument();
+                            }, 100);
+                        }
+                    };
+
+                    // Check if user is interacting with UI (dropdowns, inputs, etc.)
+                    // Defer render to avoid destroying focus - unless it's a forced full refresh
+                    const userBusy = isUserInteracting();
+                    if (userBusy && !isFullRefresh && !isInitialLoad) {
+                        window.kanbanDebug.log('[RENDER-GUARD] Deferring board render - user is interacting');
+                        _pendingBoardRender = doFullBoardRender;
+                    } else {
+                        doFullBoardRender();
                     }
+                } else if (!boardDataChanged) {
+                    _skippedRenderCount++;
+                    window.kanbanDebug.log('[RENDER-SKIP] Board data unchanged, skipping render (skip #' + _skippedRenderCount + ')');
                 } else {
-                    console.log('[RENDER-DEBUG] Skipping full render due to recent targeted update');
+                    _skippedRenderCount++;
+                    window.kanbanDebug.log('[RENDER-SKIP] Skipping full render due to recent targeted update');
                 }
             }
 
@@ -3832,7 +3940,7 @@ if (!webviewEventListenersInitialized) {
 
                         // Record targeted update timestamp to skip redundant full renders
                         lastTargetedUpdateTime = Date.now();
-                        console.log('[TARGETED-UPDATE] updateColumnContent completed', {
+                        window.kanbanDebug.log('[TARGETED-UPDATE] updateColumnContent completed', {
                             columnId: message.columnId,
                             timestamp: lastTargetedUpdateTime
                         });
@@ -3999,7 +4107,7 @@ if (!webviewEventListenersInitialized) {
 
                         // Record targeted update timestamp to skip redundant full renders
                         lastTargetedUpdateTime = Date.now();
-                        console.log('[TARGETED-UPDATE] updateTaskContent completed', {
+                        window.kanbanDebug.log('[TARGETED-UPDATE] updateTaskContent completed', {
                             taskId: message.taskId,
                             columnId: foundColumn.id,
                             timestamp: lastTargetedUpdateTime
