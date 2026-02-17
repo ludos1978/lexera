@@ -23,6 +23,64 @@
     const expandedBoards = new Set();
     let allBoardsConfigExpanded = false;
 
+    // ============= Smart Update System =============
+    // Prevents unnecessary full DOM re-renders by diffing state.
+    // Only does a full re-render when board data actually changed.
+    // Lightweight changes (active board, lock) use targeted DOM updates.
+
+    let _prevStateFingerprint = '';
+    let _prevActiveBoardUri = '';
+    let _interactionTimer = null;
+    let _pendingFullRender = false;
+    let _renderCount = 0;
+    let _skipCount = 0;
+
+    function _computeStateFingerprint(state) {
+        if (!state) return '';
+        // Only include fields that affect the rendered board list HTML
+        return JSON.stringify({
+            b: state.boards,
+            l: state.locked,
+            dt: state.defaultTimeframe,
+            dtf: state.defaultTagFilters,
+            dc: state.defaultCalendarSharing
+        });
+    }
+
+    function _updateActiveBoardHighlight() {
+        var uri = currentState ? (currentState.activeBoardUri || '') : '';
+        boardsList.querySelectorAll('.board-item-header.active-board').forEach(function(el) {
+            el.classList.remove('active-board');
+        });
+        if (uri) {
+            boardsList.querySelectorAll('.board-item-header[data-board-uri]').forEach(function(el) {
+                if (el.dataset.boardUri === uri) {
+                    el.classList.add('active-board');
+                }
+            });
+        }
+    }
+
+    function _markInteracting() {
+        if (_interactionTimer) clearTimeout(_interactionTimer);
+        _interactionTimer = setTimeout(function() {
+            _interactionTimer = null;
+            if (_pendingFullRender) {
+                _pendingFullRender = false;
+                _doFullRender('deferred after interaction');
+            }
+        }, 600);
+    }
+
+    function _doFullRender(reason) {
+        _renderCount++;
+        console.debug('[BoardsPanel] Full re-render #' + _renderCount + ' (' + reason + ') [skipped ' + _skipCount + ' since last]');
+        _skipCount = 0;
+        renderBoards();
+        if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
+        renderLockState();
+    }
+
     // ============= Initialization =============
 
     function init() {
@@ -33,6 +91,12 @@
         scanBtn.addEventListener('click', () => {
             vscode.postMessage({ type: 'scanWorkspace' });
         });
+
+        // Track user interaction to defer re-renders while interacting with form elements
+        boardsList.addEventListener('mousedown', _markInteracting, true);
+        boardsList.addEventListener('focusin', _markInteracting, true);
+        boardsList.addEventListener('input', _markInteracting, true);
+        boardsList.addEventListener('change', _markInteracting, true);
 
         // Messages from backend
         window.addEventListener('message', handleMessage);
@@ -49,14 +113,30 @@
         switch (message.type) {
             case 'state':
                 currentState = message;
-                // Skip re-render if an input inside the list is focused
-                const activeEl = document.activeElement;
-                const inputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT') && boardsList.contains(activeEl);
-                if (!inputFocused) {
-                    renderBoards();
-                    if (allBoardsConfigExpanded) { renderAllBoardsConfig(); }
+
+                var newFingerprint = _computeStateFingerprint(message);
+                var stateChanged = newFingerprint !== _prevStateFingerprint;
+                var activeBoardChanged = (message.activeBoardUri || '') !== _prevActiveBoardUri;
+                _prevActiveBoardUri = message.activeBoardUri || '';
+
+                if (stateChanged) {
+                    // Board data actually changed - need full re-render
+                    _prevStateFingerprint = newFingerprint;
+
+                    if (_interactionTimer) {
+                        _pendingFullRender = true;
+                        console.debug('[BoardsPanel] Re-render deferred (user interacting)');
+                    } else {
+                        _doFullRender('state changed');
+                    }
+                } else {
+                    // Board data unchanged - only do targeted lightweight updates
+                    _skipCount++;
+                    if (activeBoardChanged) {
+                        _updateActiveBoardHighlight();
+                    }
+                    renderLockState();
                 }
-                renderLockState();
                 break;
         }
     }

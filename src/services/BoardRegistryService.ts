@@ -81,6 +81,7 @@ export class BoardRegistryService implements vscode.Disposable {
 
     // File watchers
     private _fileWatchers: Map<string, vscode.FileSystemWatcher> = new Map();
+    private _fileChangeDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Events
     private _onBoardsChanged = new vscode.EventEmitter<void>();
@@ -772,7 +773,12 @@ export class BoardRegistryService implements vscode.Disposable {
 
         watcher.onDidChange(() => {
             this._validationCache.delete(filePath);
-            this._onBoardsChanged.fire();
+            // Debounce file-content changes to avoid rapid re-renders during editing/autosave
+            if (this._fileChangeDebounceTimer) { clearTimeout(this._fileChangeDebounceTimer); }
+            this._fileChangeDebounceTimer = setTimeout(() => {
+                this._fileChangeDebounceTimer = undefined;
+                this._onBoardsChanged.fire();
+            }, 500);
         });
 
         watcher.onDidDelete(() => {

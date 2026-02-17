@@ -32,6 +32,7 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
     private _extensionUri: vscode.Uri;
     private _registry: BoardRegistryService;
     private _disposables: vscode.Disposable[] = [];
+    private _stateDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
     constructor(extensionUri: vscode.Uri) {
         this._extensionUri = extensionUri;
@@ -137,9 +138,20 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Send full state to the webview for rendering
+     * Debounced state send - coalesces rapid updates (file watchers, panel switches)
      */
     private _sendStateToWebview(): void {
+        if (this._stateDebounceTimer) { clearTimeout(this._stateDebounceTimer); }
+        this._stateDebounceTimer = setTimeout(() => {
+            this._stateDebounceTimer = undefined;
+            this._doSendStateToWebview();
+        }, 150);
+    }
+
+    /**
+     * Send full state to the webview for rendering
+     */
+    private _doSendStateToWebview(): void {
         if (!this._view) { return; }
 
         const boards = this._registry.getBoards();
