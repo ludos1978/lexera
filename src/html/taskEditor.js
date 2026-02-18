@@ -202,33 +202,37 @@ class TaskEditor {
      */
     setupGlobalHandlers() {
 
-        // Global paste handler for title fields - strip newlines
+        // Global paste handler for edit fields - programmatic insertion ensures visual repaint
         const self = this;
         document.addEventListener('paste', (e) => {
             const target = e.target;
             const isTitleField = target && (target.classList.contains('task-title-edit') ||
                 target.classList.contains('column-title-edit'));
+            const isDescriptionField = target && target.classList.contains('task-description-edit');
 
-            // Normal paste for title fields only: strip newlines but preserve spaces
-            if (isTitleField) {
+            if (isTitleField || isDescriptionField) {
                 e.preventDefault();
                 let text = (e.clipboardData || window.clipboardData).getData('text');
-                const cleanText = text.replace(/[\r\n]+/g, ' ').trim();
+                // Title fields: strip newlines; description fields: preserve them
+                const insertText = isTitleField ? text.replace(/[\r\n]+/g, ' ').trim() : text;
 
                 // Insert at cursor position
                 const start = target.selectionStart;
                 const end = target.selectionEnd;
                 const currentValue = target.value;
-                target.value = currentValue.substring(0, start) + cleanText + currentValue.substring(end);
+                target.value = currentValue.substring(0, start) + insertText + currentValue.substring(end);
 
                 // Set cursor position after inserted text
-                const newPosition = start + cleanText.length;
+                const newPosition = start + insertText.length;
                 target.selectionStart = target.selectionEnd = newPosition;
 
-                // Auto-resize textarea if it's a textarea
+                // Auto-resize textarea
                 if (target.tagName === 'TEXTAREA' && self.autoResize) {
                     self.autoResize(target);
                 }
+
+                // Trigger input event for undo stack and other handlers
+                target.dispatchEvent(new Event('input', { bubbles: true }));
             }
         });
 

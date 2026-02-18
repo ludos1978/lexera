@@ -187,6 +187,18 @@ window._markIframeUrlBlocked = function(url) {
             _replaceIframeWithFallback(iframe, src);
         }
     });
+
+    // Replace embed placeholders whose URL is blocked with fallback UI
+    document.querySelectorAll('.embed-activate-overlay').forEach(function(overlay) {
+        const btn = overlay.querySelector('.embed-activate-btn[title]');
+        if (!btn) return;
+        const btnUrl = btn.getAttribute('title');
+        if (btnUrl && _isIframeBlocked(btnUrl)) {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = _renderIframeFallback(btnUrl);
+            overlay.replaceWith(wrapper.firstChild);
+        }
+    });
 };
 
 /**
@@ -209,6 +221,19 @@ window._checkRenderedIframes = function() {
             const origin = new URL(src).origin;
             if (!(origin in urlPerOrigin)) {
                 urlPerOrigin[origin] = src;
+            }
+        } catch { /* invalid URL, skip */ }
+    });
+
+    // Also scan embed placeholder buttons for URLs that need preflight checking
+    // (when openAutomatically=false, iframes are in <template> tags, not in DOM)
+    document.querySelectorAll('.embed-activate-btn[title]').forEach(function(btn) {
+        const url = btn.getAttribute('title');
+        if (!url || !url.startsWith('http') || _isIframeBlocked(url) || _isInsecureUrl(url)) return;
+        try {
+            const origin = new URL(url).origin;
+            if (!(origin in urlPerOrigin)) {
+                urlPerOrigin[origin] = url;
             }
         } catch { /* invalid URL, skip */ }
     });
@@ -3582,11 +3607,8 @@ function renderMarkdown(text, includeContext) {
             if (webPreviewConfig.enabled &&
                 (originalSrc.startsWith('http://') || originalSrc.startsWith('https://')) &&
                 !isImageUrl(originalSrc)) {
-                // When openAutomatically is off, render web preview URLs as plain links
-                if (!embedOpenAutomatically) {
-                    const linkText = alt || title || originalSrc;
-                    return `<a href="${escapeHtml(originalSrc)}" title="${escapeHtml(title || originalSrc)}">${escapeHtml(linkText)}</a>`;
-                }
+                // Both renderWebPreview and renderEmbed handle !embedOpenAutomatically
+                // via _renderEmbedPlaceholder (shows "Open" button overlay)
                 if (webPreviewConfig.mode === 'iframe') {
                     return renderWebPreview(originalSrc, alt, title);
                 } else {
