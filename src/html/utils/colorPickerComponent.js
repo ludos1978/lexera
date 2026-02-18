@@ -237,16 +237,24 @@ class ColorPickerComponent {
         const rgb = this._currentRgb();
         this._contentArea.querySelectorAll('.cp-slider-canvas').forEach(canvas => {
             const ch = canvas.dataset.channel;
+            const dpr = window.devicePixelRatio || 1;
+            const lw = 110, lh = 12;
+            canvas.width = lw * dpr;
+            canvas.height = lh * dpr;
+            canvas.style.width = lw + 'px';
+            canvas.style.height = lh + 'px';
             const ctx = canvas.getContext('2d');
-            const w = canvas.width, h = canvas.height;
+            ctx.scale(dpr, dpr);
+            const w = lw, h = lh;
             ctx.save();
             ctx.clearRect(0, 0, w, h);
-            // Clip to a 4px-tall rounded bar centered vertically
+            // Clip to a 6px-tall rounded bar with 6px inset on each side
+            var pad = 6;
             ctx.beginPath();
-            ctx.roundRect(0, (h - 4) / 2, w, 4, 2);
+            ctx.roundRect(pad, (h - 6) / 2, w - 2 * pad, 6, 3);
             ctx.clip();
 
-            const grad = ctx.createLinearGradient(0, 0, w, 0);
+            const grad = ctx.createLinearGradient(pad, 0, w - pad, 0);
             const steps = ch === 'H' ? 12 : 10;
             for (let i = 0; i <= steps; i++) {
                 const t = i / steps;
@@ -281,8 +289,8 @@ class ColorPickerComponent {
             else if (ch === 'G') { value = rgb.g; max = 255; }
             else { value = rgb.b; max = 255; }
             ctx.restore();
-            // Draw cursor knob on top (outside clip)
-            this._drawSliderCursor(ctx, (value / max) * w, h / 2, 5);
+            // Draw cursor knob on top (outside clip), within padded range
+            this._drawSliderCursor(ctx, pad + (value / max) * (w - 2 * pad), h / 2, 5);
         });
 
         // Update value inputs (skip if user is editing)
@@ -356,7 +364,7 @@ class ColorPickerComponent {
         ctx.fillStyle = '#fff';
         ctx.fill();
         ctx.strokeStyle = '#000';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1;
         ctx.stroke();
     }
 
@@ -399,7 +407,8 @@ class ColorPickerComponent {
             const canvas = this._dragging.canvas;
             const ch = this._dragging.channel;
             const rect = canvas.getBoundingClientRect();
-            const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            var pad = 6 * (rect.width / canvas.width);
+            const x = Math.max(0, Math.min(1, (e.clientX - rect.left - pad) / (rect.width - 2 * pad)));
 
             if (this._mode === 'hsl') {
                 const hsl = this._currentHsl();
