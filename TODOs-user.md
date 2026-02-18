@@ -15,6 +15,8 @@
 
   The yearly is our main task, if the weekly can be added without hassle, do so, othervises we do that later!
 
+- [ ]  when pasting with shift+meta+v what is happening there, make sure it's not breaking any normal behaviour, but only pastes the modified  links (a path should be pasted as ![]() if embeddable or [](), urls (web, email, other protocols) as <>, markdown files as [[]] )
+
 - [ ] the top should switch with the color type selection. the palette picker is nice as it is, but we dont need the color-gradient-selector below.
   - it is eighter palette mode
   - hsl with the selectors  (image 1)
