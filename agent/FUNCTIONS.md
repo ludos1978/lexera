@@ -9,36 +9,31 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
-## Recent Updates (2026-02-18) - Flexoki Palette in Color Picker
+## Recent Updates (2026-02-18) - 4-Mode Color Picker with Flexoki Palette
 
-### Modified: `src/html/utils/colorPickerComponent.js`
-- `_createPopup()` now builds a Flexoki color palette grid (9 color families × 15 shades) above the gradient canvas
-- Each row: whitish (L=98%) + 13 Flexoki shades (50-950) + blackish (L=2%), computed from the 400 shade's hue/saturation
-- Palette swatches are clickable and update the picker's HSV state, gradient, preview, and inputs
-- Added CSS: `.cp-palette` (CSS grid 15 columns), `.cp-swatch` (colored square with hover highlight)
-
----
-
-## Recent Updates (2026-02-17) - Custom HSL Color Picker
-
-### Modified: `src/html/utils/colorUtils.js`
-Added HSL/HSV conversion methods to the existing `ColorUtils` class:
-- `rgbToHsl(r, g, b)` → `{h: 0-360, s: 0-100, l: 0-100}`
-- `hslToRgb(h, s, l)` → `{r, g, b}` (0-255)
-- `hexToHsl(hex)` → `{h, s, l}` or null
-- `hslToHex(h, s, l)` → hex string
-- `rgbToHsv(r, g, b)` → `{h: 0-360, s: 0-100, v: 0-100}`
-- `hsvToRgb(h, s, v)` → `{r, g, b}` (0-255)
-
-### New File: `src/html/utils/colorPickerComponent.js`
-Reusable custom color picker popup (singleton on `window.colorPickerComponent`).
-- `open(triggerElement, initialHexColor, onChangeCallback)` — opens popup anchored to trigger
-- `close()` — closes popup
-- `isOpen()` — returns boolean
-- Internal HSV model; display defaults to HSL mode
-- Mode toggle cycles HSL → RGB → Hex
-- Canvas gradient area (204x150) + hue bar (204x12)
+### Rewritten: `src/html/utils/colorPickerComponent.js`
+Complete rewrite with 4 switchable modes (PAL → HSL → RGB → COL):
+- `open(triggerElement, initialHexColor, onChangeCallback)` — opens popup, preserves last used mode
+- `close()` / `isOpen()` — unchanged public API
+- Internal HSV model; mode button cycles through 4 display modes
+- `_createPopup()` — shell with content area + controls (preview + mode button)
+- `_modeLabel()` — returns display label for mode button (PAL/HSL/RGB/COL)
+- `_cycleMode()` — cycles mode, rebuilds content, re-renders, repositions
+- `_buildModeContent()` — rebuilds content area per mode, attaches event listeners
+- `_buildPaletteHtml()` — Flexoki palette grid (9 families × 15 shades: whitish + 13 Flexoki + blackish)
+- `_buildSlidersHtml(channels, maxValues)` — shared slider row HTML for HSL and RGB modes
+- `_attachSliderListeners(container)` — shared drag + input listeners for slider canvases
+- `_renderAll()` — dispatches to mode-specific rendering
+- `_renderSliders()` — unified slider canvas rendering for HSL and RGB (gradient + cursor + value inputs)
+- `_renderColorCanvas()` — 2D hue×value gradient with cursor and RGB/hex info
+- `_drawSliderCursor(ctx, x, y, radius)` — draws white/dark circle cursor on slider canvas
+- `_onSliderInput()` — handles manual slider value entry (replaces old _onTextInput)
+- `_onHexInput(hex)` — handles hex text input
+- Hue preservation for achromatic conversions (grays, black, white)
 - Self-injects CSS via `<style id="color-picker-styles">`
+
+### `src/html/utils/colorUtils.js` (unchanged)
+- `rgbToHsl`, `hslToRgb`, `hexToHsl`, `hslToHex`, `rgbToHsv`, `hsvToRgb` — all still used
 
 ### Modified: `src/kanbanBoardsProvider.ts`
 - Added `colorUtilsUri` and `colorPickerUri` script loading in `_getHtmlForWebview()`

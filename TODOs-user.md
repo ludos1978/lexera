@@ -1,3 +1,9 @@
+- [ ] the top should switch with the color type selection. the palette picker is nice as it is, but we dont need the color-gradient-selector below.
+  - it is eighter palette mode
+  - hsl with the selectors  (image 1)
+  - rgb that has 0..100 right of the colors (image 2) and hex entry below
+  - a color selector with the full color range (image 3) which shows rgb and hex below
+
 - [ ] i added a link to a document ![stephango.com](https://stephango.com/flexoki)  but it's not showing as url embed!  this should try to read the site header to determine if embed is allowed. if not it should show it (open url button (show full url in text), embed not allowed), othervise it should show the frame for the embed and overlay a button to open it (if not auto-open config), othervise auto open it !
 
 - [x] rename the kanban boards: boards view to kanban boards (without anything after that!). and the kanban boards: dashboard to kanban dashboard (nothing after that!).

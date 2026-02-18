@@ -1,7 +1,7 @@
 /**
  * ColorPickerComponent
- * Custom HSL color picker popup replacing native <input type="color">.
- * Internal model uses HSV (maps to gradient area). Display defaults to HSL.
+ * Custom color picker popup with 4 modes: Palette, HSL sliders, RGB sliders, Color map.
+ * Internal model uses HSV. Display adapts to selected mode.
  */
 
 class ColorPickerComponent {
@@ -9,12 +9,12 @@ class ColorPickerComponent {
         this._popup = null;
         this._trigger = null;
         this._onChange = null;
-        this._mode = 'hsl'; // hsl | rgb | hex
+        this._mode = 'palette'; // palette | hsl | rgb | color
         // Internal HSV state
         this._hue = 0;       // 0-360
         this._sat = 100;     // 0-100 (HSV saturation)
         this._val = 100;     // 0-100 (HSV value)
-        this._dragging = null; // 'gradient' | 'hue' | null
+        this._dragging = null; // { type: 'slider'|'color', channel?: string, canvas: element } | null
         this._boundOnMouseMove = this._onMouseMove.bind(this);
         this._boundOnMouseUp = this._onMouseUp.bind(this);
         this._boundOnKeyDown = this._onKeyDown.bind(this);
@@ -29,7 +29,6 @@ class ColorPickerComponent {
         this.close();
         this._trigger = triggerElement;
         this._onChange = onChangeCallback;
-        this._mode = 'hsl';
         // Parse initial color to HSV
         const rgb = window.colorUtils.hexToRgb(initialHexColor || '#FF0000');
         if (rgb) {
@@ -73,8 +72,97 @@ class ColorPickerComponent {
     _createPopup() {
         const popup = document.createElement('div');
         popup.className = 'cp-popup';
+        popup.innerHTML = '<div class="cp-content"></div>' +
+            '<div class="cp-controls">' +
+                '<div class="cp-preview"></div>' +
+                '<button class="cp-mode-btn">' + this._modeLabel() + '</button>' +
+            '</div>';
 
-        // Flexoki palette data (shades 50-950 per color family)
+        document.body.appendChild(popup);
+        this._popup = popup;
+        this._contentArea = popup.querySelector('.cp-content');
+        this._preview = popup.querySelector('.cp-preview');
+        this._modeBtn = popup.querySelector('.cp-mode-btn');
+        this._modeBtn.addEventListener('click', () => this._cycleMode());
+        this._buildModeContent();
+    }
+
+    _modeLabel() {
+        return { palette: 'PAL', hsl: 'HSL', rgb: 'RGB', color: 'COL' }[this._mode];
+    }
+
+    _positionPopup() {
+        if (!this._trigger || !this._popup) return;
+        const rect = this._trigger.getBoundingClientRect();
+        const pw = 174, ph = this._popup.offsetHeight;
+        let top = rect.bottom + 4;
+        let left = Math.max(4, (window.innerWidth - pw) / 2);
+        if (top + ph > window.innerHeight) top = Math.max(4, rect.top - ph - 4);
+        this._popup.style.top = top + 'px';
+        this._popup.style.left = left + 'px';
+    }
+
+    // ============= Mode Switching =============
+
+    _cycleMode() {
+        const modes = ['palette', 'hsl', 'rgb', 'color'];
+        const idx = modes.indexOf(this._mode);
+        this._mode = modes[(idx + 1) % modes.length];
+        this._modeBtn.textContent = this._modeLabel();
+        this._buildModeContent();
+        this._renderAll();
+        this._positionPopup();
+    }
+
+    _buildModeContent() {
+        const c = this._contentArea;
+        if (this._mode === 'palette') {
+            c.innerHTML = this._buildPaletteHtml();
+            c.querySelectorAll('.cp-swatch').forEach(swatch => {
+                swatch.addEventListener('click', () => {
+                    const hex = swatch.dataset.color;
+                    const rgb = window.colorUtils.hexToRgb(hex);
+                    if (rgb) {
+                        const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
+                        this._hue = hsv.h;
+                        this._sat = hsv.s;
+                        this._val = hsv.v;
+                        this._renderAll();
+                        this._emitChange();
+                    }
+                });
+            });
+        } else if (this._mode === 'hsl') {
+            c.innerHTML = this._buildSlidersHtml(['H', 'S', 'L'], [360, 100, 100]);
+            this._attachSliderListeners(c);
+        } else if (this._mode === 'rgb') {
+            c.innerHTML = this._buildSlidersHtml(['R', 'G', 'B'], [255, 255, 255]) +
+                '<div class="cp-hex-row">' +
+                    '<span class="cp-slider-label">#</span>' +
+                    '<input type="text" class="cp-hex-input" maxlength="6">' +
+                '</div>';
+            this._attachSliderListeners(c);
+            const hexInput = c.querySelector('.cp-hex-input');
+            if (hexInput) {
+                const handler = () => this._onHexInput(hexInput.value);
+                hexInput.addEventListener('change', handler);
+                hexInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') handler(); });
+            }
+        } else if (this._mode === 'color') {
+            c.innerHTML = '<canvas class="cp-color-canvas" width="160" height="60"></canvas>' +
+                '<div class="cp-color-info"></div>';
+            const canvas = c.querySelector('.cp-color-canvas');
+            canvas.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this._dragging = { type: 'color', canvas: canvas };
+                this._applyDrag(e);
+                document.addEventListener('mousemove', this._boundOnMouseMove, true);
+                document.addEventListener('mouseup', this._boundOnMouseUp, true);
+            });
+        }
+    }
+
+    _buildPaletteHtml() {
         const flexoki = [
             { ref: '#9F9D96', shades: ['#F2F0E5','#E6E4D9','#DAD8CE','#CECDC3','#B7B5AC','#9F9D96','#878580','#6F6E69','#575653','#403E3C','#343331','#282726','#1C1B1A'] },
             { ref: '#D14D41', shades: ['#FFE1D5','#FFCABB','#FDB2A2','#F89A8A','#E8705F','#D14D41','#C03E35','#AF3029','#942822','#6C201C','#551B18','#3E1715','#261312'] },
@@ -86,105 +174,162 @@ class ColorPickerComponent {
             { ref: '#8B7EC8', shades: ['#F0EAEC','#E2D9E9','#D3CAE6','#C4B9E0','#A699D0','#8B7EC8','#735EB5','#5E409D','#4F3685','#3C2A62','#31234E','#261C39','#1A1623'] },
             { ref: '#CE5D97', shades: ['#FEE4E5','#FCCFDA','#F9B9CF','#F4A4C2','#E47DA8','#CE5D97','#B74583','#A02F6F','#87285E','#641F46','#4F1B39','#39172B','#24131D'] },
         ];
-        let paletteHtml = '<div class="cp-palette">';
+        let html = '<div class="cp-palette">';
         for (const row of flexoki) {
             const hsl = window.colorUtils.hexToHsl(row.ref);
             const whitish = hsl ? window.colorUtils.hslToHex(hsl.h, hsl.s, 98) : '#FAFAFA';
             const blackish = hsl ? window.colorUtils.hslToHex(hsl.h, hsl.s, 2) : '#050505';
             const allColors = [whitish, ...row.shades, blackish];
             for (const color of allColors) {
-                paletteHtml += '<div class="cp-swatch" data-color="' + color + '" style="background:' + color + '" title="' + color + '"></div>';
+                html += '<div class="cp-swatch" data-color="' + color + '" style="background:' + color + '" title="' + color + '"></div>';
             }
         }
-        paletteHtml += '</div>';
-
-        popup.innerHTML = paletteHtml + `
-            <canvas class="cp-gradient" width="160" height="88"></canvas>
-            <canvas class="cp-hue-bar" width="160" height="10"></canvas>
-            <div class="cp-controls">
-                <div class="cp-preview"></div>
-                <div class="cp-inputs"></div>
-                <button class="cp-mode-btn">HSL</button>
-            </div>
-        `;
-
-        document.body.appendChild(popup);
-        this._popup = popup;
-
-        // Canvas refs
-        this._gradientCanvas = popup.querySelector('.cp-gradient');
-        this._hueCanvas = popup.querySelector('.cp-hue-bar');
-        this._preview = popup.querySelector('.cp-preview');
-        this._inputsContainer = popup.querySelector('.cp-inputs');
-        this._modeBtn = popup.querySelector('.cp-mode-btn');
-
-        // Event bindings
-        this._gradientCanvas.addEventListener('mousedown', (e) => this._startDrag('gradient', e));
-        this._hueCanvas.addEventListener('mousedown', (e) => this._startDrag('hue', e));
-        this._modeBtn.addEventListener('click', () => this._cycleMode());
-
-        // Palette swatch click handlers
-        popup.querySelectorAll('.cp-swatch').forEach(swatch => {
-            swatch.addEventListener('click', () => {
-                const hex = swatch.dataset.color;
-                const rgb = window.colorUtils.hexToRgb(hex);
-                if (rgb) {
-                    const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
-                    this._hue = hsv.h;
-                    this._sat = hsv.s;
-                    this._val = hsv.v;
-                    this._renderAll();
-                    this._emitChange();
-                }
-            });
-        });
+        html += '</div>';
+        return html;
     }
 
-    _positionPopup() {
-        if (!this._trigger || !this._popup) return;
-        const rect = this._trigger.getBoundingClientRect();
-        // Fixed popup width: 160 canvas + 6*2 padding + 1*2 border = 174
-        const pw = 174, ph = this._popup.offsetHeight;
-        let top = rect.bottom + 4;
-        let left = Math.max(4, (window.innerWidth - pw) / 2);
-        if (top + ph > window.innerHeight) top = Math.max(4, rect.top - ph - 4);
-        this._popup.style.top = top + 'px';
-        this._popup.style.left = left + 'px';
+    _buildSlidersHtml(channels, maxValues) {
+        let html = '';
+        for (let i = 0; i < channels.length; i++) {
+            html += '<div class="cp-slider-row">' +
+                '<span class="cp-slider-label">' + channels[i] + '</span>' +
+                '<canvas class="cp-slider-canvas" data-channel="' + channels[i] + '" width="110" height="12"></canvas>' +
+                '<input type="number" class="cp-slider-value" data-channel="' + channels[i] + '" min="0" max="' + maxValues[i] + '">' +
+                '</div>';
+        }
+        return html;
+    }
+
+    _attachSliderListeners(container) {
+        container.querySelectorAll('.cp-slider-canvas').forEach(canvas => {
+            canvas.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                this._dragging = { type: 'slider', channel: canvas.dataset.channel, canvas: canvas };
+                this._applyDrag(e);
+                document.addEventListener('mousemove', this._boundOnMouseMove, true);
+                document.addEventListener('mouseup', this._boundOnMouseUp, true);
+            });
+        });
+        container.querySelectorAll('.cp-slider-value').forEach(input => {
+            const handler = () => this._onSliderInput();
+            input.addEventListener('change', handler);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') handler(); });
+        });
     }
 
     // ============= Rendering =============
 
     _renderAll() {
-        this._renderGradient();
-        this._renderHueBar();
         this._renderPreview();
-        this._renderInputs();
+        if (this._mode === 'hsl' || this._mode === 'rgb') {
+            this._renderSliders();
+        } else if (this._mode === 'color') {
+            this._renderColorCanvas();
+        }
     }
 
-    _renderGradient() {
-        const canvas = this._gradientCanvas;
+    _renderPreview() {
+        if (this._preview) this._preview.style.backgroundColor = this._currentHex();
+    }
+
+    _renderSliders() {
+        const hsl = this._currentHsl();
+        const rgb = this._currentRgb();
+        this._contentArea.querySelectorAll('.cp-slider-canvas').forEach(canvas => {
+            const ch = canvas.dataset.channel;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width, h = canvas.height;
+            ctx.save();
+            ctx.clearRect(0, 0, w, h);
+            // Clip to a 4px-tall rounded bar centered vertically
+            ctx.beginPath();
+            ctx.roundRect(0, (h - 4) / 2, w, 4, 2);
+            ctx.clip();
+
+            const grad = ctx.createLinearGradient(0, 0, w, 0);
+            const steps = ch === 'H' ? 12 : 10;
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                let cr, cg, cb;
+                if (ch === 'H') {
+                    const c = window.colorUtils.hslToRgb(t * 360, hsl.s, hsl.l);
+                    cr = c.r; cg = c.g; cb = c.b;
+                } else if (ch === 'S') {
+                    const c = window.colorUtils.hslToRgb(hsl.h, t * 100, hsl.l);
+                    cr = c.r; cg = c.g; cb = c.b;
+                } else if (ch === 'L') {
+                    const c = window.colorUtils.hslToRgb(hsl.h, hsl.s, t * 100);
+                    cr = c.r; cg = c.g; cb = c.b;
+                } else if (ch === 'R') {
+                    cr = Math.round(t * 255); cg = rgb.g; cb = rgb.b;
+                } else if (ch === 'G') {
+                    cr = rgb.r; cg = Math.round(t * 255); cb = rgb.b;
+                } else {
+                    cr = rgb.r; cg = rgb.g; cb = Math.round(t * 255);
+                }
+                grad.addColorStop(t, 'rgb(' + cr + ',' + cg + ',' + cb + ')');
+            }
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Cursor position
+            let value, max;
+            if (ch === 'H') { value = hsl.h; max = 360; }
+            else if (ch === 'S') { value = hsl.s; max = 100; }
+            else if (ch === 'L') { value = hsl.l; max = 100; }
+            else if (ch === 'R') { value = rgb.r; max = 255; }
+            else if (ch === 'G') { value = rgb.g; max = 255; }
+            else { value = rgb.b; max = 255; }
+            ctx.restore();
+            // Draw cursor knob on top (outside clip)
+            this._drawSliderCursor(ctx, (value / max) * w, h / 2, 5);
+        });
+
+        // Update value inputs (skip if user is editing)
+        this._contentArea.querySelectorAll('.cp-slider-value').forEach(input => {
+            if (document.activeElement === input) return;
+            const ch = input.dataset.channel;
+            if (ch === 'H') input.value = hsl.h;
+            else if (ch === 'S') input.value = hsl.s;
+            else if (ch === 'L') input.value = hsl.l;
+            else if (ch === 'R') input.value = rgb.r;
+            else if (ch === 'G') input.value = rgb.g;
+            else if (ch === 'B') input.value = rgb.b;
+        });
+
+        // Update hex input (RGB mode)
+        if (this._mode === 'rgb') {
+            const hexInput = this._contentArea.querySelector('.cp-hex-input');
+            if (hexInput && document.activeElement !== hexInput) {
+                hexInput.value = this._currentHex().substring(1);
+            }
+        }
+    }
+
+    _renderColorCanvas() {
+        const canvas = this._contentArea.querySelector('.cp-color-canvas');
+        if (!canvas) return;
         const ctx = canvas.getContext('2d');
         const w = canvas.width, h = canvas.height;
-        // Base hue color
-        const hueRgb = window.colorUtils.hsvToRgb(this._hue, 100, 100);
-        const hueStr = `rgb(${hueRgb.r},${hueRgb.g},${hueRgb.b})`;
-        // Fill with hue
-        ctx.fillStyle = hueStr;
+
+        // Horizontal hue gradient at full saturation and value
+        const hueGrad = ctx.createLinearGradient(0, 0, w, 0);
+        for (let i = 0; i <= 6; i++) {
+            const rgb = window.colorUtils.hsvToRgb((i / 6) * 360, 100, 100);
+            hueGrad.addColorStop(i / 6, 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')');
+        }
+        ctx.fillStyle = hueGrad;
         ctx.fillRect(0, 0, w, h);
-        // White gradient left to right
-        const whiteGrad = ctx.createLinearGradient(0, 0, w, 0);
-        whiteGrad.addColorStop(0, 'rgba(255,255,255,1)');
-        whiteGrad.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = whiteGrad;
-        ctx.fillRect(0, 0, w, h);
-        // Black gradient top to bottom
+
+        // Vertical black overlay (top transparent, bottom black)
         const blackGrad = ctx.createLinearGradient(0, 0, 0, h);
         blackGrad.addColorStop(0, 'rgba(0,0,0,0)');
         blackGrad.addColorStop(1, 'rgba(0,0,0,1)');
         ctx.fillStyle = blackGrad;
         ctx.fillRect(0, 0, w, h);
+
         // Cursor
-        const cx = (this._sat / 100) * w;
+        const cx = (this._hue / 360) * w;
         const cy = (1 - this._val / 100) * h;
         ctx.beginPath();
         ctx.arc(cx, cy, 5, 0, Math.PI * 2);
@@ -196,70 +341,23 @@ class ColorPickerComponent {
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 1;
         ctx.stroke();
+
+        // Update info display
+        const info = this._contentArea.querySelector('.cp-color-info');
+        if (info) {
+            const rgb = this._currentRgb();
+            info.textContent = 'R:' + rgb.r + ' G:' + rgb.g + ' B:' + rgb.b + '  ' + this._currentHex();
+        }
     }
 
-    _renderHueBar() {
-        const canvas = this._hueCanvas;
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width, h = canvas.height;
-        const grad = ctx.createLinearGradient(0, 0, w, 0);
-        for (let i = 0; i <= 6; i++) {
-            const rgb = window.colorUtils.hsvToRgb((i / 6) * 360, 100, 100);
-            grad.addColorStop(i / 6, `rgb(${rgb.r},${rgb.g},${rgb.b})`);
-        }
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
-        // Cursor
-        const cx = (this._hue / 360) * w;
+    _drawSliderCursor(ctx, x, y, radius) {
         ctx.beginPath();
-        ctx.rect(cx - 3, 0, 6, h);
-        ctx.strokeStyle = '#fff';
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.beginPath();
-        ctx.rect(cx - 2, 0, 4, h);
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-    }
-
-    _renderPreview() {
-        const hex = this._currentHex();
-        this._preview.style.backgroundColor = hex;
-    }
-
-    _renderInputs() {
-        const container = this._inputsContainer;
-        this._modeBtn.textContent = this._mode.toUpperCase();
-        let html = '';
-        if (this._mode === 'hsl') {
-            const hsl = this._currentHsl();
-            html += this._numInput('H', hsl.h, 0, 360);
-            html += this._numInput('S', hsl.s, 0, 100);
-            html += this._numInput('L', hsl.l, 0, 100);
-        } else if (this._mode === 'rgb') {
-            const rgb = this._currentRgb();
-            html += this._numInput('R', rgb.r, 0, 255);
-            html += this._numInput('G', rgb.g, 0, 255);
-            html += this._numInput('B', rgb.b, 0, 255);
-        } else {
-            html += '<label class="cp-field"><span>Hex</span><input type="text" class="cp-hex-input" value="' + this._currentHex() + '" maxlength="7"></label>';
-        }
-        container.innerHTML = html;
-        // Attach input listeners
-        container.querySelectorAll('.cp-num-input').forEach(inp => {
-            inp.addEventListener('change', () => this._onTextInput());
-            inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') this._onTextInput(); });
-        });
-        const hexInp = container.querySelector('.cp-hex-input');
-        if (hexInp) {
-            hexInp.addEventListener('change', () => this._onHexInput(hexInp.value));
-            hexInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') this._onHexInput(hexInp.value); });
-        }
-    }
-
-    _numInput(label, value, min, max) {
-        return `<label class="cp-field"><span>${label}</span><input type="number" class="cp-num-input" data-channel="${label}" min="${min}" max="${max}" value="${value}"></label>`;
     }
 
     // ============= Current Color Getters =============
@@ -276,20 +374,13 @@ class ColorPickerComponent {
     _currentHsl() {
         const rgb = this._currentRgb();
         const hsl = window.colorUtils.rgbToHsl(rgb.r, rgb.g, rgb.b);
-        // At L=100 (white) or L=0 (black), saturation is irrelevant — show 100
+        // Preserve hue for achromatic colors (lost in conversion but stored internally)
+        if (hsl.s === 0 || hsl.l === 0 || hsl.l === 100) hsl.h = this._hue;
         if (hsl.l === 100 || hsl.l === 0) hsl.s = 100;
         return hsl;
     }
 
     // ============= Drag Interaction =============
-
-    _startDrag(target, e) {
-        e.preventDefault();
-        this._dragging = target;
-        this._applyDrag(e);
-        document.addEventListener('mousemove', this._boundOnMouseMove, true);
-        document.addEventListener('mouseup', this._boundOnMouseUp, true);
-    }
 
     _onMouseMove(e) {
         if (this._dragging) this._applyDrag(e);
@@ -302,82 +393,85 @@ class ColorPickerComponent {
     }
 
     _applyDrag(e) {
-        if (this._dragging === 'gradient') {
-            const rect = this._gradientCanvas.getBoundingClientRect();
+        if (!this._dragging) return;
+
+        if (this._dragging.type === 'slider') {
+            const canvas = this._dragging.canvas;
+            const ch = this._dragging.channel;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+
+            if (this._mode === 'hsl') {
+                const hsl = this._currentHsl();
+                if (ch === 'H') hsl.h = Math.min(359, Math.round(x * 360));
+                else if (ch === 'S') hsl.s = Math.round(x * 100);
+                else if (ch === 'L') hsl.l = Math.round(x * 100);
+                const rgb = window.colorUtils.hslToRgb(hsl.h, hsl.s, hsl.l);
+                const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
+                // Preserve hue/sat when converting through achromatic colors
+                this._hue = (hsv.s === 0 && ch !== 'H') ? this._hue : (ch === 'H' ? hsl.h : hsv.h);
+                this._sat = hsv.v === 0 ? this._sat : hsv.s;
+                this._val = hsv.v;
+            } else if (this._mode === 'rgb') {
+                const rgb = this._currentRgb();
+                if (ch === 'R') rgb.r = Math.round(x * 255);
+                else if (ch === 'G') rgb.g = Math.round(x * 255);
+                else if (ch === 'B') rgb.b = Math.round(x * 255);
+                const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
+                if (hsv.s === 0) hsv.h = this._hue;
+                if (hsv.v === 0) { hsv.h = this._hue; hsv.s = this._sat; }
+                this._hue = hsv.h; this._sat = hsv.s; this._val = hsv.v;
+            }
+        } else if (this._dragging.type === 'color') {
+            const canvas = this._dragging.canvas;
+            const rect = canvas.getBoundingClientRect();
             const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-            this._sat = Math.round(x * 100);
+            this._hue = Math.min(359, Math.round(x * 360));
+            this._sat = 100;
             this._val = Math.round((1 - y) * 100);
-            this._renderGradient();
-            this._renderPreview();
-            this._renderInputs();
-            this._emitChange();
-        } else if (this._dragging === 'hue') {
-            const rect = this._hueCanvas.getBoundingClientRect();
-            const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            this._hue = Math.round(x * 360);
-            if (this._hue >= 360) this._hue = 359;
-            this._renderGradient();
-            this._renderHueBar();
-            this._renderPreview();
-            this._renderInputs();
-            this._emitChange();
         }
+        this._renderAll();
+        this._emitChange();
     }
 
     // ============= Text Input Handling =============
 
-    _onTextInput() {
-        const inputs = this._inputsContainer.querySelectorAll('.cp-num-input');
+    _onSliderInput() {
+        const inputs = this._contentArea.querySelectorAll('.cp-slider-value');
         const vals = {};
-        inputs.forEach(inp => {
-            vals[inp.dataset.channel] = parseInt(inp.value, 10) || 0;
-        });
+        inputs.forEach(inp => vals[inp.dataset.channel] = parseInt(inp.value, 10) || 0);
+
         if (this._mode === 'hsl') {
             const h = Math.max(0, Math.min(360, vals.H || 0));
             const s = Math.max(0, Math.min(100, vals.S || 0));
             const l = Math.max(0, Math.min(100, vals.L || 0));
             const rgb = window.colorUtils.hslToRgb(h, s, l);
             const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
-            this._hue = hsv.h;
-            this._sat = hsv.s;
+            this._hue = (hsv.s === 0) ? h : hsv.h;
+            this._sat = hsv.v === 0 ? this._sat : hsv.s;
             this._val = hsv.v;
         } else if (this._mode === 'rgb') {
             const r = Math.max(0, Math.min(255, vals.R || 0));
             const g = Math.max(0, Math.min(255, vals.G || 0));
             const b = Math.max(0, Math.min(255, vals.B || 0));
             const hsv = window.colorUtils.rgbToHsv(r, g, b);
-            this._hue = hsv.h;
-            this._sat = hsv.s;
-            this._val = hsv.v;
+            if (hsv.s === 0) hsv.h = this._hue;
+            if (hsv.v === 0) { hsv.h = this._hue; hsv.s = this._sat; }
+            this._hue = hsv.h; this._sat = hsv.s; this._val = hsv.v;
         }
-        this._renderGradient();
-        this._renderHueBar();
-        this._renderPreview();
+        this._renderAll();
         this._emitChange();
     }
 
     _onHexInput(hex) {
-        if (!hex.startsWith('#')) hex = '#' + hex;
+        hex = '#' + hex.replace(/^#/, '');
         const rgb = window.colorUtils.hexToRgb(hex);
         if (!rgb) return;
         const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
-        this._hue = hsv.h;
-        this._sat = hsv.s;
-        this._val = hsv.v;
-        this._renderGradient();
-        this._renderHueBar();
-        this._renderPreview();
+        this._hue = hsv.h; this._sat = hsv.s; this._val = hsv.v;
+        this._renderAll();
         this._emitChange();
-    }
-
-    // ============= Mode Cycling =============
-
-    _cycleMode() {
-        const modes = ['hsl', 'rgb', 'hex'];
-        const idx = modes.indexOf(this._mode);
-        this._mode = modes[(idx + 1) % modes.length];
-        this._renderInputs();
     }
 
     // ============= Events =============
@@ -387,9 +481,7 @@ class ColorPickerComponent {
     }
 
     _onKeyDown(e) {
-        if (e.key === 'Escape') {
-            this.close();
-        }
+        if (e.key === 'Escape') this.close();
     }
 
     _onClickOutside(e) {
@@ -417,16 +509,6 @@ class ColorPickerComponent {
     flex-direction: column;
     gap: 4px;
 }
-.cp-gradient {
-    cursor: crosshair;
-    border-radius: 2px;
-    display: block;
-}
-.cp-hue-bar {
-    cursor: crosshair;
-    border-radius: 2px;
-    display: block;
-}
 .cp-controls {
     display: flex;
     align-items: center;
@@ -438,50 +520,6 @@ class ColorPickerComponent {
     border-radius: 3px;
     border: 1px solid var(--vscode-input-border, #3c3c3c);
     flex-shrink: 0;
-}
-.cp-inputs {
-    display: flex;
-    gap: 2px;
-}
-.cp-field {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
-.cp-field span {
-    font-size: 9px;
-    color: var(--vscode-descriptionForeground, #888);
-    margin-bottom: 1px;
-}
-.cp-num-input {
-    width: 30px;
-    box-sizing: border-box;
-    padding: 2px 2px;
-    font-size: 10px;
-    text-align: center;
-    background: var(--vscode-input-background, #3c3c3c);
-    color: var(--vscode-input-foreground, #ccc);
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 2px;
-    outline: none;
-    -moz-appearance: textfield;
-}
-.cp-num-input::-webkit-outer-spin-button,
-.cp-num-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-.cp-hex-input {
-    width: 94px;
-    box-sizing: border-box;
-    padding: 2px 2px;
-    font-size: 10px;
-    text-align: center;
-    background: var(--vscode-input-background, #3c3c3c);
-    color: var(--vscode-input-foreground, #ccc);
-    border: 1px solid var(--vscode-input-border, #3c3c3c);
-    border-radius: 2px;
-    outline: none;
 }
 .cp-mode-btn {
     width: 30px;
@@ -514,6 +552,74 @@ class ColorPickerComponent {
     box-shadow: inset 0 0 0 1.5px var(--vscode-focusBorder, #007fd4);
     z-index: 1;
     position: relative;
+}
+.cp-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 3px;
+}
+.cp-slider-row:last-child {
+    margin-bottom: 0;
+}
+.cp-slider-label {
+    width: 12px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #888);
+    text-align: center;
+    flex-shrink: 0;
+}
+.cp-slider-canvas {
+    cursor: pointer;
+    display: block;
+}
+.cp-slider-value {
+    width: 32px;
+    box-sizing: border-box;
+    padding: 2px 2px;
+    font-size: 10px;
+    text-align: center;
+    background: var(--vscode-input-background, #3c3c3c);
+    color: var(--vscode-input-foreground, #ccc);
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 2px;
+    outline: none;
+    flex-shrink: 0;
+    -moz-appearance: textfield;
+}
+.cp-slider-value::-webkit-outer-spin-button,
+.cp-slider-value::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.cp-hex-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 3px;
+}
+.cp-hex-input {
+    flex: 1;
+    box-sizing: border-box;
+    padding: 2px 4px;
+    font-size: 10px;
+    text-align: center;
+    background: var(--vscode-input-background, #3c3c3c);
+    color: var(--vscode-input-foreground, #ccc);
+    border: 1px solid var(--vscode-input-border, #3c3c3c);
+    border-radius: 2px;
+    outline: none;
+}
+.cp-color-canvas {
+    cursor: crosshair;
+    border-radius: 3px;
+    display: block;
+}
+.cp-color-info {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #888);
+    text-align: center;
+    margin-top: 2px;
 }
 `;
         document.head.appendChild(style);
