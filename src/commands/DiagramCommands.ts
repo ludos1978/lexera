@@ -370,19 +370,27 @@ export class DiagramCommands extends SwitchBasedCommand {
         const mimeType = config.extension === 'svg' ? 'image/svg+xml' : 'image/png';
 
         if (fs.existsSync(cachePath)) {
-            const cached = await fs.promises.readFile(cachePath);
-            return `data:${mimeType};base64,${cached.toString('base64')}`;
+            try {
+                const cached = await fs.promises.readFile(cachePath);
+                return `data:${mimeType};base64,${cached.toString('base64')}`;
+            } catch (cacheReadError) {
+                logger.warn(`[${config.logPrefix}] Cache read failed (${(cacheReadError as Error).message}), re-rendering`);
+            }
         }
 
         const data = await renderFn();
 
-        await fs.promises.mkdir(cacheDir, { recursive: true });
-        if (typeof data === 'string') {
-            await fs.promises.writeFile(cachePath, data, 'utf8');
-        } else {
-            await fs.promises.writeFile(cachePath, data);
+        try {
+            await fs.promises.mkdir(cacheDir, { recursive: true });
+            if (typeof data === 'string') {
+                await fs.promises.writeFile(cachePath, data, 'utf8');
+            } else {
+                await fs.promises.writeFile(cachePath, data);
+            }
+            await this.cleanOldDiagramCache(cacheDir, absolutePath, cacheFileName, config.extension, config.logPrefix);
+        } catch (cacheWriteError) {
+            logger.warn(`[${config.logPrefix}] Cache write failed (${(cacheWriteError as Error).message}), skipping cache`);
         }
-        await this.cleanOldDiagramCache(cacheDir, absolutePath, cacheFileName, config.extension, config.logPrefix);
 
         return `data:${mimeType};base64,${Buffer.from(data).toString('base64')}`;
     }

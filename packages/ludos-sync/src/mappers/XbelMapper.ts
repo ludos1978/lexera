@@ -4,15 +4,14 @@
  * XBEL (XML Bookmark Exchange Language) is the format Floccus uses over WebDAV.
  *
  * Mapping rules:
- *   Top-level <folder>  <-> ## Column Title (kanban column)
- *   Sub-folder path     <-> First line of task content (e.g., "Shopping/Deals")
- *   <bookmark>          <-> [Title](url "xbel-id") lines within the task
- *   XBEL ID             <-> stored in the link's title attribute for identity matching
+ *   Each XBEL folder with bookmarks <-> ## Full / Path / Title (kanban column)
+ *   Each <bookmark>                  <-> [Title](url "xbel-id") as individual task
+ *   XBEL ID                          <-> stored in the link's title attribute
+ *   #stack tag                        <-> added to consecutive columns sharing top-level folder
  *
- * Each top-level XBEL folder becomes a kanban column. Sub-folders are flattened
- * into tasks where the sub-path is the first line and bookmarks are aggregated
- * as link lines. Bookmarks directly in a top-level folder become tasks without
- * a sub-path prefix.
+ * Folders are flattened: "Bookmarks Bar / Shopping / Deals" becomes a column title.
+ * Consecutive columns from the same top-level XBEL folder get a #stack tag for
+ * visual grouping in the kanban board.
  *
  * Tasks without URLs in a synced column are preserved but invisible to Floccus.
  */
@@ -62,6 +61,8 @@ export class XbelMapper {
     suppressEmptyNode: true,
   });
 
+  // ── XBEL XML parsing (tree structure) ──
+
   /**
    * Parse XBEL XML string into a tree of XbelFolder nodes.
    * Preserves the nested folder hierarchy.
@@ -72,7 +73,6 @@ export class XbelMapper {
     const xbel = parsed.xbel || parsed;
     const result: XbelRoot = { folders: [] };
 
-    // Collect root-level bookmarks (directly under <xbel>, not in a folder)
     const rootBookmarks = this.parseBookmarks(xbel);
     if (rootBookmarks.length > 0) {
       result.folders.push({
@@ -84,7 +84,6 @@ export class XbelMapper {
       log.verbose(`[XbelMapper.parseXbel] ${rootBookmarks.length} root-level bookmarks -> "Unsorted"`);
     }
 
-    // Parse top-level folders as tree nodes
     const rawFolders = xbel.folder || [];
     for (const folder of rawFolders) {
       result.folders.push(this.parseFolderRecursive(folder));
@@ -96,9 +95,6 @@ export class XbelMapper {
     return result;
   }
 
-  /**
-   * Recursively parse a folder XML node into an XbelFolder tree node.
-   */
   private static parseFolderRecursive(folder: Record<string, unknown>): XbelFolder {
     const title = (folder.title as string) || '';
     const id = (folder['@_id'] as string) || '';
@@ -113,9 +109,6 @@ export class XbelMapper {
     return { id, title, bookmarks, children };
   }
 
-  /**
-   * Count all bookmarks recursively in a folder tree.
-   */
   private static countBookmarks(folders: XbelFolder[]): number {
     let count = 0;
     for (const folder of folders) {
@@ -125,9 +118,6 @@ export class XbelMapper {
     return count;
   }
 
-  /**
-   * Extract bookmarks from a parsed XML node (folder or xbel root).
-   */
   private static parseBookmarks(node: Record<string, unknown>): XbelBookmark[] {
     const rawBookmarks = (node.bookmark as Record<string, unknown>[]) || [];
     return rawBookmarks.map(bm => ({
@@ -137,6 +127,8 @@ export class XbelMapper {
       description: (bm.desc as string) || undefined,
     }));
   }
+
+  // ── XBEL XML generation (tree structure) ──
 
   /**
    * Generate XBEL XML string from the tree structure.
@@ -156,9 +148,6 @@ export class XbelMapper {
     return this.xmlBuilder.build(xbelObj);
   }
 
-  /**
-   * Recursively build the XML object for a folder and its children.
-   */
   private static buildFolderXml(folder: XbelFolder): Record<string, unknown> {
     const bookmarks = folder.bookmarks.map(bm => {
       const bookmark: Record<string, unknown> = {
@@ -189,177 +178,160 @@ export class XbelMapper {
     return result;
   }
 
+  // ── XBEL tree <-> Kanban columns ──
+
   /**
    * Convert XBEL tree to kanban columns.
-   * Each top-level folder -> one column.
-   * Sub-folders with bookmarks -> tasks with sub-path as first line and links below.
-   * Bookmarks directly in the top-level folder -> tasks with links only (no sub-path).
+   * Each folder with bookmarks -> one column with full " / " path title.
+   * Each bookmark -> individual task as [Title](url "xbel-id").
+   * Consecutive columns from same top-level folder get #stack tag.
    */
   static xbelToColumns(root: XbelRoot): KanbanColumn[] {
-    return root.folders.map((folder, folderIdx) => {
-      const tasks: KanbanTask[] = [];
-      let taskCounter = 0;
+    const flatEntries: { path: string; bookmarks: XbelBookmark[]; topFolder: string }[] = [];
 
-      // Collect (relativePath, bookmarks) pairs by walking the sub-tree
-      const pathBookmarks: { path: string; bookmarks: XbelBookmark[] }[] = [];
-      this.collectPathBookmarks(folder, '', pathBookmarks);
+    for (const folder of root.folders) {
+      this.flattenFolderTree(folder, folder.title, folder.title, flatEntries);
+    }
 
-      for (const { path, bookmarks } of pathBookmarks) {
-        const lines: string[] = [];
-        if (path) {
-          lines.push(path);
-        }
-        for (const bm of bookmarks) {
-          lines.push(`[${bm.title}](${bm.href} "${bm.id}")`);
-          if (bm.description) {
-            lines.push(bm.description);
-          }
-        }
+    const columns: KanbanColumn[] = [];
+    let prevTopFolder = '';
 
-        tasks.push({
-          id: `sync-task-${folderIdx}-${taskCounter++}`,
-          content: lines.join('\n'),
-        });
-      }
+    for (let i = 0; i < flatEntries.length; i++) {
+      const { path, bookmarks, topFolder } = flatEntries[i];
+      const needsStack = topFolder === prevTopFolder;
+      const title = needsStack ? `${path} #stack` : path;
 
-      return {
-        id: `sync-col-${folderIdx}`,
-        title: folder.title,
+      const tasks: KanbanTask[] = bookmarks.map((bm, bmIdx) => ({
+        id: `sync-task-${i}-${bmIdx}`,
+        content: this.bookmarkToTaskContent(bm),
+      }));
+
+      columns.push({
+        id: `sync-col-${i}`,
+        title,
         tasks,
-      };
-    });
+      });
+
+      prevTopFolder = topFolder;
+    }
+
+    log.verbose(`[XbelMapper.xbelToColumns] ${flatEntries.length} folders -> ${columns.length} columns`);
+    return columns;
   }
 
   /**
-   * Walk the folder tree depth-first, collecting (relativePath, bookmarks) pairs.
+   * Walk the folder tree depth-first, collecting (fullPath, bookmarks, topFolder) entries.
    * Only creates entries for nodes that have direct bookmarks.
-   * The parentPath is empty for the top-level folder itself.
    */
-  private static collectPathBookmarks(
+  private static flattenFolderTree(
     folder: XbelFolder,
-    parentPath: string,
-    out: { path: string; bookmarks: XbelBookmark[] }[],
+    currentPath: string,
+    topFolder: string,
+    out: { path: string; bookmarks: XbelBookmark[]; topFolder: string }[],
   ): void {
-    // Bookmarks directly in this folder
     if (folder.bookmarks.length > 0) {
-      out.push({ path: parentPath, bookmarks: folder.bookmarks });
+      out.push({ path: currentPath, bookmarks: folder.bookmarks, topFolder });
     }
 
-    // Recurse into children
     for (const child of folder.children) {
-      const childPath = parentPath ? `${parentPath}/${child.title}` : child.title;
-      this.collectPathBookmarks(child, childPath, out);
+      this.flattenFolderTree(child, `${currentPath} / ${child.title}`, topFolder, out);
     }
+  }
+
+  /**
+   * Format a single bookmark as task content.
+   */
+  private static bookmarkToTaskContent(bm: XbelBookmark): string {
+    const link = `[${bm.title}](${bm.href} "${bm.id}")`;
+    return bm.description ? `${link}\n${bm.description}` : link;
   }
 
   /**
    * Convert kanban columns to XBEL tree.
-   * Each column -> one top-level folder.
-   * Tasks with a sub-path first line -> nested sub-folders with bookmarks.
-   * Tasks with links only (no sub-path) -> bookmarks at the top-level folder root.
+   * Columns with " / " paths are grouped by top-level folder and nested.
+   * Each task is a single bookmark: [Title](url "xbel-id").
    */
   static columnsToXbel(columns: KanbanColumn[]): XbelRoot {
-    const folders: XbelFolder[] = columns.map((column, colIdx) => {
-      const rootFolder: XbelFolder = {
-        id: `folder-${colIdx}`,
-        title: column.title,
-        bookmarks: [],
-        children: [],
-      };
+    const topFolderMap = new Map<string, XbelFolder>();
+    const topFolderOrder: string[] = [];
 
+    for (const column of columns) {
+      const folderPath = this.extractFolderPath(column.title);
+      if (!folderPath) continue;
+
+      const segments = folderPath.split(' / ');
+      const topName = segments[0];
+
+      if (!topFolderMap.has(topName)) {
+        topFolderMap.set(topName, {
+          id: `folder-${topName.toLowerCase().replace(/\s+/g, '-')}`,
+          title: topName,
+          bookmarks: [],
+          children: [],
+        });
+        topFolderOrder.push(topName);
+      }
+
+      const topFolder = topFolderMap.get(topName)!;
+
+      // Collect bookmarks from tasks
+      const bookmarks: XbelBookmark[] = [];
+      let bmCounter = 0;
       for (const task of column.tasks) {
-        const parsed = this.parseTaskContent(task.content, colIdx);
-        if (!parsed) continue; // no links found, skip
-
-        if (!parsed.subPath) {
-          // Bookmarks at root level of this column's folder
-          rootFolder.bookmarks.push(...parsed.bookmarks);
-        } else {
-          // Build nested folders from the sub-path
-          this.insertBookmarksAtPath(rootFolder, parsed.subPath, parsed.bookmarks);
+        const bm = this.taskContentToBookmark(task.content, bmCounter);
+        if (bm) {
+          bookmarks.push(bm);
+          bmCounter++;
         }
       }
 
-      return rootFolder;
-    });
+      if (bookmarks.length === 0) continue;
 
+      if (segments.length === 1) {
+        // Bookmarks at the top-level folder root
+        topFolder.bookmarks.push(...bookmarks);
+      } else {
+        // Insert into nested sub-folder tree
+        this.insertBookmarksAtPath(topFolder, segments.slice(1), bookmarks);
+      }
+    }
+
+    const folders = topFolderOrder.map(name => topFolderMap.get(name)!);
     return { folders };
   }
 
   /**
-   * Parse a task's content into sub-path and bookmarks.
-   * Returns null if no links are found (task is not XBEL-related).
-   *
-   * Format:
-   *   [optional sub-path line]
-   *   [Title](url "xbel-id")
-   *   [optional description lines]
-   *   [Title2](url2 "xbel-id2")
-   *   ...
+   * Parse task content as a single bookmark link.
+   * Returns null if the content doesn't contain a link.
    */
-  private static parseTaskContent(
-    content: string,
-    colIdx: number,
-  ): { subPath: string; bookmarks: XbelBookmark[] } | null {
+  private static taskContentToBookmark(content: string, fallbackIdx: number): XbelBookmark | null {
     if (!content) return null;
+    const firstLine = content.split('\n')[0].trim();
+    const match = firstLine.match(LINK_REGEX);
+    if (!match) return null;
 
-    const lines = content.split('\n');
-    let subPath = '';
-    const bookmarks: XbelBookmark[] = [];
-    let bmCounter = 0;
-    let currentBookmark: XbelBookmark | null = null;
-    let descLines: string[] = [];
+    const descriptionLines = content.split('\n').slice(1).map(l => l.trim()).filter(l => l);
+    const description = descriptionLines.length > 0 ? descriptionLines.join('\n') : undefined;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      const match = trimmed.match(LINK_REGEX);
-      if (match) {
-        // Finalize previous bookmark's description
-        if (currentBookmark && descLines.length > 0) {
-          currentBookmark.description = descLines.join('\n');
-          descLines = [];
-        }
-
-        currentBookmark = {
-          id: match[3] || `bm-${colIdx}-${bmCounter}`,
-          title: match[1],
-          href: match[2],
-        };
-        bookmarks.push(currentBookmark);
-        bmCounter++;
-      } else if (i === 0) {
-        // First line is not a link -> it's a sub-path
-        subPath = trimmed;
-      } else if (currentBookmark) {
-        // Non-link line after a bookmark -> description of previous bookmark
-        descLines.push(trimmed);
-      }
-    }
-
-    // Finalize last bookmark's description
-    if (currentBookmark && descLines.length > 0) {
-      currentBookmark.description = descLines.join('\n');
-    }
-
-    if (bookmarks.length === 0) return null;
-    return { subPath, bookmarks };
+    return {
+      id: match[3] || `bm-auto-${fallbackIdx}`,
+      title: match[1],
+      href: match[2],
+      description,
+    };
   }
 
   /**
-   * Insert bookmarks into the folder tree at the given sub-path.
+   * Insert bookmarks into the folder tree at the given path segments.
    * Creates intermediate folders as needed.
    */
   private static insertBookmarksAtPath(
     root: XbelFolder,
-    subPath: string,
+    segments: string[],
     bookmarks: XbelBookmark[],
   ): void {
-    const segments = subPath.split('/');
     let current = root;
-    const pathParts: string[] = [];
+    const pathParts: string[] = [root.title];
 
     for (const segment of segments) {
       pathParts.push(segment);
@@ -381,11 +353,23 @@ export class XbelMapper {
   }
 
   /**
+   * Extract the folder path from a column title by stripping #tags.
+   * "Bookmarks Bar / Shopping #stack" -> "Bookmarks Bar / Shopping"
+   */
+  static extractFolderPath(title: string): string {
+    if (!title) return '';
+    return title.replace(/\s+#\S+/g, '').trim();
+  }
+
+  // ── Merge ──
+
+  /**
    * Merge incoming XBEL data into existing columns.
-   * - Matches columns by title
-   * - Within a column, matches tasks by sub-path (first content line)
+   * - Matches columns by folder path (title stripped of #tags)
+   * - Within a column, matches tasks by xbel-id
    * - Preserves kanban task IDs for matched tasks
    * - Tasks without links are preserved unchanged
+   * - Non-synced columns are preserved
    */
   static mergeXbelIntoColumns(
     incoming: XbelRoot,
@@ -393,29 +377,29 @@ export class XbelMapper {
   ): KanbanColumn[] {
     const result: KanbanColumn[] = [];
 
-    const existingByTitle = new Map<string, KanbanColumn>();
+    const existingByPath = new Map<string, KanbanColumn>();
     for (const col of existingColumns) {
-      existingByTitle.set(col.title, col);
+      const path = this.extractFolderPath(col.title);
+      existingByPath.set(path, col);
     }
 
-    // Convert incoming XBEL to columns for task-level comparison
     const incomingColumns = this.xbelToColumns(incoming);
 
     for (const incomingCol of incomingColumns) {
-      const existingCol = existingByTitle.get(incomingCol.title);
+      const incomingPath = this.extractFolderPath(incomingCol.title);
+      const existingCol = existingByPath.get(incomingPath);
 
       if (existingCol) {
         const mergedTasks: KanbanTask[] = [];
 
-        // Build map of existing tasks by sub-path
-        const existingBySubPath = new Map<string, KanbanTask>();
+        // Map existing tasks by xbel-id
+        const existingByXbelId = new Map<string, KanbanTask>();
         const tasksWithoutLinks: KanbanTask[] = [];
 
         for (const task of existingCol.tasks) {
-          const hasLinks = this.extractXbelIds(task.content).length > 0;
-          if (hasLinks) {
-            const subPath = this.extractTaskSubPath(task.content);
-            existingBySubPath.set(subPath, task);
+          const xbelId = this.extractXbelId(task.content);
+          if (xbelId) {
+            existingByXbelId.set(xbelId, task);
           } else {
             tasksWithoutLinks.push(task);
           }
@@ -423,8 +407,8 @@ export class XbelMapper {
 
         // Process incoming tasks: update content, preserve kanban task ID
         for (const inTask of incomingCol.tasks) {
-          const subPath = this.extractTaskSubPath(inTask.content);
-          const existing = existingBySubPath.get(subPath);
+          const xbelId = this.extractXbelId(inTask.content);
+          const existing = xbelId ? existingByXbelId.get(xbelId) : undefined;
 
           mergedTasks.push({
             id: existing?.id || inTask.id,
@@ -441,54 +425,29 @@ export class XbelMapper {
           tasks: mergedTasks,
         });
 
-        existingByTitle.delete(incomingCol.title);
+        existingByPath.delete(incomingPath);
       } else {
-        // New column from XBEL
         result.push(incomingCol);
       }
     }
 
-    // Preserve columns that weren't in the XBEL (non-synced columns)
-    for (const [, col] of existingByTitle) {
+    // Preserve non-synced columns
+    for (const [, col] of existingByPath) {
       result.push(col);
     }
 
     return result;
   }
 
-  /**
-   * Extract the sub-path from a task's content.
-   * If the first line is not a link, it's the sub-path.
-   * Returns empty string for tasks with links on the first line (root bookmarks).
-   */
-  static extractTaskSubPath(content: string): string {
-    if (!content) return '';
-    const firstLine = content.split('\n')[0].trim();
-    if (firstLine.match(LINK_REGEX)) return '';
-    return firstLine;
-  }
+  // ── ID extraction ──
 
   /**
-   * Extract all XBEL IDs from a task's multi-line content.
-   * Searches all lines for [Title](url "xbel-id") patterns.
-   */
-  static extractXbelIds(content: string): string[] {
-    if (!content) return [];
-    const ids: string[] = [];
-    for (const line of content.split('\n')) {
-      const match = line.trim().match(LINK_REGEX);
-      if (match && match[3]) {
-        ids.push(match[3]);
-      }
-    }
-    return ids;
-  }
-
-  /**
-   * Extract first XBEL ID from a task's content (convenience for single-link lookups).
+   * Extract XBEL ID from a task's content (single link per task).
    */
   static extractXbelId(content: string): string | null {
-    const ids = this.extractXbelIds(content);
-    return ids.length > 0 ? ids[0] : null;
+    if (!content) return null;
+    const firstLine = content.split('\n')[0].trim();
+    const match = firstLine.match(LINK_REGEX);
+    return match?.[3] || null;
   }
 }

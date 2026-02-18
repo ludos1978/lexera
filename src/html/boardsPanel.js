@@ -43,7 +43,8 @@
             l: state.locked,
             dt: state.defaultTimeframe,
             dtf: state.defaultTagFilters,
-            dc: state.defaultCalendarSharing
+            dc: state.defaultCalendarSharing,
+            dk: state.isDark
         });
     }
 
@@ -180,7 +181,7 @@
             html += '<div class="board-item" data-file-path="' + escapeHtml(board.filePath) + '">';
 
             // Header row
-            var isDark = currentState.isDark !== undefined ? currentState.isDark : (document.body && (document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')));
+            var isDark = currentState.isDark !== undefined ? currentState.isDark : (document.body && (document.body.classList.contains('vscode-dark') || (document.body.classList.contains('vscode-high-contrast') && !document.body.classList.contains('vscode-high-contrast-light'))));
             var activeColor = isDark ? (board.boardColorDark || board.boardColor) : (board.boardColorLight || board.boardColor);
             var headerStyle = activeColor ? ' style="background-color: ' + escapeHtml(activeColor) + ';"' : '';
             var isActiveBoard = currentState.activeBoardUri && currentState.activeBoardUri === board.uri;

@@ -94,33 +94,28 @@ describe('XbelMapper', () => {
       expect(bb.bookmarks).toHaveLength(0);
       expect(bb.children).toHaveLength(2);
 
-      // Shopping folder
       const shopping = bb.children[0];
       expect(shopping.title).toBe('Shopping');
       expect(shopping.bookmarks).toHaveLength(0);
       expect(shopping.children).toHaveLength(2);
 
-      // Shopping/Deals
       const deals = shopping.children[0];
       expect(deals.title).toBe('Deals');
       expect(deals.bookmarks).toHaveLength(2);
       expect(deals.bookmarks[0].title).toBe('Amazon');
       expect(deals.bookmarks[1].title).toBe('eBay');
 
-      // Shopping/Stores
       const stores = shopping.children[1];
       expect(stores.title).toBe('Stores');
       expect(stores.bookmarks).toHaveLength(1);
       expect(stores.bookmarks[0].title).toBe('Walmart');
 
-      // Tech folder
       const tech = bb.children[1];
       expect(tech.title).toBe('Tech');
       expect(tech.bookmarks).toHaveLength(1);
       expect(tech.bookmarks[0].title).toBe('GitHub');
       expect(tech.children).toHaveLength(1);
 
-      // Tech/Frontend
       const frontend = tech.children[0];
       expect(frontend.title).toBe('Frontend');
       expect(frontend.bookmarks).toHaveLength(1);
@@ -157,7 +152,6 @@ describe('XbelMapper', () => {
       const root = XbelMapper.parseXbel(nestedXbel);
       const xml = XbelMapper.generateXbel(root);
 
-      // Re-parse to verify nesting is preserved
       const reparsed = XbelMapper.parseXbel(xml);
       expect(reparsed.folders).toHaveLength(1);
 
@@ -183,6 +177,214 @@ describe('XbelMapper', () => {
     });
   });
 
+  describe('xbelToColumns', () => {
+    it('should create one column per flat folder, each bookmark is a task', () => {
+      const root = XbelMapper.parseXbel(flatXbel);
+      const columns = XbelMapper.xbelToColumns(root);
+
+      expect(columns).toHaveLength(2);
+
+      // Dev Resources: 2 bookmarks -> 2 tasks
+      expect(columns[0].title).toBe('Dev Resources');
+      expect(columns[0].tasks).toHaveLength(2);
+      expect(columns[0].tasks[0].content).toBe('[GitHub](https://github.com "bm-1")\nCode hosting platform');
+      expect(columns[0].tasks[1].content).toBe('[Stack Overflow](https://stackoverflow.com "bm-2")');
+
+      // News: 1 bookmark -> 1 task, no #stack (different top-level folder)
+      expect(columns[1].title).toBe('News');
+      expect(columns[1].tasks).toHaveLength(1);
+      expect(columns[1].tasks[0].content).toBe('[Hacker News](https://news.ycombinator.com "bm-3")');
+    });
+
+    it('should flatten nested folders with full path titles and #stack', () => {
+      const root = XbelMapper.parseXbel(nestedXbel);
+      const columns = XbelMapper.xbelToColumns(root);
+
+      // 4 folders with bookmarks: Deals, Stores, Tech, Frontend
+      expect(columns).toHaveLength(4);
+
+      // First column: no #stack
+      expect(columns[0].title).toBe('Bookmarks Bar / Shopping / Deals');
+      expect(columns[0].tasks).toHaveLength(2);
+      expect(columns[0].tasks[0].content).toBe('[Amazon](https://amazon.com "bm-1")');
+      expect(columns[0].tasks[1].content).toBe('[eBay](https://ebay.com "bm-2")');
+
+      // Consecutive same top-level folder: #stack
+      expect(columns[1].title).toBe('Bookmarks Bar / Shopping / Stores #stack');
+      expect(columns[1].tasks).toHaveLength(1);
+      expect(columns[1].tasks[0].content).toBe('[Walmart](https://walmart.com "bm-3")');
+
+      expect(columns[2].title).toBe('Bookmarks Bar / Tech #stack');
+      expect(columns[2].tasks).toHaveLength(1);
+      expect(columns[2].tasks[0].content).toBe('[GitHub](https://github.com "bm-4")');
+
+      expect(columns[3].title).toBe('Bookmarks Bar / Tech / Frontend #stack');
+      expect(columns[3].tasks).toHaveLength(1);
+      expect(columns[3].tasks[0].content).toBe('[React](https://react.dev "bm-5")');
+    });
+
+    it('should not add #stack across different top-level folders', () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<xbel version="1.0">
+  <folder id="f1"><title>A</title>
+    <bookmark href="https://a.com" id="bm-a"><title>A Link</title></bookmark>
+  </folder>
+  <folder id="f2"><title>B</title>
+    <bookmark href="https://b.com" id="bm-b"><title>B Link</title></bookmark>
+  </folder>
+</xbel>`;
+      const columns = XbelMapper.xbelToColumns(XbelMapper.parseXbel(xml));
+      expect(columns[0].title).toBe('A');
+      expect(columns[1].title).toBe('B'); // no #stack
+    });
+
+    it('should handle folder with bookmarks at root and in children', () => {
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<xbel version="1.0">
+  <folder id="f1"><title>Parent</title>
+    <bookmark href="https://root.com" id="bm-root"><title>Root Bookmark</title></bookmark>
+    <folder id="f2"><title>Child</title>
+      <bookmark href="https://child.com" id="bm-child"><title>Child Bookmark</title></bookmark>
+    </folder>
+  </folder>
+</xbel>`;
+      const columns = XbelMapper.xbelToColumns(XbelMapper.parseXbel(xml));
+      expect(columns).toHaveLength(2);
+
+      expect(columns[0].title).toBe('Parent');
+      expect(columns[0].tasks).toHaveLength(1);
+      expect(columns[0].tasks[0].content).toBe('[Root Bookmark](https://root.com "bm-root")');
+
+      expect(columns[1].title).toBe('Parent / Child #stack');
+      expect(columns[1].tasks).toHaveLength(1);
+      expect(columns[1].tasks[0].content).toBe('[Child Bookmark](https://child.com "bm-child")');
+    });
+  });
+
+  describe('columnsToXbel', () => {
+    it('should build flat XBEL from flat columns', () => {
+      const columns = [
+        {
+          id: 'col-1',
+          title: 'Dev Resources',
+          tasks: [
+            { id: 't-1', content: '[GitHub](https://github.com "bm-1")' },
+            { id: 't-2', content: '[Stack Overflow](https://stackoverflow.com "bm-2")' },
+          ]
+        },
+        {
+          id: 'col-2',
+          title: 'News',
+          tasks: [
+            { id: 't-3', content: '[Hacker News](https://news.ycombinator.com "bm-3")' },
+          ]
+        }
+      ];
+
+      const result = XbelMapper.columnsToXbel(columns);
+      expect(result.folders).toHaveLength(2);
+
+      expect(result.folders[0].title).toBe('Dev Resources');
+      expect(result.folders[0].bookmarks).toHaveLength(2);
+      expect(result.folders[0].bookmarks[0].title).toBe('GitHub');
+      expect(result.folders[0].bookmarks[0].href).toBe('https://github.com');
+      expect(result.folders[0].bookmarks[0].id).toBe('bm-1');
+
+      expect(result.folders[1].title).toBe('News');
+      expect(result.folders[1].bookmarks).toHaveLength(1);
+    });
+
+    it('should build nested XBEL from columns with " / " paths', () => {
+      const columns = [
+        {
+          id: 'col-1',
+          title: 'Bookmarks Bar / Shopping / Deals',
+          tasks: [
+            { id: 't-1', content: '[Amazon](https://amazon.com "bm-1")' },
+            { id: 't-2', content: '[eBay](https://ebay.com "bm-2")' },
+          ]
+        },
+        {
+          id: 'col-2',
+          title: 'Bookmarks Bar / Shopping / Stores #stack',
+          tasks: [
+            { id: 't-3', content: '[Walmart](https://walmart.com "bm-3")' },
+          ]
+        },
+        {
+          id: 'col-3',
+          title: 'Bookmarks Bar / Tech #stack',
+          tasks: [
+            { id: 't-4', content: '[GitHub](https://github.com "bm-4")' },
+          ]
+        },
+      ];
+
+      const result = XbelMapper.columnsToXbel(columns);
+      expect(result.folders).toHaveLength(1);
+
+      const bb = result.folders[0];
+      expect(bb.title).toBe('Bookmarks Bar');
+      expect(bb.bookmarks).toHaveLength(0);
+      expect(bb.children).toHaveLength(2); // Shopping, Tech
+
+      const shopping = bb.children[0];
+      expect(shopping.title).toBe('Shopping');
+      expect(shopping.children).toHaveLength(2); // Deals, Stores
+
+      const deals = shopping.children[0];
+      expect(deals.title).toBe('Deals');
+      expect(deals.bookmarks).toHaveLength(2);
+      expect(deals.bookmarks[0].title).toBe('Amazon');
+      expect(deals.bookmarks[1].title).toBe('eBay');
+
+      const stores = shopping.children[1];
+      expect(stores.title).toBe('Stores');
+      expect(stores.bookmarks).toHaveLength(1);
+      expect(stores.bookmarks[0].title).toBe('Walmart');
+
+      const tech = bb.children[1];
+      expect(tech.title).toBe('Tech');
+      expect(tech.bookmarks).toHaveLength(1);
+      expect(tech.bookmarks[0].title).toBe('GitHub');
+    });
+
+    it('should skip tasks without links', () => {
+      const columns = [
+        {
+          id: 'col-1',
+          title: 'Mixed',
+          tasks: [
+            { id: 't-1', content: '[Link](https://example.com "id-1")' },
+            { id: 't-2', content: 'Plain text task without link' },
+            { id: 't-3', content: '[Another](https://test.com "id-2")' },
+          ]
+        }
+      ];
+
+      const result = XbelMapper.columnsToXbel(columns);
+      expect(result.folders).toHaveLength(1);
+      expect(result.folders[0].bookmarks).toHaveLength(2);
+      expect(result.folders[0].bookmarks[0].href).toBe('https://example.com');
+      expect(result.folders[0].bookmarks[1].href).toBe('https://test.com');
+    });
+
+    it('should preserve bookmark descriptions through columnsToXbel', () => {
+      const columns = [
+        {
+          id: 'col-1',
+          title: 'Resources',
+          tasks: [
+            { id: 't-1', content: '[GitHub](https://github.com "bm-1")\nCode hosting' },
+          ]
+        }
+      ];
+
+      const result = XbelMapper.columnsToXbel(columns);
+      expect(result.folders[0].bookmarks[0].description).toBe('Code hosting');
+    });
+  });
+
   describe('round-trip XBEL -> columns -> XBEL', () => {
     it('should preserve flat data through round-trip', () => {
       const original = XbelMapper.parseXbel(flatXbel);
@@ -205,14 +407,12 @@ describe('XbelMapper', () => {
       const columns = XbelMapper.xbelToColumns(original);
       const roundTrip = XbelMapper.columnsToXbel(columns);
 
-      // Verify top-level structure
       expect(roundTrip.folders).toHaveLength(1);
       const bb = roundTrip.folders[0];
       expect(bb.title).toBe('Bookmarks Bar');
       expect(bb.bookmarks).toHaveLength(0);
       expect(bb.children).toHaveLength(2);
 
-      // Shopping subtree
       const shopping = bb.children[0];
       expect(shopping.title).toBe('Shopping');
       expect(shopping.children).toHaveLength(2);
@@ -229,7 +429,6 @@ describe('XbelMapper', () => {
       expect(stores.bookmarks).toHaveLength(1);
       expect(stores.bookmarks[0].id).toBe('bm-3');
 
-      // Tech subtree
       const tech = bb.children[1];
       expect(tech.title).toBe('Tech');
       expect(tech.bookmarks).toHaveLength(1);
@@ -253,7 +452,6 @@ describe('XbelMapper', () => {
       expect(bb.title).toBe('Bookmarks Bar');
       expect(bb.children).toHaveLength(2);
 
-      // Verify deep nesting survived
       const deals = bb.children[0].children[0];
       expect(deals.title).toBe('Deals');
       expect(deals.bookmarks).toHaveLength(2);
@@ -261,140 +459,21 @@ describe('XbelMapper', () => {
     });
   });
 
-  describe('xbelToColumns', () => {
-    it('should create columns from flat XBEL folders', () => {
-      const root = XbelMapper.parseXbel(flatXbel);
-      const columns = XbelMapper.xbelToColumns(root);
-
-      expect(columns).toHaveLength(2);
-      expect(columns[0].title).toBe('Dev Resources');
-      // Flat folders: bookmarks directly in top-level -> tasks with links only (no sub-path)
-      expect(columns[0].tasks).toHaveLength(1); // all bookmarks aggregated into one task
-      expect(columns[0].tasks[0].content).toContain('[GitHub](https://github.com "bm-1")');
-      expect(columns[0].tasks[0].content).toContain('Code hosting platform');
-      expect(columns[0].tasks[0].content).toContain('[Stack Overflow](https://stackoverflow.com "bm-2")');
+  describe('extractFolderPath', () => {
+    it('should strip #stack tag from title', () => {
+      expect(XbelMapper.extractFolderPath('Bookmarks Bar / Shopping #stack')).toBe('Bookmarks Bar / Shopping');
     });
 
-    it('should map nested folders to tasks with sub-paths', () => {
-      const root = XbelMapper.parseXbel(nestedXbel);
-      const columns = XbelMapper.xbelToColumns(root);
-
-      expect(columns).toHaveLength(1);
-      expect(columns[0].title).toBe('Bookmarks Bar');
-
-      const tasks = columns[0].tasks;
-      // Shopping/Deals, Shopping/Stores, Tech (root bookmarks), Tech/Frontend
-      expect(tasks).toHaveLength(4);
-
-      // Task 0: Shopping/Deals with Amazon + eBay
-      expect(tasks[0].content).toBe(
-        'Shopping/Deals\n[Amazon](https://amazon.com "bm-1")\n[eBay](https://ebay.com "bm-2")'
-      );
-
-      // Task 1: Shopping/Stores with Walmart
-      expect(tasks[1].content).toBe(
-        'Shopping/Stores\n[Walmart](https://walmart.com "bm-3")'
-      );
-
-      // Task 2: Tech (bookmarks at Tech root, sub-path = "Tech")
-      expect(tasks[2].content).toBe(
-        'Tech\n[GitHub](https://github.com "bm-4")'
-      );
-
-      // Task 3: Tech/Frontend with React
-      expect(tasks[3].content).toBe(
-        'Tech/Frontend\n[React](https://react.dev "bm-5")'
-      );
+    it('should strip multiple #tags', () => {
+      expect(XbelMapper.extractFolderPath('Title #stack #hidden')).toBe('Title');
     });
 
-    it('should handle top-level folder with direct bookmarks (no sub-path)', () => {
-      const root = XbelMapper.parseXbel(flatXbel);
-      const columns = XbelMapper.xbelToColumns(root);
-
-      // Dev Resources has bookmarks directly -> task starts with link (no sub-path)
-      const firstLine = columns[0].tasks[0].content.split('\n')[0];
-      expect(firstLine).toMatch(/^\[/); // starts with link, not a sub-path
-    });
-  });
-
-  describe('columnsToXbel', () => {
-    it('should skip tasks without links', () => {
-      const columns = [
-        {
-          id: 'col-1',
-          title: 'Mixed',
-          tasks: [
-            { id: 't-1', content: '[Link](https://example.com "id-1")' },
-            { id: 't-2', content: 'Plain text task without link' },
-            { id: 't-3', content: '[Another](https://test.com "id-2")' },
-          ]
-        }
-      ];
-
-      const result = XbelMapper.columnsToXbel(columns);
-      expect(result.folders).toHaveLength(1);
-      expect(result.folders[0].bookmarks).toHaveLength(2);
-      expect(result.folders[0].bookmarks[0].href).toBe('https://example.com');
-      expect(result.folders[0].bookmarks[1].href).toBe('https://test.com');
+    it('should return title as-is when no tags', () => {
+      expect(XbelMapper.extractFolderPath('Dev Resources')).toBe('Dev Resources');
     });
 
-    it('should build nested folders from sub-path tasks', () => {
-      const columns = [
-        {
-          id: 'col-1',
-          title: 'Bookmarks Bar',
-          tasks: [
-            { id: 't-1', content: 'Shopping/Deals\n[Amazon](https://amazon.com "bm-1")\n[eBay](https://ebay.com "bm-2")' },
-            { id: 't-2', content: 'Shopping/Stores\n[Walmart](https://walmart.com "bm-3")' },
-            { id: 't-3', content: '[GitHub](https://github.com "bm-4")' },
-          ]
-        }
-      ];
-
-      const result = XbelMapper.columnsToXbel(columns);
-      expect(result.folders).toHaveLength(1);
-
-      const bb = result.folders[0];
-      expect(bb.title).toBe('Bookmarks Bar');
-      // GitHub is at root level (no sub-path)
-      expect(bb.bookmarks).toHaveLength(1);
-      expect(bb.bookmarks[0].title).toBe('GitHub');
-
-      // Shopping folder with Deals and Stores sub-folders
-      expect(bb.children).toHaveLength(1);
-      const shopping = bb.children[0];
-      expect(shopping.title).toBe('Shopping');
-      expect(shopping.children).toHaveLength(2);
-
-      const deals = shopping.children[0];
-      expect(deals.title).toBe('Deals');
-      expect(deals.bookmarks).toHaveLength(2);
-      expect(deals.bookmarks[0].title).toBe('Amazon');
-      expect(deals.bookmarks[1].title).toBe('eBay');
-
-      const stores = shopping.children[1];
-      expect(stores.title).toBe('Stores');
-      expect(stores.bookmarks).toHaveLength(1);
-    });
-
-    it('should handle multi-link tasks with descriptions', () => {
-      const columns = [
-        {
-          id: 'col-1',
-          title: 'Resources',
-          tasks: [
-            { id: 't-1', content: '[GitHub](https://github.com "bm-1")\nCode hosting\n[GitLab](https://gitlab.com "bm-2")\nAlternative hosting' },
-          ]
-        }
-      ];
-
-      const result = XbelMapper.columnsToXbel(columns);
-      const folder = result.folders[0];
-      expect(folder.bookmarks).toHaveLength(2);
-      expect(folder.bookmarks[0].title).toBe('GitHub');
-      expect(folder.bookmarks[0].description).toBe('Code hosting');
-      expect(folder.bookmarks[1].title).toBe('GitLab');
-      expect(folder.bookmarks[1].description).toBe('Alternative hosting');
+    it('should return empty string for empty input', () => {
+      expect(XbelMapper.extractFolderPath('')).toBe('');
     });
   });
 
@@ -415,48 +494,14 @@ describe('XbelMapper', () => {
       expect(XbelMapper.extractXbelId('')).toBeNull();
     });
 
-    it('should extract first ID from multi-line task with sub-path', () => {
-      const content = 'Shopping/Deals\n[Amazon](https://amazon.com "bm-1")\n[eBay](https://ebay.com "bm-2")';
+    it('should extract ID from first line of multi-line task', () => {
+      const content = '[Amazon](https://amazon.com "bm-1")\nSome description';
       expect(XbelMapper.extractXbelId(content)).toBe('bm-1');
     });
   });
 
-  describe('extractXbelIds', () => {
-    it('should extract all IDs from multi-link task', () => {
-      const content = 'Shopping/Deals\n[Amazon](https://amazon.com "bm-1")\n[eBay](https://ebay.com "bm-2")';
-      expect(XbelMapper.extractXbelIds(content)).toEqual(['bm-1', 'bm-2']);
-    });
-
-    it('should return empty array for plain text', () => {
-      expect(XbelMapper.extractXbelIds('Just plain text')).toEqual([]);
-    });
-
-    it('should return empty array for empty content', () => {
-      expect(XbelMapper.extractXbelIds('')).toEqual([]);
-    });
-
-    it('should skip links without IDs', () => {
-      const content = '[Title](https://url)\n[Other](https://other "has-id")';
-      expect(XbelMapper.extractXbelIds(content)).toEqual(['has-id']);
-    });
-  });
-
-  describe('extractTaskSubPath', () => {
-    it('should return sub-path from first line', () => {
-      expect(XbelMapper.extractTaskSubPath('Shopping/Deals\n[Link](url "id")')).toBe('Shopping/Deals');
-    });
-
-    it('should return empty string when first line is a link', () => {
-      expect(XbelMapper.extractTaskSubPath('[Link](url "id")')).toBe('');
-    });
-
-    it('should return empty string for empty content', () => {
-      expect(XbelMapper.extractTaskSubPath('')).toBe('');
-    });
-  });
-
   describe('mergeXbelIntoColumns', () => {
-    it('should update existing bookmarks by sub-path match', () => {
+    it('should update existing bookmarks by xbel-id match', () => {
       const existing = [
         {
           id: 'col-1',
@@ -472,12 +517,11 @@ describe('XbelMapper', () => {
 
       expect(merged).toHaveLength(2); // Dev Resources + News
       expect(merged[0].title).toBe('Dev Resources');
-      // Both bookmarks from Dev Resources are aggregated into one task (same sub-path: empty)
-      expect(merged[0].tasks).toHaveLength(1);
+      expect(merged[0].tasks).toHaveLength(2); // 2 bookmarks = 2 tasks
+      // ID preserved for matched bookmark bm-1
+      expect(merged[0].tasks[0].id).toBe('task-1');
       expect(merged[0].tasks[0].content).toContain('GitHub');
       expect(merged[0].tasks[0].content).toContain('https://github.com');
-      // ID preserved from existing (matched by empty sub-path)
-      expect(merged[0].tasks[0].id).toBe('task-1');
     });
 
     it('should preserve tasks without links', () => {
@@ -507,6 +551,7 @@ describe('XbelMapper', () => {
 
       const merged = XbelMapper.mergeXbelIntoColumns(incoming, existing);
       expect(merged[0].tasks).toHaveLength(2);
+      expect(merged[0].tasks[0].id).toBe('task-1');
       expect(merged[0].tasks[1].content).toBe('My local note without a link');
     });
 
@@ -528,61 +573,89 @@ describe('XbelMapper', () => {
       expect(merged[1].tasks[0].content).toBe('Private');
     });
 
-    it('should merge nested XBEL by sub-path matching', () => {
+    it('should merge nested XBEL columns by folder path', () => {
       const existing = [
         {
-          id: 'col-1',
-          title: 'Bookmarks Bar',
+          id: 'col-deals',
+          title: 'Bookmarks Bar / Shopping / Deals',
           tasks: [
-            { id: 'task-old-1', content: 'Shopping/Deals\n[Amazon](https://amazon.com "bm-1")' },
-            { id: 'task-old-2', content: 'Tech\n[GitHub](https://github.com "bm-4")' },
+            { id: 'task-old-1', content: '[Amazon](https://amazon.com "bm-1")' },
+          ]
+        },
+        {
+          id: 'col-tech',
+          title: 'Bookmarks Bar / Tech #stack',
+          tasks: [
+            { id: 'task-old-2', content: '[GitHub](https://github.com "bm-4")' },
+          ]
+        },
+        {
+          id: 'col-local',
+          title: 'My Notes',
+          tasks: [
             { id: 'task-local', content: 'My local note' },
           ]
-        }
+        },
       ];
 
       const incoming = XbelMapper.parseXbel(nestedXbel);
       const merged = XbelMapper.mergeXbelIntoColumns(incoming, existing);
 
-      expect(merged).toHaveLength(1);
-      expect(merged[0].title).toBe('Bookmarks Bar');
+      // 4 synced columns + 1 local column
+      expect(merged).toHaveLength(5);
 
-      // 4 synced tasks + 1 local note
-      expect(merged[0].tasks).toHaveLength(5);
+      // Deals column preserved ID
+      const dealsCol = merged.find(c => XbelMapper.extractFolderPath(c.title) === 'Bookmarks Bar / Shopping / Deals');
+      expect(dealsCol).toBeDefined();
+      expect(dealsCol!.id).toBe('col-deals');
+      expect(dealsCol!.tasks).toHaveLength(2); // Amazon + eBay
+      expect(dealsCol!.tasks[0].id).toBe('task-old-1'); // preserved ID for bm-1
 
-      // Existing tasks should preserve their kanban IDs
-      const dealsTask = merged[0].tasks.find(t => t.content.startsWith('Shopping/Deals'));
-      expect(dealsTask).toBeDefined();
-      expect(dealsTask!.id).toBe('task-old-1');
-      // Content updated with both bookmarks
-      expect(dealsTask!.content).toContain('[Amazon](https://amazon.com "bm-1")');
-      expect(dealsTask!.content).toContain('[eBay](https://ebay.com "bm-2")');
+      // Tech column preserved ID
+      const techCol = merged.find(c => XbelMapper.extractFolderPath(c.title) === 'Bookmarks Bar / Tech');
+      expect(techCol).toBeDefined();
+      expect(techCol!.id).toBe('col-tech');
+      expect(techCol!.tasks[0].id).toBe('task-old-2'); // preserved ID for bm-4
 
-      const techTask = merged[0].tasks.find(t => t.content.startsWith('Tech\n['));
-      expect(techTask).toBeDefined();
-      expect(techTask!.id).toBe('task-old-2');
+      // Local column preserved
+      const localCol = merged.find(c => c.title === 'My Notes');
+      expect(localCol).toBeDefined();
+      expect(localCol!.tasks[0].content).toBe('My local note');
+    });
 
-      // Local note preserved
-      const localTask = merged[0].tasks.find(t => t.content === 'My local note');
-      expect(localTask).toBeDefined();
+    it('should add new columns for new XBEL folders', () => {
+      const existing = [
+        {
+          id: 'col-1',
+          title: 'Bookmarks Bar / Shopping / Deals',
+          tasks: [
+            { id: 'task-1', content: '[Amazon](https://amazon.com "bm-1")' },
+          ]
+        },
+      ];
+
+      const incoming = XbelMapper.parseXbel(nestedXbel);
+      const merged = XbelMapper.mergeXbelIntoColumns(incoming, existing);
+
+      // Should have 4 columns: Deals (existing), Stores (new), Tech (new), Frontend (new)
+      expect(merged).toHaveLength(4);
     });
   });
 
   describe('sync cycle stability', () => {
     it('should not grow columns through repeated sync cycles', () => {
-      // Cycle 1: Floccus sends nested XBEL, merge into empty board
       const incoming1 = XbelMapper.parseXbel(nestedXbel);
       const merged1 = XbelMapper.mergeXbelIntoColumns(incoming1, []);
       const colCount = merged1.length;
 
-      // Cycle 2: Board -> XBEL -> parse -> merge (simulates Floccus round-trip)
+      // Cycle 2: board -> XBEL -> parse -> merge
       const xbel1 = XbelMapper.columnsToXbel(merged1);
       const xml1 = XbelMapper.generateXbel(xbel1);
       const incoming2 = XbelMapper.parseXbel(xml1);
       const merged2 = XbelMapper.mergeXbelIntoColumns(incoming2, merged1);
       expect(merged2).toHaveLength(colCount);
 
-      // Cycle 3: Another round-trip
+      // Cycle 3
       const xbel2 = XbelMapper.columnsToXbel(merged2);
       const xml2 = XbelMapper.generateXbel(xbel2);
       const incoming3 = XbelMapper.parseXbel(xml2);
@@ -591,7 +664,6 @@ describe('XbelMapper', () => {
     });
 
     it('should not grow columns with mixed synced and non-synced columns', () => {
-      // Board has a non-synced column + synced columns
       const incoming1 = XbelMapper.parseXbel(nestedXbel);
       const existingBoard = [
         { id: 'local-col', title: 'My Notes', tasks: [{ id: 'local-t', content: 'A plain note' }] },
@@ -599,7 +671,6 @@ describe('XbelMapper', () => {
       const merged1 = XbelMapper.mergeXbelIntoColumns(incoming1, existingBoard);
       const colCount = merged1.length;
 
-      // Multiple round-trips
       for (let i = 0; i < 5; i++) {
         const xbel = XbelMapper.columnsToXbel(merged1);
         const xml = XbelMapper.generateXbel(xbel);
@@ -610,23 +681,58 @@ describe('XbelMapper', () => {
     });
 
     it('should stabilize with evolving board state across cycles', () => {
-      // Simulate actual fileWatcher flow: each cycle uses PREVIOUS merged result
       const incoming1 = XbelMapper.parseXbel(nestedXbel);
       let board = [
         { id: 'local-col', title: 'TODO', tasks: [{ id: 'lt', content: 'My todo' }] },
       ];
 
-      // Cycle 1: first sync from Floccus
       board = XbelMapper.mergeXbelIntoColumns(incoming1, board);
       const count1 = board.length;
 
-      // Subsequent cycles: board -> XBEL -> parse -> merge into PREVIOUS result
       for (let i = 0; i < 5; i++) {
         const xbel = XbelMapper.columnsToXbel(board);
         const xml = XbelMapper.generateXbel(xbel);
         const incoming = XbelMapper.parseXbel(xml);
         board = XbelMapper.mergeXbelIntoColumns(incoming, board);
         expect(board).toHaveLength(count1);
+      }
+    });
+
+    it('should preserve task IDs across sync cycles', () => {
+      const incoming1 = XbelMapper.parseXbel(nestedXbel);
+      let board = XbelMapper.mergeXbelIntoColumns(incoming1, []);
+
+      // Capture task IDs from first sync
+      const initialIds = board.flatMap(c => c.tasks.map(t => t.id));
+
+      // Multiple sync cycles
+      for (let i = 0; i < 3; i++) {
+        const xbel = XbelMapper.columnsToXbel(board);
+        const xml = XbelMapper.generateXbel(xbel);
+        const incoming = XbelMapper.parseXbel(xml);
+        board = XbelMapper.mergeXbelIntoColumns(incoming, board);
+      }
+
+      // Task IDs should be preserved
+      const finalIds = board.flatMap(c => c.tasks.map(t => t.id));
+      expect(finalIds).toEqual(initialIds);
+    });
+
+    it('should not duplicate tasks within columns through sync cycles', () => {
+      const incoming1 = XbelMapper.parseXbel(nestedXbel);
+      let board = XbelMapper.mergeXbelIntoColumns(incoming1, []);
+
+      // Capture initial task counts per column
+      const initialTaskCounts = board.map(c => c.tasks.length);
+
+      for (let i = 0; i < 5; i++) {
+        const xbel = XbelMapper.columnsToXbel(board);
+        const xml = XbelMapper.generateXbel(xbel);
+        const incoming = XbelMapper.parseXbel(xml);
+        board = XbelMapper.mergeXbelIntoColumns(incoming, board);
+
+        const taskCounts = board.map(c => c.tasks.length);
+        expect(taskCounts).toEqual(initialTaskCounts);
       }
     });
   });

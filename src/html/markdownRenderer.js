@@ -77,12 +77,13 @@ function createBrokenMediaPlaceholder(path, emoji, titleText, displayText, exist
  * Tries handleMediaNotFound first, falls back to createBrokenMediaPlaceholder.
  */
 window._handleMediaError = function(mediaEl, path, mediaType) {
+    console.warn(`[Media.onerror] ${mediaType} failed to load: ${path}`);
     if (typeof handleMediaNotFound === 'function') {
         try {
             handleMediaNotFound(mediaEl, path, mediaType);
             return;
         } catch(e) {
-            console.warn('[_handleMediaError] handleMediaNotFound threw, using fallback:', e);
+            console.warn('[Media.onerror] handleMediaNotFound threw, using fallback:', e);
         }
     }
     // Fallback when handleMediaNotFound is unavailable or threw
@@ -440,6 +441,7 @@ window.updateEmbedConfig = updateEmbedConfig;
 /**
  * Render an embed placeholder overlay instead of an iframe.
  * The placeholder shows a button that, when clicked, activates the real iframe.
+ * Uses inline onclick with stopPropagation to prevent task-editing from triggering.
  * @param {string} url - The URL to display and eventually load
  * @param {string} iframeHtml - The full iframe HTML to insert on activation
  * @returns {string} HTML for the placeholder overlay
@@ -451,26 +453,29 @@ function _renderEmbedPlaceholder(url, iframeHtml) {
     } catch (e) { /* keep full url */ }
     const escapedIframeHtml = escapeHtml(iframeHtml);
     return `<div class="embed-activate-overlay" data-iframe-html="${escapedIframeHtml}">
-        <button class="embed-activate-btn" title="${escapeHtml(url)}">Open ${escapeHtml(displayUrl)}</button>
+        <button class="embed-activate-btn" title="${escapeHtml(url)}" onclick="window._activateEmbed(event)">Open ${escapeHtml(displayUrl)}</button>
     </div>`;
 }
 
-// Delegated click handler for embed placeholder activation
-document.addEventListener('click', function(e) {
+/**
+ * Global handler for embed placeholder activation.
+ * Stops propagation so the click doesn't bubble up to task-edit handlers.
+ */
+window._activateEmbed = function(e) {
+    e.stopPropagation();
+    e.preventDefault();
     const btn = e.target.closest('.embed-activate-btn');
-    if (!btn) return;
-    const overlay = btn.closest('.embed-activate-overlay');
+    const overlay = btn && btn.closest('.embed-activate-overlay');
     if (!overlay) return;
     const iframeHtml = overlay.getAttribute('data-iframe-html');
     if (!iframeHtml) return;
-    // Create a temporary container to parse the iframe HTML
     const temp = document.createElement('div');
     temp.innerHTML = iframeHtml;
     const iframe = temp.firstElementChild;
     if (iframe) {
         overlay.replaceWith(iframe);
     }
-});
+};
 
 /**
  * Convert a domain pattern (with wildcards) to a regex
@@ -2816,12 +2821,8 @@ function renderMarkdown(text, includeContext) {
             const isWindowsAbsolute = isWindowsAbsolutePath(originalSrc);
             const isRelativePath = isRelativeResourcePath(originalSrc);
 
-            // DEBUG: Log path resolution
-            console.log('[resolveMediaSourcePath] originalSrc:', originalSrc, 'isRelativePath:', isRelativePath, 'includeContext:', includeContext ? { includeDir: includeContext.includeDir } : null);
-
             if (includeContext && isRelativePath) {
                 const resolvedPath = resolveRelativePath(includeContext.includeDir, safeDecodePath(originalSrc));
-                console.log('[resolveMediaSourcePath] Resolved relative path with includeContext:', resolvedPath);
                 return buildWebviewResourceUrl(resolvedPath, false);
             } else if (isRelativePath && window.currentFilePath) {
                 // Relative path in main file - resolve against document directory
@@ -3587,6 +3588,11 @@ function renderMarkdown(text, includeContext) {
             if (webPreviewConfig.enabled &&
                 (originalSrc.startsWith('http://') || originalSrc.startsWith('https://')) &&
                 !isImageUrl(originalSrc)) {
+                // When openAutomatically is off, render web preview URLs as plain links
+                if (!embedOpenAutomatically) {
+                    const linkText = alt || title || originalSrc;
+                    return `<a href="${escapeHtml(originalSrc)}" title="${escapeHtml(title || originalSrc)}">${escapeHtml(linkText)}</a>`;
+                }
                 if (webPreviewConfig.mode === 'iframe') {
                     return renderWebPreview(originalSrc, alt, title);
                 } else {
@@ -3693,8 +3699,6 @@ function renderMarkdown(text, includeContext) {
             const href = token.attrGet('href') || '';
             const title = token.attrGet('title') || '';
 
-            console.log('[LINK-RENDER] link_open called:', { href, title, tokenType: token.type });
-
             // Don't make webview URIs clickable (they're for display only)
             if (href.startsWith('vscode-webview://')) {
                 return '<span class="webview-uri-text">';
@@ -3709,15 +3713,12 @@ function renderMarkdown(text, includeContext) {
             // Check if this is a local file link (not URL, not anchor, not mailto)
             const isLocalFileLink = !isExternalLink && !isAnchorLink && !isMailtoLink && href.length > 0;
 
-            console.log('[LINK-RENDER] link_open analysis:', { isExternalLink, isAnchorLink, isMailtoLink, isLocalFileLink });
-
             if (isLocalFileLink) {
                 // Escape the path for use in onclick handlers
                 const escapedPath = href.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
                 // Mark token so link_close knows to add the burger button
                 token._isLocalFileLink = true;
                 token._escapedPath = escapedPath;
-                console.log('[LINK-RENDER] Wrapping local file link with overlay container:', href);
                 // Wrap in overlay container for path menu
                 return `<span class="link-path-overlay-container" data-file-path="${escapeHtml(href)}"><a href="#" data-original-href="${escapeHtml(href)}"${titleAttr} class="markdown-link markdown-file-link">`;
             }
@@ -3735,14 +3736,6 @@ function renderMarkdown(text, includeContext) {
                     break;
                 }
             }
-
-            console.log('[LINK-RENDER] link_close called:', {
-                idx,
-                foundOpenToken: !!openToken,
-                openTokenType: openToken?.type,
-                isLocalFileLink: openToken?._isLocalFileLink,
-                href: openToken?.attrGet?.('href')
-            });
 
             if (openToken && openToken.attrGet && openToken.attrGet('href') &&
                 openToken.attrGet('href').startsWith('vscode-webview://')) {

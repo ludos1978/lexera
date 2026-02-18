@@ -1122,6 +1122,8 @@ function handleMediaNotFound(element, originalSrc, mediaType) {
     }
     element.dataset.handled = 'true';
 
+    console.warn(`[Media.notFound] ${mediaType} not found: ${originalSrc}`);
+
     // Check if inside an existing overlay container
     const existingOverlay = element.closest(`.${config.containerClass}`);
     if (existingOverlay) {
@@ -1217,6 +1219,9 @@ function markBrokenElements(brokenPaths, mediaType, notFoundHandler) {
         if (!path) return;
 
         if (isPathBroken(path)) {
+            if (!container.classList.contains(config.brokenClass)) {
+                console.warn(`[Media.broken] Marking ${mediaType} as broken: ${path}`);
+            }
             container.classList.add(config.brokenClass);
         } else {
             container.classList.remove(config.brokenClass);

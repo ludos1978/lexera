@@ -125,6 +125,7 @@ The order of the columns is fixed using translateZ:
 - Do not track the file buffers or open the file buffers from the kanban. We only work with the files.
 - CRITICAL: The kanban NEVER reacts to VS Code text editor buffer changes. No typing, undo, or redo in the text editor should affect the kanban board. The kanban only cares about FILE DATA ON DISK. Changes are detected by the file watcher when a file is saved. Never compare VS Code document buffer content against the kanban's cached content.
 
+kanban-column-stack and kanban-full-height-column must never receive any styling for the column! it must allways only affect column-header, column-title, column-content and column-footer nothing else! the background from the #exclude tag for example war wrong and set the background previously.
 
 ALL RULES IN THE AGENT.MD DO NOT NEED TO BE VERIFIED BY ASKING THE USER AGAIN.
 

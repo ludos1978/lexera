@@ -697,8 +697,11 @@ function generateTagStyles() {
                         }
 
                         if (effectStyles) {
-                            // Apply to columns
-                            styles += `.kanban-full-height-column[data-column-bg-tag="${attrTagName}"] {
+                            // Apply to column children (never to kanban-full-height-column itself)
+                            styles += `.kanban-full-height-column[data-column-bg-tag="${attrTagName}"] .column-header,
+.kanban-full-height-column[data-column-bg-tag="${attrTagName}"] .column-title,
+.kanban-full-height-column[data-column-bg-tag="${attrTagName}"] .column-content,
+.kanban-full-height-column[data-column-bg-tag="${attrTagName}"] .column-footer {
                                 ${effectStyles}
                             }\n`;
 

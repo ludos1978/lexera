@@ -19,6 +19,7 @@ class ColorPickerComponent {
         this._boundOnMouseUp = this._onMouseUp.bind(this);
         this._boundOnKeyDown = this._onKeyDown.bind(this);
         this._boundOnClickOutside = this._onClickOutside.bind(this);
+        this._boundOnWindowBlur = this.close.bind(this);
         this._injectStyles();
     }
 
@@ -44,6 +45,7 @@ class ColorPickerComponent {
         requestAnimationFrame(() => {
             document.addEventListener('mousedown', this._boundOnClickOutside, true);
             document.addEventListener('keydown', this._boundOnKeyDown, true);
+            window.addEventListener('blur', this._boundOnWindowBlur);
         });
     }
 
@@ -59,6 +61,7 @@ class ColorPickerComponent {
         document.removeEventListener('keydown', this._boundOnKeyDown, true);
         document.removeEventListener('mousemove', this._boundOnMouseMove, true);
         document.removeEventListener('mouseup', this._boundOnMouseUp, true);
+        window.removeEventListener('blur', this._boundOnWindowBlur);
     }
 
     isOpen() {
