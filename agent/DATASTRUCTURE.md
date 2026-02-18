@@ -118,16 +118,16 @@ Represents a task in a Kanban column.
 ```typescript
 interface KanbanTask {
   id: string;
-  title: string;
-  description?: string;
-  includeMode?: boolean;      // When true, content is generated from included files
+  content: string;
+  checked?: boolean;           // True when task line is `- [x]`, false/undefined for `- [ ]`
+  includeMode?: boolean;       // When true, content is generated from included files
   includeFiles?: string[];     // Paths to included files
   originalTitle?: string;      // Original title before include processing
   displayTitle?: string;       // Cleaned title for display (without include syntax)
 }
 ```
 
-**Purpose**: Core task entity with support for include files and dynamic content.
+**Purpose**: Core task entity with support for include files and dynamic content. The `checked` field preserves the markdown checkbox state (`- [x]` vs `- [ ]`) through the parse/save cycle and is used by DashboardScanner and IcalMapper to filter completed tasks.
 
 #### `KanbanColumn`
 Represents a column in a Kanban board.

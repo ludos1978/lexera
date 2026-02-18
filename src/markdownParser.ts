@@ -265,12 +265,15 @@ export class MarkdownKanbanParser {
 
           if (currentColumn && !currentColumn.includeMode) {
             // Only parse tasks for non-include columns
+            // Detect checkbox state: - [x] or - [X] = checked, - [ ] = unchecked
+            const isChecked = /^- \[[xX]\] /.test(line);
             const taskSummary = line.substring(6);
 
             // Create task with temporary ID - will be matched by content during finalization
             currentTask = {
               id: IdGenerator.generateTaskId(), // Temporary, replaced if content matches
-              content: taskSummary
+              content: taskSummary,
+              checked: isChecked ? true : undefined
             };
 
             taskIndexInColumn++;
@@ -554,7 +557,8 @@ export class MarkdownKanbanParser {
           const contentLines = normalizedContent.split('\n');
           const summaryLine = contentLines[0] || '';
 
-          markdown += `- [ ] ${summaryLine}\n`;
+          const checkbox = task.checked ? '- [x]' : '- [ ]';
+          markdown += `${checkbox} ${summaryLine}\n`;
 
           // Add remaining content with proper indentation
           // CRITICAL: Check if there are lines AFTER the summary (contentLines.length > 1)

@@ -74,7 +74,31 @@ class ColorPickerComponent {
         const popup = document.createElement('div');
         popup.className = 'cp-popup';
 
-        popup.innerHTML = `
+        // Flexoki palette data (shades 50-950 per color family)
+        const flexoki = [
+            { ref: '#9F9D96', shades: ['#F2F0E5','#E6E4D9','#DAD8CE','#CECDC3','#B7B5AC','#9F9D96','#878580','#6F6E69','#575653','#403E3C','#343331','#282726','#1C1B1A'] },
+            { ref: '#D14D41', shades: ['#FFE1D5','#FFCABB','#FDB2A2','#F89A8A','#E8705F','#D14D41','#C03E35','#AF3029','#942822','#6C201C','#551B18','#3E1715','#261312'] },
+            { ref: '#DA702C', shades: ['#FFE7CE','#FED3AF','#FCC192','#F9AE77','#EC8B49','#DA702C','#CB6120','#BC5215','#9D4310','#71320D','#59290D','#40200D','#27180E'] },
+            { ref: '#D0A215', shades: ['#FAEEC6','#F6E2A0','#F1D67E','#ECCB60','#DFB431','#D0A215','#BE9207','#AD8301','#8E6B01','#664D01','#503D02','#3A2D04','#241E08'] },
+            { ref: '#879A39', shades: ['#EDEECF','#DDE2B2','#CDD597','#BEC97E','#A0AF54','#879A39','#768D21','#66800B','#536907','#3D4C07','#313D07','#252D09','#1A1E0C'] },
+            { ref: '#3AA99F', shades: ['#DDF1E4','#BFE8D9','#A2DECE','#87D3C3','#5ABDAC','#3AA99F','#2F968D','#24837B','#1C6C66','#164F4A','#143F3C','#122F2C','#101F1D'] },
+            { ref: '#4385BE', shades: ['#E1ECEB','#C6DDE8','#ABCFE2','#92BFDB','#66A0C8','#4385BE','#3171B2','#205EA6','#1A4F8C','#163B66','#133051','#12253B','#101A24'] },
+            { ref: '#8B7EC8', shades: ['#F0EAEC','#E2D9E9','#D3CAE6','#C4B9E0','#A699D0','#8B7EC8','#735EB5','#5E409D','#4F3685','#3C2A62','#31234E','#261C39','#1A1623'] },
+            { ref: '#CE5D97', shades: ['#FEE4E5','#FCCFDA','#F9B9CF','#F4A4C2','#E47DA8','#CE5D97','#B74583','#A02F6F','#87285E','#641F46','#4F1B39','#39172B','#24131D'] },
+        ];
+        let paletteHtml = '<div class="cp-palette">';
+        for (const row of flexoki) {
+            const hsl = window.colorUtils.hexToHsl(row.ref);
+            const whitish = hsl ? window.colorUtils.hslToHex(hsl.h, hsl.s, 98) : '#FAFAFA';
+            const blackish = hsl ? window.colorUtils.hslToHex(hsl.h, hsl.s, 2) : '#050505';
+            const allColors = [whitish, ...row.shades, blackish];
+            for (const color of allColors) {
+                paletteHtml += '<div class="cp-swatch" data-color="' + color + '" style="background:' + color + '" title="' + color + '"></div>';
+            }
+        }
+        paletteHtml += '</div>';
+
+        popup.innerHTML = paletteHtml + `
             <canvas class="cp-gradient" width="160" height="88"></canvas>
             <canvas class="cp-hue-bar" width="160" height="10"></canvas>
             <div class="cp-controls">
@@ -98,6 +122,22 @@ class ColorPickerComponent {
         this._gradientCanvas.addEventListener('mousedown', (e) => this._startDrag('gradient', e));
         this._hueCanvas.addEventListener('mousedown', (e) => this._startDrag('hue', e));
         this._modeBtn.addEventListener('click', () => this._cycleMode());
+
+        // Palette swatch click handlers
+        popup.querySelectorAll('.cp-swatch').forEach(swatch => {
+            swatch.addEventListener('click', () => {
+                const hex = swatch.dataset.color;
+                const rgb = window.colorUtils.hexToRgb(hex);
+                if (rgb) {
+                    const hsv = window.colorUtils.rgbToHsv(rgb.r, rgb.g, rgb.b);
+                    this._hue = hsv.h;
+                    this._sat = hsv.s;
+                    this._val = hsv.v;
+                    this._renderAll();
+                    this._emitChange();
+                }
+            });
+        });
     }
 
     _positionPopup() {
@@ -457,6 +497,23 @@ class ColorPickerComponent {
 }
 .cp-mode-btn:hover {
     background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+.cp-palette {
+    display: grid;
+    grid-template-columns: repeat(15, 1fr);
+    gap: 1px;
+}
+.cp-swatch {
+    aspect-ratio: 1;
+    border-radius: 1px;
+    cursor: pointer;
+    border: 0.5px solid rgba(128,128,128,0.3);
+    min-height: 8px;
+}
+.cp-swatch:hover {
+    box-shadow: inset 0 0 0 1.5px var(--vscode-focusBorder, #007fd4);
+    z-index: 1;
+    position: relative;
 }
 `;
         document.head.appendChild(style);

@@ -118,8 +118,17 @@ export class DashboardScanner {
                     temporalTasks++;
                 }
 
+                // Task-level checked state: parsed from `- [x]` by markdownParser.
+                // When checked, the task is complete — skip all its temporal entries.
+                // Note: sub-line checkboxes are still detected by detectCheckboxState
+                // inside extractTemporalInfo (those lines retain their `- [x]` prefix).
+                if (task.checked) {
+                    taskIndex++;
+                    continue;
+                }
+
                 for (const r of resolved) {
-                    // Skip checked deadline tasks
+                    // Skip checked sub-line deadline tasks (detected via line-level checkbox)
                     if (r.temporal.checkboxState === 'checked') continue;
 
                     // Column gating: skip when column is outside timeframe

@@ -2752,7 +2752,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 /* --- tasks vertical spacer --- */
 
-.task-item:first-child {
+.task-item:first-of-type {
   margin-top: var(--whitespace-div4);
 }
 
@@ -2760,7 +2760,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   margin-bottom: var(--whitespace-div4);
 } */
 
-.task-item:last-child {
+.task-item:last-of-type {
   margin-bottom: 0;
 }
 

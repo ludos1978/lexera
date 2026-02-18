@@ -10,6 +10,7 @@
 export interface KanbanTask {
   id: string;
   content: string;
+  checked?: boolean;      // True when task line is `- [x]`, undefined for `- [ ]`
   includeMode?: boolean;  // When true, content is generated from included files
   includeFiles?: string[]; // Paths to included files (for task includes - includeMode=true)
   regularIncludeFiles?: string[]; // Paths to regular includes (!!!include()!!! in task content)

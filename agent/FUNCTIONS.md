@@ -9,6 +9,16 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-18) - Flexoki Palette in Color Picker
+
+### Modified: `src/html/utils/colorPickerComponent.js`
+- `_createPopup()` now builds a Flexoki color palette grid (9 color families × 15 shades) above the gradient canvas
+- Each row: whitish (L=98%) + 13 Flexoki shades (50-950) + blackish (L=2%), computed from the 400 shade's hue/saturation
+- Palette swatches are clickable and update the picker's HSV state, gradient, preview, and inputs
+- Added CSS: `.cp-palette` (CSS grid 15 columns), `.cp-swatch` (colored square with hover highlight)
+
+---
+
 ## Recent Updates (2026-02-17) - Custom HSL Color Picker
 
 ### Modified: `src/html/utils/colorUtils.js`
@@ -401,7 +411,7 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 ## Recent Updates (2026-02-03) - Deadline Checkbox Tasks in Dashboard
 
 ### Modified: `src/dashboard/DashboardScanner.ts`
-- `DashboardScanner.scanBoard()` — (MODIFIED) Skips tasks with checked deadline checkboxes (`- [x] !date`). Includes overdue unchecked deadline tasks. Adds `isOverdue` flag to results.
+- `DashboardScanner.scanBoard()` — (MODIFIED) Skips tasks where `task.checked === true` (parsed from `- [x]` by markdownParser). Sub-line checkboxes still detected by `detectCheckboxState` in temporalParser. Includes overdue unchecked deadline tasks. Adds `isOverdue` flag to results.
 
 ### Modified: `src/dashboard/DashboardTypes.ts`
 - `UpcomingItem.isOverdue` — New optional boolean field indicating overdue deadline task (unchecked checkbox with past date)
@@ -1635,8 +1645,8 @@ Sidebar TreeView for listing and managing kanban boards in workspace. Supports a
 
 ## src/markdownParser.ts
 
-- src/markdownParser-parseKanbanBoard - Parse markdown into kanban board structure
-- src/markdownParser-kanbanBoardToMarkdown - Convert kanban board to markdown
+- src/markdownParser-parseKanbanBoard - Parse markdown into kanban board structure. Detects `- [x]` checkbox state and sets `task.checked`.
+- src/markdownParser-kanbanBoardToMarkdown - Convert kanban board to markdown. Preserves checkbox state: writes `- [x]` when `task.checked`, else `- [ ]`.
 - src/markdownParser-extractYamlFrontmatter - Extract YAML frontmatter from markdown
 - src/markdownParser-parseColumn - Parse column from markdown
 - src/markdownParser-parseTask - Parse task from markdown

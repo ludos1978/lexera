@@ -1,6 +1,8 @@
-- [ ] rename the kanban boards: boards view to kanban boards (without anything after that!). and the kanban boards: dashboard to kanban dashboard (nothing after that!).
+- [ ] i added a link to a document ![stephango.com](https://stephango.com/flexoki)  but it's not showing as url embed!  this should try to read the site header to determine if embed is allowed. if not it should show it (open url button (show full url in text), embed not allowed), othervise it should show the frame for the embed and overlay a button to open it (if not auto-open config), othervise auto open it !
 
-- [ ] it still often blurs if i want to select something or open a dropdown or similar! it closes everything very quickly. check what could be the source of this! analyze all possible reasons, do a detailed analysis! /debug we have tried solving this problem 5 times already. FIND A SOLUTION!
+- [x] rename the kanban boards: boards view to kanban boards (without anything after that!). and the kanban boards: dashboard to kanban dashboard (nothing after that!).
+
+- [x] it still often blurs if i want to select something or open a dropdown or similar! it closes everything very quickly. check what could be the source of this! analyze all possible reasons, do a detailed analysis! /debug we have tried solving this problem 5 times already. FIND A SOLUTION!
 
 - [ ] change the "update sync" to it be a option in "all boards" and each individual board. the individual board takes the "all boards" the default option. the options for the new "calendar/task sharing" are "as workspace name", "as board name", "disabled"
 
@@ -33,7 +35,7 @@
 
   - debug off
 
-- [ ] #later i would like to be able to fold a stack to be minimized in width. it should add a fold button on top of each stack. it lists only the titles as blocks with a defineable width height that are put into one vertical block. it should look similar to the vertical folded column.
+- [ ] IDEA FOR LATER: i would like to be able to fold a stack to be minimized in width. it should add a fold button on top of each stack. it lists only the titles as blocks with a defineable width height that are put into one vertical block. it should look similar to the vertical folded column.
 
 - [ ] maybe we could integrate this: https://www.reddit.com/r/LocalLLaMA/comments/1r2f56h/microsoftmarkitdown/
 
