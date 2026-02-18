@@ -317,8 +317,15 @@ class ColorPickerComponent {
     _renderColorCanvas() {
         const canvas = this._contentArea.querySelector('.cp-color-canvas');
         if (!canvas) return;
+        const dpr = window.devicePixelRatio || 1;
+        const lw = 160, lh = 60;
+        canvas.width = lw * dpr;
+        canvas.height = lh * dpr;
+        canvas.style.width = lw + 'px';
+        canvas.style.height = lh + 'px';
         const ctx = canvas.getContext('2d');
-        const w = canvas.width, h = canvas.height;
+        ctx.scale(dpr, dpr);
+        const w = lw, h = lh;
 
         // Horizontal hue gradient at full saturation and value
         const hueGrad = ctx.createLinearGradient(0, 0, w, 0);
