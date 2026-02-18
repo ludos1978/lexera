@@ -5,6 +5,12 @@
  * showing upcoming items and tag summaries.
  */
 
+/** Timeframe values in days available for dashboard filtering */
+export type TimeframeDays = 3 | 7 | 30 | 90 | 180;
+
+/** Timeframe with 0 = use default */
+export type TimeframeWithDefault = 0 | TimeframeDays;
+
 /**
  * Calendar sharing mode: how this board is exposed via CalDAV
  * - 'workspace': calendar named after the workspace
@@ -25,8 +31,8 @@ export type CalendarSharingPerBoard = 'default' | CalendarSharingMode;
 export interface DashboardBoardConfig {
     /** File URI of the kanban board */
     uri: string;
-    /** Timeframe in days for showing upcoming items (0 = use default, 3, 7, or 30) */
-    timeframe: 0 | 3 | 7 | 30;
+    /** Timeframe in days for showing upcoming items (0 = use default) */
+    timeframe: TimeframeWithDefault;
     /** Tags to filter/highlight in this board */
     tagFilters: string[];
     /** Whether this board is enabled in the dashboard */
@@ -42,7 +48,7 @@ export interface DashboardConfig {
     /** List of boards included in the dashboard */
     boards: DashboardBoardConfig[];
     /** Default timeframe for new boards */
-    defaultTimeframe: 3 | 7 | 30;
+    defaultTimeframe: TimeframeDays;
 }
 
 /**
@@ -226,7 +232,7 @@ export interface DashboardRemoveBoardMessage {
 export interface DashboardUpdateConfigMessage {
     type: 'dashboardUpdateConfig';
     boardUri: string;
-    timeframe?: 0 | 3 | 7 | 30;
+    timeframe?: TimeframeWithDefault;
     tagFilters?: string[];
     enabled?: boolean;
 }

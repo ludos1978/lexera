@@ -209,15 +209,17 @@ describe('XbelMapper', () => {
       expect(columns[0].tasks[0].content).toBe('[Amazon](https://amazon.com "bm-1")');
       expect(columns[0].tasks[1].content).toBe('[eBay](https://ebay.com "bm-2")');
 
-      // Consecutive same top-level folder: #stack
+      // Same two topmost segments (Bookmarks Bar / Shopping): #stack
       expect(columns[1].title).toBe('Bookmarks Bar / Shopping / Stores #stack');
       expect(columns[1].tasks).toHaveLength(1);
       expect(columns[1].tasks[0].content).toBe('[Walmart](https://walmart.com "bm-3")');
 
-      expect(columns[2].title).toBe('Bookmarks Bar / Tech #stack');
+      // Different second segment (Tech vs Shopping): new stack, no #stack
+      expect(columns[2].title).toBe('Bookmarks Bar / Tech');
       expect(columns[2].tasks).toHaveLength(1);
       expect(columns[2].tasks[0].content).toBe('[GitHub](https://github.com "bm-4")');
 
+      // Same two topmost segments (Bookmarks Bar / Tech): #stack
       expect(columns[3].title).toBe('Bookmarks Bar / Tech / Frontend #stack');
       expect(columns[3].tasks).toHaveLength(1);
       expect(columns[3].tasks[0].content).toBe('[React](https://react.dev "bm-5")');
@@ -255,7 +257,7 @@ describe('XbelMapper', () => {
       expect(columns[0].tasks).toHaveLength(1);
       expect(columns[0].tasks[0].content).toBe('[Root Bookmark](https://root.com "bm-root")');
 
-      expect(columns[1].title).toBe('Parent / Child #stack');
+      expect(columns[1].title).toBe('Parent / Child');
       expect(columns[1].tasks).toHaveLength(1);
       expect(columns[1].tasks[0].content).toBe('[Child Bookmark](https://child.com "bm-child")');
     });

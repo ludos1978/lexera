@@ -1545,20 +1545,6 @@ class TaskEditor {
         editElement.onblur = () => {
             if (this.isTransitioning) { return; }
 
-            const activeElement = document.activeElement;
-            const focusDroppedToRoot = activeElement === document.body || activeElement === document.documentElement;
-            if (editElement._ignoreNextRootBlur && focusDroppedToRoot) {
-                editElement._ignoreNextRootBlur = false;
-                requestAnimationFrame(() => {
-                    if (!this.currentEditor || this.currentEditor.element !== editElement || this.isTransitioning) {
-                        return;
-                    }
-                    this._focusElement(editElement);
-                });
-                return;
-            }
-            editElement._ignoreNextRootBlur = false;
-
             setTimeout(() => {
                 if (document.activeElement !== editElement &&
                     !this.isTransitioning &&
@@ -1639,24 +1625,8 @@ class TaskEditor {
 
     _setupWysiwygHandlers(editor, wysiwygContainer, containerElement) {
         const dom = editor.getViewDom();
-        dom._ignoreNextRootBlur = false; // disabled for testing - was true to handle VS Code webview focus quirk
-
         dom.addEventListener('blur', () => {
             if (this.isTransitioning) { return; }
-
-            const activeElement = document.activeElement;
-            const focusDroppedToRoot = activeElement === document.body || activeElement === document.documentElement;
-            if (dom._ignoreNextRootBlur && focusDroppedToRoot) {
-                dom._ignoreNextRootBlur = false;
-                requestAnimationFrame(() => {
-                    if (!this.currentEditor || this.currentEditor.wysiwyg?.getViewDom?.() !== dom || this.isTransitioning) {
-                        return;
-                    }
-                    this._focusElement(dom);
-                });
-                return;
-            }
-            dom._ignoreNextRootBlur = false;
 
             setTimeout(() => {
                 if (document.activeElement !== dom &&
@@ -2061,7 +2031,6 @@ class TaskEditor {
         if (wysiwygContext?.editor) {
             this._setupWysiwygHandlers(wysiwygContext.editor, wysiwygContext.container, containerElement);
         } else {
-            editElement._ignoreNextRootBlur = false; // disabled for testing - was true to handle VS Code webview focus quirk
             this._setupInputHandler(editElement, containerElement);
             this._setupBlurHandler(editElement);
             this._setupMouseHandlers(editElement);

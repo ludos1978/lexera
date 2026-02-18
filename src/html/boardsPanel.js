@@ -512,6 +512,8 @@
         html += '<option value="3"' + (defaultTf === 3 ? ' selected' : '') + '>3 days</option>';
         html += '<option value="7"' + (defaultTf === 7 ? ' selected' : '') + '>7 days</option>';
         html += '<option value="30"' + (defaultTf === 30 ? ' selected' : '') + '>30 days</option>';
+        html += '<option value="90"' + (defaultTf === 90 ? ' selected' : '') + '>90 days</option>';
+        html += '<option value="180"' + (defaultTf === 180 ? ' selected' : '') + '>180 days</option>';
         html += '</select>';
         html += '</div></div>';
 

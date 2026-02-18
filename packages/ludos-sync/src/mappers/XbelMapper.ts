@@ -184,21 +184,23 @@ export class XbelMapper {
    * Convert XBEL tree to kanban columns.
    * Each folder with bookmarks -> one column with full " / " path title.
    * Each bookmark -> individual task as [Title](url "xbel-id").
-   * Consecutive columns from same top-level folder get #stack tag.
+   * Consecutive columns sharing the same two topmost folder segments get #stack tag.
    */
   static xbelToColumns(root: XbelRoot): KanbanColumn[] {
-    const flatEntries: { path: string; bookmarks: XbelBookmark[]; topFolder: string }[] = [];
+    const flatEntries: { path: string; bookmarks: XbelBookmark[] }[] = [];
 
     for (const folder of root.folders) {
-      this.flattenFolderTree(folder, folder.title, folder.title, flatEntries);
+      this.flattenFolderTree(folder, folder.title, flatEntries);
     }
 
     const columns: KanbanColumn[] = [];
-    let prevTopFolder = '';
+    let prevStackKey = '';
 
     for (let i = 0; i < flatEntries.length; i++) {
-      const { path, bookmarks, topFolder } = flatEntries[i];
-      const needsStack = topFolder === prevTopFolder;
+      const { path, bookmarks } = flatEntries[i];
+      const segments = path.split(' / ');
+      const stackKey = segments.slice(0, 2).join(' / ');
+      const needsStack = stackKey === prevStackKey;
       const title = needsStack ? `${path} #stack` : path;
 
       const tasks: KanbanTask[] = bookmarks.map((bm, bmIdx) => ({
@@ -212,7 +214,7 @@ export class XbelMapper {
         tasks,
       });
 
-      prevTopFolder = topFolder;
+      prevStackKey = stackKey;
     }
 
     log.verbose(`[XbelMapper.xbelToColumns] ${flatEntries.length} folders -> ${columns.length} columns`);
@@ -220,21 +222,20 @@ export class XbelMapper {
   }
 
   /**
-   * Walk the folder tree depth-first, collecting (fullPath, bookmarks, topFolder) entries.
+   * Walk the folder tree depth-first, collecting (fullPath, bookmarks) entries.
    * Only creates entries for nodes that have direct bookmarks.
    */
   private static flattenFolderTree(
     folder: XbelFolder,
     currentPath: string,
-    topFolder: string,
-    out: { path: string; bookmarks: XbelBookmark[]; topFolder: string }[],
+    out: { path: string; bookmarks: XbelBookmark[] }[],
   ): void {
     if (folder.bookmarks.length > 0) {
-      out.push({ path: currentPath, bookmarks: folder.bookmarks, topFolder });
+      out.push({ path: currentPath, bookmarks: folder.bookmarks });
     }
 
     for (const child of folder.children) {
-      this.flattenFolderTree(child, `${currentPath} / ${child.title}`, topFolder, out);
+      this.flattenFolderTree(child, `${currentPath} / ${child.title}`, out);
     }
   }
 

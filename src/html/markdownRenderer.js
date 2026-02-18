@@ -440,8 +440,7 @@ window.updateEmbedConfig = updateEmbedConfig;
 
 /**
  * Render an embed placeholder overlay instead of an iframe.
- * The placeholder shows a button that, when clicked, activates the real iframe.
- * Uses inline onclick with stopPropagation to prevent task-editing from triggering.
+ * Uses a <template> to store the iframe HTML (inert — no resource loading).
  * @param {string} url - The URL to display and eventually load
  * @param {string} iframeHtml - The full iframe HTML to insert on activation
  * @returns {string} HTML for the placeholder overlay
@@ -451,31 +450,26 @@ function _renderEmbedPlaceholder(url, iframeHtml) {
     try {
         displayUrl = new URL(url).hostname.replace('www.', '');
     } catch (e) { /* keep full url */ }
-    const escapedIframeHtml = escapeHtml(iframeHtml);
-    return `<div class="embed-activate-overlay" data-iframe-html="${escapedIframeHtml}">
-        <button class="embed-activate-btn" title="${escapeHtml(url)}" onclick="window._activateEmbed(event)">Open ${escapeHtml(displayUrl)}</button>
+    return `<div class="embed-activate-overlay">
+        <template class="embed-iframe-template">${iframeHtml}</template>
+        <button class="embed-activate-btn" title="${escapeHtml(url)}">Open ${escapeHtml(displayUrl)}</button>
     </div>`;
 }
 
-/**
- * Global handler for embed placeholder activation.
- * Stops propagation so the click doesn't bubble up to task-edit handlers.
- */
-window._activateEmbed = function(e) {
+// Capturing-phase click handler for embed placeholder activation.
+// Capturing fires before the description-edit bubble handler can intercept.
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.embed-activate-btn');
+    if (!btn) return;
+    const overlay = btn.closest('.embed-activate-overlay');
+    if (!overlay) return;
     e.stopPropagation();
     e.preventDefault();
-    const btn = e.target.closest('.embed-activate-btn');
-    const overlay = btn && btn.closest('.embed-activate-overlay');
-    if (!overlay) return;
-    const iframeHtml = overlay.getAttribute('data-iframe-html');
-    if (!iframeHtml) return;
-    const temp = document.createElement('div');
-    temp.innerHTML = iframeHtml;
-    const iframe = temp.firstElementChild;
-    if (iframe) {
-        overlay.replaceWith(iframe);
-    }
-};
+    const template = overlay.querySelector('.embed-iframe-template');
+    if (!template) return;
+    const iframe = template.content.firstElementChild.cloneNode(true);
+    overlay.replaceWith(iframe);
+}, true);
 
 /**
  * Convert a domain pattern (with wildcards) to a regex

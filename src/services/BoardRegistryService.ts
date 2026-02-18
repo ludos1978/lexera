@@ -21,7 +21,7 @@ import {
     isBackupFile,
     isConflictFile
 } from '../constants/FileNaming';
-import { DashboardBoardConfig, CalendarSharingMode, CalendarSharingPerBoard } from '../dashboard/DashboardTypes';
+import { DashboardBoardConfig, CalendarSharingMode, CalendarSharingPerBoard, TimeframeDays, TimeframeWithDefault } from '../dashboard/DashboardTypes';
 import { showWarning, showInfo, notificationService } from './NotificationService';
 import { logger } from '../utils/logger';
 
@@ -72,7 +72,7 @@ export class BoardRegistryService implements vscode.Disposable {
     private static readonly MAX_UNPINNED_SEARCHES = 3;
 
     // Default config (All Boards settings)
-    private _defaultTimeframe: 3 | 7 | 30 = 7;
+    private _defaultTimeframe: TimeframeDays = 7;
     private _defaultTagFilters: string[] = [];
     private _defaultCalendarSharing: CalendarSharingMode = 'disabled';
 
@@ -331,7 +331,7 @@ export class BoardRegistryService implements vscode.Disposable {
      */
     async updateBoardConfig(
         uri: string,
-        updates: { timeframe?: 0 | 3 | 7 | 30; tagFilters?: string[]; enabled?: boolean; calendarSharing?: CalendarSharingPerBoard }
+        updates: { timeframe?: TimeframeWithDefault; tagFilters?: string[]; enabled?: boolean; calendarSharing?: CalendarSharingPerBoard }
     ): Promise<void> {
         const board = this.getBoardByUri(uri);
         if (!board) { return; }
@@ -390,10 +390,10 @@ export class BoardRegistryService implements vscode.Disposable {
 
     // ============= Default Config (All Boards Settings) =============
 
-    get defaultTimeframe(): 3 | 7 | 30 { return this._defaultTimeframe; }
+    get defaultTimeframe(): TimeframeDays { return this._defaultTimeframe; }
     get defaultTagFilters(): string[] { return [...this._defaultTagFilters]; }
 
-    async setDefaultTimeframe(timeframe: 3 | 7 | 30): Promise<void> {
+    async setDefaultTimeframe(timeframe: TimeframeDays): Promise<void> {
         this._defaultTimeframe = timeframe;
         await this._context.workspaceState.update('kanbanBoards.defaultTimeframe', timeframe);
         this._onBoardsChanged.fire();
@@ -419,7 +419,7 @@ export class BoardRegistryService implements vscode.Disposable {
     /**
      * Get the effective timeframe for a board (resolves 0 to default)
      */
-    getEffectiveTimeframe(board: RegisteredBoard): 3 | 7 | 30 {
+    getEffectiveTimeframe(board: RegisteredBoard): TimeframeDays {
         if (board.config.timeframe === 0) {
             return this._defaultTimeframe;
         }
@@ -878,7 +878,7 @@ export class BoardRegistryService implements vscode.Disposable {
 
         // Load default config (All Boards settings)
         const configDefault = this._getDefaultTimeframe();
-        this._defaultTimeframe = this._context.workspaceState.get<3 | 7 | 30>('kanbanBoards.defaultTimeframe', configDefault);
+        this._defaultTimeframe = this._context.workspaceState.get<TimeframeDays>('kanbanBoards.defaultTimeframe', configDefault);
         this._defaultTagFilters = this._context.workspaceState.get<string[]>('kanbanBoards.defaultTagFilters', []);
         this._defaultCalendarSharing = this._context.workspaceState.get<CalendarSharingMode>('kanbanBoards.defaultCalendarSharing', 'disabled');
 
@@ -963,9 +963,9 @@ export class BoardRegistryService implements vscode.Disposable {
     /**
      * Get default timeframe from settings
      */
-    private _getDefaultTimeframe(): 3 | 7 | 30 {
+    private _getDefaultTimeframe(): TimeframeDays {
         const config = vscode.workspace.getConfiguration('markdown-kanban');
-        return config.get<3 | 7 | 30>('dashboard.defaultTimeframe', 7);
+        return config.get<TimeframeDays>('dashboard.defaultTimeframe', 7);
     }
 
     // ============= Dispose =============

@@ -26,7 +26,8 @@ import {
     DashboardBrokenElement,
     DashboardSearchResult,
     DashboardSortMode,
-    DashboardIncomingMessage
+    DashboardIncomingMessage,
+    TimeframeDays
 } from './dashboard/DashboardTypes';
 import { DashboardScanner } from './dashboard/DashboardScanner';
 import { BoardRegistryService } from './services/BoardRegistryService';
@@ -314,7 +315,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         const allBoards = registry.getBoards();
         const config = {
             boards: allBoards.map(b => b.config),
-            defaultTimeframe: 7 as 3 | 7 | 30
+            defaultTimeframe: 7 as TimeframeDays
         };
 
         const data: DashboardData = {
@@ -341,7 +342,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     /**
      * Scan a single board for upcoming items and tags
      */
-    private async _scanBoard(boardUri: string, timeframe: 3 | 7 | 30): Promise<{
+    private async _scanBoard(boardUri: string, timeframe: TimeframeDays): Promise<{
         upcomingItems: UpcomingItem[];
         summary: BoardTagSummary;
         board: import('./markdownParser').KanbanBoard;
