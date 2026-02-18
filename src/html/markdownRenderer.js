@@ -155,14 +155,14 @@ function _isInsecureUrl(url) {
 }
 
 /**
- * Replace a live iframe element with the fallback DOM node.
- * @param {HTMLIFrameElement} iframeEl - The iframe to replace
+ * Replace an element (iframe or embed placeholder) with the fallback DOM node.
+ * @param {Element} element - The element to replace
  * @param {string} url - The URL for the fallback link
  */
-function _replaceIframeWithFallback(iframeEl, url) {
+function _replaceIframeWithFallback(element, url) {
     const wrapper = document.createElement('div');
     wrapper.innerHTML = _renderIframeFallback(url);
-    iframeEl.replaceWith(wrapper.firstChild);
+    element.replaceWith(wrapper.firstChild);
 }
 
 /**
@@ -194,9 +194,7 @@ window._markIframeUrlBlocked = function(url) {
         if (!btn) return;
         const btnUrl = btn.getAttribute('title');
         if (btnUrl && _isIframeBlocked(btnUrl)) {
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = _renderIframeFallback(btnUrl);
-            overlay.replaceWith(wrapper.firstChild);
+            _replaceIframeWithFallback(overlay, btnUrl);
         }
     });
 };
@@ -211,24 +209,10 @@ window._checkRenderedIframes = function() {
         window._hydrateInlineFileEmbeds();
     }
 
-    const iframes = document.querySelectorAll(_iframeSelector);
     const urlPerOrigin = {};
 
-    iframes.forEach(function(iframe) {
-        const src = iframe.getAttribute('src');
-        if (!src || !src.startsWith('http') || _isIframeBlocked(src) || _isInsecureUrl(src)) return;
-        try {
-            const origin = new URL(src).origin;
-            if (!(origin in urlPerOrigin)) {
-                urlPerOrigin[origin] = src;
-            }
-        } catch { /* invalid URL, skip */ }
-    });
-
-    // Also scan embed placeholder buttons for URLs that need preflight checking
-    // (when openAutomatically=false, iframes are in <template> tags, not in DOM)
-    document.querySelectorAll('.embed-activate-btn[title]').forEach(function(btn) {
-        const url = btn.getAttribute('title');
+    // Collect a URL into the per-origin map (skips blocked/insecure/duplicate origins)
+    function collectUrl(url) {
         if (!url || !url.startsWith('http') || _isIframeBlocked(url) || _isInsecureUrl(url)) return;
         try {
             const origin = new URL(url).origin;
@@ -236,6 +220,16 @@ window._checkRenderedIframes = function() {
                 urlPerOrigin[origin] = url;
             }
         } catch { /* invalid URL, skip */ }
+    }
+
+    // Live iframes
+    document.querySelectorAll(_iframeSelector).forEach(function(iframe) {
+        collectUrl(iframe.getAttribute('src'));
+    });
+
+    // Embed placeholders (openAutomatically=false: iframes are in <template> tags, not in DOM)
+    document.querySelectorAll('.embed-activate-btn[title]').forEach(function(btn) {
+        collectUrl(btn.getAttribute('title'));
     });
 
     // Send one check per origin (using the first URL encountered for that origin)

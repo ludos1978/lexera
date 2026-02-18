@@ -1,3 +1,20 @@
+- [ ] @KW7 @KW37 Ilias / ELearning vorbereiten  is not listed in "kanban dashboards". we currently have KW8.
+  
+  This is only for events that has not specified the year such as @KW13 or @JAN possibly in combination with @MON. These must be handled like this:
+
+  - Any yearly date value that is past within the last 2 Month must be displayed in the "Overdue" events as long as they are not checked.
+  - Any yearly date value that is not checked that is Overdue 2 to 2.5 Months must be shown in a group "Outdated, soon discarded".
+  - Any yearly date value that is checked and within the past 2.5 to 3 months must be shown as "Reset to repeat"
+  - yearly date values older then 3 months is considered in the future (in the coming nine months)
+  
+  for weeky date values such as - [ ] @mon  
+  - weekly date value unchecked and past in 2 days in overdue
+  - weekly date value unchecked and past 2 to 2.5 days is "outdated, soon discarded"
+  - weekly date value checked and past 2.5 to 3 days is shown as "Reset to repeat"
+  - othervise weekly date values are considered as in future
+
+  The yearly is our main task, if the weekly can be added without hassle, do so, othervises we do that later!
+
 - [ ] the top should switch with the color type selection. the palette picker is nice as it is, but we dont need the color-gradient-selector below.
   - it is eighter palette mode
   - hsl with the selectors  (image 1)

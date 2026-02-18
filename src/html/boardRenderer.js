@@ -2206,8 +2206,10 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const taskIncludeErrorClass = hasTaskIncludeError ? 'include-error' : '';
     const taskIncludeErrorAttr = hasTaskIncludeError ? ' data-include-error="true"' : '';
 
-    // Detect #hidden tag in task header (consistent with updateVisualTagState)
-    const isHiddenContent = allTags.includes('hidden');
+    // Detect #hidden or #hide tag in task header (consistent with updateVisualTagState)
+    // Also check if parent column has #hide tag — propagates to each task individually
+    const columnTags = getActiveTagsInTitle(columnTitleForTemporal);
+    const isHiddenContent = allTags.includes('hidden') || allTags.includes('hide') || columnTags.includes('hide');
     const hiddenContentAttr = isHiddenContent ? ' data-hidden-content="true"' : '';
 
     return `

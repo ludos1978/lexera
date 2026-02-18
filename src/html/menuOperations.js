@@ -3535,8 +3535,21 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
         element.removeAttribute(bgTagAttr);
     }
 
-    // Update hidden content state (#hidden tag)
-    const hasHiddenTag = allTags.includes('hidden');
+    // Update hidden content state (#hidden or #hide tag)
+    // For tasks, also check if parent column has #hide tag (propagates to each task individually)
+    let hasHiddenTag = allTags.includes('hidden') || allTags.includes('hide');
+    if (!hasHiddenTag && elementType === 'task') {
+        const taskId = element.getAttribute('data-task-id');
+        if (window.cachedBoard?.columns && taskId) {
+            for (const col of window.cachedBoard.columns) {
+                if (col.tasks.find(t => t.id === taskId)) {
+                    const colTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(col.title || '') : [];
+                    hasHiddenTag = colTags.includes('hide');
+                    break;
+                }
+            }
+        }
+    }
     if (hasHiddenTag) {
         element.setAttribute('data-hidden-content', 'true');
     } else {

@@ -212,7 +212,7 @@ class TaskEditor {
 
             if (isTitleField || isDescriptionField) {
                 e.preventDefault();
-                let text = (e.clipboardData || window.clipboardData).getData('text');
+                let text = e.clipboardData.getData('text') || '';
                 // Title fields: strip newlines; description fields: preserve them
                 const insertText = isTitleField ? text.replace(/[\r\n]+/g, ' ').trim() : text;
 
