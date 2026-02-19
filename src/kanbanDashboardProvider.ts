@@ -21,6 +21,7 @@ import { MarkdownKanbanParser } from './markdownParser';
 import {
     DashboardData,
     UpcomingItem,
+    UndatedTask,
     BoardTagSummary,
     TagSearchResult,
     DashboardBrokenElement,
@@ -197,6 +198,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         const sortMode = registry.sortMode;
 
         const upcomingItems: UpcomingItem[] = [];
+        const undatedTasks: UndatedTask[] = [];
         const boardSummaries: BoardTagSummary[] = [];
         const taggedItems: TagSearchResult[] = [];
         const brokenElements: DashboardBrokenElement[] = [];
@@ -209,6 +211,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 if (!result) continue;
 
                 upcomingItems.push(...result.upcomingItems);
+                undatedTasks.push(...result.undatedTasks);
                 boardSummaries.push(result.summary);
 
                 // Collect items matching effective tag filters (default + per-board)
@@ -242,8 +245,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                             boardName,
                             columnTitle: elem.location.columnTitle,
                             taskSummary: elem.location.taskSummary,
-                            columnIndex: elem.location.columnIndex,
-                            taskIndex: elem.location.taskIndex
+                            columnId: elem.location.columnId,
+                            taskId: elem.location.taskId
                         });
                     }
                 }
@@ -325,6 +328,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         const data: DashboardData = {
             upcomingItems,
+            undatedTasks,
             boardSummaries,
             config,
             taggedItems: uniqueTaggedItems,
@@ -349,6 +353,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
      */
     private async _scanBoard(boardUri: string, timeframe: TimeframeDays): Promise<{
         upcomingItems: UpcomingItem[];
+        undatedTasks: UndatedTask[];
         summary: BoardTagSummary;
         board: import('./markdownParser').KanbanBoard;
     } | null> {
@@ -1129,17 +1134,32 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             </div>
         </div>
 
-        <!-- Upcoming Items Section -->
+        <!-- Tasks (undated) Section -->
+        <div class="section">
+            <div class="tree-row section-header" data-section="tasks">
+                <div class="tree-indent"><div class="indent-guide"></div></div>
+                <div class="tree-twistie collapsible expanded"></div>
+                <div class="tree-contents">
+                    <h3>Tasks</h3>
+                </div>
+            </div>
+            <div class="section-content" id="tasks-content">
+                <div class="empty-message" id="tasks-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No undated tasks</span></div>
+                <div id="tasks-list"></div>
+            </div>
+        </div>
+
+        <!-- Tasks with Deadlines Section -->
         <div class="section">
             <div class="tree-row section-header" data-section="upcoming">
                 <div class="tree-indent"><div class="indent-guide"></div></div>
                 <div class="tree-twistie collapsible expanded"></div>
                 <div class="tree-contents">
-                    <h3>Upcoming</h3>
+                    <h3>Tasks with Deadlines</h3>
                 </div>
             </div>
             <div class="section-content" id="upcoming-content">
-                <div class="empty-message" id="upcoming-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No upcoming items</span></div>
+                <div class="empty-message" id="upcoming-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No tasks with deadlines</span></div>
                 <div id="upcoming-list"></div>
             </div>
         </div>
@@ -1286,6 +1306,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         function renderDashboard() {
             if (!dashboardData) return;
             updateSortModeButtons();
+            renderUndatedTasks();
             renderUpcomingItems();
             renderTaggedItems();
             renderBrokenElements();
@@ -1297,6 +1318,90 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const mode = dashboardData.sortMode || 'boardFirst';
             const select = document.getElementById('sort-mode-select');
             if (select) { select.value = mode; }
+        }
+
+        function renderUndatedTasks() {
+            const container = document.getElementById('tasks-list');
+            const emptyMsg = document.getElementById('tasks-empty');
+            const items = dashboardData.undatedTasks || [];
+
+            if (items.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.style.display = 'block';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+            const sortMode = dashboardData.sortMode || 'boardFirst';
+
+            if (sortMode === 'boardFirst') {
+                renderUndatedBoardFirst(container, items);
+            } else {
+                renderUndatedMerged(container, items);
+            }
+        }
+
+        function renderUndatedBoardFirst(container, items) {
+            const boards = {};
+            items.forEach(item => {
+                if (!boards[item.boardName]) boards[item.boardName] = [];
+                boards[item.boardName].push(item);
+            });
+
+            let html = '';
+            for (const [boardName, boardItems] of Object.entries(boards)) {
+                const boardKey = 'tasks/board/' + boardName;
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(boardKey) + '">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
+                html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
+                boardItems.forEach(item => {
+                    html += renderUndatedItem(item, 3);
+                });
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachUndatedListeners(container);
+        }
+
+        function renderUndatedMerged(container, items) {
+            let html = '';
+            items.forEach(item => {
+                html += renderUndatedItem(item, 2);
+            });
+            container.innerHTML = html;
+            attachUndatedListeners(container);
+        }
+
+        function renderUndatedItem(item, indentLevel) {
+            let html = '<div class="tree-row undated-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
+            html += '<div class="tree-indent">';
+            for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
+            html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
+            html += '</div></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function attachUndatedListeners(container) {
+            container.querySelectorAll('.undated-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const boardUri = item.getAttribute('data-board-uri');
+                    const columnIndex = parseInt(item.getAttribute('data-column-index'), 10);
+                    const taskIndex = parseInt(item.getAttribute('data-task-index'), 10);
+                    navigateToTask(boardUri, columnIndex, taskIndex);
+                });
+            });
+            attachToggleListeners(container);
         }
 
         function renderUpcomingItems() {
@@ -1679,8 +1784,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderBrokenItem(item, indentLevel) {
             let html = '<div class="tree-row broken-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-index="' + item.columnIndex + '"';
-            if (item.taskIndex !== undefined && item.taskIndex !== null) html += ' data-task-index="' + item.taskIndex + '"';
+            html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
+            if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
             html += '>';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1700,10 +1805,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.broken-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnIndex = parseInt(item.getAttribute('data-column-index'), 10);
-                    const taskIndexAttr = item.getAttribute('data-task-index');
-                    const taskIndex = taskIndexAttr !== null ? parseInt(taskIndexAttr, 10) : undefined;
-                    navigateToTask(boardUri, columnIndex, taskIndex);
+                    const columnId = item.getAttribute('data-column-id');
+                    const taskId = item.getAttribute('data-task-id') || undefined;
+                    navigateToElement(boardUri, columnId, taskId);
                 });
             });
             attachToggleListeners(container);

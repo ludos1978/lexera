@@ -25,6 +25,7 @@ import { findColumn, findColumnContainingTask } from '../actions/helpers';
 import { logger } from '../utils/logger';
 import { linkReplacementService, ReplacementDependencies } from '../services/LinkReplacementService';
 import { WebImageSearchService } from '../services/WebImageSearchService';
+import { UndoCapture } from '../core/stores/UndoCapture';
 
 /**
  * Options for path replacement operations
@@ -848,117 +849,120 @@ export class PathCommands extends SwitchBasedCommand {
     }
 
     /**
-     * Delete an element (image, link, include) from the markdown source
-     * Completely removes the element from the document
-     * Uses WorkspaceEdit for proper undo support
+     * Delete an element (image, link, include) from the markdown source.
+     * Operates at the board level (modifies task.content or column.title) so
+     * that the change integrates with the kanban undo stack and avoids
+     * WorkspaceEdit which would dirty the VS Code buffer.
      */
     private async handleDeleteFromMarkdown(
         message: DeleteFromMarkdownMessage,
         context: CommandContext
     ): Promise<CommandResult> {
         const pathToDelete = message.path;
+        const regex = this._buildDeleteElementRegex(pathToDelete);
 
+        // --- Strategy 1: Board-level operation (task content or column title) ---
+        const board = context.getCurrentBoard();
+        if (board?.valid) {
+            // Search tasks
+            for (const column of board.columns) {
+                for (const task of column.tasks) {
+                    if (!task.content?.includes(pathToDelete)) { continue; }
+                    const cleaned = this._removeElementFromText(task.content, regex);
+                    if (cleaned === null) { continue; }
+
+                    context.boardStore.saveUndoEntry(
+                        UndoCapture.forTask(board, task.id, column.id, 'deleteFromMarkdown')
+                    );
+                    task.content = cleaned;
+                    context.emitBoardChanged(board, 'edit');
+
+                    const webviewBridge = context.getWebviewBridge();
+                    if (webviewBridge) {
+                        webviewBridge.send({
+                            type: 'updateTaskContent',
+                            taskId: task.id,
+                            columnId: column.id,
+                            task: task,
+                            imageMappings: {}
+                        });
+                    }
+
+                    this.postMessage({ type: 'elementDeleted', path: pathToDelete, filePath: '' });
+                    showInfo('Element deleted');
+                    return this.success({ deleted: true, path: pathToDelete });
+                }
+            }
+
+            // Search column titles
+            for (const column of board.columns) {
+                if (!column.title?.includes(pathToDelete)) { continue; }
+                const cleaned = this._removeElementFromText(column.title, regex);
+                if (cleaned === null) { continue; }
+
+                context.boardStore.saveUndoEntry(
+                    UndoCapture.forColumn(board, column.id, 'deleteFromMarkdown')
+                );
+                column.title = cleaned;
+                context.emitBoardChanged(board, 'edit');
+                await this.refreshBoard(context);
+
+                this.postMessage({ type: 'elementDeleted', path: pathToDelete, filePath: '' });
+                showInfo('Element deleted');
+                return this.success({ deleted: true, path: pathToDelete });
+            }
+        }
+
+        // --- Strategy 2: Fallback – path is in file but outside board structure ---
+        // Uses in-memory setContent only (NO WorkspaceEdit)
         const fileRegistry = this.getFileRegistry();
         if (!fileRegistry) {
             return this.failure('File registry not available');
         }
 
-        // Collect all files to search
-        const allFiles = fileRegistry.getAll();
-
-        // Find the file containing the path
-        let foundFile: MarkdownFile | null = null;
-        let foundContent: string = '';
-
-        // Escape the path for regex
-        const escapedPath = pathToDelete.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        for (const file of allFiles) {
+        for (const file of fileRegistry.getAll()) {
             const content = file.getContent();
-            if (content.includes(pathToDelete)) {
-                foundFile = file;
-                foundContent = content;
-                break;
-            }
+            if (!content.includes(pathToDelete)) { continue; }
+            const cleaned = this._removeElementFromText(content, regex);
+            if (cleaned === null) { continue; }
+
+            file.setContent(cleaned, false);
+            await this.refreshBoard(context);
+
+            this.postMessage({ type: 'elementDeleted', path: pathToDelete, filePath: file.getRelativePath() });
+            showInfo('Element deleted');
+            return this.success({ deleted: true, path: pathToDelete, filePath: file.getRelativePath() });
         }
 
-        if (!foundFile) {
-            return this.failure('Path not found in any file');
-        }
+        return this.failure('Path not found in any file');
+    }
 
-        // Pattern to match the entire element containing this path:
-        // - Markdown images: ![alt](path) or ![alt](path "title")
-        // - Markdown links: [text](path) or [text](path "title")
-        // - HTML images: <img src="path" ...>
-        // - Includes: !!!include(path)!!!
-        // Also match if the element is already struck through: ~~![alt](path)~~
+    /**
+     * Remove all markdown elements matching `regex` from `text`.
+     * Returns the cleaned text, or null if nothing matched.
+     */
+    private _removeElementFromText(text: string, regex: RegExp): string | null {
+        // Reset lastIndex since the regex has the /g flag and may be reused
+        regex.lastIndex = 0;
+        const cleaned = text.replace(regex, '');
+        if (cleaned === text) { return null; }
+        return cleaned.replace(/\n\n\n+/g, '\n\n');
+    }
 
-        // Build patterns for each type
-        const imagePattern = `(~~)?!\\[[^\\]]*\\]\\(${escapedPath}(?:\\s+"[^"]*")?\\)(~~)?`;
-        const linkPattern = `(~~)?(?<!!)\\[[^\\]]*\\]\\(${escapedPath}(?:\\s+"[^"]*")?\\)(~~)?`;
-        const htmlImgPattern = `(~~)?<img[^>]*src=["']${escapedPath}["'][^>]*>(~~)?`;
-        const includePattern = `(~~)?!!!include\\(${escapedPath}\\)!!!(~~)?`;
+    /**
+     * Build a combined regex that matches any markdown element containing the
+     * given path: images, links, HTML images, and includes (with optional
+     * strikethrough wrapping).
+     */
+    private _buildDeleteElementRegex(pathToDelete: string): RegExp {
+        const p = pathToDelete.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        // Combine patterns
-        const combinedPattern = `(${imagePattern})|(${linkPattern})|(${htmlImgPattern})|(${includePattern})`;
-        const regex = new RegExp(combinedPattern, 'g');
+        const imagePattern = `(?:~~)?!\\[[^\\]]*\\]\\(${p}(?:\\s+"[^"]*")?\\)(?:~~)?`;
+        const linkPattern = `(?:~~)?(?<!!)\\[[^\\]]*\\]\\(${p}(?:\\s+"[^"]*")?\\)(?:~~)?`;
+        const htmlImgPattern = `(?:~~)?<img[^>]*src=["']${p}["'][^>]*>(?:~~)?`;
+        const includePattern = `(?:~~)?!!!include\\(${p}\\)!!!(?:~~)?`;
 
-        const matches = foundContent.match(regex);
-        if (!matches || matches.length === 0) {
-            return this.failure('Could not find element containing this path');
-        }
-
-        // Remove each matching element completely
-        let newContent = foundContent;
-        for (const match of matches) {
-            newContent = newContent.replace(match, '');
-        }
-
-        // Clean up any double newlines created by removal
-        newContent = newContent.replace(/\n\n\n+/g, '\n\n');
-
-        // Use WorkspaceEdit for proper undo support
-        try {
-            const filePath = foundFile.getPath();
-            const document = await vscode.workspace.openTextDocument(filePath);
-
-            const edit = new vscode.WorkspaceEdit();
-            const fullRange = new vscode.Range(
-                document.positionAt(0),
-                document.positionAt(document.getText().length)
-            );
-            edit.replace(document.uri, fullRange, newContent);
-
-            const success = await vscode.workspace.applyEdit(edit);
-            if (!success) {
-                return this.failure('Failed to apply edit');
-            }
-
-            // Also update the in-memory cache so the board refresh shows correct content
-            foundFile.setContent(newContent, false);
-        } catch (error) {
-            const errorMessage = getErrorMessage(error);
-            logger.error(`[PathCommands] Error applying edit:`, error);
-            return this.failure(`Failed to delete element: ${errorMessage}`);
-        }
-
-        // Refresh the board
-        await this.refreshBoard(context);
-
-        // Notify frontend
-        this.postMessage({
-            type: 'elementDeleted',
-            path: pathToDelete,
-            filePath: foundFile.getRelativePath()
-        });
-
-        showInfo(`Element deleted`);
-
-        return this.success({
-            deleted: true,
-            path: pathToDelete,
-            filePath: foundFile.getRelativePath()
-        });
+        return new RegExp(`${imagePattern}|${linkPattern}|${htmlImgPattern}|${includePattern}`, 'g');
     }
 
     // ============= HELPER METHODS =============

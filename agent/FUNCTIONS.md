@@ -9,6 +9,24 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-19) - Fix: Save blocked by dirty buffer after embed delete + undo
+
+### Modified: `src/commands/PathCommands.ts`
+- `PathCommands_handleDeleteFromMarkdown` — (REWRITTEN) No longer uses WorkspaceEdit to modify the VS Code buffer. Now operates at board level: searches task.content and column.title for the path, modifies in-place, saves undo entry via UndoCapture, emits boardChanged, sends targeted updateTaskContent. Falls back to in-memory setContent for paths outside board structure.
+- `PathCommands__buildDeleteElementRegex` — (NEW) Extracted regex builder for delete element matching (images, links, HTML imgs, includes, with optional strikethrough). Uses non-capturing groups.
+- `PathCommands__removeElementFromText` — (NEW) Shared helper that applies the delete regex to text and cleans up triple newlines. Returns null if nothing matched.
+
+### Modified: `src/commands/FileCommands.ts`
+- `FileCommands_syncIncludeFileContent` — (REMOVED) Dead no-op method. Include file content is managed in-memory by BoardSyncHandler.setContent(). Call sites in handleOpenLink and handleOpenIncludeFile cleaned up.
+- `FileCommands_handleOpenFile` — (MODIFIED) Added guard to block opening kanban-managed files (main or includes) in the text editor. Checks file registry before opening.
+
+### Modified: `src/kanbanFileService.ts`
+- `KanbanFileService_saveUnified` (dirty check) — (MODIFIED) When dirty editor files are detected, now calls _handleDirtyBufferCrashRecovery instead of just blocking the save. Treats dirty buffer as a crash scenario.
+- `KanbanFileService__handleDirtyBufferCrashRecovery` — (NEW) Crash recovery for unexpected dirty VS Code buffers. Writes kanban in-memory content to .kanban-recovery.md, dirty buffer content to .buffer-backup.md, shows error dialog, closes the kanban panel.
+- `KanbanFileService_initializeFile` — (MODIFIED) Error path "Open File" action now re-opens as kanban board via `markdown-kanban.openKanban` command instead of opening raw text buffer.
+
+---
+
 ## Recent Updates (2026-02-18) - Smart Paste & Embed Link Refactoring
 
 ### Modified: `src/html/webview.js`
@@ -138,17 +156,25 @@ Standalone WebDAV server for bookmark sync via Floccus.
 
 ### CalDAV Calendar Sync (2026-02-15)
 
-- `packages/shared/src/temporalParser.ts` — Pure temporal parsing functions (dates, weeks, times, weekdays)
+- `packages/shared/src/temporalParser.ts` — Pure temporal parsing functions (dates, weeks, times, weekdays, months, quarters)
   - `setDateLocale(locale)` — Set date locale for parsing
   - `isLocaleDayFirst()` — Check if locale uses DD.MM.YYYY format
   - `parseDateTag(tagContent)` — Parse @date tag to Date
+  - `parseDateTagFull(tagContent)` — (internal) Parse @date tag to {date, hasExplicitYear}
   - `parseWeekTag(tagContent)` — Parse @week tag to Monday of that week
   - `getDateOfISOWeek(week, year)` — Get Monday of ISO week
   - `getWeekdayOfISOWeek(week, year, weekday)` — Get specific weekday of ISO week
   - `parseWeekdayName(name)` — Parse weekday name to JS number (0=Sun..6=Sat)
+  - `parseMonthName(name)` — Parse month name to number (1-12). Supports short/long: jan, january, etc.
+  - `parseQuarterTag(tag)` — Parse @Q1..@Q4 to number (1-4)
   - `getISOWeek(date)` — Get ISO week number for a date
-  - `extractTemporalInfo(text)` — Extract all temporal tags from text, returns TemporalInfo[]
-  - `resolveTaskTemporals(taskContent, columnTemporal)` — Resolve temporal tags for all lines in a task with inheritance (column → title → line). Used by both DashboardScanner and IcalMapper.
+  - `getLastDayOfMonth(year, month)` — (internal) Get last day of month
+  - `getQuarterRange(quarter, year)` — (internal) Get start/end dates for a quarter
+  - `extractTemporalTokens(text)` — (internal) Extract all @-prefixed temporal tokens from text, classify by type (week/weekday/month/quarter/date/time/year)
+  - `combineTemporalTokens(tokens, checkboxState)` — (internal) Group tokens by type, OR within type, AND across types (cross-product). Returns TemporalInfo[]
+  - `detectCheckboxState(text)` — (internal) Detect checkbox state from line with temporal tags
+  - `extractTemporalInfo(text)` — Extract all temporal tags from text with combinatorial resolution. Returns TemporalInfo[] (OR within same type, AND across types). Supports @KW, @mon, @JAN, @Q1, @date, @time, @Y tags.
+  - `resolveTaskTemporals(taskContent, columnTemporal)` — Resolve temporal tags for all lines in a task with inheritance (column → title → line). Used by both DashboardScanner and IcalMapper. Now propagates effectiveDateEnd for range-based tags.
 
 - `packages/ludos-sync/src/mappers/IcalMapper.ts-IcalMapper` — KanbanColumn[] → iCalendar VEVENT mapping (mirrors DashboardScanner behavior)
   - `columnsToIcalTasks(columns, boardId)` — Convert columns to IcalTask[], processes each line with temporal inheritance (column → task title → line)
@@ -410,6 +436,40 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 - `ExportTreeBuilder.isHiddenItem(title, description)` — Check if item should be hidden from export
 - `ExportTreeBuilder.buildExportTree()` — (MODIFIED) Filters out columns with parked/deleted tags
 - `ExportTreeBuilder.getCleanColumnTitle()` — (MODIFIED) Strips hidden tags from titles
+
+---
+
+## Recent Updates (2026-02-18) - Recurring Yearless Tags + Month/Quarter Support
+
+### Modified: `packages/shared/src/temporalParser.ts`
+- `extractTemporalInfo(text)` — REFACTORED: tokenize+combine pattern. Finds ALL temporal tags on a line (not just first). Same-type tags are OR-connected, cross-type AND-connected. Example: `@KW1 @KW2 @mon` → [Mon-KW1, Mon-KW2].
+- NEW: `parseMonthName(name)` — Month name → 1-12 (jan/january, feb/february, etc.)
+- NEW: `parseQuarterTag(tag)` — @Q1..@Q4 → 1-4
+- NEW internal: `extractTemporalTokens(text)` — Tokenize all @-prefixed tags by type
+- NEW internal: `combineTemporalTokens(tokens, checkboxState)` — Cross-product combination
+- NEW internal: `parseDateTagFull(tagContent)` — Returns {date, hasExplicitYear}
+- NEW internal: `getLastDayOfMonth(year, month)`, `getQuarterRange(quarter, year)`
+- `TemporalInfo` — Added: `dateEnd`, `month`, `quarter`, `hasExplicitYear`
+- `ResolvedTemporal` — Added: `effectiveDateEnd`
+- `resolveTaskTemporals()` — Now propagates `effectiveDateEnd`
+
+### Modified: `src/dashboard/DashboardScanner.ts`
+- `isWithinTimeframe(date, timeframeDays, dateEnd?)` — REFACTORED: uses `dateEnd` for range overlap (replaces `isWeekDate` boolean). Generalizes for weeks, months, quarters.
+- `scanBoard()` — MODIFIED: Fixes checkbox state for first-line temporals (parser strips `- [ ]`). Checked yearless-recurring tasks no longer unconditionally skipped. Adds recurring state classification. Populates new UpcomingItem fields (dateEnd, month, quarter, hasExplicitYear, recurringState).
+- NEW: `classifyRecurringState(effectiveDate, isChecked, isWeeklyRecurring)` — Classify yearless recurring tag: overdue/outdated/resetToRepeat/future/skip based on age and checkbox state.
+- NEW: `adjustToNextOccurrence(r, isWeeklyRecurring)` — Advance yearless date to next occurrence (next year or next week) when age > threshold.
+- NEW: `getEffectiveCheckboxState(temporal, taskChecked, isFirstLine)` — Fix checkbox state for first-line temporals where markdownParser stripped `- [ ]`.
+
+### Modified: `src/dashboard/DashboardTypes.ts`
+- `UpcomingItem` — Added: `dateEnd`, `month`, `quarter`, `hasExplicitYear`, `recurringState` ('overdue'|'outdated'|'resetToRepeat')
+
+### Modified: `src/kanbanDashboardProvider.ts`
+- CSS: Added `.outdated` (warning color) and `.reset-to-repeat` (info color) styling
+- `renderUpcomingItem()` — Uses recurringState for CSS class selection
+- NEW: `formatUpcomingGroupKey(item)` — Returns group label: recurring state label or formatted date
+- `formatDate()` — Extended with `month` and `quarter` parameters for new tag types
+- Sorting: Recurring state items sorted first (overdue → outdated → resetToRepeat → normal by date)
+- Both `renderUpcomingBoardFirst()` and `renderUpcomingMerged()` use `formatUpcomingGroupKey()` for grouping
 
 ---
 
@@ -2626,5 +2686,22 @@ Per-board color stored in YAML frontmatter (`boardColor: #hex`), shown as tint o
 
 ### Modified: `src/html/utils/imagePathManager.js`
 - `updatePathInDOM(oldPath, newPath, direction)` — Now tracks which tasks/columns were modified during cached board path replacement and calls `renderSingleTask()`/`renderSingleColumn()` to re-render their DOM. Previously only updated the JS data model without refreshing the visible DOM, causing tasks/columns to appear stale after automatic link replacement.
+
+---
+
+## Bug Fix (2026-02-19) - Broken Elements Search Improvements
+
+### Modified: `src/dashboard/DashboardTypes.ts`
+- `DashboardBrokenElement` — Replaced `columnIndex`/`taskIndex` with `columnId`/`taskId` for ID-based navigation instead of fragile index-based navigation.
+
+### Modified: `src/kanbanDashboardProvider.ts`
+- `_refreshData()` — Now stores `columnId`/`taskId` from scanner results instead of `columnIndex`/`taskIndex`.
+- `renderBrokenItem()` — Renders `data-column-id`/`data-task-id` attributes instead of index attributes.
+- `attachBrokenListeners()` — Uses `navigateToElement()` (ID-based) instead of `navigateToTask()` (index-based).
+
+### Modified: `src/services/BoardContentScanner.ts`
+- `_getTaskSummary()` — Strips markdown images, links, HTML tags, comments, and heading markers before selecting first readable line for task summary display.
+- `_stripNonRenderedContent()` — New private method. Strips fenced code blocks, inline code, and HTML comments from content before scanning for file references.
+- `_extractFromContent()` — Now preprocesses content through `_stripNonRenderedContent()` to avoid false positives from references inside code blocks or comments.
 
 ---

@@ -13,6 +13,7 @@
 import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
 import {
     UpcomingItem,
+    UndatedTask,
     BoardTagSummary,
     TagInfo,
     TagSearchResult
@@ -208,8 +209,9 @@ export class DashboardScanner {
         boardUri: string,
         boardName: string,
         timeframeDays: number
-    ): { upcomingItems: UpcomingItem[]; summary: BoardTagSummary } {
+    ): { upcomingItems: UpcomingItem[]; undatedTasks: UndatedTask[]; summary: BoardTagSummary } {
         const upcomingItems: UpcomingItem[] = [];
+        const undatedTasks: UndatedTask[] = [];
         const tagCounts = new Map<string, { count: number; type: 'hash' | 'temporal' }>();
         let totalTasks = 0;
         let temporalTasks = 0;
@@ -258,15 +260,28 @@ export class DashboardScanner {
                     temporalTasks++;
                 }
 
-                // Check if any resolved temporal is a yearless recurring tag
-                const hasYearlessRecurring = resolved.some(
-                    r => r.temporal.hasExplicitYear === false
-                );
+                // Skip checked tasks (checked = done)
+                if (task.checked) {
+                    // Exception: yearless recurring tags might show as "Reset to repeat"
+                    const hasYearlessRecurring = resolved.some(
+                        r => r.temporal.hasExplicitYear === false
+                    );
+                    if (!hasYearlessRecurring) {
+                        taskIndex++;
+                        continue;
+                    }
+                }
 
-                // Task-level checked state: parsed from `- [x]` by markdownParser.
-                // Skip checked tasks UNLESS they have yearless recurring temporals
-                // (those might need to show as "Reset to repeat").
-                if (task.checked && !hasYearlessRecurring) {
+                // Tasks without temporal tags → undated tasks list
+                if (resolved.length === 0 && !task.checked) {
+                    undatedTasks.push({
+                        boardUri,
+                        boardName,
+                        columnIndex,
+                        columnTitle,
+                        taskIndex,
+                        taskSummary
+                    });
                     taskIndex++;
                     continue;
                 }
@@ -276,6 +291,9 @@ export class DashboardScanner {
                     const effectiveCheckbox = getEffectiveCheckboxState(
                         r.temporal, task.checked, isFirstLine
                     );
+
+                    // Only checkbox lines are tasks — skip non-checkbox temporal lines
+                    if (effectiveCheckbox === 'none') continue;
 
                     // Skip checked sub-line items (non-recurring)
                     if (effectiveCheckbox === 'checked' && r.temporal.hasExplicitYear !== false) {
@@ -307,7 +325,6 @@ export class DashboardScanner {
                         let recurringState: 'overdue' | 'outdated' | 'resetToRepeat' | undefined;
 
                         if (classification === 'future') {
-                            // Check if the date is actually past and needs adjustment
                             const checkDate = new Date(r.effectiveDate);
                             checkDate.setHours(0, 0, 0, 0);
                             if (checkDate < today) {
@@ -316,7 +333,6 @@ export class DashboardScanner {
                                 itemDateEnd = adjusted.dateEnd;
                                 if (adjusted.week !== undefined) itemWeek = adjusted.week;
                             }
-                            // Check adjusted date against timeframe
                             if (!isWithinTimeframe(itemDate, timeframeDays, itemDateEnd)) {
                                 continue;
                             }
@@ -341,7 +357,7 @@ export class DashboardScanner {
                             quarter: r.temporal.quarter,
                             timeSlot: r.temporal.timeSlot,
                             rawTitle: taskSummary || '',
-                            isOverdue: recurringState === 'overdue',
+                            isOverdue: recurringState === 'overdue' || recurringState === 'outdated',
                             hasExplicitYear: false,
                             recurringState
                         });
@@ -353,7 +369,6 @@ export class DashboardScanner {
                         r.effectiveDate, timeframeDays, r.effectiveDateEnd
                     );
 
-                    // Overdue detection for unchecked deadline tasks
                     const checkDate = new Date(r.effectiveDate);
                     checkDate.setHours(0, 0, 0, 0);
                     const isOverdue = isUnchecked && checkDate < today;
@@ -387,7 +402,10 @@ export class DashboardScanner {
             columnIndex++;
         }
 
-        logger.debug('[DashboardScanner] END scan', { upcomingItems: upcomingItems.length });
+        logger.debug('[DashboardScanner] END scan', {
+            upcomingItems: upcomingItems.length,
+            undatedTasks: undatedTasks.length
+        });
 
         const tags: TagInfo[] = Array.from(tagCounts.entries())
             .map(([name, info]) => ({ name, count: info.count, type: info.type }))
@@ -395,6 +413,7 @@ export class DashboardScanner {
 
         return {
             upcomingItems,
+            undatedTasks,
             summary: { boardUri, boardName, tags, totalTasks, temporalTasks }
         };
     }

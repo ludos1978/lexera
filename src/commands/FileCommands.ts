@@ -93,29 +93,6 @@ export class FileCommands extends SwitchBasedCommand {
     }
 
     /**
-     * Sync include file content if the target is an include file with unsaved changes.
-     */
-    private async syncIncludeFileContent(context: CommandContext, target: string | undefined): Promise<void> {
-        const fileRegistry = context.getFileRegistry();
-        if (!fileRegistry || !target) { return; }
-
-        const includeFile = fileRegistry.findByPath(target);
-        if (!includeFile || includeFile.getFileType() === 'main') { return; }
-
-        const includePath = includeFile.getPath();
-        const openDoc = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === includePath);
-        if (!openDoc || openDoc.isDirty) { return; }
-
-        const cachedContent = includeFile.getContent();
-        if (includeFile.hasUnsavedChanges() && openDoc.getText() !== cachedContent) {
-            const edit = new vscode.WorkspaceEdit();
-            const fullRange = new vscode.Range(0, 0, openDoc.lineCount, 0);
-            edit.replace(openDoc.uri, fullRange, cachedContent);
-            await vscode.workspace.applyEdit(edit);
-        }
-    }
-
-    /**
      * Handle unified openLink command
      *
      * Routes to appropriate handler based on LinkType:
@@ -147,8 +124,8 @@ export class FileCommands extends SwitchBasedCommand {
         switch (linkType) {
             case LinkType.FILE:
             case LinkType.IMAGE:
+                // Include file content is synced in-memory by BoardSyncHandler
                 await context.linkHandler.handleFileLink(target, taskId, columnId, linkIndex, includeContext, forceExternal);
-                await this.syncIncludeFileContent(context, target);
                 break;
 
             case LinkType.WIKI:
@@ -191,6 +168,13 @@ export class FileCommands extends SwitchBasedCommand {
 
             // Normalize the path for comparison
             const normalizedPath = path.resolve(absolutePath);
+
+            // Block opening kanban-managed files in text editor
+            const fileRegistry = context.getFileRegistry();
+            if (fileRegistry?.findByPath(normalizedPath)) {
+                logger.warn('[FileCommands.handleOpenFile] Blocked: kanban-managed file');
+                return this.failure('This file is managed by the kanban board');
+            }
 
             // Check if the file is already open as a document
             const existingDocument = vscode.workspace.textDocuments.find(doc => {
@@ -236,7 +220,6 @@ export class FileCommands extends SwitchBasedCommand {
      */
     private async handleOpenIncludeFile(message: OpenIncludeFileMessage, context: CommandContext): Promise<CommandResult> {
         await context.linkHandler.handleFileLink(message.filePath);
-        await this.syncIncludeFileContent(context, message.filePath);
         return this.success();
     }
 

@@ -152,10 +152,10 @@ export interface DashboardBrokenElement {
     columnTitle: string;
     /** Task summary if in a task */
     taskSummary?: string;
-    /** Column index for position-based navigation */
-    columnIndex: number;
-    /** Task index for position-based navigation */
-    taskIndex?: number;
+    /** Column ID for ID-based navigation */
+    columnId: string;
+    /** Task ID for ID-based navigation */
+    taskId?: string;
 }
 
 /**
@@ -185,11 +185,31 @@ export interface DashboardSearchResult {
 }
 
 /**
+ * An undated task (checkbox task without any temporal tags)
+ */
+export interface UndatedTask {
+    /** File URI of the board containing this task */
+    boardUri: string;
+    /** Display name of the board */
+    boardName: string;
+    /** Column index (0-based) for navigation */
+    columnIndex: number;
+    /** Column title */
+    columnTitle: string;
+    /** Task index (0-based) within column */
+    taskIndex: number;
+    /** Task summary line */
+    taskSummary: string;
+}
+
+/**
  * Complete dashboard data sent to the webview
  */
 export interface DashboardData {
-    /** Upcoming items across all boards, sorted by date */
+    /** Deadline tasks (checkbox tasks with temporal tags) */
     upcomingItems: UpcomingItem[];
+    /** Undated tasks (checkbox tasks without temporal tags) */
+    undatedTasks: UndatedTask[];
     /** Tag summaries per board */
     boardSummaries: BoardTagSummary[];
     /** Current dashboard configuration */

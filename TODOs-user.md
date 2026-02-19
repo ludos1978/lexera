@@ -1,3 +1,12 @@
+- [ ] add a background option to embeds.
+  document the options ![alt](link "subtext"){options} for each filetype in the features.md.
+  - for all formats we try to have:
+    - size of embed
+    - maybe delayed (by user presses right arrow) showing (in presentation using marp?)
+    - start, end time for video, audio
+    - background color and borders
+    - (give me ideas)
+
 - [ ] @KW7 @KW37 Ilias / ELearning vorbereiten  is not listed in "kanban dashboards". we currently have KW8.
   
   This is only for events that has not specified the year such as @KW13 or @JAN possibly in combination with @MON. These must be handled like this:

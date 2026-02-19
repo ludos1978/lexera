@@ -421,14 +421,12 @@ export class KanbanFileService {
 
             const dirtyEditorFiles = this._collectDirtyEditorFilesForSaveScope(scope, syncIncludes, force);
             if (dirtyEditorFiles.length > 0) {
-                const suffix = dirtyEditorFiles.length > 4 ? ', ...' : '';
-                const preview = dirtyEditorFiles.slice(0, 4).join(', ');
-                const error = `Save aborted: unsaved text-editor changes in ${preview}${suffix}. `
-                    + 'Save those files in the editor first, or resolve via File Manager.';
-                postSaveResult(
-                    false,
-                    error
-                );
+                // Dirty buffer is unexpected — the kanban never modifies VS Code buffers.
+                // Treat as crash: save recovery files and close the panel.
+                await this._handleDirtyBufferCrashRecovery(dirtyEditorFiles);
+                const error = 'Save aborted: unexpected dirty document buffer detected. '
+                    + 'Recovery files have been written. The kanban panel will close.';
+                postSaveResult(false, error);
                 return {
                     success: false,
                     aborted: true,
@@ -1201,10 +1199,11 @@ export class KanbanFileService {
         if (!isDocumentOpen) {
             showWarning(
                 `Cannot initialize: "${path.basename(document.fileName)}" has been closed. Please reopen the file.`,
-                'Open File'
+                'Open in Kanban'
             ).then(async selection => {
-                if (selection === 'Open File') {
-                    await this.openFileWithReuseCheck(document.uri.fsPath);
+                if (selection === 'Open in Kanban') {
+                    // Re-open as kanban board, not as raw text buffer
+                    await vscode.commands.executeCommand('markdown-kanban.openKanban', document.uri);
                 }
             });
             return;
@@ -1238,7 +1237,7 @@ export class KanbanFileService {
         } catch (error) {
             // STATE MACHINE: Error recovery
             this._saveState = SaveState.IDLE;
-            showError(`Failed to initialize file: ${error}`);
+            showError(`Failed to initialize file: ${getErrorMessage(error)}`);
         }
     }
 
@@ -1357,10 +1356,65 @@ export class KanbanFileService {
     }
 
     /**
-     * Check include file existence and set includeError flags on the board
-     *
-     * This is called during initial load when MainKanbanFile may not be initialized yet.
-     * It directly checks the filesystem and sets error flags so the frontend shows warnings.
+     * Handle the unexpected case where a kanban-managed file has a dirty VS Code
+     * buffer.  This should never happen (kanban never touches editor buffers)
+     * so we treat it as a crash: write recovery files and close the panel.
+     */
+    private async _handleDirtyBufferCrashRecovery(dirtyRelPaths: string[]): Promise<void> {
+        const mainFile = this.fileRegistry.getMainFile();
+        if (!mainFile) { return; }
+
+        const recoveryPaths: string[] = [];
+
+        // 1. Save kanban in-memory content to recovery file
+        const kanbanContent = mainFile.getContent();
+        if (kanbanContent) {
+            const recoveryPath = mainFile.getPath().replace(/\.md$/, '.kanban-recovery.md');
+            try {
+                await fs.promises.writeFile(recoveryPath, kanbanContent, 'utf-8');
+                recoveryPaths.push(recoveryPath);
+            } catch (err) {
+                logger.error('[KanbanFileService] Failed to write recovery file:', err);
+            }
+        }
+
+        // 2. For each dirty file, save its VS Code buffer content
+        for (const relPath of dirtyRelPaths) {
+            const file = this.fileRegistry.findByPath(relPath)
+                || this.fileRegistry.getAll().find(f => f.getRelativePath() === relPath);
+            if (!file) { continue; }
+
+            const bufferContent = file.getContentForBackup();
+            const backupPath = file.getPath().replace(/\.md$/, '.buffer-backup.md');
+            try {
+                await fs.promises.writeFile(backupPath, bufferContent, 'utf-8');
+                recoveryPaths.push(backupPath);
+            } catch (err) {
+                logger.error('[KanbanFileService] Failed to write buffer backup:', err);
+            }
+        }
+
+        // 3. Show error dialog
+        const fileList = recoveryPaths.map(p => path.basename(p)).join(', ');
+        showError(
+            `Unexpected dirty document buffer detected for: ${dirtyRelPaths.join(', ')}. `
+            + `Recovery files saved: ${fileList}. Original file unchanged. The kanban will close.`
+        );
+
+        // 4. Close the kanban panel
+        try {
+            const currentPanel = this.panel();
+            if (currentPanel) {
+                currentPanel.dispose();
+            }
+        } catch (err) {
+            logger.error('[KanbanFileService] Failed to close panel after crash recovery:', err);
+        }
+    }
+
+    /**
+     * Check include file existence and set includeError flags on the board.
+     * Called during initial load when MainKanbanFile may not be initialized yet.
      */
     private _checkIncludeFileExistence(board: KanbanBoard, basePath: string): void {
         if (!board.columns) return;

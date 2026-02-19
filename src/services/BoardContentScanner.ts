@@ -96,9 +96,21 @@ export class BoardContentScanner {
         if (task.displayTitle) {
             return task.displayTitle;
         }
-        // Get first non-empty line as summary
         const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
-        return lines.find(line => line.trim().length > 0) ?? lines[0] ?? '';
+        // Find first line that has readable text after stripping markdown syntax
+        for (const line of lines) {
+            const stripped = line.trim()
+                .replace(/<!--[\s\S]*?-->/g, '')       // HTML comments
+                .replace(/!\[[^\]]*\]\([^)]*\)/g, '')   // Markdown images
+                .replace(/\[[^\]]*\]\([^)]*\)/g, '')    // Markdown links
+                .replace(/<[^>]+>/g, '')                 // HTML tags
+                .replace(/^#+\s*/, '')                   // Heading markers
+                .trim();
+            if (stripped.length > 0) {
+                return stripped;
+            }
+        }
+        return lines[0]?.trim() ?? '';
     }
 
     private _buildColumnLocation(column: KanbanColumn, columnIndex: number, field: ElementLocation['field']): ElementLocation {
@@ -325,6 +337,17 @@ export class BoardContentScanner {
      * @param elements - Array to push extracted elements to
      * @param resolveBasePath - Optional base path for resolving relative paths (e.g., include file directory)
      */
+    /**
+     * Strip content that should not be scanned for file references:
+     * fenced code blocks, inline code, and HTML comments.
+     */
+    private _stripNonRenderedContent(content: string): string {
+        return content
+            .replace(/```[\s\S]*?```/g, '')       // Fenced code blocks
+            .replace(/`[^`\n]+`/g, '')             // Inline code
+            .replace(/<!--[\s\S]*?-->/g, '');      // HTML comments
+    }
+
     private _extractFromContent(
         content: string,
         location: ElementLocation,
@@ -333,10 +356,13 @@ export class BoardContentScanner {
     ): void {
         if (!content) return;
 
+        // Strip code blocks, inline code, and HTML comments to avoid false positives
+        const scannable = this._stripNonRenderedContent(content);
+
         // Images (markdown)
         const imageRegex = MarkdownPatterns.image();
         let match;
-        while ((match = imageRegex.exec(content)) !== null) {
+        while ((match = imageRegex.exec(scannable)) !== null) {
             const filePath = match[1];
             if (!isUrl(filePath)) {
                 // Check if it's a diagram
@@ -353,7 +379,7 @@ export class BoardContentScanner {
 
         // Links (markdown) - only local file links
         const linkRegex = MarkdownPatterns.link();
-        while ((match = linkRegex.exec(content)) !== null) {
+        while ((match = linkRegex.exec(scannable)) !== null) {
             const filePath = match[1];
             if (!isUrl(filePath) && !filePath.startsWith('#')) {
                 elements.push({
@@ -368,7 +394,7 @@ export class BoardContentScanner {
 
         // HTML img tags
         const imgRegex = HtmlPatterns.img();
-        while ((match = imgRegex.exec(content)) !== null) {
+        while ((match = imgRegex.exec(scannable)) !== null) {
             const filePath = match[1];
             if (!isUrl(filePath)) {
                 elements.push({
@@ -383,7 +409,7 @@ export class BoardContentScanner {
 
         // HTML media tags (video/audio)
         const mediaRegex = HtmlPatterns.media();
-        while ((match = mediaRegex.exec(content)) !== null) {
+        while ((match = mediaRegex.exec(scannable)) !== null) {
             const filePath = match[1];
             if (!isUrl(filePath)) {
                 elements.push({
