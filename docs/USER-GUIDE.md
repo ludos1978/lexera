@@ -691,7 +691,7 @@ graph TD
 - Setting: `markdown-kanban.fontSize`
 
 **Font Family:**
-- Options: system, roboto, opensans, lato, poppins, inter, helvetica, arial, georgia, times, firacode, jetbrains, sourcecodepro, consolas
+- Options: system, roboto, opensans, lato, poppins, plusjakarta, inter, helvetica, arial, georgia, times, firacode, jetbrains, sourcecodepro, consolas
 - Setting: `markdown-kanban.fontFamily`
 
 ### Spacing

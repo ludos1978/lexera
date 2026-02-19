@@ -7109,19 +7109,37 @@ body.tall-task-height .column-title {
   font-family: 'Poppins';
   font-style: normal;
   font-weight: 400;
+  font-display: swap;
   src: url('fonts/poppins-latin-400-normal.woff2') format('woff2');
   ascent-override: 105%;
   descent-override: 35%;
   line-gap-override: 0%;
+  size-adjust: 100%;
 }
 @font-face {
   font-family: 'Poppins';
   font-style: normal;
   font-weight: 700;
+  font-display: swap;
   src: url('fonts/poppins-latin-700-normal.woff2') format('woff2');
   ascent-override: 105%;
   descent-override: 35%;
   line-gap-override: 0%;
+  size-adjust: 100%;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-latin-700-normal.woff2') format('woff2');
 }
 @font-face {
   font-family: 'Inter';
@@ -7191,6 +7209,10 @@ body.font-family-lato {
 
 body.font-family-poppins {
   font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+body.font-family-plusjakarta {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
 body.font-family-inter {

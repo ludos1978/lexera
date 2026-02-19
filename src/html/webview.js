@@ -3033,6 +3033,14 @@ if (!webviewEventListenersInitialized) {
                 }
             }
 
+            // Refresh export tree if export dialog is currently open
+            {
+                const exportModal = document.getElementById('export-modal');
+                if (exportModal && exportModal.style.display === 'block' && typeof window.initializeExportTree === 'function') {
+                    window.initializeExportTree();
+                }
+            }
+
             break;
         case 'updateFileInfo':
             const previousDocumentPath = currentFileInfo?.documentPath;
@@ -3878,6 +3886,14 @@ if (!webviewEventListenersInitialized) {
                         timestamp: lastTargetedUpdateTime
                     });
                 }
+
+            // Refresh export tree if export dialog is currently open
+            {
+                const exportModal = document.getElementById('export-modal');
+                if (exportModal && exportModal.style.display === 'block' && typeof window.initializeExportTree === 'function') {
+                    window.initializeExportTree();
+                }
+            }
             break;
         case 'updateTaskContent':
             // Handle targeted task content update for include file changes
@@ -6097,7 +6113,7 @@ let currentFontFamily = 'system'; // Default to system fonts
 // Refactored font family functions using styleManager
 function applyFontFamily(family) {
     // Remove all font family classes
-    const families = ['system', 'roboto', 'opensans', 'lato', 'poppins', 'inter', 'helvetica', 'arial', 'georgia', 'times', 'firacode', 'jetbrains', 'sourcecodepro', 'consolas'];
+    const families = ['system', 'roboto', 'opensans', 'lato', 'poppins', 'plusjakarta', 'inter', 'helvetica', 'arial', 'georgia', 'times', 'firacode', 'jetbrains', 'sourcecodepro', 'consolas'];
     families.forEach(f => document.body.classList.remove(`font-family-${f}`));
 
     document.body.classList.add(`font-family-${family}`);
@@ -6111,6 +6127,7 @@ function applyFontFamily(family) {
         'opensans': "'Open Sans', sans-serif",
         'lato': "'Lato', sans-serif",
         'poppins': "'Poppins', sans-serif",
+        'plusjakarta': "'Plus Jakarta Sans', sans-serif",
         'inter': "'Inter', sans-serif",
         'helvetica': "'Helvetica Neue', Helvetica, Arial, sans-serif",
         'arial': "Arial, sans-serif",

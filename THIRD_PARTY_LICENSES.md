@@ -14,6 +14,7 @@ The following fonts are bundled in `src/html/fonts/`. Individual license files a
 | Open Sans | SIL Open Font License 1.1 | Steve Matteson |
 | Lato | SIL Open Font License 1.1 | Lukasz Dziedzic |
 | Poppins | SIL Open Font License 1.1 | Indian Type Foundry |
+| Plus Jakarta Sans | SIL Open Font License 1.1 | Tokotype |
 | Inter | SIL Open Font License 1.1 | Rasmus Andersson |
 | Fira Code | SIL Open Font License 1.1 | Nikita Prokopov |
 | JetBrains Mono | SIL Open Font License 1.1 | JetBrains s.r.o. |
@@ -69,7 +70,7 @@ Used by: Roboto font
 See: https://www.apache.org/licenses/LICENSE-2.0
 
 ### SIL Open Font License 1.1
-Used by: Open Sans, Lato, Poppins, Inter, Fira Code, JetBrains Mono, Source Code Pro
+Used by: Open Sans, Lato, Poppins, Plus Jakarta Sans, Inter, Fira Code, JetBrains Mono, Source Code Pro
 
 See: https://scripts.sil.org/OFL
 
