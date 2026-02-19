@@ -4445,7 +4445,7 @@ button.file-bar-menu-item {
 .kanban-column-stack .kanban-full-height-column .column-title,
 .kanban-column-stack .kanban-full-height-column .column-footer {
   position: sticky;
-  background: transparent;
+  background: var(var(--task-background));
   z-index: 100;
 }
 
@@ -5716,6 +5716,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   font-size: inherit;
   line-height: inherit;
   white-space: pre-wrap;
+  line-break: anywhere;
   word-break: break-word;
   overflow: hidden;
   padding: 4px;
