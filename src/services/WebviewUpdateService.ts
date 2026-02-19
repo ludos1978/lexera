@@ -22,7 +22,7 @@ import { WebviewManager } from '../panel/WebviewManager';
 import { configService } from './ConfigurationService';
 import { getDocumentPreference } from '../utils/documentPreference';
 import { KeybindingService } from './KeybindingService';
-import { findColumn, findTaskById } from '../actions/helpers';
+import { findColumn, findCardById } from '../actions/helpers';
 import { eventBus, WebviewUpdateRequestedEvent } from '../core/events';
 import { logger } from '../utils/logger';
 import {
@@ -30,7 +30,7 @@ import {
     UpdateIncludeContentMessage,
     SyncDirtyItemsMessage,
     SyncDirtyColumnInfo,
-    SyncDirtyTaskInfo,
+    SyncDirtyCardInfo,
     UpdateShortcutsMessage,
     ConfigurationUpdateMessage
 } from '../core/bridge/MessageTypes';
@@ -385,9 +385,9 @@ export class WebviewUpdateService {
         }
 
         // Collect dirty tasks
-        const dirtyTasks: SyncDirtyTaskInfo[] = [];
+        const dirtyTasks: SyncDirtyCardInfo[] = [];
         for (const taskId of dirtyTaskIds) {
-            const result = findTaskById(board, taskId);
+            const result = findCardById(board, taskId);
             if (result) {
                 dirtyTasks.push({
                     columnId: result.column.id,

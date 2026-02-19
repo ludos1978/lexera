@@ -12,7 +12,7 @@ import { MarkdownFile } from '../../files/MarkdownFile';
 import { IMainKanbanFile } from '../../files/FileInterfaces';
 import { ConflictResolver } from '../../services/ConflictResolver';
 import { BackupManager } from '../../services/BackupManager';
-import { KanbanTask } from '../../board/KanbanTypes';
+import { KanbanCard } from '../../board/KanbanTypes';
 
 /**
  * Metadata describing an import plugin's capabilities
@@ -111,7 +111,7 @@ export interface ParseOptions {
     mainFilePath?: string;
 
     /** Existing tasks to preserve IDs from (by position) */
-    existingTasks?: KanbanTask[];
+    existingTasks?: KanbanCard[];
 
     /** Column ID for ID generation */
     columnId?: string;
@@ -125,7 +125,7 @@ export interface ParseResult {
     success: boolean;
 
     /** Parsed data (type depends on plugin) */
-    data?: KanbanTask[] | string | any;
+    data?: KanbanCard[] | string | any;
 
     /** Error message if failed */
     error?: string;
@@ -217,7 +217,7 @@ export interface ImportPlugin {
      * Generate file content from structured data (optional)
      * Only needed for plugins that transform content
      *
-     * @param data - Data to convert (e.g., KanbanTask[])
+     * @param data - Data to convert (e.g., KanbanCard[])
      * @param options - Generation options
      * @returns Generated content string
      */

@@ -16,7 +16,7 @@ import { BoardStore } from '../core/stores/BoardStore';
 import { WebviewBridge } from '../core/bridge/WebviewBridge';
 import { BoardChangeTrigger } from '../core/events';
 import {
-    UpdateTaskContentExtendedMessage,
+    UpdateCardContentExtendedMessage,
     UpdateColumnContentExtendedMessage
 } from '../core/bridge/MessageTypes';
 import { findColumn } from './helpers';
@@ -183,7 +183,7 @@ export class ActionExecutor {
 
         if (!task || !column) return;
 
-        const message: UpdateTaskContentExtendedMessage = {
+        const message: UpdateCardContentExtendedMessage = {
             type: 'updateTaskContent',
             columnId: column.id,
             taskId: task.id,

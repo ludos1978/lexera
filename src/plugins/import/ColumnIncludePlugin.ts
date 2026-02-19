@@ -7,8 +7,8 @@
  * Features:
  * - Detects !!!include()!!! in column headers (## Title)
  * - Creates IncludeFile instances with fileType='include-column'
- * - Parses presentation format to KanbanTask[]
- * - Generates presentation format from KanbanTask[]
+ * - Parses presentation format to KanbanCard[]
+ * - Generates presentation format from KanbanCard[]
  * - Preserves task IDs by position matching
  *
  * @module plugins/import/ColumnIncludePlugin
@@ -26,7 +26,7 @@ import { IncludeFile } from '../../files/IncludeFile';
 import { IMainKanbanFile } from '../../files/FileInterfaces';
 import { PresentationParser } from '../../services/export/PresentationParser';
 import { PresentationGenerator } from '../../services/export/PresentationGenerator';
-import { KanbanTask } from '../../board/KanbanTypes';
+import { KanbanCard } from '../../board/KanbanTypes';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
 
 /**
@@ -74,7 +74,7 @@ export class ColumnIncludePlugin extends AbstractImportPlugin {
     }
 
     /**
-     * Parse presentation content to KanbanTask[]
+     * Parse presentation content to KanbanCard[]
      *
      * Delegates to PresentationParser for actual parsing.
      * Preserves task IDs by position matching with existingTasks.
@@ -120,11 +120,11 @@ export class ColumnIncludePlugin extends AbstractImportPlugin {
     }
 
     /**
-     * Generate presentation content from KanbanTask[]
+     * Generate presentation content from KanbanCard[]
      *
      * Delegates to PresentationGenerator.
      */
-    generateContent(data: KanbanTask[], options: GenerateOptions): string {
+    generateContent(data: KanbanCard[], options: GenerateOptions): string {
         return PresentationGenerator.fromTasks(data, {
             filterIncludes: options.filterIncludes ?? true,
             includeMarpDirectives: options.includeMarpDirectives ?? false

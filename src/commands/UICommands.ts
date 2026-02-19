@@ -19,7 +19,7 @@ import {
     ShowInfoMessage,
     SetPreferenceMessage,
     SetContextMessage,
-    UpdateTaskContentExtendedMessage,
+    UpdateCardContentExtendedMessage,
     UpdateColumnContentExtendedMessage,
     OpenSearchPanelMessage,
     SetFilePreferenceMessage,
@@ -202,7 +202,7 @@ export class UICommands extends SwitchBasedCommand {
                 if (!task || !column) {
                     return false;
                 }
-                const message: UpdateTaskContentExtendedMessage = {
+                const message: UpdateCardContentExtendedMessage = {
                     type: 'updateTaskContent',
                     columnId: column.id,
                     taskId: task.id,

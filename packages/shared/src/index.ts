@@ -1,4 +1,4 @@
-export { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings, HIDDEN_TAGS, isArchivedOrDeleted } from './kanbanTypes';
+export { KanbanCard, KanbanColumn, KanbanBoard, BoardSettings, HIDDEN_TAGS, isArchivedOrDeleted } from './kanbanTypes';
 export { SharedMarkdownParser } from './markdownParser';
 export {
   TemporalInfo, ResolvedTemporal,

@@ -10,10 +10,10 @@ import * as path from 'path';
 import { logger } from './utils/logger';
 
 // Re-export types from KanbanTypes
-export { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
+export { KanbanCard, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
 
 // Import types for internal use
-import { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
+import { KanbanCard, KanbanColumn, KanbanBoard, BoardSettings } from './board/KanbanTypes';
 
 const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'columnWidth',
@@ -47,7 +47,7 @@ export class MarkdownKanbanParser {
    * CRITICAL: NEVER match by title - position determines identity
    * Titles can be duplicated, changed, or empty
    */
-  private static findExistingColumn(existingBoard: KanbanBoard | undefined, _title: string, columnIndex?: number, _newTasks?: KanbanTask[]): KanbanColumn | undefined {
+  private static findExistingColumn(existingBoard: KanbanBoard | undefined, _title: string, columnIndex?: number, _newTasks?: KanbanCard[]): KanbanColumn | undefined {
     if (!existingBoard) return undefined;
 
     // ONLY match by position - title/content matching is FORBIDDEN
@@ -109,7 +109,7 @@ export class MarkdownKanbanParser {
       };
 
       let currentColumn: KanbanColumn | null = null;
-      let currentTask: KanbanTask | null = null;
+      let currentTask: KanbanCard | null = null;
       let collectingDescription = false;
       let inYamlHeader = false;
       let inKanbanFooter = false;
@@ -196,7 +196,7 @@ export class MarkdownKanbanParser {
             // Generate tasks from included files (only when resolveIncludes is true)
             // When resolveIncludes=false (e.g., exporting with mergeIncludes=false),
             // we skip reading files to prevent duplicate content in the output
-            const includeTasks: KanbanTask[] = [];
+            const includeTasks: KanbanCard[] = [];
             let hasIncludeError = false;
 
             if (resolveIncludes) {
@@ -270,7 +270,7 @@ export class MarkdownKanbanParser {
 
             // Create task with temporary ID - will be matched by content during finalization
             currentTask = {
-              id: IdGenerator.generateTaskId(), // Temporary, replaced if content matches
+              id: IdGenerator.generateCardId(), // Temporary, replaced if content matches
               content: taskSummary,
               checked: isChecked ? true : undefined
             };
@@ -490,7 +490,7 @@ export class MarkdownKanbanParser {
     return updatedYaml;
   }
 
-  private static finalizeCurrentTask(task: KanbanTask | null, column: KanbanColumn | null, existingBoard?: KanbanBoard, columnIndex?: number): void {
+  private static finalizeCurrentTask(task: KanbanCard | null, column: KanbanColumn | null, existingBoard?: KanbanBoard, columnIndex?: number): void {
     if (!task || !column) {return;}
 
     // CRITICAL: NEVER delete or trim content - whitespace IS valid content

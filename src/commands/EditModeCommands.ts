@@ -20,7 +20,7 @@ import { SwitchBasedCommand, CommandContext, CommandMetadata, CommandResult, Mes
 import { getErrorMessage } from '../utils/stringUtils';
 import { hasMessageHandler } from '../types/PanelCommandAccess';
 import { UndoCapture } from '../core/stores/UndoCapture';
-import { KanbanColumn, KanbanTask } from '../board/KanbanTypes';
+import { KanbanColumn, KanbanCard } from '../board/KanbanTypes';
 import { logger } from '../utils/logger';
 
 /**
@@ -213,7 +213,7 @@ export class EditModeCommands extends SwitchBasedCommand {
                     const fromColumn = boardToSave.columns.find((col: KanbanColumn) => col.id === msg.fromColumnId);
                     const resolvedFromIndex = (typeof msg.fromIndex === 'number')
                         ? msg.fromIndex
-                        : (fromColumn ? fromColumn.tasks.findIndex((t: KanbanTask) => t.id === msg.taskId) : -1);
+                        : (fromColumn ? fromColumn.tasks.findIndex((t: KanbanCard) => t.id === msg.taskId) : -1);
                     const resolvedToIndex = (typeof msg.toIndex === 'number') ? msg.toIndex : -1;
 
                     logger.debug('[kanban.EditModeCommands.saveUndoState.drag-task]', {

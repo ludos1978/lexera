@@ -28,7 +28,7 @@ import {
     IFileRegistryForStateMachine,
     IWebviewPanelForStateMachine
 } from './ChangeTypes';
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../markdownParser';
 
 /**
  * Unified Change State Machine
@@ -662,7 +662,7 @@ export class ChangeStateMachine {
     private _sendTaskUpdate(
         panel: vscode.WebviewPanel,
         column: KanbanColumn,
-        task: KanbanTask,
+        task: KanbanCard,
         context: ChangeContext | null,
         isLoadingContent: boolean = false
     ): void {

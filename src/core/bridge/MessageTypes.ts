@@ -10,7 +10,7 @@
  * - Request/Response: Paired messages with correlation IDs for async operations
  */
 
-import { KanbanBoard, KanbanTask, KanbanColumn } from '../../markdownParser';
+import { KanbanBoard, KanbanCard, KanbanColumn } from '../../markdownParser';
 import { CapturedEdit } from '../../files/FileInterfaces';
 
 // ============= BASE TYPES =============
@@ -125,11 +125,11 @@ export interface UpdateColumnContentMessage extends BaseMessage {
 /**
  * Single task content update
  */
-export interface UpdateTaskContentMessage extends BaseMessage {
+export interface UpdateCardContentMessage extends BaseMessage {
     type: 'updateTaskContent';
     taskId: string;
     columnId: string;
-    task: KanbanTask;
+    task: KanbanCard;
     imageMappings: Record<string, string>;
 }
 
@@ -404,7 +404,7 @@ export interface SyncDirtyColumnInfo {
 /**
  * Dirty task info for sync
  */
-export interface SyncDirtyTaskInfo {
+export interface SyncDirtyCardInfo {
     columnId: string;
     taskId: string;
     displayTitle?: string;
@@ -420,7 +420,7 @@ export interface SyncDirtyTaskInfo {
 export interface SyncDirtyItemsMessage extends BaseMessage {
     type: 'syncDirtyItems';
     columns: SyncDirtyColumnInfo[];
-    tasks: SyncDirtyTaskInfo[];
+    tasks: SyncDirtyCardInfo[];
 }
 
 /**
@@ -449,7 +449,7 @@ export interface ShortcutEntry {
 export interface UpdateColumnContentExtendedMessage extends BaseMessage {
     type: 'updateColumnContent';
     columnId: string;
-    tasks: KanbanTask[];
+    tasks: KanbanCard[];
     columnTitle: string;
     displayTitle?: string;
     includeMode: boolean;
@@ -462,7 +462,7 @@ export interface UpdateColumnContentExtendedMessage extends BaseMessage {
 /**
  * Extended task content update for include files
  */
-export interface UpdateTaskContentExtendedMessage extends BaseMessage {
+export interface UpdateCardContentExtendedMessage extends BaseMessage {
     type: 'updateTaskContent';
     columnId: string;
     taskId: string;
@@ -577,11 +577,11 @@ export interface BoardUpdateFromFrontendMessage extends BaseMessage {
 /**
  * Edit task request
  */
-export interface EditTaskMessage extends BaseMessage {
+export interface EditCardMessage extends BaseMessage {
     type: 'editTask';
     taskId: string;
     columnId: string;
-    taskData: Partial<KanbanTask> & {
+    taskData: Partial<KanbanCard> & {
         [key: string]: unknown;
     };
 }
@@ -589,7 +589,7 @@ export interface EditTaskMessage extends BaseMessage {
 /**
  * Move task request
  */
-export interface MoveTaskMessage extends BaseMessage {
+export interface MoveCardMessage extends BaseMessage {
     type: 'moveTask';
     taskId: string;
     fromColumnId: string;
@@ -600,7 +600,7 @@ export interface MoveTaskMessage extends BaseMessage {
 /**
  * Add task request
  */
-export interface AddTaskMessage extends BaseMessage {
+export interface AddCardMessage extends BaseMessage {
     type: 'addTask';
     columnId: string;
     taskData: {
@@ -612,7 +612,7 @@ export interface AddTaskMessage extends BaseMessage {
 /**
  * Delete task request
  */
-export interface DeleteTaskMessage extends BaseMessage {
+export interface DeleteCardMessage extends BaseMessage {
     type: 'deleteTask';
     taskId: string;
     columnId: string;
@@ -621,7 +621,7 @@ export interface DeleteTaskMessage extends BaseMessage {
 /**
  * Add task at specific position
  */
-export interface AddTaskAtPositionMessage extends BaseMessage {
+export interface AddCardAtPositionMessage extends BaseMessage {
     type: 'addTaskAtPosition';
     columnId: string;
     taskData: {
@@ -634,7 +634,7 @@ export interface AddTaskAtPositionMessage extends BaseMessage {
 /**
  * Duplicate task request
  */
-export interface DuplicateTaskMessage extends BaseMessage {
+export interface DuplicateCardMessage extends BaseMessage {
     type: 'duplicateTask';
     taskId: string;
     columnId: string;
@@ -643,7 +643,7 @@ export interface DuplicateTaskMessage extends BaseMessage {
 /**
  * Insert task before another task
  */
-export interface InsertTaskBeforeMessage extends BaseMessage {
+export interface InsertCardBeforeMessage extends BaseMessage {
     type: 'insertTaskBefore';
     taskId: string;
     columnId: string;
@@ -652,7 +652,7 @@ export interface InsertTaskBeforeMessage extends BaseMessage {
 /**
  * Insert task after another task
  */
-export interface InsertTaskAfterMessage extends BaseMessage {
+export interface InsertCardAfterMessage extends BaseMessage {
     type: 'insertTaskAfter';
     taskId: string;
     columnId: string;
@@ -661,7 +661,7 @@ export interface InsertTaskAfterMessage extends BaseMessage {
 /**
  * Move task to a different column
  */
-export interface MoveTaskToColumnMessage extends BaseMessage {
+export interface MoveCardToColumnMessage extends BaseMessage {
     type: 'moveTaskToColumn';
     taskId: string;
     fromColumnId: string;
@@ -671,7 +671,7 @@ export interface MoveTaskToColumnMessage extends BaseMessage {
 /**
  * Move task to top of column
  */
-export interface MoveTaskToTopMessage extends BaseMessage {
+export interface MoveCardToTopMessage extends BaseMessage {
     type: 'moveTaskToTop';
     taskId: string;
     columnId: string;
@@ -680,7 +680,7 @@ export interface MoveTaskToTopMessage extends BaseMessage {
 /**
  * Move task up in column
  */
-export interface MoveTaskUpMessage extends BaseMessage {
+export interface MoveCardUpMessage extends BaseMessage {
     type: 'moveTaskUp';
     taskId: string;
     columnId: string;
@@ -689,7 +689,7 @@ export interface MoveTaskUpMessage extends BaseMessage {
 /**
  * Move task down in column
  */
-export interface MoveTaskDownMessage extends BaseMessage {
+export interface MoveCardDownMessage extends BaseMessage {
     type: 'moveTaskDown';
     taskId: string;
     columnId: string;
@@ -698,7 +698,7 @@ export interface MoveTaskDownMessage extends BaseMessage {
 /**
  * Move task to bottom of column
  */
-export interface MoveTaskToBottomMessage extends BaseMessage {
+export interface MoveCardToBottomMessage extends BaseMessage {
     type: 'moveTaskToBottom';
     taskId: string;
     columnId: string;
@@ -707,7 +707,7 @@ export interface MoveTaskToBottomMessage extends BaseMessage {
 /**
  * Update task from strikethrough deletion
  */
-export interface UpdateTaskFromStrikethroughDeletionMessage extends BaseMessage {
+export interface UpdateCardFromStrikethroughDeletionMessage extends BaseMessage {
     type: 'updateTaskFromStrikethroughDeletion';
     taskId: string;
     columnId: string;
@@ -2264,7 +2264,7 @@ export interface ThemeChangedMessage extends BaseMessage {
 export type OutgoingMessage =
     | BoardUpdateMessage
     | UpdateColumnContentMessage
-    | UpdateTaskContentMessage
+    | UpdateCardContentMessage
     | PathReplacedMessage
     | UndoRedoStatusMessage
     | FileInfoMessage
@@ -2290,7 +2290,7 @@ export type OutgoingMessage =
     | PerformEditorUndoMessage
     | PerformEditorRedoMessage
     | UpdateColumnContentExtendedMessage
-    | UpdateTaskContentExtendedMessage
+    | UpdateCardContentExtendedMessage
     | ConfigurationUpdateMessage
     | TriggerSnippetMessage
     | IncludesUpdatedMessage
@@ -2324,20 +2324,20 @@ export type IncomingMessage =
     | RedoMessage
     | RequestBoardUpdateMessage
     | BoardUpdateFromFrontendMessage
-    | EditTaskMessage
-    | MoveTaskMessage
-    | AddTaskMessage
-    | DeleteTaskMessage
-    | AddTaskAtPositionMessage
-    | DuplicateTaskMessage
-    | InsertTaskBeforeMessage
-    | InsertTaskAfterMessage
-    | MoveTaskToColumnMessage
-    | MoveTaskToTopMessage
-    | MoveTaskUpMessage
-    | MoveTaskDownMessage
-    | MoveTaskToBottomMessage
-    | UpdateTaskFromStrikethroughDeletionMessage
+    | EditCardMessage
+    | MoveCardMessage
+    | AddCardMessage
+    | DeleteCardMessage
+    | AddCardAtPositionMessage
+    | DuplicateCardMessage
+    | InsertCardBeforeMessage
+    | InsertCardAfterMessage
+    | MoveCardToColumnMessage
+    | MoveCardToTopMessage
+    | MoveCardUpMessage
+    | MoveCardDownMessage
+    | MoveCardToBottomMessage
+    | UpdateCardFromStrikethroughDeletionMessage
     | AddColumnMessage
     | MoveColumnMessage
     | DeleteColumnMessage
@@ -2388,7 +2388,7 @@ export type IncomingMessage =
     | SyncDirtyItemsMessage
     | RequestShortcutsMessage
     | UpdateColumnContentExtendedMessage
-    | UpdateTaskContentExtendedMessage
+    | UpdateCardContentExtendedMessage
     // UI messages
     | ShowMessageRequestMessage
     | ShowErrorMessage

@@ -12,7 +12,7 @@
  * Used by ludos-sync standalone server.
  */
 
-import { KanbanTask, KanbanColumn, KanbanBoard, BoardSettings } from './kanbanTypes';
+import { KanbanCard, KanbanColumn, KanbanBoard, BoardSettings } from './kanbanTypes';
 
 const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'columnWidth',
@@ -57,7 +57,7 @@ export class SharedMarkdownParser {
     };
 
     let currentColumn: KanbanColumn | null = null;
-    let currentTask: KanbanTask | null = null;
+    let currentTask: KanbanCard | null = null;
     let collectingDescription = false;
     let inYamlHeader = false;
     let inKanbanFooter = false;

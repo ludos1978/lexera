@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../board/KanbanTypes';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../board/KanbanTypes';
 import { MarkdownPatterns, HtmlPatterns, DiagramPatterns, isUrl } from '../shared/regexPatterns';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
 import { TextMatcher, TextMatcherOptions } from '../utils/textMatcher';
@@ -95,7 +95,7 @@ export class BoardContentScanner {
         return column.displayTitle || column.title;
     }
 
-    private _getTaskSummary(task: KanbanTask): string {
+    private _getTaskSummary(task: KanbanCard): string {
         if (task.displayTitle) {
             return task.displayTitle;
         }
@@ -125,12 +125,12 @@ export class BoardContentScanner {
         };
     }
 
-    private _getCardTitle(task: KanbanTask): string {
+    private _getCardTitle(task: KanbanCard): string {
         const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
         return lines.find(l => l.trim().length > 0) ?? '';
     }
 
-    private _buildTaskLocation(column: KanbanColumn, columnIndex: number, task: KanbanTask, taskIndex: number, field: ElementLocation['field']): ElementLocation {
+    private _buildTaskLocation(column: KanbanColumn, columnIndex: number, task: KanbanCard, taskIndex: number, field: ElementLocation['field']): ElementLocation {
         return {
             columnId: column.id,
             columnIndex,

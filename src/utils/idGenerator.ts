@@ -32,7 +32,7 @@ export class IdGenerator {
      * Generates a task ID with a specific prefix
      * Format: task-{uuid}
      */
-    static generateTaskId(): string {
+    static generateCardId(): string {
         return `task-${IdGenerator.generateUUID()}`;
     }
 }

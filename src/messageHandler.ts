@@ -3,14 +3,14 @@ import { BoardStore } from './core/stores';
 import { BoardOperations } from './board';
 import { LinkHandler } from './services/LinkHandler';
 import { MarkdownFile } from './files/MarkdownFile'; // FOUNDATION-1: For path comparison
-import { KanbanBoard, KanbanTask } from './markdownParser';
+import { KanbanBoard, KanbanCard } from './markdownParser';
 // PlantUMLService replaced by PlantUMLPlugin via PluginRegistry
 import { FileSaveService } from './core/FileSaveService';
 import { NewExportOptions } from './services/export/ExportService';
 import { BoardChangeTrigger } from './core/events';
 import { PanelContext } from './panel/PanelContext';
 // Command Pattern: Registry and commands for message handling
-import { CommandRegistry, CommandContext, TaskCommands, ColumnCommands, UICommands, FileCommands, ClipboardCommands, ExportCommands, DiagramCommands, IncludeCommands, EditModeCommands, TemplateCommands, DebugCommands, PathCommands, ProcessCommands, ArchiveCommands } from './commands';
+import { CommandRegistry, CommandContext, CardCommands, ColumnCommands, UICommands, FileCommands, ClipboardCommands, ExportCommands, DiagramCommands, IncludeCommands, EditModeCommands, TemplateCommands, DebugCommands, PathCommands, ProcessCommands, ArchiveCommands } from './commands';
 import * as vscode from 'vscode';
 import { EditingStoppedMessage, BoardUpdateFromFrontendMessage, IncomingMessage, HandleEditorShortcutMessage } from './core/bridge/MessageTypes';
 import { CapturedEdit } from './files/FileInterfaces';
@@ -116,7 +116,7 @@ export class MessageHandler {
         };
 
         // Register command handlers
-        this._commandRegistry.register(new TaskCommands());
+        this._commandRegistry.register(new CardCommands());
         this._commandRegistry.register(new ColumnCommands());
         this._commandRegistry.register(new UICommands());
         this._commandRegistry.register(new FileCommands());

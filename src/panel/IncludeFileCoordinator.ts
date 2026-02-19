@@ -10,7 +10,7 @@
  * @module panel/IncludeFileCoordinator
  */
 
-import { KanbanBoard, KanbanTask, KanbanColumn } from '../markdownParser';
+import { KanbanBoard, KanbanCard, KanbanColumn } from '../markdownParser';
 import { MarkdownFileRegistry, FileFactory, MainKanbanFile, IncludeFile, MarkdownFile } from '../files';
 import { WebviewBridge } from '../core/bridge';
 import {
@@ -18,7 +18,7 @@ import {
 } from '../core/bridge/MessageTypes';
 import { ChangeStateMachine } from '../core/ChangeStateMachine';
 import { PanelContext } from './PanelContext';
-import { findColumn, findColumnContainingTask } from '../actions/helpers';
+import { findColumn, findColumnContainingCard } from '../actions/helpers';
 import { logger } from '../utils/logger';
 
 /**
@@ -117,7 +117,7 @@ export class IncludeFileCoordinator {
         const board = this._deps.getBoard();
         const column = board ? (params.columnId
             ? findColumn(board, params.columnId)
-            : findColumnContainingTask(board, params.taskId!)) : undefined;
+            : findColumnContainingCard(board, params.taskId!)) : undefined;
 
         const result = await this._deps.stateMachine.processChange({
             type: 'include_switch',
@@ -198,7 +198,7 @@ export class IncludeFileCoordinator {
 
             // Check if file exists before using content
             const fileExists = file.exists();
-            let tasks: KanbanTask[];
+            let tasks: KanbanCard[];
             let includeError: boolean;
 
             if (isDebug) {

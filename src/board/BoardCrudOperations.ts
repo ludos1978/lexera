@@ -3,9 +3,9 @@
  * Handles task and column create, read, update, delete operations
  */
 
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../markdownParser';
 import { IdGenerator } from '../utils/idGenerator';
-import { normalizeTaskContent } from '../utils/taskContent';
+import { normalizeCardContent } from '../utils/cardContent';
 import {
     applyColumnOrder,
     buildColumnOrderAfterMove,
@@ -35,7 +35,7 @@ export class BoardCrudOperations {
         if (type === 'column') {
             return IdGenerator.generateColumnId();
         } else {
-            return IdGenerator.generateTaskId();
+            return IdGenerator.generateCardId();
         }
     }
 
@@ -54,7 +54,7 @@ export class BoardCrudOperations {
         return board.columns.find(col => col.id === columnId);
     }
 
-    private findTask(board: KanbanBoard, columnId: string, taskId: string): { column: KanbanColumn; task: KanbanTask; index: number } | undefined {
+    private findTask(board: KanbanBoard, columnId: string, taskId: string): { column: KanbanColumn; task: KanbanCard; index: number } | undefined {
         const column = this.findColumn(board, columnId);
         if (!column) { return undefined; }
 
@@ -69,10 +69,10 @@ export class BoardCrudOperations {
     }
 
     // ============= TASK OPERATIONS =============
-    // @deprecated These methods are superseded by TaskActions (src/actions/task.ts).
+    // @deprecated These methods are superseded by CardActions (src/actions/card.ts).
     // Kept for test compatibility. Production code should use Actions instead.
 
-    /** @deprecated Use TaskActions.move() instead */
+    /** @deprecated Use CardActions.move() instead */
     public moveTask(board: KanbanBoard, taskId: string, fromColumnId: string, toColumnId: string, newIndex: number): boolean {
         const fromColumn = this.findColumn(board, fromColumnId);
         const toColumn = this.findColumn(board, toColumnId);
@@ -95,9 +95,9 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const newTask: KanbanTask = {
+        const newTask: KanbanCard = {
             id: this.generateId('task'),
-            content: normalizeTaskContent(taskData.content ?? '')
+            content: normalizeCardContent(taskData.content ?? '')
         };
 
         column.tasks.push(newTask);
@@ -108,9 +108,9 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const newTask: KanbanTask = {
+        const newTask: KanbanCard = {
             id: this.generateId('task'),
-            content: normalizeTaskContent(taskData.content ?? '')
+            content: normalizeCardContent(taskData.content ?? '')
         };
 
         if (insertionIndex >= 0 && insertionIndex <= column.tasks.length) {
@@ -136,7 +136,7 @@ export class BoardCrudOperations {
         board: KanbanBoard,
         taskId: string,
         columnId: string,
-        taskData: Partial<KanbanTask>
+        taskData: Partial<KanbanCard>
     ): boolean {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
@@ -145,7 +145,7 @@ export class BoardCrudOperations {
         if (!task) { return false; }
 
         if (taskData.content !== undefined) {
-            task.content = normalizeTaskContent(taskData.content);
+            task.content = normalizeCardContent(taskData.content);
         }
         if (taskData.displayTitle !== undefined && task.includeMode) {
             task.displayTitle = taskData.displayTitle;
@@ -158,7 +158,7 @@ export class BoardCrudOperations {
         const result = this.findTask(board, columnId, taskId);
         if (!result) { return false; }
 
-        const newTask: KanbanTask = {
+        const newTask: KanbanCard = {
             id: this.generateId('task'),
             content: result.task.content,
             includeMode: result.task.includeMode,
@@ -177,7 +177,7 @@ export class BoardCrudOperations {
         const result = this.findTask(board, columnId, taskId);
         if (!result) { return false; }
 
-        const newTask: KanbanTask = {
+        const newTask: KanbanCard = {
             id: this.generateId('task'),
             content: ''
         };
@@ -190,7 +190,7 @@ export class BoardCrudOperations {
         const result = this.findTask(board, columnId, taskId);
         if (!result) { return false; }
 
-        const newTask: KanbanTask = {
+        const newTask: KanbanCard = {
             id: this.generateId('task'),
             content: ''
         };

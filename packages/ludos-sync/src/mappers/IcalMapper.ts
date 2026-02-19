@@ -17,7 +17,7 @@
  */
 
 import * as crypto from 'crypto';
-import { KanbanColumn, KanbanTask, extractTemporalInfo, resolveTaskTemporals, TemporalInfo, isArchivedOrDeleted } from '@ludos/shared';
+import { KanbanColumn, KanbanCard, extractTemporalInfo, resolveTaskTemporals, TemporalInfo, isArchivedOrDeleted } from '@ludos/shared';
 import { log } from '../logger';
 
 export interface IcalTask {

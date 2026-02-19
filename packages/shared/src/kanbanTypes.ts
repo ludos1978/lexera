@@ -26,7 +26,7 @@ export function isArchivedOrDeleted(text: string): boolean {
     || text.includes(HIDDEN_TAGS.ARCHIVED);
 }
 
-export interface KanbanTask {
+export interface KanbanCard {
   id: string;
   content: string;
   checked?: boolean;
@@ -35,7 +35,7 @@ export interface KanbanTask {
 export interface KanbanColumn {
   id: string;
   title: string;
-  tasks: KanbanTask[];
+  tasks: KanbanCard[];
 }
 
 export interface BoardSettings {

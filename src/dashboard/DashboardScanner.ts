@@ -10,7 +10,7 @@
  * resetToRepeat / future.
  */
 
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../markdownParser';
 import {
     UpcomingItem,
     UndatedTask,

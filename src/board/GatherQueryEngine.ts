@@ -12,7 +12,7 @@
  * - ?.today, ?.day>0 - Legacy temporal query syntax (still supported)
  */
 
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../markdownParser';
 import {
     extractDate,
     extractPersonNames,
@@ -146,7 +146,7 @@ export class GatherQueryEngine {
         // Move all cards to their destinations
         cardDestinations.forEach((targetColumn, taskId) => {
             let sourceColumn: KanbanColumn | null = null;
-            let task: KanbanTask | null = null;
+            let task: KanbanCard | null = null;
             let taskIndex = -1;
 
             for (const column of board.columns) {

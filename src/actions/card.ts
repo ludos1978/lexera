@@ -6,10 +6,10 @@
  */
 
 import { BoardAction } from './types';
-import { KanbanTask } from '../markdownParser';
-import { findColumn, findTaskIndex } from './helpers';
+import { KanbanCard } from '../markdownParser';
+import { findColumn, findCardIndex } from './helpers';
 import { IdGenerator } from '../utils/idGenerator';
-import { normalizeTaskContent } from '../utils/taskContent';
+import { normalizeCardContent } from '../utils/cardContent';
 
 // ============= CONTENT UPDATES (target: task) =============
 
@@ -21,14 +21,14 @@ export const updateContent = (
     columnId: string,
     newContent: string
 ): BoardAction => ({
-    type: 'task:updateContent',
+    type: 'card:updateContent',
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         const task = column?.tasks.find(t => t.id === taskId);
         if (!task) return false;
 
-        task.content = normalizeTaskContent(newContent);
+        task.content = normalizeCardContent(newContent);
         return true;
     }
 });
@@ -39,9 +39,9 @@ export const updateContent = (
 export const update = (
     taskId: string,
     columnId: string,
-    taskData: Partial<KanbanTask>
+    taskData: Partial<KanbanCard>
 ): BoardAction => ({
-    type: 'task:update',
+    type: 'card:update',
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
@@ -49,7 +49,7 @@ export const update = (
         if (!task) return false;
 
         if (taskData.content !== undefined) {
-            task.content = normalizeTaskContent(taskData.content);
+            task.content = normalizeCardContent(taskData.content);
         }
         if (taskData.displayTitle !== undefined && task.includeMode) {
             task.displayTitle = taskData.displayTitle;
@@ -67,18 +67,18 @@ export const update = (
  */
 export const add = (
     columnId: string,
-    taskData: Partial<KanbanTask>,
+    taskData: Partial<KanbanCard>,
     index?: number
 ): BoardAction<string | null> => ({
-    type: 'task:add',
+    type: 'card:add',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const newTask: KanbanTask = {
-            id: taskData.id || IdGenerator.generateTaskId(),
-            content: normalizeTaskContent(taskData.content ?? ''),
+        const newCard: KanbanCard = {
+            id: taskData.id || IdGenerator.generateCardId(),
+            content: normalizeCardContent(taskData.content ?? ''),
             displayTitle: taskData.displayTitle,
             originalTitle: taskData.originalTitle,
             includeMode: taskData.includeMode || false,
@@ -87,12 +87,12 @@ export const add = (
         };
 
         if (index !== undefined && index >= 0 && index <= column.tasks.length) {
-            column.tasks.splice(index, 0, newTask);
+            column.tasks.splice(index, 0, newCard);
         } else {
-            column.tasks.push(newTask);
+            column.tasks.push(newCard);
         }
 
-        return newTask.id;
+        return newCard.id;
     }
 });
 
@@ -103,13 +103,13 @@ export const remove = (
     taskId: string,
     columnId: string
 ): BoardAction => ({
-    type: 'task:delete',
+    type: 'card:delete',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const taskIndex = findTaskIndex(column, taskId);
+        const taskIndex = findCardIndex(column, taskId);
         if (taskIndex === -1) return false;
 
         column.tasks.splice(taskIndex, 1);
@@ -125,13 +125,13 @@ export const reorder = (
     columnId: string,
     newIndex: number
 ): BoardAction => ({
-    type: 'task:reorder',
+    type: 'card:reorder',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const currentIndex = findTaskIndex(column, taskId);
+        const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1) return false;
 
         const [task] = column.tasks.splice(currentIndex, 1);
@@ -147,13 +147,13 @@ export const moveToTop = (
     taskId: string,
     columnId: string
 ): BoardAction => ({
-    type: 'task:moveToTop',
+    type: 'card:moveToTop',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const currentIndex = findTaskIndex(column, taskId);
+        const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1 || currentIndex === 0) return false;
 
         const [task] = column.tasks.splice(currentIndex, 1);
@@ -169,13 +169,13 @@ export const moveUp = (
     taskId: string,
     columnId: string
 ): BoardAction => ({
-    type: 'task:moveUp',
+    type: 'card:moveUp',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const currentIndex = findTaskIndex(column, taskId);
+        const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1 || currentIndex === 0) return false;
 
         // Swap with task above
@@ -193,13 +193,13 @@ export const moveDown = (
     taskId: string,
     columnId: string
 ): BoardAction => ({
-    type: 'task:moveDown',
+    type: 'card:moveDown',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const currentIndex = findTaskIndex(column, taskId);
+        const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1 || currentIndex === column.tasks.length - 1) return false;
 
         // Swap with task below
@@ -217,13 +217,13 @@ export const moveToBottom = (
     taskId: string,
     columnId: string
 ): BoardAction => ({
-    type: 'task:moveToBottom',
+    type: 'card:moveToBottom',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const currentIndex = findTaskIndex(column, taskId);
+        const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1 || currentIndex === column.tasks.length - 1) return false;
 
         const [task] = column.tasks.splice(currentIndex, 1);
@@ -242,7 +242,7 @@ export const move = (
     toColumnId: string,
     newIndex: number
 ): BoardAction => ({
-    type: 'task:move',
+    type: 'card:move',
     targets: [
         { type: 'column', id: fromColumnId },
         { type: 'column', id: toColumnId }
@@ -252,7 +252,7 @@ export const move = (
         const toColumn = findColumn(board, toColumnId);
         if (!fromColumn || !toColumn) return false;
 
-        const taskIndex = findTaskIndex(fromColumn, taskId);
+        const taskIndex = findCardIndex(fromColumn, taskId);
         if (taskIndex === -1) return false;
 
         const [task] = fromColumn.tasks.splice(taskIndex, 1);
@@ -270,7 +270,7 @@ export const moveToColumn = (
     fromColumnId: string,
     toColumnId: string
 ): BoardAction => ({
-    type: 'task:moveToColumn',
+    type: 'card:moveToColumn',
     targets: [
         { type: 'column', id: fromColumnId },
         { type: 'column', id: toColumnId }
@@ -280,7 +280,7 @@ export const moveToColumn = (
         const toColumn = findColumn(board, toColumnId);
         if (!fromColumn || !toColumn) return false;
 
-        const taskIndex = findTaskIndex(fromColumn, taskId);
+        const taskIndex = findCardIndex(fromColumn, taskId);
         if (taskIndex === -1) return false;
 
         const [task] = fromColumn.tasks.splice(taskIndex, 1);
@@ -297,24 +297,24 @@ export const duplicate = (
     taskId: string,
     columnId: string
 ): BoardAction<string | null> => ({
-    type: 'task:duplicate',
+    type: 'card:duplicate',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const taskIndex = findTaskIndex(column, taskId);
+        const taskIndex = findCardIndex(column, taskId);
         if (taskIndex === -1) return null;
 
-        const originalTask = column.tasks[taskIndex];
-        const newTask: KanbanTask = {
-            ...JSON.parse(JSON.stringify(originalTask)),
-            id: IdGenerator.generateTaskId()
+        const originalCard = column.tasks[taskIndex];
+        const newCard: KanbanCard = {
+            ...JSON.parse(JSON.stringify(originalCard)),
+            id: IdGenerator.generateCardId()
         };
 
         // Insert after the original
-        column.tasks.splice(taskIndex + 1, 0, newTask);
-        return newTask.id;
+        column.tasks.splice(taskIndex + 1, 0, newCard);
+        return newCard.id;
     }
 });
 
@@ -327,7 +327,7 @@ export const updateIncludeFiles = (
     includeFiles: string[],
     includeMode: boolean
 ): BoardAction => ({
-    type: 'task:updateIncludeFiles',
+    type: 'card:updateIncludeFiles',
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
@@ -348,22 +348,22 @@ export const insertBefore = (
     taskId: string,
     columnId: string
 ): BoardAction<string | null> => ({
-    type: 'task:insertBefore',
+    type: 'card:insertBefore',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const taskIndex = findTaskIndex(column, taskId);
+        const taskIndex = findCardIndex(column, taskId);
         if (taskIndex === -1) return null;
 
-        const newTask: KanbanTask = {
-            id: IdGenerator.generateTaskId(),
+        const newCard: KanbanCard = {
+            id: IdGenerator.generateCardId(),
             content: ''
         };
 
-        column.tasks.splice(taskIndex, 0, newTask);
-        return newTask.id;
+        column.tasks.splice(taskIndex, 0, newCard);
+        return newCard.id;
     }
 });
 
@@ -375,21 +375,21 @@ export const insertAfter = (
     taskId: string,
     columnId: string
 ): BoardAction<string | null> => ({
-    type: 'task:insertAfter',
+    type: 'card:insertAfter',
     targets: [{ type: 'column', id: columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const taskIndex = findTaskIndex(column, taskId);
+        const taskIndex = findCardIndex(column, taskId);
         if (taskIndex === -1) return null;
 
-        const newTask: KanbanTask = {
-            id: IdGenerator.generateTaskId(),
+        const newCard: KanbanCard = {
+            id: IdGenerator.generateCardId(),
             content: ''
         };
 
-        column.tasks.splice(taskIndex + 1, 0, newTask);
-        return newTask.id;
+        column.tasks.splice(taskIndex + 1, 0, newCard);
+        return newCard.id;
     }
 });

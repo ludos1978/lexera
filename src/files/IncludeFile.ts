@@ -5,7 +5,7 @@ import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
 import { IMainKanbanFile, IMarkdownFileRegistry, CapturedEdit } from './FileInterfaces';
 import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
-import { KanbanTask } from '../board/KanbanTypes';
+import { KanbanCard } from '../board/KanbanTypes';
 import { PresentationParser } from '../services/export/PresentationParser';
 import { PresentationGenerator } from '../services/export/PresentationGenerator';
 import { safeDecodeURIComponent } from '../utils/stringUtils';
@@ -178,7 +178,7 @@ export class IncludeFile extends MarkdownFile {
      * @param columnId Optional columnId to use for task ID generation (supports file reuse across columns)
      * @param mainFilePath Optional path to main kanban file (for dynamic image path resolution)
      */
-    public parseToTasks(existingTasks?: KanbanTask[], columnId?: string, mainFilePath?: string): KanbanTask[] {
+    public parseToTasks(existingTasks?: KanbanCard[], columnId?: string, mainFilePath?: string): KanbanCard[] {
         // Note: A file can be used as different include types in different contexts.
         // Don't restrict parsing based on registered file type - just parse the content.
 
@@ -205,7 +205,7 @@ export class IncludeFile extends MarkdownFile {
      * Generate presentation format from tasks (for include-column)
      * Note: A file can be used in multiple contexts - don't restrict based on registered type
      */
-    public generateFromTasks(tasks: KanbanTask[]): string {
+    public generateFromTasks(tasks: KanbanCard[]): string {
         // Use unified presentation generator (no YAML for copying)
         return PresentationGenerator.fromTasks(tasks, {
             filterIncludes: true

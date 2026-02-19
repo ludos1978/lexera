@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { KanbanTask } from '../../board/KanbanTypes';
+import { KanbanCard } from '../../board/KanbanTypes';
 import { IdGenerator } from '../../utils/idGenerator';
 
 export interface PresentationSlide {
@@ -105,10 +105,10 @@ export class PresentationParser {
   /**
    * Convert presentation slides to kanban tasks
    */
-  static slidesToTasks(slides: PresentationSlide[], includeFilePath?: string, mainFilePath?: string): KanbanTask[] {
+  static slidesToTasks(slides: PresentationSlide[], includeFilePath?: string, mainFilePath?: string): KanbanCard[] {
     return slides.map((slide, _index) => {
-      const task: KanbanTask = {
-        id: IdGenerator.generateTaskId(),
+      const task: KanbanCard = {
+        id: IdGenerator.generateCardId(),
         // SIMPLIFIED: Use raw slide content directly - no title/description merge
         // This preserves all newlines exactly for round-trip consistency
         content: slide.content
@@ -158,7 +158,7 @@ export class PresentationParser {
    * Parse a markdown file and convert to kanban tasks
    * This is the main entry point for column includes
    */
-  static parseMarkdownToTasks(content: string, includeFilePath?: string, mainFilePath?: string): KanbanTask[] {
+  static parseMarkdownToTasks(content: string, includeFilePath?: string, mainFilePath?: string): KanbanCard[] {
     const slides = this.parsePresentation(content);
     return this.slidesToTasks(slides, includeFilePath, mainFilePath);
   }

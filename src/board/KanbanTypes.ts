@@ -7,7 +7,7 @@
  * @module board/KanbanTypes
  */
 
-export interface KanbanTask {
+export interface KanbanCard {
   id: string;
   content: string;
   checked?: boolean;      // True when task line is `- [x]`, undefined for `- [ ]`
@@ -29,7 +29,7 @@ export interface KanbanTask {
 export interface KanbanColumn {
   id: string;
   title: string;
-  tasks: KanbanTask[];
+  tasks: KanbanCard[];
   includeMode?: boolean;  // When true, tasks are generated from included files
   includeFiles?: string[]; // Paths to included presentation files
   originalTitle?: string;  // Original title before include processing

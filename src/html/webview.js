@@ -6113,7 +6113,7 @@ let currentFontFamily = 'system'; // Default to system fonts
 // Refactored font family functions using styleManager
 function applyFontFamily(family) {
     // Remove all font family classes
-    const families = ['system', 'roboto', 'opensans', 'lato', 'poppins', 'plusjakarta', 'inter', 'helvetica', 'arial', 'georgia', 'times', 'firacode', 'jetbrains', 'sourcecodepro', 'consolas'];
+    const families = ['system', 'roboto', 'opensans', 'lato', 'plusjakarta', 'inter', 'helvetica', 'arial', 'georgia', 'times', 'firacode', 'jetbrains', 'sourcecodepro', 'consolas'];
     families.forEach(f => document.body.classList.remove(`font-family-${f}`));
 
     document.body.classList.add(`font-family-${family}`);
@@ -6126,7 +6126,6 @@ function applyFontFamily(family) {
         'roboto': "'Roboto', sans-serif",
         'opensans': "'Open Sans', sans-serif",
         'lato': "'Lato', sans-serif",
-        'poppins': "'Poppins', sans-serif",
         'plusjakarta': "'Plus Jakarta Sans', sans-serif",
         'inter': "'Inter', sans-serif",
         'helvetica': "'Helvetica Neue', Helvetica, Arial, sans-serif",

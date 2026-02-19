@@ -150,7 +150,6 @@ const menuConfig = {
         { label: "Roboto", value: "roboto", icon: "Aa", iconStyle: "font-family: 'Roboto', sans-serif;" },
         { label: "Open Sans", value: "opensans", icon: "Aa", iconStyle: "font-family: 'Open Sans', sans-serif;" },
         { label: "Lato", value: "lato", icon: "Aa", iconStyle: "font-family: 'Lato', sans-serif;" },
-        { label: "Poppins", value: "poppins", icon: "Aa", iconStyle: "font-family: 'Poppins', sans-serif;" },
         { label: "Plus Jakarta Sans", value: "plusjakarta", icon: "Aa", iconStyle: "font-family: 'Plus Jakarta Sans', sans-serif;" },
         { label: "Inter", value: "inter", icon: "Aa", iconStyle: "font-family: 'Inter', sans-serif;" },
         { separator: true },

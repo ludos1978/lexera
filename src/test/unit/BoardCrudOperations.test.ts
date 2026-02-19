@@ -5,10 +5,10 @@
 
 import { BoardCrudOperations, NewTaskInput } from '../../board/BoardCrudOperations';
 import { KanbanBoard } from '../../markdownParser';
-import { mergeLegacyTaskContent, splitTaskContent } from '../../utils/taskContent';
+import { mergeLegacyCardContent, splitCardContent } from '../../utils/cardContent';
 
-const getSummary = (content: string): string => splitTaskContent(content).summaryLine;
-const getBody = (content: string): string => splitTaskContent(content).remainingContent;
+const getSummary = (content: string): string => splitCardContent(content).summaryLine;
+const getBody = (content: string): string => splitCardContent(content).remainingContent;
 
 // Helper to create a test board
 function createTestBoard(): KanbanBoard {
@@ -22,16 +22,16 @@ function createTestBoard(): KanbanBoard {
                 id: 'col-1',
                 title: 'To Do',
                 tasks: [
-                    { id: 'task-1', content: mergeLegacyTaskContent('Task 1', 'Description 1') },
-                    { id: 'task-2', content: mergeLegacyTaskContent('Task 2', 'Description 2') },
-                    { id: 'task-3', content: mergeLegacyTaskContent('Task 3', '') }
+                    { id: 'task-1', content: mergeLegacyCardContent('Task 1', 'Description 1') },
+                    { id: 'task-2', content: mergeLegacyCardContent('Task 2', 'Description 2') },
+                    { id: 'task-3', content: mergeLegacyCardContent('Task 3', '') }
                 ]
             },
             {
                 id: 'col-2',
                 title: 'In Progress',
                 tasks: [
-                    { id: 'task-4', content: mergeLegacyTaskContent('Task 4', 'Working on it') }
+                    { id: 'task-4', content: mergeLegacyCardContent('Task 4', 'Working on it') }
                 ]
             },
             {
@@ -56,7 +56,7 @@ describe('BoardCrudOperations', () => {
         describe('addTask', () => {
             it('should add task to column', () => {
                 const board = createTestBoard();
-                const taskData: NewTaskInput = { content: mergeLegacyTaskContent('New Task', 'New Description') };
+                const taskData: NewTaskInput = { content: mergeLegacyCardContent('New Task', 'New Description') };
 
                 const result = operations.addTask(board, 'col-3', taskData);
 
@@ -130,7 +130,7 @@ describe('BoardCrudOperations', () => {
                     board,
                     'task-1',
                     'col-1',
-                    { content: mergeLegacyTaskContent('Updated Title', 'Description 1') }
+                    { content: mergeLegacyCardContent('Updated Title', 'Description 1') }
                 );
 
                 expect(result).toBe(true);
@@ -144,7 +144,7 @@ describe('BoardCrudOperations', () => {
                     board,
                     'task-1',
                     'col-1',
-                    { content: mergeLegacyTaskContent('Task 1', 'Updated Description') }
+                    { content: mergeLegacyCardContent('Task 1', 'Updated Description') }
                 );
 
                 expect(result).toBe(true);

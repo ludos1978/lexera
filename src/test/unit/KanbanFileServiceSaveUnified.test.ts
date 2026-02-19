@@ -1,5 +1,5 @@
 import { KanbanFileService } from '../../kanbanFileService';
-import { getTaskSummaryLine } from '../../utils/taskContent';
+import { getCardSummaryLine } from '../../utils/cardContent';
 
 type MockMarkdownFile = {
     getPath: jest.Mock<string, []>;
@@ -440,7 +440,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
             hasUnsavedChanges: true
         });
         sharedInclude.generateFromTasks.mockImplementation((tasks: unknown[]) =>
-            (tasks as Array<{ content?: string }>).map(task => getTaskSummaryLine(task.content || '')).join('|')
+            (tasks as Array<{ content?: string }>).map(task => getCardSummaryLine(task.content || '')).join('|')
         );
 
         const conflictingBoard = {
@@ -498,7 +498,7 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
             hasUnsavedChanges: true
         });
         sharedInclude.generateFromTasks.mockImplementation((tasks: unknown[]) =>
-            (tasks as Array<{ content?: string }>).map(task => getTaskSummaryLine(task.content || '')).join('|')
+            (tasks as Array<{ content?: string }>).map(task => getCardSummaryLine(task.content || '')).join('|')
         );
 
         const deterministicBoard = {

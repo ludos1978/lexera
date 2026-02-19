@@ -1,4 +1,4 @@
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../../board/KanbanTypes';
 import { TagUtils, TagVisibility } from '../../utils/tagUtils';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
 import { escapeRegExp } from '../../utils/stringUtils';
@@ -43,7 +43,7 @@ export interface MarpOptions {
  * Presentation Generator
  *
  * Converts Kanban data structures to presentation (Marp) format.
- * Works directly with KanbanTask, KanbanColumn, and KanbanBoard.
+ * Works directly with KanbanCard, KanbanColumn, and KanbanBoard.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * CRITICAL: Presentation Format
@@ -68,7 +68,7 @@ export class PresentationGenerator {
      * @param options - Generation options
      * @returns Presentation markdown string
      */
-    static fromTasks(tasks: KanbanTask[], options: PresentationOptions = {}): string {
+    static fromTasks(tasks: KanbanCard[], options: PresentationOptions = {}): string {
         // Filter include tasks if requested
         let filteredTasks = tasks;
         if (options.filterIncludes) {
@@ -200,7 +200,7 @@ export class PresentationGenerator {
      * Parser now keeps raw slide content, so no title/description reconstruction needed.
      * This preserves all newlines exactly for round-trip consistency.
      */
-    private static taskToSlideContent(task: KanbanTask, options: PresentationOptions): string {
+    private static taskToSlideContent(task: KanbanCard, options: PresentationOptions): string {
         // Normalize line endings only (CRLF → LF)
         let content = (task.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
@@ -331,7 +331,7 @@ export class PresentationGenerator {
     /**
      * Filter tasks based on options (include mode, exclude tags).
      */
-    private static filterTasks(tasks: KanbanTask[], options: PresentationOptions): KanbanTask[] {
+    private static filterTasks(tasks: KanbanCard[], options: PresentationOptions): KanbanCard[] {
         let filtered = tasks;
         if (options.filterIncludes) {
             filtered = filtered.filter(task => !task.includeMode && !task.includeFiles);

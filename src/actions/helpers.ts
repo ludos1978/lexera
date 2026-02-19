@@ -2,7 +2,7 @@
  * Action Helpers - Utility functions for actions
  */
 
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../markdownParser';
 import { setRowTag } from '../constants/TagPatterns';
 
 /**
@@ -15,7 +15,7 @@ export function findColumn(board: KanbanBoard, columnId: string): KanbanColumn |
 /**
  * Find task index within a column
  */
-export function findTaskIndex(column: KanbanColumn, taskId: string): number {
+export function findCardIndex(column: KanbanColumn, taskId: string): number {
     return column.tasks.findIndex(t => t.id === taskId);
 }
 
@@ -102,10 +102,10 @@ export function applyColumnOrder(board: KanbanBoard, order: string[]): void {
  * Find a task by ID, searching all columns
  * Returns object with task, column, and index
  */
-export function findTaskById(
+export function findCardById(
     board: KanbanBoard,
     taskId: string
-): { task: KanbanTask; column: KanbanColumn; index: number } | undefined {
+): { task: KanbanCard; column: KanbanColumn; index: number } | undefined {
     for (const column of board.columns) {
         const index = column.tasks.findIndex(t => t.id === taskId);
         if (index !== -1) {
@@ -118,7 +118,7 @@ export function findTaskById(
 /**
  * Find the column that contains a task with the given ID
  */
-export function findColumnContainingTask(board: KanbanBoard, taskId: string): KanbanColumn | undefined {
+export function findColumnContainingCard(board: KanbanBoard, taskId: string): KanbanColumn | undefined {
     return board.columns.find(c => c.tasks.some(t => t.id === taskId));
 }
 
@@ -126,11 +126,11 @@ export function findColumnContainingTask(board: KanbanBoard, taskId: string): Ka
  * Find a task by ID within a specific column
  * Returns object with task, column, and index, or undefined if not found
  */
-export function findTaskInColumn(
+export function findCardInColumn(
     board: KanbanBoard,
     columnId: string,
     taskId: string
-): { task: KanbanTask; column: KanbanColumn; index: number } | undefined {
+): { task: KanbanCard; column: KanbanColumn; index: number } | undefined {
     const column = findColumn(board, columnId);
     if (!column) return undefined;
 

@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MarkdownFile } from './MarkdownFile';
 import { IMarkdownFileRegistry, CapturedEdit } from './FileInterfaces';
-import { KanbanBoard, KanbanTask } from '../board/KanbanTypes';
-import { findColumn, findTaskById, findTaskInColumn } from '../actions/helpers';
+import { KanbanBoard, KanbanCard } from '../board/KanbanTypes';
+import { findColumn, findCardById, findCardInColumn } from '../actions/helpers';
 import { MarkdownKanbanParser } from '../markdownParser';
 import { ConflictResolver } from '../services/ConflictResolver';
 import { BackupManager } from '../services/BackupManager';
@@ -12,7 +12,7 @@ import { UnifiedChangeHandler } from '../core/UnifiedChangeHandler';
 import { SaveOptions } from './SaveOptions';
 import { writeFileAtomically } from '../utils/atomicWrite';
 import { sortColumnsByRow } from '../utils/columnUtils';
-import { normalizeTaskContent } from '../utils/taskContent';
+import { normalizeCardContent } from '../utils/cardContent';
 import { logger } from '../utils/logger';
 
 /**
@@ -169,15 +169,15 @@ export class MainKanbanFile extends MarkdownFile {
     /**
      * Find a task in the board by ID
      */
-    private _findTaskInBoard(board: KanbanBoard, taskId: string, columnId?: string): KanbanTask | null {
+    private _findTaskInBoard(board: KanbanBoard, taskId: string, columnId?: string): KanbanCard | null {
         // If columnId provided, search only that column first
         if (columnId) {
-            const result = findTaskInColumn(board, columnId, taskId);
+            const result = findCardInColumn(board, columnId, taskId);
             if (result) return result.task;
         }
 
         // Search all columns
-        const result = findTaskById(board, taskId);
+        const result = findCardById(board, taskId);
         return result?.task ?? null;
     }
 
@@ -495,7 +495,7 @@ export class MainKanbanFile extends MarkdownFile {
                     : task.content;
 
                 return {
-                    content: normalizeTaskContent(persistedContent)
+                    content: normalizeCardContent(persistedContent)
                 };
             });
 

@@ -401,7 +401,7 @@ export class TemplateCommands extends SwitchBasedCommand {
                     content: string;
                     completed: boolean;
                 } = {
-                    id: IdGenerator.generateTaskId(),
+                    id: IdGenerator.generateCardId(),
                     content: processedTaskContent,
                     completed: task.completed || false
                 };

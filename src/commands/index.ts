@@ -19,7 +19,7 @@ export {
 export { CommandRegistry, ValidationResult } from './CommandRegistry';
 
 // Command implementations
-export { TaskCommands } from './TaskCommands';
+export { CardCommands } from './CardCommands';
 export { ColumnCommands } from './ColumnCommands';
 export { UICommands } from './UICommands';
 export { FileCommands } from './FileCommands';

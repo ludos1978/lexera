@@ -21,7 +21,7 @@ import { safeFileUri } from '../utils/uriUtils';
 import { FileSearchService, TrackedFileData } from '../fileSearchService';
 import { PathFormat } from '../services/FileSearchWebview';
 import { showInfo, showWarning } from '../services/NotificationService';
-import { findColumn, findColumnContainingTask } from '../actions/helpers';
+import { findColumn, findColumnContainingCard } from '../actions/helpers';
 import { logger } from '../utils/logger';
 import { linkReplacementService, ReplacementDependencies } from '../services/LinkReplacementService';
 import { WebImageSearchService } from '../services/WebImageSearchService';
@@ -769,7 +769,7 @@ export class PathCommands extends SwitchBasedCommand {
 
         const column = columnId
             ? findColumn(board, columnId)
-            : findColumnContainingTask(board, taskId);
+            : findColumnContainingCard(board, taskId);
         if (!column) return;
 
         const task = column.tasks.find(t => t.id === taskId);
@@ -987,7 +987,7 @@ export class PathCommands extends SwitchBasedCommand {
         if (capturedEdit.type === 'task-content' && capturedEdit.taskId) {
             const column = capturedEdit.columnId
                 ? findColumn(board, capturedEdit.columnId)
-                : findColumnContainingTask(board, capturedEdit.taskId);
+                : findColumnContainingCard(board, capturedEdit.taskId);
             const task = column?.tasks.find(t => t.id === capturedEdit.taskId);
             if (task) {
                 task.content = capturedEdit.value;

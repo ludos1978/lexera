@@ -210,7 +210,7 @@ export const duplicate = (
             id: IdGenerator.generateColumnId(),
             tasks: originalColumn.tasks.map(task => ({
                 ...JSON.parse(JSON.stringify(task)),
-                id: IdGenerator.generateTaskId()
+                id: IdGenerator.generateCardId()
             }))
         };
 

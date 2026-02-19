@@ -1,5 +1,5 @@
 /**
- * Bidirectional XBEL XML <-> KanbanColumn/KanbanTask mapper.
+ * Bidirectional XBEL XML <-> KanbanColumn/KanbanCard mapper.
  *
  * XBEL (XML Bookmark Exchange Language) is the format Floccus uses over WebDAV.
  *
@@ -17,7 +17,7 @@
  */
 
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
-import { KanbanColumn, KanbanTask, isArchivedOrDeleted } from '@ludos/shared';
+import { KanbanColumn, KanbanCard, isArchivedOrDeleted } from '@ludos/shared';
 import { log } from '../logger';
 
 export interface XbelBookmark {
@@ -203,7 +203,7 @@ export class XbelMapper {
       const needsStack = stackKey === prevStackKey;
       const title = needsStack ? `${path} #stack` : path;
 
-      const tasks: KanbanTask[] = bookmarks.map((bm, bmIdx) => ({
+      const tasks: KanbanCard[] = bookmarks.map((bm, bmIdx) => ({
         id: `sync-task-${i}-${bmIdx}`,
         content: this.bookmarkToTaskContent(bm),
       }));
@@ -396,11 +396,11 @@ export class XbelMapper {
       const existingCol = existingByPath.get(incomingPath);
 
       if (existingCol) {
-        const mergedTasks: KanbanTask[] = [];
+        const mergedTasks: KanbanCard[] = [];
 
         // Map existing tasks by xbel-id
-        const existingByXbelId = new Map<string, KanbanTask>();
-        const tasksWithoutLinks: KanbanTask[] = [];
+        const existingByXbelId = new Map<string, KanbanCard>();
+        const tasksWithoutLinks: KanbanCard[] = [];
 
         for (const task of existingCol.tasks) {
           const xbelId = this.extractXbelId(task.content);

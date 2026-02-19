@@ -9,7 +9,7 @@ function normalizeLineEndings(value: string): string {
     return value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
-export function normalizeTaskContent(value: string | undefined | null): string {
+export function normalizeCardContent(value: string | undefined | null): string {
     if (typeof value !== 'string') {
         return '';
     }
@@ -23,15 +23,15 @@ export function normalizeTaskContent(value: string | undefined | null): string {
 // ============================================================================
 
 /** @deprecated No longer used - content is unified */
-export interface TaskContentParts {
+export interface CardContentParts {
     summaryLine: string;
     remainingContent: string;
 }
 
 /** @deprecated No longer used - content is unified */
-export function mergeLegacyTaskContent(title?: string, description?: string): string {
-    const normalizedTitle = normalizeTaskContent(title);
-    const normalizedDescription = normalizeTaskContent(description);
+export function mergeLegacyCardContent(title?: string, description?: string): string {
+    const normalizedTitle = normalizeCardContent(title);
+    const normalizedDescription = normalizeCardContent(description);
     const hasExplicitTitle = title !== undefined && title !== null;
 
     if (hasExplicitTitle && !normalizedDescription) {
@@ -50,8 +50,8 @@ export function mergeLegacyTaskContent(title?: string, description?: string): st
 }
 
 /** @deprecated No longer used - content is unified */
-export function splitTaskContent(content: string | undefined | null): TaskContentParts {
-    const normalized = normalizeTaskContent(content);
+export function splitCardContent(content: string | undefined | null): CardContentParts {
+    const normalized = normalizeCardContent(content);
     if (!normalized) {
         return { summaryLine: '', remainingContent: '' };
     }
@@ -64,8 +64,8 @@ export function splitTaskContent(content: string | undefined | null): TaskConten
 }
 
 /** @deprecated No longer used - content is unified */
-export function getTaskSummaryLine(content: string | undefined | null): string {
-    const normalized = normalizeTaskContent(content);
+export function getCardSummaryLine(content: string | undefined | null): string {
+    const normalized = normalizeCardContent(content);
     if (!normalized) {
         return '';
     }

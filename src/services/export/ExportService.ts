@@ -20,7 +20,7 @@ import { DOTTED_EXTENSIONS } from '../../shared/fileTypeDefinitions';
 import { MarkdownPatterns, HtmlPatterns, isUrl } from '../../shared/regexPatterns';
 import { AssetHandler } from '../assets/AssetHandler';
 import { escapeRegExp, getErrorMessage, toForwardSlashes } from '../../utils/stringUtils';
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../../board/KanbanTypes';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../../board/KanbanTypes';
 import { MarkdownKanbanParser } from '../../markdownParser';
 import { logger } from '../../utils/logger';
 import MarkdownIt from 'markdown-it';
@@ -235,7 +235,7 @@ export class ExportService {
             }
 
             // Filter tasks in this column
-            const filteredTasks: KanbanTask[] = [];
+            const filteredTasks: KanbanCard[] = [];
             for (const task of column.tasks || []) {
                 // Skip task if its content contains an exclude tag
                 if (this.hasExcludeTag(task.content, excludeTags)) {
@@ -1770,7 +1770,7 @@ export class ExportService {
 
             if (column) {
                 const taskId = options.selection.taskId;
-                const task = column.tasks?.find((t: KanbanTask) => t.id === taskId);
+                const task = column.tasks?.find((t: KanbanCard) => t.id === taskId);
 
                 if (task) {
                     return {

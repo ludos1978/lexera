@@ -12,8 +12,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { INCLUDE_SYNTAX, createDisplayTitleWithPlaceholders } from '../constants/IncludeConstants';
 import { ChangeContext, IncludeSwitchEvent, UserEditEvent } from './ChangeTypes';
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../board/KanbanTypes';
-import { findColumn, findColumnContainingTask } from '../actions/helpers';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../board/KanbanTypes';
+import { findColumn, findColumnContainingCard } from '../actions/helpers';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import { FileFactory } from '../files/FileFactory';
 import { MarkdownFile } from '../files/MarkdownFile';
@@ -35,7 +35,7 @@ export interface IWebviewPanelForProcessor {
  */
 export interface TargetResolution {
     targetColumn: KanbanColumn | null;
-    targetTask: KanbanTask | null;
+    targetTask: KanbanCard | null;
     isColumnSwitch: boolean;
     found: boolean;
 }
@@ -66,7 +66,7 @@ export class IncludeLoadingProcessor {
      */
     resolveTarget(event: IncludeSwitchEvent | UserEditEvent, board: KanbanBoard): TargetResolution {
         let targetColumn: KanbanColumn | null = null;
-        let targetTask: KanbanTask | null = null;
+        let targetTask: KanbanCard | null = null;
         let isColumnSwitch = false;
 
         if (event.type === 'include_switch') {
@@ -82,7 +82,7 @@ export class IncludeLoadingProcessor {
                 targetColumn = (event.params.columnId ? findColumn(board, event.params.columnId) : null) ?? null;
                 isColumnSwitch = true;
             } else if (event.editType === 'task_content') {
-                targetColumn = (event.params.taskId ? findColumnContainingTask(board, event.params.taskId) : null) ?? null;
+                targetColumn = (event.params.taskId ? findColumnContainingCard(board, event.params.taskId) : null) ?? null;
                 targetTask = event.params.taskId ? (targetColumn?.tasks.find(t => t.id === event.params.taskId) || null) : null;
             }
         }
@@ -109,7 +109,7 @@ export class IncludeLoadingProcessor {
      * This eliminates the bug where cached empty files weren't reloaded.
      */
     async unifiedLoad(params: {
-        target: { type: 'column'; column: KanbanColumn } | { type: 'task'; column: KanbanColumn; task: KanbanTask };
+        target: { type: 'column'; column: KanbanColumn } | { type: 'task'; column: KanbanColumn; task: KanbanCard };
         includeFiles: string[];
         preloadedContent?: Map<string, string>;
         newTitle?: string;
@@ -155,7 +155,7 @@ export class IncludeLoadingProcessor {
      * Clear target when includes are being removed
      */
     private _clearTarget(
-        target: { type: 'column'; column: KanbanColumn } | { type: 'task'; column: KanbanColumn; task: KanbanTask },
+        target: { type: 'column'; column: KanbanColumn } | { type: 'task'; column: KanbanColumn; task: KanbanCard },
         newTitle?: string
     ): void {
         if (target.type === 'column') {
@@ -206,7 +206,7 @@ export class IncludeLoadingProcessor {
         }
 
         // Load all files and collect tasks
-        const tasks: KanbanTask[] = [];
+        const tasks: KanbanCard[] = [];
 
         // Initialize error state - will be set to true if ANY file fails
         column.includeError = false;

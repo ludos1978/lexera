@@ -21,7 +21,7 @@ import { MarkdownFile } from '../files/MarkdownFile';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
 import { BoardStore, UndoCapture, ResolvedTarget } from '../core/stores';
 import { WebviewBridge } from '../core/bridge/WebviewBridge';
-import { KanbanBoard, KanbanColumn, KanbanTask } from '../markdownParser';
+import { KanbanBoard, KanbanColumn, KanbanCard } from '../markdownParser';
 import { LinkOperations, MARKDOWN_PATH_PATTERN, extractPathFromMatch } from '../utils/linkOperations';
 import { encodeFilePath, safeDecodeURIComponent, normalizeDirForComparison, escapeRegExp } from '../utils/stringUtils';
 import { showInfo, showWarning } from './NotificationService';
@@ -250,7 +250,7 @@ export class LinkReplacementService {
         if (isColumnTitle && column?.includeFiles?.length) {
             includePath = column.includeFiles[0];
         } else if (taskId && column) {
-            const task = column.tasks.find((t: KanbanTask) => t.id === taskId);
+            const task = column.tasks.find((t: KanbanCard) => t.id === taskId);
             includePath = task?.includeContext?.includeFilePath
                 || task?.includeFiles?.[0]
                 || column?.includeFiles?.[0];
@@ -450,7 +450,7 @@ export class LinkReplacementService {
             if (options.isColumnTitle && column) {
                 textToSearch = column.title || '';
             } else if (options.taskId && column) {
-                const task = column.tasks.find((t: KanbanTask) => t.id === options.taskId);
+                const task = column.tasks.find((t: KanbanCard) => t.id === options.taskId);
                 if (task) {
                     textToSearch = task.content || '';
                 }
@@ -803,7 +803,7 @@ export class LinkReplacementService {
         // Single mode - targeted updates
         if (options.taskId && options.columnId) {
             const column = board.columns.find((c: KanbanColumn) => c.id === options.columnId);
-            const task = column?.tasks.find((t: KanbanTask) => t.id === options.taskId);
+            const task = column?.tasks.find((t: KanbanCard) => t.id === options.taskId);
             if (task) {
                 const taskBaseDir = task.includeContext?.includeDir || mainFileDir;
                 const oldContent = task.content || '';

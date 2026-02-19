@@ -7,28 +7,28 @@
  * - insertTaskBefore/After
  * - updateTaskFromStrikethroughDeletion
  *
- * @module commands/TaskCommands
+ * @module commands/CardCommands
  */
 
 import { SwitchBasedCommand, CommandContext, CommandMetadata, CommandResult, IncomingMessage, MessageHandler } from './interfaces';
 import {
-    EditTaskMessage,
-    AddTaskMessage,
-    AddTaskAtPositionMessage,
-    DeleteTaskMessage,
-    DuplicateTaskMessage,
-    InsertTaskBeforeMessage,
-    InsertTaskAfterMessage,
-    MoveTaskMessage,
-    MoveTaskToColumnMessage,
-    MoveTaskToTopMessage,
-    MoveTaskUpMessage,
-    MoveTaskDownMessage,
-    MoveTaskToBottomMessage,
-    UpdateTaskFromStrikethroughDeletionMessage
+    EditCardMessage,
+    AddCardMessage,
+    AddCardAtPositionMessage,
+    DeleteCardMessage,
+    DuplicateCardMessage,
+    InsertCardBeforeMessage,
+    InsertCardAfterMessage,
+    MoveCardMessage,
+    MoveCardToColumnMessage,
+    MoveCardToTopMessage,
+    MoveCardUpMessage,
+    MoveCardDownMessage,
+    MoveCardToBottomMessage,
+    UpdateCardFromStrikethroughDeletionMessage
 } from '../core/bridge/MessageTypes';
 import { findColumn } from '../actions/helpers';
-import { TaskActions } from '../actions';
+import { CardActions } from '../actions';
 import { logger } from '../utils/logger';
 
 /**
@@ -36,7 +36,7 @@ import { logger } from '../utils/logger';
  *
  * Processes all task-related messages from the webview.
  */
-export class TaskCommands extends SwitchBasedCommand {
+export class CardCommands extends SwitchBasedCommand {
     readonly metadata: CommandMetadata = {
         id: 'task-commands',
         name: 'Task Commands',
@@ -61,20 +61,20 @@ export class TaskCommands extends SwitchBasedCommand {
     };
 
     protected handlers: Record<string, MessageHandler> = {
-        'editTask': (msg, ctx) => this.handleEditTask(msg as EditTaskMessage, ctx),
-        'addTask': (msg, ctx) => this.handleAddTask(msg as AddTaskMessage, ctx),
-        'addTaskAtPosition': (msg, ctx) => this.handleAddTaskAtPosition(msg as AddTaskAtPositionMessage, ctx),
-        'deleteTask': (msg, ctx) => this.handleDeleteTask(msg as DeleteTaskMessage, ctx),
-        'duplicateTask': (msg, ctx) => this.handleDuplicateTask(msg as DuplicateTaskMessage, ctx),
-        'insertTaskBefore': (msg, ctx) => this.handleInsertTaskBefore(msg as InsertTaskBeforeMessage, ctx),
-        'insertTaskAfter': (msg, ctx) => this.handleInsertTaskAfter(msg as InsertTaskAfterMessage, ctx),
-        'moveTask': (msg, ctx) => this.handleMoveTask(msg as MoveTaskMessage, ctx),
-        'moveTaskToColumn': (msg, ctx) => this.handleMoveTaskToColumn(msg as MoveTaskToColumnMessage, ctx),
-        'moveTaskToTop': (msg, ctx) => this.handleMoveTaskToTop(msg as MoveTaskToTopMessage, ctx),
-        'moveTaskUp': (msg, ctx) => this.handleMoveTaskUp(msg as MoveTaskUpMessage, ctx),
-        'moveTaskDown': (msg, ctx) => this.handleMoveTaskDown(msg as MoveTaskDownMessage, ctx),
-        'moveTaskToBottom': (msg, ctx) => this.handleMoveTaskToBottom(msg as MoveTaskToBottomMessage, ctx),
-        'updateTaskFromStrikethroughDeletion': (msg, ctx) => this.handleUpdateTaskFromStrikethroughDeletion(msg as UpdateTaskFromStrikethroughDeletionMessage, ctx)
+        'editTask': (msg, ctx) => this.handleEditCard(msg as EditCardMessage, ctx),
+        'addTask': (msg, ctx) => this.handleAddCard(msg as AddCardMessage, ctx),
+        'addTaskAtPosition': (msg, ctx) => this.handleAddCardAtPosition(msg as AddCardAtPositionMessage, ctx),
+        'deleteTask': (msg, ctx) => this.handleDeleteCard(msg as DeleteCardMessage, ctx),
+        'duplicateTask': (msg, ctx) => this.handleDuplicateCard(msg as DuplicateCardMessage, ctx),
+        'insertTaskBefore': (msg, ctx) => this.handleInsertCardBefore(msg as InsertCardBeforeMessage, ctx),
+        'insertTaskAfter': (msg, ctx) => this.handleInsertCardAfter(msg as InsertCardAfterMessage, ctx),
+        'moveTask': (msg, ctx) => this.handleMoveCard(msg as MoveCardMessage, ctx),
+        'moveTaskToColumn': (msg, ctx) => this.handleMoveCardToColumn(msg as MoveCardToColumnMessage, ctx),
+        'moveTaskToTop': (msg, ctx) => this.handleMoveCardToTop(msg as MoveCardToTopMessage, ctx),
+        'moveTaskUp': (msg, ctx) => this.handleMoveCardUp(msg as MoveCardUpMessage, ctx),
+        'moveTaskDown': (msg, ctx) => this.handleMoveCardDown(msg as MoveCardDownMessage, ctx),
+        'moveTaskToBottom': (msg, ctx) => this.handleMoveCardToBottom(msg as MoveCardToBottomMessage, ctx),
+        'updateTaskFromStrikethroughDeletion': (msg, ctx) => this.handleUpdateCardFromStrikethroughDeletion(msg as UpdateCardFromStrikethroughDeletionMessage, ctx)
     };
 
     // ============= TASK HANDLERS =============
@@ -84,10 +84,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle editTask message - complex with include handling
      */
-    private async handleEditTask(message: EditTaskMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleEditCard(message: EditCardMessage, context: CommandContext): Promise<CommandResult> {
         await this.executeAction(
             context,
-            TaskActions.update(message.taskId, message.columnId, message.taskData),
+            CardActions.update(message.taskId, message.columnId, message.taskData),
             { sendUpdates: false }
         );
 
@@ -97,10 +97,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle addTask message
      */
-    private async handleAddTask(message: AddTaskMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleAddCard(message: AddCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.add(message.columnId, message.taskData)
+            CardActions.add(message.columnId, message.taskData)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to add task');
     }
@@ -108,10 +108,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle addTaskAtPosition message
      */
-    private async handleAddTaskAtPosition(message: AddTaskAtPositionMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleAddCardAtPosition(message: AddCardAtPositionMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.add(message.columnId, message.taskData, message.insertionIndex)
+            CardActions.add(message.columnId, message.taskData, message.insertionIndex)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to add task');
     }
@@ -119,10 +119,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle deleteTask message
      */
-    private async handleDeleteTask(message: DeleteTaskMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleDeleteCard(message: DeleteCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.remove(message.taskId, message.columnId),
+            CardActions.remove(message.taskId, message.columnId),
             { sendUpdates: false }
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to delete task');
@@ -131,10 +131,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle duplicateTask message
      */
-    private async handleDuplicateTask(message: DuplicateTaskMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleDuplicateCard(message: DuplicateCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.duplicate(message.taskId, message.columnId)
+            CardActions.duplicate(message.taskId, message.columnId)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to duplicate task');
     }
@@ -142,10 +142,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle insertTaskBefore message
      */
-    private async handleInsertTaskBefore(message: InsertTaskBeforeMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleInsertCardBefore(message: InsertCardBeforeMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.insertBefore(message.taskId, message.columnId)
+            CardActions.insertBefore(message.taskId, message.columnId)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to insert task');
     }
@@ -153,10 +153,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle insertTaskAfter message
      */
-    private async handleInsertTaskAfter(message: InsertTaskAfterMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleInsertCardAfter(message: InsertCardAfterMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.insertAfter(message.taskId, message.columnId)
+            CardActions.insertAfter(message.taskId, message.columnId)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to insert task');
     }
@@ -164,10 +164,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle moveTask message
      */
-    private async handleMoveTask(message: MoveTaskMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleMoveCard(message: MoveCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.move(message.taskId, message.fromColumnId, message.toColumnId, message.newIndex)
+            CardActions.move(message.taskId, message.fromColumnId, message.toColumnId, message.newIndex)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -175,10 +175,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle moveTaskToColumn message
      */
-    private async handleMoveTaskToColumn(message: MoveTaskToColumnMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleMoveCardToColumn(message: MoveCardToColumnMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.moveToColumn(message.taskId, message.fromColumnId, message.toColumnId)
+            CardActions.moveToColumn(message.taskId, message.fromColumnId, message.toColumnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -186,10 +186,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle moveTaskToTop message
      */
-    private async handleMoveTaskToTop(message: MoveTaskToTopMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleMoveCardToTop(message: MoveCardToTopMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.moveToTop(message.taskId, message.columnId)
+            CardActions.moveToTop(message.taskId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -197,10 +197,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle moveTaskUp message
      */
-    private async handleMoveTaskUp(message: MoveTaskUpMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleMoveCardUp(message: MoveCardUpMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.moveUp(message.taskId, message.columnId)
+            CardActions.moveUp(message.taskId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -208,10 +208,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle moveTaskDown message
      */
-    private async handleMoveTaskDown(message: MoveTaskDownMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleMoveCardDown(message: MoveCardDownMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.moveDown(message.taskId, message.columnId)
+            CardActions.moveDown(message.taskId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -219,10 +219,10 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle moveTaskToBottom message
      */
-    private async handleMoveTaskToBottom(message: MoveTaskToBottomMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleMoveCardToBottom(message: MoveCardToBottomMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            TaskActions.moveToBottom(message.taskId, message.columnId)
+            CardActions.moveToBottom(message.taskId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -230,12 +230,12 @@ export class TaskCommands extends SwitchBasedCommand {
     /**
      * Handle updateTaskFromStrikethroughDeletion message
      */
-    private async handleUpdateTaskFromStrikethroughDeletion(message: UpdateTaskFromStrikethroughDeletionMessage, context: CommandContext): Promise<CommandResult> {
+    private async handleUpdateCardFromStrikethroughDeletion(message: UpdateCardFromStrikethroughDeletionMessage, context: CommandContext): Promise<CommandResult> {
         const { taskId, columnId, newContent } = message;
 
         const board = context.getCurrentBoard();
         if (!board) {
-            logger.error('[TaskCommands] No current board available for strikethrough deletion');
+            logger.error('[CardCommands] No current board available for strikethrough deletion');
             return this.failure('No current board available');
         }
 
@@ -247,7 +247,7 @@ export class TaskCommands extends SwitchBasedCommand {
 
         await this.executeAction(
             context,
-            TaskActions.update(taskId, columnId, { content: newContent }),
+            CardActions.update(taskId, columnId, { content: newContent }),
             { sendUpdates: false }
         );
 

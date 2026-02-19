@@ -190,7 +190,8 @@
       "Bash(then echo \"MATCH: $f\")",
       "Bash(pkill:*)",
       "Bash(kill:*)",
-      "Bash(npx esbuild:*)"
+      "Bash(npx esbuild:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

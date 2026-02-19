@@ -2,10 +2,10 @@
  * Actions Module - Centralized board action system
  *
  * Usage:
- *   import { ActionExecutor, TaskActions, ColumnActions, BoardActions } from './actions';
+ *   import { ActionExecutor, CardActions, ColumnActions, BoardActions } from './actions';
  *
  *   // In a command handler:
- *   const action = TaskActions.updateContent(taskId, columnId, newContent);
+ *   const action = CardActions.updateContent(taskId, columnId, newContent);
  *   const result = await executor.execute(action);
  */
 
@@ -18,18 +18,18 @@ export { ActionExecutor, ExecutorDependencies, ExecuteOptions } from './executor
 // Helpers
 export {
     findColumn,
-    findTaskIndex,
+    findCardIndex,
     findColumnIndex,
     getColumnRow,
     extractNumericTag,
-    findTaskById,
-    findColumnContainingTask,
-    findTaskInColumn
+    findCardById,
+    findColumnContainingCard,
+    findCardInColumn
 } from './helpers';
 
 // Action factories (namespaced)
-import * as TaskActions from './task';
+import * as CardActions from './card';
 import * as ColumnActions from './column';
 import * as BoardActions from './board';
 
-export { TaskActions, ColumnActions, BoardActions };
+export { CardActions, ColumnActions, BoardActions };

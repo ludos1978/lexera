@@ -12,7 +12,7 @@ import { BoardCrudOperations } from './BoardCrudOperations';
 import { GatherQueryEngine } from './GatherQueryEngine';
 
 // Export core types
-export { KanbanBoard, KanbanColumn, KanbanTask } from './KanbanTypes';
+export { KanbanBoard, KanbanColumn, KanbanCard } from './KanbanTypes';
 
 export { BoardCrudOperations, NewTaskInput } from './BoardCrudOperations';
 export { GatherQueryEngine } from './GatherQueryEngine';

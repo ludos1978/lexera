@@ -406,7 +406,7 @@ export type MessageHandler = (message: IncomingMessage, context: CommandContext)
  * Child classes define handlers as a protected record, allowing type-safe handler lookup.
  *
  * @example
- * export class TaskCommands extends SwitchBasedCommand {
+ * export class CardCommands extends SwitchBasedCommand {
  *     readonly metadata = {
  *         id: 'task-commands',
  *         messageTypes: ['addTask', 'deleteTask'],
