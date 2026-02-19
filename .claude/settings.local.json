@@ -31,7 +31,7 @@
       "WebSearch",
       "Bash(node -c:*)",
       "Bash(npx @marp-team/marp-cli:*)",
-      "Bash(node marp-engine/handout-postprocess.js:*)",
+      "Bash(node packages/marp-engine/handout-postprocess.js:*)",
       "Bash(npm ls:*)",
       "Bash(npm install:*)",
       "Bash(python3:*)",

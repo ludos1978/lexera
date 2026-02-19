@@ -10,7 +10,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SHARED_DIR="$SCRIPT_DIR/packages/shared"
 SYNC_DIR="$SCRIPT_DIR/packages/ludos-sync"
 
 CLEAN=false
@@ -28,34 +27,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Clean if requested ───────────────────────────────────────────
+# ── Build shared + ludos-sync via build-packages.sh ───────────────
+BUILD_ARGS=()
 if $CLEAN; then
-  echo "Cleaning shared dist..."
-  rm -rf "$SHARED_DIR/dist"
-  echo "Cleaning ludos-sync dist..."
-  rm -rf "$SYNC_DIR/dist"
+  BUILD_ARGS+=(--clean)
 fi
 
-# ── Build @ludos/shared ─────────────────────────────────────────
-echo "Building @ludos/shared..."
-cd "$SHARED_DIR"
-if [ ! -d "node_modules" ]; then
-  npm install
-fi
-npm run build
-echo "  @ludos/shared built."
-
-# ── Build ludos-sync ─────────────────────────────────────────────
-echo "Building ludos-sync..."
-cd "$SYNC_DIR"
-if [ ! -d "node_modules" ]; then
-  npm install
-fi
-npm run build
-echo "  ludos-sync built."
-
-echo ""
-echo "Build complete."
+# Build shared first (dependency), then ludos-sync
+"$SCRIPT_DIR/build-packages.sh" --only shared "${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}"
+"$SCRIPT_DIR/build-packages.sh" --only ludos-sync "${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}"
 
 # ── Restart if requested ─────────────────────────────────────────
 if $RESTART; then

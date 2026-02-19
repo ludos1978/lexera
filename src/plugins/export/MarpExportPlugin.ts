@@ -72,7 +72,7 @@ export interface MarpExportOptions {
  * watch mode process management, and handout generation.
  */
 export class MarpExportPlugin implements ExportPlugin {
-    private static readonly DEFAULT_ENGINE_PATH = './marp-engine/engine.js';
+    private static readonly DEFAULT_ENGINE_PATH = './packages/marp-engine/engine.js';
 
     // PID storage for Marp watch processes
     private marpProcessPids = new Map<string, number>();

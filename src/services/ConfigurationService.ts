@@ -123,7 +123,7 @@ export class ConfigurationService {
         overlayEditorDefaultMode: 'markdown',
         overlayEditorFontScale: 1.2,
         marp: {
-            enginePath: './marp-engine/engine.js',
+            enginePath: './packages/marp-engine/engine.js',
             defaultTheme: 'default',
             allowLocalFiles: true,
             browser: 'chrome' as 'auto' | 'chrome' | 'edge' | 'firefox',

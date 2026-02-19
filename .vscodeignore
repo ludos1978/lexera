@@ -57,9 +57,9 @@ dist/src/html/icons/generate-css.js
 **/*.map
 
 # Marp engine dev artifacts
-marp-engine/engine/setup.bat
-marp-engine/engine/setup.command
-marp-engine/engine/node_modules_installed_packages.txt
+packages/marp-engine/engine/setup.bat
+packages/marp-engine/engine/setup.command
+packages/marp-engine/engine/node_modules_installed_packages.txt
 .marp/
 
 # Caches & generated

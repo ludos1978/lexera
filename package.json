@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.226.0",
+  "version": "0.227.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -5848,7 +5848,7 @@
         },
         "markdown-kanban.marp.enginePath": {
           "type": "string",
-          "default": "./marp-engine/engine.js",
+          "default": "./packages/marp-engine/engine.js",
           "description": "Path to the Marp engine JavaScript file"
         },
         "markdown-kanban.marp.defaultTheme": {
@@ -6184,7 +6184,7 @@
     "lint": "eslint",
     "test": "vscode-test",
     "test:unit": "jest --config jest.config.js",
-    "sync-marp-engine": "cp -r marp-engine/engine/* tests/marp-engine-test/",
+    "sync-marp-engine": "cp -r packages/marp-engine/engine/* tests/marp-engine-test/",
     "vsix": "vsce package",
     "postinstall": "npx playwright install chromium"
   },
