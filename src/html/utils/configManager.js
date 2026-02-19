@@ -23,7 +23,7 @@ class ConfigManager {
             maxRowHeight: 'auto',
             taskMinHeight: 'auto',
             fontSize: '1x',
-            fontFamily: 'poppins',
+            fontFamily: 'plusjakarta',
             columnWidth: '450px',
             columnBorder: '1px solid var(--vscode-panel-border)',
             taskBorder: '1px solid var(--vscode-panel-border)',

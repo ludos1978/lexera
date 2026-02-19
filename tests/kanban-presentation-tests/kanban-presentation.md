@@ -4,7 +4,7 @@ kanban-plugin: board
 
 fontSize: 1_0x
 whitespace: 24px
-fontFamily: poppins
+fontFamily: system
 boardColor: #ffadad
 boardColorDark: #000033
 boardColorLight: #f5f5ff
