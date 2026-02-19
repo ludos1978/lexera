@@ -669,7 +669,7 @@ export class MarkdownFileRegistry implements vscode.Disposable {
         _context: {
             columnId?: string;
             columnTitle?: string;
-            taskId?: string;
+            cardId?: string;
             taskSummary?: string;
         }
     ): IncludeFile | undefined {

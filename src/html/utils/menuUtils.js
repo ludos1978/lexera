@@ -51,11 +51,11 @@ function findColumnInBoard(columnId) {
 
 /**
  * Find a task in the board data
- * @param {string} taskId - Task ID to find
+ * @param {string} cardId - Task ID to find
  * @param {string} columnId - Expected column ID (optional, will search all if not found)
  * @returns {{board: object, column: object, task: object}|null} - Found elements, or null
  */
-function findTaskInBoard(taskId, columnId = null) {
+function findTaskInBoard(cardId, columnId = null) {
     let board = null;
     let column = null;
     let task = null;
@@ -67,13 +67,13 @@ function findTaskInBoard(taskId, columnId = null) {
         // Try expected column first
         if (columnId) {
             const col = boardData.columns.find(c => c.id === columnId);
-            const t = col?.tasks?.find(t => t.id === taskId);
+            const t = col?.cards?.find(t => t.id === cardId);
             if (t) return { board: boardData, column: col, task: t };
         }
 
         // Search all columns
         for (const col of boardData.columns) {
-            const t = col.tasks?.find(t => t.id === taskId);
+            const t = col.cards?.find(t => t.id === cardId);
             if (t) return { board: boardData, column: col, task: t };
         }
         return null;
@@ -174,7 +174,7 @@ function setTaskSummaryLine(task, summaryLine) {
 
 /**
  * Sync summary-line change across all board references.
- * @param {string} elementType - 'column' or 'task'
+ * @param {string} elementType - 'column' or 'card'
  * @param {string} elementId - Column or task ID
  * @param {string} columnId - Column ID (for tasks)
  * @param {string} newTitle - New summary line to set
@@ -189,7 +189,7 @@ function syncTitleToBoards(elementType, elementId, columnId, newTitle) {
         } else {
             // Task
             const column = board.columns.find(c => c.id === columnId);
-            const task = column?.tasks?.find(t => t.id === elementId);
+            const task = column?.cards?.find(t => t.id === elementId);
             if (task) {
                 if (window.taskContentUtils?.ensureTaskContent) {
                     window.taskContentUtils.ensureTaskContent(task);
@@ -204,7 +204,7 @@ function syncTitleToBoards(elementType, elementId, columnId, newTitle) {
  * Update temporal attributes on an element
  * @param {HTMLElement} element - DOM element to update
  * @param {string} text - Text to check for temporal tags
- * @param {string} elementType - 'column' or 'task'
+ * @param {string} elementType - 'column' or 'card'
  * @param {object} context - Additional context for hierarchical gating (task only)
  */
 function updateTemporalAttributes(element, text, elementType, context = {}) {
@@ -224,7 +224,7 @@ function updateTemporalAttributes(element, text, elementType, context = {}) {
         if (window.tagUtils.isCurrentWeekday(text)) element.setAttribute('data-current-weekday', 'true');
         if (window.tagUtils.isCurrentTime(text)) element.setAttribute('data-current-hour', 'true');
         if (window.tagUtils.isCurrentTimeSlot(text)) element.setAttribute('data-current-time', 'true');
-    } else if (elementType === 'task' && window.getActiveTemporalAttributes) {
+    } else if (elementType === 'card' && window.getActiveTemporalAttributes) {
         // Hierarchical gating for tasks
         const { columnTitle = '', taskDescription = '' } = context;
         const activeAttrs = window.getActiveTemporalAttributes(columnTitle, text, taskDescription);
@@ -238,10 +238,10 @@ function updateTemporalAttributes(element, text, elementType, context = {}) {
  * Update tag-related data attributes on an element
  * @param {HTMLElement} element - DOM element to update
  * @param {string} newTitle - New title with tags
- * @param {string} elementType - 'column' or 'task'
+ * @param {string} elementType - 'column' or 'card'
  */
 function updateTagDataAttributes(element, newTitle, elementType) {
-    const attrPrefix = elementType === 'column' ? 'data-column-tag' : 'data-task-tag';
+    const attrPrefix = elementType === 'column' ? 'data-column-tag' : 'data-card-tag';
 
     // Update first tag attribute
     const firstTag = window.extractFirstTag ? window.extractFirstTag(newTitle) : null;
@@ -354,7 +354,7 @@ function getIncludeFile(element) {
 
 /**
  * Post edit message to VS Code
- * @param {string} elementType - 'column' or 'task'
+ * @param {string} elementType - 'column' or 'card'
  * @param {string} elementId - Column or task ID
  * @param {string} columnId - Column ID (for tasks)
  * @param {string} newTitle - New title/summary line to set
@@ -378,10 +378,10 @@ function postEditMessage(elementType, elementId, columnId, newTitle) {
             : `${newTitle || ''}${remainingContent ? `\n${remainingContent}` : ''}`;
 
         vscode.postMessage({
-            type: 'editTask',
-            taskId: elementId,
+            type: 'editCard',
+            cardId: elementId,
             columnId: columnId,
-            taskData: { content: nextContent }
+            cardData: { content: nextContent }
         });
     }
 }
@@ -554,10 +554,10 @@ function createMenuItem(options) {
  * @param {string} options.label - Display text
  * @param {string} options.submenuType - Type of submenu (e.g., 'move', 'tags', 'sort')
  * @param {string} [options.id] - Element ID (task or column)
- * @param {string} [options.type] - Element type ('task' or 'column')
+ * @param {string} [options.type] - Element type ('card' or 'column')
  * @param {string} [options.columnId] - Column ID for task context
  * @param {string} [options.group] - Tag group (for tag submenus)
- * @param {string} [options.scope] - Scope (e.g., 'task', 'column' for marp menus)
+ * @param {string} [options.scope] - Scope (e.g., 'card', 'column' for marp menus)
  * @param {string} [options.menuType='donut'] - Menu type: 'donut' or 'file-bar'
  * @returns {string} - Submenu item HTML
  */
@@ -617,26 +617,26 @@ function createMenuItems(items, menuType = 'donut') {
 
 /**
  * Create a move position submenu content (Top, Up, Down, Bottom)
- * @param {string} taskId - Task ID
+ * @param {string} cardId - Task ID
  * @param {string} columnId - Column ID
  * @returns {string} - Move menu HTML
  */
-function createMoveMenuContent(taskId, columnId) {
+function createMoveMenuContent(cardId, columnId) {
     return createMenuItems([
-        { label: 'Top', onClick: `moveTaskToTop('${taskId}', '${columnId}')` },
-        { label: 'Up', onClick: `moveTaskUp('${taskId}', '${columnId}')` },
-        { label: 'Down', onClick: `moveTaskDown('${taskId}', '${columnId}')` },
-        { label: 'Bottom', onClick: `moveTaskToBottom('${taskId}', '${columnId}')` }
+        { label: 'Top', onClick: `moveTaskToTop('${cardId}', '${columnId}')` },
+        { label: 'Up', onClick: `moveTaskUp('${cardId}', '${columnId}')` },
+        { label: 'Down', onClick: `moveTaskDown('${cardId}', '${columnId}')` },
+        { label: 'Bottom', onClick: `moveTaskToBottom('${cardId}', '${columnId}')` }
     ]);
 }
 
 /**
  * Create a move-to-column submenu content
- * @param {string} taskId - Task ID
+ * @param {string} cardId - Task ID
  * @param {string} currentColumnId - Current column ID (will be excluded)
  * @returns {string} - Move to column menu HTML
  */
-function createMoveToColumnMenuContent(taskId, currentColumnId) {
+function createMoveToColumnMenuContent(cardId, currentColumnId) {
     const board = (typeof window !== 'undefined') ? window.cachedBoard : null;
     if (!board?.columns) return '';
 
@@ -644,7 +644,7 @@ function createMoveToColumnMenuContent(taskId, currentColumnId) {
         .filter(col => col.id !== currentColumnId)
         .map(col => ({
             label: col.title || 'Untitled',
-            onClick: `moveTaskToColumn('${taskId}', '${currentColumnId}', '${col.id}')`
+            onClick: `moveTaskToColumn('${cardId}', '${currentColumnId}', '${col.id}')`
         }));
 
     return createMenuItems(items);

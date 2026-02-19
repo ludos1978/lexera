@@ -101,8 +101,8 @@ export class MessageHandler {
             setEditingInProgress: (value: boolean) => this._deps.getWebviewPanel()?.setEditingInProgress(value),
 
             // Dirty tracking
-            markTaskDirty: (taskId: string) => this._deps.getWebviewPanel()?.markTaskDirty?.(taskId),
-            clearTaskDirty: (taskId: string) => this._deps.getWebviewPanel()?.clearTaskDirty?.(taskId),
+            markTaskDirty: (cardId: string) => this._deps.getWebviewPanel()?.markTaskDirty?.(cardId),
+            clearTaskDirty: (cardId: string) => this._deps.getWebviewPanel()?.clearTaskDirty?.(cardId),
             markColumnDirty: (columnId: string) => this._deps.getWebviewPanel()?.markColumnDirty?.(columnId),
             clearColumnDirty: (columnId: string) => this._deps.getWebviewPanel()?.clearColumnDirty?.(columnId),
 
@@ -223,7 +223,7 @@ export class MessageHandler {
                         type: 'insertSnippetContent',
                         content: snippet,
                         fieldType: message.fieldType,
-                        taskId: message.taskId
+                        cardId: message.cardId
                     });
                 }
                 return;
@@ -345,7 +345,7 @@ export class MessageHandler {
                     oldIncludesByNormalized.set(normalized, path);
                 }
             }
-            for (const task of column.tasks) {
+            for (const task of column.cards) {
                 for (const path of task.includeFiles || []) {
                     const normalized = MarkdownFile.normalizeRelativePath(path);
                     if (!oldIncludesByNormalized.has(normalized)) {
@@ -359,7 +359,7 @@ export class MessageHandler {
             for (const path of column.includeFiles || []) {
                 newIncludesNormalized.add(MarkdownFile.normalizeRelativePath(path));
             }
-            for (const task of column.tasks) {
+            for (const task of column.cards) {
                 for (const path of task.includeFiles || []) {
                     newIncludesNormalized.add(MarkdownFile.normalizeRelativePath(path));
                 }

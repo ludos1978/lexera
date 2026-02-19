@@ -90,7 +90,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
                 m.md5Hash ?? '',
                 m.cursorPosition ?? 0,
                 m.includeContext ?? null,
-                m.taskId ?? null,
+                m.cardId ?? null,
                 m.columnId ?? null,
                 ctx
             );
@@ -231,14 +231,14 @@ export class ClipboardCommands extends SwitchBasedCommand {
         md5Hash: string,
         cursorPosition: number,
         includeContext: { includeFilePath?: string } | null,
-        taskId: string | null,
+        cardId: string | null,
         columnId: string | null,
         context: CommandContext
     ): Promise<void> {
         try {
             let resolvedIncludeContext = includeContext;
-            if (!resolvedIncludeContext?.includeFilePath && taskId && columnId) {
-                resolvedIncludeContext = this._getIncludeContextForTask(taskId, columnId, context);
+            if (!resolvedIncludeContext?.includeFilePath && cardId && columnId) {
+                resolvedIncludeContext = this._getIncludeContextForTask(cardId, columnId, context);
             }
             const { directory, baseFileName } = this._getDropTargetPaths(context, resolvedIncludeContext);
 
@@ -724,7 +724,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
     }
 
     private _getIncludeContextForTask(
-        taskId: string,
+        cardId: string,
         columnId: string,
         context: CommandContext
     ): { includeFilePath?: string } | null {
@@ -733,7 +733,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
             return null;
         }
         const column = board.columns.find(col => col.id === columnId);
-        const task = column?.cards.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === cardId);
         return task?.includeContext || null;
     }
 

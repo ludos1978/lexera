@@ -209,26 +209,26 @@ function parseMarkdownToTasks(content) {
  * - All remaining slides become tasks
  *
  * @param {string} content - The markdown content
- * @returns {{columnTitle: string, tasks: Array<{id: string, content: string}>}}
+ * @returns {{columnTitle: string, cards: Array<{id: string, content: string}>}}
  */
 function parseClipboardAsColumn(content) {
     if (!content) {
-        return { columnTitle: '', tasks: [] };
+        return { columnTitle: '', cards: [] };
     }
 
     const slides = parsePresentation(content);
 
     let columnTitle = '';
-    let tasks = [];
+    let cards = [];
 
     if (slides.length > 0) {
         const firstSlide = slides[0];
         // If first slide has title but no content (or only whitespace), use as column title
         if (firstSlide.title && (!firstSlide.content || firstSlide.content.trim() === '')) {
             columnTitle = firstSlide.title;
-            // Remaining slides become tasks
+            // Remaining slides become cards
             for (let i = 1; i < slides.length; i++) {
-                tasks.push({
+                cards.push({
                     id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     content: slides[i].title
                         ? (slides[i].content ? `${slides[i].title}\n${slides[i].content}` : slides[i].title)
@@ -236,12 +236,12 @@ function parseClipboardAsColumn(content) {
                 });
             }
         } else {
-            // All slides become tasks
-            tasks = slidesToTasks(slides);
+            // All slides become cards
+            cards = slidesToTasks(slides);
         }
     }
 
-    return { columnTitle, tasks };
+    return { columnTitle, cards };
 }
 
 // Export for use in other modules

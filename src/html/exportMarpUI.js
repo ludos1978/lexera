@@ -1194,9 +1194,9 @@ function getMarpClassesForElement(scope, id, columnId) {
     if (scope === 'column') {
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         element = column;
-    } else if (scope === 'task' && columnId) {
+    } else if (scope === 'card' && columnId) {
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         element = task;
     }
 
@@ -1231,9 +1231,9 @@ function isMarpDirectiveActive(scope, id, columnId, directiveName) {
     if (scope === 'column') {
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         element = column;
-    } else if (scope === 'task' && columnId) {
+    } else if (scope === 'card' && columnId) {
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         element = task;
     }
 
@@ -1260,10 +1260,10 @@ function setMarpDirective(scope, id, columnId, directiveName, value, directiveSc
         type = 'column';
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         element = column;
-    } else if (scope === 'task' && columnId) {
-        type = 'task';
+    } else if (scope === 'card' && columnId) {
+        type = 'card';
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         element = task;
     }
 
@@ -1298,12 +1298,12 @@ function setMarpDirective(scope, id, columnId, directiveName, value, directiveSc
         if (typeof updateColumnDisplayImmediate === 'function') {
             updateColumnDisplayImmediate(id, title, false, '');
         }
-    } else if (type === 'task') {
+    } else if (type === 'card') {
         vscode.postMessage({
-            type: 'editTask',
-            taskId: id,
+            type: 'editCard',
+            cardId: id,
             columnId: columnId,
-            taskData: element
+            cardData: element
         });
 
         if (typeof updateTaskDisplayImmediate === 'function') {
@@ -1334,10 +1334,10 @@ function toggleMarpDirective(scope, id, columnId, directiveName, defaultValue, d
         type = 'column';
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         element = column;
-    } else if (scope === 'task' && columnId) {
-        type = 'task';
+    } else if (scope === 'card' && columnId) {
+        type = 'card';
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         element = task;
     }
 
@@ -1375,12 +1375,12 @@ function toggleMarpDirective(scope, id, columnId, directiveName, defaultValue, d
         if (typeof updateColumnDisplayImmediate === 'function') {
             updateColumnDisplayImmediate(id, title, false, '');
         }
-    } else if (type === 'task') {
+    } else if (type === 'card') {
         vscode.postMessage({
-            type: 'editTask',
-            taskId: id,
+            type: 'editCard',
+            cardId: id,
             columnId: columnId,
-            taskData: element
+            cardData: element
         });
 
         if (typeof updateTaskDisplayImmediate === 'function') {
@@ -1461,10 +1461,10 @@ function toggleMarpClass(scope, id, columnId, className, classScope) {
         type = 'column';
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         element = column;
-    } else if (scope === 'task' && columnId) {
-        type = 'task';
+    } else if (scope === 'card' && columnId) {
+        type = 'card';
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         element = task;
     }
 
@@ -1522,12 +1522,12 @@ function toggleMarpClass(scope, id, columnId, className, classScope) {
         if (typeof updateColumnDisplayImmediate === 'function') {
             updateColumnDisplayImmediate(id, title, false, '');
         }
-    } else if (type === 'task') {
+    } else if (type === 'card') {
         vscode.postMessage({
-            type: 'editTask',
-            taskId: id,
+            type: 'editCard',
+            cardId: id,
             columnId: columnId,
-            taskData: element
+            cardData: element
         });
 
         if (typeof updateTaskDisplayImmediate === 'function') {

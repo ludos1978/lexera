@@ -206,10 +206,10 @@
         }
 
         board.columns.forEach(column => {
-            if (!Array.isArray(column.tasks)) {
+            if (!Array.isArray(column.cards)) {
                 return;
             }
-            column.tasks.forEach(task => {
+            column.cards.forEach(task => {
                 ensureTaskContent(task);
             });
         });

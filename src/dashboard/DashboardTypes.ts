@@ -376,7 +376,7 @@ export interface DashboardNavigateToSearchElementMessage {
     cardTitle?: string;
     elementPath?: string;
     elementType?: string;
-    field?: 'columnTitle' | 'taskContent';
+    field?: 'columnTitle' | 'cardContent';
     matchText?: string;
     boardUri?: string;
 }

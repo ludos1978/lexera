@@ -42,39 +42,39 @@ export class CardCommands extends SwitchBasedCommand {
         name: 'Task Commands',
         description: 'Handles task creation, editing, deletion, and movement',
         messageTypes: [
-            'editTask',
-            'addTask',
-            'addTaskAtPosition',
-            'deleteTask',
-            'duplicateTask',
-            'insertTaskBefore',
-            'insertTaskAfter',
-            'moveTask',
-            'moveTaskToColumn',
-            'moveTaskToTop',
-            'moveTaskUp',
-            'moveTaskDown',
-            'moveTaskToBottom',
-            'updateTaskFromStrikethroughDeletion'
+            'editCard',
+            'addCard',
+            'addCardAtPosition',
+            'deleteCard',
+            'duplicateCard',
+            'insertCardBefore',
+            'insertCardAfter',
+            'moveCard',
+            'moveCardToColumn',
+            'moveCardToTop',
+            'moveCardUp',
+            'moveCardDown',
+            'moveCardToBottom',
+            'updateCardFromStrikethroughDeletion'
         ],
         priority: 100
     };
 
     protected handlers: Record<string, MessageHandler> = {
-        'editTask': (msg, ctx) => this.handleEditCard(msg as EditCardMessage, ctx),
-        'addTask': (msg, ctx) => this.handleAddCard(msg as AddCardMessage, ctx),
-        'addTaskAtPosition': (msg, ctx) => this.handleAddCardAtPosition(msg as AddCardAtPositionMessage, ctx),
-        'deleteTask': (msg, ctx) => this.handleDeleteCard(msg as DeleteCardMessage, ctx),
-        'duplicateTask': (msg, ctx) => this.handleDuplicateCard(msg as DuplicateCardMessage, ctx),
-        'insertTaskBefore': (msg, ctx) => this.handleInsertCardBefore(msg as InsertCardBeforeMessage, ctx),
-        'insertTaskAfter': (msg, ctx) => this.handleInsertCardAfter(msg as InsertCardAfterMessage, ctx),
-        'moveTask': (msg, ctx) => this.handleMoveCard(msg as MoveCardMessage, ctx),
-        'moveTaskToColumn': (msg, ctx) => this.handleMoveCardToColumn(msg as MoveCardToColumnMessage, ctx),
-        'moveTaskToTop': (msg, ctx) => this.handleMoveCardToTop(msg as MoveCardToTopMessage, ctx),
-        'moveTaskUp': (msg, ctx) => this.handleMoveCardUp(msg as MoveCardUpMessage, ctx),
-        'moveTaskDown': (msg, ctx) => this.handleMoveCardDown(msg as MoveCardDownMessage, ctx),
-        'moveTaskToBottom': (msg, ctx) => this.handleMoveCardToBottom(msg as MoveCardToBottomMessage, ctx),
-        'updateTaskFromStrikethroughDeletion': (msg, ctx) => this.handleUpdateCardFromStrikethroughDeletion(msg as UpdateCardFromStrikethroughDeletionMessage, ctx)
+        'editCard': (msg, ctx) => this.handleEditCard(msg as EditCardMessage, ctx),
+        'addCard': (msg, ctx) => this.handleAddCard(msg as AddCardMessage, ctx),
+        'addCardAtPosition': (msg, ctx) => this.handleAddCardAtPosition(msg as AddCardAtPositionMessage, ctx),
+        'deleteCard': (msg, ctx) => this.handleDeleteCard(msg as DeleteCardMessage, ctx),
+        'duplicateCard': (msg, ctx) => this.handleDuplicateCard(msg as DuplicateCardMessage, ctx),
+        'insertCardBefore': (msg, ctx) => this.handleInsertCardBefore(msg as InsertCardBeforeMessage, ctx),
+        'insertCardAfter': (msg, ctx) => this.handleInsertCardAfter(msg as InsertCardAfterMessage, ctx),
+        'moveCard': (msg, ctx) => this.handleMoveCard(msg as MoveCardMessage, ctx),
+        'moveCardToColumn': (msg, ctx) => this.handleMoveCardToColumn(msg as MoveCardToColumnMessage, ctx),
+        'moveCardToTop': (msg, ctx) => this.handleMoveCardToTop(msg as MoveCardToTopMessage, ctx),
+        'moveCardUp': (msg, ctx) => this.handleMoveCardUp(msg as MoveCardUpMessage, ctx),
+        'moveCardDown': (msg, ctx) => this.handleMoveCardDown(msg as MoveCardDownMessage, ctx),
+        'moveCardToBottom': (msg, ctx) => this.handleMoveCardToBottom(msg as MoveCardToBottomMessage, ctx),
+        'updateCardFromStrikethroughDeletion': (msg, ctx) => this.handleUpdateCardFromStrikethroughDeletion(msg as UpdateCardFromStrikethroughDeletionMessage, ctx)
     };
 
     // ============= TASK HANDLERS =============
@@ -87,7 +87,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleEditCard(message: EditCardMessage, context: CommandContext): Promise<CommandResult> {
         await this.executeAction(
             context,
-            CardActions.update(message.taskId, message.columnId, message.taskData),
+            CardActions.update(message.cardId, message.columnId, message.cardData),
             { sendUpdates: false }
         );
 
@@ -100,7 +100,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleAddCard(message: AddCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.add(message.columnId, message.taskData)
+            CardActions.add(message.columnId, message.cardData)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to add task');
     }
@@ -111,7 +111,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleAddCardAtPosition(message: AddCardAtPositionMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.add(message.columnId, message.taskData, message.insertionIndex)
+            CardActions.add(message.columnId, message.cardData, message.insertionIndex)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to add task');
     }
@@ -122,7 +122,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleDeleteCard(message: DeleteCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.remove(message.taskId, message.columnId),
+            CardActions.remove(message.cardId, message.columnId),
             { sendUpdates: false }
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to delete task');
@@ -134,7 +134,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleDuplicateCard(message: DuplicateCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.duplicate(message.taskId, message.columnId)
+            CardActions.duplicate(message.cardId, message.columnId)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to duplicate task');
     }
@@ -145,7 +145,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleInsertCardBefore(message: InsertCardBeforeMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.insertBefore(message.taskId, message.columnId)
+            CardActions.insertBefore(message.cardId, message.columnId)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to insert task');
     }
@@ -156,7 +156,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleInsertCardAfter(message: InsertCardAfterMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.insertAfter(message.taskId, message.columnId)
+            CardActions.insertAfter(message.cardId, message.columnId)
         );
         return result.success ? this.success(result.result) : this.failure(result.error || 'Failed to insert task');
     }
@@ -167,7 +167,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleMoveCard(message: MoveCardMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.move(message.taskId, message.fromColumnId, message.toColumnId, message.newIndex)
+            CardActions.move(message.cardId, message.fromColumnId, message.toColumnId, message.newIndex)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -178,7 +178,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleMoveCardToColumn(message: MoveCardToColumnMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.moveToColumn(message.taskId, message.fromColumnId, message.toColumnId)
+            CardActions.moveToColumn(message.cardId, message.fromColumnId, message.toColumnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -189,7 +189,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleMoveCardToTop(message: MoveCardToTopMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.moveToTop(message.taskId, message.columnId)
+            CardActions.moveToTop(message.cardId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -200,7 +200,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleMoveCardUp(message: MoveCardUpMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.moveUp(message.taskId, message.columnId)
+            CardActions.moveUp(message.cardId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -211,7 +211,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleMoveCardDown(message: MoveCardDownMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.moveDown(message.taskId, message.columnId)
+            CardActions.moveDown(message.cardId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -222,7 +222,7 @@ export class CardCommands extends SwitchBasedCommand {
     private async handleMoveCardToBottom(message: MoveCardToBottomMessage, context: CommandContext): Promise<CommandResult> {
         const result = await this.executeAction(
             context,
-            CardActions.moveToBottom(message.taskId, message.columnId)
+            CardActions.moveToBottom(message.cardId, message.columnId)
         );
         return result.success ? this.success() : this.failure(result.error || 'Failed to move task');
     }
@@ -231,7 +231,7 @@ export class CardCommands extends SwitchBasedCommand {
      * Handle updateTaskFromStrikethroughDeletion message
      */
     private async handleUpdateCardFromStrikethroughDeletion(message: UpdateCardFromStrikethroughDeletionMessage, context: CommandContext): Promise<CommandResult> {
-        const { taskId, columnId, newContent } = message;
+        const { cardId, columnId, newContent } = message;
 
         const board = context.getCurrentBoard();
         if (!board) {
@@ -240,14 +240,14 @@ export class CardCommands extends SwitchBasedCommand {
         }
 
         const column = findColumn(board, columnId);
-        const task = column?.cards.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === cardId);
         if (!task) {
             return this.failure('Task not found');
         }
 
         await this.executeAction(
             context,
-            CardActions.update(taskId, columnId, { content: newContent }),
+            CardActions.update(cardId, columnId, { content: newContent }),
             { sendUpdates: false }
         );
 

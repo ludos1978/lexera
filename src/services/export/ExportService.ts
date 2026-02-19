@@ -41,7 +41,7 @@ export interface NewExportOptions {
     selection?: {
         columnId?: string;
         columnIndex?: number;
-        taskId?: string;
+        cardId?: string;
     };
 
     // MODE: Operation mode
@@ -236,7 +236,7 @@ export class ExportService {
 
             // Filter tasks in this column
             const filteredTasks: KanbanCard[] = [];
-            for (const task of column.tasks || []) {
+            for (const task of column.cards || []) {
                 // Skip task if its content contains an exclude tag
                 if (this.hasExcludeTag(task.content, excludeTags)) {
                     continue;
@@ -258,7 +258,7 @@ export class ExportService {
 
             filteredColumns.push({
                 ...column,
-                tasks: filteredTasks
+                cards: filteredTasks
             });
         }
 
@@ -1697,8 +1697,8 @@ export class ExportService {
                 slideIndex++;
 
                 // Extract from tasks
-                if (column.tasks) {
-                    for (const task of column.tasks) {
+                if (column.cards) {
+                    for (const task of column.cards) {
                         // Get first non-empty line as task summary
                         const taskLines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
                         const taskSummary = taskLines.find(line => line.trim().length > 0) ?? taskLines[0] ?? '';
@@ -1756,7 +1756,7 @@ export class ExportService {
             }
         }
 
-        if (options.scope === 'task' && options.selection?.taskId) {
+        if (options.scope === 'task' && options.selection?.cardId) {
             // Prefer columnId for reliable lookup (avoids frontend/backend sync issues)
             let column: KanbanColumn | undefined;
             if (options.selection?.columnId) {
@@ -1769,8 +1769,8 @@ export class ExportService {
             }
 
             if (column) {
-                const taskId = options.selection.taskId;
-                const task = column.tasks?.find((t: KanbanCard) => t.id === taskId);
+                const cardId = options.selection.cardId;
+                const task = column.cards?.find((t: KanbanCard) => t.id === cardId);
 
                 if (task) {
                     return {
@@ -1778,7 +1778,7 @@ export class ExportService {
                         columns: [{
                             id: column.id,
                             title: '',
-                            tasks: [task]
+                            cards: [task]
                         }]
                     };
                 }
@@ -1922,7 +1922,7 @@ export class ExportService {
                     excludeTags: options.excludeTags
                 });
             } else if (isCopyMode && options.scope === 'task') {
-                const allTasks = filteredBoard.columns.flatMap(col => col.tasks);
+                const allTasks = filteredBoard.columns.flatMap(col => col.cards);
                 result = PresentationGenerator.fromTasks(allTasks, generatorOptions);
             } else {
                 result = PresentationGenerator.fromBoard(filteredBoard, generatorOptions);

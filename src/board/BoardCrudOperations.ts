@@ -54,11 +54,11 @@ export class BoardCrudOperations {
         return board.columns.find(col => col.id === columnId);
     }
 
-    private findTask(board: KanbanBoard, columnId: string, taskId: string): { column: KanbanColumn; task: KanbanCard; index: number } | undefined {
+    private findTask(board: KanbanBoard, columnId: string, cardId: string): { column: KanbanColumn; task: KanbanCard; index: number } | undefined {
         const column = this.findColumn(board, columnId);
         if (!column) { return undefined; }
 
-        const taskIndex = column.cards.findIndex(task => task.id === taskId);
+        const taskIndex = column.cards.findIndex(task => task.id === cardId);
         if (taskIndex === -1) { return undefined; }
 
         return {
@@ -73,7 +73,7 @@ export class BoardCrudOperations {
     // Kept for test compatibility. Production code should use Actions instead.
 
     /** @deprecated Use CardActions.move() instead */
-    public moveTask(board: KanbanBoard, taskId: string, fromColumnId: string, toColumnId: string, newIndex: number): boolean {
+    public moveTask(board: KanbanBoard, cardId: string, fromColumnId: string, toColumnId: string, newIndex: number): boolean {
         const fromColumn = this.findColumn(board, fromColumnId);
         const toColumn = this.findColumn(board, toColumnId);
 
@@ -81,7 +81,7 @@ export class BoardCrudOperations {
             return false;
         }
 
-        const taskIndex = fromColumn.cards.findIndex(task => task.id === taskId);
+        const taskIndex = fromColumn.cards.findIndex(task => task.id === cardId);
         if (taskIndex === -1) {
             return false;
         }
@@ -91,26 +91,26 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public addTask(board: KanbanBoard, columnId: string, taskData: NewTaskInput): boolean {
+    public addTask(board: KanbanBoard, columnId: string, cardData: NewTaskInput): boolean {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
         const newTask: KanbanCard = {
             id: this.generateId('task'),
-            content: normalizeCardContent(taskData.content ?? '')
+            content: normalizeCardContent(cardData.content ?? '')
         };
 
         column.cards.push(newTask);
         return true;
     }
 
-    public addTaskAtPosition(board: KanbanBoard, columnId: string, taskData: NewTaskInput, insertionIndex: number): boolean {
+    public addTaskAtPosition(board: KanbanBoard, columnId: string, cardData: NewTaskInput, insertionIndex: number): boolean {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
         const newTask: KanbanCard = {
             id: this.generateId('task'),
-            content: normalizeCardContent(taskData.content ?? '')
+            content: normalizeCardContent(cardData.content ?? '')
         };
 
         if (insertionIndex >= 0 && insertionIndex <= column.cards.length) {
@@ -121,11 +121,11 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public deleteTask(board: KanbanBoard, taskId: string, columnId: string): boolean {
+    public deleteTask(board: KanbanBoard, cardId: string, columnId: string): boolean {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const taskIndex = column.cards.findIndex(task => task.id === taskId);
+        const taskIndex = column.cards.findIndex(task => task.id === cardId);
         if (taskIndex === -1) { return false; }
 
         column.cards.splice(taskIndex, 1);
@@ -134,28 +134,28 @@ export class BoardCrudOperations {
 
     public editTask(
         board: KanbanBoard,
-        taskId: string,
+        cardId: string,
         columnId: string,
-        taskData: Partial<KanbanCard>
+        cardData: Partial<KanbanCard>
     ): boolean {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const task = column.cards.find(t => t.id === taskId);
+        const task = column.cards.find(t => t.id === cardId);
         if (!task) { return false; }
 
-        if (taskData.content !== undefined) {
-            task.content = normalizeCardContent(taskData.content);
+        if (cardData.content !== undefined) {
+            task.content = normalizeCardContent(cardData.content);
         }
-        if (taskData.displayTitle !== undefined && task.includeMode) {
-            task.displayTitle = taskData.displayTitle;
+        if (cardData.displayTitle !== undefined && task.includeMode) {
+            task.displayTitle = cardData.displayTitle;
         }
 
         return true;
     }
 
-    public duplicateTask(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public duplicateTask(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result) { return false; }
 
         const newTask: KanbanCard = {
@@ -173,8 +173,8 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public insertTaskBefore(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public insertTaskBefore(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result) { return false; }
 
         const newTask: KanbanCard = {
@@ -186,8 +186,8 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public insertTaskAfter(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public insertTaskAfter(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result) { return false; }
 
         const newTask: KanbanCard = {
@@ -199,8 +199,8 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public moveTaskToTop(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public moveTaskToTop(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result || result.index === 0) { return false; }
 
         const task = result.column.cards.splice(result.index, 1)[0];
@@ -208,8 +208,8 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public moveTaskUp(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public moveTaskUp(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result || result.index === 0) { return false; }
 
         const task = result.column.cards[result.index];
@@ -218,8 +218,8 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public moveTaskDown(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public moveTaskDown(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result || result.index === result.column.cards.length - 1) { return false; }
 
         const task = result.column.cards[result.index];
@@ -228,8 +228,8 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public moveTaskToBottom(board: KanbanBoard, taskId: string, columnId: string): boolean {
-        const result = this.findTask(board, columnId, taskId);
+    public moveTaskToBottom(board: KanbanBoard, cardId: string, columnId: string): boolean {
+        const result = this.findTask(board, columnId, cardId);
         if (!result || result.index === result.column.cards.length - 1) { return false; }
 
         const task = result.column.cards.splice(result.index, 1)[0];
@@ -237,13 +237,13 @@ export class BoardCrudOperations {
         return true;
     }
 
-    public moveTaskToColumn(board: KanbanBoard, taskId: string, fromColumnId: string, toColumnId: string): boolean {
+    public moveTaskToColumn(board: KanbanBoard, cardId: string, fromColumnId: string, toColumnId: string): boolean {
         const fromColumn = this.findColumn(board, fromColumnId);
         const toColumn = this.findColumn(board, toColumnId);
 
         if (!fromColumn || !toColumn) { return false; }
 
-        const taskIndex = fromColumn.cards.findIndex(task => task.id === taskId);
+        const taskIndex = fromColumn.cards.findIndex(task => task.id === cardId);
         if (taskIndex === -1) { return false; }
 
         const task = fromColumn.cards.splice(taskIndex, 1)[0];
@@ -261,7 +261,7 @@ export class BoardCrudOperations {
         const newColumn: KanbanColumn = {
             id: this.generateId('column'),
             title: title,
-            tasks: []
+            cards: []
         };
 
         const targetRow = getColumnRow({ title } as KanbanColumn);
@@ -306,7 +306,7 @@ export class BoardCrudOperations {
         const newColumn: KanbanColumn = {
             id: this.generateId('column'),
             title: title,
-            tasks: []
+            cards: []
         };
 
         board.columns.splice(index, 0, newColumn);
@@ -321,7 +321,7 @@ export class BoardCrudOperations {
         const newColumn: KanbanColumn = {
             id: this.generateId('column'),
             title: title,
-            tasks: []
+            cards: []
         };
 
         board.columns.splice(index + 1, 0, newColumn);
@@ -415,11 +415,11 @@ export class BoardCrudOperations {
                 const taskMap = new Map(column.cards.map(t => [t.id, t]));
                 column.cards = [];
 
-                order.forEach(taskId => {
-                    const task = taskMap.get(taskId);
+                order.forEach(cardId => {
+                    const task = taskMap.get(cardId);
                     if (task) {
                         column.cards.push(task);
-                        taskMap.delete(taskId);
+                        taskMap.delete(cardId);
                     }
                 });
 

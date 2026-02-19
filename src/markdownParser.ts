@@ -23,7 +23,7 @@ const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'layoutPreset',
   'stickyStackMode',
   'tagVisibility',
-  'taskMinHeight',
+  'cardMinHeight',
   'fontSize',
   'fontFamily',
   'whitespace',
@@ -233,7 +233,7 @@ export class MarkdownKanbanParser {
             currentColumn = {
               id: existingCol?.id || IdGenerator.generateColumnId(),
               title: columnTitle, // Keep full title with include syntax for editing
-              tasks: includeTasks,
+              cards: includeTasks,
               includeMode: true,
               includeFiles: includeFiles,
               includeError: hasIncludeError, // Set error flag if file not found
@@ -246,7 +246,7 @@ export class MarkdownKanbanParser {
             currentColumn = {
               id: existingCol?.id || IdGenerator.generateColumnId(),
               title: columnTitle,
-              tasks: []
+              cards: []
             };
           }
 
@@ -509,8 +509,8 @@ export class MarkdownKanbanParser {
     if (existingCol) {
       // CRITICAL FIX: Match by POSITION in array, not content
       // Position determines identity - content can be duplicated (e.g., multiple empty tasks)
-      const taskPosition = column.tasks.length; // Current position being added
-      const existingTask = existingCol.tasks[taskPosition];
+      const taskPosition = column.cards.length; // Current position being added
+      const existingTask = existingCol.cards[taskPosition];
 
       if (existingTask) {
         // Position matches - preserve the existing ID
@@ -519,7 +519,7 @@ export class MarkdownKanbanParser {
       // else: New task at this position - keep the generated UUID
     }
 
-    column.tasks.push(task);
+    column.cards.push(task);
   }
 
   static generateMarkdown(board: KanbanBoard): string {
@@ -550,7 +550,7 @@ export class MarkdownKanbanParser {
         // Regular column processing
         markdown += `## ${column.title}\n`;
 
-        for (const task of column.tasks) {
+        for (const task of column.cards) {
           // Normalize and split content into lines
           const normalizedContent = (task.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
           const contentLines = normalizedContent.split('\n');

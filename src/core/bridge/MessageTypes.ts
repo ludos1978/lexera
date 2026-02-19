@@ -58,9 +58,9 @@ export interface BoardUpdateMessage extends BaseMessage {
     mainFilePath?: string;
     // Core view settings
     columnBorder: string;
-    taskBorder: string;
+    cardBorder: string;
     tagVisibility: string;
-    taskMinHeight: string;
+    cardMinHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
@@ -107,7 +107,7 @@ export interface BoardUpdateMessage extends BaseMessage {
  * Focus target for board update
  */
 export interface FocusTarget {
-    type: 'task' | 'column';
+    type: 'card' | 'column';
     id: string;
     operation: 'created' | 'modified' | 'deleted' | 'moved';
 }
@@ -126,8 +126,8 @@ export interface UpdateColumnContentMessage extends BaseMessage {
  * Single task content update
  */
 export interface UpdateCardContentMessage extends BaseMessage {
-    type: 'updateTaskContent';
-    taskId: string;
+    type: 'updateCardContent';
+    cardId: string;
     columnId: string;
     task: KanbanCard;
     imageMappings: Record<string, string>;
@@ -141,7 +141,7 @@ export interface PathReplacedMessage extends BaseMessage {
     originalPath: string;
     actualPath?: string;
     newPath: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     isColumnTitle?: boolean;
     filePath?: string;
@@ -406,7 +406,7 @@ export interface SyncDirtyColumnInfo {
  */
 export interface SyncDirtyCardInfo {
     columnId: string;
-    taskId: string;
+    cardId: string;
     displayTitle?: string;
     content?: string;
     includeMode?: boolean;
@@ -463,9 +463,9 @@ export interface UpdateColumnContentExtendedMessage extends BaseMessage {
  * Extended task content update for include files
  */
 export interface UpdateCardContentExtendedMessage extends BaseMessage {
-    type: 'updateTaskContent';
+    type: 'updateCardContent';
     columnId: string;
-    taskId: string;
+    cardId: string;
     content?: string;
     displayTitle?: string;
     originalTitle?: string;
@@ -492,7 +492,7 @@ export interface InsertSnippetContentMessage extends BaseMessage {
     type: 'insertSnippetContent';
     content: string;
     fieldType?: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
 }
 
@@ -578,10 +578,10 @@ export interface BoardUpdateFromFrontendMessage extends BaseMessage {
  * Edit task request
  */
 export interface EditCardMessage extends BaseMessage {
-    type: 'editTask';
-    taskId: string;
+    type: 'editCard';
+    cardId: string;
     columnId: string;
-    taskData: Partial<KanbanCard> & {
+    cardData: Partial<KanbanCard> & {
         [key: string]: unknown;
     };
 }
@@ -590,8 +590,8 @@ export interface EditCardMessage extends BaseMessage {
  * Move task request
  */
 export interface MoveCardMessage extends BaseMessage {
-    type: 'moveTask';
-    taskId: string;
+    type: 'moveCard';
+    cardId: string;
     fromColumnId: string;
     toColumnId: string;
     newIndex: number;
@@ -601,9 +601,9 @@ export interface MoveCardMessage extends BaseMessage {
  * Add task request
  */
 export interface AddCardMessage extends BaseMessage {
-    type: 'addTask';
+    type: 'addCard';
     columnId: string;
-    taskData: {
+    cardData: {
         content?: string;
         [key: string]: unknown;
     };
@@ -613,8 +613,8 @@ export interface AddCardMessage extends BaseMessage {
  * Delete task request
  */
 export interface DeleteCardMessage extends BaseMessage {
-    type: 'deleteTask';
-    taskId: string;
+    type: 'deleteCard';
+    cardId: string;
     columnId: string;
 }
 
@@ -622,9 +622,9 @@ export interface DeleteCardMessage extends BaseMessage {
  * Add task at specific position
  */
 export interface AddCardAtPositionMessage extends BaseMessage {
-    type: 'addTaskAtPosition';
+    type: 'addCardAtPosition';
     columnId: string;
-    taskData: {
+    cardData: {
         content?: string;
         [key: string]: unknown;
     };
@@ -635,8 +635,8 @@ export interface AddCardAtPositionMessage extends BaseMessage {
  * Duplicate task request
  */
 export interface DuplicateCardMessage extends BaseMessage {
-    type: 'duplicateTask';
-    taskId: string;
+    type: 'duplicateCard';
+    cardId: string;
     columnId: string;
 }
 
@@ -644,8 +644,8 @@ export interface DuplicateCardMessage extends BaseMessage {
  * Insert task before another task
  */
 export interface InsertCardBeforeMessage extends BaseMessage {
-    type: 'insertTaskBefore';
-    taskId: string;
+    type: 'insertCardBefore';
+    cardId: string;
     columnId: string;
 }
 
@@ -653,8 +653,8 @@ export interface InsertCardBeforeMessage extends BaseMessage {
  * Insert task after another task
  */
 export interface InsertCardAfterMessage extends BaseMessage {
-    type: 'insertTaskAfter';
-    taskId: string;
+    type: 'insertCardAfter';
+    cardId: string;
     columnId: string;
 }
 
@@ -662,8 +662,8 @@ export interface InsertCardAfterMessage extends BaseMessage {
  * Move task to a different column
  */
 export interface MoveCardToColumnMessage extends BaseMessage {
-    type: 'moveTaskToColumn';
-    taskId: string;
+    type: 'moveCardToColumn';
+    cardId: string;
     fromColumnId: string;
     toColumnId: string;
 }
@@ -672,8 +672,8 @@ export interface MoveCardToColumnMessage extends BaseMessage {
  * Move task to top of column
  */
 export interface MoveCardToTopMessage extends BaseMessage {
-    type: 'moveTaskToTop';
-    taskId: string;
+    type: 'moveCardToTop';
+    cardId: string;
     columnId: string;
 }
 
@@ -681,8 +681,8 @@ export interface MoveCardToTopMessage extends BaseMessage {
  * Move task up in column
  */
 export interface MoveCardUpMessage extends BaseMessage {
-    type: 'moveTaskUp';
-    taskId: string;
+    type: 'moveCardUp';
+    cardId: string;
     columnId: string;
 }
 
@@ -690,8 +690,8 @@ export interface MoveCardUpMessage extends BaseMessage {
  * Move task down in column
  */
 export interface MoveCardDownMessage extends BaseMessage {
-    type: 'moveTaskDown';
-    taskId: string;
+    type: 'moveCardDown';
+    cardId: string;
     columnId: string;
 }
 
@@ -699,8 +699,8 @@ export interface MoveCardDownMessage extends BaseMessage {
  * Move task to bottom of column
  */
 export interface MoveCardToBottomMessage extends BaseMessage {
-    type: 'moveTaskToBottom';
-    taskId: string;
+    type: 'moveCardToBottom';
+    cardId: string;
     columnId: string;
 }
 
@@ -708,8 +708,8 @@ export interface MoveCardToBottomMessage extends BaseMessage {
  * Update task from strikethrough deletion
  */
 export interface UpdateCardFromStrikethroughDeletionMessage extends BaseMessage {
-    type: 'updateTaskFromStrikethroughDeletion';
-    taskId: string;
+    type: 'updateCardFromStrikethroughDeletion';
+    cardId: string;
     columnId: string;
     newContent: string;
 }
@@ -852,7 +852,7 @@ export interface SubmitTemplateVariablesMessage extends BaseMessage {
 export interface RenderPlantUMLMessage extends RequestMessage {
     type: 'renderPlantUML';
     code: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
 }
 
@@ -1048,7 +1048,7 @@ export type BoardSettingKey =
     | 'layoutPreset'
     | 'stickyStackMode'
     | 'tagVisibility'
-    | 'taskMinHeight'
+    | 'cardMinHeight'
     | 'fontSize'
     | 'fontFamily'
     | 'whitespace'
@@ -1144,7 +1144,7 @@ export interface PasteImageIntoFieldMessage extends BaseMessage {
     imageType: string;
     md5Hash?: string;
     cursorPosition?: number;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     includeContext?: {
         includeFilePath?: string;
@@ -1479,7 +1479,7 @@ export interface ApplyBatchFileActionsMessage extends BaseMessage {
  */
 export interface EditingStartedMessage extends BaseMessage {
     type: 'editingStarted';
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
 }
 
@@ -1488,7 +1488,7 @@ export interface EditingStartedMessage extends BaseMessage {
  */
 export interface EditingStoppedNormalMessage extends BaseMessage {
     type: 'editingStoppedNormal';
-    taskId: string;
+    cardId: string;
     columnId: string;
 }
 
@@ -1542,7 +1542,7 @@ export interface HandleEditorShortcutMessage extends BaseMessage {
     selectedText?: string;
     fullText?: string;
     fieldType?: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
 }
 
@@ -1623,7 +1623,7 @@ export interface SetDebugModeMessage extends BaseMessage {
 export interface ExportArchivedItemsMessage extends BaseMessage {
     type: 'exportArchivedItems';
     items: Array<{
-        type: 'task' | 'column';
+        type: 'card' | 'column';
         id: string;
         title: string;
         data: object;
@@ -1642,7 +1642,7 @@ export interface OpenArchiveFileMessage extends BaseMessage {
  */
 export interface EditModeStartMessage extends BaseMessage {
     type: 'editModeStart';
-    itemType: 'task' | 'column';
+    itemType: 'card' | 'column';
     itemId: string;
 }
 
@@ -1651,7 +1651,7 @@ export interface EditModeStartMessage extends BaseMessage {
  */
 export interface EditModeEndMessage extends BaseMessage {
     type: 'editModeEnd';
-    itemType: 'task' | 'column';
+    itemType: 'card' | 'column';
     itemId: string;
 }
 
@@ -1738,7 +1738,7 @@ export interface LinkIncludeContext {
     mainFilePath?: string;
     mainDir?: string;
     columnId?: string;
-    taskId?: string;
+    cardId?: string;
     filePath?: string;
 }
 
@@ -1747,10 +1747,10 @@ export interface LinkIncludeContext {
  *
  * All link types use a single message with LinkType discriminator.
  * Parameters are unified - each link type uses what it needs:
- * - FILE: target (href), taskId, columnId, linkIndex, includeContext
- * - WIKI: target (documentName), taskId, columnId, linkIndex
+ * - FILE: target (href), cardId, columnId, linkIndex, includeContext
+ * - WIKI: target (documentName), cardId, columnId, linkIndex
  * - EXTERNAL: target (href)
- * - IMAGE: target (src), taskId, columnId, linkIndex, includeContext
+ * - IMAGE: target (src), cardId, columnId, linkIndex, includeContext
  */
 export interface OpenLinkMessage extends BaseMessage {
     type: 'openLink';
@@ -1758,7 +1758,7 @@ export interface OpenLinkMessage extends BaseMessage {
     /** The link target: href for file/external, documentName for wiki, src for image */
     target: string;
     /** Task ID where the link is located (for targeted updates) */
-    taskId?: string;
+    cardId?: string;
     /** Column ID where the link is located (for targeted updates) */
     columnId?: string;
     /** Link index within the task/column content */
@@ -1784,7 +1784,7 @@ export interface SaveUndoStateMessage extends BaseMessage {
     board?: KanbanBoard;
     currentBoard?: KanbanBoard;
     operation?: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     fromColumnId?: string;
     toColumnId?: string;
@@ -1807,8 +1807,8 @@ export interface ExportMessage extends BaseMessage {
 export interface RenderCompletedMessage extends BaseMessage {
     type: 'renderCompleted';
     columnIds?: string[];
-    taskIds?: string[];
-    itemType?: 'task' | 'column';
+    cardIds?: string[];
+    itemType?: 'card' | 'column';
     itemId?: string;
 }
 
@@ -1819,8 +1819,8 @@ export interface RenderSkippedMessage extends BaseMessage {
     type: 'renderSkipped';
     reason: string;
     columnId?: string;
-    taskId?: string;
-    itemType?: 'task' | 'column';
+    cardId?: string;
+    itemType?: 'card' | 'column';
     itemId?: string;
 }
 
@@ -1845,7 +1845,7 @@ export interface OpenIncludeFileMessage extends BaseMessage {
  */
 export interface EditorDropPosition {
     columnId?: string;
-    taskId?: string;
+    cardId?: string;
     position?: 'title' | 'description';
 }
 
@@ -1857,7 +1857,7 @@ export interface HandleFileDropMessage extends BaseMessage {
     fileName: string;
     dropPosition?: EditorDropPosition;
     activeEditor?: {
-        taskId?: string;
+        cardId?: string;
         columnId?: string;
         position?: string;
     };
@@ -1871,7 +1871,7 @@ export interface HandleUriDropMessage extends BaseMessage {
     uris: string[];
     dropPosition?: EditorDropPosition;
     activeEditor?: {
-        taskId?: string;
+        cardId?: string;
         columnId?: string;
         position?: string;
     };
@@ -1955,7 +1955,7 @@ export interface OpenPathMessage extends BaseMessage {
 export interface SearchForFileMessage extends BaseMessage {
     type: 'searchForFile';
     filePath: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     isColumnTitle?: boolean;
     includeContext?: {
@@ -1980,7 +1980,7 @@ export interface RevealPathInExplorerMessage extends BaseMessage {
 export interface BrowseForImageMessage extends BaseMessage {
     type: 'browseForImage';
     oldPath: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     isColumnTitle?: boolean;
     includeContext?: {
@@ -1999,7 +1999,7 @@ export interface WebSearchForImageMessage extends BaseMessage {
     type: 'webSearchForImage';
     altText: string;
     oldPath: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     isColumnTitle?: boolean;
     includeContext?: {
@@ -2026,9 +2026,9 @@ export interface DeleteFromMarkdownMessage extends BaseMessage {
 export interface SearchElementLocation {
     columnId: string;
     columnTitle: string;
-    taskId?: string;
+    cardId?: string;
     taskSummary?: string;
-    field: 'columnTitle' | 'taskContent';
+    field: 'columnTitle' | 'cardContent';
 }
 
 /**
@@ -2073,7 +2073,7 @@ export interface NavigateToElementMessage extends BaseMessage {
     cardTitle?: string;
     elementPath?: string;
     elementType?: string;
-    field?: 'columnTitle' | 'taskContent';
+    field?: 'columnTitle' | 'cardContent';
     matchText?: string;
     boardUri?: string;  // For multi-board search navigation
 }
@@ -2093,11 +2093,11 @@ export interface SearchResultsMessage extends BaseMessage {
 export interface ScrollToElementMessage extends BaseMessage {
     type: 'scrollToElement';
     columnId: string;
-    taskId?: string;
+    cardId?: string;
     highlight: boolean;
     elementPath?: string;
     elementType?: string;
-    field?: 'columnTitle' | 'taskContent';
+    field?: 'columnTitle' | 'cardContent';
     matchText?: string;
 }
 

@@ -125,8 +125,8 @@ export class BoardStore implements vscode.Disposable {
     /**
      * Mark a task as dirty (has unrendered changes)
      */
-    markTaskDirty(taskId: string): void {
-        this._state.dirtyTasks.add(taskId);
+    markTaskDirty(cardId: string): void {
+        this._state.dirtyTasks.add(cardId);
     }
 
     /**
@@ -139,8 +139,8 @@ export class BoardStore implements vscode.Disposable {
     /**
      * Clear dirty flag for a task
      */
-    clearTaskDirty(taskId: string): void {
-        this._state.dirtyTasks.delete(taskId);
+    clearTaskDirty(cardId: string): void {
+        this._state.dirtyTasks.delete(cardId);
     }
 
     /**
@@ -238,7 +238,7 @@ export class BoardStore implements vscode.Disposable {
 
         if (restoredEntry.payload?.type === 'task-move' && currentBoard && currentBoard.valid) {
             logger.debug('[kanban.BoardStore.undo.task-move]', {
-                taskId: restoredEntry.payload.taskId,
+                cardId: restoredEntry.payload.cardId,
                 fromColumnId: restoredEntry.payload.fromColumnId,
                 toColumnId: restoredEntry.payload.toColumnId,
                 targets: restoredEntry.targets?.map(t => t.id)

@@ -82,7 +82,7 @@ function convertSinglePath(imagePath, direction, skipRefresh = false) {
  * Open a file path directly (in VS Code or default app)
  * Called from inline onclick handlers in rendered markdown
  */
-function openPath(pathOrElement, taskId, columnId, isColumnTitle) {
+function openPath(pathOrElement, cardId, columnId, isColumnTitle) {
     closeAllPathMenus();
 
     let filePath = pathOrElement;
@@ -90,20 +90,20 @@ function openPath(pathOrElement, taskId, columnId, isColumnTitle) {
 
     if (pathOrElement && typeof pathOrElement === 'object' && pathOrElement.nodeType === 1) {
         sourceElement = pathOrElement;
-        filePath = taskId;
-        taskId = undefined;
+        filePath = cardId;
+        cardId = undefined;
         columnId = undefined;
         isColumnTitle = undefined;
     }
 
-    if (taskId === 'undefined' || taskId === 'null' || taskId === '') {
-        taskId = undefined;
+    if (cardId === 'undefined' || cardId === 'null' || cardId === '') {
+        cardId = undefined;
     }
     if (columnId === 'undefined' || columnId === 'null' || columnId === '') {
         columnId = undefined;
     }
 
-    if ((!taskId || !columnId) && sourceElement) {
+    if ((!cardId || !columnId) && sourceElement) {
         const container = sourceElement.closest(
             '.image-path-overlay-container, .video-path-overlay-container, .include-path-overlay-container, .image-not-found-container, .video-not-found-container, .image-path-menu, .include-path-menu, .image-not-found-menu, .video-not-found-menu'
         );
@@ -111,8 +111,8 @@ function openPath(pathOrElement, taskId, columnId, isColumnTitle) {
         const columnElement = container?.closest('.kanban-full-height-column') || container?.closest('[data-column-id]');
         const columnTitleElement = container?.closest('.column-title');
 
-        if (!taskId && taskElement?.dataset?.taskId) {
-            taskId = taskElement.dataset.taskId;
+        if (!cardId && taskElement?.dataset?.cardId) {
+            cardId = taskElement.dataset.cardId;
         }
         if (!columnId && columnElement?.dataset?.columnId) {
             columnId = columnElement.dataset.columnId;
@@ -122,10 +122,10 @@ function openPath(pathOrElement, taskId, columnId, isColumnTitle) {
         }
     }
 
-    if (!taskId || !columnId) {
+    if (!cardId || !columnId) {
         const overlayRef = window.taskOverlayEditor?.getTaskRef?.();
-        if (!taskId && overlayRef?.taskId) {
-            taskId = overlayRef.taskId;
+        if (!cardId && overlayRef?.cardId) {
+            cardId = overlayRef.cardId;
         }
         if (!columnId && overlayRef?.columnId) {
             columnId = overlayRef.columnId;
@@ -133,9 +133,9 @@ function openPath(pathOrElement, taskId, columnId, isColumnTitle) {
     }
 
     let includeContext = null;
-    if (taskId && columnId && window.cachedBoard?.columns) {
+    if (cardId && columnId && window.cachedBoard?.columns) {
         const column = window.cachedBoard.columns.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === taskId);
+        const task = column?.cards?.find(t => t.id === cardId);
         if (task?.includeContext) {
             includeContext = task.includeContext;
         }
@@ -155,7 +155,7 @@ function openPath(pathOrElement, taskId, columnId, isColumnTitle) {
         type: 'openLink',
         linkType: LinkType.FILE,
         target: filePath,
-        taskId: taskId || undefined,
+        cardId: cardId || undefined,
         columnId: columnId || undefined,
         includeContext: includeContext || undefined
     });
@@ -214,25 +214,25 @@ function getShortDisplayPath(filePath, maxFolderChars = 20) {
 /**
  * Search for a file by name
  * @param {string} filePath - The file path to search for
- * @param {string} [taskId] - Optional task ID for targeted update
+ * @param {string} [cardId] - Optional task ID for targeted update
  * @param {string} [columnId] - Optional column ID for targeted update
  * @param {string} [isColumnTitle] - 'true' if image is in column title (not a task)
  */
-function searchForFile(filePath, taskId, columnId, isColumnTitle, includeDirFromContainer) {
+function searchForFile(filePath, cardId, columnId, isColumnTitle, includeDirFromContainer) {
     // Lock container dimensions to prevent scroll position loss during board update
     // This uses the centralized dimension lock system from stackLayoutManager.js
     closeAllPathMenus();
 
-    if (taskId === 'undefined' || taskId === 'null' || taskId === '') {
-        taskId = undefined;
+    if (cardId === 'undefined' || cardId === 'null' || cardId === '') {
+        cardId = undefined;
     }
     if (columnId === 'undefined' || columnId === 'null' || columnId === '') {
         columnId = undefined;
     }
-    if (!taskId || !columnId) {
+    if (!cardId || !columnId) {
         const overlayRef = window.taskOverlayEditor?.getTaskRef?.();
-        if (!taskId && overlayRef?.taskId) {
-            taskId = overlayRef.taskId;
+        if (!cardId && overlayRef?.cardId) {
+            cardId = overlayRef.cardId;
         }
         if (!columnId && overlayRef?.columnId) {
             columnId = overlayRef.columnId;
@@ -250,9 +250,9 @@ function searchForFile(filePath, taskId, columnId, isColumnTitle, includeDirFrom
     }
 
     // If no container includeDir, try to get from task's includeContext (for task/column includes)
-    if (!includeContext && taskId && columnId && window.cachedBoard?.columns) {
+    if (!includeContext && cardId && columnId && window.cachedBoard?.columns) {
         const column = window.cachedBoard.columns.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === taskId);
+        const task = column?.cards?.find(t => t.id === cardId);
         if (task?.includeContext) {
             includeContext = task.includeContext;
             console.log('[searchForFile] Using includeContext from task:', task.includeContext);
@@ -272,7 +272,7 @@ function searchForFile(filePath, taskId, columnId, isColumnTitle, includeDirFrom
         type: 'searchForFile',
         filePath: filePath
     };
-    if (taskId) message.taskId = taskId;
+    if (cardId) message.cardId = cardId;
     if (columnId) message.columnId = columnId;
     if (isColumnTitle === 'true') message.isColumnTitle = true;
     if (includeContext) message.includeContext = includeContext;
@@ -294,37 +294,37 @@ function searchForIncludeFile(buttonElement, filePath, isColumnTitle) {
                      buttonElement.closest('[data-column-id]');
     const columnId = columnEl?.getAttribute('data-column-id') || columnEl?.id;
 
-    // Extract taskId from closest task element (only for task includes)
-    let taskId = null;
+    // Extract cardId from closest task element (only for task includes)
+    let cardId = null;
     if (isColumnTitle !== 'true') {
         const taskEl = buttonElement.closest('.task-item');
-        taskId = taskEl?.getAttribute('data-task-id');
+        cardId = taskEl?.getAttribute('data-card-id');
     }
 
-    searchForFile(filePath, taskId, columnId, isColumnTitle);
+    searchForFile(filePath, cardId, columnId, isColumnTitle);
 }
 
 /**
  * Browse for an image file to replace a broken image path
  * Opens a file dialog and replaces the old path with the selected file
  * @param {string} oldPath - The old file path to replace
- * @param {string} [taskId] - Optional task ID for targeted update
+ * @param {string} [cardId] - Optional task ID for targeted update
  * @param {string} [columnId] - Optional column ID for targeted update
  * @param {string} [isColumnTitle] - 'true' if image is in column title (not a task)
  */
-function browseForImage(oldPath, taskId, columnId, isColumnTitle, includeDirFromContainer) {
+function browseForImage(oldPath, cardId, columnId, isColumnTitle, includeDirFromContainer) {
     closeAllPathMenus();
 
-    if (taskId === 'undefined' || taskId === 'null' || taskId === '') {
-        taskId = undefined;
+    if (cardId === 'undefined' || cardId === 'null' || cardId === '') {
+        cardId = undefined;
     }
     if (columnId === 'undefined' || columnId === 'null' || columnId === '') {
         columnId = undefined;
     }
-    if (!taskId || !columnId) {
+    if (!cardId || !columnId) {
         const overlayRef = window.taskOverlayEditor?.getTaskRef?.();
-        if (!taskId && overlayRef?.taskId) {
-            taskId = overlayRef.taskId;
+        if (!cardId && overlayRef?.cardId) {
+            cardId = overlayRef.cardId;
         }
         if (!columnId && overlayRef?.columnId) {
             columnId = overlayRef.columnId;
@@ -342,9 +342,9 @@ function browseForImage(oldPath, taskId, columnId, isColumnTitle, includeDirFrom
     }
 
     // If no container includeDir, try to get from task's includeContext (for task/column includes)
-    if (!includeContext && taskId && columnId && window.cachedBoard?.columns) {
+    if (!includeContext && cardId && columnId && window.cachedBoard?.columns) {
         const column = window.cachedBoard.columns.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === taskId);
+        const task = column?.cards?.find(t => t.id === cardId);
         if (task?.includeContext) {
             includeContext = task.includeContext;
             console.log('[browseForImage] Using includeContext from task:', task.includeContext);
@@ -364,7 +364,7 @@ function browseForImage(oldPath, taskId, columnId, isColumnTitle, includeDirFrom
         type: 'browseForImage',
         oldPath: oldPath
     };
-    if (taskId) message.taskId = taskId;
+    if (cardId) message.cardId = cardId;
     if (columnId) message.columnId = columnId;
     if (isColumnTitle === 'true') message.isColumnTitle = true;
     if (includeContext) message.includeContext = includeContext;
@@ -377,24 +377,24 @@ function browseForImage(oldPath, taskId, columnId, isColumnTitle, includeDirFrom
  * Web search for an image - opens a headed browser with image search for interactive selection
  * @param {string} altText - The image alt text to use as search query
  * @param {string} oldPath - The old file path to replace
- * @param {string} [taskId] - Optional task ID for targeted update
+ * @param {string} [cardId] - Optional task ID for targeted update
  * @param {string} [columnId] - Optional column ID for targeted update
  * @param {string} [isColumnTitle] - 'true' if image is in column title
  * @param {string} [includeDirFromContainer] - Include directory from container
  */
-function webSearchForImage(altText, oldPath, taskId, columnId, isColumnTitle, includeDirFromContainer) {
+function webSearchForImage(altText, oldPath, cardId, columnId, isColumnTitle, includeDirFromContainer) {
     closeAllPathMenus();
 
-    if (taskId === 'undefined' || taskId === 'null' || taskId === '') {
-        taskId = undefined;
+    if (cardId === 'undefined' || cardId === 'null' || cardId === '') {
+        cardId = undefined;
     }
     if (columnId === 'undefined' || columnId === 'null' || columnId === '') {
         columnId = undefined;
     }
-    if (!taskId || !columnId) {
+    if (!cardId || !columnId) {
         const overlayRef = window.taskOverlayEditor?.getTaskRef?.();
-        if (!taskId && overlayRef?.taskId) {
-            taskId = overlayRef.taskId;
+        if (!cardId && overlayRef?.cardId) {
+            cardId = overlayRef.cardId;
         }
         if (!columnId && overlayRef?.columnId) {
             columnId = overlayRef.columnId;
@@ -408,9 +408,9 @@ function webSearchForImage(altText, oldPath, taskId, columnId, isColumnTitle, in
         includeContext = { includeDir: includeDirFromContainer };
     }
 
-    if (!includeContext && taskId && columnId && window.cachedBoard?.columns) {
+    if (!includeContext && cardId && columnId && window.cachedBoard?.columns) {
         const column = window.cachedBoard.columns.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === taskId);
+        const task = column?.cards?.find(t => t.id === cardId);
         if (task?.includeContext) {
             includeContext = task.includeContext;
         }
@@ -428,7 +428,7 @@ function webSearchForImage(altText, oldPath, taskId, columnId, isColumnTitle, in
         altText: altText || '',
         oldPath: oldPath
     };
-    if (taskId) message.taskId = taskId;
+    if (cardId) message.cardId = cardId;
     if (columnId) message.columnId = columnId;
     if (isColumnTitle === 'true') message.isColumnTitle = true;
     if (includeContext) message.includeContext = includeContext;
@@ -481,7 +481,7 @@ function togglePathMenu(container, filePath, mediaType) {
     const taskElement = container.closest('.task-item');
     const columnElement = container.closest('.kanban-full-height-column') || container.closest('[data-column-id]');
     const columnTitleElement = container.closest('.column-title');
-    const taskId = taskElement?.dataset?.taskId || '';
+    const cardId = taskElement?.dataset?.cardId || '';
     const columnId = columnElement?.dataset?.columnId || '';
     const isColumnTitle = !taskElement && columnTitleElement ? 'true' : '';
 
@@ -500,11 +500,11 @@ function togglePathMenu(container, filePath, mediaType) {
             if (column) {
                 // Check column's includeError flag OR any task with includeError
                 isBroken = column.includeError === true ||
-                    column.tasks?.some(t => t.includeError === true);
+                    column.cards?.some(t => t.includeError === true);
             }
             // For task includes, check the specific task
-            if (!isBroken && taskId && column) {
-                const task = column.tasks?.find(t => t.id === taskId);
+            if (!isBroken && cardId && column) {
+                const task = column.cards?.find(t => t.id === cardId);
                 isBroken = task?.includeError === true;
             }
         }
@@ -537,7 +537,7 @@ function togglePathMenu(container, filePath, mediaType) {
     // Extract alt/label text for web search (from data attribute, child img, or filename)
     const altText = container.dataset.altText || container.querySelector('img')?.alt || container.querySelector('video')?.title || '';
     const escapedAltText = altText.replace(/'/g, "\\'").replace(/"/g, '\\"');
-    const webSearchHtml = `<button class="image-path-menu-item" onclick="event.stopPropagation(); webSearchForImage('${escapedAltText}', '${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🌐 Web-Search File</button>`;
+    const webSearchHtml = `<button class="image-path-menu-item" onclick="event.stopPropagation(); webSearchForImage('${escapedAltText}', '${escapedPath}', '${cardId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🌐 Web-Search File</button>`;
 
     // Build frontend cache status inline
     const renderType = getRenderTypeFromPath(filePath);
@@ -561,11 +561,11 @@ function togglePathMenu(container, filePath, mediaType) {
 
     menu.innerHTML = `
         ${titleHtml}
-        <button class="image-path-menu-item${openDisabled ? ' disabled' : ''}" ${openDisabled ? 'disabled' : `onclick="event.stopPropagation(); openPath('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}')"`}>📄 Open</button>
+        <button class="image-path-menu-item${openDisabled ? ' disabled' : ''}" ${openDisabled ? 'disabled' : `onclick="event.stopPropagation(); openPath('${escapedPath}', '${cardId}', '${columnId}', '${isColumnTitle}')"`}>📄 Open</button>
         <button class="image-path-menu-item" onclick="event.stopPropagation(); revealPathInExplorer('${escapedPath}')">🔍 Reveal in File Explorer</button>
         <div class="image-path-menu-divider"></div>
-        <button class="image-path-menu-item" onclick="event.stopPropagation(); searchForFile('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🔎 Automatic Path Fix</button>
-        <button class="image-path-menu-item" onclick="event.stopPropagation(); browseForImage('${escapedPath}', '${taskId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">📂 Manual Path Fix</button>
+        <button class="image-path-menu-item" onclick="event.stopPropagation(); searchForFile('${escapedPath}', '${cardId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">🔎 Automatic Path Fix</button>
+        <button class="image-path-menu-item" onclick="event.stopPropagation(); browseForImage('${escapedPath}', '${cardId}', '${columnId}', '${isColumnTitle}', '${escapedIncludeDir}')">📂 Manual Path Fix</button>
         ${webSearchHtml}
         <div class="image-path-menu-divider"></div>
         <button class="image-path-menu-item${isAbsolutePath ? '' : ' disabled'}" ${isAbsolutePath ? `onclick="event.stopPropagation(); convertSinglePath('${escapedPath}', 'relative', true)"` : 'disabled'}>📁 Convert to Relative</button>
@@ -1362,7 +1362,7 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
     // Find task/column context for targeted updates
     const taskElement = overlayContainer.closest('.task-item');
     const columnElement = overlayContainer.closest('.kanban-full-height-column') || overlayContainer.closest('[data-column-id]');
-    const taskId = taskElement?.dataset?.taskId;
+    const cardId = taskElement?.dataset?.cardId;
     const columnId = columnElement?.dataset?.columnId;
 
     // Check if image is inside a regular include container
@@ -1391,7 +1391,7 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
             // Use onclick closure - captures path and context safely
             searchBtn.onclick = function(e) {
                 e.stopPropagation();
-                searchForFile(originalSrc, taskId, columnId, '', includeDir);
+                searchForFile(originalSrc, cardId, columnId, '', includeDir);
             };
         }
 
@@ -1405,7 +1405,7 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
             // Use onclick closure - captures path and context safely
             browseBtn.onclick = function(e) {
                 e.stopPropagation();
-                browseForImage(originalSrc, taskId, columnId, '', includeDir);
+                browseForImage(originalSrc, cardId, columnId, '', includeDir);
             };
         }
 
@@ -1417,7 +1417,7 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
         webSearchBtn.onclick = function(e) {
             e.stopPropagation();
             const altText = overlayContainer.dataset.altText || '';
-            webSearchForImage(altText, originalSrc, taskId, columnId, '', includeDir);
+            webSearchForImage(altText, originalSrc, cardId, columnId, '', includeDir);
         };
         // Insert after the browse button
         if (browseBtn && browseBtn.nextSibling) {
@@ -1526,8 +1526,8 @@ function updatePathInDOM(oldPath, newPath, direction) {
             }
 
             // Update tasks
-            if (column.tasks) {
-                column.tasks.forEach(task => {
+            if (column.cards) {
+                column.cards.forEach(task => {
                     let taskModified = false;
                     if (task.markdown && task.markdown.includes(oldPath)) {
                         task.markdown = task.markdown.split(oldPath).join(newPath);
@@ -1625,7 +1625,7 @@ function setupMediaPathEventDelegation() {
         // Find task/column context for targeted updates
         const taskElement = container.closest('.task-item');
         const columnElement = container.closest('.kanban-full-height-column') || container.closest('[data-column-id]');
-        const taskId = taskElement?.dataset?.taskId;
+        const cardId = taskElement?.dataset?.cardId;
         const columnId = columnElement?.dataset?.columnId;
 
         // Check if inside a regular include container
@@ -1668,18 +1668,18 @@ function setupMediaPathEventDelegation() {
             case 'search-overlay':
                 const searchMenu = container.querySelector(menuSelector);
                 if (searchMenu) searchMenu.classList.remove('visible');
-                searchForFile(filePath, taskId, columnId, '', includeDir);
+                searchForFile(filePath, cardId, columnId, '', includeDir);
                 break;
             case 'browse':
             case 'browse-overlay':
                 const browseMenu = container.querySelector(menuSelector);
                 if (browseMenu) browseMenu.classList.remove('visible');
-                browseForImage(filePath, taskId, columnId, '', includeDir);
+                browseForImage(filePath, cardId, columnId, '', includeDir);
                 break;
             case 'web-search':
                 const wsMenu = container.querySelector(menuSelector);
                 if (wsMenu) wsMenu.classList.remove('visible');
-                webSearchForImage(container.dataset.altText || '', filePath, taskId, columnId, '', includeDir);
+                webSearchForImage(container.dataset.altText || '', filePath, cardId, columnId, '', includeDir);
                 break;
             case 'to-relative':
                 if (!target.disabled) {

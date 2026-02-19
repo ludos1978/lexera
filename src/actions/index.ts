@@ -5,7 +5,7 @@
  *   import { ActionExecutor, CardActions, ColumnActions, BoardActions } from './actions';
  *
  *   // In a command handler:
- *   const action = CardActions.updateContent(taskId, columnId, newContent);
+ *   const action = CardActions.updateContent(cardId, columnId, newContent);
  *   const result = await executor.execute(action);
  */
 

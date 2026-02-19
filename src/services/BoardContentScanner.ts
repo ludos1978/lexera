@@ -31,13 +31,13 @@ export interface ElementLocation {
     columnId: string;
     columnIndex: number;
     columnTitle: string;
-    taskId?: string;
+    cardId?: string;
     taskIndex?: number;
     /** Raw first non-empty line of card content — used for content-based navigation */
     cardTitle?: string;
     /** Display-friendly task summary (markdown syntax stripped) */
     taskSummary?: string;
-    field: 'columnTitle' | 'taskContent';
+    field: 'columnTitle' | 'cardContent';
 }
 
 /**
@@ -135,7 +135,7 @@ export class BoardContentScanner {
             columnId: column.id,
             columnIndex,
             columnTitle: this._getColumnTitle(column),
-            taskId: task.id,
+            cardId: task.id,
             taskIndex,
             cardTitle: this._getCardTitle(task),
             taskSummary: this._getTaskSummary(task),
@@ -182,9 +182,9 @@ export class BoardContentScanner {
             }
 
             // Check tasks
-            for (let taskIndex = 0; taskIndex < column.tasks.length; taskIndex++) {
-                const task = column.tasks[taskIndex];
-                const taskLocation = this._buildTaskLocation(column, columnIndex, task, taskIndex, 'taskContent');
+            for (let taskIndex = 0; taskIndex < column.cards.length; taskIndex++) {
+                const task = column.cards[taskIndex];
+                const taskLocation = this._buildTaskLocation(column, columnIndex, task, taskIndex, 'cardContent');
 
                 // Determine task include base path:
                 // 1. Use task's own includeContext if available
@@ -213,7 +213,7 @@ export class BoardContentScanner {
                 element.type,
                 element.path,
                 location.columnId,
-                location.taskId || '',
+                location.cardId || '',
                 location.field
             ].join('|');
         };
@@ -323,14 +323,14 @@ export class BoardContentScanner {
             }
 
             // Search tasks
-            for (let taskIndex = 0; taskIndex < column.tasks.length; taskIndex++) {
-                const task = column.tasks[taskIndex];
+            for (let taskIndex = 0; taskIndex < column.cards.length; taskIndex++) {
+                const task = column.cards[taskIndex];
                 const taskContent = task.content || '';
                 if (matcher.matches(prepareText(taskContent))) {
                     matches.push({
                         matchText: query,
                         context: buildContext(taskContent),
-                        location: this._buildTaskLocation(column, columnIndex, task, taskIndex, 'taskContent')
+                        location: this._buildTaskLocation(column, columnIndex, task, taskIndex, 'cardContent')
                     });
                 }
             }

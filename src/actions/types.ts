@@ -14,7 +14,7 @@ import { KanbanBoard } from '../markdownParser';
  * Used for targeted undo/redo updates
  */
 export interface ActionTarget {
-    type: 'task' | 'column';
+    type: 'card' | 'column';
     id: string;
     /** Column ID when target is a task */
     columnId?: string;

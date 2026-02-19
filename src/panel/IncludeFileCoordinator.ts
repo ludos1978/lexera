@@ -108,7 +108,7 @@ export class IncludeFileCoordinator {
      */
     async handleIncludeSwitch(params: {
         columnId?: string;
-        taskId?: string;
+        cardId?: string;
         oldFiles: string[];
         newFiles: string[];
         newTitle?: string;
@@ -117,12 +117,12 @@ export class IncludeFileCoordinator {
         const board = this._deps.getBoard();
         const column = board ? (params.columnId
             ? findColumn(board, params.columnId)
-            : findColumnContainingCard(board, params.taskId!)) : undefined;
+            : findColumnContainingCard(board, params.cardId!)) : undefined;
 
         const result = await this._deps.stateMachine.processChange({
             type: 'include_switch',
-            target: params.columnId ? 'column' : 'task',
-            targetId: params.columnId || params.taskId!,
+            target: params.columnId ? 'column' : 'card',
+            targetId: params.columnId || params.cardId!,
             columnIdForTask: params.columnId ? undefined : column?.id,
             oldFiles: params.oldFiles,
             newFiles: params.newFiles,
@@ -188,7 +188,7 @@ export class IncludeFileCoordinator {
             // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
             if (file.getFileType() === 'main') {
                 logger.error(`[IncludeFileCoordinator] BUG: Column include path resolved to MainKanbanFile: ${relativePath}`);
-                column.tasks = [];
+                column.cards = [];
                 column.includeError = true;
                 return;
             }
@@ -209,13 +209,13 @@ export class IncludeFileCoordinator {
                     filePath,
                     fileExists,
                     includeFiles: column.includeFiles || [],
-                    previousTaskCount: column.tasks?.length ?? 0
+                    previousTaskCount: column.cards?.length ?? 0
                 });
             }
 
             if (fileExists) {
                 // Parse tasks from updated file
-                tasks = columnFile.parseToTasks(column.tasks, column.id, mainFilePath);
+                tasks = columnFile.parseToTasks(column.cards, column.id, mainFilePath);
                 includeError = false;
             } else {
                 // File doesn't exist - error details shown on hover via include badge
@@ -225,7 +225,7 @@ export class IncludeFileCoordinator {
                 includeError = true;
             }
 
-            column.tasks = tasks;
+            column.cards = tasks;
             column.includeError = includeError;
 
             if (isDebug) {
@@ -233,7 +233,7 @@ export class IncludeFileCoordinator {
                     columnId: column.id,
                     relativePath,
                     taskCount: tasks.length,
-                    taskIds: tasks.map(task => task.id),
+                    cardIds: tasks.map(task => task.id),
                     includeError
                 });
             }
@@ -242,7 +242,7 @@ export class IncludeFileCoordinator {
             const columnMessage: UpdateColumnContentExtendedMessage = {
                 type: 'updateColumnContent',
                 columnId: column.id,
-                tasks: tasks,
+                cards: tasks,
                 columnTitle: column.title,
                 displayTitle: column.displayTitle,
                 includeMode: true,

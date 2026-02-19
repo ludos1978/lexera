@@ -143,8 +143,8 @@ export class MainKanbanFile extends MarkdownFile {
         }
 
         // Apply the edit to the board based on type
-        if (capturedEdit.type === 'task-content' && capturedEdit.taskId) {
-            const task = this._findTaskInBoard(board, capturedEdit.taskId, capturedEdit.columnId);
+        if (capturedEdit.type === 'task-content' && capturedEdit.cardId) {
+            const task = this._findTaskInBoard(board, capturedEdit.cardId, capturedEdit.columnId);
             if (task) {
                 task.content = capturedEdit.value;
             }
@@ -169,15 +169,15 @@ export class MainKanbanFile extends MarkdownFile {
     /**
      * Find a task in the board by ID
      */
-    private _findTaskInBoard(board: KanbanBoard, taskId: string, columnId?: string): KanbanCard | null {
+    private _findTaskInBoard(board: KanbanBoard, cardId: string, columnId?: string): KanbanCard | null {
         // If columnId provided, search only that column first
         if (columnId) {
-            const result = findCardInColumn(board, columnId, taskId);
+            const result = findCardInColumn(board, columnId, cardId);
             if (result) return result.task;
         }
 
         // Search all columns
-        const result = findCardById(board, taskId);
+        const result = findCardById(board, cardId);
         return result?.task ?? null;
     }
 

@@ -232,10 +232,10 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
     res.status(207).type('application/xml; charset=utf-8').send(multistatus(responses));
   });
 
-  // -- PROPFIND /calendars/:slug/ --
-  router.all('/calendars/:slug/', (req: Request, res: Response) => {
+  // -- PROPFIND & REPORT /calendars/:slug/ --
+  router.all('/calendars/:slug/', (req: Request, res: Response, next) => {
     if (req.method !== 'PROPFIND' && req.method !== 'REPORT') {
-      res.status(405).end();
+      next();
       return;
     }
 
@@ -260,10 +260,14 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
 
     log.verbose(`[CalDAV] ${req.method} /calendars/${slug}/ depth=${depth} boards=${boards.length} tasks=${allTasks.length} (deduped from ${beforeDedup})`);
 
-    // If REPORT, check for calendar-query time-range filter
+    // If REPORT, apply calendar-multiget or calendar-query filtering
     let filteredTasks = allTasks;
     if (req.method === 'REPORT' && req.body) {
-      filteredTasks = applyCalendarQueryFilter(String(req.body), allTasks);
+      const bodyStr = String(req.body);
+      log.verbose(`[CalDAV] REPORT body (${bodyStr.length} bytes): ${bodyStr.substring(0, 300)}`);
+      const report = parseReportBody(bodyStr, basePath, slug);
+      filteredTasks = applyReportFilter(report, allTasks);
+      log.verbose(`[CalDAV] REPORT ${report.type}: ${filteredTasks.length} tasks after filter (from ${allTasks.length})`);
     }
 
     const responses: string[] = [];
@@ -377,14 +381,47 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
 }
 
 /**
- * Apply calendar-query time-range filter from REPORT body.
- * Parses <C:time-range start="" end=""> and filters tasks.
+ * Parse a REPORT body and return the type and filtering info.
+ *
+ * Handles two REPORT types per RFC 4791:
+ *   - calendar-multiget: client requests specific resources by href
+ *   - calendar-query: client requests resources matching a filter (time-range)
  */
-function applyCalendarQueryFilter(body: string, tasks: import('../mappers/IcalMapper').IcalTask[]): import('../mappers/IcalMapper').IcalTask[] {
+function parseReportBody(body: string, basePath: string, slug: string): {
+  type: 'multiget' | 'calendar-query' | 'unknown';
+  requestedUids?: Set<string>;
+  timeRangeStart?: Date;
+  timeRangeEnd?: Date;
+} {
+  if (!body || body.trim().length === 0) return { type: 'unknown' };
+
   try {
     const parsed = xmlParser.parse(body);
 
-    // Navigate to time-range element (may be nested under calendar-query/filter/comp-filter/comp-filter/time-range)
+    // Detect calendar-multiget (check all possible namespace prefixes)
+    const multigetKey = Object.keys(parsed).find(k => k.toLowerCase().includes('calendar-multiget'));
+    if (multigetKey) {
+      const requestedUids = new Set<string>();
+
+      // Extract .ics UIDs directly from the raw XML body using regex.
+      // This is more robust than traversing fast-xml-parser's structure
+      // which varies depending on namespace prefixes and element count.
+      const hrefRegex = /<[^>]*href[^>]*>\s*([^<]+?)\s*<\/[^>]*href[^>]*>/gi;
+      let hrefMatch;
+      while ((hrefMatch = hrefRegex.exec(body)) !== null) {
+        const href = hrefMatch[1].trim();
+        if (href.endsWith('.ics')) {
+          const filename = href.substring(href.lastIndexOf('/') + 1);
+          const uid = filename.replace('.ics', '');
+          if (uid.length > 0) requestedUids.add(uid);
+        }
+      }
+
+      log.verbose(`[CalDAV] REPORT calendar-multiget: ${requestedUids.size} UIDs extracted`);
+      return { type: 'multiget', requestedUids };
+    }
+
+    // Detect calendar-query with time-range filter
     const findTimeRange = (obj: Record<string, unknown>): { start?: string; end?: string } | null => {
       if (!obj || typeof obj !== 'object') return null;
       for (const key of Object.keys(obj)) {
@@ -402,31 +439,51 @@ function applyCalendarQueryFilter(body: string, tasks: import('../mappers/IcalMa
     };
 
     const timeRange = findTimeRange(parsed);
-    if (!timeRange) return tasks;
+    if (timeRange) {
+      const startDate = timeRange.start ? parseIcalTimestamp(timeRange.start) : undefined;
+      const endDate = timeRange.end ? parseIcalTimestamp(timeRange.end) : undefined;
+      log.verbose(`[CalDAV] REPORT calendar-query: time-range start=${timeRange.start} end=${timeRange.end}`);
+      return { type: 'calendar-query', timeRangeStart: startDate ?? undefined, timeRangeEnd: endDate ?? undefined };
+    }
 
-    const startDate = timeRange.start ? parseIcalTimestamp(timeRange.start) : null;
-    const endDate = timeRange.end ? parseIcalTimestamp(timeRange.end) : null;
-
-    log.verbose(`[CalDAV] REPORT time-range filter: start=${timeRange.start} end=${timeRange.end}`);
-
-    return tasks.filter(task => {
-      // VTODOs without a due date always pass (undated)
-      if (task.type === 'VTODO' && !task.due) return true;
-
-      const taskDate = task.dtstart || task.due;
-      if (!taskDate) return true;
-
-      const d = parseIcalTimestamp(taskDate);
-      if (!d) return true;
-
-      if (startDate && d < startDate) return false;
-      if (endDate && d >= endDate) return false;
-      return true;
-    });
+    return { type: 'calendar-query' };
   } catch (err) {
     log.warn(`[CalDAV] Failed to parse REPORT body:`, err);
-    return tasks;
+    return { type: 'unknown' };
   }
+}
+
+/**
+ * Apply REPORT filters to a task list based on the parsed report info.
+ */
+function applyReportFilter(
+  report: ReturnType<typeof parseReportBody>,
+  tasks: import('../mappers/IcalMapper').IcalTask[]
+): import('../mappers/IcalMapper').IcalTask[] {
+  if (report.type === 'multiget' && report.requestedUids) {
+    // If no UIDs were extracted, parsing likely failed — return all tasks as fallback
+    if (report.requestedUids.size === 0) {
+      log.warn(`[CalDAV] calendar-multiget with 0 extracted UIDs, returning all ${tasks.length} tasks as fallback`);
+      return tasks;
+    }
+    return tasks.filter(task => report.requestedUids!.has(task.uid));
+  }
+
+  if (report.type === 'calendar-query') {
+    if (!report.timeRangeStart && !report.timeRangeEnd) return tasks;
+    return tasks.filter(task => {
+      if (task.type === 'VTODO' && !task.due) return true;
+      const taskDate = task.dtstart || task.due;
+      if (!taskDate) return true;
+      const d = parseIcalTimestamp(taskDate);
+      if (!d) return true;
+      if (report.timeRangeStart && d < report.timeRangeStart) return false;
+      if (report.timeRangeEnd && d >= report.timeRangeEnd) return false;
+      return true;
+    });
+  }
+
+  return tasks;
 }
 
 /**

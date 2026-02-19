@@ -43,7 +43,7 @@ export interface IWebviewPanelForStateMachine {
     invalidateBoardCache?(): void;
     refreshWebviewContent?(): Promise<void>;
     clearColumnDirty?(columnId: string): void;
-    clearTaskDirty?(taskId: string): void;
+    clearTaskDirty?(cardId: string): void;
 }
 
 // ============= STATUS MESSAGES =============
@@ -90,7 +90,7 @@ export interface UserEditEvent {
     type: 'user_edit';
     editType: 'task_content' | 'column_title';
     params: {
-        taskId?: string;
+        cardId?: string;
         columnId?: string;
         value: string;
         includeSwitch?: {
@@ -108,7 +108,7 @@ export interface SaveEvent {
 
 export interface IncludeSwitchEvent {
     type: 'include_switch';
-    target: 'column' | 'task';
+    target: 'column' | 'card';
     targetId: string;
     columnIdForTask?: string;
     oldFiles: string[];

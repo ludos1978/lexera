@@ -144,13 +144,13 @@ export class GatherQueryEngine {
         }
 
         // Move all cards to their destinations
-        cardDestinations.forEach((targetColumn, taskId) => {
+        cardDestinations.forEach((targetColumn, cardId) => {
             let sourceColumn: KanbanColumn | null = null;
             let task: KanbanCard | null = null;
             let taskIndex = -1;
 
             for (const column of board.columns) {
-                const index = column.cards.findIndex(t => t.id === taskId);
+                const index = column.cards.findIndex(t => t.id === cardId);
                 if (index !== -1) {
                     sourceColumn = column;
                     task = column.cards[index];

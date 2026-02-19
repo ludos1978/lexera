@@ -151,7 +151,7 @@ export class IcalMapper {
       const columnTemporals = extractTemporalInfo(column.title || '');
       const columnTemporal = columnTemporals.length > 0 ? columnTemporals[0] : null;
 
-      for (const task of column.tasks) {
+      for (const task of column.cards) {
         const content = task.content || '';
 
         // Skip archived/deleted tasks

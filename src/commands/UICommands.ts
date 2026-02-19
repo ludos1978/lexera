@@ -194,7 +194,7 @@ export class UICommands extends SwitchBasedCommand {
             return true;
         }
 
-        const allTasks = targets.every(target => target.type === 'task' && target.columnId);
+        const allTasks = targets.every(target => target.type === 'card' && target.columnId);
         if (allTasks) {
             for (const target of targets) {
                 const column = board.columns.find(c => c.id === target.columnId);
@@ -203,9 +203,9 @@ export class UICommands extends SwitchBasedCommand {
                     return false;
                 }
                 const message: UpdateCardContentExtendedMessage = {
-                    type: 'updateTaskContent',
+                    type: 'updateCardContent',
                     columnId: column.id,
-                    taskId: task.id,
+                    cardId: task.id,
                     content: task.content,
                     displayTitle: task.displayTitle,
                     originalTitle: task.originalTitle,

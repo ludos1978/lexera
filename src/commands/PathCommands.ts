@@ -33,7 +33,7 @@ import { UndoCapture } from '../core/stores/UndoCapture';
 interface PathReplacementOptions {
     mode: 'single' | 'batch';
     pathFormat: PathFormat;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     isColumnTitle?: boolean;
     successMessage?: string;
@@ -409,7 +409,7 @@ export class PathCommands extends SwitchBasedCommand {
         const oldPath = message.filePath;
         logger.debug('[PathCommands.handleSearchForFile] START', {
             oldPath,
-            taskId: message.taskId,
+            cardId: message.cardId,
             columnId: message.columnId,
             includeContext: message.includeContext
         });
@@ -480,7 +480,7 @@ export class PathCommands extends SwitchBasedCommand {
             return await this._replacePaths(oldPath, selectedFile, basePath, context, {
                 mode: result.batchReplace ? 'batch' : 'single',
                 pathFormat: pathFormat,
-                taskId: message.taskId,
+                cardId: message.cardId,
                 columnId: message.columnId,
                 isColumnTitle: message.isColumnTitle,
                 successMessage: `Path updated: ${path.basename(oldPath)} → ${path.basename(selectedFile)}`
@@ -604,7 +604,7 @@ export class PathCommands extends SwitchBasedCommand {
         return await this._replacePaths(oldPath, selectedFile, basePath, context, {
             mode: 'single',
             pathFormat: 'auto',
-            taskId: message.taskId,
+            cardId: message.cardId,
             columnId: message.columnId,
             isColumnTitle: message.isColumnTitle,
             successMessage: 'Image path updated successfully'
@@ -682,7 +682,7 @@ export class PathCommands extends SwitchBasedCommand {
             const replaceResult = await this._replacePaths(oldPath, result.filePath, directory, context, {
                 mode: 'single',
                 pathFormat: 'auto',
-                taskId: message.taskId,
+                cardId: message.cardId,
                 columnId: message.columnId,
                 isColumnTitle: message.isColumnTitle,
                 successMessage: 'Image downloaded and path updated'
@@ -701,7 +701,7 @@ export class PathCommands extends SwitchBasedCommand {
                     // 2. Also update the board task object and send targeted webview update
                     this._updateBoardTaskWithSourceUrl(
                         context, actualNewPath, result.sourceUrl,
-                        message.taskId, message.columnId
+                        message.cardId, message.columnId
                     );
                 }
             }
@@ -759,20 +759,20 @@ export class PathCommands extends SwitchBasedCommand {
         context: CommandContext,
         newPath: string,
         sourceUrl: string,
-        taskId?: string,
+        cardId?: string,
         columnId?: string
     ): void {
-        if (!taskId) return;
+        if (!cardId) return;
 
         const board = context.boardStore.getBoard();
         if (!board) return;
 
         const column = columnId
             ? findColumn(board, columnId)
-            : findColumnContainingCard(board, taskId);
+            : findColumnContainingCard(board, cardId);
         if (!column) return;
 
-        const task = column.cards.find(t => t.id === taskId);
+        const task = column.cards.find(t => t.id === cardId);
         if (!task) return;
 
         // Apply the same title transformation used by _addSourceUrlToImageTitle
@@ -794,8 +794,8 @@ export class PathCommands extends SwitchBasedCommand {
         const webviewBridge = context.getWebviewBridge();
         if (webviewBridge) {
             webviewBridge.send({
-                type: 'updateTaskContent',
-                taskId: task.id,
+                type: 'updateCardContent',
+                cardId: task.id,
                 columnId: column.id,
                 task: task,
                 imageMappings: {}
@@ -813,7 +813,7 @@ export class PathCommands extends SwitchBasedCommand {
         newPath: string,
         sourceUrl: string,
         basePath: string,
-        message: { taskId?: string; columnId?: string; isColumnTitle?: boolean }
+        message: { cardId?: string; columnId?: string; isColumnTitle?: boolean }
     ): boolean {
         const fileRegistry = this.getFileRegistry();
         if (!fileRegistry) return false;
@@ -880,8 +880,8 @@ export class PathCommands extends SwitchBasedCommand {
                     const webviewBridge = context.getWebviewBridge();
                     if (webviewBridge) {
                         webviewBridge.send({
-                            type: 'updateTaskContent',
-                            taskId: task.id,
+                            type: 'updateCardContent',
+                            cardId: task.id,
                             columnId: column.id,
                             task: task,
                             imageMappings: {}
@@ -984,11 +984,11 @@ export class PathCommands extends SwitchBasedCommand {
 
         let updated = false;
 
-        if (capturedEdit.type === 'task-content' && capturedEdit.taskId) {
+        if (capturedEdit.type === 'task-content' && capturedEdit.cardId) {
             const column = capturedEdit.columnId
                 ? findColumn(board, capturedEdit.columnId)
-                : findColumnContainingCard(board, capturedEdit.taskId);
-            const task = column?.cards.find(t => t.id === capturedEdit.taskId);
+                : findColumnContainingCard(board, capturedEdit.cardId);
+            const task = column?.cards.find(t => t.id === capturedEdit.cardId);
             if (task) {
                 task.content = capturedEdit.value;
                 updated = true;
@@ -1023,7 +1023,7 @@ export class PathCommands extends SwitchBasedCommand {
             brokenPath: brokenPath.substring(0, 100),
             selectedPath: selectedPath.substring(0, 100),
             mode: options.mode,
-            taskId: options.taskId,
+            cardId: options.cardId,
             columnId: options.columnId
         });
 
@@ -1061,7 +1061,7 @@ export class PathCommands extends SwitchBasedCommand {
             {
                 mode: options.mode,
                 pathFormat: options.pathFormat,
-                taskId: options.taskId,
+                cardId: options.cardId,
                 columnId: options.columnId,
                 isColumnTitle: options.isColumnTitle,
                 linkIndex: undefined,

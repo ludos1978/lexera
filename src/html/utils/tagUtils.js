@@ -1735,7 +1735,7 @@ class TagUtils {
             const displayText = pathPart ? `!(${pathPart}/${displayFileName})!` : `!(${displayFileName})!`;
 
             // Just return the include link - displayTitle is not shown because it's the file content, not metadata
-            return generateIncludeLinkWithMenu(fileName, displayText, 'task', task.includeError);
+            return generateIncludeLinkWithMenu(fileName, displayText, 'card', task.includeError);
         } else {
             // Normal task - render displayTitle which may contain %INCLUDE_BADGE:filepath% placeholder
             const summaryLine = window.taskContentUtils?.getTaskSummaryLine
@@ -1793,7 +1793,7 @@ class TagUtils {
                 }
 
                 const displayText = pathPart ? `!(${pathPart}/${displayFileName})!` : `!(${displayFileName})!`;
-                const badgeHtml = generateIncludeLinkWithMenu(filePath, displayText, 'task', task.includeError);
+                const badgeHtml = generateIncludeLinkWithMenu(filePath, displayText, 'card', task.includeError);
 
                 // Replace the safe token with the badge HTML
                 rendered = rendered.replace(`::INCLUDE_PLACEHOLDER_${index}::`, badgeHtml);
@@ -1808,7 +1808,7 @@ class TagUtils {
  * Generate include link HTML with path conversion overlay menu
  * @param {string} filePath - The file path for the include
  * @param {string} displayText - The text to display in the link
- * @param {string} clickHandler - 'column' or 'task' to determine which click handler to use
+ * @param {string} clickHandler - 'column' or 'card' to determine which click handler to use
  * @param {boolean} isBroken - Whether the include file is broken/not found (adds include-broken class)
  * @returns {string} HTML string with include link wrapped in overlay container
  */

@@ -211,7 +211,7 @@ export class XbelMapper {
       columns.push({
         id: `sync-col-${i}`,
         title,
-        tasks,
+        cards: tasks,
       });
 
       prevStackKey = stackKey;
@@ -281,7 +281,7 @@ export class XbelMapper {
       // Collect bookmarks from tasks
       const bookmarks: XbelBookmark[] = [];
       let bmCounter = 0;
-      for (const task of column.tasks) {
+      for (const task of column.cards) {
         // Skip archived/deleted tasks
         if (isArchivedOrDeleted(task.content || '')) continue;
         const bm = this.taskContentToBookmark(task.content, bmCounter);
@@ -402,7 +402,7 @@ export class XbelMapper {
         const existingByXbelId = new Map<string, KanbanCard>();
         const tasksWithoutLinks: KanbanCard[] = [];
 
-        for (const task of existingCol.tasks) {
+        for (const task of existingCol.cards) {
           const xbelId = this.extractXbelId(task.content);
           if (xbelId) {
             existingByXbelId.set(xbelId, task);
@@ -412,7 +412,7 @@ export class XbelMapper {
         }
 
         // Process incoming tasks: update content, preserve kanban task ID
-        for (const inTask of incomingCol.tasks) {
+        for (const inTask of incomingCol.cards) {
           const xbelId = this.extractXbelId(inTask.content);
           const existing = xbelId ? existingByXbelId.get(xbelId) : undefined;
 
@@ -428,7 +428,7 @@ export class XbelMapper {
         result.push({
           id: existingCol.id,
           title: incomingCol.title,
-          tasks: mergedTasks,
+          cards: mergedTasks,
         });
 
         existingByPath.delete(incomingPath);

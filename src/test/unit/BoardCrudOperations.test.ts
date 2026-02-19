@@ -21,7 +21,7 @@ function createTestBoard(): KanbanBoard {
             {
                 id: 'col-1',
                 title: 'To Do',
-                tasks: [
+                cards: [
                     { id: 'task-1', content: mergeLegacyCardContent('Task 1', 'Description 1') },
                     { id: 'task-2', content: mergeLegacyCardContent('Task 2', 'Description 2') },
                     { id: 'task-3', content: mergeLegacyCardContent('Task 3', '') }
@@ -30,14 +30,14 @@ function createTestBoard(): KanbanBoard {
             {
                 id: 'col-2',
                 title: 'In Progress',
-                tasks: [
+                cards: [
                     { id: 'task-4', content: mergeLegacyCardContent('Task 4', 'Working on it') }
                 ]
             },
             {
                 id: 'col-3',
                 title: 'Done',
-                tasks: []
+                cards: []
             }
         ]
     };
@@ -53,16 +53,16 @@ describe('BoardCrudOperations', () => {
     // ============= TASK OPERATION TESTS =============
 
     describe('Task Operations', () => {
-        describe('addTask', () => {
+        describe('addCard', () => {
             it('should add task to column', () => {
                 const board = createTestBoard();
-                const taskData: NewTaskInput = { content: mergeLegacyCardContent('New Task', 'New Description') };
+                const cardData: NewTaskInput = { content: mergeLegacyCardContent('New Task', 'New Description') };
 
-                const result = operations.addTask(board, 'col-3', taskData);
+                const result = operations.addTask(board, 'col-3', cardData);
 
                 expect(result).toBe(true);
-                expect(board.columns[2].tasks.length).toBe(1);
-                expect(getSummary(board.columns[2].tasks[0].content)).toBe('New Task');
+                expect(board.columns[2].cards.length).toBe(1);
+                expect(getSummary(board.columns[2].cards[0].content)).toBe('New Task');
             });
 
             it('should return false for non-existent column', () => {
@@ -77,21 +77,21 @@ describe('BoardCrudOperations', () => {
                 const result = operations.addTask(board, 'col-3', {});
 
                 expect(result).toBe(true);
-                expect(board.columns[2].tasks[0].content).toBe('');
+                expect(board.columns[2].cards[0].content).toBe('');
             });
         });
 
-        describe('addTaskAtPosition', () => {
+        describe('addCardAtPosition', () => {
             it('should add task at specific position', () => {
                 const board = createTestBoard();
-                const taskData: NewTaskInput = { content: 'Inserted Task' };
+                const cardData: NewTaskInput = { content: 'Inserted Task' };
 
-                const result = operations.addTaskAtPosition(board, 'col-1', taskData, 1);
+                const result = operations.addTaskAtPosition(board, 'col-1', cardData, 1);
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks.length).toBe(4);
-                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Inserted Task');
-                expect(getSummary(board.columns[0].tasks[2].content)).toBe('Task 2');
+                expect(board.columns[0].cards.length).toBe(4);
+                expect(getSummary(board.columns[0].cards[1].content)).toBe('Inserted Task');
+                expect(getSummary(board.columns[0].cards[2].content)).toBe('Task 2');
             });
 
             it('should add at end if position exceeds length', () => {
@@ -99,19 +99,19 @@ describe('BoardCrudOperations', () => {
                 const result = operations.addTaskAtPosition(board, 'col-1', { content: 'End Task' }, 100);
 
                 expect(result).toBe(true);
-                expect(getSummary(board.columns[0].tasks[3].content)).toBe('End Task');
+                expect(getSummary(board.columns[0].cards[3].content)).toBe('End Task');
             });
         });
 
-        describe('deleteTask', () => {
+        describe('deleteCard', () => {
             it('should delete task from column', () => {
                 const board = createTestBoard();
 
                 const result = operations.deleteTask(board, 'task-2', 'col-1');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks.length).toBe(2);
-                expect(board.columns[0].tasks.find(t => t.id === 'task-2')).toBeUndefined();
+                expect(board.columns[0].cards.length).toBe(2);
+                expect(board.columns[0].cards.find(t => t.id === 'task-2')).toBeUndefined();
             });
 
             it('should return false for non-existent task', () => {
@@ -122,7 +122,7 @@ describe('BoardCrudOperations', () => {
             });
         });
 
-        describe('editTask', () => {
+        describe('editCard', () => {
             it('should edit task title', () => {
                 const board = createTestBoard();
 
@@ -134,7 +134,7 @@ describe('BoardCrudOperations', () => {
                 );
 
                 expect(result).toBe(true);
-                expect(getSummary(board.columns[0].tasks[0].content)).toBe('Updated Title');
+                expect(getSummary(board.columns[0].cards[0].content)).toBe('Updated Title');
             });
 
             it('should edit task description', () => {
@@ -148,7 +148,7 @@ describe('BoardCrudOperations', () => {
                 );
 
                 expect(result).toBe(true);
-                expect(getBody(board.columns[0].tasks[0].content)).toBe('Updated Description');
+                expect(getBody(board.columns[0].cards[0].content)).toBe('Updated Description');
             });
 
             it('should return false for non-existent task', () => {
@@ -159,16 +159,16 @@ describe('BoardCrudOperations', () => {
             });
         });
 
-        describe('moveTask', () => {
+        describe('moveCard', () => {
             it('should move task between columns', () => {
                 const board = createTestBoard();
 
                 const result = operations.moveTask(board, 'task-1', 'col-1', 'col-2', 0);
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks.length).toBe(2);
-                expect(board.columns[1].tasks.length).toBe(2);
-                expect(board.columns[1].tasks[0].id).toBe('task-1');
+                expect(board.columns[0].cards.length).toBe(2);
+                expect(board.columns[1].cards.length).toBe(2);
+                expect(board.columns[1].cards[0].id).toBe('task-1');
             });
 
             it('should move task within same column', () => {
@@ -177,8 +177,8 @@ describe('BoardCrudOperations', () => {
                 const result = operations.moveTask(board, 'task-1', 'col-1', 'col-1', 2);
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].id).toBe('task-2');
-                expect(board.columns[0].tasks[2].id).toBe('task-1');
+                expect(board.columns[0].cards[0].id).toBe('task-2');
+                expect(board.columns[0].cards[2].id).toBe('task-1');
             });
 
             it('should return false for non-existent source column', () => {
@@ -189,16 +189,16 @@ describe('BoardCrudOperations', () => {
             });
         });
 
-        describe('duplicateTask', () => {
+        describe('duplicateCard', () => {
             it('should duplicate task after original', () => {
                 const board = createTestBoard();
 
                 const result = operations.duplicateTask(board, 'task-1', 'col-1');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks.length).toBe(4);
-                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Task 1');
-                expect(board.columns[0].tasks[1].id).not.toBe('task-1');
+                expect(board.columns[0].cards.length).toBe(4);
+                expect(getSummary(board.columns[0].cards[1].content)).toBe('Task 1');
+                expect(board.columns[0].cards[1].id).not.toBe('task-1');
             });
         });
 
@@ -209,8 +209,8 @@ describe('BoardCrudOperations', () => {
                 const result = operations.moveTaskUp(board, 'task-2', 'col-1');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].id).toBe('task-2');
-                expect(board.columns[0].tasks[1].id).toBe('task-1');
+                expect(board.columns[0].cards[0].id).toBe('task-2');
+                expect(board.columns[0].cards[1].id).toBe('task-1');
             });
 
             it('moveTaskUp should return false for first task', () => {
@@ -226,8 +226,8 @@ describe('BoardCrudOperations', () => {
                 const result = operations.moveTaskDown(board, 'task-1', 'col-1');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].id).toBe('task-2');
-                expect(board.columns[0].tasks[1].id).toBe('task-1');
+                expect(board.columns[0].cards[0].id).toBe('task-2');
+                expect(board.columns[0].cards[1].id).toBe('task-1');
             });
 
             it('moveTaskToTop should move task to first position', () => {
@@ -236,7 +236,7 @@ describe('BoardCrudOperations', () => {
                 const result = operations.moveTaskToTop(board, 'task-3', 'col-1');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[0].id).toBe('task-3');
+                expect(board.columns[0].cards[0].id).toBe('task-3');
             });
 
             it('moveTaskToBottom should move task to last position', () => {
@@ -245,7 +245,7 @@ describe('BoardCrudOperations', () => {
                 const result = operations.moveTaskToBottom(board, 'task-1', 'col-1');
 
                 expect(result).toBe(true);
-                expect(board.columns[0].tasks[2].id).toBe('task-1');
+                expect(board.columns[0].cards[2].id).toBe('task-1');
             });
         });
     });
@@ -351,7 +351,7 @@ describe('BoardCrudOperations', () => {
                     columns: [{
                         id: 'col-1',
                         title: 'Sort Test',
-                        tasks: [
+                        cards: [
                             { id: 't1', content: 'Zebra' },
                             { id: 't2', content: 'Apple' },
                             { id: 't3', content: 'Mango' }
@@ -362,9 +362,9 @@ describe('BoardCrudOperations', () => {
                 const result = operations.sortColumn(board, 'col-1', 'title');
 
                 expect(result).toBe(true);
-                expect(getSummary(board.columns[0].tasks[0].content)).toBe('Apple');
-                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Mango');
-                expect(getSummary(board.columns[0].tasks[2].content)).toBe('Zebra');
+                expect(getSummary(board.columns[0].cards[0].content)).toBe('Apple');
+                expect(getSummary(board.columns[0].cards[1].content)).toBe('Mango');
+                expect(getSummary(board.columns[0].cards[2].content)).toBe('Zebra');
             });
 
             it('should sort by numeric tag', () => {
@@ -376,7 +376,7 @@ describe('BoardCrudOperations', () => {
                     columns: [{
                         id: 'col-1',
                         title: 'Sort Test',
-                        tasks: [
+                        cards: [
                             { id: 't1', content: 'Task #30' },
                             { id: 't2', content: 'Task #5' },
                             { id: 't3', content: 'Task #100' }
@@ -387,9 +387,9 @@ describe('BoardCrudOperations', () => {
                 const result = operations.sortColumn(board, 'col-1', 'numericTag');
 
                 expect(result).toBe(true);
-                expect(getSummary(board.columns[0].tasks[0].content)).toBe('Task #5');
-                expect(getSummary(board.columns[0].tasks[1].content)).toBe('Task #30');
-                expect(getSummary(board.columns[0].tasks[2].content)).toBe('Task #100');
+                expect(getSummary(board.columns[0].cards[0].content)).toBe('Task #5');
+                expect(getSummary(board.columns[0].cards[1].content)).toBe('Task #30');
+                expect(getSummary(board.columns[0].cards[2].content)).toBe('Task #100');
             });
         });
     });

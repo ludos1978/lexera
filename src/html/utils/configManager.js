@@ -21,12 +21,12 @@ class ConfigManager {
             openLinksInNewTab: false,
             whitespace: '16px',
             maxRowHeight: 'auto',
-            taskMinHeight: 'auto',
+            cardMinHeight: 'auto',
             fontSize: '1x',
             fontFamily: 'plusjakarta',
             columnWidth: '450px',
             columnBorder: '1px solid var(--vscode-panel-border)',
-            taskBorder: '1px solid var(--vscode-panel-border)',
+            cardBorder: '1px solid var(--vscode-panel-border)',
             layoutRows: 1,
             rowHeight: 'auto',
             layoutPreset: 'normal',
@@ -146,7 +146,7 @@ class ConfigManager {
     getLayoutConfiguration() {
         return {
             whitespace: this.getConfig('whitespace'),
-            taskMinHeight: this.getConfig('taskMinHeight'),
+            cardMinHeight: this.getConfig('cardMinHeight'),
             fontSize: this.getConfig('fontSize'),
             fontFamily: this.getConfig('fontFamily'),
             columnWidth: this.getConfig('columnWidth'),

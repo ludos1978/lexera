@@ -73,7 +73,7 @@ export class IncludeLoadingProcessor {
             if (event.target === 'column') {
                 targetColumn = findColumn(board, event.targetId) || null;
                 isColumnSwitch = true;
-            } else if (event.target === 'task') {
+            } else if (event.target === 'card') {
                 targetColumn = (event.columnIdForTask ? findColumn(board, event.columnIdForTask) : null) ?? null;
                 targetTask = targetColumn?.cards.find(t => t.id === event.targetId) || null;
             }
@@ -82,8 +82,8 @@ export class IncludeLoadingProcessor {
                 targetColumn = (event.params.columnId ? findColumn(board, event.params.columnId) : null) ?? null;
                 isColumnSwitch = true;
             } else if (event.editType === 'task_content') {
-                targetColumn = (event.params.taskId ? findColumnContainingCard(board, event.params.taskId) : null) ?? null;
-                targetTask = event.params.taskId ? (targetColumn?.cards.find(t => t.id === event.params.taskId) || null) : null;
+                targetColumn = (event.params.cardId ? findColumnContainingCard(board, event.params.cardId) : null) ?? null;
+                targetTask = event.params.cardId ? (targetColumn?.cards.find(t => t.id === event.params.cardId) || null) : null;
             }
         }
 
@@ -109,7 +109,7 @@ export class IncludeLoadingProcessor {
      * This eliminates the bug where cached empty files weren't reloaded.
      */
     async unifiedLoad(params: {
-        target: { type: 'column'; column: KanbanColumn } | { type: 'task'; column: KanbanColumn; task: KanbanCard };
+        target: { type: 'column'; column: KanbanColumn } | { type: 'card'; column: KanbanColumn; task: KanbanCard };
         includeFiles: string[];
         preloadedContent?: Map<string, string>;
         newTitle?: string;
@@ -155,7 +155,7 @@ export class IncludeLoadingProcessor {
      * Clear target when includes are being removed
      */
     private _clearTarget(
-        target: { type: 'column'; column: KanbanColumn } | { type: 'task'; column: KanbanColumn; task: KanbanCard },
+        target: { type: 'column'; column: KanbanColumn } | { type: 'card'; column: KanbanColumn; task: KanbanCard },
         newTitle?: string
     ): void {
         if (target.type === 'column') {

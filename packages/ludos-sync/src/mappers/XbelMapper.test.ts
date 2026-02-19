@@ -186,14 +186,14 @@ describe('XbelMapper', () => {
 
       // Dev Resources: 2 bookmarks -> 2 tasks
       expect(columns[0].title).toBe('Dev Resources');
-      expect(columns[0].tasks).toHaveLength(2);
-      expect(columns[0].tasks[0].content).toBe('[GitHub](https://github.com "bm-1")\nCode hosting platform');
-      expect(columns[0].tasks[1].content).toBe('[Stack Overflow](https://stackoverflow.com "bm-2")');
+      expect(columns[0].cards).toHaveLength(2);
+      expect(columns[0].cards[0].content).toBe('[GitHub](https://github.com "bm-1")\nCode hosting platform');
+      expect(columns[0].cards[1].content).toBe('[Stack Overflow](https://stackoverflow.com "bm-2")');
 
       // News: 1 bookmark -> 1 task, no #stack (different top-level folder)
       expect(columns[1].title).toBe('News');
-      expect(columns[1].tasks).toHaveLength(1);
-      expect(columns[1].tasks[0].content).toBe('[Hacker News](https://news.ycombinator.com "bm-3")');
+      expect(columns[1].cards).toHaveLength(1);
+      expect(columns[1].cards[0].content).toBe('[Hacker News](https://news.ycombinator.com "bm-3")');
     });
 
     it('should flatten nested folders with full path titles and #stack', () => {
@@ -205,24 +205,24 @@ describe('XbelMapper', () => {
 
       // First column: no #stack
       expect(columns[0].title).toBe('Bookmarks Bar / Shopping / Deals');
-      expect(columns[0].tasks).toHaveLength(2);
-      expect(columns[0].tasks[0].content).toBe('[Amazon](https://amazon.com "bm-1")');
-      expect(columns[0].tasks[1].content).toBe('[eBay](https://ebay.com "bm-2")');
+      expect(columns[0].cards).toHaveLength(2);
+      expect(columns[0].cards[0].content).toBe('[Amazon](https://amazon.com "bm-1")');
+      expect(columns[0].cards[1].content).toBe('[eBay](https://ebay.com "bm-2")');
 
       // Same two topmost segments (Bookmarks Bar / Shopping): #stack
       expect(columns[1].title).toBe('Bookmarks Bar / Shopping / Stores #stack');
-      expect(columns[1].tasks).toHaveLength(1);
-      expect(columns[1].tasks[0].content).toBe('[Walmart](https://walmart.com "bm-3")');
+      expect(columns[1].cards).toHaveLength(1);
+      expect(columns[1].cards[0].content).toBe('[Walmart](https://walmart.com "bm-3")');
 
       // Different second segment (Tech vs Shopping): new stack, no #stack
       expect(columns[2].title).toBe('Bookmarks Bar / Tech');
-      expect(columns[2].tasks).toHaveLength(1);
-      expect(columns[2].tasks[0].content).toBe('[GitHub](https://github.com "bm-4")');
+      expect(columns[2].cards).toHaveLength(1);
+      expect(columns[2].cards[0].content).toBe('[GitHub](https://github.com "bm-4")');
 
       // Same two topmost segments (Bookmarks Bar / Tech): #stack
       expect(columns[3].title).toBe('Bookmarks Bar / Tech / Frontend #stack');
-      expect(columns[3].tasks).toHaveLength(1);
-      expect(columns[3].tasks[0].content).toBe('[React](https://react.dev "bm-5")');
+      expect(columns[3].cards).toHaveLength(1);
+      expect(columns[3].cards[0].content).toBe('[React](https://react.dev "bm-5")');
     });
 
     it('should not add #stack across different top-level folders', () => {
@@ -254,12 +254,12 @@ describe('XbelMapper', () => {
       expect(columns).toHaveLength(2);
 
       expect(columns[0].title).toBe('Parent');
-      expect(columns[0].tasks).toHaveLength(1);
-      expect(columns[0].tasks[0].content).toBe('[Root Bookmark](https://root.com "bm-root")');
+      expect(columns[0].cards).toHaveLength(1);
+      expect(columns[0].cards[0].content).toBe('[Root Bookmark](https://root.com "bm-root")');
 
       expect(columns[1].title).toBe('Parent / Child');
-      expect(columns[1].tasks).toHaveLength(1);
-      expect(columns[1].tasks[0].content).toBe('[Child Bookmark](https://child.com "bm-child")');
+      expect(columns[1].cards).toHaveLength(1);
+      expect(columns[1].cards[0].content).toBe('[Child Bookmark](https://child.com "bm-child")');
     });
   });
 
@@ -269,7 +269,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Dev Resources',
-          tasks: [
+          cards: [
             { id: 't-1', content: '[GitHub](https://github.com "bm-1")' },
             { id: 't-2', content: '[Stack Overflow](https://stackoverflow.com "bm-2")' },
           ]
@@ -277,7 +277,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-2',
           title: 'News',
-          tasks: [
+          cards: [
             { id: 't-3', content: '[Hacker News](https://news.ycombinator.com "bm-3")' },
           ]
         }
@@ -301,7 +301,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Bookmarks Bar / Shopping / Deals',
-          tasks: [
+          cards: [
             { id: 't-1', content: '[Amazon](https://amazon.com "bm-1")' },
             { id: 't-2', content: '[eBay](https://ebay.com "bm-2")' },
           ]
@@ -309,14 +309,14 @@ describe('XbelMapper', () => {
         {
           id: 'col-2',
           title: 'Bookmarks Bar / Shopping / Stores #stack',
-          tasks: [
+          cards: [
             { id: 't-3', content: '[Walmart](https://walmart.com "bm-3")' },
           ]
         },
         {
           id: 'col-3',
           title: 'Bookmarks Bar / Tech #stack',
-          tasks: [
+          cards: [
             { id: 't-4', content: '[GitHub](https://github.com "bm-4")' },
           ]
         },
@@ -356,7 +356,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Mixed',
-          tasks: [
+          cards: [
             { id: 't-1', content: '[Link](https://example.com "id-1")' },
             { id: 't-2', content: 'Plain text task without link' },
             { id: 't-3', content: '[Another](https://test.com "id-2")' },
@@ -376,7 +376,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Resources',
-          tasks: [
+          cards: [
             { id: 't-1', content: '[GitHub](https://github.com "bm-1")\nCode hosting' },
           ]
         }
@@ -508,7 +508,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Dev Resources',
-          tasks: [
+          cards: [
             { id: 'task-1', content: '[Old Title](https://old-url.com "bm-1")' },
           ]
         }
@@ -519,11 +519,11 @@ describe('XbelMapper', () => {
 
       expect(merged).toHaveLength(2); // Dev Resources + News
       expect(merged[0].title).toBe('Dev Resources');
-      expect(merged[0].tasks).toHaveLength(2); // 2 bookmarks = 2 tasks
+      expect(merged[0].cards).toHaveLength(2); // 2 bookmarks = 2 tasks
       // ID preserved for matched bookmark bm-1
-      expect(merged[0].tasks[0].id).toBe('task-1');
-      expect(merged[0].tasks[0].content).toContain('GitHub');
-      expect(merged[0].tasks[0].content).toContain('https://github.com');
+      expect(merged[0].cards[0].id).toBe('task-1');
+      expect(merged[0].cards[0].content).toContain('GitHub');
+      expect(merged[0].cards[0].content).toContain('https://github.com');
     });
 
     it('should preserve tasks without links', () => {
@@ -531,7 +531,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Dev Resources',
-          tasks: [
+          cards: [
             { id: 'task-1', content: '[GitHub](https://github.com "bm-1")' },
             { id: 'task-2', content: 'My local note without a link' },
           ]
@@ -552,15 +552,15 @@ describe('XbelMapper', () => {
       };
 
       const merged = XbelMapper.mergeXbelIntoColumns(incoming, existing);
-      expect(merged[0].tasks).toHaveLength(2);
-      expect(merged[0].tasks[0].id).toBe('task-1');
-      expect(merged[0].tasks[1].content).toBe('My local note without a link');
+      expect(merged[0].cards).toHaveLength(2);
+      expect(merged[0].cards[0].id).toBe('task-1');
+      expect(merged[0].cards[1].content).toBe('My local note without a link');
     });
 
     it('should preserve non-synced columns', () => {
       const existing = [
-        { id: 'col-1', title: 'Dev Resources', tasks: [] },
-        { id: 'col-2', title: 'My Private Column', tasks: [{ id: 't-1', content: 'Private' }] },
+        { id: 'col-1', title: 'Dev Resources', cards: [] },
+        { id: 'col-2', title: 'My Private Column', cards: [{ id: 't-1', content: 'Private' }] },
       ];
 
       const incoming = {
@@ -572,7 +572,7 @@ describe('XbelMapper', () => {
       const merged = XbelMapper.mergeXbelIntoColumns(incoming, existing);
       expect(merged).toHaveLength(2);
       expect(merged[1].title).toBe('My Private Column');
-      expect(merged[1].tasks[0].content).toBe('Private');
+      expect(merged[1].cards[0].content).toBe('Private');
     });
 
     it('should merge nested XBEL columns by folder path', () => {
@@ -580,21 +580,21 @@ describe('XbelMapper', () => {
         {
           id: 'col-deals',
           title: 'Bookmarks Bar / Shopping / Deals',
-          tasks: [
+          cards: [
             { id: 'task-old-1', content: '[Amazon](https://amazon.com "bm-1")' },
           ]
         },
         {
           id: 'col-tech',
           title: 'Bookmarks Bar / Tech #stack',
-          tasks: [
+          cards: [
             { id: 'task-old-2', content: '[GitHub](https://github.com "bm-4")' },
           ]
         },
         {
           id: 'col-local',
           title: 'My Notes',
-          tasks: [
+          cards: [
             { id: 'task-local', content: 'My local note' },
           ]
         },
@@ -610,19 +610,19 @@ describe('XbelMapper', () => {
       const dealsCol = merged.find(c => XbelMapper.extractFolderPath(c.title) === 'Bookmarks Bar / Shopping / Deals');
       expect(dealsCol).toBeDefined();
       expect(dealsCol!.id).toBe('col-deals');
-      expect(dealsCol!.tasks).toHaveLength(2); // Amazon + eBay
-      expect(dealsCol!.tasks[0].id).toBe('task-old-1'); // preserved ID for bm-1
+      expect(dealsCol!.cards).toHaveLength(2); // Amazon + eBay
+      expect(dealsCol!.cards[0].id).toBe('task-old-1'); // preserved ID for bm-1
 
       // Tech column preserved ID
       const techCol = merged.find(c => XbelMapper.extractFolderPath(c.title) === 'Bookmarks Bar / Tech');
       expect(techCol).toBeDefined();
       expect(techCol!.id).toBe('col-tech');
-      expect(techCol!.tasks[0].id).toBe('task-old-2'); // preserved ID for bm-4
+      expect(techCol!.cards[0].id).toBe('task-old-2'); // preserved ID for bm-4
 
       // Local column preserved
       const localCol = merged.find(c => c.title === 'My Notes');
       expect(localCol).toBeDefined();
-      expect(localCol!.tasks[0].content).toBe('My local note');
+      expect(localCol!.cards[0].content).toBe('My local note');
     });
 
     it('should add new columns for new XBEL folders', () => {
@@ -630,7 +630,7 @@ describe('XbelMapper', () => {
         {
           id: 'col-1',
           title: 'Bookmarks Bar / Shopping / Deals',
-          tasks: [
+          cards: [
             { id: 'task-1', content: '[Amazon](https://amazon.com "bm-1")' },
           ]
         },
@@ -668,7 +668,7 @@ describe('XbelMapper', () => {
     it('should not grow columns with mixed synced and non-synced columns', () => {
       const incoming1 = XbelMapper.parseXbel(nestedXbel);
       const existingBoard = [
-        { id: 'local-col', title: 'My Notes', tasks: [{ id: 'local-t', content: 'A plain note' }] },
+        { id: 'local-col', title: 'My Notes', cards: [{ id: 'local-t', content: 'A plain note' }] },
       ];
       const merged1 = XbelMapper.mergeXbelIntoColumns(incoming1, existingBoard);
       const colCount = merged1.length;
@@ -685,7 +685,7 @@ describe('XbelMapper', () => {
     it('should stabilize with evolving board state across cycles', () => {
       const incoming1 = XbelMapper.parseXbel(nestedXbel);
       let board = [
-        { id: 'local-col', title: 'TODO', tasks: [{ id: 'lt', content: 'My todo' }] },
+        { id: 'local-col', title: 'TODO', cards: [{ id: 'lt', content: 'My todo' }] },
       ];
 
       board = XbelMapper.mergeXbelIntoColumns(incoming1, board);
@@ -705,7 +705,7 @@ describe('XbelMapper', () => {
       let board = XbelMapper.mergeXbelIntoColumns(incoming1, []);
 
       // Capture task IDs from first sync
-      const initialIds = board.flatMap(c => c.tasks.map(t => t.id));
+      const initialIds = board.flatMap(c => c.cards.map(t => t.id));
 
       // Multiple sync cycles
       for (let i = 0; i < 3; i++) {
@@ -716,7 +716,7 @@ describe('XbelMapper', () => {
       }
 
       // Task IDs should be preserved
-      const finalIds = board.flatMap(c => c.tasks.map(t => t.id));
+      const finalIds = board.flatMap(c => c.cards.map(t => t.id));
       expect(finalIds).toEqual(initialIds);
     });
 
@@ -725,7 +725,7 @@ describe('XbelMapper', () => {
       let board = XbelMapper.mergeXbelIntoColumns(incoming1, []);
 
       // Capture initial task counts per column
-      const initialTaskCounts = board.map(c => c.tasks.length);
+      const initialTaskCounts = board.map(c => c.cards.length);
 
       for (let i = 0; i < 5; i++) {
         const xbel = XbelMapper.columnsToXbel(board);
@@ -733,7 +733,7 @@ describe('XbelMapper', () => {
         const incoming = XbelMapper.parseXbel(xml);
         board = XbelMapper.mergeXbelIntoColumns(incoming, board);
 
-        const taskCounts = board.map(c => c.tasks.length);
+        const taskCounts = board.map(c => c.cards.length);
         expect(taskCounts).toEqual(initialTaskCounts);
       }
     });

@@ -408,7 +408,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
      * Resolve a column title + card title to actual IDs in the panel's board.
      * Searches the board by content so IDs always match the panel's current state.
      */
-    private _resolveElementInBoard(panel: KanbanWebviewPanel, columnTitle: string, cardTitle?: string): { columnId: string; taskId?: string } | null {
+    private _resolveElementInBoard(panel: KanbanWebviewPanel, columnTitle: string, cardTitle?: string): { columnId: string; cardId?: string } | null {
         const board = panel.getBoard();
         if (!board) return null;
 
@@ -426,7 +426,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         // Find card by first line of content matching cardTitle
-        const card = column.tasks.find(t => {
+        const card = column.cards.find(t => {
             const content = t.content || '';
             const firstLine = content.replace(/\r\n/g, '\n').split('\n').find(l => l.trim().length > 0) ?? '';
             return firstLine === cardTitle;
@@ -437,7 +437,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             return { columnId: column.id };
         }
 
-        return { columnId: column.id, taskId: card.id };
+        return { columnId: column.id, cardId: card.id };
     }
 
     /**
@@ -456,7 +456,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (panel) {
                 const resolved = this._resolveElementInBoard(panel, columnTitle, cardTitle);
                 if (resolved) {
-                    panel.scrollToElement(resolved.columnId, resolved.taskId, true);
+                    panel.scrollToElement(resolved.columnId, resolved.cardId, true);
                 } else {
                     logger.warn(`[Dashboard] Could not resolve element: column="${columnTitle}" card="${cardTitle}"`);
                 }
@@ -654,7 +654,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 if (panel) {
                     const resolved = this._resolveElementInBoard(panel, message.columnTitle, message.cardTitle);
                     if (resolved) {
-                        panel.scrollToElement(resolved.columnId, resolved.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+                        panel.scrollToElement(resolved.columnId, resolved.cardId, true, message.elementPath, message.elementType, message.field, message.matchText);
                     }
                     return;
                 }
@@ -666,7 +666,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         if (panel) {
             const resolved = this._resolveElementInBoard(panel, message.columnTitle, message.cardTitle);
             if (resolved) {
-                panel.scrollToElement(resolved.columnId, resolved.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+                panel.scrollToElement(resolved.columnId, resolved.cardId, true, message.elementPath, message.elementType, message.field, message.matchText);
             }
         }
     }

@@ -149,7 +149,7 @@
         // Check task IDs across all columns
         const allTaskIds = [];
         window.cachedBoard.columns.forEach(col => {
-            (col.tasks || []).forEach(task => {
+            (col.cards || []).forEach(task => {
                 allTaskIds.push(task.id);
             });
         });
@@ -171,25 +171,25 @@
      */
     function checkTaskParentConsistency() {
         const issues = [];
-        const domTasks = document.querySelectorAll('.task-item[data-task-id]');
+        const domTasks = document.querySelectorAll('.task-item[data-card-id]');
 
-        // Build a map of taskId -> columnId from cachedBoard
+        // Build a map of cardId -> columnId from cachedBoard
         const taskToColumn = new Map();
         window.cachedBoard.columns.forEach(col => {
-            (col.tasks || []).forEach(task => {
+            (col.cards || []).forEach(task => {
                 taskToColumn.set(task.id, col.id);
             });
         });
 
         const misplacedTasks = [];
         domTasks.forEach(taskEl => {
-            const taskId = taskEl.dataset.taskId;
+            const cardId = taskEl.dataset.cardId;
             const domColumnEl = taskEl.closest('.kanban-full-height-column');
             const domColumnId = domColumnEl?.dataset.columnId;
-            const cachedColumnId = taskToColumn.get(taskId);
+            const cachedColumnId = taskToColumn.get(cardId);
 
             if (cachedColumnId && domColumnId && cachedColumnId !== domColumnId) {
-                misplacedTasks.push({ taskId, domColumnId, cachedColumnId });
+                misplacedTasks.push({ cardId, domColumnId, cachedColumnId });
             }
         });
 

@@ -29,7 +29,7 @@ import { logger } from '../../utils/logger';
  * Parameters for include switch operations
  */
 export interface IncludeSwitchParams {
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     oldFiles: string[];
     newFiles: string[];
@@ -81,8 +81,8 @@ export interface UIContext {
  */
 export interface EditContext {
     setEditingInProgress: (value: boolean) => void;
-    markTaskDirty: (taskId: string) => void;
-    clearTaskDirty: (taskId: string) => void;
+    markTaskDirty: (cardId: string) => void;
+    clearTaskDirty: (cardId: string) => void;
     markColumnDirty: (columnId: string) => void;
     clearColumnDirty: (columnId: string) => void;
     requestStopEditing: () => Promise<CapturedEdit | undefined>;
@@ -409,7 +409,7 @@ export type MessageHandler = (message: IncomingMessage, context: CommandContext)
  * export class CardCommands extends SwitchBasedCommand {
  *     readonly metadata = {
  *         id: 'task-commands',
- *         messageTypes: ['addTask', 'deleteTask'],
+ *         messageTypes: ['addCard', 'deleteCard'],
  *         // ...
  *     };
  *

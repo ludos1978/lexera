@@ -38,7 +38,7 @@ export interface ReplacementOptions {
     /** How to format the new path */
     pathFormat: PathFormat;
     /** Task ID for targeted updates */
-    taskId?: string;
+    cardId?: string;
     /** Column ID for targeted updates */
     columnId?: string;
     /** Whether the path is in a column title */
@@ -75,7 +75,7 @@ interface PathReplacement {
  * Parameters for include switch operations
  */
 export interface IncludeSwitchParams {
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     oldFiles: string[];
     newFiles: string[];
@@ -122,7 +122,7 @@ export class LinkReplacementService {
             newPath,
             basePath,
             mode: options.mode,
-            taskId: options.taskId,
+            cardId: options.cardId,
             columnId: options.columnId
         });
 
@@ -136,7 +136,7 @@ export class LinkReplacementService {
 
         // Resolve context base path
         const contextBasePath = options.mode === 'single'
-            ? this._resolveContextBasePath(board, basePath, options.taskId, options.columnId, options.isColumnTitle)
+            ? this._resolveContextBasePath(board, basePath, options.cardId, options.columnId, options.isColumnTitle)
             : basePath;
 
         // Find paths to replace
@@ -208,7 +208,7 @@ export class LinkReplacementService {
                 originalPath: brokenPath,
                 actualPath: notificationReplacement.oldPath,
                 newPath: resultNewPath,
-                taskId: options.taskId,
+                cardId: options.cardId,
                 columnId: options.columnId
             });
         }
@@ -236,7 +236,7 @@ export class LinkReplacementService {
     private _resolveContextBasePath(
         board: KanbanBoard | null | undefined,
         basePath: string,
-        taskId?: string,
+        cardId?: string,
         columnId?: string,
         isColumnTitle?: boolean
     ): string {
@@ -249,8 +249,8 @@ export class LinkReplacementService {
 
         if (isColumnTitle && column?.includeFiles?.length) {
             includePath = column.includeFiles[0];
-        } else if (taskId && column) {
-            const task = column.tasks.find((t: KanbanCard) => t.id === taskId);
+        } else if (cardId && column) {
+            const task = column.cards.find((t: KanbanCard) => t.id === cardId);
             includePath = task?.includeContext?.includeFilePath
                 || task?.includeFiles?.[0]
                 || column?.includeFiles?.[0];
@@ -278,8 +278,8 @@ export class LinkReplacementService {
     ): import('../core/stores').UndoEntry {
         // For single mode, use the existing targeted undo capture
         if (options.mode === 'single') {
-            if (options.taskId && options.columnId) {
-                return UndoCapture.forTask(board, options.taskId, options.columnId, 'path-replace');
+            if (options.cardId && options.columnId) {
+                return UndoCapture.forTask(board, options.cardId, options.columnId, 'path-replace');
             } else if (options.columnId) {
                 return UndoCapture.forColumn(board, options.columnId, 'path-replace');
             }
@@ -303,13 +303,13 @@ export class LinkReplacementService {
             }
 
             // Check tasks in this column
-            for (const task of column.tasks) {
+            for (const task of column.cards) {
                 const taskContent = task.content || '';
                 if (replacementPaths.some(p => taskContent.includes(p))) {
                     const key = `task:${task.id}`;
                     if (!seenTargets.has(key)) {
                         seenTargets.add(key);
-                        targets.push({ type: 'task', id: task.id, columnId: column.id });
+                        targets.push({ type: 'card', id: task.id, columnId: column.id });
                     }
                 }
             }
@@ -441,7 +441,7 @@ export class LinkReplacementService {
         const replacements = new Map<string, PathReplacement>();
 
         // Strategy 1: Search in board structure first
-        if (board && (options.taskId || options.columnId)) {
+        if (board && (options.cardId || options.columnId)) {
             const column = options.columnId
                 ? board.columns.find((c: KanbanColumn) => c.id === options.columnId)
                 : undefined;
@@ -449,8 +449,8 @@ export class LinkReplacementService {
             let textToSearch = '';
             if (options.isColumnTitle && column) {
                 textToSearch = column.title || '';
-            } else if (options.taskId && column) {
-                const task = column.tasks.find((t: KanbanCard) => t.id === options.taskId);
+            } else if (options.cardId && column) {
+                const task = column.cards.find((t: KanbanCard) => t.id === options.cardId);
                 if (task) {
                     textToSearch = task.content || '';
                 }
@@ -496,7 +496,7 @@ export class LinkReplacementService {
                 fileCount: files.length,
                 filePaths: files.map(f => f.getPath()),
                 boardAvailable: !!board,
-                taskId: options.taskId,
+                cardId: options.cardId,
                 columnId: options.columnId
             });
         }
@@ -685,7 +685,7 @@ export class LinkReplacementService {
         deps: ReplacementDependencies,
         oldTitle: string,
         newTitle: string,
-        taskId?: string,
+        cardId?: string,
         columnId?: string,
         isColumnTitle?: boolean
     ): Promise<boolean> {
@@ -775,7 +775,7 @@ export class LinkReplacementService {
                 }
 
                 // Check tasks
-                for (const task of column.tasks) {
+                for (const task of column.cards) {
                     const oldTaskContent = task.content || '';
                     const taskHasPath = replacementPaths.some(p => oldTaskContent.includes(p));
 
@@ -785,8 +785,8 @@ export class LinkReplacementService {
                         if (newTaskContent !== oldTaskContent) {
                             task.content = newTaskContent;
                             deps.webviewBridge.send({
-                                type: 'updateTaskContent',
-                                taskId: task.id,
+                                type: 'updateCardContent',
+                                cardId: task.id,
                                 columnId: column.id,
                                 task: task,
                                 imageMappings: {}
@@ -801,9 +801,9 @@ export class LinkReplacementService {
         }
 
         // Single mode - targeted updates
-        if (options.taskId && options.columnId) {
+        if (options.cardId && options.columnId) {
             const column = board.columns.find((c: KanbanColumn) => c.id === options.columnId);
-            const task = column?.tasks.find((t: KanbanCard) => t.id === options.taskId);
+            const task = column?.cards.find((t: KanbanCard) => t.id === options.cardId);
             if (task) {
                 const taskBaseDir = task.includeContext?.includeDir || mainFileDir;
                 const oldContent = task.content || '';
@@ -814,15 +814,15 @@ export class LinkReplacementService {
 
                 // Check for include switch
                 const hadIncludeSwitch = await this._handleIncludeSwitchIfNeeded(
-                    deps, oldTitle, newTitle, options.taskId, options.columnId, false
+                    deps, oldTitle, newTitle, options.cardId, options.columnId, false
                 );
                 if (hadIncludeSwitch) return;
 
                 task.content = newContent;
 
                 deps.webviewBridge.send({
-                    type: 'updateTaskContent',
-                    taskId: options.taskId,
+                    type: 'updateCardContent',
+                    cardId: options.cardId,
                     columnId: options.columnId,
                     task: task,
                     imageMappings: {}

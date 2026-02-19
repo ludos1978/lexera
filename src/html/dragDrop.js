@@ -1102,21 +1102,21 @@ function setupGlobalDragAndDrop() {
 
         // Update cached board
         if (window.cachedBoard) {
-            const taskId = taskItem.dataset.taskId;
+            const cardId = taskItem.dataset.cardId;
 
             // Find and remove task from original column
             const originalColumn = window.cachedBoard.columns.find(col => col.id === originalColumnId);
             const finalColumn = window.cachedBoard.columns.find(col => col.id === finalColumnId);
 
             if (originalColumn && finalColumn) {
-                const taskIndex = originalColumn.tasks.findIndex(t => t.id === taskId);
+                const taskIndex = originalColumn.cards.findIndex(t => t.id === cardId);
                 if (taskIndex >= 0) {
-                    const insertIndex = toIndex >= 0 ? Math.min(toIndex, finalColumn.tasks.length) : finalColumn.tasks.length;
+                    const insertIndex = toIndex >= 0 ? Math.min(toIndex, finalColumn.cards.length) : finalColumn.cards.length;
                     const undoSnapshot = JSON.parse(JSON.stringify(window.cachedBoard));
 
                     // Save undo state with positions BEFORE mutating cached board
                     console.log('[kanban.dragDrop.processTaskDrop.undo-capture]', {
-                        taskId: taskId,
+                        cardId: cardId,
                         fromColumnId: originalColumnId,
                         toColumnId: finalColumnId,
                         fromIndex: fromIndex,
@@ -1125,7 +1125,7 @@ function setupGlobalDragAndDrop() {
                     vscode.postMessage({
                         type: 'saveUndoState',
                         operation: originalColumnId !== finalColumnId ? 'moveTaskViaDrag' : 'reorderTaskViaDrag',
-                        taskId: taskId,
+                        cardId: cardId,
                         fromColumnId: originalColumnId,
                         fromIndex: fromIndex,
                         toColumnId: finalColumnId,
@@ -1133,10 +1133,10 @@ function setupGlobalDragAndDrop() {
                         currentBoard: undoSnapshot
                     });
 
-                    const [task] = originalColumn.tasks.splice(taskIndex, 1);
+                    const [task] = originalColumn.cards.splice(taskIndex, 1);
 
                     // Add task to new column at correct position
-                    finalColumn.tasks.splice(insertIndex, 0, task);
+                    finalColumn.cards.splice(insertIndex, 0, task);
 
                     // Update column displays after task move
                     if (typeof window.updateColumnDisplay === 'function') {
@@ -1156,7 +1156,7 @@ function setupGlobalDragAndDrop() {
 
                     // Update the task element's onclick handlers to reference the new columnId
                     if (originalColumnId !== finalColumnId) {
-                        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                        const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
                         if (taskElement) {
                             const taskItemEl = taskElement.closest('.task-item');
                             if (taskItemEl) {
@@ -1204,7 +1204,7 @@ function setupGlobalDragAndDrop() {
 
                     // Re-initialize the task element after move
                     if (typeof window.initializeTaskElement === 'function') {
-                        const movedTaskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                        const movedTaskElement = document.querySelector(`[data-card-id="${cardId}"]`);
                         if (movedTaskElement) {
                             window.initializeTaskElement(movedTaskElement);
                         }
@@ -1516,7 +1516,7 @@ function setupGlobalDragAndDrop() {
         const newColumn = {
             id: newColumnId,
             title: title,
-            tasks: columnData.tasks || [],
+            cards: columnData.cards || [],
             settings: columnData.settings || {}
         };
 
@@ -1714,7 +1714,7 @@ function setupGlobalDragAndDrop() {
             // Create empty column - uses dragState.dropTargetStack/dropTargetBeforeColumn directly
             insertColumnAtPosition({
                 title: 'New Column',
-                tasks: [],
+                cards: [],
                 settings: {}
             });
         } else if (templateDragState.isClipboardColumn) {
@@ -1724,7 +1724,7 @@ function setupGlobalDragAndDrop() {
                 const parsedData = window.PresentationParser.parseClipboardAsColumn(clipboardContent);
                 insertColumnAtPosition({
                     title: parsedData.columnTitle || '',
-                    tasks: parsedData.tasks || [],
+                    cards: parsedData.cards || [],
                     settings: {}
                 });
             }
@@ -1991,7 +1991,7 @@ function setupGlobalDragAndDrop() {
                 // Scroll to the restored element if it's outside the viewport
                 if (droppedTask && typeof scrollToElementIfNeeded === 'function') {
                     setTimeout(() => {
-                        scrollToElementIfNeeded(droppedTask, 'task');
+                        scrollToElementIfNeeded(droppedTask, 'card');
                     }, 100);
                 }
                 if (droppedColumn && typeof scrollToElementIfNeeded === 'function') {
@@ -2100,10 +2100,10 @@ function handleClipboardCardDrop(e, clipboardData) {
         const parsedData = JSON.parse(clipboardData);
 
         // Extract the task data
-        const taskData = parsedData.task || parsedData;
+        const cardData = parsedData.task || parsedData;
 
-        const content = typeof taskData.content === 'string'
-            ? taskData.content
+        const content = typeof cardData.content === 'string'
+            ? cardData.content
             : (typeof parsedData.content === 'string' ? parsedData.content : 'New Card');
 
         createTasksWithContent([{ content }], { x: e.clientX, y: e.clientY });
@@ -2203,7 +2203,7 @@ function handleParkedItemDrop(e, parkedData) {
         const parkedType = parsed.type;
         const dropPosition = { x: e.clientX, y: e.clientY };
 
-        if (parkedType === 'task') {
+        if (parkedType === 'card') {
             if (typeof restoreParkedTask === 'function') {
                 restoreParkedTask(parkedIndex, dropPosition);
             }
@@ -2703,7 +2703,7 @@ function getActiveTextEditor() {
         const editor = taskEditor.currentEditor;
         return {
             type: editor.type.replace('task-', '').replace('-', '-'),
-            taskId: editor.taskId,
+            cardId: editor.cardId,
             columnId: editor.columnId,
             cursorPosition: editor.element.selectionStart || 0,
             element: editor.element,
@@ -2729,15 +2729,15 @@ function getIncludeContextForDrop(event) {
     if (!taskElement) {
         return null;
     }
-    const taskId = taskElement.dataset?.taskId;
+    const cardId = taskElement.dataset?.cardId;
     const columnId = typeof window.getColumnIdFromElement === 'function'
         ? window.getColumnIdFromElement(taskElement)
         : taskElement.closest?.('[data-column-id]')?.dataset?.columnId;
-    if (!taskId || !columnId || !window.cachedBoard?.columns) {
+    if (!cardId || !columnId || !window.cachedBoard?.columns) {
         return null;
     }
     const column = window.cachedBoard.columns.find(col => col.id === columnId);
-    const task = column?.tasks?.find(t => t.id === taskId);
+    const task = column?.cards?.find(t => t.id === cardId);
     return task?.includeContext || null;
 }
 
@@ -2813,22 +2813,22 @@ function createTasksWithContent(tasksData, dropPosition, explicitColumnId = null
         });
 
         // Create all tasks at once
-        const newTasks = tasksData.map((taskData, index) => ({
+        const newTasks = tasksData.map((cardData, index) => ({
             id: `temp-drop-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-            content: typeof taskData.content === 'string'
-                ? taskData.content
+            content: typeof cardData.content === 'string'
+                ? cardData.content
                 : 'New Task'
         }));
 
         // Insert all tasks into the column at the correct position
-        const actualInsertionIndex = insertionIndex >= 0 && insertionIndex <= targetColumn.tasks.length
+        const actualInsertionIndex = insertionIndex >= 0 && insertionIndex <= targetColumn.cards.length
             ? insertionIndex
-            : targetColumn.tasks.length;
+            : targetColumn.cards.length;
 
-        if (actualInsertionIndex >= 0 && actualInsertionIndex <= targetColumn.tasks.length) {
-            targetColumn.tasks.splice(actualInsertionIndex, 0, ...newTasks);
+        if (actualInsertionIndex >= 0 && actualInsertionIndex <= targetColumn.cards.length) {
+            targetColumn.cards.splice(actualInsertionIndex, 0, ...newTasks);
         } else {
-            targetColumn.tasks.push(...newTasks);
+            targetColumn.cards.push(...newTasks);
         }
 
         // Mark as unsaved changes (syncs modified board to backend)
@@ -3014,7 +3014,7 @@ function setupTaskDragHandle(handle) {
                 }
             }
 
-            const taskId = taskItem.dataset.taskId;
+            const cardId = taskItem.dataset.cardId;
             const columnId = window.getColumnIdFromElement(taskItem);
 
             // Store original position
@@ -3029,15 +3029,15 @@ function setupTaskDragHandle(handle) {
             dragState.affectedColumns = new Set(); // PERFORMANCE: Track affected columns for targeted cleanup
             dragState.affectedColumns.add(dragState.originalTaskParent); // Add origin column
             dragDropStateMachine.start(dragDropStateMachine.states.TASK, {
-                taskId,
+                cardId,
                 columnId
             });
 
             // Set multiple data formats
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', `kanban-task:${taskId}`); // Add prefix
-            e.dataTransfer.setData('application/kanban-task', taskId);
-            e.dataTransfer.setData('application/x-kanban-task', taskId); // Fallback
+            e.dataTransfer.setData('text/plain', `kanban-task:${cardId}`); // Add prefix
+            e.dataTransfer.setData('application/kanban-task', cardId);
+            e.dataTransfer.setData('application/x-kanban-task', cardId); // Fallback
 
             // DON'T add dragging class here - causes layout shift that cancels drag
             // Will be added on first dragover event instead
@@ -4267,11 +4267,11 @@ function initializeParkedItems() {
             return;
         }
 
-        column.tasks?.forEach((task) => {
+        column.cards?.forEach((task) => {
             const taskContent = getTaskContent(task);
             if (taskContent.includes(PARKED_TAG)) {
                 parkedItems.push({
-                    type: 'task',
+                    type: 'card',
                     id: task.id,
                     title: removeInternalTags(getTaskSummaryLine(task)) ||
                            removeInternalTags(getTaskRemainingContent(task).substring(0, 50)) ||
@@ -4434,14 +4434,14 @@ function handleClipboardDropTargetDrop(event) {
  * Park a task - just add the tag, rendering will filter it out
  */
 function parkTask(taskElement) {
-    const taskId = taskElement.dataset.taskId;
+    const cardId = taskElement.dataset.cardId;
     const columnElement = taskElement.closest('.kanban-full-height-column');
     const columnId = columnElement?.dataset.columnId;
 
-    console.log('[parkTask] Looking for task', { taskId, columnId, hasCachedBoard: !!window.cachedBoard });
+    console.log('[parkTask] Looking for task', { cardId, columnId, hasCachedBoard: !!window.cachedBoard });
 
-    if (!taskId || !columnId || !window.cachedBoard) {
-        console.warn('[parkTask] Missing required data', { taskId, columnId, hasCachedBoard: !!window.cachedBoard });
+    if (!cardId || !columnId || !window.cachedBoard) {
+        console.warn('[parkTask] Missing required data', { cardId, columnId, hasCachedBoard: !!window.cachedBoard });
         return;
     }
 
@@ -4451,18 +4451,18 @@ function parkTask(taskElement) {
         return;
     }
 
-    const task = column.tasks.find(t => t.id === taskId);
+    const task = column.cards.find(t => t.id === cardId);
     if (!task) {
-        console.warn('[parkTask] Task not found in column', { taskId, columnId, availableTasks: column.tasks.map(t => t.id) });
+        console.warn('[parkTask] Task not found in column', { cardId, columnId, availableTasks: column.cards.map(t => t.id) });
         return;
     }
 
-    console.log('[parkTask] Found task, adding tag', { taskId, currentTitle: getTaskSummaryLine(task) });
+    console.log('[parkTask] Found task, adding tag', { cardId, currentTitle: getTaskSummaryLine(task) });
 
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'parkTask',
-        taskId: taskId,
+        cardId: cardId,
         columnId: columnId,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
@@ -4511,7 +4511,7 @@ function handleParkedItemDragStart(event, index) {
     }));
 
     // Mark the drag state
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         dragState.draggedClipboardCard = item.data;
         dragDropStateMachine.start(dragDropStateMachine.states.CLIPBOARD, {
             source: 'parked-task',
@@ -4571,7 +4571,7 @@ function handleParkedItemDragEnd(event) {
  */
 function restoreParkedTask(parkedIndex, dropPosition) {
     const item = parkedItems[parkedIndex];
-    if (!item || item.type !== 'task') return;
+    if (!item || item.type !== 'card') return;
 
     const task = item.data;
     if (!task) return;
@@ -4579,7 +4579,7 @@ function restoreParkedTask(parkedIndex, dropPosition) {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreParkedTask',
-        taskId: task.id,
+        cardId: task.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
@@ -4598,7 +4598,7 @@ function restoreParkedTask(parkedIndex, dropPosition) {
             let sourceColumn = null;
             let sourceTaskIndex = -1;
             for (const col of window.cachedBoard.columns) {
-                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     sourceColumn = col;
                     sourceTaskIndex = idx;
@@ -4610,14 +4610,14 @@ function restoreParkedTask(parkedIndex, dropPosition) {
 
             if (sourceColumn && targetColumn && sourceTaskIndex >= 0) {
                 // Remove from source column
-                const [movedTask] = sourceColumn.tasks.splice(sourceTaskIndex, 1);
+                const [movedTask] = sourceColumn.cards.splice(sourceTaskIndex, 1);
 
                 // Insert at target position
                 insertIndex = dropResult.insertionIndex;
-                if (insertIndex < 0 || insertIndex > targetColumn.tasks.length) {
-                    insertIndex = targetColumn.tasks.length;
+                if (insertIndex < 0 || insertIndex > targetColumn.cards.length) {
+                    insertIndex = targetColumn.cards.length;
                 }
-                targetColumn.tasks.splice(insertIndex, 0, movedTask);
+                targetColumn.cards.splice(insertIndex, 0, movedTask);
                 targetColumnId = dropResult.columnId;
             }
         }
@@ -4679,7 +4679,7 @@ function restoreParkedColumn(parkedIndex, dropPosition, capturedDropTargetStack,
 
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
-    column.tasks?.forEach(task => {
+    column.cards?.forEach(task => {
         clearInternalTagsFromTask(task);
     });
 
@@ -4785,7 +4785,7 @@ function removeParkedItem(index) {
     });
 
     // Item is already in cachedBoard - replace PARKED_TAG with DELETED_TAG
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         const task = item.data;
         if (task) {
             replaceInternalTagInTask(task, PARKED_TAG, DELETED_TAG);
@@ -4835,7 +4835,7 @@ function restoreParkedItemByIndex(index) {
     });
 
     // Item is already in cachedBoard - just remove the PARKED_TAG
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         const task = item.data;
         if (task) {
             clearInternalTagsFromTask(task);
@@ -4844,7 +4844,7 @@ function restoreParkedItemByIndex(index) {
             let targetColumnId = null;
             let taskIndex = -1;
             for (const col of window.cachedBoard.columns) {
-                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     targetColumnId = col.id;
                     taskIndex = idx;
@@ -4867,7 +4867,7 @@ function restoreParkedItemByIndex(index) {
         if (column) {
             column.title = removeInternalTags(column.title);
             // Also remove tags from tasks in the column
-            column.tasks?.forEach(task => {
+            column.cards?.forEach(task => {
                 clearInternalTagsFromTask(task);
             });
 
@@ -4980,11 +4980,11 @@ function initializeDeletedItems() {
             return;
         }
 
-        column.tasks?.forEach((task) => {
+        column.cards?.forEach((task) => {
             const taskContent = getTaskContent(task);
             if (taskContent.includes(DELETED_TAG)) {
                 deletedItems.push({
-                    type: 'task',
+                    type: 'card',
                     id: task.id,
                     title: removeInternalTags(getTaskSummaryLine(task)) ||
                            removeInternalTags(getTaskRemainingContent(task).substring(0, 50)) ||
@@ -5169,22 +5169,22 @@ function handleTrashDropTargetDrop(event) {
  * Trash a task - just add the tag, rendering will filter it out
  */
 function trashTask(taskElement) {
-    const taskId = taskElement.dataset.taskId;
+    const cardId = taskElement.dataset.cardId;
     const columnElement = taskElement.closest('.kanban-full-height-column');
     const columnId = columnElement?.dataset.columnId;
 
-    if (!taskId || !columnId || !window.cachedBoard) return;
+    if (!cardId || !columnId || !window.cachedBoard) return;
 
     const column = window.cachedBoard.columns.find(c => c.id === columnId);
     if (!column) return;
 
-    const task = column.tasks.find(t => t.id === taskId);
+    const task = column.cards.find(t => t.id === cardId);
     if (!task) return;
 
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'trashTask',
-        taskId: taskId,
+        cardId: cardId,
         columnId: columnId,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
@@ -5280,7 +5280,7 @@ function trashColumn(columnElement) {
         }
     }
 
-    const parkedTasks = findParkedTasksInColumn(column.tasks);
+    const parkedTasks = findParkedTasksInColumn(column.cards);
     warnIfParkedTasksWillBeDeleted(
         parkedTasks,
         'Warning: Parked Tasks Will Be Deleted',
@@ -5322,7 +5322,7 @@ function trashParkedItem(parkedIndex) {
     });
 
     // Item is already in cachedBoard - just replace PARKED_TAG with DELETED_TAG
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         const task = item.data;
         if (task) {
             replaceInternalTagInTask(task, PARKED_TAG, DELETED_TAG);
@@ -5352,7 +5352,7 @@ function handleDeletedItemDragStart(event, index) {
     }));
 
     // Mark the drag state
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         dragState.draggedClipboardCard = item.data;
         dragDropStateMachine.start(dragDropStateMachine.states.CLIPBOARD, {
             source: 'deleted-task',
@@ -5411,7 +5411,7 @@ function handleDeletedItemDragEnd(event) {
  */
 function restoreDeletedTask(deletedIndex, dropPosition) {
     const item = deletedItems[deletedIndex];
-    if (!item || item.type !== 'task') return;
+    if (!item || item.type !== 'card') return;
 
     const task = item.data;
     if (!task) return;
@@ -5419,7 +5419,7 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreDeletedTask',
-        taskId: task.id,
+        cardId: task.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
@@ -5438,7 +5438,7 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
             let sourceColumn = null;
             let sourceTaskIndex = -1;
             for (const col of window.cachedBoard.columns) {
-                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     sourceColumn = col;
                     sourceTaskIndex = idx;
@@ -5450,14 +5450,14 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
 
             if (sourceColumn && targetColumn && sourceTaskIndex >= 0) {
                 // Remove from source column
-                const [movedTask] = sourceColumn.tasks.splice(sourceTaskIndex, 1);
+                const [movedTask] = sourceColumn.cards.splice(sourceTaskIndex, 1);
 
                 // Insert at target position
                 insertIndex = dropResult.insertionIndex;
-                if (insertIndex < 0 || insertIndex > targetColumn.tasks.length) {
-                    insertIndex = targetColumn.tasks.length;
+                if (insertIndex < 0 || insertIndex > targetColumn.cards.length) {
+                    insertIndex = targetColumn.cards.length;
                 }
-                targetColumn.tasks.splice(insertIndex, 0, movedTask);
+                targetColumn.cards.splice(insertIndex, 0, movedTask);
                 targetColumnId = dropResult.columnId;
             }
         }
@@ -5521,7 +5521,7 @@ function restoreDeletedColumn(deletedIndex, dropPosition, capturedDropTargetStac
 
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
-    column.tasks?.forEach(task => {
+    column.cards?.forEach(task => {
         clearInternalTagsFromTask(task);
     });
 
@@ -5565,7 +5565,7 @@ function restoreDeletedItemByIndex(index) {
     });
 
     // Item is already in cachedBoard with tag - just remove the tag
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         const task = item.data;
         if (task) {
             clearInternalTagsFromTask(task);
@@ -5574,7 +5574,7 @@ function restoreDeletedItemByIndex(index) {
             let targetColumnId = null;
             let taskIndex = -1;
             for (const col of window.cachedBoard.columns) {
-                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     targetColumnId = col.id;
                     taskIndex = idx;
@@ -5596,7 +5596,7 @@ function restoreDeletedItemByIndex(index) {
         const column = item.data;
         if (column) {
             column.title = removeInternalTags(column.title);
-            column.tasks?.forEach(task => {
+            column.cards?.forEach(task => {
                 clearInternalTagsFromTask(task);
             });
 
@@ -5637,7 +5637,7 @@ function permanentlyRemoveDeletedItem(index) {
     if (index < 0 || index >= deletedItems.length) return;
 
     const item = deletedItems[index];
-    const parkedTasks = item.type === 'column' ? findParkedTasksInColumn(item.data?.tasks) : [];
+    const parkedTasks = item.type === 'column' ? findParkedTasksInColumn(item.data?.cards) : [];
 
     warnIfParkedTasksWillBeDeleted(
         parkedTasks,
@@ -5660,10 +5660,10 @@ function doPermanentlyRemoveDeletedItem(item) {
     // Actually remove the item from cachedBoard
     if (item.type === 'column') {
         window.cachedBoard.columns = window.cachedBoard.columns.filter(c => c.id !== item.id);
-    } else if (item.type === 'task') {
+    } else if (item.type === 'card') {
         window.cachedBoard.columns.forEach(column => {
-            if (column.tasks) {
-                column.tasks = column.tasks.filter(t => t.id !== item.id);
+            if (column.cards) {
+                column.cards = column.cards.filter(t => t.id !== item.id);
             }
         });
     }
@@ -5692,7 +5692,7 @@ function handleDeletedItemDrop(e, dataString) {
     const item = deletedItems[deletedIndex];
     const dropPosition = { x: e.clientX, y: e.clientY };
 
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         restoreDeletedTask(deletedIndex, dropPosition);
     } else if (item.type === 'column') {
         restoreDeletedColumn(deletedIndex, dropPosition);
@@ -5708,7 +5708,7 @@ function emptyTrash() {
     // Collect parked tasks from all deleted columns
     const allParkedTasks = deletedItems
         .filter(item => item.type === 'column')
-        .flatMap(item => findParkedTasksInColumn(item.data?.tasks));
+        .flatMap(item => findParkedTasksInColumn(item.data?.cards));
 
     warnIfParkedTasksWillBeDeleted(
         allParkedTasks,
@@ -5734,8 +5734,8 @@ function doEmptyTrash() {
 
     // Remove deleted tasks from remaining columns
     window.cachedBoard.columns.forEach(column => {
-        if (column.tasks) {
-            column.tasks = column.tasks.filter(t =>
+        if (column.cards) {
+            column.cards = column.cards.filter(t =>
                 !t.content?.includes(DELETED_TAG)
             );
         }
@@ -5796,11 +5796,11 @@ function initializeArchivedItems() {
             return;
         }
 
-        column.tasks?.forEach((task) => {
+        column.cards?.forEach((task) => {
             const taskContent = getTaskContent(task);
             if (taskContent.includes(ARCHIVED_TAG)) {
                 archivedItems.push({
-                    type: 'task',
+                    type: 'card',
                     id: task.id,
                     title: removeInternalTags(getTaskSummaryLine(task)) ||
                            removeInternalTags(getTaskRemainingContent(task).substring(0, 50)) ||
@@ -5956,11 +5956,11 @@ function handleArchiveDropTargetDrop(event) {
  * Archive a task - just add the tag, rendering will filter it out
  */
 function archiveTask(taskElement) {
-    const taskId = taskElement.dataset.taskId;
+    const cardId = taskElement.dataset.cardId;
     const columnElement = taskElement.closest('.kanban-full-height-column');
     const columnId = columnElement?.dataset.columnId;
 
-    if (!taskId || !columnId || !window.cachedBoard) {
+    if (!cardId || !columnId || !window.cachedBoard) {
         return;
     }
 
@@ -5969,7 +5969,7 @@ function archiveTask(taskElement) {
         return;
     }
 
-    const task = column.tasks.find(t => t.id === taskId);
+    const task = column.cards.find(t => t.id === cardId);
     if (!task) {
         return;
     }
@@ -5977,7 +5977,7 @@ function archiveTask(taskElement) {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'archiveTask',
-        taskId: taskId,
+        cardId: cardId,
         columnId: columnId,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
@@ -6026,7 +6026,7 @@ function handleArchivedItemDragStart(event, index) {
     }));
 
     // Mark the drag state
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         dragState.draggedClipboardCard = item.data;
         dragDropStateMachine.start(dragDropStateMachine.states.CLIPBOARD, {
             source: 'archived-task',
@@ -6086,7 +6086,7 @@ function handleArchivedItemDragEnd(event) {
  */
 function restoreArchivedTask(archivedIndex, dropPosition) {
     const item = archivedItems[archivedIndex];
-    if (!item || item.type !== 'task') return;
+    if (!item || item.type !== 'card') return;
 
     const task = item.data;
     if (!task) return;
@@ -6094,7 +6094,7 @@ function restoreArchivedTask(archivedIndex, dropPosition) {
     vscode.postMessage({
         type: 'saveUndoState',
         operation: 'restoreArchivedTask',
-        taskId: task.id,
+        cardId: task.id,
         currentBoard: JSON.parse(JSON.stringify(window.cachedBoard))
     });
 
@@ -6113,7 +6113,7 @@ function restoreArchivedTask(archivedIndex, dropPosition) {
             let sourceColumn = null;
             let sourceTaskIndex = -1;
             for (const col of window.cachedBoard.columns) {
-                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     sourceColumn = col;
                     sourceTaskIndex = idx;
@@ -6125,14 +6125,14 @@ function restoreArchivedTask(archivedIndex, dropPosition) {
 
             if (sourceColumn && targetColumn && sourceTaskIndex >= 0) {
                 // Remove from source column
-                const [movedTask] = sourceColumn.tasks.splice(sourceTaskIndex, 1);
+                const [movedTask] = sourceColumn.cards.splice(sourceTaskIndex, 1);
 
                 // Insert at target position
                 insertIndex = dropResult.insertionIndex;
-                if (insertIndex < 0 || insertIndex > targetColumn.tasks.length) {
-                    insertIndex = targetColumn.tasks.length;
+                if (insertIndex < 0 || insertIndex > targetColumn.cards.length) {
+                    insertIndex = targetColumn.cards.length;
                 }
-                targetColumn.tasks.splice(insertIndex, 0, movedTask);
+                targetColumn.cards.splice(insertIndex, 0, movedTask);
                 targetColumnId = dropResult.columnId;
             }
         }
@@ -6185,7 +6185,7 @@ function restoreArchivedColumn(archivedIndex, dropPosition, capturedDropTargetSt
 
     // Remove the tag from column and its tasks
     column.title = removeInternalTags(column.title);
-    column.tasks?.forEach(task => {
+    column.cards?.forEach(task => {
         clearInternalTagsFromTask(task);
     });
 
@@ -6224,7 +6224,7 @@ function restoreArchivedItemByIndex(index) {
     });
 
     // Item is already in cachedBoard - just remove the ARCHIVED_TAG
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         const task = item.data;
         if (task) {
             clearInternalTagsFromTask(task);
@@ -6233,7 +6233,7 @@ function restoreArchivedItemByIndex(index) {
             let targetColumnId = null;
             let taskIndex = -1;
             for (const col of window.cachedBoard.columns) {
-                const idx = col.tasks?.findIndex(t => t.id === task.id);
+                const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     targetColumnId = col.id;
                     taskIndex = idx;
@@ -6256,7 +6256,7 @@ function restoreArchivedItemByIndex(index) {
         if (column) {
             column.title = removeInternalTags(column.title);
             // Also remove tags from tasks in the column
-            column.tasks?.forEach(task => {
+            column.cards?.forEach(task => {
                 clearInternalTagsFromTask(task);
             });
 
@@ -6343,8 +6343,8 @@ function handleArchivedItemsExported(message) {
 
         // Remove exported tasks from remaining columns
         window.cachedBoard.columns.forEach(column => {
-            if (column.tasks) {
-                column.tasks = column.tasks.filter(t => !exportedIds.includes(t.id));
+            if (column.cards) {
+                column.cards = column.cards.filter(t => !exportedIds.includes(t.id));
             }
         });
 
@@ -6377,7 +6377,7 @@ function handleArchivedItemDrop(e, dataString) {
     const item = archivedItems[archivedIndex];
     const dropPosition = { x: e.clientX, y: e.clientY };
 
-    if (item.type === 'task') {
+    if (item.type === 'card') {
         restoreArchivedTask(archivedIndex, dropPosition);
     } else if (item.type === 'column') {
         restoreArchivedColumn(archivedIndex, dropPosition);

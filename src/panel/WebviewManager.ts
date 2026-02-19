@@ -173,7 +173,7 @@ export class WebviewManager {
             this._extractAssetDirs(column.title, columnBaseDir, assetDirs, imageRegex, htmlMediaRegex);
 
             // Scan each task in the column
-            for (const task of column.tasks) {
+            for (const task of column.cards) {
                 // Use task's include context if available, otherwise column base
                 let taskBaseDir = columnBaseDir;
                 if (task.includeContext?.includeDir) {

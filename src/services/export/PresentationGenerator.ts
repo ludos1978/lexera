@@ -104,7 +104,7 @@ export class PresentationGenerator {
             slideContents.push(columnTitle + '\n\n');
 
             // Task slides
-            const tasks = this.filterTasks(column.tasks, options);
+            const tasks = this.filterTasks(column.cards, options);
             for (const task of tasks) {
                 slideContents.push(this.taskToSlideContent(task, options));
             }
@@ -153,7 +153,7 @@ export class PresentationGenerator {
             lines.push(`# ${columnTitle}`, '');
 
             // Filter tasks
-            const tasks = this.filterTasks(column.tasks, options);
+            const tasks = this.filterTasks(column.cards, options);
 
             for (const task of tasks) {
                 // SIMPLIFIED: Use task.content directly, no title/description split

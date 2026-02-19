@@ -104,12 +104,12 @@ export class FileCommands extends SwitchBasedCommand {
      * Flow: Alt+click → openLink message → LinkHandler method → opens or searches.
      */
     private async handleOpenLink(message: OpenLinkMessage, context: CommandContext): Promise<CommandResult> {
-        const { linkType, target, taskId, columnId, linkIndex, includeContext, forceExternal } = message;
+        const { linkType, target, cardId, columnId, linkIndex, includeContext, forceExternal } = message;
 
         logger.debug('[FileCommands.handleOpenLink] START', JSON.stringify({
             linkType,
             target: target?.slice(-30),
-            taskId,
+            cardId,
             columnId,
             linkIndex,
             hasIncludeContext: !!includeContext,
@@ -125,11 +125,11 @@ export class FileCommands extends SwitchBasedCommand {
             case LinkType.FILE:
             case LinkType.IMAGE:
                 // Include file content is synced in-memory by BoardSyncHandler
-                await context.linkHandler.handleFileLink(target, taskId, columnId, linkIndex, includeContext, forceExternal);
+                await context.linkHandler.handleFileLink(target, cardId, columnId, linkIndex, includeContext, forceExternal);
                 break;
 
             case LinkType.WIKI:
-                await context.linkHandler.handleWikiLink(target, taskId, columnId, linkIndex, includeContext);
+                await context.linkHandler.handleWikiLink(target, cardId, columnId, linkIndex, includeContext);
                 break;
 
             case LinkType.EXTERNAL:

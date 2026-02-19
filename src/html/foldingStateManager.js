@@ -79,7 +79,7 @@ function applyDefaultFoldingToNewDocument() {
 
     // Don't reset existing state, just add empty columns to collapsed set
     window.currentBoard.columns.forEach(column => {
-        if (!column.tasks || column.tasks.length === 0) {
+        if (!column.cards || column.cards.length === 0) {
             window.collapsedColumns.add(column.id);
         }
     });

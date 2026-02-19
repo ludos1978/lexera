@@ -115,7 +115,7 @@ export class EditModeCommands extends SwitchBasedCommand {
         // Also set edit mode on include files if editing within an include
         const board = context.getCurrentBoard();
         const msg = message as any;
-        if (board && (msg.taskId || msg.columnId)) {
+        if (board && (msg.cardId || msg.columnId)) {
             const allFiles = fileRegistry?.getAll() || [];
             for (const file of allFiles) {
                 if (file.getFileType?.() !== 'main') {
@@ -159,7 +159,7 @@ export class EditModeCommands extends SwitchBasedCommand {
         const msg = message as any;
         if (msg.itemType === 'column' && msg.itemId) {
             context.markColumnDirty(msg.itemId);
-        } else if (msg.itemType === 'task' && msg.itemId) {
+        } else if (msg.itemType === 'card' && msg.itemId) {
             context.markTaskDirty(msg.itemId);
         }
         return this.success();
@@ -169,7 +169,7 @@ export class EditModeCommands extends SwitchBasedCommand {
         const msg = message as any;
         if (msg.itemType === 'column' && msg.itemId) {
             context.clearColumnDirty(msg.itemId);
-        } else if (msg.itemType === 'task' && msg.itemId) {
+        } else if (msg.itemType === 'card' && msg.itemId) {
             context.clearTaskDirty(msg.itemId);
         }
         return this.success();
@@ -208,17 +208,17 @@ export class EditModeCommands extends SwitchBasedCommand {
             }
 
             if (operation === 'moveTaskViaDrag' || operation === 'reorderTaskViaDrag') {
-                const hasMoveContext = msg.taskId && msg.fromColumnId && msg.toColumnId;
+                const hasMoveContext = msg.cardId && msg.fromColumnId && msg.toColumnId;
                 if (hasMoveContext) {
                     const fromColumn = boardToSave.columns.find((col: KanbanColumn) => col.id === msg.fromColumnId);
                     const resolvedFromIndex = (typeof msg.fromIndex === 'number')
                         ? msg.fromIndex
-                        : (fromColumn ? fromColumn.tasks.findIndex((t: KanbanCard) => t.id === msg.taskId) : -1);
+                        : (fromColumn ? fromColumn.cards.findIndex((t: KanbanCard) => t.id === msg.cardId) : -1);
                     const resolvedToIndex = (typeof msg.toIndex === 'number') ? msg.toIndex : -1;
 
                     logger.debug('[kanban.EditModeCommands.saveUndoState.drag-task]', {
                         operation,
-                        taskId: msg.taskId,
+                        cardId: msg.cardId,
                         fromColumnId: msg.fromColumnId,
                         toColumnId: msg.toColumnId,
                         fromIndex: resolvedFromIndex,
@@ -227,7 +227,7 @@ export class EditModeCommands extends SwitchBasedCommand {
                     context.boardStore.saveUndoEntry(
                         UndoCapture.forTaskMove(boardToSave, {
                             type: 'task-move',
-                            taskId: msg.taskId,
+                            cardId: msg.cardId,
                             fromColumnId: msg.fromColumnId,
                             fromIndex: resolvedFromIndex,
                             toColumnId: msg.toColumnId,
@@ -249,9 +249,9 @@ export class EditModeCommands extends SwitchBasedCommand {
                 return this.success();
             }
 
-            if (msg.taskId && msg.columnId) {
+            if (msg.cardId && msg.columnId) {
                 context.boardStore.saveUndoEntry(
-                    UndoCapture.forTask(boardToSave, msg.taskId, msg.columnId, operation)
+                    UndoCapture.forTask(boardToSave, msg.cardId, msg.columnId, operation)
                 );
                 return this.success();
             }

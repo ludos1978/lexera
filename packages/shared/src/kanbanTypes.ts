@@ -46,7 +46,7 @@ export interface BoardSettings {
   layoutPreset?: string;
   stickyStackMode?: string;
   tagVisibility?: string;
-  taskMinHeight?: string;
+  cardMinHeight?: string;
   fontSize?: string;
   fontFamily?: string;
   whitespace?: string;

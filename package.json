@@ -5704,7 +5704,7 @@
           "default": "1px solid var(--vscode-panel-border)",
           "description": "Complete border style for columns (e.g., '1px solid var(--vscode-panel-border)', '1px dashed red', 'none'). Full CSS border shorthand supported."
         },
-        "markdown-kanban.taskBorder": {
+        "markdown-kanban.cardBorder": {
           "type": "string",
           "default": "1px solid var(--vscode-panel-border)",
           "description": "Complete border style for task cards (e.g., '1px solid var(--vscode-panel-border)', '2px dotted blue', 'none'). Full CSS border shorthand supported."

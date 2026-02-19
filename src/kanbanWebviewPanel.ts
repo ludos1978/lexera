@@ -265,17 +265,17 @@ export class KanbanWebviewPanel {
      */
     public scrollToElement(
         columnId: string,
-        taskId?: string,
+        cardId?: string,
         highlight: boolean = true,
         elementPath?: string,
         elementType?: string,
-        field?: 'columnTitle' | 'taskContent',
+        field?: 'columnTitle' | 'cardContent',
         matchText?: string
     ): void {
         const message: ScrollToElementMessage = {
             type: 'scrollToElement',
             columnId,
-            taskId,
+            cardId,
             highlight,
             elementPath,
             elementType,
@@ -286,7 +286,7 @@ export class KanbanWebviewPanel {
         // Reveal the panel first
         this._panel.reveal(undefined, false);
 
-        logger.debug('[KanbanWebviewPanel.scrollToElement] webviewReady:', this._context.webviewReady, 'columnId:', columnId, 'taskId:', taskId);
+        logger.debug('[KanbanWebviewPanel.scrollToElement] webviewReady:', this._context.webviewReady, 'columnId:', columnId, 'cardId:', cardId);
 
         if (this._context.webviewReady) {
             // Webview is ready, send immediately
@@ -835,14 +835,14 @@ export class KanbanWebviewPanel {
 
     public setEditingInProgress(isEditing: boolean): void { this._context.setEditingInProgress(isEditing); }
     public markColumnDirty(columnId: string): void { this._boardStore.markColumnDirty(columnId); }
-    public markTaskDirty(taskId: string): void { this._boardStore.markTaskDirty(taskId); }
+    public markTaskDirty(cardId: string): void { this._boardStore.markTaskDirty(cardId); }
     public clearColumnDirty(columnId: string): void { this._boardStore.clearColumnDirty(columnId); }
-    public clearTaskDirty(taskId: string): void { this._boardStore.clearTaskDirty(taskId); }
+    public clearTaskDirty(cardId: string): void { this._boardStore.clearTaskDirty(cardId); }
 
     public syncDirtyItems(): void { this._webviewUpdateService?.syncDirtyItems(); }
 
     public async handleIncludeSwitch(params: {
-        columnId?: string; taskId?: string; oldFiles: string[]; newFiles: string[];
+        columnId?: string; cardId?: string; oldFiles: string[]; newFiles: string[];
         newTitle?: string; preloadedContent?: Map<string, string>;
     }): Promise<void> {
         return this._includeCoordinator.handleIncludeSwitch(params);

@@ -65,7 +65,7 @@ export const add = (
         const newColumn: KanbanColumn = {
             id: columnData.id || IdGenerator.generateColumnId(),
             title: columnData.title || 'New Column',
-            tasks: columnData.tasks || [],
+            cards: columnData.cards || [],
             displayTitle: columnData.displayTitle,
             includeMode: columnData.includeMode || false,
             includeFiles: columnData.includeFiles || []
@@ -153,7 +153,7 @@ export const insertBefore = (
         const newColumn: KanbanColumn = {
             id: IdGenerator.generateColumnId(),
             title: title,
-            tasks: []
+            cards: []
         };
 
         board.columns.splice(index, 0, newColumn);
@@ -178,7 +178,7 @@ export const insertAfter = (
         const newColumn: KanbanColumn = {
             id: IdGenerator.generateColumnId(),
             title: title,
-            tasks: []
+            cards: []
         };
 
         board.columns.splice(index + 1, 0, newColumn);
@@ -208,7 +208,7 @@ export const duplicate = (
         const newColumn: KanbanColumn = {
             ...JSON.parse(JSON.stringify(originalColumn)),
             id: IdGenerator.generateColumnId(),
-            tasks: originalColumn.tasks.map(task => ({
+            cards: originalColumn.cards.map(task => ({
                 ...JSON.parse(JSON.stringify(task)),
                 id: IdGenerator.generateCardId()
             }))
@@ -232,7 +232,7 @@ export const clearTasks = (
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        column.tasks = [];
+        column.cards = [];
         return true;
     }
 });

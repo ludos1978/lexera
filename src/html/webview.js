@@ -149,8 +149,8 @@ function computeBoardFingerprint(board) {
             im: c.includeMode,
             ie: c.includeError,
             lc: c.isLoadingContent,
-            tc: (c.tasks || []).length,
-            tasks: (c.tasks || []).map(t => ({
+            tc: (c.cards || []).length,
+            cards: (c.cards || []).map(t => ({
                 id: t.id,
                 c: t.content,
                 tg: t.tags
@@ -226,13 +226,13 @@ function markUserInteracting() {
 function describeScrollTarget(element) {
     if (!element) return null;
     const column = element.closest ? element.closest('[data-column-id]') : null;
-    const taskId = element.getAttribute ? element.getAttribute('data-task-id') : null;
+    const cardId = element.getAttribute ? element.getAttribute('data-card-id') : null;
     return {
         tag: element.tagName,
         id: element.id || null,
         class: element.className || null,
         columnId: column ? column.getAttribute('data-column-id') : null,
-        taskId
+        cardId
     };
 }
 
@@ -1285,7 +1285,7 @@ const BOARD_SETTING_KEYS = new Set([
     'layoutPreset',
     'stickyStackMode',
     'tagVisibility',
-    'taskMinHeight',
+    'cardMinHeight',
     'fontSize',
     'fontFamily',
     'whitespace',
@@ -1619,11 +1619,11 @@ function toggleWysiwygEditor() {
     const activeEditor = window.taskEditor?.currentEditor;
     if (activeEditor?.type === 'task-description') {
         const displayElement = activeEditor.displayElement;
-        const taskId = activeEditor.taskId;
+        const cardId = activeEditor.cardId;
         const columnId = activeEditor.columnId;
         window.taskEditor.save();
         if (displayElement) {
-            window.taskEditor.startEdit(displayElement, 'task-description', taskId, columnId, true);
+            window.taskEditor.startEdit(displayElement, 'task-description', cardId, columnId, true);
         }
     }
 }
@@ -2031,7 +2031,7 @@ function applyTaskMinHeight(height) {
 }
 
 function setTaskMinHeight(height) {
-    applyAndSaveSetting('taskMinHeight', height, applyTaskMinHeight);
+    applyAndSaveSetting('cardMinHeight', height, applyTaskMinHeight);
 }
 
 // Function to detect row tags from board
@@ -2381,8 +2381,8 @@ window.onBoardRenderingComplete = function() {
         
         if (target.type === 'column') {
             element = document.querySelector(`[data-column-id="${target.id}"]`);
-        } else if (target.type === 'task') {
-            element = document.querySelector(`[data-task-id="${target.id}"]`);
+        } else if (target.type === 'card') {
+            element = document.querySelector(`[data-card-id="${target.id}"]`);
         }
         
         
@@ -2412,8 +2412,8 @@ function handleFocusAfterUndoRedo(focusTargets) {
     // First pass: Check for any columns that need unfolding
     const columnsToUnfold = new Set();
     focusTargets.forEach(target => {
-        if (target.type === 'task') {
-            const taskElement = document.querySelector(`[data-task-id="${target.id}"]`);
+        if (target.type === 'card') {
+            const taskElement = document.querySelector(`[data-card-id="${target.id}"]`);
             if (taskElement) {
                 const columnElement = taskElement.closest('[data-column-id]');
                 if (columnElement && columnElement.classList.contains('collapsed')) {
@@ -2444,17 +2444,17 @@ function handleFocusAfterUndoRedo(focusTargets) {
 
 // Task overlay editor integration entrypoint (structure-only).
 // Requires: task burger menu to call this when overlay editing is requested.
-window.openTaskOverlayEditor = function(taskId, columnId) {
-    console.log('[OVERLAY] openTaskOverlayEditor', { taskId, columnId });
+window.openTaskOverlayEditor = function(cardId, columnId) {
+    console.log('[OVERLAY] openTaskOverlayEditor', { cardId, columnId });
     if (!window.taskOverlayEditor || typeof window.taskOverlayEditor.open !== 'function') {
         console.warn('[OVERLAY] taskOverlayEditor not ready', {
-            taskId,
+            cardId,
             columnId,
             hasOverlay: !!document.getElementById('task-overlay-editor')
         });
         return;
     }
-    window.taskOverlayEditor.open({ taskId, columnId });
+    window.taskOverlayEditor.open({ cardId, columnId });
 };
 
 // Helper function to perform the actual focus actions
@@ -2466,8 +2466,8 @@ function performFocusActions(focusTargets) {
         
         if (target.type === 'column') {
             element = document.querySelector(`[data-column-id="${target.id}"]`);
-        } else if (target.type === 'task') {
-            element = document.querySelector(`[data-task-id="${target.id}"]`);
+        } else if (target.type === 'card') {
+            element = document.querySelector(`[data-card-id="${target.id}"]`);
         }
         
         
@@ -2743,10 +2743,10 @@ if (!webviewEventListenersInitialized) {
                 }
 
                 // Update task min height with the value from configuration
-                if (message.taskMinHeight) {
+                if (message.cardMinHeight) {
                     // Convert CSS value to option value
-                    const taskMinHeight = getValue('cardHeight', message.taskMinHeight);
-                    applyTaskMinHeight(taskMinHeight);
+                    const cardMinHeight = getValue('cardHeight', message.cardMinHeight);
+                    applyTaskMinHeight(cardMinHeight);
                 } else {
                     applyTaskMinHeight('auto'); // Default fallback
                 }
@@ -2788,10 +2788,10 @@ if (!webviewEventListenersInitialized) {
                 }
 
                 // Store border configuration from extension
-                if (message.columnBorder && message.taskBorder) {
+                if (message.columnBorder && message.cardBorder) {
                     window.borderConfig = {
                         columnBorder: message.columnBorder,
-                        taskBorder: message.taskBorder
+                        cardBorder: message.cardBorder
                     };
                     updateBorderStyles();
                 }
@@ -3634,7 +3634,7 @@ if (!webviewEventListenersInitialized) {
             break;
         case 'insertSnippetContent':
             // Insert VS Code snippet content into the active editor
-            insertVSCodeSnippetContent(message.content, message.fieldType, message.taskId);
+            insertVSCodeSnippetContent(message.content, message.fieldType, message.cardId);
             break;
         case 'performEditorUndo':
             performEditorUndo();
@@ -3746,7 +3746,7 @@ if (!webviewEventListenersInitialized) {
             if (column) {
                     // Support both formats: individual properties OR column object
                     const colData = message.column || message;
-                    const incomingTaskCount = Array.isArray(colData.tasks) ? colData.tasks.length : null;
+                    const incomingTaskCount = Array.isArray(colData.cards) ? colData.cards.length : null;
                     const previousTitle = column.title ?? '';
 
                     window.kanbanDebug.log('[kanban.webview.updateColumnContent.received]', {
@@ -3759,13 +3759,13 @@ if (!webviewEventListenersInitialized) {
 
                     window.kanbanDebug.log('[kanban.webview.updateColumnContent.before]', {
                         columnId: message.columnId,
-                        existingTaskCount: column.tasks?.length ?? 0,
+                        existingTaskCount: column.cards?.length ?? 0,
                         isLoadingContent: !!column.isLoadingContent,
                         includeError: !!column.includeError
                     });
 
                     // Update tasks and column metadata
-                    if (colData.tasks !== undefined) column.tasks = colData.tasks;
+                    if (colData.cards !== undefined) column.cards = colData.cards;
 
                     // Update column title and displayTitle from backend
                     // Backend is source of truth after processing
@@ -3790,21 +3790,21 @@ if (!webviewEventListenersInitialized) {
                     // Update loading state for includes
                     if (colData.isLoadingContent !== undefined) {
                         column.isLoadingContent = colData.isLoadingContent;
-                    } else if (Array.isArray(colData.tasks)) {
+                    } else if (Array.isArray(colData.cards)) {
                         column.isLoadingContent = false;
                     }
                     // Clear include error state when include loads successfully
                     if (colData.includeError !== undefined) {
                         column.includeError = colData.includeError;
-                    } else if (Array.isArray(colData.tasks) && colData.tasks.length > 0) {
+                    } else if (Array.isArray(colData.cards) && colData.cards.length > 0) {
                         column.includeError = false;
                     }
 
-                    if (Array.isArray(column.tasks)) {
-                        window.kanbanDebug.log('[kanban.webview.updateColumnContent.tasks]', {
+                    if (Array.isArray(column.cards)) {
+                        window.kanbanDebug.log('[kanban.webview.updateColumnContent.cards]', {
                             columnId: message.columnId,
-                            taskCount: column.tasks.length,
-                            taskIds: column.tasks.map(task => task.id)
+                            taskCount: column.cards.length,
+                            cardIds: column.cards.map(task => task.id)
                         });
                     }
 
@@ -3828,7 +3828,7 @@ if (!webviewEventListenersInitialized) {
                     }
 
                     const hasIncludeContent = message.includeMode || message.includeFiles;
-                    const hasNewTasks = message.tasks && message.tasks.length > 0;
+                    const hasNewTasks = message.cards && message.cards.length > 0;
 
                     window.kanbanDebug.log('[kanban.webview.updateColumnContent.render]', {
                         columnId: message.columnId,
@@ -3895,7 +3895,7 @@ if (!webviewEventListenersInitialized) {
                 }
             }
             break;
-        case 'updateTaskContent':
+        case 'updateCardContent':
             // Handle targeted task content update for include file changes
 
             // Update the task in cached board
@@ -3907,7 +3907,7 @@ if (!webviewEventListenersInitialized) {
                 let previousSummary = '';
 
                 for (const column of window.cachedBoard.columns) {
-                    const task = column.tasks.find(t => t.id === message.taskId);
+                    const task = column.cards.find(t => t.id === message.cardId);
                     if (task) {
                         if (window.taskContentUtils?.ensureTaskContent) {
                             window.taskContentUtils.ensureTaskContent(task);
@@ -3925,14 +3925,14 @@ if (!webviewEventListenersInitialized) {
 
                 if (foundTask && foundColumn) {
                     // Support both formats: individual properties OR task object
-                    const taskData = message.task || message;
+                    const cardData = message.task || message;
 
                     // Update task metadata
                     // CRITICAL FIX: Use !== undefined checks instead of || operator
                     // Empty string "" is falsy and would fall back to old value with ||
                     let nextContent = foundTask.content ?? '';
-                    if (taskData.content !== undefined) {
-                        nextContent = taskData.content;
+                    if (cardData.content !== undefined) {
+                        nextContent = cardData.content;
                     }
                     if (nextContent !== foundTask.content) {
                         foundTask.content = nextContent;
@@ -3940,42 +3940,42 @@ if (!webviewEventListenersInitialized) {
                     if (window.taskContentUtils?.ensureTaskContent) {
                         window.taskContentUtils.ensureTaskContent(foundTask);
                     }
-                    if (taskData.displayTitle !== undefined) foundTask.displayTitle = taskData.displayTitle;
-                    if (taskData.originalTitle !== undefined) foundTask.originalTitle = taskData.originalTitle;
+                    if (cardData.displayTitle !== undefined) foundTask.displayTitle = cardData.displayTitle;
+                    if (cardData.originalTitle !== undefined) foundTask.originalTitle = cardData.originalTitle;
 
                     // Only update includeMode if explicitly provided (preserve existing value otherwise)
-                    if (taskData.includeMode !== undefined) {
-                        foundTask.includeMode = taskData.includeMode;
+                    if (cardData.includeMode !== undefined) {
+                        foundTask.includeMode = cardData.includeMode;
                     }
-                    if (taskData.includeFiles !== undefined) {
+                    if (cardData.includeFiles !== undefined) {
                         // DEBUG: Log includeFiles received from backend to trace corruption
-                        console.log('[webview.updateTaskContent] taskId:', message.taskId, 'includeFiles from backend:', JSON.stringify(taskData.includeFiles));
-                        if (taskData.includeFiles && taskData.includeFiles[0]) {
-                            console.log('[webview.updateTaskContent] includeFiles[0] bytes:', Array.from(taskData.includeFiles[0]).map(c => c.charCodeAt(0).toString(16)).slice(0, 50).join(' '));
+                        console.log('[webview.updateTaskContent] cardId:', message.cardId, 'includeFiles from backend:', JSON.stringify(cardData.includeFiles));
+                        if (cardData.includeFiles && cardData.includeFiles[0]) {
+                            console.log('[webview.updateTaskContent] includeFiles[0] bytes:', Array.from(cardData.includeFiles[0]).map(c => c.charCodeAt(0).toString(16)).slice(0, 50).join(' '));
                         }
-                        foundTask.includeFiles = taskData.includeFiles;
+                        foundTask.includeFiles = cardData.includeFiles;
                     }
                     // Update loading state for includes
-                    if (taskData.isLoadingContent !== undefined) {
-                        foundTask.isLoadingContent = taskData.isLoadingContent;
+                    if (cardData.isLoadingContent !== undefined) {
+                        foundTask.isLoadingContent = cardData.isLoadingContent;
                     }
                     // Clear include error state when include loads successfully
-                    if (taskData.includeError !== undefined) {
-                        foundTask.includeError = taskData.includeError;
+                    if (cardData.includeError !== undefined) {
+                        foundTask.includeError = cardData.includeError;
                     }
 
-                    const isEditingThisTask = window.taskEditor?.currentEditor?.taskId === message.taskId;
+                    const isEditingThisTask = window.taskEditor?.currentEditor?.cardId === message.cardId;
 
                     // CRITICAL FIX: Update editor field value when content changes (e.g., path replacement)
                     // This ensures the edit field reflects the latest content after replacements
                     if (isEditingThisTask) {
                         const editor = window.taskEditor.currentEditor;
-                        const taskData = message.task || message;
+                        const cardData = message.task || message;
 
-                        if (editor.type === 'task-title' && taskData.content !== undefined) {
+                        if (editor.type === 'task-title' && cardData.content !== undefined) {
                             const newTitle = window.taskContentUtils?.getTaskSummaryLine
-                                ? window.taskContentUtils.getTaskSummaryLine(taskData.content || '')
-                                : ((taskData.content || '').split('\n')[0] || '');
+                                ? window.taskContentUtils.getTaskSummaryLine(cardData.content || '')
+                                : ((cardData.content || '').split('\n')[0] || '');
                             const currentValue = editor.element?.value ?? '';
                             if (currentValue === previousSummary) {
                                 editor.element.value = newTitle || '';
@@ -3983,8 +3983,8 @@ if (!webviewEventListenersInitialized) {
                             }
                         }
 
-                        if (editor.type === 'task-description' && taskData.content !== undefined) {
-                            const nextEditorValue = taskData.content || '';
+                        if (editor.type === 'task-description' && cardData.content !== undefined) {
+                            const nextEditorValue = cardData.content || '';
                             const currentValue = editor.wysiwyg?.getMarkdown?.() ?? editor.element?.value ?? '';
                             const previousEditorValue = previousContent ?? '';
                             if (currentValue === previousEditorValue) {
@@ -4004,20 +4004,20 @@ if (!webviewEventListenersInitialized) {
 
                     const overlayEditor = window.taskOverlayEditor;
                     const overlayTaskRef = overlayEditor?.getTaskRef?.();
-                    const isOverlayEditingTask = overlayEditor?.isVisible?.() && overlayTaskRef?.taskId === message.taskId;
+                    const isOverlayEditingTask = overlayEditor?.isVisible?.() && overlayTaskRef?.cardId === message.cardId;
                     const overlayDraft = isOverlayEditingTask && typeof overlayEditor?.getDraft === 'function'
                         ? overlayEditor.getDraft()
                         : null;
-                    if (isOverlayEditingTask && taskData.content !== undefined && typeof overlayEditor?.updateDraft === 'function') {
+                    if (isOverlayEditingTask && cardData.content !== undefined && typeof overlayEditor?.updateDraft === 'function') {
                         const shouldUpdateOverlay = overlayDraft === (previousContent ?? '');
                         if (shouldUpdateOverlay) {
-                            overlayEditor.updateDraft(taskData.content ?? '');
+                            overlayEditor.updateDraft(cardData.content ?? '');
                         }
                     }
 
                     // renderSingleTask skips+defers if the task contains the inline editor
                     if (typeof window.renderSingleTask === 'function') {
-                        window.renderSingleTask(message.taskId, foundTask, foundColumn.id);
+                        window.renderSingleTask(message.cardId, foundTask, foundColumn.id);
                     } else if (typeof renderSingleColumn === 'function') {
                         renderSingleColumn(foundColumn.id, foundColumn);
                     } else if (typeof window.renderBoard === 'function') {
@@ -4032,13 +4032,13 @@ if (!webviewEventListenersInitialized) {
 
                     vscode.postMessage({
                         type: 'renderCompleted',
-                        itemType: 'task',
-                        itemId: message.taskId
+                        itemType: 'card',
+                        itemId: message.cardId
                     });
 
                     lastTargetedUpdateTime = Date.now();
                     window.kanbanDebug.log('[TARGETED-UPDATE] updateTaskContent completed', {
-                        taskId: message.taskId,
+                        cardId: message.cardId,
                         columnId: foundColumn.id,
                         timestamp: lastTargetedUpdateTime
                     });
@@ -4069,22 +4069,22 @@ if (!webviewEventListenersInitialized) {
                 }
 
                 // Update tasks
-                for (const taskData of message.tasks) {
-                    const column = window.cachedBoard.columns.find(c => c.id === taskData.columnId);
+                for (const cardData of message.cards) {
+                    const column = window.cachedBoard.columns.find(c => c.id === cardData.columnId);
                     if (column) {
-                        const task = column.tasks.find(t => t.id === taskData.taskId);
+                        const task = column.cards.find(t => t.id === cardData.cardId);
                         if (task) {
                             if (window.taskContentUtils?.ensureTaskContent) {
                                 window.taskContentUtils.ensureTaskContent(task);
                             }
                             // Update cache
-                            task.displayTitle = taskData.displayTitle;
-                            if (taskData.content !== undefined) {
-                                task.content = taskData.content;
+                            task.displayTitle = cardData.displayTitle;
+                            if (cardData.content !== undefined) {
+                                task.content = cardData.content;
                             }
-                            task.includeMode = taskData.includeMode;
-                            task.includeFiles = taskData.includeFiles;
-                            task.includeError = taskData.includeError;
+                            task.includeMode = cardData.includeMode;
+                            task.includeFiles = cardData.includeFiles;
+                            task.includeError = cardData.includeError;
                             if (window.taskContentUtils?.ensureTaskContent) {
                                 window.taskContentUtils.ensureTaskContent(task);
                             }
@@ -4105,16 +4105,16 @@ if (!webviewEventListenersInitialized) {
 
                 // Re-render dirty tasks that are NOT in columns we just rendered
                 // (to avoid double-rendering the same column)
-                if (message.tasks.length > 0) {
-                    const taskUpdates = message.tasks
-                        .filter(taskData => !renderedColumnIds.has(taskData.columnId))
-                        .map(taskData => ({
-                            columnId: taskData.columnId,
-                            taskId: taskData.taskId
+                if (message.cards.length > 0) {
+                    const taskUpdates = message.cards
+                        .filter(cardData => !renderedColumnIds.has(cardData.columnId))
+                        .map(cardData => ({
+                            columnId: cardData.columnId,
+                            cardId: cardData.cardId
                         }))
-                        .filter(t => t.columnId && t.taskId);
+                        .filter(t => t.columnId && t.cardId);
                     if (taskUpdates.length > 0) {
-                        window.renderBoard({ tasks: taskUpdates });
+                        window.renderBoard({ cards: taskUpdates });
                     }
                 }
             }
@@ -4138,7 +4138,7 @@ if (!webviewEventListenersInitialized) {
                     // CAPTURE mode: Extract edit value WITHOUT modifying board
                     capturedEdit = {
                         type: capturedType,
-                        taskId: current.taskId,
+                        cardId: current.cardId,
                         columnId: current.columnId,
                         value: capturedValue,
                         originalValue: current.originalValue
@@ -4409,10 +4409,10 @@ if (!webviewEventListenersInitialized) {
 
         case 'scrollToElement':
             // Handle scroll-to-element request from search sidebar or dashboard
-            console.log('[Webview] scrollToElement received:', message.columnId, message.taskId);
+            console.log('[Webview] scrollToElement received:', message.columnId, message.cardId);
             scrollToAndHighlight(
                 message.columnId,
-                message.taskId,
+                message.cardId,
                 message.highlight,
                 message.elementPath,
                 message.elementType,
@@ -4433,7 +4433,7 @@ if (!webviewEventListenersInitialized) {
 /**
  * Insert VS Code snippet content into the active editor
  */
-function insertVSCodeSnippetContent(content, fieldType, taskId) {
+function insertVSCodeSnippetContent(content, fieldType, cardId) {
     if (window.taskOverlayEditor?.isVisible?.()) {
         if (typeof window.taskOverlayEditor.insertText === 'function') {
             window.taskOverlayEditor.insertText(content);
@@ -4643,9 +4643,9 @@ function applyPathReplacementToOverlay(message, candidates) {
         return false;
     }
     const overlayRef = overlayEditor.getTaskRef?.();
-    const hasContext = Boolean(message.taskId && message.columnId);
+    const hasContext = Boolean(message.cardId && message.columnId);
     const matchesContext = hasContext
-        ? (overlayRef?.taskId === message.taskId && overlayRef?.columnId === message.columnId)
+        ? (overlayRef?.cardId === message.cardId && overlayRef?.columnId === message.columnId)
         : true;
     const draft = overlayEditor.getDraft() || '';
     if (!matchesContext && !candidates.some(candidate => draft.includes(candidate))) {
@@ -4668,9 +4668,9 @@ function applyEmptyPathReplacementToOverlay(message, newPath) {
         return false;
     }
     const overlayRef = overlayEditor.getTaskRef?.();
-    const hasContext = Boolean(message.taskId && message.columnId);
+    const hasContext = Boolean(message.cardId && message.columnId);
     const matchesContext = hasContext
-        ? (overlayRef?.taskId === message.taskId && overlayRef?.columnId === message.columnId)
+        ? (overlayRef?.cardId === message.cardId && overlayRef?.columnId === message.columnId)
         : true;
     const draft = overlayEditor.getDraft() || '';
     if (!matchesContext) {
@@ -4688,8 +4688,8 @@ function applyPathReplacementToInlineEditor(message, candidates) {
     const editor = window.taskEditor?.currentEditor;
     if (!editor) { return false; }
     const editorValue = editor.wysiwyg?.getMarkdown?.() ?? editor.element?.value ?? '';
-    const hasContext = Boolean(message.taskId && message.columnId);
-    const matchesTask = hasContext && editor.taskId === message.taskId && editor.columnId === message.columnId;
+    const hasContext = Boolean(message.cardId && message.columnId);
+    const matchesTask = hasContext && editor.cardId === message.cardId && editor.columnId === message.columnId;
     const matchesColumn = message.isColumnTitle && editor.type === 'column-title' && editor.columnId === message.columnId;
     const matchesContext = matchesTask || matchesColumn;
 
@@ -4721,8 +4721,8 @@ function applyEmptyPathReplacementToInlineEditor(message, newPath) {
     const editor = window.taskEditor?.currentEditor;
     if (!editor) { return false; }
     const editorValue = editor.wysiwyg?.getMarkdown?.() ?? editor.element?.value ?? '';
-    const hasContext = Boolean(message.taskId && message.columnId);
-    const matchesTask = hasContext && editor.taskId === message.taskId && editor.columnId === message.columnId;
+    const hasContext = Boolean(message.cardId && message.columnId);
+    const matchesTask = hasContext && editor.cardId === message.cardId && editor.columnId === message.columnId;
     const matchesColumn = message.isColumnTitle && editor.type === 'column-title' && editor.columnId === message.columnId;
     const matchesContext = matchesTask || matchesColumn;
 
@@ -4854,17 +4854,17 @@ function scrollToAndHighlightByIndex(columnIndex, taskIndex, highlight = true) {
     console.log('[scrollToAndHighlightByIndex] Found column at index', columnIndex, 'with ID:', columnId);
 
     let targetElement = columnElement;
-    let taskId = undefined;
+    let cardId = undefined;
 
     if (taskIndex !== undefined && taskIndex >= 0 && columnElement) {
         // Task match - find the specific task
-        const allTasks = Array.from(columnElement.querySelectorAll('.task-item[data-task-id]'));
+        const allTasks = Array.from(columnElement.querySelectorAll('.task-item[data-card-id]'));
         console.log('[scrollToAndHighlightByIndex] Tasks in column:', allTasks.length);
 
         if (taskIndex < allTasks.length) {
             targetElement = allTasks[taskIndex];
-            taskId = targetElement?.getAttribute('data-task-id');
-            console.log('[scrollToAndHighlightByIndex] Found task at index', taskIndex, 'with ID:', taskId);
+            cardId = targetElement?.getAttribute('data-card-id');
+            console.log('[scrollToAndHighlightByIndex] Found task at index', taskIndex, 'with ID:', cardId);
         } else {
             console.warn('[scrollToAndHighlightByIndex] Task index out of range:', taskIndex, 'total:', allTasks.length);
         }
@@ -4885,18 +4885,18 @@ function scrollToAndHighlightByIndex(columnIndex, taskIndex, highlight = true) {
     // Delegate to the main scroll function using the found IDs
     // For column matches, pass field='columnTitle' to help with highlighting
     const field = (taskIndex === -1) ? 'columnTitle' : undefined;
-    scrollToAndHighlight(columnId, taskId, highlight, undefined, undefined, field);
+    scrollToAndHighlight(columnId, cardId, highlight, undefined, undefined, field);
 }
 
 /**
  * Scroll to and highlight an element on the board
  * Used by the Kanban Search sidebar to navigate to search results
  * @param {string} columnId - The column ID to scroll to
- * @param {string} [taskId] - Optional task ID to scroll to within the column
+ * @param {string} [cardId] - Optional task ID to scroll to within the column
  * @param {boolean} [highlight] - Whether to add highlight animation
  */
-function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, elementType, field, matchText) {
-    console.log('[scrollToAndHighlight] START columnId:', columnId, 'taskId:', taskId, 'matchText:', matchText);
+function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, elementType, field, matchText) {
+    console.log('[scrollToAndHighlight] START columnId:', columnId, 'cardId:', cardId, 'matchText:', matchText);
 
     let targetElement = null;
     const columnElement = columnId
@@ -4904,8 +4904,8 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
         : null;
     console.log('[scrollToAndHighlight] columnElement found:', !!columnElement);
 
-    const taskElement = columnElement && taskId
-        ? columnElement.querySelector(`.task-item[data-task-id="${taskId}"]`)
+    const taskElement = columnElement && cardId
+        ? columnElement.querySelector(`.task-item[data-card-id="${cardId}"]`)
         : null;
     console.log('[scrollToAndHighlight] taskElement found:', !!taskElement);
 
@@ -4915,8 +4915,8 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
 
     // Debug: If column found, list all task IDs
     if (columnElement) {
-        const allTasks = columnElement.querySelectorAll('.task-item[data-task-id]');
-        console.log('[scrollToAndHighlight] All task IDs in column:', Array.from(allTasks).map(t => t.dataset.taskId));
+        const allTasks = columnElement.querySelectorAll('.task-item[data-card-id]');
+        console.log('[scrollToAndHighlight] All task IDs in column:', Array.from(allTasks).map(t => t.dataset.cardId));
     }
 
     const escapeSelector = (value) => {
@@ -4931,7 +4931,7 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
         if (field === 'columnTitle' && columnElement) {
             return columnElement.querySelector('.column-title') || columnElement;
         }
-        if (field === 'taskContent' && taskElement) {
+        if (field === 'cardContent' && taskElement) {
             return taskElement.querySelector('.task-description-display') || taskElement;
         }
         return taskElement || columnElement || null;
@@ -5093,9 +5093,9 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
         targetElement = columnElement;
     }
 
-    if (!targetElement && taskId) {
+    if (!targetElement && cardId) {
         // Fallback: Find the task card anywhere
-        targetElement = document.querySelector(`.task-item[data-task-id="${taskId}"]`);
+        targetElement = document.querySelector(`.task-item[data-card-id="${cardId}"]`);
     }
 
     if (!targetElement && columnId) {
@@ -5103,7 +5103,7 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
     }
 
     if (!targetElement) {
-        console.warn('[Webview] scrollToAndHighlight: Could not find element', { columnId, taskId, elementPath, elementType, field });
+        console.warn('[Webview] scrollToAndHighlight: Could not find element', { columnId, cardId, elementPath, elementType, field });
         return;
     }
 
@@ -5133,14 +5133,14 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
     if (taskElement) {
         const isTaskCollapsed = taskElement.classList.contains('collapsed');
         if (isTaskCollapsed) {
-            console.log('[scrollToAndHighlight] Unfolding collapsed task:', taskId);
+            console.log('[scrollToAndHighlight] Unfolding collapsed task:', cardId);
             taskElement.classList.remove('collapsed');
             const toggle = taskElement.querySelector('.task-fold-toggle');
             if (toggle) {
                 toggle.classList.remove('rotated');
             }
             if (window.collapsedTasks) {
-                window.collapsedTasks.delete(taskId);
+                window.collapsedTasks.delete(cardId);
             }
             // Update folded summary text
             const titleDisplay = taskElement.querySelector('.task-title-display');
@@ -5164,7 +5164,7 @@ function scrollToAndHighlight(columnId, taskId, highlight = true, elementPath, e
     if (typeof window.logViewMovement === 'function') {
         window.logViewMovement('scrollToAndHighlight', {
             columnId,
-            taskId,
+            cardId,
             element: describeScrollTarget(targetElement),
             elementPath,
             elementType,
@@ -5624,10 +5624,10 @@ document.addEventListener('keydown', (e) => {
         else if ((e.key === 'Delete' || e.key === 'Backspace') && window.getCurrentFocusedCard()) {
             e.preventDefault();
             const focusedCard = window.getCurrentFocusedCard();
-            const taskId = focusedCard.dataset.taskId;
+            const cardId = focusedCard.dataset.cardId;
             const columnId = window.getColumnIdFromElement(focusedCard);
-            if (taskId && typeof deleteTask === 'function') {
-                deleteTask(taskId, columnId);
+            if (cardId && typeof deleteTask === 'function') {
+                deleteTask(cardId, columnId);
                 window.focusCard(null);
             }
         }
@@ -5635,11 +5635,11 @@ document.addEventListener('keydown', (e) => {
         else if (e.key === 'Enter' && window.getCurrentFocusedCard()) {
             e.preventDefault();
             const focusedCard = window.getCurrentFocusedCard();
-            const taskId = focusedCard.dataset.taskId;
+            const cardId = focusedCard.dataset.cardId;
             const columnId = window.getColumnIdFromElement(focusedCard);
             // Start editing the title section
-            if (window.taskEditor && taskId) {
-                window.taskEditor.startEdit(focusedCard, 'task-title', taskId, columnId, false);
+            if (window.taskEditor && cardId) {
+                window.taskEditor.startEdit(focusedCard, 'task-title', cardId, columnId, false);
             }
         }
     }
@@ -5929,11 +5929,11 @@ function updateBorderStyles() {
         return;
     }
 
-    const { columnBorder, taskBorder } = window.borderConfig;
+    const { columnBorder, cardBorder } = window.borderConfig;
 
     // Apply CSS variables
     document.documentElement.style.setProperty('--column-border', columnBorder);
-    document.documentElement.style.setProperty('--task-border', taskBorder);
+    document.documentElement.style.setProperty('--task-border', cardBorder);
 }
 
 function calculateTaskDescriptionHeight() {

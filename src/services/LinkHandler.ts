@@ -133,8 +133,8 @@ export class LinkHandler {
      * Enhanced file link handler with workspace-relative path support.
      * @param forceExternal When true (Shift+Alt+click), always open in OS default tool
      */
-    public async handleFileLink(href: string, taskId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution, forceExternal?: boolean) {
-        logger.debug('[LinkHandler.handleFileLink] Received context:', JSON.stringify({ taskId, columnId, linkIndex, hasIncludeContext: !!includeContext, forceExternal }));
+    public async handleFileLink(href: string, cardId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution, forceExternal?: boolean) {
+        logger.debug('[LinkHandler.handleFileLink] Received context:', JSON.stringify({ cardId, columnId, linkIndex, hasIncludeContext: !!includeContext, forceExternal }));
         try {
             if (href.startsWith('file://')) {
                 href = vscode.Uri.parse(href).fsPath;
@@ -167,7 +167,7 @@ export class LinkHandler {
                     sourceFile
                 });
                 if (result) {
-                    await this.applyLinkReplacement(href, result.uri, taskId, columnId, linkIndex, includeContext, result.pathFormat);
+                    await this.applyLinkReplacement(href, result.uri, cardId, columnId, linkIndex, includeContext, result.pathFormat);
                     return;
                 }
 
@@ -359,8 +359,8 @@ export class LinkHandler {
      * @param userPathFormat - Path format selected by user in search dialog (overrides config if provided and not 'auto')
      * @param fallbackBaseDir - Fallback base directory when document is not available (e.g., wiki links)
      */
-    private async applyLinkReplacement(originalPath: string, replacementUri: vscode.Uri, taskId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution, userPathFormat?: 'auto' | 'relative' | 'absolute', fallbackBaseDir?: string) {
-        logger.debug('[LinkHandler.applyLinkReplacement] Context:', JSON.stringify({ taskId, columnId, linkIndex, hasIncludeContext: !!includeContext, userPathFormat, hasFallbackBaseDir: !!fallbackBaseDir }));
+    private async applyLinkReplacement(originalPath: string, replacementUri: vscode.Uri, cardId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution, userPathFormat?: 'auto' | 'relative' | 'absolute', fallbackBaseDir?: string) {
+        logger.debug('[LinkHandler.applyLinkReplacement] Context:', JSON.stringify({ cardId, columnId, linkIndex, hasIncludeContext: !!includeContext, userPathFormat, hasFallbackBaseDir: !!fallbackBaseDir }));
 
         if (!this._replacementDeps) {
             logger.warn('[LinkHandler.applyLinkReplacement] No replacement dependencies set, cannot replace');
@@ -397,7 +397,7 @@ export class LinkHandler {
             {
                 mode: 'single',
                 pathFormat,
-                taskId,
+                cardId,
                 columnId,
                 linkIndex,
                 isColumnTitle: false
@@ -408,12 +408,12 @@ export class LinkHandler {
     /**
      * Enhanced wiki link handler with smart extension handling and workspace folder context
      * @param documentName - The wiki link document name
-     * @param taskId - Optional task ID for targeted updates
+     * @param cardId - Optional task ID for targeted updates
      * @param columnId - Optional column ID for targeted updates
      * @param linkIndex - Optional link index for specific link replacement
      * @param includeContext - Optional include file context for proper path resolution
      */
-    public async handleWikiLink(documentName: string, taskId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution) {
+    public async handleWikiLink(documentName: string, cardId?: string, columnId?: string, linkIndex?: number, includeContext?: IncludeContextForResolution) {
         const allAttemptedPaths: string[] = [];
         let triedFilenames: string[] = [];
 
@@ -506,8 +506,8 @@ export class LinkHandler {
             } else {
                 const result = await this._fileSearchService.pickReplacementForBrokenLink(documentName, baseDir);
                 if (result) {
-                    // Pass taskId, columnId, linkIndex for targeted updates
-                    await this.applyLinkReplacement(documentName, result.uri, taskId, columnId, linkIndex, includeContext, result.pathFormat);
+                    // Pass cardId, columnId, linkIndex for targeted updates
+                    await this.applyLinkReplacement(documentName, result.uri, cardId, columnId, linkIndex, includeContext, result.pathFormat);
                     return;
                 }
             }

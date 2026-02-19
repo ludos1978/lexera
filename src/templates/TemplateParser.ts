@@ -17,7 +17,7 @@ export interface TemplateVariable {
  */
 export interface TemplateColumn {
     title: string;
-    tasks: TemplateTask[];
+    cards: TemplateTask[];
 }
 
 /**
@@ -244,7 +244,7 @@ export class TemplateParser {
 
                 currentColumn = {
                     title: fullTitle,
-                    tasks: []
+                    cards: []
                 };
                 continue;
             }
@@ -261,7 +261,7 @@ export class TemplateParser {
                     content: summaryLine,
                     completed
                 };
-                currentColumn.tasks.push(currentTask);
+                currentColumn.cards.push(currentTask);
                 continue;
             }
 

@@ -365,7 +365,7 @@ export class ChangeStateMachine {
         const loadTarget = isColumnSwitch && targetColumn
             ? { type: 'column' as const, column: targetColumn }
             : targetTask && targetColumn
-                ? { type: 'task' as const, column: targetColumn, task: targetTask }
+                ? { type: 'card' as const, column: targetColumn, task: targetTask }
                 : null;
 
         // Send loading state to frontend (clear old content for UX)
@@ -673,9 +673,9 @@ export class ChangeStateMachine {
         }
 
         panel.webview.postMessage({
-            type: 'updateTaskContent',
+            type: 'updateCardContent',
             columnId: column.id,
-            taskId: task.id,
+            cardId: task.id,
             content: isLoadingContent ? '' : task.content,
             displayTitle: isLoadingContent ? '' : task.displayTitle,
             originalTitle: task.originalTitle,
@@ -685,7 +685,7 @@ export class ChangeStateMachine {
             includeError: isLoadingContent ? undefined : task.includeError  // Send actual error state
         });
         if (context) {
-            context.result.frontendMessages.push({ type: 'updateTaskContent', taskId: task.id });
+            context.result.frontendMessages.push({ type: 'updateCardContent', cardId: task.id });
         }
 
         // Clear dirty flag (only when content is ready)

@@ -166,7 +166,7 @@ export class ActionExecutor {
      */
     private sendTargetedUpdates(board: KanbanBoard, targets: ActionTarget[]): void {
         for (const target of targets) {
-            if (target.type === 'task' && target.columnId) {
+            if (target.type === 'card' && target.columnId) {
                 this.sendTaskUpdate(board, target.id, target.columnId);
             } else if (target.type === 'column') {
                 this.sendColumnUpdate(board, target.id);
@@ -177,16 +177,16 @@ export class ActionExecutor {
     /**
      * Send task content update to frontend
      */
-    private sendTaskUpdate(board: KanbanBoard, taskId: string, columnId: string): void {
+    private sendTaskUpdate(board: KanbanBoard, cardId: string, columnId: string): void {
         const column = findColumn(board, columnId);
-        const task = column?.cards.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === cardId);
 
         if (!task || !column) return;
 
         const message: UpdateCardContentExtendedMessage = {
-            type: 'updateTaskContent',
+            type: 'updateCardContent',
             columnId: column.id,
-            taskId: task.id,
+            cardId: task.id,
             content: task.content,
             displayTitle: task.displayTitle,
             originalTitle: task.originalTitle,

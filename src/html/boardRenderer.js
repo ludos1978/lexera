@@ -94,11 +94,11 @@ function initializeTaskElement(taskElement) {
     }
 
     // Check if already initialized (idempotent - safe to call multiple times)
-    if (taskElement.dataset.taskInitialized === 'true') {
+    if (taskElement.dataset.cardInitialized === 'true') {
         return true; // Already initialized, nothing to do
     }
 
-    const taskId = taskElement.dataset.taskId;
+    const cardId = taskElement.dataset.cardId;
 
     // 1. DRAG HANDLER SETUP
     const dragHandle = taskElement.querySelector('.task-drag-handle');
@@ -125,21 +125,21 @@ function initializeTaskElement(taskElement) {
         if (titleContainer && !titleContainer.onclick && !titleContainer.hasAttribute('onclick')) {
             const titleEl = taskElement.querySelector('.task-title-display');
             if (titleEl) {
-                titleEl.onclick = (e) => handleTaskTitleClick(e, titleEl, taskId, columnId);
+                titleEl.onclick = (e) => handleTaskTitleClick(e, titleEl, cardId, columnId);
             }
         }
 
         // Verify description click handler - check the actual display element (not container)
         const descEl = taskElement.querySelector('.task-description-display');
         if (descEl && !descEl.onclick && !descEl.hasAttribute('onclick')) {
-            descEl.onclick = (e) => handleDescriptionClick(e, descEl, taskId, columnId);
+            descEl.onclick = (e) => handleDescriptionClick(e, descEl, cardId, columnId);
         }
 
         // Verify collapse toggle click handler
         const collapseToggle = taskElement.querySelector('.task-collapse-toggle');
         if (collapseToggle && !collapseToggle.onclick && !collapseToggle.hasAttribute('onclick')) {
             collapseToggle.onclick = () => {
-                toggleTaskCollapseById(taskId, columnId);
+                toggleTaskCollapseById(cardId, columnId);
                 if (typeof updateFoldAllButton === 'function') {
                     updateFoldAllButton(columnId);
                 }
@@ -158,12 +158,12 @@ function initializeTaskElement(taskElement) {
         const tags = taskElement.getAttribute('data-all-tags');
         if (tags) {
             const tagArray = tags.split(' ').filter(tag => tag.trim());
-            window.updateAllVisualTagElements(taskElement, tagArray, 'task');
+            window.updateAllVisualTagElements(taskElement, tagArray, 'card');
         }
     }
 
     // Mark as initialized
-    taskElement.dataset.taskInitialized = 'true';
+    taskElement.dataset.cardInitialized = 'true';
 
     return true;
 }
@@ -346,25 +346,25 @@ function getColumnIdFromElement(element) {
 
 /**
  * Gets the task ID for any element by traversing up the DOM tree
- * This avoids storing redundant data-task-id on child elements
+ * This avoids storing redundant data-card-id on child elements
  * @param {HTMLElement} element - Any element within a task
  * @returns {string|null} The task ID, or null if not found
  */
 function getTaskIdFromElement(element) {
     if (!element) return null;
     const taskElement = element.closest('.task-item');
-    return taskElement?.dataset.taskId || null;
+    return taskElement?.dataset.cardId || null;
 }
 
 /**
  * Finds a task by ID across all columns in the cached board
- * @param {string} taskId - The task ID to find
+ * @param {string} cardId - The task ID to find
  * @returns {object|null} The task object, or null if not found
  */
-function findTaskById(taskId) {
+function findTaskById(cardId) {
     if (!window.cachedBoard?.columns) return null;
     for (const column of window.cachedBoard.columns) {
-        const task = column.tasks.find(t => t.id === taskId);
+        const task = column.cards.find(t => t.id === cardId);
         if (task) return task;
     }
     return null;
@@ -524,7 +524,7 @@ function getAllTagsInUse() {
         columnTags.forEach(tag => tagsInUse.add(tag.toLowerCase()));
         
         // Get tags from all tasks
-        column.tasks.forEach(task => {
+        column.cards.forEach(task => {
             const taskContentTags = getActiveTagsInTitle(task.content || '');
             taskContentTags.forEach(tag => tagsInUse.add(tag.toLowerCase()));
         });
@@ -633,7 +633,7 @@ function getFirstTagWithProperty(text, property) {
  * Purpose: Creates interactive tag toggle menu for columns/tasks
  * Used by: Column and task burger menus
  * @param {string} id - Element ID (column or task)
- * @param {string} type - 'column' or 'task'
+ * @param {string} type - 'column' or 'card'
  * @param {string} columnId - Parent column ID for tasks
  * @returns {string} HTML string for menu items
  */
@@ -786,10 +786,10 @@ function regenerateAllBurgerMenus() {
 
     // Find all task dropdowns and update their tag menu sections
     document.querySelectorAll('.task-item').forEach(taskElement => {
-        const taskId = taskElement.getAttribute('data-task-id');
+        const cardId = taskElement.getAttribute('data-card-id');
         const columnElement = taskElement.closest('.kanban-full-height-column');
         const columnId = columnElement?.getAttribute('data-column-id');
-        if (!taskId || !columnId) return;
+        if (!cardId || !columnId) return;
 
         const dropdown = taskElement.querySelector('.donut-menu-dropdown');
         if (!dropdown) return;
@@ -800,7 +800,7 @@ function regenerateAllBurgerMenus() {
 
         // Get insertion point and generate new tag menu HTML
         const insertPoint = tagItems[0];
-        const newTagHtml = generateTagMenuItems(taskId, 'task', columnId);
+        const newTagHtml = generateTagMenuItems(cardId, 'card', columnId);
         insertHtmlNodes(newTagHtml, insertPoint, 'before');
 
         // Remove old items
@@ -817,9 +817,9 @@ function generateGroupTagItems(tags, id, type, columnId = null, isConfigured = t
     if (type === 'column') {
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         currentTitle = column?.title || '';
-    } else if (type === 'task' && columnId) {
+    } else if (type === 'card' && columnId) {
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         currentTitle = task?.title || '';
     }
 
@@ -897,9 +897,9 @@ function generateFlatTagItems(tags, id, type, columnId = null) {
     if (type === 'column') {
         const column = window.cachedBoard?.columns?.find(c => c.id === id);
         currentTitle = column?.title || '';
-    } else if (type === 'task' && columnId) {
+    } else if (type === 'card' && columnId) {
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         currentTitle = task?.title || '';
     }
     
@@ -968,16 +968,16 @@ function renderSingleColumn(columnId, columnData) {
     if (window.tagHandlers) {
         // Find all tag handlers that belong to this column (both column tags and task tags)
         const handlersToCleanup = Object.keys(window.tagHandlers).filter(key => {
-            // Pattern: tag-chip-column-{columnId}-{tagName} or tag-chip-task-{taskId}-{tagName}
+            // Pattern: tag-chip-column-{columnId}-{tagName} or tag-chip-task-{cardId}-{tagName}
             return key.startsWith(`tag-chip-column-${columnId}-`) ||
-                   (key.startsWith(`tag-chip-task-`) && existingColumnElement.querySelector(`[data-task-id]`));
+                   (key.startsWith(`tag-chip-task-`) && existingColumnElement.querySelector(`[data-card-id]`));
         });
 
         // Also find task handlers by checking actual task IDs in the existing column
-        const taskElements = existingColumnElement.querySelectorAll('[data-task-id]');
+        const taskElements = existingColumnElement.querySelectorAll('[data-card-id]');
         taskElements.forEach(taskEl => {
-            const taskId = taskEl.getAttribute('data-task-id');
-            const taskHandlerPrefix = `tag-chip-task-${taskId}-`;
+            const cardId = taskEl.getAttribute('data-card-id');
+            const taskHandlerPrefix = `tag-chip-task-${cardId}-`;
             Object.keys(window.tagHandlers).forEach(key => {
                 if (key.startsWith(taskHandlerPrefix)) {
                     handlersToCleanup.push(key);
@@ -1007,7 +1007,7 @@ function renderSingleColumn(columnId, columnData) {
         window.kanbanDebug.log('[kanban.boardRenderer.renderSingleColumn.replace]', {
             columnId: columnId,
             columnIndex: columnIndex,
-            taskCount: columnData?.tasks?.length ?? 0,
+            taskCount: columnData?.cards?.length ?? 0,
             existingTaskCount: existingTaskCount
         });
     }
@@ -1039,7 +1039,7 @@ function renderSingleColumn(columnId, columnData) {
     }
 
     const renderedTaskIds = Array.from(newColumnElement.querySelectorAll('.task-item'))
-        .map(taskElement => taskElement.getAttribute('data-task-id'));
+        .map(taskElement => taskElement.getAttribute('data-card-id'));
     if (window.kanbanDebug && window.kanbanDebug.enabled) {
         window.kanbanDebug.log('[kanban.boardRenderer.renderSingleColumn.dom]', {
             columnId: columnId,
@@ -1098,31 +1098,31 @@ function renderSingleColumn(columnId, columnData) {
  * Render a single task - used for targeted updates of individual tasks
  * Purpose: Updates just one task without re-rendering the entire column
  * Used by: Path replacement for broken images, single task content updates
- * @param {string} taskId - ID of the task to render
- * @param {Object} taskData - Task data object
+ * @param {string} cardId - ID of the task to render
+ * @param {Object} cardData - Task data object
  * @param {string} columnId - Parent column ID
  * @returns {boolean} True if successful, false otherwise
  */
-function renderSingleTask(taskId, taskData, columnId) {
+function renderSingleTask(cardId, cardData, columnId) {
     // Find the existing task element
-    const existingTaskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    const existingTaskElement = document.querySelector(`[data-card-id="${cardId}"]`);
     if (!existingTaskElement) {
         return false;
     }
 
     // Skip if this task contains the inline editor — defer until editing ends
     if (containsInlineEditor(existingTaskElement)) {
-        window.kanbanDebug?.log('[renderSingleTask] Skipped — task contains inline editor', taskId);
-        window._pendingBoardRender = () => renderSingleTask(taskId, taskData, columnId);
+        window.kanbanDebug?.log('[renderSingleTask] Skipped — task contains inline editor', cardId);
+        window._pendingBoardRender = () => renderSingleTask(cardId, cardData, columnId);
         return true; // Report success to prevent fallback to full render
     }
 
     // Get the task index from the existing element
-    const taskIndex = parseInt(existingTaskElement.getAttribute('data-task-index') || '0', 10);
+    const taskIndex = parseInt(existingTaskElement.getAttribute('data-card-index') || '0', 10);
 
     // Clean up old tag handlers for this task to prevent memory leaks
     if (window.tagHandlers) {
-        const taskHandlerPrefix = `tag-chip-task-${taskId}-`;
+        const taskHandlerPrefix = `tag-chip-task-${cardId}-`;
         Object.keys(window.tagHandlers).forEach(key => {
             if (key.startsWith(taskHandlerPrefix)) {
                 delete window.tagHandlers[key];
@@ -1135,7 +1135,7 @@ function renderSingleTask(taskId, taskData, columnId) {
     const columnTitle = column?.title || '';
 
     // Create new task element HTML
-    const newTaskHtml = createTaskElement(taskData, columnId, taskIndex, columnTitle);
+    const newTaskHtml = createTaskElement(cardData, columnId, taskIndex, columnTitle);
     if (!newTaskHtml) {
         return false;
     }
@@ -1335,11 +1335,11 @@ function renderBoard(options = null) {
 
     // Selective rendering: only update specific columns or tasks
     if (options) {
-        if (options.tasks && options.tasks.length > 0) {
+        if (options.cards && options.cards.length > 0) {
             // Re-render specific tasks - delegate to column re-render
             // Group tasks by column to minimize re-renders
             const columnIds = new Set();
-            options.tasks.forEach(({ columnId }) => {
+            options.cards.forEach(({ columnId }) => {
                 if (columnId) columnIds.add(columnId);
             });
             options = { columns: Array.from(columnIds) };
@@ -1773,7 +1773,7 @@ function renderBoard(options = null) {
             // Safety check - skip null elements
             if (!element || !element.classList) return;
             const tags = element.getAttribute('data-all-tags').split(' ').filter(tag => tag.trim());
-            const elementType = element.classList.contains('kanban-full-height-column') ? 'column' : 'task';
+            const elementType = element.classList.contains('kanban-full-height-column') ? 'column' : 'card';
             if (window.updateAllVisualTagElements) {
                 window.updateAllVisualTagElements(element, tags, elementType);
             }
@@ -1807,12 +1807,12 @@ function createColumnElement(column, columnIndex) {
         return document.createElement('div');
     }
 
-    if (!column.tasks) {
-        column.tasks = [];
+    if (!column.cards) {
+        column.cards = [];
     }
 
     // Filter out parked, deleted, and archived tasks - they are tagged but stay in cachedBoard
-    const visibleTasks = column.tasks.filter(task => {
+    const visibleTasks = column.cards.filter(task => {
         const content = task.content || '';
         const hasParkedTag = content.includes(PARKED_TAG);
         const hasDeletedTag = content.includes(DELETED_TAG);
@@ -2050,11 +2050,11 @@ function createColumnElement(column, columnIndex) {
     }
 
     // Apply visual elements to tasks as well
-    columnDiv.querySelectorAll('[data-task-id][data-all-tags]').forEach(taskElement => {
+    columnDiv.querySelectorAll('[data-card-id][data-all-tags]').forEach(taskElement => {
         const taskTags = taskElement.getAttribute('data-all-tags');
         if (taskTags) {
             const taskTagArray = taskTags.split(' ').filter(tag => tag.trim());
-            window.updateAllVisualTagElements(taskElement, taskTagArray, 'task');
+            window.updateAllVisualTagElements(taskElement, taskTagArray, 'card');
         }
     });
 
@@ -2140,13 +2140,13 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const taskBgTag = getFirstTagWithProperty(taskHeader, 'background');
 
     // Set primary tag attribute (first non-layout tag) - must match updateVisualTagState behavior
-    // This drives default style exclusion via :not([data-task-tag]) selectors
+    // This drives default style exclusion via :not([data-card-tag]) selectors
     const taskPrimaryTag = allTags.find(t => !t.startsWith('row') && !t.startsWith('gather_') && !t.startsWith('span') && t !== 'stack' && t !== 'sticky');
-    const primaryTagAttribute = taskPrimaryTag ? ` data-task-tag="${taskPrimaryTag}"` : '';
+    const primaryTagAttribute = taskPrimaryTag ? ` data-card-tag="${taskPrimaryTag}"` : '';
 
     // Add separate tag attributes for border and background (skips tags without those properties)
-    const borderTagAttribute = taskBorderTag ? ` data-task-border-tag="${taskBorderTag}"` : '';
-    const bgTagAttribute = taskBgTag ? ` data-task-bg-tag="${taskBgTag}"` : '';
+    const borderTagAttribute = taskBorderTag ? ` data-card-border-tag="${taskBorderTag}"` : '';
+    const bgTagAttribute = taskBgTag ? ` data-card-bg-tag="${taskBgTag}"` : '';
 
     // Add all tags attribute for stacking features (header/footer bars, badges)
     const allTagsAttribute = allTags.length > 0 ? ` data-all-tags="${allTags.join(' ')}"` : '';
@@ -2214,8 +2214,8 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
 
     return `
         <div class="${['task-item', isCollapsed ? 'collapsed' : '', headerClasses || '', footerClasses || '', taskIncludeErrorClass].filter(cls => cls && cls.trim()).join(' ')}${loadingClass}"
-             data-task-id="${task.id}"
-             data-task-index="${taskIndex}"${primaryTagAttribute}${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
+             data-card-id="${task.id}"
+             data-card-index="${taskIndex}"${primaryTagAttribute}${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
              style="${paddingTopStyle} ${paddingBottomStyle}">
             ${loadingOverlay}
             ${headerBarsHtml}
@@ -2251,7 +2251,7 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                         </div>
                         -->
                         <div class="donut-menu-divider"></div>
-                        ${generateTagMenuItems(task.id, 'task', columnId)}
+                        ${generateTagMenuItems(task.id, 'card', columnId)}
                         <div class="donut-menu-divider"></div>
                         <div class="donut-menu-item has-submenu" data-submenu-type="marp-classes" data-scope="task" data-id="${task.id}" data-column-id="${columnId}">
                             Marp Classes
@@ -2593,15 +2593,15 @@ window.setupColumnResizeObserver = setupColumnResizeObserver;
  * Send unified openLink message to backend
  * @param {string} linkType - One of LinkType values (file, wiki, external, image)
  * @param {string} target - The link target (href, documentName, or src)
- * @param {object} options - Optional: taskId, columnId, linkIndex, includeContext, forceExternal
+ * @param {object} options - Optional: cardId, columnId, linkIndex, includeContext, forceExternal
  */
 function sendOpenLinkMessage(linkType, target, options = {}) {
-    const { taskId, columnId, linkIndex, includeContext, forceExternal } = options;
+    const { cardId, columnId, linkIndex, includeContext, forceExternal } = options;
     vscode.postMessage({
         type: 'openLink',
         linkType,
         target,
-        taskId: taskId || undefined,
+        cardId: cardId || undefined,
         columnId: columnId || undefined,
         linkIndex: linkIndex ?? undefined,
         includeContext: includeContext || undefined,
@@ -2610,10 +2610,10 @@ function sendOpenLinkMessage(linkType, target, options = {}) {
 }
 
 // Single function to handle opening links/images/wiki links
-function handleMediaOpen(event, target, taskId = null, columnId = null) {
+function handleMediaOpen(event, target, cardId = null, columnId = null) {
     // Convert string 'undefined'/'null' to actual null (from HTML template literals)
-    if (taskId === 'undefined' || taskId === 'null' || taskId === '') {
-        taskId = null;
+    if (cardId === 'undefined' || cardId === 'null' || cardId === '') {
+        cardId = null;
     }
     if (columnId === 'undefined' || columnId === 'null' || columnId === '') {
         columnId = null;
@@ -2651,18 +2651,18 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
     let linkIndex = 0;
     let includeContext = null;
 
-    if (taskId) {
+    if (cardId) {
         // Look for task container
-        containerElement = target.closest(`[data-task-id="${taskId}"]`);
+        containerElement = target.closest(`[data-card-id="${cardId}"]`);
         if (!containerElement) {
             containerElement = target.closest('.task-item');
         }
 
         // Get includeContext from the task if it exists
-        if (window.cachedBoard && taskId && columnId) {
+        if (window.cachedBoard && cardId && columnId) {
             const column = window.cachedBoard.columns.find(c => c.id === columnId);
             if (column) {
-                const task = column.tasks.find(t => t.id === taskId);
+                const task = column.cards.find(t => t.id === cardId);
                 if (task && task.includeContext) {
                     includeContext = task.includeContext;
                 }
@@ -2694,7 +2694,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
             }
             // Calculate index for wiki links
             linkIndex = findElementIndex(wikiLink, containerElement, 'data-document');
-            sendOpenLinkMessage(LinkType.WIKI, documentName, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
+            sendOpenLinkMessage(LinkType.WIKI, documentName, { cardId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
     }
@@ -2711,7 +2711,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
                 // Calculate index for file links using the href attribute
                 const hrefAttr = link.getAttribute('data-original-href') ? 'data-original-href' : 'href';
                 linkIndex = findElementIndex(link, containerElement, hrefAttr);
-                sendOpenLinkMessage(LinkType.FILE, href, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
+                sendOpenLinkMessage(LinkType.FILE, href, { cardId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
             }
         }
         return true;
@@ -2727,7 +2727,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
             // Calculate index for images using the src attribute
             const srcAttr = img.getAttribute('data-original-src') ? 'data-original-src' : 'src';
             linkIndex = findElementIndex(img, containerElement, srcAttr);
-            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
+            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { cardId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
     }
@@ -2741,7 +2741,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
         if (originalSrc) {
             // Calculate index for image-not-found placeholders
             linkIndex = findElementIndex(imageNotFound, containerElement, 'data-original-src');
-            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { taskId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
+            sendOpenLinkMessage(LinkType.IMAGE, originalSrc, { cardId, columnId, linkIndex, includeContext, forceExternal: event.shiftKey });
         }
         return true;
     }
@@ -2753,7 +2753,7 @@ function handleMediaOpen(event, target, taskId = null, columnId = null) {
         if (embeddedPath) {
             event.preventDefault();
             event.stopPropagation();
-            sendOpenLinkMessage(LinkType.FILE, embeddedPath, { taskId, columnId, includeContext, forceExternal: event.shiftKey });
+            sendOpenLinkMessage(LinkType.FILE, embeddedPath, { cardId, columnId, includeContext, forceExternal: event.shiftKey });
             return true;
         }
     }
@@ -2783,7 +2783,7 @@ function handleColumnTitleClick(event, columnId) {
     }
 
     if (event.altKey) {
-        // Alt+click: open link/image (no taskId for column titles)
+        // Alt+click: open link/image (no cardId for column titles)
         if (handleMediaOpen(event, event.target, null, columnId)) {return;}
         return; // Don't edit if Alt is pressed
     }
@@ -2819,7 +2819,7 @@ function handleColumnTitleClick(event, columnId) {
     }
 }
 
-function handleTaskTitleClick(event, element, taskId, columnId) {
+function handleTaskTitleClick(event, element, cardId, columnId) {
     // Don't intercept clicks on media menu buttons - let event delegation handle them
     const menuButton = event.target?.closest?.('.image-menu-btn, .video-menu-btn, .link-menu-btn, .wiki-menu-btn, .include-menu-btn, .diagram-menu-btn, .embed-menu-btn, .inline-file-menu-btn');
     if (menuButton) {
@@ -2841,7 +2841,7 @@ function handleTaskTitleClick(event, element, taskId, columnId) {
 
     if (event.altKey) {
         // Alt+click: open link/image
-        if (handleMediaOpen(event, event.target, taskId, columnId)) {return;}
+        if (handleMediaOpen(event, event.target, cardId, columnId)) {return;}
         return; // Don't edit if Alt is pressed
     }
 
@@ -2850,19 +2850,19 @@ function handleTaskTitleClick(event, element, taskId, columnId) {
     event.stopPropagation();
 
     if (typeof window.editTitle === 'function') {
-        window.editTitle(element, taskId, columnId);
+        window.editTitle(element, cardId, columnId);
     } else {
         console.error('editTitle is not a function:', typeof window.editTitle);
     }
 }
 
-function handleDescriptionClick(event, element, taskId, columnId) {
+function handleDescriptionClick(event, element, cardId, columnId) {
     const checkbox = event.target?.closest?.('.md-task-checkbox');
     if (checkbox) {
         event.preventDefault();
         event.stopPropagation();
         if (typeof window.toggleTaskDescriptionCheckbox === 'function') {
-            window.toggleTaskDescriptionCheckbox(checkbox, taskId, columnId);
+            window.toggleTaskDescriptionCheckbox(checkbox, cardId, columnId);
         }
         return;
     }
@@ -2901,7 +2901,7 @@ function handleDescriptionClick(event, element, taskId, columnId) {
             documentScrollTop: webviewBody?.scrollTop,
             scrollParent: scrollParentInfo,
             clickedElementRect: element?.getBoundingClientRect()?.top,
-            taskId
+            cardId
         });
     }
 
@@ -2920,7 +2920,7 @@ function handleDescriptionClick(event, element, taskId, columnId) {
 
     if (event.altKey) {
         // Alt+click: open link/image
-        if (handleMediaOpen(event, event.target, taskId, columnId)) {return;}
+        if (handleMediaOpen(event, event.target, cardId, columnId)) {return;}
         return; // Don't edit if Alt is pressed
     }
 
@@ -2929,8 +2929,8 @@ function handleDescriptionClick(event, element, taskId, columnId) {
     event.stopPropagation();
 
     if (typeof window.editDescription === 'function') {
-        if (taskId && columnId) {
-            window.editDescription(element, taskId, columnId);
+        if (cardId && columnId) {
+            window.editDescription(element, cardId, columnId);
         } else {
             window.editDescription(element);
         }
@@ -2939,8 +2939,8 @@ function handleDescriptionClick(event, element, taskId, columnId) {
     }
 }
 
-function toggleTaskDescriptionCheckbox(checkboxEl, taskId, columnId) {
-    if (!checkboxEl || !taskId || !columnId) {
+function toggleTaskDescriptionCheckbox(checkboxEl, cardId, columnId) {
+    if (!checkboxEl || !cardId || !columnId) {
         return;
     }
 
@@ -2950,7 +2950,7 @@ function toggleTaskDescriptionCheckbox(checkboxEl, taskId, columnId) {
     }
 
     const found = window.menuUtils?.findTaskInBoard
-        ? window.menuUtils.findTaskInBoard(taskId, columnId)
+        ? window.menuUtils.findTaskInBoard(cardId, columnId)
         : null;
     if (!found || !found.task) {
         return;
@@ -2968,7 +2968,7 @@ function toggleTaskDescriptionCheckbox(checkboxEl, taskId, columnId) {
         window.taskContentUtils.ensureTaskContent(task);
     }
 
-    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const displayElement = taskElement?.querySelector?.('.task-description-display');
     if (displayElement) {
         let renderedHtml = renderMarkdown(updatedContent, task.includeContext);
@@ -2979,10 +2979,10 @@ function toggleTaskDescriptionCheckbox(checkboxEl, taskId, columnId) {
     }
 
     vscode.postMessage({
-        type: 'editTask',
-        taskId: taskId,
+        type: 'editCard',
+        cardId: cardId,
         columnId: columnId,
-        taskData: { content: updatedContent }
+        cardData: { content: updatedContent }
     });
 }
 
@@ -3031,11 +3031,11 @@ function injectStackableBars(targetElement = null) {
                 titleText = column ? column.title : '';
             }
         } else {
-            const taskId = element.getAttribute('data-task-id');
-            if (window.cachedBoard && window.cachedBoard.columns && taskId) {
+            const cardId = element.getAttribute('data-card-id');
+            if (window.cachedBoard && window.cachedBoard.columns && cardId) {
                 // Find task across all columns
                 for (const column of window.cachedBoard.columns) {
-                    const task = column.tasks.find(t => t.id === taskId);
+                    const task = column.cards.find(t => t.id === cardId);
                     if (task) {
                         titleText = window.taskContentUtils?.getTaskHeader
                             ? window.taskContentUtils.getTaskHeader(task.content || '')
@@ -3048,7 +3048,7 @@ function injectStackableBars(targetElement = null) {
 
         // Update border tag attribute
         const borderTag = window.getFirstTagWithProperty ? window.getFirstTagWithProperty(titleText, 'border') : null;
-        const borderTagAttr = isColumn ? 'data-column-border-tag' : 'data-task-border-tag';
+        const borderTagAttr = isColumn ? 'data-column-border-tag' : 'data-card-border-tag';
         if (borderTag) {
             element.setAttribute(borderTagAttr, borderTag);
         } else {
@@ -3057,7 +3057,7 @@ function injectStackableBars(targetElement = null) {
 
         // Update background tag attribute
         const bgTag = window.getFirstTagWithProperty ? window.getFirstTagWithProperty(titleText, 'background') : null;
-        const bgTagAttr = isColumn ? 'data-column-bg-tag' : 'data-task-bg-tag';
+        const bgTagAttr = isColumn ? 'data-column-bg-tag' : 'data-card-bg-tag';
         if (bgTag) {
             element.setAttribute(bgTagAttr, bgTag);
         } else {
@@ -3067,8 +3067,8 @@ function injectStackableBars(targetElement = null) {
         // Filter out tags that are ONLY in body content (after first empty line) for task elements.
         // Task-level tags = contiguous non-empty lines from start (task header)
         if (!isColumn) {
-            const taskId = element.getAttribute('data-task-id');
-            const task = taskId ? findTaskById(taskId) : null;
+            const cardId = element.getAttribute('data-card-id');
+            const task = cardId ? findTaskById(cardId) : null;
 
             if (task) {
                 const contentText = task.content || '';
@@ -3138,10 +3138,10 @@ function injectStackableBars(targetElement = null) {
                         }
                     }
                 } else {
-                    const taskId = element.getAttribute('data-task-id');
-                    if (window.cachedBoard?.columns && taskId) {
+                    const cardId = element.getAttribute('data-card-id');
+                    if (window.cachedBoard?.columns && cardId) {
                         for (const col of window.cachedBoard.columns) {
-                            const task = col.tasks.find(t => t.id === taskId);
+                            const task = col.cards.find(t => t.id === cardId);
                             if (task) {
                                 const summary = window.taskContentUtils?.getTaskSummaryLine
                                     ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
@@ -3450,7 +3450,7 @@ window.generateFlatTagItems = generateFlatTagItems;
  * Purpose: Bulk tag removal operation
  * Used by: 'Remove all tags' menu option
  * @param {string} id - Element ID
- * @param {string} type - 'column' or 'task'
+ * @param {string} type - 'column' or 'card'
  * @param {string} columnId - Parent column for tasks
  * Side effects: Updates pending changes, triggers save
  */
@@ -3466,9 +3466,9 @@ function removeAllTags(id, type, columnId = null) {
             currentTitle = column.title || '';
             element = column;
         }
-    } else if (type === 'task' && columnId) {
+    } else if (type === 'card' && columnId) {
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-        const task = column?.tasks?.find(t => t.id === id);
+        const task = column?.cards?.find(t => t.id === id);
         if (task) {
             if (window.taskContentUtils?.ensureTaskContent) {
                 window.taskContentUtils.ensureTaskContent(task);
@@ -3507,7 +3507,7 @@ function removeAllTags(id, type, columnId = null) {
         if (typeof updateColumnDisplayImmediate === 'function') {
             updateColumnDisplayImmediate(id, newTitle, false, '');
         }
-    } else if (type === 'task') {
+    } else if (type === 'card') {
         const task = element; // element is the task object
         if (window.taskContentUtils?.ensureTaskContent) {
             window.taskContentUtils.ensureTaskContent(task);
@@ -3521,10 +3521,10 @@ function removeAllTags(id, type, columnId = null) {
 
         // Send editTask message immediately when tags are removed
         vscode.postMessage({
-            type: 'editTask',
-            taskId: id,
+            type: 'editCard',
+            cardId: id,
             columnId: columnId,
-            taskData: { content: task.content }
+            cardData: { content: task.content }
         });
 
         // Update display immediately
@@ -3566,7 +3566,7 @@ function updateColumnTaskCount(columnId) {
     if (taskCountElement) {
         // Update the text content while preserving the button
         const buttonHTML = taskCountElement.innerHTML.match(/<button[\s\S]*<\/button>/);
-        taskCountElement.innerHTML = `${column.tasks.length}${buttonHTML ? buttonHTML[0] : ''}`;
+        taskCountElement.innerHTML = `${column.cards.length}${buttonHTML ? buttonHTML[0] : ''}`;
     }
 }
 
@@ -3609,7 +3609,7 @@ function addSingleTaskToDOM(columnId, task, insertIndex = -1) {
     }
 
     // Get the task index within the column
-    const taskIndex = insertIndex >= 0 ? insertIndex : column.tasks.length - 1;
+    const taskIndex = insertIndex >= 0 ? insertIndex : column.cards.length - 1;
 
     // Create the task element HTML
     const taskHtml = createTaskElement(task, columnId, taskIndex, column.title);

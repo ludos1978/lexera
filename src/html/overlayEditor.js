@@ -18,8 +18,8 @@
         mode: 'markdown', // markdown | dual | wysiwyg
         fontScale: 1.2,
         draft: '',
-        taskRef: null, // { taskId, columnId, includeContext, title }
-        taskData: null // { task, column }
+        taskRef: null, // { cardId, columnId, includeContext, title }
+        cardData: null // { task, column }
     };
 
     const elements = {
@@ -403,12 +403,12 @@
     const previewDelayMs = 80;
 
     function resolveTaskData(taskRef) {
-        if (!taskRef || !window.cachedBoard || !taskRef.taskId || !taskRef.columnId) {
+        if (!taskRef || !window.cachedBoard || !taskRef.cardId || !taskRef.columnId) {
             return null;
         }
         const column = window.cachedBoard.columns?.find(c => c.id === taskRef.columnId);
         if (!column) { return null; }
-        const task = column.tasks?.find(t => t.id === taskRef.taskId);
+        const task = column.cards?.find(t => t.id === taskRef.cardId);
         if (!task) { return null; }
         return { task, column };
     }
@@ -450,10 +450,10 @@
         const draft = state.draft || '';
         const includeContext = state.taskRef?.includeContext;
         const taskSummary = getTaskSummary({ content: draft });
-        const taskId = state.taskId;
+        const cardId = state.cardId;
 
         // Set temporal rendering context
-        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+        const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
         const columnElement = taskElement?.closest('.kanban-full-height-column');
         const columnId = columnElement?.dataset?.columnId;
         const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
@@ -616,8 +616,8 @@
         if (Object.prototype.hasOwnProperty.call(nextState, 'taskRef')) {
             state.taskRef = nextState.taskRef;
         }
-        if (Object.prototype.hasOwnProperty.call(nextState, 'taskData')) {
-            state.taskData = nextState.taskData;
+        if (Object.prototype.hasOwnProperty.call(nextState, 'cardData')) {
+            state.cardData = nextState.cardData;
         }
         if (Object.prototype.hasOwnProperty.call(nextState, 'enabled')) {
             state.enabled = Boolean(nextState.enabled);
@@ -686,7 +686,7 @@
         const task = resolved?.task || null;
         const column = resolved?.column || null;
         const nextTaskRef = {
-            taskId: taskRef?.taskId,
+            cardId: taskRef?.cardId,
             columnId: taskRef?.columnId,
             includeContext: task?.includeContext || null
         };
@@ -694,7 +694,7 @@
         setState(
             {
                 taskRef: nextTaskRef,
-                taskData: resolved ? { task, column } : null,
+                cardData: resolved ? { task, column } : null,
                 draft: nextDraft,
                 mode: state.mode,
                 fontScale: state.fontScale
@@ -727,7 +727,7 @@
         if (elements.settings) {
             elements.settings.classList.remove('open');
         }
-        setState({ taskRef: null, taskData: null, draft: '' });
+        setState({ taskRef: null, cardData: null, draft: '' });
         setTitleInputValue('');
         window.currentTaskIncludeContext = null;
         if (dropHandler && typeof dropHandler.detach === 'function') {
@@ -745,7 +745,7 @@
 
     function handleSave() {
         // Requires: save task + re-render only affected task.
-        const resolved = state.taskData || resolveTaskData(state.taskRef);
+        const resolved = state.cardData || resolveTaskData(state.taskRef);
         if (!resolved || !resolved.task || !resolved.column) {
             closeOverlay();
             return;
@@ -778,10 +778,10 @@
         }
         if (window.vscode?.postMessage) {
             window.vscode.postMessage({
-                type: 'editTask',
-                taskId: task.id,
+                type: 'editCard',
+                cardId: task.id,
                 columnId: column.id,
-                taskData: { content: normalizedValue }
+                cardData: { content: normalizedValue }
             });
         }
         closeOverlay();
@@ -1002,7 +1002,7 @@
                 selectedText: selectedText,
                 fullText: fullText,
                 fieldType: 'task-description',
-                taskId: state.taskRef?.taskId,
+                cardId: state.taskRef?.cardId,
                 columnId: state.taskRef?.columnId
             });
         }

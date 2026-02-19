@@ -126,7 +126,7 @@ class TaskEditor {
 
         return {
             type: this.currentEditor.type,
-            taskId: this.currentEditor.taskId,
+            cardId: this.currentEditor.cardId,
             columnId: this.currentEditor.columnId,
             value: value,
             originalValue: this.currentEditor.originalValue
@@ -149,7 +149,7 @@ class TaskEditor {
         if (editState.type === 'task-title' || editState.type === 'task-description') {
             const column = boardCopy.columns.find(c => c.id === editState.columnId);
             if (column) {
-                const task = column.tasks.find(t => t.id === editState.taskId);
+                const task = column.cards.find(t => t.id === editState.cardId);
                 if (task) {
                     if (window.taskContentUtils?.ensureTaskContent) {
                         window.taskContentUtils.ensureTaskContent(task);
@@ -330,24 +330,24 @@ class TaskEditor {
 
                                     const domTaskId = typeof window.getTaskIdFromElement === 'function'
                                         ? window.getTaskIdFromElement(target)
-                                        : target?.closest?.('.task-item')?.dataset?.taskId;
+                                        : target?.closest?.('.task-item')?.dataset?.cardId;
                                     const domColumnId = typeof window.getColumnIdFromElement === 'function'
                                         ? window.getColumnIdFromElement(target)
                                         : target?.closest?.('[data-column-id]')?.dataset?.columnId;
-                                    const taskId = self.currentEditor?.taskId || domTaskId;
+                                    const cardId = self.currentEditor?.cardId || domTaskId;
                                     const columnId = self.currentEditor?.columnId || domColumnId;
 
                                     if (window.kanbanDebug?.enabled) {
                                         console.log('[PASTE-DEBUG] image paste context', {
                                             currentEditor: self.currentEditor ? {
                                                 type: self.currentEditor.type,
-                                                taskId: self.currentEditor.taskId,
+                                                cardId: self.currentEditor.cardId,
                                                 columnId: self.currentEditor.columnId,
                                                 includeContext: !!self.currentEditor.includeContext
                                             } : null,
                                             domTaskId,
                                             domColumnId,
-                                            resolvedTaskId: taskId,
+                                            resolvedTaskId: cardId,
                                             resolvedColumnId: columnId,
                                             targetClass: target?.className,
                                             activeElement: document.activeElement?.className
@@ -356,7 +356,7 @@ class TaskEditor {
 
                                     let includeContext = self.currentEditor?.includeContext || null;
                                     if (!includeContext) {
-                                        includeContext = self._getTaskIncludeContext(taskId, columnId);
+                                        includeContext = self._getTaskIncludeContext(cardId, columnId);
                                     }
 
                                     // Send to backend to save the image
@@ -366,7 +366,7 @@ class TaskEditor {
                                         imageType: type,
                                         md5Hash: md5Hash,
                                         cursorPosition: cursorPos,
-                                        taskId: taskId || undefined,
+                                        cardId: cardId || undefined,
                                         columnId: columnId || undefined,
                                         includeContext: includeContext || undefined
                                     });
@@ -656,9 +656,9 @@ class TaskEditor {
      * Initialize task description value for editing (preserves leading newlines)
      * @private
      */
-    _initializeTaskDescriptionValue(editElement, taskId, columnId) {
+    _initializeTaskDescriptionValue(editElement, cardId, columnId) {
         const column = window.cachedBoard?.columns.find(col => col.id === columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === cardId);
         if (task) {
             if (window.taskContentUtils?.ensureTaskContent) {
                 window.taskContentUtils.ensureTaskContent(task);
@@ -667,12 +667,12 @@ class TaskEditor {
         }
     }
 
-    _getTaskIncludeContext(taskId, columnId) {
-        if (!taskId || !columnId) {
+    _getTaskIncludeContext(cardId, columnId) {
+        if (!cardId || !columnId) {
             return null;
         }
         const column = window.cachedBoard?.columns?.find(col => col.id === columnId);
-        const task = column?.tasks?.find(t => t.id === taskId);
+        const task = column?.cards?.find(t => t.id === cardId);
         return task?.includeContext || null;
     }
 
@@ -764,7 +764,7 @@ class TaskEditor {
                 selectedText: selectedText,
                 fullText: element?.value || '',
                 fieldType: this.currentEditor?.type,
-                taskId: this.currentEditor?.taskId,
+                cardId: this.currentEditor?.cardId,
                 columnId: this.currentEditor?.columnId
             });
         }
@@ -1117,12 +1117,12 @@ class TaskEditor {
      * Store current editor state
      * @private
      */
-    _storeEditorState(editElement, displayElement, type, taskId, columnId, includeContext = null, wysiwygContext = null, containerElement = null) {
+    _storeEditorState(editElement, displayElement, type, cardId, columnId, includeContext = null, wysiwygContext = null, containerElement = null) {
         this.currentEditor = {
             element: editElement,
             displayElement: displayElement,
             type: type,
-            taskId: taskId || window.getTaskIdFromElement(editElement),
+            cardId: cardId || window.getTaskIdFromElement(editElement),
             columnId: columnId || window.getColumnIdFromElement(editElement),
             originalValue: editElement.value,
             containerElement: containerElement,
@@ -1150,7 +1150,7 @@ class TaskEditor {
      * Notify backend that editing has started
      * @private
      */
-    _notifyEditingStarted(type, taskId, columnId) {
+    _notifyEditingStarted(type, cardId, columnId) {
         // Notify VS Code context for task editing
         if (type === 'task-title' || type === 'task-description') {
             if (typeof vscode !== 'undefined') {
@@ -1166,7 +1166,7 @@ class TaskEditor {
         vscode.postMessage({
             type: 'editingStarted',
             editType: type,
-            taskId: taskId,
+            cardId: cardId,
             columnId: columnId
         });
 
@@ -1285,7 +1285,7 @@ class TaskEditor {
             const allEditElements = document.querySelectorAll('.task-description-edit');
             console.log('[SETUP-DEBUG] Setting up input handler', {
                 editElementCount: allEditElements.length,
-                elementId: editElement.closest('[data-task-id]')?.dataset?.taskId
+                elementId: editElement.closest('[data-card-id]')?.dataset?.cardId
             });
         }
 
@@ -1901,34 +1901,34 @@ class TaskEditor {
      * Used by: Click handlers on editable elements
      * @param {HTMLElement} element - Element to edit
      * @param {string} type - 'task-title', 'task-description', 'column-title'
-     * @param {string} taskId - Task ID if editing task
+     * @param {string} cardId - Task ID if editing task
      * @param {string} columnId - Column ID
      * @param {boolean} preserveCursor - Whether to preserve cursor position (default: false, moves to end)
      */
-    startEdit(element, type, taskId = null, columnId = null, preserveCursor = false) {
+    startEdit(element, type, cardId = null, columnId = null, preserveCursor = false) {
         // Task summary line is derived from unified content and must not be edited directly.
         if (type === 'task-title') {
             const taskItem = element?.closest?.('.task-item');
             const descriptionContainer = taskItem?.querySelector?.('.task-description-container');
-            return this.startEdit(descriptionContainer || element, 'task-description', taskId, columnId, preserveCursor);
+            return this.startEdit(descriptionContainer || element, 'task-description', cardId, columnId, preserveCursor);
         }
 
         // If transitioning, don't interfere
         if (this.isTransitioning) { return; }
         this._clearPostCloseFocusTimeout();
 
-        if (type === 'task-description' && taskId && columnId) {
+        if (type === 'task-description' && cardId && columnId) {
             const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-            const task = column?.tasks?.find(t => t.id === taskId);
+            const task = column?.cards?.find(t => t.id === cardId);
             if (task?.includeError) {
-                console.warn('[startEdit] Cannot edit description for broken task include:', taskId);
+                console.warn('[startEdit] Cannot edit description for broken task include:', cardId);
                 return;
             }
             if (window.overlayEditorEnabled && window.taskOverlayEditor?.open) {
                 if (this.currentEditor && !this.isTransitioning) {
                     this.save();
                 }
-                window.taskOverlayEditor.open({ taskId, columnId });
+                window.taskOverlayEditor.open({ cardId, columnId });
                 return;
             }
         }
@@ -1942,7 +1942,7 @@ class TaskEditor {
             const board = document.getElementById('kanban-board');
             console.log('[START-EDIT] Begin', {
                 type,
-                taskId,
+                cardId,
                 containerScrollTop: scrollAtStart,
                 boardScrollTop: board?.scrollTop
             });
@@ -1967,8 +1967,8 @@ class TaskEditor {
         // Initialize value based on type
         if (type === 'column-title' && columnId) {
             this._initializeColumnTitleValue(editElement, columnId);
-        } else if (type === 'task-description' && taskId) {
-            this._initializeTaskDescriptionValue(editElement, taskId, columnId);
+        } else if (type === 'task-description' && cardId) {
+            this._initializeTaskDescriptionValue(editElement, cardId, columnId);
         }
 
         if (window.kanbanDebug?.enabled) {
@@ -2024,14 +2024,14 @@ class TaskEditor {
         }
 
         const includeContext = (type === 'task-title' || type === 'task-description')
-            ? this._getTaskIncludeContext(taskId, columnId)
+            ? this._getTaskIncludeContext(cardId, columnId)
             : null;
 
         // Store editor state
-        this._storeEditorState(editElement, displayElement, type, taskId, columnId, includeContext, wysiwygContext, containerElement);
+        this._storeEditorState(editElement, displayElement, type, cardId, columnId, includeContext, wysiwygContext, containerElement);
 
         // Notify backend
-        this._notifyEditingStarted(type, taskId, columnId);
+        this._notifyEditingStarted(type, cardId, columnId);
 
         // Setup event handlers
         if (wysiwygContext?.editor) {
@@ -2056,7 +2056,7 @@ class TaskEditor {
 
         this.isTransitioning = true;
 
-        const taskId = this.currentEditor.taskId;
+        const cardId = this.currentEditor.cardId;
         const columnId = this.currentEditor.columnId;
         const taskItem = this.currentEditor.element.closest('.task-item');
 
@@ -2079,7 +2079,7 @@ class TaskEditor {
         this.isTransitioning = false;
         const descContainer = taskItem.querySelector('.task-description-container');
         if (descContainer) {
-            this.startEdit(descContainer, 'task-description', taskId, columnId);
+            this.startEdit(descContainer, 'task-description', cardId, columnId);
         }
     }
 
@@ -2384,12 +2384,12 @@ class TaskEditor {
      * Handles: include syntax, display updates, tag styling, temporal attributes
      */
     _saveTaskField() {
-        const { element, type, taskId } = this.currentEditor;
+        const { element, type, cardId } = this.currentEditor;
         let columnId = this.currentEditor.columnId;
         const value = element.value;
 
         // Find task (may have been moved to different column)
-        let { column, task } = this._findTask(taskId, columnId);
+        let { column, task } = this._findTask(cardId, columnId);
         if (!task) { return; }
 
         // Update columnId if task was found in different column
@@ -2403,24 +2403,24 @@ class TaskEditor {
 
         // Handle based on field type
         if (type === 'task-title') {
-            const handled = this._saveTaskTitle(task, value, taskId, columnId, element);
+            const handled = this._saveTaskTitle(task, value, cardId, columnId, element);
             if (handled) { return; } // Early return for include handling
         } else if (type === 'task-description') {
-            this._saveTaskDescription(task, value, taskId, columnId);
+            this._saveTaskDescription(task, value, cardId, columnId);
         }
 
         // Update display
-        this._updateTaskDisplay(task, type, value, taskId);
+        this._updateTaskDisplay(task, type, value, cardId);
 
         // Update tag styling
-        this._updateTaskTagStyling(task, taskId, columnId);
+        this._updateTaskTagStyling(task, cardId, columnId);
 
         // Send to backend
         vscode.postMessage({
-            type: 'editTask',
-            taskId: taskId,
+            type: 'editCard',
+            cardId: cardId,
             columnId: columnId,
-            taskData: task
+            cardData: task
         });
 
         // Update refresh button state
@@ -2433,13 +2433,13 @@ class TaskEditor {
     /**
      * Find task by ID, searching all columns if not in expected column
      */
-    _findTask(taskId, expectedColumnId) {
+    _findTask(cardId, expectedColumnId) {
         let column = window.cachedBoard.columns.find(c => c.id === expectedColumnId);
-        let task = column?.tasks.find(t => t.id === taskId);
+        let task = column?.cards.find(t => t.id === cardId);
 
         if (!task) {
             for (const col of window.cachedBoard.columns) {
-                task = col.tasks.find(t => t.id === taskId);
+                task = col.cards.find(t => t.id === cardId);
                 if (task) {
                     column = col;
                     break;
@@ -2454,7 +2454,7 @@ class TaskEditor {
      * Save task title
      * Returns true if handled (include case with early return), false otherwise
      */
-    _saveTaskTitle(task, value, taskId, columnId, element) {
+    _saveTaskTitle(task, value, cardId, columnId, element) {
         const newIncludeMatches = value.match(/!!!include\(([^)]+)\)!!!/g) || [];
         const currentSummary = window.taskContentUtils?.getTaskSummaryLine
             ? window.taskContentUtils.getTaskSummaryLine(task.content || '')
@@ -2467,7 +2467,7 @@ class TaskEditor {
 
         if (newIncludeMatches.length > 0 || hasIncludeChanges) {
             // Handle include syntax (new, changed, or removed)
-            this._saveTaskTitleWithIncludes(task, value, taskId, columnId, element);
+            this._saveTaskTitleWithIncludes(task, value, cardId, columnId, element);
             return true;
         }
 
@@ -2478,7 +2478,7 @@ class TaskEditor {
 
         // Regular task title editing
         if (currentSummary !== value) {
-            this.lastEditContext = `task-title-${taskId}-${columnId}`;
+            this.lastEditContext = `task-title-${cardId}-${columnId}`;
             if (window.taskContentUtils?.ensureTaskContent) {
                 window.taskContentUtils.ensureTaskContent(task);
             }
@@ -2496,8 +2496,8 @@ class TaskEditor {
     /**
      * Save task title with include syntax
      */
-    _saveTaskTitleWithIncludes(task, value, taskId, columnId, element) {
-        this.lastEditContext = `task-title-${taskId}-${columnId}`;
+    _saveTaskTitleWithIncludes(task, value, cardId, columnId, element) {
+        this.lastEditContext = `task-title-${cardId}-${columnId}`;
         if (window.taskContentUtils?.ensureTaskContent) {
             window.taskContentUtils.ensureTaskContent(task);
         }
@@ -2509,10 +2509,10 @@ class TaskEditor {
             : value;
 
         vscode.postMessage({
-            type: 'editTask',
-            taskId: taskId,
+            type: 'editCard',
+            cardId: cardId,
             columnId: columnId,
-            taskData: { content: task.content || value }
+            cardData: { content: task.content || value }
         });
 
         // Update display
@@ -2531,28 +2531,28 @@ class TaskEditor {
                 : value.split('\n')[0] || '';
             const allTags = window.getActiveTagsInTitle(taskHeaderText);
             const isCollapsed = taskElement.classList.contains('collapsed');
-            window.updateVisualTagState(taskElement, allTags, 'task', isCollapsed);
+            window.updateVisualTagState(taskElement, allTags, 'card', isCollapsed);
         }
     }
 
     /**
      * Save task description
      */
-    _saveTaskDescription(task, value, taskId, columnId) {
+    _saveTaskDescription(task, value, cardId, columnId) {
         if (window.taskContentUtils?.ensureTaskContent) {
             window.taskContentUtils.ensureTaskContent(task);
         }
         const currentRawValue = task.content || '';
         if (currentRawValue === value && !task.includeMode) { return; }
 
-        this.lastEditContext = `task-description-${taskId}-${columnId}`;
+        this.lastEditContext = `task-description-${cardId}-${columnId}`;
         task.content = value;
     }
 
     /**
      * Update task display element
      */
-    _updateTaskDisplay(task, type, value, taskId) {
+    _updateTaskDisplay(task, type, value, cardId) {
         if (!this.currentEditor.displayElement) { return; }
 
         if (value.trim()) {
@@ -2575,7 +2575,7 @@ class TaskEditor {
 
             // Set temporal rendering context for description rendering
             if (type === 'task-description') {
-                const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+                const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
                 const columnElement = taskElement?.closest('.kanban-full-height-column');
                 const columnId = columnElement?.dataset?.columnId;
                 const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
@@ -2616,7 +2616,7 @@ class TaskEditor {
 
         // Keep folded summary text in sync after task description edits.
         if (type === 'task-description') {
-            const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+            const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
             if (taskElement) {
                 const titleDisplayElement = taskElement.querySelector('.task-title-display');
                 if (titleDisplayElement) {
@@ -2639,8 +2639,8 @@ class TaskEditor {
     /**
      * Update task tag-based styling (primary tag, temporal attributes, visual state)
      */
-    _updateTaskTagStyling(task, taskId, columnId) {
-        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    _updateTaskTagStyling(task, cardId, columnId) {
+        const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
         if (!taskElement) { return; }
 
         const contentText = task.content || '';
@@ -2652,7 +2652,7 @@ class TaskEditor {
         const titleTags = window.getActiveTagsInTitle(taskHeaderText);
         const isCollapsed = taskElement.classList.contains('collapsed');
         if (window.updateVisualTagState) {
-            window.updateVisualTagState(taskElement, titleTags, 'task', isCollapsed);
+            window.updateVisualTagState(taskElement, titleTags, 'card', isCollapsed);
         }
     }
 
@@ -2782,12 +2782,12 @@ class TaskEditor {
         if (type === 'task-title' || type === 'task-description') {
             const taskItem = element.closest('.task-item');
             if (taskItem) {
-                const taskId = taskItem.getAttribute('data-task-id');
+                const cardId = taskItem.getAttribute('data-card-id');
                 const isCollapsed = taskItem.classList.contains('collapsed');
 
-                if (taskId && isCollapsed) {
+                if (cardId && isCollapsed) {
                     // Get task data from cached board
-                    const task = findTaskById(taskId);
+                    const task = findTaskById(cardId);
                     if (task) {
                         const titleDisplay = taskItem.querySelector('.task-title-display');
                         if (titleDisplay) {
@@ -2815,10 +2815,10 @@ class TaskEditor {
      * Saves undo state immediately for different operations
      * Purpose: Immediate undo state for switching between different cards/columns
      * @param {string} operation - The operation type
-     * @param {string} taskId - Task ID (null for column operations)
+     * @param {string} cardId - Task ID (null for column operations)
      * @param {string} columnId - Column ID
      */
-    saveUndoStateImmediately(operation, taskId, columnId) {
+    saveUndoStateImmediately(operation, cardId, columnId) {
         // Clear any pending keystroke timeout since this is a different operation
         if (this.keystrokeTimeout) {
             clearTimeout(this.keystrokeTimeout);
@@ -2828,7 +2828,7 @@ class TaskEditor {
         vscode.postMessage({ 
             type: 'saveUndoState', 
             operation: operation,
-            taskId: taskId,
+            cardId: cardId,
             columnId: columnId,
             currentBoard: window.cachedBoard
         });
@@ -2838,10 +2838,10 @@ class TaskEditor {
      * Schedules undo state saving with debouncing for same-field keystrokes
      * Purpose: Group keystrokes within the same field to avoid excessive undo states
      * @param {string} operation - The operation type
-     * @param {string} taskId - Task ID (null for column operations)
+     * @param {string} cardId - Task ID (null for column operations)
      * @param {string} columnId - Column ID
      */
-    scheduleKeystrokeUndoSave(operation, taskId, columnId) {
+    scheduleKeystrokeUndoSave(operation, cardId, columnId) {
         // Clear existing timeout to debounce keystrokes
         if (this.keystrokeTimeout) {
             clearTimeout(this.keystrokeTimeout);
@@ -2853,7 +2853,7 @@ class TaskEditor {
             vscode.postMessage({ 
                 type: 'saveUndoState', 
                 operation: operation,
-                taskId: taskId,
+                cardId: cardId,
                 columnId: columnId,
                 currentBoard: window.cachedBoard
             });
@@ -3049,12 +3049,12 @@ if (!window.taskEditor) {
  * Purpose: Public API for starting task title edit
  * Used by: onclick handlers in task HTML
  * @param {HTMLElement} element - Title element
- * @param {string} taskId - Task ID
+ * @param {string} cardId - Task ID
  * @param {string} columnId - Parent column ID
  */
-function editTitle(element, taskId, columnId) {
+function editTitle(element, cardId, columnId) {
     // Task summary/title is read-only; edit full unified content instead.
-    editDescription(element, taskId, columnId);
+    editDescription(element, cardId, columnId);
 }
 
 /**
@@ -3062,10 +3062,10 @@ function editTitle(element, taskId, columnId) {
  * Purpose: Public API for starting task description edit
  * Used by: onclick handlers in task HTML
  * @param {HTMLElement} element - Description element
- * @param {string} taskId - Task ID
+ * @param {string} cardId - Task ID
  * @param {string} columnId - Parent column ID
  */
-function editDescription(element, taskId, columnId) {
+function editDescription(element, cardId, columnId) {
     // DEBUG: Log scroll position at editDescription entry
     if (window.kanbanDebug?.enabled) {
         const container = document.getElementById('kanban-container');
@@ -3073,29 +3073,29 @@ function editDescription(element, taskId, columnId) {
         console.log('[CLICK-DEBUG] editDescription entry', {
             scrollTop: container?.scrollTop,
             boardScrollTop: board?.scrollTop,
-            taskId
+            cardId
         });
     }
 
     // Don't start editing if we're already editing this field
     if (taskEditor.currentEditor &&
         taskEditor.currentEditor.type === 'task-description' &&
-        taskEditor.currentEditor.taskId === taskId &&
+        taskEditor.currentEditor.cardId === cardId &&
         taskEditor.currentEditor.columnId === columnId) {
         return; // Already editing this description
     }
 
     // Don't allow editing description for broken task includes
     const column = window.cachedBoard?.columns?.find(c => c.id === columnId);
-    const task = column?.tasks?.find(t => t.id === taskId);
+    const task = column?.cards?.find(t => t.id === cardId);
     if (task?.includeError) {
-        console.warn('[editDescription] Cannot edit description for broken task include:', taskId);
+        console.warn('[editDescription] Cannot edit description for broken task include:', cardId);
         return;
     }
 
     // Find the actual container if needed
     const container = element.closest('.task-description-container') || element;
-    taskEditor.startEdit(container, 'task-description', taskId, columnId, true); // preserveCursor=true for clicks
+    taskEditor.startEdit(container, 'task-description', cardId, columnId, true); // preserveCursor=true for clicks
 }
 
 /**

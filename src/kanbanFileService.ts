@@ -331,7 +331,7 @@ export class KanbanFileService {
                 if (col.includeFiles && col.includeFiles.length > 0) {
                     logger.debug(`[KanbanFileService] BEFORE sendBoardUpdate - column ${col.id}: includeMode=${col.includeMode}, includeError=${col.includeError}, includeFiles=${JSON.stringify(col.includeFiles)}`);
                 }
-                for (const task of col.tasks || []) {
+                for (const task of col.cards || []) {
                     if (task.includeFiles && task.includeFiles.length > 0) {
                         logger.debug(`[KanbanFileService] BEFORE sendBoardUpdate - task ${task.id}: includeMode=${task.includeMode}, includeError=${task.includeError}, includeFiles=${JSON.stringify(task.includeFiles)}`);
                     }
@@ -745,7 +745,7 @@ export class KanbanFileService {
 
                 let content: string;
                 try {
-                    content = includeFile.generateFromTasks(column.tasks || []);
+                    content = includeFile.generateFromTasks(column.cards || []);
                 } catch (error) {
                     return `Save aborted: failed to generate include content for "${includeFile.getRelativePath()}". `
                         + `Reason: ${getErrorMessage(error)}`;
@@ -1436,7 +1436,7 @@ export class KanbanFileService {
                         (column as any).includeMode = true;  // REQUIRED for frontend to show error styling
                         (column as any).includeError = true;
                         // Don't create error task - just show empty column with error badge
-                        column.tasks = [];
+                        column.cards = [];
                     }
                 }
             }

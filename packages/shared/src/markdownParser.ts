@@ -22,7 +22,7 @@ const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'layoutPreset',
   'stickyStackMode',
   'tagVisibility',
-  'taskMinHeight',
+  'cardMinHeight',
   'fontSize',
   'fontFamily',
   'whitespace',
@@ -96,7 +96,7 @@ export class SharedMarkdownParser {
       // Handle Kanban footer
       if (line.startsWith('%%')) {
         if (collectingDescription && currentTask && currentColumn) {
-          currentColumn.tasks.push(currentTask);
+          currentColumn.cards.push(currentTask);
           collectingDescription = false;
         }
         inKanbanFooter = true;
@@ -112,7 +112,7 @@ export class SharedMarkdownParser {
       // Parse column header
       if (line.startsWith('## ')) {
         if (collectingDescription && currentTask && currentColumn) {
-          currentColumn.tasks.push(currentTask);
+          currentColumn.cards.push(currentTask);
           collectingDescription = false;
         }
         currentTask = null;
@@ -124,7 +124,7 @@ export class SharedMarkdownParser {
         currentColumn = {
           id: generateId('col'),
           title: columnTitle,
-          tasks: []
+          cards: []
         };
         continue;
       }
@@ -132,7 +132,7 @@ export class SharedMarkdownParser {
       // Parse task
       if (line.startsWith('- ')) {
         if (collectingDescription && currentTask && currentColumn) {
-          currentColumn.tasks.push(currentTask);
+          currentColumn.cards.push(currentTask);
           collectingDescription = false;
         }
 
@@ -182,7 +182,7 @@ export class SharedMarkdownParser {
 
     // Finalize last task and column
     if (collectingDescription && currentTask && currentColumn) {
-      currentColumn.tasks.push(currentTask);
+      currentColumn.cards.push(currentTask);
     }
     if (currentColumn) {
       board.columns.push(currentColumn);
@@ -211,7 +211,7 @@ export class SharedMarkdownParser {
     for (const column of board.columns) {
       markdown += `## ${column.title}\n`;
 
-      for (const task of column.tasks) {
+      for (const task of column.cards) {
         const normalizedContent = (task.content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         const contentLines = normalizedContent.split('\n');
         const summaryLine = contentLines[0] || '';

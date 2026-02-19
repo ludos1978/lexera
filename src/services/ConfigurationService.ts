@@ -16,12 +16,12 @@ export interface KanbanConfiguration {
     whitespace: string;
     maxRowHeight: number;
     tagColors: { [key: string]: string };
-    taskMinHeight: string;
+    cardMinHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
     columnBorder: string;
-    taskBorder: string;
+    cardBorder: string;
     layoutRows: number;
     rowHeight: string;
     layoutPreset: string;
@@ -100,12 +100,12 @@ export class ConfigurationService {
         dateLocale: 'de-DE' as 'auto' | 'de-DE' | 'de-AT' | 'de-CH' | 'en-US' | 'en-GB' | 'fr-FR' | 'iso',
         whitespace: '16px',
         maxRowHeight: 0,
-        taskMinHeight: 'auto',
+        cardMinHeight: 'auto',
         fontSize: '1x',
         fontFamily: 'plusjakarta',
         columnWidth: '450px',
         columnBorder: '1px solid var(--vscode-panel-border)',
-        taskBorder: '1px solid var(--vscode-panel-border)',
+        cardBorder: '1px solid var(--vscode-panel-border)',
         layoutRows: 1,
         rowHeight: 'auto',
         layoutPreset: 'normal',
@@ -307,14 +307,14 @@ export class ConfigurationService {
             // Keep stable defaults here; WebviewUpdateService overlays boardSettings on top.
             columnWidth: this.defaults.columnWidth,
             columnBorder: this.getConfig('columnBorder'),
-            taskBorder: this.getConfig('taskBorder'),
+            cardBorder: this.getConfig('cardBorder'),
             layoutRows: this.defaults.layoutRows,
             rowHeight: this.defaults.rowHeight,
             layoutPreset: this.defaults.layoutPreset,
             stickyStackMode: this.defaults.stickyStackMode,
             layoutPresets: layoutPresets,
             maxRowHeight: this.defaults.maxRowHeight,
-            taskMinHeight: this.defaults.taskMinHeight,
+            cardMinHeight: this.defaults.cardMinHeight,
             fontSize: this.defaults.fontSize,
             fontFamily: this.defaults.fontFamily,
             whitespace: this.defaults.whitespace,

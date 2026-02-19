@@ -19,7 +19,7 @@ import { ChangeEvent, UserEditEvent, IncludeSwitchEvent } from '../ChangeTypes';
  * Resolved target - what was actually changed
  */
 export interface ResolvedTarget {
-    type: 'task' | 'column';
+    type: 'card' | 'column';
     id: string;
     /** Column ID when target is a task */
     columnId?: string;
@@ -32,7 +32,7 @@ export interface ResolvedTarget {
  */
 export interface TaskMovePayload {
     type: 'task-move';
-    taskId: string;
+    cardId: string;
     fromColumnId: string;
     fromIndex: number;
     toColumnId: string;
@@ -110,14 +110,14 @@ export class UndoCapture {
     /**
      * Create an UndoEntry for a single task change
      */
-    static forTask(board: KanbanBoard, taskId: string, columnId: string, operation: string): UndoEntry {
-        const task = UndoCapture.findTaskInBoard(board, taskId);
+    static forTask(board: KanbanBoard, cardId: string, columnId: string, operation: string): UndoEntry {
+        const task = UndoCapture.findTaskInBoard(board, cardId);
 
         return {
             board: deepCloneBoard(board),
             targets: [{
-                type: 'task',
-                id: taskId,
+                type: 'card',
+                id: cardId,
                 columnId,
                 contentHash: task ? simpleHash(JSON.stringify(task)) : undefined
             }],
@@ -247,11 +247,11 @@ export class UndoCapture {
         const targets: ResolvedTarget[] = [];
 
         if (event.editType === 'task_content') {
-            if (event.params.taskId) {
-                const columnId = UndoCapture.findColumnForTask(board, event.params.taskId);
+            if (event.params.cardId) {
+                const columnId = UndoCapture.findColumnForTask(board, event.params.cardId);
                 targets.push({
-                    type: 'task',
-                    id: event.params.taskId,
+                    type: 'card',
+                    id: event.params.cardId,
                     columnId
                 });
             }
@@ -273,9 +273,9 @@ export class UndoCapture {
     private static resolveIncludeSwitchTargets(event: IncludeSwitchEvent, _board: KanbanBoard): ResolvedTarget[] {
         const targets: ResolvedTarget[] = [];
 
-        if (event.target === 'task') {
+        if (event.target === 'card') {
             targets.push({
-                type: 'task',
+                type: 'card',
                 id: event.targetId,
                 columnId: event.columnIdForTask
             });
@@ -294,9 +294,9 @@ export class UndoCapture {
     /**
      * Find which column contains a task
      */
-    private static findColumnForTask(board: KanbanBoard, taskId: string): string | undefined {
+    private static findColumnForTask(board: KanbanBoard, cardId: string): string | undefined {
         for (const column of board.columns) {
-            const task = column.cards.find(t => t.id === taskId);
+            const task = column.cards.find(t => t.id === cardId);
             if (task) {
                 return column.id;
             }
@@ -307,9 +307,9 @@ export class UndoCapture {
     /**
      * Find a task in the board
      */
-    private static findTaskInBoard(board: KanbanBoard, taskId: string): unknown | undefined {
+    private static findTaskInBoard(board: KanbanBoard, cardId: string): unknown | undefined {
         for (const column of board.columns) {
-            const task = column.cards.find(t => t.id === taskId);
+            const task = column.cards.find(t => t.id === cardId);
             if (task) {
                 return task;
             }

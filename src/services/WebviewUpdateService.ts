@@ -309,7 +309,7 @@ export class WebviewUpdateService {
                 'layoutPreset',
                 'stickyStackMode',
                 'tagVisibility',
-                'taskMinHeight',
+                'cardMinHeight',
                 'fontSize',
                 'fontFamily',
                 'whitespace',
@@ -386,12 +386,12 @@ export class WebviewUpdateService {
 
         // Collect dirty tasks
         const dirtyTasks: SyncDirtyCardInfo[] = [];
-        for (const taskId of dirtyTaskIds) {
-            const result = findCardById(board, taskId);
+        for (const cardId of dirtyTaskIds) {
+            const result = findCardById(board, cardId);
             if (result) {
                 dirtyTasks.push({
                     columnId: result.column.id,
-                    taskId: result.task.id,
+                    cardId: result.task.id,
                     displayTitle: result.task.displayTitle,
                     content: result.task.content,
                     includeMode: result.task.includeMode,

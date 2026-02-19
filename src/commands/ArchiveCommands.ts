@@ -209,19 +209,19 @@ archived: true
         const archiveTag = this.generateArchiveTag();
 
         // Group items by type
-        const tasks = items.filter(item => item.type === 'task');
+        const tasks = items.filter(item => item.type === 'card');
         const columns = items.filter(item => item.type === 'column');
 
         // Generate sections for each column
         for (const column of columns) {
-            const columnData = column.data as { title?: string; tasks?: Array<{ content?: string; completed?: boolean }> };
+            const columnData = column.data as { title?: string; cards?: Array<{ content?: string; completed?: boolean }> };
             const cleanTitle = this.removeInternalTags(columnData.title || 'Untitled Column');
             lines.push(`## Archived Column: ${cleanTitle} ${archiveTag}`);
             lines.push('');
 
             // Add tasks from the column
-            if (columnData.tasks && columnData.tasks.length > 0) {
-                for (const task of columnData.tasks) {
+            if (columnData.cards && columnData.cards.length > 0) {
+                for (const task of columnData.cards) {
                     lines.push(this.formatTaskForExport(task, archiveTag));
                 }
             }
@@ -234,8 +234,8 @@ archived: true
             lines.push('');
 
             for (const taskItem of tasks) {
-                const taskData = taskItem.data as { content?: string; completed?: boolean };
-                lines.push(this.formatTaskForExport(taskData, archiveTag));
+                const cardData = taskItem.data as { content?: string; completed?: boolean };
+                lines.push(this.formatTaskForExport(cardData, archiveTag));
             }
             lines.push('');
         }

@@ -18,7 +18,7 @@ export interface FileInfo {
  * Active editor context for file drops
  */
 export interface ActiveEditorContext {
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
     position?: string;
 }
@@ -44,7 +44,7 @@ export interface FileResolutionResult {
 export interface IncludeContextForResolution {
     includeDir?: string;
     columnId?: string;
-    taskId?: string;
+    cardId?: string;
     filePath?: string;
     includeFilePath?: string;  // Used by task.includeContext from IncludeLoadingProcessor
 }

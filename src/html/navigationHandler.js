@@ -15,7 +15,7 @@ function describeElementForDebug(element) {
         id: element.id || null,
         class: element.className,
         columnId: column ? column.getAttribute('data-column-id') : null,
-        taskId: element.getAttribute ? element.getAttribute('data-task-id') : null
+        cardId: element.getAttribute ? element.getAttribute('data-card-id') : null
     };
 }
 

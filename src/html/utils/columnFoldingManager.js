@@ -44,8 +44,8 @@ function getGlobalColumnFoldState() {
     }
 
     // Count columns with tasks that are collapsed
-    const columnsWithTasks = window.cachedBoard.columns.filter(column => column.tasks && column.tasks.length > 0);
-    const emptyColumns = window.cachedBoard.columns.filter(column => !column.tasks || column.tasks.length === 0);
+    const columnsWithTasks = window.cachedBoard.columns.filter(column => column.cards && column.cards.length > 0);
+    const emptyColumns = window.cachedBoard.columns.filter(column => !column.cards || column.cards.length === 0);
 
     if (columnsWithTasks.length === 0) {
         // All columns are empty - consider them as all folded
@@ -117,7 +117,7 @@ function applyDefaultFoldingState() {
     if (!window.columnFoldModes) {window.columnFoldModes = new Map();}
 
     window.cachedBoard.columns.forEach(column => {
-        const hasNoTasks = !column.tasks || column.tasks.length === 0;
+        const hasNoTasks = !column.cards || column.cards.length === 0;
         const columnElement = document.querySelector(`[data-column-id="${column.id}"]`);
         const toggle = columnElement?.querySelector('.collapse-toggle');
 
@@ -169,7 +169,7 @@ function setDefaultFoldingState() {
     if (!window.collapsedColumns) {window.collapsedColumns = new Set();}
 
     window.cachedBoard.columns.forEach(column => {
-        const hasNoTasks = !column.tasks || column.tasks.length === 0;
+        const hasNoTasks = !column.cards || column.cards.length === 0;
 
         if (hasNoTasks) {
             // Empty columns should be collapsed by default
@@ -228,8 +228,8 @@ function applyFoldingStates() {
     });
 
     // Apply task folding states
-    window.collapsedTasks.forEach(taskId => {
-        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    window.collapsedTasks.forEach(cardId => {
+        const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
         const toggle = taskElement?.querySelector('.task-collapse-toggle');
 
         if (taskElement) {
@@ -346,10 +346,10 @@ function getFoldAllButtonState(columnId) {
     if (!window.cachedBoard || !window.cachedBoard.columns) {return 'fold-mixed';}
 
     const column = window.cachedBoard.columns.find(c => c.id === columnId);
-    if (!column || column.tasks.length === 0) {return 'fold-mixed';}
+    if (!column || column.cards.length === 0) {return 'fold-mixed';}
 
-    const collapsedCount = column.tasks.filter(task => window.collapsedTasks.has(task.id)).length;
-    const totalTasks = column.tasks.length;
+    const collapsedCount = column.cards.filter(task => window.collapsedTasks.has(task.id)).length;
+    const totalTasks = column.cards.length;
 
     if (collapsedCount === totalTasks) {
         return 'fold-collapsed'; // All folded
@@ -436,7 +436,7 @@ function toggleAllTasksInColumn(columnId) {
     }
 
     // Get all task elements currently in this column's tasks container
-    const taskElements = tasksContainer.querySelectorAll('.task-item[data-task-id]');
+    const taskElements = tasksContainer.querySelectorAll('.task-item[data-card-id]');
     if (taskElements.length === 0) {
         return;
     }
@@ -615,10 +615,10 @@ function toggleColumnCollapse(columnId, event) {
  * Toggle task collapse by ID - wrapper that finds element then calls element-based version
  * CRITICAL: Scopes query to specific column to ensure correct task selection
  * Used by: onclick handlers in HTML that pass task ID and column ID
- * @param {string} taskId - Task ID to toggle
+ * @param {string} cardId - Task ID to toggle
  * @param {string} columnId - Column ID containing the task (for scoping)
  */
-function toggleTaskCollapseById(taskId, columnId) {
+function toggleTaskCollapseById(cardId, columnId) {
     // CRITICAL: Scope query to the specific column to ensure we get the RIGHT task
     const columnElement = document.querySelector(`[data-column-id="${columnId}"]`);
     if (!columnElement) {
@@ -627,9 +627,9 @@ function toggleTaskCollapseById(taskId, columnId) {
     }
 
     // Search for task ONLY within this column - prevents wrong task selection
-    const task = columnElement.querySelector(`[data-task-id="${taskId}"]`);
+    const task = columnElement.querySelector(`[data-card-id="${cardId}"]`);
     if (!task) {
-        console.error(`[toggleTaskCollapseById] Task ${taskId} not found in column ${columnId}`);
+        console.error(`[toggleTaskCollapseById] Task ${cardId} not found in column ${columnId}`);
         return;
     }
 
@@ -650,15 +650,15 @@ function toggleTaskCollapse(taskElement, skipRecalculation = false) {
         return;
     }
 
-    const taskId = taskElement.getAttribute('data-task-id');
-    if (!taskId) {
-        console.error(`[toggleTaskCollapse] Task element missing data-task-id attribute`);
+    const cardId = taskElement.getAttribute('data-card-id');
+    if (!cardId) {
+        console.error(`[toggleTaskCollapse] Task element missing data-card-id attribute`);
         return;
     }
 
     const toggle = taskElement.querySelector('.task-collapse-toggle');
     if (!toggle) {
-        console.error(`[toggleTaskCollapse] Toggle button not found in task:`, taskId);
+        console.error(`[toggleTaskCollapse] Toggle button not found in task:`, cardId);
         return;
     }
 
@@ -672,15 +672,15 @@ function toggleTaskCollapse(taskElement, skipRecalculation = false) {
 
     // Store state
     if (isNowCollapsed) {
-        window.collapsedTasks.add(taskId);
+        window.collapsedTasks.add(cardId);
     } else {
-        window.collapsedTasks.delete(taskId);
+        window.collapsedTasks.delete(cardId);
     }
 
     // Update folded summary text (plain text only)
     const titleDisplay = taskElement.querySelector('.task-title-display');
     if (titleDisplay) {
-        const task = window.findTaskById ? window.findTaskById(taskId) : null;
+        const task = window.findTaskById ? window.findTaskById(cardId) : null;
         if (task) {
             if (isNowCollapsed) {
                 const collapsedTitle = window.getCollapsedTaskTitleText

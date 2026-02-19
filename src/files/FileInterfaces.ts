@@ -19,7 +19,7 @@ import { KanbanBoard } from '../board/KanbanTypes';
 export interface CapturedEdit {
     type: 'task-content' | 'column-title';
     value: string;
-    taskId?: string;
+    cardId?: string;
     columnId?: string;
 }
 
