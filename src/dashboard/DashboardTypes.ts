@@ -59,12 +59,16 @@ export interface UpcomingItem {
     boardUri: string;
     /** Display name of the board (filename) */
     boardName: string;
-    /** Column index (0-based) for position-based navigation */
+    /** Column index (0-based) — kept for sorting/grouping */
     columnIndex: number;
     /** Column title */
     columnTitle: string;
-    /** Task index (0-based) within column for position-based navigation */
+    /** Task index (0-based) — kept for sorting/grouping */
     taskIndex: number;
+    /** Column ID for navigation */
+    columnId: string;
+    /** Task ID for navigation */
+    taskId: string;
     /** Task summary line (may include tags) */
     taskSummary: string;
     /** The temporal tag that matched (e.g., "@2026.1.20" - NEW: @ prefix for temporal) */
@@ -192,12 +196,12 @@ export interface UndatedTask {
     boardUri: string;
     /** Display name of the board */
     boardName: string;
-    /** Column index (0-based) for navigation */
-    columnIndex: number;
+    /** Column ID for navigation */
+    columnId: string;
     /** Column title */
     columnTitle: string;
-    /** Task index (0-based) within column */
-    taskIndex: number;
+    /** Task ID for navigation */
+    taskId: string;
     /** Task summary line */
     taskSummary: string;
 }
@@ -285,12 +289,16 @@ export interface TagSearchResult {
     boardUri: string;
     /** Display name of the board */
     boardName: string;
-    /** Column index (0-based) for navigation */
+    /** Column index (0-based) — kept for sorting */
     columnIndex: number;
     /** Column title */
     columnTitle: string;
-    /** Task index (0-based) within column */
+    /** Task index (0-based) — kept for sorting */
     taskIndex: number;
+    /** Column ID for navigation */
+    columnId: string;
+    /** Task ID for navigation */
+    taskId: string;
     /** Task summary line */
     taskSummary: string;
     /** The tag that matched the search */

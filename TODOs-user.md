@@ -1,3 +1,5 @@
+- [ ] we should ignore tasks and columns with #hidden-internal-archived or #hidden-ignore-deleted tags when looking for anything those are considered archived or deleted already!
+
 - [ ] add a background option to embeds.
   document the options ![alt](link "subtext"){options} for each filetype in the features.md.
   - for all formats we try to have:

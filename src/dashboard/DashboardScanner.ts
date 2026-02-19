@@ -172,6 +172,10 @@ function adjustToNextOccurrence(
  * Determine effective checkbox state, fixing the case where the markdown
  * parser strips '- [ ]' from task content (first-line temporals get
  * checkboxState 'none' even though the task IS a checkbox task).
+ *
+ * Parser convention: task.checked = true for [x], undefined for [ ].
+ * ALL parser tasks come from '- ' lines, so every task IS a checkbox card.
+ * For first-line temporals we always know it's a checkbox task.
  */
 function getEffectiveCheckboxState(
     temporal: TemporalInfo,
@@ -182,8 +186,10 @@ function getEffectiveCheckboxState(
     if (temporal.checkboxState === 'checked' || temporal.checkboxState === 'unchecked') {
         return temporal.checkboxState;
     }
-    // For first-line temporals where checkbox was stripped, use task.checked
-    if (isFirstLine && taskChecked !== undefined) {
+    // For first-line temporals: parser strips '- [ ]', so detectCheckboxState
+    // returns 'none'. But ALL tasks come from '- ' lines in the parser, so the
+    // card always has a checkbox. task.checked = true means [x], undefined means [ ].
+    if (isFirstLine) {
         return taskChecked ? 'checked' : 'unchecked';
     }
     return temporal.checkboxState ?? 'none';
@@ -272,18 +278,33 @@ export class DashboardScanner {
                     }
                 }
 
-                // Tasks without temporal tags → undated tasks list
-                if (resolved.length === 0 && !task.checked) {
-                    undatedTasks.push({
-                        boardUri,
-                        boardName,
-                        columnIndex,
-                        columnTitle,
-                        taskIndex,
-                        taskSummary
-                    });
-                    taskIndex++;
-                    continue;
+                // Collect undated sub-tasks: scan content lines (not the card
+                // title) for "- [ ]" lines that have no temporal tags.
+                // The card title itself is NOT an undated task — it's a kanban
+                // card that lives in its column.
+                const resolvedLineContents = new Set(
+                    resolved.map(r => r.lineContent?.trim()).filter(Boolean)
+                );
+                for (let li = 1; li < taskLines.length; li++) {
+                    const line = taskLines[li];
+                    const trimmed = line.trim();
+                    if (/^- \[ \]\s/.test(trimmed)) {
+                        // Skip lines already captured by temporal resolution
+                        if (resolvedLineContents.has(trimmed)) continue;
+                        // Skip lines with any @ tag (temporal that may not have resolved)
+                        if (/@\S/.test(trimmed)) continue;
+                        const subTaskSummary = trimmed.substring(6).trim();
+                        if (subTaskSummary.length > 0) {
+                            undatedTasks.push({
+                                boardUri,
+                                boardName,
+                                columnId: column.id,
+                                columnTitle,
+                                taskId: task.id,
+                                taskSummary: subTaskSummary
+                            });
+                        }
+                    }
                 }
 
                 for (const r of resolved) {
@@ -346,6 +367,8 @@ export class DashboardScanner {
                             columnIndex,
                             columnTitle,
                             taskIndex,
+                            columnId: column.id,
+                            taskId: task.id,
                             taskSummary: r.lineContent || taskSummary,
                             temporalTag: r.temporal.tag,
                             date: itemDate,
@@ -381,6 +404,8 @@ export class DashboardScanner {
                         columnIndex,
                         columnTitle,
                         taskIndex,
+                        columnId: column.id,
+                        taskId: task.id,
                         taskSummary: r.lineContent || taskSummary,
                         temporalTag: r.temporal.tag,
                         date: r.effectiveDate,
@@ -463,6 +488,8 @@ export class DashboardScanner {
                             columnIndex,
                             columnTitle,
                             taskIndex,
+                            columnId: column.id,
+                            taskId: task.id,
                             taskSummary: summaryLine || '',
                             matchedTag: tag.name
                         });
@@ -482,6 +509,8 @@ export class DashboardScanner {
                     columnIndex,
                     columnTitle,
                     taskIndex: -1,  // -1 indicates column-level match
+                    columnId: column.id,
+                    taskId: '',     // No specific task
                     taskSummary: '',  // No specific task
                     matchedTag: columnMatchingTag?.name || searchTag
                 });
