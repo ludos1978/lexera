@@ -328,9 +328,6 @@ export class DashboardScanner {
                         r.temporal, task.checked, isFirstLine
                     );
 
-                    // Only checkbox lines are tasks — skip non-checkbox temporal lines
-                    if (effectiveCheckbox === 'none') continue;
-
                     // Skip checked sub-line items (non-recurring)
                     if (effectiveCheckbox === 'checked' && r.temporal.hasExplicitYear !== false) {
                         continue;
