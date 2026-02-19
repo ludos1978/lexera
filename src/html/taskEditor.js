@@ -1546,8 +1546,19 @@ class TaskEditor {
      * @private
      */
     _setupBlurHandler(editElement) {
-        editElement.onblur = () => {
+        editElement.onblur = (e) => {
             if (this.isTransitioning) { return; }
+
+            // VS Code's webview host frame can briefly steal focus (relatedTarget=null,
+            // activeElement=body). During the grace period after opening, refocus instead of saving.
+            if (this._editJustOpened && !e.relatedTarget) {
+                requestAnimationFrame(() => {
+                    if (this.currentEditor?.element === editElement && document.activeElement !== editElement) {
+                        this._focusElement(editElement);
+                    }
+                });
+                return;
+            }
 
             setTimeout(() => {
                 if (document.activeElement !== editElement &&
@@ -2039,6 +2050,13 @@ class TaskEditor {
             this._setupBlurHandler(editElement);
             this._setupMouseHandlers(editElement);
         }
+
+        // Grace period: suppress blur-to-save while VS Code's webview focus tracking settles.
+        // VS Code's host frame can briefly steal focus from the webview iframe right after
+        // visibility changes or edit transitions, causing spurious blur events.
+        this._editJustOpened = true;
+        clearTimeout(this._editJustOpenedTimer);
+        this._editJustOpenedTimer = setTimeout(() => { this._editJustOpened = false; }, 500);
 
         this._scheduleScrollRestore(scrollPositions);
     }
@@ -2656,6 +2674,10 @@ class TaskEditor {
 
     closeEditor() {
         if (!this.currentEditor) {return;}
+
+        // Clear the just-opened grace period
+        this._editJustOpened = false;
+        clearTimeout(this._editJustOpenedTimer);
 
         const { element, displayElement, type, wysiwyg, wysiwygContainer } = this.currentEditor;
         const scrollPositions = this._captureScrollPositions(element);

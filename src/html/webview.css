@@ -7110,12 +7110,18 @@ body.tall-task-height .column-title {
   font-style: normal;
   font-weight: 400;
   src: url('fonts/poppins-latin-400-normal.woff2') format('woff2');
+  ascent-override: 105%;
+  descent-override: 35%;
+  line-gap-override: 0%;
 }
 @font-face {
   font-family: 'Poppins';
   font-style: normal;
   font-weight: 700;
   src: url('fonts/poppins-latin-700-normal.woff2') format('woff2');
+  ascent-override: 105%;
+  descent-override: 35%;
+  line-gap-override: 0%;
 }
 @font-face {
   font-family: 'Inter';
