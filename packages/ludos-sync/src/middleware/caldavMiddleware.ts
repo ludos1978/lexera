@@ -12,6 +12,7 @@
  *   /calendars/{slug}/{uid}.ics        → GET: individual VTODO/VEVENT
  */
 
+import * as crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { XMLParser } from 'fast-xml-parser';
 import { BoardFileWatcher } from '../fileWatcher';
@@ -82,16 +83,31 @@ function escapeXml(str: string): string {
 
 /**
  * Deduplicate tasks when merging from multiple boards sharing a calendar slug.
- * Tasks with the same summary + dtstart are considered duplicates; keep only the first.
+ * First deduplicates by UID (exact same source), then by content (same
+ * summary + dtstart + dtend across different boards).
  */
 function deduplicateTasks(tasks: import('../mappers/IcalMapper').IcalTask[]): import('../mappers/IcalMapper').IcalTask[] {
-  const seen = new Set<string>();
+  const seenUids = new Set<string>();
+  const seenContent = new Set<string>();
   return tasks.filter(task => {
+    if (seenUids.has(task.uid)) return false;
+    seenUids.add(task.uid);
     const key = `${task.summary}\0${task.dtstart || ''}\0${task.dtend || ''}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    if (seenContent.has(key)) return false;
+    seenContent.add(key);
     return true;
   });
+}
+
+/**
+ * Compute a composite CTag from all boards sharing a calendar slug.
+ * Changes when ANY board in the group is modified.
+ */
+function compositeCtag(boards: { icalEtag?: string }[]): string {
+  if (boards.length === 1) return boards[0].icalEtag || '"empty"';
+  const combined = boards.map(b => b.icalEtag || '').join('\0');
+  const hash = crypto.createHash('sha256').update(combined).digest('hex').substring(0, 16);
+  return `"${hash}"`;
 }
 
 /**
@@ -194,16 +210,20 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
     // List calendar collections if depth > 0 (deduplicated by slug)
     if (depth !== '0') {
       const calBoards = boardWatcher.getCalendarBoards();
-      const seenSlugs = new Set<string>();
+      // Group boards by slug for composite CTag
+      const slugBoards = new Map<string, typeof calBoards>();
       for (const board of calBoards) {
         const slug = board.calendarSlug!;
-        if (seenSlugs.has(slug)) continue;
-        seenSlugs.add(slug);
-        const name = board.calendarName || board.board.title || slug;
+        if (!slugBoards.has(slug)) slugBoards.set(slug, []);
+        slugBoards.get(slug)!.push(board);
+      }
+      for (const [slug, boards] of slugBoards) {
+        const name = boards[0].calendarName || boards[0].board.title || slug;
+        const ctag = compositeCtag(boards);
         responses.push(davResponse(`${basePath}/calendars/${slug}/`, [
           `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
           `<D:displayname>${escapeXml(name)}</D:displayname>`,
-          `<CS:getctag>${escapeXml(board.icalEtag || '"empty"')}</CS:getctag>`,
+          `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
           `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
         ]));
       }
@@ -247,14 +267,14 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
     }
 
     const responses: string[] = [];
-    const firstBoard = boards[0];
-    const name = firstBoard.calendarName || firstBoard.board.title || slug;
+    const name = boards[0].calendarName || boards[0].board.title || slug;
+    const ctag = compositeCtag(boards);
 
     // The collection itself
     responses.push(davResponse(`${basePath}/calendars/${slug}/`, [
       `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
       `<D:displayname>${escapeXml(name)}</D:displayname>`,
-      `<CS:getctag>${escapeXml(firstBoard.icalEtag || '"empty"')}</CS:getctag>`,
+      `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
       `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
     ]));
 
@@ -330,15 +350,15 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       if (b.icalTasks) { allTasks = allTasks.concat(b.icalTasks); }
     }
     allTasks = deduplicateTasks(allTasks);
-    const firstBoard = boards[0];
-    const calName = firstBoard.calendarName || firstBoard.board.title || slug;
+    const calName = boards[0].calendarName || boards[0].board.title || slug;
     const fullCal = IcalMapper.generateCalendar(allTasks, calName);
+    const etag = compositeCtag(boards);
 
     log.verbose(`[CalDAV] GET /calendars/${slug}/ (full calendar, ${boards.length} boards, ${allTasks.length} tasks, ${fullCal.length} bytes)`);
 
     res.status(200)
       .type('text/calendar; charset=utf-8')
-      .set('ETag', firstBoard.icalEtag || '"empty"')
+      .set('ETag', etag)
       .send(fullCal);
   });
 

@@ -29,6 +29,7 @@ import {
     getDateOfISOWeek,
     getWeekdayOfISOWeek,
     getISOWeek,
+    isArchivedOrDeleted,
 } from '@ludos/shared';
 
 /**
@@ -228,8 +229,16 @@ export class DashboardScanner {
 
         let columnIndex = 0;
         for (const column of board.columns || []) {
-            const columnTitle = column.title || '';
-            const columnTemporals = extractTemporalInfo(columnTitle);
+            const rawColumnTitle = column.title || '';
+            const columnTitle = column.displayTitle || rawColumnTitle;
+
+            // Skip archived/deleted columns entirely
+            if (isArchivedOrDeleted(rawColumnTitle)) {
+                columnIndex++;
+                continue;
+            }
+
+            const columnTemporals = extractTemporalInfo(rawColumnTitle);
             const columnTemporal = columnTemporals.length > 0 ? columnTemporals[0] : null;
 
             // Column gating: if column has a temporal tag outside timeframe, skip all tasks
@@ -242,8 +251,15 @@ export class DashboardScanner {
 
             let taskIndex = 0;
             for (const task of column.tasks || []) {
-                totalTasks++;
                 const taskText = task.content || '';
+
+                // Skip archived/deleted tasks
+                if (isArchivedOrDeleted(taskText)) {
+                    taskIndex++;
+                    continue;
+                }
+
+                totalTasks++;
                 const taskLines = taskText.replace(/\r\n/g, '\n').split('\n');
                 const taskSummary = taskLines.find(line => line.trim().length > 0) ?? taskLines[0] ?? '';
                 const firstLine = taskLines[0] || '';
@@ -298,9 +314,8 @@ export class DashboardScanner {
                             undatedTasks.push({
                                 boardUri,
                                 boardName,
-                                columnId: column.id,
                                 columnTitle,
-                                taskId: task.id,
+                                cardTitle: taskSummary,
                                 taskSummary: subTaskSummary
                             });
                         }
@@ -367,8 +382,7 @@ export class DashboardScanner {
                             columnIndex,
                             columnTitle,
                             taskIndex,
-                            columnId: column.id,
-                            taskId: task.id,
+                            cardTitle: taskSummary,
                             taskSummary: r.lineContent || taskSummary,
                             temporalTag: r.temporal.tag,
                             date: itemDate,
@@ -404,8 +418,7 @@ export class DashboardScanner {
                         columnIndex,
                         columnTitle,
                         taskIndex,
-                        columnId: column.id,
-                        taskId: task.id,
+                        cardTitle: taskSummary,
                         taskSummary: r.lineContent || taskSummary,
                         temporalTag: r.temporal.tag,
                         date: r.effectiveDate,
@@ -462,10 +475,17 @@ export class DashboardScanner {
 
         let columnIndex = 0;
         for (const column of board.columns || []) {
-            const columnTitle = column.title || '';
+            const rawColumnTitle = column.title || '';
+            const columnTitle = column.displayTitle || rawColumnTitle;
+
+            // Skip archived/deleted columns
+            if (isArchivedOrDeleted(rawColumnTitle)) {
+                columnIndex++;
+                continue;
+            }
 
             // Check if column title contains the search tag (exact match)
-            const columnTags = TextMatcher.extractTags(columnTitle);
+            const columnTags = TextMatcher.extractTags(rawColumnTitle);
             const columnMatchingTag = columnTags.find(t => TextMatcher.tagExactMatch(t.name, searchTag));
             const columnHasTag = !!columnMatchingTag;
 
@@ -475,8 +495,16 @@ export class DashboardScanner {
             let taskIndex = 0;
             for (const task of column.tasks || []) {
                 const taskText = task.content || '';
-                // Get first line as task summary
-                const summaryLine = taskText.replace(/\r\n/g, '\n').split('\n')[0] || '';
+
+                // Skip archived/deleted tasks
+                if (isArchivedOrDeleted(taskText)) {
+                    taskIndex++;
+                    continue;
+                }
+
+                // Get first non-empty line as card title
+                const taskLines = taskText.replace(/\r\n/g, '\n').split('\n');
+                const summaryLine = taskLines.find(line => line.trim().length > 0) ?? taskLines[0] ?? '';
                 const tags = TextMatcher.extractTags(taskText);
 
                 // Check if any tag in task matches the search (exact match)
@@ -488,8 +516,7 @@ export class DashboardScanner {
                             columnIndex,
                             columnTitle,
                             taskIndex,
-                            columnId: column.id,
-                            taskId: task.id,
+                            cardTitle: summaryLine || '',
                             taskSummary: summaryLine || '',
                             matchedTag: tag.name
                         });
@@ -509,8 +536,7 @@ export class DashboardScanner {
                     columnIndex,
                     columnTitle,
                     taskIndex: -1,  // -1 indicates column-level match
-                    columnId: column.id,
-                    taskId: '',     // No specific task
+                    cardTitle: '',  // No specific card
                     taskSummary: '',  // No specific task
                     matchedTag: columnMatchingTag?.name || searchTag
                 });

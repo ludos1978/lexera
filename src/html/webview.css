@@ -1,5 +1,5 @@
 :root {
-  --whitespace: 4px;
+  --whitespace: 16px;
   --whitespace-mul2: calc(var(--whitespace) * 2);
   --whitespace-div2: calc(var(--whitespace) / 2);
   --whitespace-div4: calc(var(--whitespace) / 4);
@@ -3173,40 +3173,6 @@ figure:has(.diagram-placeholder .image-not-found) {
 .task-section:focus {
   outline: 3px solid var(--section-focus-color);
   outline-offset: -3px;
-}
-
-/* Apply max-height to sections when section-height-limited class is active */
-body.section-height-limited .task-section {
-  max-height: var(--section-max-height, auto);
-  min-height: var(--section-min-height, auto);
-  max-width: -webkit-fill-available;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Ensure images and figures within sections are constrained by section height */
-body.section-height-limited .task-section img {
-  max-height: var(--section-max-height, auto);
-  object-fit: contain;
-  flex-shrink: 1;
-}
-
-/* Figures should NOT have object-fit (it's for replaced elements like img/video only) */
-body.section-height-limited .task-section figure {
-  max-height: var(--section-max-height, auto);
-  flex-shrink: 1;
-  /* NO object-fit - causes rendering issues on container elements */
-}
-
-/* Constrain figure content */
-body.section-height-limited .task-section figure img {
-  /* max-height: calc(var(--section-max-height, auto) - 2em); */
-  /* max-height: 100%;
-  max-width: 100%; */
-  width: 100%;
-  height: 100%;
 }
 
 /* CSS-based placeholders for empty display elements */
@@ -10196,70 +10162,6 @@ body.font-size-2x .task-description-display,
 body.font-size-2x .task-description-edit,
 body.font-size-2x .task-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 1.8) !important;
-  line-height: 1.15 !important;
-}
-
-/* Font Size Classes - 2.5x */
-body.font-size-2_5x .column-title,
-body.font-size-2_5x .column-title-edit,
-body.font-size-2_5x .task-title-display,
-body.font-size-2_5x .task-title-edit {
-  font-size: calc(var(--vscode-font-size, 14px) * 2.5) !important;
-  line-height: 1.1 !important;
-}
-
-body.font-size-2_5x .task-description-display,
-body.font-size-2_5x .task-description-edit,
-body.font-size-2_5x .task-description-wysiwyg {
-  font-size: calc(var(--vscode-font-size, 14px) * 2.25) !important;
-  line-height: 1.15 !important;
-}
-
-/* Font Size Classes - 3x */
-body.font-size-3x .column-title,
-body.font-size-3x .column-title-edit,
-body.font-size-3x .task-title-display,
-body.font-size-3x .task-title-edit {
-  font-size: calc(var(--vscode-font-size, 14px) * 3) !important;
-  line-height: 1.1 !important;
-}
-
-body.font-size-3x .task-description-display,
-body.font-size-3x .task-description-edit,
-body.font-size-3x .task-description-wysiwyg {
-  font-size: calc(var(--vscode-font-size, 14px) * 2.7) !important;
-  line-height: 1.15 !important;
-}
-
-/* Font Size Classes - 4x */
-body.font-size-4x .column-title,
-body.font-size-4x .column-title-edit,
-body.font-size-4x .task-title-display,
-body.font-size-4x .task-title-edit {
-  font-size: calc(var(--vscode-font-size, 14px) * 4) !important;
-  line-height: 1.1 !important;
-}
-
-body.font-size-4x .task-description-display,
-body.font-size-4x .task-description-edit,
-body.font-size-4x .task-description-wysiwyg {
-  font-size: calc(var(--vscode-font-size, 14px) * 3.6) !important;
-  line-height: 1.15 !important;
-}
-
-/* Font Size Classes - 5x */
-body.font-size-5x .column-title,
-body.font-size-5x .column-title-edit,
-body.font-size-5x .task-title-display,
-body.font-size-5x .task-title-edit {
-  font-size: calc(var(--vscode-font-size, 14px) * 5) !important;
-  line-height: 1.1 !important;
-}
-
-body.font-size-5x .task-description-display,
-body.font-size-5x .task-description-edit,
-body.font-size-5x .task-description-wysiwyg {
-  font-size: calc(var(--vscode-font-size, 14px) * 4.5) !important;
   line-height: 1.15 !important;
 }
 

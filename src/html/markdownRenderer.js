@@ -1258,6 +1258,8 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, 
             controls: true,
             attrs: { image: {}, audio: {}, video: {} }
         });
+        // Note: media_paragraph_unwrap core rule is built into the media plugin itself
+        // (see marp-engine/engine/markdown-it-media/plugin.js)
     }
 
     return md;
@@ -3693,6 +3695,10 @@ function renderMarkdown(text, includeContext) {
             const token = tokens[idx];
             // Skip if consumed by image attrs parsing
             if (token._attrsConsumed) {
+                return '';
+            }
+            // Skip softbreaks between media tokens (they're inside unwrapped media paragraphs)
+            if (token._mediaBreak) {
                 return '';
             }
             // Otherwise use default behavior

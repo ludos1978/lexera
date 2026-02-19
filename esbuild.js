@@ -148,7 +148,7 @@ console.log('Marp watch script placeholder');
 			}
 
 			// Convert markdown-it-media-lib CommonJS modules to browser-compatible IIFE format
-			const mediaLibDir = 'marp-engine/engine/markdown-it-media-lib';
+			const mediaLibDir = 'marp-engine/engine/markdown-it-media';
 			
 			if (fs.existsSync(mediaLibDir)) {
 				const modules = ['media-type.js', 'parse.js', 'render.js', 'ruler.js', 'plugin.js'];

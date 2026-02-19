@@ -155,21 +155,6 @@ styleManager.applyRowHeight = function(height) {
     this.setCSSVariable('row-height', actualHeight);
 };
 
-styleManager.applySectionHeight = function(height) {
-    // Convert value to CSS using getCSS helper
-    const actualHeight = typeof window.getCSS === 'function' ? window.getCSS('sectionHeight', height) : height;
-
-    // Set both min and max height to the same value for fixed height
-    this.setCSSVariable('section-max-height', actualHeight);
-    this.setCSSVariable('section-min-height', actualHeight);
-
-    if (height !== 'auto') {
-        document.body.classList.add('section-height-limited');
-    } else {
-        document.body.classList.remove('section-height-limited');
-    }
-};
-
 // Global window exposure
 if (typeof window !== 'undefined') {
     window.styleManager = styleManager;

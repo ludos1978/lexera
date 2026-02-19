@@ -61,15 +61,13 @@ export interface UpcomingItem {
     boardName: string;
     /** Column index (0-based) — kept for sorting/grouping */
     columnIndex: number;
-    /** Column title */
+    /** Column title — used for content-based navigation */
     columnTitle: string;
     /** Task index (0-based) — kept for sorting/grouping */
     taskIndex: number;
-    /** Column ID for navigation */
-    columnId: string;
-    /** Task ID for navigation */
-    taskId: string;
-    /** Task summary line (may include tags) */
+    /** First line of the card content — used to find the card within the column */
+    cardTitle: string;
+    /** The specific task/line that produced this result (e.g. the temporal line) */
     taskSummary: string;
     /** The temporal tag that matched (e.g., "@2026.1.20" - NEW: @ prefix for temporal) */
     temporalTag: string;
@@ -152,14 +150,12 @@ export interface DashboardBrokenElement {
     boardUri: string;
     /** Board display name */
     boardName: string;
-    /** Column title where element was found */
+    /** Column title — used for content-based navigation */
     columnTitle: string;
+    /** First line of the card content — used to find the card */
+    cardTitle?: string;
     /** Task summary if in a task */
     taskSummary?: string;
-    /** Column ID for ID-based navigation */
-    columnId: string;
-    /** Task ID for ID-based navigation */
-    taskId?: string;
 }
 
 /**
@@ -178,14 +174,12 @@ export interface DashboardSearchResult {
     matchText: string;
     /** Surrounding context */
     context: string;
-    /** Column title where match was found */
+    /** Column title — used for content-based navigation */
     columnTitle: string;
+    /** First line of the card content — used to find the card */
+    cardTitle?: string;
     /** Task summary if in a task */
     taskSummary?: string;
-    /** Column ID for navigation */
-    columnId: string;
-    /** Task ID for navigation */
-    taskId?: string;
 }
 
 /**
@@ -196,13 +190,11 @@ export interface UndatedTask {
     boardUri: string;
     /** Display name of the board */
     boardName: string;
-    /** Column ID for navigation */
-    columnId: string;
-    /** Column title */
+    /** Column title — used for content-based navigation */
     columnTitle: string;
-    /** Task ID for navigation */
-    taskId: string;
-    /** Task summary line */
+    /** First line of the card content — used to find the card */
+    cardTitle: string;
+    /** The specific sub-task line */
     taskSummary: string;
 }
 
@@ -291,14 +283,12 @@ export interface TagSearchResult {
     boardName: string;
     /** Column index (0-based) — kept for sorting */
     columnIndex: number;
-    /** Column title */
+    /** Column title — used for content-based navigation */
     columnTitle: string;
     /** Task index (0-based) — kept for sorting */
     taskIndex: number;
-    /** Column ID for navigation */
-    columnId: string;
-    /** Task ID for navigation */
-    taskId: string;
+    /** First line of the card content — used to find the card */
+    cardTitle: string;
     /** Task summary line */
     taskSummary: string;
     /** The tag that matched the search */
@@ -340,13 +330,13 @@ export interface DashboardSetSortModeMessage {
 }
 
 /**
- * Request to navigate to a specific element by column/task IDs
+ * Request to navigate to a specific element by content-based matching
  */
 export interface DashboardNavigateToElementMessage {
     type: 'dashboardNavigateToElement';
     boardUri: string;
-    columnId: string;
-    taskId?: string;
+    columnTitle: string;
+    cardTitle?: string;
 }
 
 /**
@@ -390,8 +380,8 @@ export interface DashboardSearchTextMessage {
  */
 export interface DashboardNavigateToSearchElementMessage {
     type: 'navigateToElement';
-    columnId: string;
-    taskId?: string;
+    columnTitle: string;
+    cardTitle?: string;
     elementPath?: string;
     elementType?: string;
     field?: 'columnTitle' | 'taskContent';

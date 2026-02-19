@@ -23,7 +23,6 @@ const BOARD_SETTING_KEYS: Array<keyof BoardSettings> = [
   'stickyStackMode',
   'tagVisibility',
   'taskMinHeight',
-  'sectionHeight',
   'fontSize',
   'fontFamily',
   'whitespace',

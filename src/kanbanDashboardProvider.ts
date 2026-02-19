@@ -131,7 +131,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     await this._handleTagSearch(message.tag);
                     break;
                 case 'dashboardNavigateToElement':
-                    await this._handleNavigateToElement(message.boardUri, message.columnId, message.taskId);
+                    await this._handleNavigateToElement(message.boardUri, message.columnTitle, message.cardTitle);
                     break;
                 case 'dashboardSetSortMode':
                     await BoardRegistryService.getInstance().setSortMode(message.sortMode);
@@ -244,9 +244,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                             boardUri: registeredBoard.uri,
                             boardName,
                             columnTitle: elem.location.columnTitle,
-                            taskSummary: elem.location.taskSummary,
-                            columnId: elem.location.columnId,
-                            taskId: elem.location.taskId
+                            cardTitle: elem.location.cardTitle,
+                            taskSummary: elem.location.taskSummary
                         });
                     }
                 }
@@ -284,9 +283,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                             matchText: match.matchText,
                             context: match.context,
                             columnTitle: match.location.columnTitle,
-                            taskSummary: match.location.taskSummary,
-                            columnId: match.location.columnId,
-                            taskId: match.location.taskId
+                            cardTitle: match.location.cardTitle,
+                            taskSummary: match.location.taskSummary
                         });
                     }
                 } catch (error) {
@@ -427,9 +425,45 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Handle navigation to a specific element by column/task IDs
+     * Resolve a column title + card title to actual IDs in the panel's board.
+     * Searches the board by content so IDs always match the panel's current state.
      */
-    private async _handleNavigateToElement(boardUri: string, columnId: string, taskId?: string): Promise<void> {
+    private _resolveElementInBoard(panel: KanbanWebviewPanel, columnTitle: string, cardTitle?: string): { columnId: string; taskId?: string } | null {
+        const board = panel.getBoard();
+        if (!board) return null;
+
+        // Find column by title (use displayTitle for include columns, fallback to title)
+        const column = board.columns.find(c =>
+            (c.displayTitle || c.title) === columnTitle || c.title === columnTitle
+        );
+        if (!column) {
+            logger.warn(`[Dashboard._resolveElementInBoard] Column not found by title: "${columnTitle}"`);
+            return null;
+        }
+
+        if (!cardTitle) {
+            return { columnId: column.id };
+        }
+
+        // Find card by first line of content matching cardTitle
+        const card = column.tasks.find(t => {
+            const content = t.content || '';
+            const firstLine = content.replace(/\r\n/g, '\n').split('\n').find(l => l.trim().length > 0) ?? '';
+            return firstLine === cardTitle;
+        });
+
+        if (!card) {
+            logger.warn(`[Dashboard._resolveElementInBoard] Card not found by title: "${cardTitle}" in column "${columnTitle}"`);
+            return { columnId: column.id };
+        }
+
+        return { columnId: column.id, taskId: card.id };
+    }
+
+    /**
+     * Handle navigation to a specific element by content-based matching
+     */
+    private async _handleNavigateToElement(boardUri: string, columnTitle: string, cardTitle?: string): Promise<void> {
         try {
             const uri = vscode.Uri.parse(boardUri);
             const document = await vscode.workspace.openTextDocument(uri);
@@ -440,7 +474,12 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const panel = KanbanWebviewPanel.getPanelForDocument(panelKey);
 
             if (panel) {
-                panel.scrollToElement(columnId, taskId, true);
+                const resolved = this._resolveElementInBoard(panel, columnTitle, cardTitle);
+                if (resolved) {
+                    panel.scrollToElement(resolved.columnId, resolved.taskId, true);
+                } else {
+                    logger.warn(`[Dashboard] Could not resolve element: column="${columnTitle}" card="${cardTitle}"`);
+                }
             } else {
                 logger.error(`[Dashboard] Panel not found for document: ${panelKey}`);
             }
@@ -633,7 +672,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     panel = KanbanWebviewPanel.getPanelForDocument(message.boardUri);
                 }
                 if (panel) {
-                    panel.scrollToElement(message.columnId, message.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+                    const resolved = this._resolveElementInBoard(panel, message.columnTitle, message.cardTitle);
+                    if (resolved) {
+                        panel.scrollToElement(resolved.columnId, resolved.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+                    }
                     return;
                 }
             } catch (error) {
@@ -642,7 +684,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
         const panel = KanbanWebviewPanel.getActivePanel();
         if (panel) {
-            panel.scrollToElement(message.columnId, message.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+            const resolved = this._resolveElementInBoard(panel, message.columnTitle, message.cardTitle);
+            if (resolved) {
+                panel.scrollToElement(resolved.columnId, resolved.taskId, true, message.elementPath, message.elementType, message.field, message.matchText);
+            }
         }
     }
 
@@ -1379,7 +1424,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderUndatedItem(item, indentLevel) {
             let html = '<div class="tree-row undated-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-id="' + escapeHtml(item.columnId) + '" data-task-id="' + escapeHtml(item.taskId) + '">';
+            html += 'data-column-title="' + escapeHtml(item.columnTitle) + '" data-card-title="' + escapeHtml(item.cardTitle) + '">';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
             html += '</div>';
@@ -1396,9 +1441,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.undated-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnId = item.getAttribute('data-column-id');
-                    const taskId = item.getAttribute('data-task-id');
-                    navigateToElement(boardUri, columnId, taskId);
+                    const columnTitle = item.getAttribute('data-column-title');
+                    const cardTitle = item.getAttribute('data-card-title');
+                    navigateToElement(boardUri, columnTitle, cardTitle);
                 });
             });
             attachToggleListeners(container);
@@ -1528,7 +1573,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             else if (item.recurringState === 'outdated') stateClass = ' outdated';
             else if (item.recurringState === 'resetToRepeat') stateClass = ' reset-to-repeat';
             let html = '<div class="tree-row upcoming-item' + stateClass + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-id="' + escapeHtml(item.columnId) + '" data-task-id="' + escapeHtml(item.taskId) + '">';
+            html += 'data-column-title="' + escapeHtml(item.columnTitle) + '" data-card-title="' + escapeHtml(item.cardTitle) + '">';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
             html += '</div>';
@@ -1545,9 +1590,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.upcoming-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnId = item.getAttribute('data-column-id');
-                    const taskId = item.getAttribute('data-task-id');
-                    navigateToElement(boardUri, columnId, taskId);
+                    const columnTitle = item.getAttribute('data-column-title');
+                    const cardTitle = item.getAttribute('data-card-title');
+                    navigateToElement(boardUri, columnTitle, cardTitle);
                 });
             });
             attachToggleListeners(container);
@@ -1675,7 +1720,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         function renderTaggedItem(item, indentLevel) {
             const isColumnMatch = item.taskIndex === -1;
             let html = '<div class="tree-row tag-search-result' + (isColumnMatch ? ' column-match' : '') + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-id="' + escapeHtml(item.columnId) + '" data-task-id="' + escapeHtml(item.taskId || '') + '">';
+            html += 'data-column-title="' + escapeHtml(item.columnTitle) + '" data-card-title="' + escapeHtml(item.cardTitle || '') + '">';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
             html += '</div>';
@@ -1696,9 +1741,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.tag-search-result').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnId = item.getAttribute('data-column-id');
-                    const taskId = item.getAttribute('data-task-id');
-                    navigateToElement(boardUri, columnId, taskId || undefined);
+                    const columnTitle = item.getAttribute('data-column-title');
+                    const cardTitle = item.getAttribute('data-card-title');
+                    navigateToElement(boardUri, columnTitle, cardTitle || undefined);
                 });
             });
             attachToggleListeners(container);
@@ -1784,8 +1829,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderBrokenItem(item, indentLevel) {
             let html = '<div class="tree-row broken-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
-            if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
+            html += 'data-column-title="' + escapeHtml(item.columnTitle) + '"';
+            if (item.cardTitle) html += ' data-card-title="' + escapeHtml(item.cardTitle) + '"';
             html += '>';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1805,9 +1850,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.broken-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnId = item.getAttribute('data-column-id');
-                    const taskId = item.getAttribute('data-task-id') || undefined;
-                    navigateToElement(boardUri, columnId, taskId);
+                    const columnTitle = item.getAttribute('data-column-title');
+                    const cardTitle = item.getAttribute('data-card-title') || undefined;
+                    navigateToElement(boardUri, columnTitle, cardTitle);
                 });
             });
             attachToggleListeners(container);
@@ -1884,8 +1929,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function renderSearchItem(item, indentLevel) {
             let html = '<div class="tree-row search-result-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
-            html += 'data-column-id="' + escapeHtml(item.columnId) + '"';
-            if (item.taskId) html += ' data-task-id="' + escapeHtml(item.taskId) + '"';
+            html += 'data-column-title="' + escapeHtml(item.columnTitle) + '"';
+            if (item.cardTitle) html += ' data-card-title="' + escapeHtml(item.cardTitle) + '"';
             html += '>';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1903,9 +1948,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             container.querySelectorAll('.search-result-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const boardUri = item.getAttribute('data-board-uri');
-                    const columnId = item.getAttribute('data-column-id');
-                    const taskId = item.getAttribute('data-task-id') || undefined;
-                    navigateToElement(boardUri, columnId, taskId);
+                    const columnTitle = item.getAttribute('data-column-title');
+                    const cardTitle = item.getAttribute('data-card-title') || undefined;
+                    navigateToElement(boardUri, columnTitle, cardTitle);
                 });
             });
             attachToggleListeners(container);
@@ -1961,12 +2006,12 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             });
         }
 
-        function navigateToElement(boardUri, columnId, taskId) {
+        function navigateToElement(boardUri, columnTitle, cardTitle) {
             vscode.postMessage({
                 type: 'dashboardNavigateToElement',
                 boardUri,
-                columnId,
-                taskId
+                columnTitle,
+                cardTitle
             });
         }
 
@@ -2115,8 +2160,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             const loc = item.location || {};
             const locationText = escapeHtml(loc.columnTitle || '') + (loc.taskSummary ? ' / ' + escapeHtml(loc.taskSummary) : '');
             let html = '<div class="tree-row live-search-item"' + (item.boardName ? boardColorStyle(item.boardName) : '');
-            html += ' data-column-id="' + escapeHtml(loc.columnId || '') + '"';
-            if (loc.taskId) html += ' data-task-id="' + escapeHtml(loc.taskId) + '"';
+            html += ' data-column-title="' + escapeHtml(loc.columnTitle || '') + '"';
+            if (loc.cardTitle) html += ' data-card-title="' + escapeHtml(loc.cardTitle) + '"';
             if (item.boardUri) html += ' data-board-uri="' + escapeHtml(item.boardUri) + '"';
             if (item.path) html += ' data-element-path="' + escapeHtml(item.path) + '"';
             html += ' data-element-type="' + escapeHtml(item.type || '') + '"';
@@ -2139,8 +2184,8 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 item.addEventListener('click', function() {
                     vscode.postMessage({
                         type: 'navigateToElement',
-                        columnId: item.getAttribute('data-column-id'),
-                        taskId: item.getAttribute('data-task-id') || undefined,
+                        columnTitle: item.getAttribute('data-column-title'),
+                        cardTitle: item.getAttribute('data-card-title') || undefined,
                         elementPath: item.getAttribute('data-element-path') || undefined,
                         elementType: item.getAttribute('data-element-type') || undefined,
                         field: item.getAttribute('data-field') || undefined,

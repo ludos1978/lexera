@@ -310,7 +310,6 @@ export class WebviewUpdateService {
                 'stickyStackMode',
                 'tagVisibility',
                 'taskMinHeight',
-                'sectionHeight',
                 'fontSize',
                 'fontFamily',
                 'whitespace',

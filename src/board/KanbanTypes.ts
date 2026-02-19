@@ -51,7 +51,6 @@ export interface BoardSettings {
   stickyStackMode?: string;
   tagVisibility?: string;
   taskMinHeight?: string;
-  sectionHeight?: string;
   fontSize?: string;
   fontFamily?: string;
   whitespace?: string;

@@ -6,7 +6,7 @@
  */
 
 // Font size configuration
-const fontSizeMultipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
+const fontSizeMultipliers = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
 // Base configuration options - single source of truth for all menu items and CSS values
 // This is the ONLY place where option values and their CSS conversions are defined
@@ -36,17 +36,6 @@ const baseOptions = {
         { label: "Full Screen", value: "100percent", css: "92vh" }
     ],
 
-    // Section height options
-    sectionHeight: [
-        { label: "Auto", value: "auto", css: "auto" },
-        { label: "Small", value: "200px", css: "200px", separator: true },
-        { label: "Medium", value: "400px", css: "400px" },
-        { label: "Large", value: "600px", css: "600px" },
-        { label: "1/3 Screen", value: "33percent", css: "17vh", separator: true },
-        { label: "1/2 Screen", value: "50percent", css: "33vh" },
-        { label: "2/3 Screen", value: "66percent", css: "48vh" },
-        { label: "Full Screen", value: "100percent", css: "80vh" }
-    ],
 
     // Row height options
     rowHeight: [
@@ -61,15 +50,9 @@ const baseOptions = {
     ],
 
     // Whitespace options
-    whitespace: [
-        { label: "Compact", value: "4px", css: "4px" },
-        { label: "Default", value: "8px", css: "8px" },
-        { label: "Comfortable", value: "12px", css: "12px" },
-        { label: "Spacious", value: "16px", css: "16px" },
-        { label: "Large", value: "24px", css: "24px" },
-        { label: "XL", value: "36px", css: "36px" },
-        { label: "XXL", value: "48px", css: "48px" },
-        { label: "XXXL", value: "60px", css: "60px" }
+    whitespace: [        { label: "Compact", value: "8px", css: "8px" },
+        { label: "Default", value: "16px", css: "16px" },
+        { label: "Spacious", value: "32px", css: "32px" }
     ],
 
     // Font size options
@@ -157,7 +140,6 @@ function getValue(optionType, css) {
 const menuConfig = {
     columnWidth: null, // Generated
     cardHeight: null, // Generated
-    sectionHeight: null, // Generated
     rowHeight: null, // Generated
     whitespace: null, // Generated
     fontSize: null, // Generated
@@ -184,7 +166,7 @@ const menuConfig = {
 };
 
 // Generate menu configurations from base options
-['columnWidth', 'cardHeight', 'sectionHeight', 'rowHeight', 'whitespace', 'fontSize', 'layoutRows', 'stickyStackMode', 'tagVisibility', 'htmlCommentRenderMode', 'htmlContentRenderMode', 'arrowKeyFocusScroll'].forEach(key => {
+['columnWidth', 'cardHeight', 'rowHeight', 'whitespace', 'fontSize', 'layoutRows', 'stickyStackMode', 'tagVisibility', 'htmlCommentRenderMode', 'htmlContentRenderMode', 'arrowKeyFocusScroll'].forEach(key => {
     if (baseOptions[key]) {
         menuConfig[key] = baseOptions[key].map(option => {
             const result = {
@@ -219,10 +201,8 @@ function getCurrentSettingValue(configKey) {
             return window.currentColumnWidth || '450px';
         case 'cardHeight':
             return window.currentTaskMinHeight || 'auto';
-        case 'sectionHeight':
-            return window.currentSectionHeight || 'auto';
         case 'whitespace':
-            return window.currentWhitespace || '8px';
+            return window.currentWhitespace || '16px';
         case 'fontSize':
             return window.currentFontSize || '1x';
         case 'fontFamily':
@@ -280,7 +260,6 @@ function updateAllMenuIndicators() {
     const menuMappings = [
         { selector: '[data-menu="columnWidth"]', config: 'columnWidth', function: 'setColumnWidth' },
         { selector: '[data-menu="cardHeight"]', config: 'cardHeight', function: 'setTaskMinHeight' },
-        { selector: '[data-menu="sectionHeight"]', config: 'sectionHeight', function: 'setSectionHeight' },
         { selector: '[data-menu="whitespace"]', config: 'whitespace', function: 'setWhitespace' },
         { selector: '[data-menu="fontSize"]', config: 'fontSize', function: 'setFontSize' },
         { selector: '[data-menu="fontFamily"]', config: 'fontFamily', function: 'setFontFamily' },

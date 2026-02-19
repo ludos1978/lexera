@@ -684,10 +684,6 @@ graph TD
 - Options: auto, 200px, 400px, 43.5vh, 89vh
 - Setting: `markdown-kanban.taskMinHeight`
 
-**Section Heights:**
-- Control individual section heights
-- Setting: `sectionHeight`
-
 ### Typography
 
 **Font Size:**
@@ -701,9 +697,9 @@ graph TD
 ### Spacing
 
 **Whitespace Padding:**
-- CSS size value (e.g., "4px", "0.5em")
-- Default: 4px
-- Setting: `markdown-kanban.whitespace`
+- Options: 8px, 16px, 32px
+- Default: 16px
+- Set via YAML header: `whitespace: 16px`
 
 ### Tag Colors
 
@@ -765,7 +761,7 @@ Save entire layout configurations:
     "compact": {
       "columnWidth": "250px",
       "fontSize": "small",
-      "whitespace": "2px"
+      "whitespace": "8px"
     },
     "presentation": {
       "columnWidth": "450px",
@@ -843,8 +839,7 @@ When search panel is open:
 | `openLinksInNewTab` | false | Open links in new editor tab |
 | `columnWidth` | "350px" | Default column width |
 | `taskMinHeight` | "auto" | Minimum card height |
-| `sectionHeight` | "auto" | Section height |
-| `whitespace` | "4px" | Padding/spacing |
+| `whitespace` | "16px" | Padding/spacing (8px, 16px, 32px) |
 | `fontSize` | "normal" | Text size |
 | `fontFamily` | "system" | Font family |
 

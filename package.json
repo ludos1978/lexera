@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.223.4",
+  "version": "0.224.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -155,7 +155,6 @@
               "settings": {
                 "columnWidth": "250px",
                 "cardHeight": "auto",
-                "sectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "0_5x",
                 "whitespace": "8px",
@@ -169,7 +168,6 @@
               "settings": {
                 "columnWidth": "350px",
                 "cardHeight": "auto",
-                "sectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "1x",
                 "whitespace": "8px",
@@ -183,10 +181,9 @@
               "settings": {
                 "columnWidth": "650px",
                 "cardHeight": "auto",
-                "sectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "1_5x",
-                "whitespace": "24px",
+                "whitespace": "32px",
                 "tagVisibility": "allexcludinglayout",
                 "arrowKeyFocusScroll": "center"
               }
@@ -197,7 +194,6 @@
               "settings": {
                 "columnWidth": "33percent",
                 "cardHeight": "auto",
-                "sectionHeight": "auto",
                 "fontSize": "1x",
                 "whitespace": "8px",
                 "rowHeight": "50vh",
@@ -211,7 +207,6 @@
               "settings": {
                 "columnWidth": "500px",
                 "cardHeight": "auto",
-                "sectionHeight": "auto",
                 "rowHeight": "auto",
                 "fontSize": "1_25x",
                 "whitespace": "16px",
@@ -243,10 +238,6 @@
                   "cardHeight": {
                     "type": "string",
                     "description": "Card height setting"
-                  },
-                  "sectionHeight": {
-                    "type": "string",
-                    "description": "Section height setting"
                   },
                   "fontSize": {
                     "type": "string",

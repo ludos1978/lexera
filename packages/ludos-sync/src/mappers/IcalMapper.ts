@@ -17,7 +17,7 @@
  */
 
 import * as crypto from 'crypto';
-import { KanbanColumn, KanbanTask, extractTemporalInfo, resolveTaskTemporals, TemporalInfo } from '@ludos/shared';
+import { KanbanColumn, KanbanTask, extractTemporalInfo, resolveTaskTemporals, TemporalInfo, isArchivedOrDeleted } from '@ludos/shared';
 import { log } from '../logger';
 
 export interface IcalTask {
@@ -145,11 +145,17 @@ export class IcalMapper {
     const occurrences = new Map<string, number>();
 
     for (const column of columns) {
+      // Skip archived/deleted columns
+      if (isArchivedOrDeleted(column.title || '')) continue;
+
       const columnTemporals = extractTemporalInfo(column.title || '');
       const columnTemporal = columnTemporals.length > 0 ? columnTemporals[0] : null;
 
       for (const task of column.tasks) {
         const content = task.content || '';
+
+        // Skip archived/deleted tasks
+        if (isArchivedOrDeleted(content)) continue;
         const hashTags = extractHashTags(content);
         const categories = [column.title, ...hashTags];
         const checked = task.checked === true;

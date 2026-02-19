@@ -208,14 +208,10 @@ class ConfigManager {
                     '1x',
                     '1_25x',
                     '1_5x',
-                    '2x',
-                    '2_5x',
-                    '3x',
-                    '4x',
-                    '5x'
+                    '2x'
                 ].includes(value);
             case 'whitespace':
-                return ['normal', 'nowrap', 'pre', 'pre-wrap'].includes(value);
+                return ['8px', '16px', '32px'].includes(value);
             case 'tagVisibility':
                 return ['visible', 'hover', 'hidden'].includes(value);
             default:

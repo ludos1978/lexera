@@ -33,6 +33,9 @@ export interface ElementLocation {
     columnTitle: string;
     taskId?: string;
     taskIndex?: number;
+    /** Raw first non-empty line of card content — used for content-based navigation */
+    cardTitle?: string;
+    /** Display-friendly task summary (markdown syntax stripped) */
     taskSummary?: string;
     field: 'columnTitle' | 'taskContent';
 }
@@ -122,6 +125,11 @@ export class BoardContentScanner {
         };
     }
 
+    private _getCardTitle(task: KanbanTask): string {
+        const lines = (task.content || '').replace(/\r\n/g, '\n').split('\n');
+        return lines.find(l => l.trim().length > 0) ?? '';
+    }
+
     private _buildTaskLocation(column: KanbanColumn, columnIndex: number, task: KanbanTask, taskIndex: number, field: ElementLocation['field']): ElementLocation {
         return {
             columnId: column.id,
@@ -129,6 +137,7 @@ export class BoardContentScanner {
             columnTitle: this._getColumnTitle(column),
             taskId: task.id,
             taskIndex,
+            cardTitle: this._getCardTitle(task),
             taskSummary: this._getTaskSummary(task),
             field
         };

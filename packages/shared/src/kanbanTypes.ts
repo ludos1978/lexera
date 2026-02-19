@@ -8,6 +8,24 @@
  * The VS Code extension may extend these with UI-specific fields.
  */
 
+/** Internal tags applied by the kanban board to mark hidden items */
+export const HIDDEN_TAGS = {
+  PARKED:   '#hidden-internal-parked',
+  DELETED:  '#hidden-internal-deleted',
+  ARCHIVED: '#hidden-internal-archived',
+} as const;
+
+/**
+ * Check whether a text block is archived or deleted (should be excluded
+ * from dashboard results, calendar sync, etc.).
+ * Note: parked items are NOT excluded — they are temporarily hidden
+ * from the board view but still active.
+ */
+export function isArchivedOrDeleted(text: string): boolean {
+  return text.includes(HIDDEN_TAGS.DELETED)
+    || text.includes(HIDDEN_TAGS.ARCHIVED);
+}
+
 export interface KanbanTask {
   id: string;
   content: string;
@@ -29,7 +47,6 @@ export interface BoardSettings {
   stickyStackMode?: string;
   tagVisibility?: string;
   taskMinHeight?: string;
-  sectionHeight?: string;
   fontSize?: string;
   fontFamily?: string;
   whitespace?: string;

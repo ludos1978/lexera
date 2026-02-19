@@ -658,7 +658,7 @@ Used for both columns and tasks.
 
 | Attribute | Purpose | Values |
 |-----------|---------|--------|
-| `data-menu` | Menu type for submenus | `columnWidth`, `cardHeight`, `sectionHeight`, `whitespace`, `fontSize`, `fontFamily`, `layoutRows`, `rowHeight`, `stickyStackMode`, `tagVisibility`, `htmlCommentRenderMode`, `htmlContentRenderMode` |
+| `data-menu` | Menu type for submenus | `columnWidth`, `cardHeight`, `whitespace`, `fontSize`, `fontFamily`, `layoutRows`, `rowHeight`, `stickyStackMode`, `tagVisibility`, `htmlCommentRenderMode`, `htmlContentRenderMode` |
 | `data-submenu-type` | Submenu content type | `tags`, `move`, `move-to-list`, `marp-classes`, `marp-colors`, `marp-header-footer`, `sort` |
 | `data-scope` | Scope for marp settings | `column`, `task` |
 | `data-id` | Element ID for actions | Column/task ID |
@@ -682,7 +682,7 @@ Used for both columns and tasks.
 
 ```css
 :root {
-  --whitespace: 4px;
+  --whitespace: 16px;
   --whitespace-mul2: calc(var(--whitespace) * 2);
   --whitespace-div2: calc(var(--whitespace) / 2);
   --whitespace-div4: calc(var(--whitespace) / 4);

@@ -61,7 +61,6 @@ export interface BoardUpdateMessage extends BaseMessage {
     taskBorder: string;
     tagVisibility: string;
     taskMinHeight: string;
-    sectionHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
@@ -1050,7 +1049,6 @@ export type BoardSettingKey =
     | 'stickyStackMode'
     | 'tagVisibility'
     | 'taskMinHeight'
-    | 'sectionHeight'
     | 'fontSize'
     | 'fontFamily'
     | 'whitespace'
@@ -2071,8 +2069,8 @@ export interface SearchTextMessage extends BaseMessage {
  */
 export interface NavigateToElementMessage extends BaseMessage {
     type: 'navigateToElement';
-    columnId: string;
-    taskId?: string;
+    columnTitle: string;
+    cardTitle?: string;
     elementPath?: string;
     elementType?: string;
     field?: 'columnTitle' | 'taskContent';

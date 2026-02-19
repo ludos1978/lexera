@@ -351,7 +351,7 @@ window.currentImageMappings = {};
 
 // Layout preferences
 let currentColumnWidth = '450px';
-let currentWhitespace = '8px';
+let currentWhitespace = '16px';
 let currentTaskMinHeight = 'auto';
 let currentLayoutRows = 1;
 window.showSpecialCharacters = window.configManager?.getPreference('showSpecialCharacters', false) ?? false;
@@ -1286,7 +1286,6 @@ const BOARD_SETTING_KEYS = new Set([
     'stickyStackMode',
     'tagVisibility',
     'taskMinHeight',
-    'sectionHeight',
     'fontSize',
     'fontFamily',
     'whitespace',
@@ -2035,18 +2034,6 @@ function setTaskMinHeight(height) {
     applyAndSaveSetting('taskMinHeight', height, applyTaskMinHeight);
 }
 
-// Section height functions
-function applySectionHeight(height) {
-    window.currentSectionHeight = height;
-
-    // Use styleManager to apply section height
-    styleManager.applySectionHeight(height);
-}
-
-function setSectionHeight(height) {
-    applyAndSaveSetting('sectionHeight', height, applySectionHeight);
-}
-
 // Function to detect row tags from board
 // ============================================================================
 // ROW LAYOUT FUNCTIONS (moved to utils/rowLayoutManager.js)
@@ -2736,22 +2723,23 @@ if (!webviewEventListenersInitialized) {
                 window.currentColumnWidth = currentColumnWidth;
                 // Update whitespace with the value from configuration
                 if (message.whitespace) {
-                    // Normalize old whitespace values to current options
+                    // Normalize old whitespace values to valid options (8px, 16px, 32px)
                     let whitespace = message.whitespace;
-                    if (whitespace === '2px') {
-                        whitespace = '4px'; // Convert old compact to new compact
-                    } else if (whitespace === '10px') {
-                        whitespace = '12px'; // Convert old 10px to comfortable
-                    } else if (whitespace === '20px') {
-                        whitespace = '24px'; // Convert old 20px to large
-                    } else if (whitespace === '40px') {
-                        whitespace = '36px'; // Convert old 40px to extra large
-                    } else if (whitespace === '60px') {
-                        whitespace = '48px'; // Convert old 60px to maximum
+                    const px = parseInt(whitespace, 10);
+                    if (!isNaN(px)) {
+                        if (px <= 12) {
+                            whitespace = '8px';
+                        } else if (px <= 24) {
+                            whitespace = '16px';
+                        } else {
+                            whitespace = '32px';
+                        }
+                    } else {
+                        whitespace = '16px';
                     }
                     applyWhitespace(whitespace);
                 } else {
-                    applyWhitespace('8px'); // Default fallback
+                    applyWhitespace('16px'); // Default fallback
                 }
 
                 // Update task min height with the value from configuration
@@ -2761,13 +2749,6 @@ if (!webviewEventListenersInitialized) {
                     applyTaskMinHeight(taskMinHeight);
                 } else {
                     applyTaskMinHeight('auto'); // Default fallback
-                }
-
-                // Update section height with the value from configuration
-                if (message.sectionHeight) {
-                    applySectionHeight(message.sectionHeight);
-                } else {
-                    applySectionHeight('auto'); // Default fallback
                 }
 
                 // Update font size with the value from configuration
@@ -5915,7 +5896,7 @@ function selectFile() {
 function updateWhitespace(value) {
     // Ensure we have a valid value with 'px' suffix
     if (!value) {
-        value = '4px';
+        value = '16px';
     }
     // If the value is just a number, add 'px'
     if (!isNaN(value)) {
@@ -6396,9 +6377,6 @@ function applyLayoutPreset(presetKey) {
                 break;
             case 'cardHeight':
                 setTaskMinHeight(value);
-                break;
-            case 'sectionHeight':
-                setSectionHeight(value);
                 break;
             case 'fontSize':
                 setFontSize(value);

@@ -17,7 +17,7 @@
  */
 
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
-import { KanbanColumn, KanbanTask } from '@ludos/shared';
+import { KanbanColumn, KanbanTask, isArchivedOrDeleted } from '@ludos/shared';
 import { log } from '../logger';
 
 export interface XbelBookmark {
@@ -257,6 +257,9 @@ export class XbelMapper {
     const topFolderOrder: string[] = [];
 
     for (const column of columns) {
+      // Skip archived/deleted columns
+      if (isArchivedOrDeleted(column.title || '')) continue;
+
       const folderPath = this.extractFolderPath(column.title);
       if (!folderPath) continue;
 
@@ -279,6 +282,8 @@ export class XbelMapper {
       const bookmarks: XbelBookmark[] = [];
       let bmCounter = 0;
       for (const task of column.tasks) {
+        // Skip archived/deleted tasks
+        if (isArchivedOrDeleted(task.content || '')) continue;
         const bm = this.taskContentToBookmark(task.content, bmCounter);
         if (bm) {
           bookmarks.push(bm);
