@@ -21,7 +21,7 @@ This document consolidates code quality analysis across HTML, CSS, JavaScript, a
 | 2025-12-27 | CSS utility classes (flex, gap, text, transitions) | ✅ DONE | ~50 (when fully adopted) |
 | 2025-12-27 | Decomposed handleBoardUpdate in messageHandler.ts | ✅ DONE | ~30 (better structure) |
 | 2025-12-27 | Menu item template factory in menuUtils.js | ✅ DONE | ~50 (when fully adopted) |
-| 2025-12-27 | Migrated TaskCommands.ts to SwitchBasedCommand | ✅ DONE | ~25 |
+| 2025-12-27 | Migrated CardCommands.ts to SwitchBasedCommand | ✅ DONE | ~25 |
 | 2025-12-27 | Migrated ColumnCommands.ts to SwitchBasedCommand | ✅ DONE | ~20 |
 | 2025-12-27 | Migrated FileCommands.ts to SwitchBasedCommand | ✅ DONE | ~20 |
 | 2025-12-27 | Migrated ExportCommands.ts to SwitchBasedCommand | ✅ DONE | ~20 |
@@ -30,7 +30,7 @@ This document consolidates code quality analysis across HTML, CSS, JavaScript, a
 | 2025-12-27 | Migrated PathCommands.ts to SwitchBasedCommand | ✅ DONE | ~20 |
 | 2025-12-27 | Migrated IncludeCommands.ts to SwitchBasedCommand | ✅ DONE | ~20 |
 | 2025-12-27 | Migrated EditModeCommands.ts to SwitchBasedCommand | ✅ DONE | ~25 (+ extracted 18 methods) |
-| 2025-12-27 | Decomposed startEdit() in taskEditor.js into 10 helper methods | ✅ DONE | ~40 (better structure) |
+| 2025-12-27 | Decomposed startEdit() in cardEditor.js into 10 helper methods | ✅ DONE | ~40 (better structure) |
 | 2025-12-27 | Created MenuManager class in menuUtils.js | ✅ DONE | ~100 (when fully adopted) |
 
 ---
@@ -189,7 +189,7 @@ This document consolidates code quality analysis across HTML, CSS, JavaScript, a
 .is-current-week .column-footer,
 .is-current-day .column-header,
 /* ... */
-.task-item.is-current-time {
+.card-item.is-current-time {
   border-right: var(--current-week-border-width) var(--current-week-border-style) var(--current-week-highlight-color);
 }
 ```
@@ -307,7 +307,7 @@ window.positionDropdownMenu = positionDropdownMenu;
 
 ### 2.2 HIGH PRIORITY: Complex Function Decomposition
 
-#### 2.2.1 `saveCurrentField()` in taskEditor.js ✅ COMPLETED
+#### 2.2.1 `saveCurrentField()` in cardEditor.js ✅ COMPLETED
 
 **Status:** REFACTORED on 2025-12-27
 
@@ -326,18 +326,18 @@ window.positionDropdownMenu = positionDropdownMenu;
 - `_updateColumnTagStyling()` - Tag styling (23 lines)
 - `_updateColumnTemporalAttributes()` - Temporal attrs (16 lines)
 - `_trackPendingColumnChange()` - Change tracking (11 lines)
-- `_saveTaskField()` - Task field entry (48 lines)
-- `_findTask()` - Task finder (16 lines)
-- `_saveTaskTitle()` - Task title (27 lines)
-- `_saveTaskTitleWithIncludes()` - Include title (28 lines)
-- `_saveTaskDescription()` - Description (7 lines)
-- `_updateTaskDisplay()` - Task display (48 lines)
-- `_updateTaskTagStyling()` - Task tags (23 lines)
-- `_updateTaskTemporalAttributes()` - Task temporal (23 lines)
+- `_saveCardField()` - Card field entry (48 lines)
+- `_findCard()` - Card finder (16 lines)
+- `_saveCardTitle()` - Card title (27 lines)
+- `_saveCardTitleWithIncludes()` - Include title (28 lines)
+- `_saveCardDescription()` - Description (7 lines)
+- `_updateCardDisplay()` - Card display (48 lines)
+- `_updateCardTagStyling()` - Card tags (23 lines)
+- `_updateCardTemporalAttributes()` - Card temporal (23 lines)
 
 **Impact:** Each method now has single responsibility, improved testability
 
-#### 2.2.2 `startEdit()` in taskEditor.js (237 lines)
+#### 2.2.2 `startEdit()` in cardEditor.js (237 lines)
 
 **Location:** Lines 505-741
 
@@ -534,7 +534,7 @@ export type WebviewBridgeProvider = () => WebviewBridge | undefined;
 // src/core/bridge/MessageTypes.ts
 export interface BoardViewConfig {
     columnBorder: string;
-    taskBorder: string;
+    cardBorder: string;
     columnWidth: number;
     // ... properly typed
 }
@@ -592,12 +592,12 @@ export abstract class SwitchBasedCommand extends BaseMessageCommand {
     }
 }
 
-// Usage in TaskCommands.ts
-export class TaskCommands extends SwitchBasedCommand {
+// Usage in CardCommands.ts
+export class CardCommands extends SwitchBasedCommand {
     protected handlers = {
-        'insertTaskBefore': this.handleInsertTaskBefore,
-        'insertTaskAfter': this.handleInsertTaskAfter,
-        'deleteTask': this.handleDeleteTask,
+        'insertCardBefore': this.handleInsertCardBefore,
+        'insertCardAfter': this.handleInsertCardAfter,
+        'deleteCard': this.handleDeleteCard,
         // ...
     };
 }
@@ -839,7 +839,7 @@ columnDiv.classList.add(...temporalClasses);
 |---------|----------|
 | BEM-ish | `.donut-menu-item`, `.file-bar-menu-btn` |
 | Flat | `.collapsed`, `.active`, `.hidden` |
-| Data-prefixed | `data-column-id`, `data-task-bg-tag` |
+| Data-prefixed | `data-column-id`, `data-card-bg-tag` |
 | Camel in data | `data-submenu-type` vs `data-column-sticky` |
 
 **Proposed Standard:**
@@ -1054,9 +1054,9 @@ function truncateFileName(fileName, maxLength = 20) {
 **Pattern 1: State-based Testing (BoardCrudOperations)**
 ```typescript
 const board = createTestBoard();
-const result = operations.addTask(board, 'col-3', taskData);
+const result = operations.addCard(board, 'col-3', cardData);
 expect(result).toBe(true);
-expect(board.columns[2].tasks.length).toBe(1);
+expect(board.columns[2].cards.length).toBe(1);
 ```
 
 **Pattern 2: Action-based Testing (ColumnActions)**
@@ -1107,7 +1107,7 @@ expect(action.targets).toEqual([]);
 |------|-------|------------|
 | `src/html/webview.css` | 7,399 | Button/menu duplication, !important overuse |
 | `src/html/boardRenderer.js` | 2,200+ | Complex functions, template strings |
-| `src/html/taskEditor.js` | 1,700+ | 543-line function, complex state |
+| `src/html/cardEditor.js` | 1,700+ | 543-line function, complex state |
 | `src/html/menuOperations.js` | 2,100+ | Duplicate positioning, menu handlers |
 | `src/html/webview.js` | 1,300+ | Duplicate dropdown logic |
 | `src/html/utils/tagUtils.js` | 1,554 | Filter duplication, path truncation |

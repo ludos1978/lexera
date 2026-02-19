@@ -102,15 +102,15 @@
 ## Tag Scoping Rules
 
 - `#` tags are separated by spaces and tabs only. The `-` character is part of the tag name (e.g., `#hidden-internal-parked` is one tag, not `#hidden` + `internal-parked`).
-- Task content is a single unified string (no separate title/description fields).
-- The "task header" is the contiguous block of non-empty lines starting from line 0 of the content. As soon as an empty line is encountered, the task header ends.
-- If the content starts with an empty line, there is NO task header — all tags are line-level.
-- Tags in the task header apply to the FULL task (task-level tags). These replace the old "title tags" concept since titles were unified into content.
+- Card content is a single unified string (no separate title/description fields).
+- The "card header" is the contiguous block of non-empty lines starting from line 0 of the content. As soon as an empty line is encountered, the card header ends.
+- If the content starts with an empty line, there is NO card header — all tags are line-level.
+- Tags in the card header apply to the FULL card (card-level tags). These replace the old "title tags" concept since titles were unified into content.
 - Tags after the first empty line apply only to the line they are on (line-level tags).
-- Example: `<!-- comment -->\n# title #tag0` — `#tag0` is task-level (contiguous from start).
-- Example: `title #tag0\n\ndescription #tag1` — `#tag0` is task-level, `#tag1` is line-level.
-- Example: `\n#tag0\ntext` — `#tag0` is line-level (first line is empty, no task header).
-- When checking for task-level tags in code, iterate lines from start and stop at the first empty line.
+- Example: `<!-- comment -->\n# title #tag0` — `#tag0` is card-level (contiguous from start).
+- Example: `title #tag0\n\ndescription #tag1` — `#tag0` is card-level, `#tag1` is line-level.
+- Example: `\n#tag0\ntext` — `#tag0` is line-level (first line is empty, no card header).
+- When checking for card-level tags in code, iterate lines from start and stop at the first empty line.
 
 ## Project Specific
 

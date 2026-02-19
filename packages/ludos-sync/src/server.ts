@@ -158,6 +158,15 @@ export class SyncServer {
         }
       });
 
+      // Track TCP connections
+      this.httpServer.on('connection', (socket) => {
+        const remote = `${socket.remoteAddress}:${socket.remotePort}`;
+        log.info(`[Connection] opened from ${remote}`);
+        socket.on('close', () => {
+          log.info(`[Connection] closed from ${remote}`);
+        });
+      });
+
       this.httpServer.on('error', reject);
     });
   }

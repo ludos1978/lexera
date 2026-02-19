@@ -58,13 +58,13 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return undefined; }
 
-        const taskIndex = column.cards.findIndex(task => task.id === cardId);
-        if (taskIndex === -1) { return undefined; }
+        const cardIndex = column.cards.findIndex(task => task.id === cardId);
+        if (cardIndex === -1) { return undefined; }
 
         return {
             column,
-            task: column.cards[taskIndex],
-            index: taskIndex
+            task: column.cards[cardIndex],
+            index: cardIndex
         };
     }
 
@@ -81,12 +81,12 @@ export class BoardCrudOperations {
             return false;
         }
 
-        const taskIndex = fromColumn.cards.findIndex(task => task.id === cardId);
-        if (taskIndex === -1) {
+        const cardIndex = fromColumn.cards.findIndex(task => task.id === cardId);
+        if (cardIndex === -1) {
             return false;
         }
 
-        const task = fromColumn.cards.splice(taskIndex, 1)[0];
+        const task = fromColumn.cards.splice(cardIndex, 1)[0];
         toColumn.cards.splice(newIndex, 0, task);
         return true;
     }
@@ -125,10 +125,10 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const taskIndex = column.cards.findIndex(task => task.id === cardId);
-        if (taskIndex === -1) { return false; }
+        const cardIndex = column.cards.findIndex(task => task.id === cardId);
+        if (cardIndex === -1) { return false; }
 
-        column.cards.splice(taskIndex, 1);
+        column.cards.splice(cardIndex, 1);
         return true;
     }
 
@@ -243,10 +243,10 @@ export class BoardCrudOperations {
 
         if (!fromColumn || !toColumn) { return false; }
 
-        const taskIndex = fromColumn.cards.findIndex(task => task.id === cardId);
-        if (taskIndex === -1) { return false; }
+        const cardIndex = fromColumn.cards.findIndex(task => task.id === cardId);
+        if (cardIndex === -1) { return false; }
 
-        const task = fromColumn.cards.splice(taskIndex, 1)[0];
+        const task = fromColumn.cards.splice(cardIndex, 1)[0];
         toColumn.cards.push(task);
         return true;
     }

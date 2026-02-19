@@ -24,21 +24,21 @@ The extension has three places where board data lives:
 └─────────────────────────────────────────────────────────────────────┘
                               │
                               │ postMessage({type: 'boardData', board: {...}})
-                              │ postMessage({type: 'updateTaskContent', task: {...}})
+                              │ postMessage({type: 'updateCardContent', card: {...}})
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  2. WEBVIEW CACHE (JavaScript - window.cachedBoard)                 │
 │  ─────────────────────────────────────────────────────────────────  │
 │  Frontend Cache: Copy of board data in webview JavaScript           │
 │  - Set in webview.js when 'boardData' message received              │
-│  - Updated incrementally via 'updateTaskContent', 'updateColumn'    │
+│  - Updated incrementally via 'updateCardContent', 'updateColumn'    │
 │  - Used by renderBoard() to generate HTML                           │
-│  - Used by taskEditor to initialize edit field values               │
-│  - Used by drag-drop to track task/column positions                 │
+│  - Used by cardEditor to initialize edit field values               │
+│  - Used by drag-drop to track card/column positions                 │
 │  Location: window.cachedBoard (global in webview context)           │
 └─────────────────────────────────────────────────────────────────────┘
                               │
-                              │ renderBoard(), renderSingleTask(), etc.
+                              │ renderBoard(), renderSingleCard(), etc.
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  3. DOM (HTML - Rendered UI)                                        │
@@ -61,10 +61,10 @@ Webview: window.cachedBoard = message.board
 DOM: <div class="kanban-board">...</div>
 ```
 
-**User Edits Task:**
+**User Edits Card:**
 ```
-DOM: User types in <textarea class="task-description-edit">
-    ↓ taskEditor.save()
+DOM: User types in <textarea class="card-description-edit">
+    ↓ cardEditor.save()
 Webview: postMessage({type: 'boardUpdate', board: window.cachedBoard})
     ↓
 Backend: Updates MainKanbanFile → Marks unsaved → Writes to disk
@@ -75,13 +75,13 @@ Backend: Updates MainKanbanFile → Marks unsaved → Writes to disk
 DOM: User clicks "Search for File" → postMessage({type: 'searchForFile'})
     ↓
 Backend: Shows file picker → Replaces path in file content
-    ↓ postMessage({type: 'updateTaskContent', task: updatedTask})
+    ↓ postMessage({type: 'updateCardContent', card: updatedCard})
 Webview:
-    1. window.cachedBoard.task.description = updatedTask.description
-    2. If editing: editor.element.value = updatedTask.description
-    3. If not editing: renderSingleTask()
+    1. window.cachedBoard.card.description = updatedCard.description
+    2. If editing: editor.element.value = updatedCard.description
+    3. If not editing: renderSingleCard()
     ↓
-DOM: Updated task rendered with new path
+DOM: Updated card rendered with new path
 ```
 
 ### Sync Considerations
@@ -90,7 +90,7 @@ DOM: Updated task rendered with new path
 - Webview cannot directly access backend file system
 - Avoids round-trip for every read operation
 - Required for drag-drop (need full board structure)
-- Required for rendering (needs all task data)
+- Required for rendering (needs all card data)
 
 **Potential Sync Issues:**
 1. **Stale Cache**: If backend updates but message fails, cache is stale
@@ -98,9 +98,9 @@ DOM: Updated task rendered with new path
 3. **Race Conditions**: Multiple updates can arrive out of order
 
 **How Sync Is Maintained:**
-1. Backend sends incremental updates via `updateTaskContent`, `updateColumnContent`
+1. Backend sends incremental updates via `updateCardContent`, `updateColumnContent`
 2. Webview updates `window.cachedBoard` on every message
-3. Edit fields are updated when `updateTaskContent` received while editing (fixed 2025-12-28)
+3. Edit fields are updated when `updateCardContent` received while editing (fixed 2025-12-28)
 4. Full refresh via `renderBoard()` when not in edit mode
 
 ---
@@ -112,14 +112,14 @@ Each entry follows: `path_to_filename-instancename` with a brief description
 
 ## Edit Mode Detection
 
-### Critical Instance: `window.taskEditor.currentEditor`
+### Critical Instance: `window.cardEditor.currentEditor`
 **Location**: Global window object
 **Type**: `null | object` (editor instance)
-**Purpose**: Indicates whether user is actively editing a task/column
+**Purpose**: Indicates whether user is actively editing a card/column
 
 **Usage in Content Updates**:
 ```javascript
-const isEditing = window.taskEditor && window.taskEditor.currentEditor;
+const isEditing = window.cardEditor && window.cardEditor.currentEditor;
 if (isEditing) {
     // Skip DOM re-rendering to preserve active editor
 }
@@ -146,15 +146,15 @@ case 'boardData':
 
 **Updated By**:
 - `boardData` message: Full board replacement
-- `updateTaskContent` message: Incremental task update
+- `updateCardContent` message: Incremental card update
 - `updateColumnContent` message: Incremental column update
 - `boardUpdate` message: After drag-drop or edits
 
 **Used By**:
 - `renderBoard()`: Generate DOM from board data
-- `taskEditor._initializeTaskDescriptionValue()`: Initialize edit fields
+- `cardEditor._initializeCardDescriptionValue()`: Initialize edit fields
 - `dragDrop.js`: Track positions during drag operations
-- `search.js`: Search through tasks
+- `search.js`: Search through cards
 - All UI operations that need board structure
 
 **Why Important**: This is the single source of truth in the frontend. All rendering and UI operations read from this cache. Must stay in sync with backend.
@@ -176,7 +176,7 @@ case 'boardData':
 ### Layout Preferences
 - src_html_webview-currentColumnWidth - Current column width setting ('350px')
 - src_html_webview-currentWhitespace - Current whitespace setting ('8px')
-- src_html_webview-currentTaskMinHeight - Current task min height ('auto')
+- src_html_webview-currentCardMinHeight - Current card min height ('auto')
 - src_html_webview-currentLayoutRows - Current layout rows (1)
 
 ### Constants
@@ -245,17 +245,17 @@ case 'boardData':
 ### Context Menu State
 - src_html_menuOperations-activeContextMenu - Active context menu element (null | HTMLElement)
 - src_html_menuOperations-contextMenuTarget - Context menu target element (null | HTMLElement)
-- src_html_menuOperations-contextMenuType - Context menu type ('task' | 'column' | 'board')
+- src_html_menuOperations-contextMenuType - Context menu type ('card' | 'column' | 'board')
 
 ---
 
-## src/html/taskEditor.js - Task Editor Instances
+## src/html/cardEditor.js - Card Editor Instances
 
 ### Editor State
-- src_html_taskEditor-currentEditor - Currently active editor (null | object)
-- src_html_taskEditor-editMode - Current edit mode ('title' | 'description' | 'column')
-- src_html_taskEditor-originalContent - Original content before edit (string)
-- src_html_taskEditor-editTarget - Element being edited (null | HTMLElement)
+- src_html_cardEditor-currentEditor - Currently active editor (null | object)
+- src_html_cardEditor-editMode - Current edit mode ('title' | 'description' | 'column')
+- src_html_cardEditor-originalContent - Original content before edit (string)
+- src_html_cardEditor-editTarget - Element being edited (null | HTMLElement)
 
 ---
 

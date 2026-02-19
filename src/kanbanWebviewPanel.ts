@@ -305,20 +305,20 @@ export class KanbanWebviewPanel {
      */
     public scrollToElementByIndex(
         columnIndex: number,
-        taskIndex?: number,
+        cardIndex?: number,
         highlight: boolean = true
     ): void {
         const message: ScrollToElementByIndexMessage = {
             type: 'scrollToElementByIndex',
             columnIndex,
-            taskIndex,
+            cardIndex,
             highlight
         };
 
         // Reveal the panel first
         this._panel.reveal(undefined, false);
 
-        logger.debug('[KanbanWebviewPanel.scrollToElementByIndex] webviewReady:', this._context.webviewReady, 'columnIndex:', columnIndex, 'taskIndex:', taskIndex);
+        logger.debug('[KanbanWebviewPanel.scrollToElementByIndex] webviewReady:', this._context.webviewReady, 'columnIndex:', columnIndex, 'cardIndex:', cardIndex);
 
         if (this._context.webviewReady) {
             logger.debug('[KanbanWebviewPanel.scrollToElementByIndex] Sending immediately');

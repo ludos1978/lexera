@@ -25,7 +25,7 @@ import './utils/menuUtils.js';
 
 // Core modules
 import './markdownRenderer.js';
-import './taskEditor.js';
+import './cardEditor.js';
 import './boardRenderer.js';
 import './dragDrop.js';
 import './menuOperations.js';

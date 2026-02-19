@@ -84,7 +84,7 @@ This document catalogs ALL singleton instances, global state, and data instances
 **CLEANUP-3: Code Simplification**
 - **New**: `_sendBoardUpdate()` helper in kanbanWebviewPanel
 - **Impact**: Eliminates 67 lines of duplication across 3 call sites
-- **Bug Fixed**: _handleContentChange missing config fields (columnBorder, taskBorder, htmlRenderMode)
+- **Bug Fixed**: _handleContentChange missing config fields (columnBorder, cardBorder, htmlRenderMode)
 
 **CLEANUP-2: Bug Fixes**
 - **Fixed**: `hasIncludeUnsavedChanges()` in MainKanbanFile - now properly queries registry (critical data loss prevention)
@@ -100,7 +100,7 @@ This document catalogs ALL singleton instances, global state, and data instances
 ### Phase 3: Board State Sync (2025-10-26)
 **Change**: Unified content change handling
 - **New**: `_handleContentChange()` - UNIFIED handler for ALL content changes
-- Handles: column switches, task switches, external include changes
+- Handles: column switches, card switches, external include changes
 - Proper cache clearing and state synchronization
 - **Result**: Complete state synchronization
 
@@ -132,7 +132,7 @@ This document catalogs ALL singleton instances, global state, and data instances
 1. User switches column include file
 2. `performBoardActionSilent()` called → triggers save
 3. Save regenerates markdown and re-parses board
-4. All column/task IDs regenerated (runtime-only, not persisted)
+4. All column/card IDs regenerated (runtime-only, not persisted)
 5. Code tries to find column by old ID → **FAILS: Column not found**
 
 **New Flow** (FIXED):
@@ -149,7 +149,7 @@ This document catalogs ALL singleton instances, global state, and data instances
 ### Include Syntax System (2025-10-26)
 **User-facing syntax**: Always `!!!include(filepath.md)!!!`
 **Internal routing**: TypeScript uses `includeType: 'columninclude' | 'taskinclude' | 'include'` for logic
-**Behavior**: Determined by position (column header, task title, or task description)
+**Behavior**: Determined by position (column header, card title, or card description)
 
 ---
 
@@ -491,16 +491,16 @@ private _document?: vscode.TextDocument;
 **Scope:** Per BoardOperations instance (one per KanbanWebviewPanel)
 
 **Purpose:**
-- Track original task ordering for operations
+- Track original card ordering for operations
 - Maintain state during drag-and-drop and reordering
 
 **Data Held:**
 ```typescript
-private _originalTaskOrder: Map<string, string[]> = new Map();
+private _originalCardOrder: Map<string, string[]> = new Map();
 ```
 
 **Key Data:**
-- `_originalTaskOrder`: Map of column IDs to arrays of task IDs (original order)
+- `_originalCardOrder`: Map of column IDs to arrays of card IDs (original order)
 
 ---
 

@@ -267,7 +267,7 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       log.verbose(`[CalDAV] REPORT body (${bodyStr.length} bytes): ${bodyStr.substring(0, 300)}`);
       const report = parseReportBody(bodyStr, basePath, slug);
       filteredTasks = applyReportFilter(report, allTasks);
-      log.verbose(`[CalDAV] REPORT ${report.type}: ${filteredTasks.length} tasks after filter (from ${allTasks.length})`);
+      log.verbose(`[CalDAV] REPORT ${report.type}: serving ${filteredTasks.length} tasks (from ${allTasks.length} total)`);
     }
 
     const responses: string[] = [];

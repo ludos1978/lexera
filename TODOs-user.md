@@ -1,3 +1,7 @@
+- [ ] a tag like #preparation should add a header above the column if it's in the column title. but it disappears after what i assume is a redrawing of it. it's first correctly added after editing the title.
+
+- [ ] the ludos-sync (calendar & task sync server) should show when a connections is setup and when it's disconnected.
+
 - [ ] we should ignore tasks and columns with #hidden-internal-archived or #hidden-ignore-deleted tags when looking for anything those are considered archived or deleted already!
 
 - [ ] add a background option to embeds.

@@ -77,7 +77,7 @@ export interface BoardUpdateMessage extends BaseMessage {
     htmlContentRenderMode?: string;
     tagColors?: Record<string, string>;
     enabledTagCategoriesColumn?: Record<string, boolean>;
-    enabledTagCategoriesTask?: Record<string, boolean>;
+    enabledTagCategoriesCard?: Record<string, boolean>;
     customTagCategories?: Record<string, unknown>;
     exportTagVisibility?: boolean;
     openLinksInNewTab?: boolean;
@@ -2108,7 +2108,7 @@ export interface ScrollToElementMessage extends BaseMessage {
 export interface ScrollToElementByIndexMessage extends BaseMessage {
     type: 'scrollToElementByIndex';
     columnIndex: number;
-    taskIndex?: number;
+    cardIndex?: number;
     highlight: boolean;
 }
 

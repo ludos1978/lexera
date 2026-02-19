@@ -13,9 +13,9 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 
 **User-facing syntax**: Always `!!!include(filepath.md)!!!`
 - Position in markdown determines behavior:
-  - Column header → Column include (Marp presentation to tasks)
-  - Task title → Task include (first line as title)
-  - Task description → Regular include (full content)
+  - Column header → Column include (Marp presentation to cards)
+  - Card title → Card include (first line as title)
+  - Card description → Regular include (full content)
 
 ---
 
@@ -25,7 +25,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 - src_html_webview-baseOptions - Base configuration options for all menu items and CSS values
   - columnWidth options (250px, 350px, 450px, 650px, screen percentages)
   - whitespace options (2px to 32px)
-  - taskMinHeight options (auto, 50px to 600px)
+  - cardMinHeight options (auto, 50px to 600px)
   - stickyStackMode options (none, first-stack, all-stacks)
   - tagVisibility options (all, none, excludelayout, allexcludinglayout)
   - htmlCommentRenderMode options (show, hide)
@@ -34,7 +34,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 - src_html_webview-menuConfig - Menu configuration object mapping config keys to options
   - columnWidth menu
   - whitespace menu
-  - taskMinHeight menu
+  - cardMinHeight menu
   - layoutRows menu
   - stickyStackMode menu
   - tagVisibility menu
@@ -47,7 +47,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 
 - src_html_boardRenderer-defaultFoldingState - Default folding state object
   - columns: Map of column fold states
-  - tasks: Map of task fold states
+  - cards: Map of card fold states
 - src_html_boardRenderer-tagStyleCache - Map for caching tag styles
 - src_html_boardRenderer-renderContext - Rendering context object
   - board: Board data
@@ -61,10 +61,10 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 - src_html_dragDrop-dragState - Drag state object
   - dragging: boolean
   - draggedElement: DOM element
-  - draggedType: 'task' | 'column'
+  - draggedType: 'card' | 'column'
   - draggedId: string
-  - draggedColumnId: string (for tasks)
-  - originalTaskColumnId: string | null (captured at drag start for reliable undo/restore)
+  - draggedColumnId: string (for cards)
+  - originalCardColumnId: string | null (captured at drag start for reliable undo/restore)
   - dropTarget: DOM element
   - dropPosition: 'before' | 'after' | 'inside'
 
@@ -93,7 +93,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 - src_html_configManager-Config - Configuration object
   - columnWidth: string
   - whitespace: string
-  - taskMinHeight: string
+  - cardMinHeight: string
   - layoutRows: number
   - stickyStackMode: string
   - tagVisibility: string
@@ -106,7 +106,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 ## src/html/exportTreeBuilder.js - Export Tree
 
 - src_html_exportTreeBuilder-ExportNode - Export tree node
-  - type: 'board' | 'column' | 'task'
+  - type: 'board' | 'column' | 'card'
   - id: string
   - title: string
   - selected: boolean
@@ -184,7 +184,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
   - Maps internal paths to webview-accessible paths
 - src_html_webview-documentFoldingStates - Map of folding states per document
   - Key: document URI
-  - Value: {collapsedColumns: Set, collapsedTasks: Set, columnFoldStates: Map}
+  - Value: {collapsedColumns: Set, collapsedCards: Set, columnFoldStates: Map}
 - src_html_webview-currentDocumentUri - Current document URI string
 
 ### UI State
@@ -196,7 +196,7 @@ Each entry follows: `path_to_filename-structurename` with a brief description
 ### Layout Preferences
 - src_html_webview-currentColumnWidth - Current column width setting
 - src_html_webview-currentWhitespace - Current whitespace setting
-- src_html_webview-currentTaskMinHeight - Current task minimum height setting
+- src_html_webview-currentCardMinHeight - Current card minimum height setting
 - src_html_webview-currentLayoutRows - Current layout rows setting
 
 ---

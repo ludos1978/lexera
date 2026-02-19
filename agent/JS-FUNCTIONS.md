@@ -18,9 +18,9 @@ Each entry follows: `path_to_filename-functionname` with a brief description
 
 **Solution**: Added `isEditing` guard to content update handlers:
 ```javascript
-const isEditing = window.taskEditor && window.taskEditor.currentEditor;
+const isEditing = window.cardEditor && window.cardEditor.currentEditor;
 if (!isEditing) {
-    // Re-render column/task
+    // Re-render column/card
 } else {
     console.log('Skipping render - user is editing');
 }
@@ -28,9 +28,9 @@ if (!isEditing) {
 
 **Affected Functions**:
 - `updateColumnContent` - Skips rendering when user is editing
-- `updateTaskContent` - Skips rendering when user is editing
+- `updateCardContent` - Skips rendering when user is editing
 
-**Key Check**: `window.taskEditor.currentEditor` - active editor instance
+**Key Check**: `window.cardEditor.currentEditor` - active editor instance
 
 ---
 
@@ -73,8 +73,8 @@ if (!isEditing) {
 - src_html_webview-filterTagsForExport - Filter tags for export with visibility setting
 - src_html_webview-applyWhitespace - Apply whitespace setting
 - src_html_webview-setWhitespace - Set whitespace
-- src_html_webview-applyTaskMinHeight - Apply task minimum height
-- src_html_webview-setTaskMinHeight - Set task minimum height
+- src_html_webview-applyCardMinHeight - Apply card minimum height
+- src_html_webview-setCardMinHeight - Set card minimum height
 - src_html_webview-applySectionHeight - Apply section height
 - src_html_webview-setSectionHeight - Set section height
 - src_html_webview-detectRowsFromBoard - Detect number of rows from board data
@@ -98,9 +98,9 @@ if (!isEditing) {
 - src_html_boardRenderer-getBoardElement - Get board container element
 - src_html_boardRenderer-getEditorBackground - Get editor background color
 - src_html_boardRenderer-getColumnIdFromElement - Get column ID from DOM element
-- src_html_boardRenderer-getTaskIdFromElement - Get task ID from DOM element
+- src_html_boardRenderer-getCardIdFromElement - Get card ID from DOM element
 - src_html_boardRenderer-interpolateColor - Interpolate color between two colors
-- src_html_boardRenderer-wrapTaskSections - Wrap task sections with containers
+- src_html_boardRenderer-wrapCardSections - Wrap card sections with containers
 - src_html_boardRenderer-applyTagStyles - Apply CSS styles for tags
 - src_html_boardRenderer-ensureTagStyleExists - Ensure tag style element exists
 - src_html_boardRenderer-extractFirstTag - Extract first tag from text
@@ -121,25 +121,25 @@ if (!isEditing) {
 - src_html_boardRenderer-renderSingleColumn - Render single column
 - src_html_boardRenderer-renderBoard - Render entire board
 - src_html_boardRenderer-getFoldAllButtonState - Get fold all button state
-- src_html_boardRenderer-toggleAllTasksInColumn - Toggle all tasks in column
+- src_html_boardRenderer-toggleAllCardsInColumn - Toggle all cards in column
 - src_html_boardRenderer-updateFoldAllButton - Update fold all button state
 - src_html_boardRenderer-createColumnElement - Create column DOM element
-- src_html_boardRenderer-getTaskEditContent - Get task edit content
-- src_html_boardRenderer-renderTask - Render single task element
-- src_html_boardRenderer-createTaskElement - Create task DOM element
+- src_html_boardRenderer-getCardEditContent - Get card edit content
+- src_html_boardRenderer-renderCard - Render single card element
+- src_html_boardRenderer-createCardElement - Create card DOM element
 
 ---
 
-## src/html/taskEditor.js - Task Editing
+## src/html/cardEditor.js - Card Editing
 
-- src_html_taskEditor-editTitle - Edit task title inline
-- src_html_taskEditor-editDescription - Edit task description inline
-- src_html_taskEditor-editColumnTitle - Edit column title inline
-- src_html_taskEditor-saveTaskEdit - Save task edit changes
-- src_html_taskEditor-cancelTaskEdit - Cancel task edit
-- src_html_taskEditor-setupTaskEditHandlers - Setup task edit event handlers
-- src_html_taskEditor-handleTaskClick - Handle task click event
-- src_html_taskEditor-handleDescriptionClick - Handle description click event
+- src_html_cardEditor-editTitle - Edit card title inline
+- src_html_cardEditor-editDescription - Edit card description inline
+- src_html_cardEditor-editColumnTitle - Edit column title inline
+- src_html_cardEditor-saveCardEdit - Save card edit changes
+- src_html_cardEditor-cancelCardEdit - Cancel card edit
+- src_html_cardEditor-setupCardEditHandlers - Setup card edit event handlers
+- src_html_cardEditor-handleCardClick - Handle card click event
+- src_html_cardEditor-handleDescriptionClick - Handle description click event
 
 ---
 
@@ -148,21 +148,21 @@ if (!isEditing) {
 - src_html_menuOperations-openContextMenu - Open context menu at position
 - src_html_menuOperations-closeContextMenu - Close context menu
 - src_html_menuOperations-handleColumnMenu - Handle column context menu
-- src_html_menuOperations-handleTaskMenu - Handle task context menu
+- src_html_menuOperations-handleCardMenu - Handle card context menu
 - src_html_menuOperations-handleBoardMenu - Handle board context menu
 - src_html_menuOperations-addColumn - Add new column
 - src_html_menuOperations-deleteColumn - Delete column
 - src_html_menuOperations-duplicateColumn - Duplicate column
-- src_html_menuOperations-addTask - Add new task
-- src_html_menuOperations-deleteTask - Delete task
-- src_html_menuOperations-duplicateTask - Duplicate task
-- src_html_menuOperations-toggleTaskComplete - Toggle task completion
+- src_html_menuOperations-addCard - Add new card
+- src_html_menuOperations-deleteCard - Delete card
+- src_html_menuOperations-duplicateCard - Duplicate card
+- src_html_menuOperations-toggleCardComplete - Toggle card completion
 - src_html_menuOperations-openColumnIncludeDialog - Open column include file dialog
-- src_html_menuOperations-openTaskIncludeDialog - Open task include file dialog
+- src_html_menuOperations-openCardIncludeDialog - Open card include file dialog
 - src_html_menuOperations-saveColumnInclude - Save column include file
-- src_html_menuOperations-saveTaskInclude - Save task include file
+- src_html_menuOperations-saveCardInclude - Save card include file
 - src_html_menuOperations-loadColumnInclude - Load column include file
-- src_html_menuOperations-loadTaskInclude - Load task include file
+- src_html_menuOperations-loadCardInclude - Load card include file
 
 ---
 
@@ -175,7 +175,7 @@ if (!isEditing) {
 - src_html_dragDrop-handleDrop - Handle drop event
 - src_html_dragDrop-getDropTarget - Get drop target element
 - src_html_dragDrop-calculateDropPosition - Calculate drop position
-- src_html_dragDrop-moveTask - Move task to new position
+- src_html_dragDrop-moveCard - Move card to new position
 - src_html_dragDrop-moveColumn - Move column to new position
 
 ---
@@ -184,7 +184,7 @@ if (!isEditing) {
 
 - src_html_markdownRenderer-initializeMarkdownIt - Initialize markdown-it parser
 - src_html_markdownRenderer-renderMarkdown - Render markdown to HTML
-- src_html_markdownRenderer-renderTaskDescription - Render task description markdown
+- src_html_markdownRenderer-renderCardDescription - Render card description markdown
 - src_html_markdownRenderer-renderColumnTitle - Render column title markdown
 - src_html_markdownRenderer-processLinks - Process links in rendered HTML
 - src_html_markdownRenderer-processImages - Process images in rendered HTML
@@ -238,7 +238,7 @@ if (!isEditing) {
 - src_html_exportTreeBuilder-buildExportTree - Build export tree structure
 - src_html_exportTreeBuilder-traverseBoard - Traverse board for export
 - src_html_exportTreeBuilder-buildColumnNode - Build column export node
-- src_html_exportTreeBuilder-buildTaskNode - Build task export node
+- src_html_exportTreeBuilder-buildCardNode - Build card export node
 - src_html_exportTreeBuilder-getExportData - Get export data from tree
 
 ---
@@ -248,9 +248,9 @@ if (!isEditing) {
 - src_html_exportTreeUI-renderExportTree - Render export tree UI
 - src_html_exportTreeUI-updateExportSelection - Update export selection
 - src_html_exportTreeUI-getSelectedColumns - Get selected columns for export
-- src_html_exportTreeUI-getSelectedTasks - Get selected tasks for export
+- src_html_exportTreeUI-getSelectedCards - Get selected cards for export
 - src_html_exportTreeUI-toggleColumnSelection - Toggle column selection
-- src_html_exportTreeUI-toggleTaskSelection - Toggle task selection
+- src_html_exportTreeUI-toggleCardSelection - Toggle card selection
 
 ---
 
@@ -302,7 +302,7 @@ if (!isEditing) {
 
 ## src/html/validationUtils.js - Validation Utilities
 
-- src_html_validationUtils-validateTaskData - Validate task data
+- src_html_validationUtils-validateCardData - Validate card data
 - src_html_validationUtils-validateColumnData - Validate column data
 - src_html_validationUtils-validateBoardData - Validate board data
 - src_html_validationUtils-sanitizeInput - Sanitize user input
@@ -387,7 +387,7 @@ if (!isEditing) {
 ### Key JavaScript Modules:
 1. webview.js - 60+ functions - Main webview controller
 2. boardRenderer.js - 35+ functions - Board rendering engine
-3. taskEditor.js - 8 functions - Task editing
+3. cardEditor.js - 8 functions - Card editing
 4. menuOperations.js - 20+ functions - Context menu operations
 5. dragDrop.js - 9 functions - Drag and drop functionality
 6. markdownRenderer.js - 8 functions - Markdown rendering

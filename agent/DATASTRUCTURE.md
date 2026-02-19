@@ -10,8 +10,8 @@ This document provides a comprehensive overview of all interfaces, types, classe
 
 ### `packages/shared/src/kanbanTypes.ts` (Shared)
 Sync-relevant subset of kanban types shared between extension and ludos-sync:
-- `KanbanTask` — { id, content, checked? }
-- `KanbanColumn` — { id, title, tasks }
+- `KanbanCard` — { id, content, checked? }
+- `KanbanColumn` — { id, title, cards }
 - `KanbanBoard` — { valid, title, columns, yamlHeader, kanbanFooter, boardSettings }
 - `BoardSettings` — Per-board YAML settings
 
@@ -112,11 +112,11 @@ import { INCLUDE_SYNTAX, FILE_TYPES } from './constants/IncludeConstants';
 
 ### `/src/markdownParser.ts`
 
-#### `KanbanTask`
-Represents a task in a Kanban column.
+#### `KanbanCard`
+Represents a card in a Kanban column.
 
 ```typescript
-interface KanbanTask {
+interface KanbanCard {
   id: string;
   content: string;
   checked?: boolean;           // True when task line is `- [x]`, false/undefined for `- [ ]`
@@ -127,7 +127,7 @@ interface KanbanTask {
 }
 ```
 
-**Purpose**: Core task entity with support for include files and dynamic content. The `checked` field preserves the markdown checkbox state (`- [x]` vs `- [ ]`) through the parse/save cycle and is used by DashboardScanner and IcalMapper to filter completed tasks.
+**Purpose**: Core card entity with support for include files and dynamic content. The `checked` field preserves the markdown checkbox state (`- [x]` vs `- [ ]`) through the parse/save cycle and is used by DashboardScanner and IcalMapper to filter completed cards.
 
 #### `KanbanColumn`
 Represents a column in a Kanban board.
@@ -136,15 +136,15 @@ Represents a column in a Kanban board.
 interface KanbanColumn {
   id: string;
   title: string;
-  tasks: KanbanTask[];
-  includeMode?: boolean;      // When true, tasks are generated from included files
+  cards: KanbanCard[];
+  includeMode?: boolean;      // When true, cards are generated from included files
   includeFiles?: string[];    // Paths to included presentation files
   originalTitle?: string;     // Original title before include processing
   displayTitle?: string;      // Cleaned title for display (without include syntax)
 }
 ```
 
-**Purpose**: Core column entity with support for include files and generated tasks.
+**Purpose**: Core column entity with support for include files and generated cards.
 
 #### `KanbanBoard`
 Represents the entire Kanban board.
@@ -411,7 +411,7 @@ interface NewExportOptions {
     scope?: 'board' | 'column' | 'task';
     selection?: {
         columnIndex?: number;
-        taskId?: string;
+        cardId?: string;
     };
     mode: 'copy' | 'save' | 'auto' | 'preview';
     format: 'kanban' | 'presentation' | 'marp';
@@ -485,12 +485,12 @@ interface KanbanConfiguration {
     whitespace: string;
     maxRowHeight: number;
     tagColors: { [key: string]: string };
-    taskMinHeight: string;
+    cardMinHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
     columnBorder: string;
-    taskBorder: string;
+    cardBorder: string;
     layoutRows: number;
     rowHeight: string;
     layoutPreset: string;
@@ -538,12 +538,12 @@ interface ConfigurationDefaults {
     pathGeneration: 'relative' | 'absolute';
     whitespace: string;
     maxRowHeight: number;
-    taskMinHeight: string;
+    cardMinHeight: string;
     fontSize: string;
     fontFamily: string;
     columnWidth: string;
     columnBorder: string;
-    taskBorder: string;
+    cardBorder: string;
     layoutRows: number;
     rowHeight: string;
     layoutPreset: string;
@@ -805,7 +805,7 @@ interface FileState {
 This documentation covers **42 distinct data structures** across the codebase:
 
 ### By Category:
-- **Core Kanban**: 3 structures (KanbanTask, KanbanColumn, KanbanBoard)
+- **Core Kanban**: 3 structures (KanbanCard, KanbanColumn, KanbanBoard)
 - **File Management**: 4 structures (FileInfo, FileDropInfo, ImagePathMapping, FileResolutionResult)
 - **Export/Operations**: 13 structures (OperationOptions, ExportItem, NewExportOptions, AssetInfo, etc.)
 - **Configuration**: 2 structures (KanbanConfiguration, ConfigurationDefaults)
@@ -1123,7 +1123,7 @@ interface DashboardBrokenElement {
     columnTitle: string;
     taskSummary?: string;
     columnId: string;
-    taskId?: string;
+    cardId?: string;
 }
 ```
 
@@ -1139,7 +1139,7 @@ interface DashboardSearchResult {
     columnTitle: string;
     taskSummary?: string;
     columnId: string;
-    taskId?: string;
+    cardId?: string;
 }
 ```
 

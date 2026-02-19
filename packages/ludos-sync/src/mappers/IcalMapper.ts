@@ -36,28 +36,49 @@ export interface IcalTask {
 
 /**
  * Parse a time slot string into start/end hours and minutes.
- * Supports @HH:MM-HH:MM and @HHMM-HHMM formats.
+ * Supports @HH:MM-HH:MM, @HHMM-HHMM, @HH:MM, and @HHMM formats.
+ * Single times (no range) default to 1-hour duration.
  */
 function parseTimeRange(timeSlot: string): { startH: number; startM: number; endH: number; endM: number } | null {
   // @09:00-17:00
-  const colonMatch = timeSlot.match(/@(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);
-  if (colonMatch) {
+  const colonRangeMatch = timeSlot.match(/@(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);
+  if (colonRangeMatch) {
     return {
-      startH: parseInt(colonMatch[1], 10),
-      startM: parseInt(colonMatch[2], 10),
-      endH: parseInt(colonMatch[3], 10),
-      endM: parseInt(colonMatch[4], 10),
+      startH: parseInt(colonRangeMatch[1], 10),
+      startM: parseInt(colonRangeMatch[2], 10),
+      endH: parseInt(colonRangeMatch[3], 10),
+      endM: parseInt(colonRangeMatch[4], 10),
     };
   }
   // @0900-1700
-  const noColonMatch = timeSlot.match(/@(\d{2})(\d{2})-(\d{2})(\d{2})/);
-  if (noColonMatch) {
+  const noColonRangeMatch = timeSlot.match(/@(\d{2})(\d{2})-(\d{2})(\d{2})/);
+  if (noColonRangeMatch) {
     return {
-      startH: parseInt(noColonMatch[1], 10),
-      startM: parseInt(noColonMatch[2], 10),
-      endH: parseInt(noColonMatch[3], 10),
-      endM: parseInt(noColonMatch[4], 10),
+      startH: parseInt(noColonRangeMatch[1], 10),
+      startM: parseInt(noColonRangeMatch[2], 10),
+      endH: parseInt(noColonRangeMatch[3], 10),
+      endM: parseInt(noColonRangeMatch[4], 10),
     };
+  }
+  // Single time @09:30 → 1-hour duration
+  const singleColonMatch = timeSlot.match(/@(\d{1,2}):(\d{2})/);
+  if (singleColonMatch) {
+    const startH = parseInt(singleColonMatch[1], 10);
+    const startM = parseInt(singleColonMatch[2], 10);
+    const endH = startH + 1 < 24 ? startH + 1 : 23;
+    const endM = startH + 1 < 24 ? startM : 59;
+    return { startH, startM, endH, endM };
+  }
+  // Single time @0930 → 1-hour duration
+  const single4Match = timeSlot.match(/@(\d{2})(\d{2})/);
+  if (single4Match) {
+    const startH = parseInt(single4Match[1], 10);
+    const startM = parseInt(single4Match[2], 10);
+    if (startH < 24 && startM < 60) {
+      const endH = startH + 1 < 24 ? startH + 1 : 23;
+      const endM = startH + 1 < 24 ? startM : 59;
+      return { startH, startM, endH, endM };
+    }
   }
   return null;
 }
@@ -200,6 +221,8 @@ export class IcalMapper {
       .replace(/@\d{4}-\d{4}/g, '')
       // 4-digit time: @1230
       .replace(/@\d{4}(?![-./\d])/g, '')
+      // Single time: @09:30
+      .replace(/@\d{1,2}:\d{2}(?=\s|$)/g, '')
       // AM/PM time: @12pm, @9am
       .replace(/@\d{1,2}(?:am|pm)/gi, '')
       // Date tags: @DD.MM.YYYY, @YYYY-MM-DD, @DD.MM
@@ -216,10 +239,32 @@ export class IcalMapper {
   }
 
   /**
-   * Build a clean summary by stripping checkbox and temporal tags.
+   * Strip markdown/kanban formatting from text for clean calendar display.
+   */
+  private static stripMarkdownFormatting(text: string): string {
+    return text
+      // Wiki link brackets: [[ and ]]
+      .replace(/\[\[/g, '')
+      .replace(/\]\]/g, '')
+      // Hashtags: #word (until space, tab, or end)
+      .replace(/#[^\s]+/g, '')
+      // Pipe separators (table cells)
+      .replace(/\|/g, ' ')
+      // Leading list marker: "- "
+      .replace(/^\s*-\s+/, '')
+      .replace(/^\s*-\s+/, '')
+      // Leading colon: ": "
+      .replace(/^\s*:\s+/, '')
+      // Collapse whitespace and trim
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Build a clean summary by stripping checkbox, temporal tags, and formatting.
    */
   private static cleanSummary(text: string): string {
-    return this.stripTemporalTags(this.stripCheckbox(text));
+    return this.stripMarkdownFormatting(this.stripTemporalTags(this.stripCheckbox(text)));
   }
 
   /**

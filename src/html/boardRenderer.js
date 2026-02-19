@@ -87,9 +87,9 @@ let renderTimeout = null;
  * @param {HTMLElement} taskElement - The task DOM element to initialize
  * @returns {boolean} - True if initialization succeeded, false otherwise
  */
-function initializeTaskElement(taskElement) {
+function initializeCardElement(taskElement) {
     if (!taskElement) {
-        console.warn('[TaskInit] initializeTaskElement: No task element provided');
+        console.warn('[TaskInit] initializeCardElement: No task element provided');
         return false;
     }
 
@@ -101,15 +101,15 @@ function initializeTaskElement(taskElement) {
     const cardId = taskElement.dataset.cardId;
 
     // 1. DRAG HANDLER SETUP
-    const dragHandle = taskElement.querySelector('.task-drag-handle');
+    const dragHandle = taskElement.querySelector('.card-drag-handle');
     if (dragHandle) {
         // Setup drag handler using existing function from dragDrop.js
-        // Note: setupTaskDragHandle has its own duplicate prevention via dataset.dragSetup
+        // Note: setupCardDragHandle has its own duplicate prevention via dataset.dragSetup
         // We rely on that instead of clearing the marker ourselves
-        if (typeof setupTaskDragHandle === 'function') {
-            setupTaskDragHandle(dragHandle);
+        if (typeof setupCardDragHandle === 'function') {
+            setupCardDragHandle(dragHandle);
         } else {
-            console.warn('[TaskInit] setupTaskDragHandle function not available');
+            console.warn('[TaskInit] setupCardDragHandle function not available');
         }
     }
 
@@ -121,22 +121,22 @@ function initializeTaskElement(taskElement) {
         const columnId = columnEl.dataset.columnId;
 
         // Verify title click handler - check container (where onclick is defined)
-        const titleContainer = taskElement.querySelector('.task-title-container');
+        const titleContainer = taskElement.querySelector('.card-title-container');
         if (titleContainer && !titleContainer.onclick && !titleContainer.hasAttribute('onclick')) {
-            const titleEl = taskElement.querySelector('.task-title-display');
+            const titleEl = taskElement.querySelector('.card-title-display');
             if (titleEl) {
                 titleEl.onclick = (e) => handleTaskTitleClick(e, titleEl, cardId, columnId);
             }
         }
 
         // Verify description click handler - check the actual display element (not container)
-        const descEl = taskElement.querySelector('.task-description-display');
+        const descEl = taskElement.querySelector('.card-description-display');
         if (descEl && !descEl.onclick && !descEl.hasAttribute('onclick')) {
             descEl.onclick = (e) => handleDescriptionClick(e, descEl, cardId, columnId);
         }
 
         // Verify collapse toggle click handler
-        const collapseToggle = taskElement.querySelector('.task-collapse-toggle');
+        const collapseToggle = taskElement.querySelector('.card-collapse-toggle');
         if (collapseToggle && !collapseToggle.onclick && !collapseToggle.hasAttribute('onclick')) {
             collapseToggle.onclick = () => {
                 toggleTaskCollapseById(cardId, columnId);
@@ -169,7 +169,7 @@ function initializeTaskElement(taskElement) {
 }
 
 // Make globally accessible
-window.initializeTaskElement = initializeTaskElement;
+window.initializeCardElement = initializeCardElement;
 
 /**
  * Build a plain-text folded title from unified task content.
@@ -350,9 +350,9 @@ function getColumnIdFromElement(element) {
  * @param {HTMLElement} element - Any element within a task
  * @returns {string|null} The task ID, or null if not found
  */
-function getTaskIdFromElement(element) {
+function getCardIdFromElement(element) {
     if (!element) return null;
-    const taskElement = element.closest('.task-item');
+    const taskElement = element.closest('.card-item');
     return taskElement?.dataset.cardId || null;
 }
 
@@ -372,7 +372,7 @@ function findTaskById(cardId) {
 
 // Make them globally accessible
 window.getColumnIdFromElement = getColumnIdFromElement;
-window.getTaskIdFromElement = getTaskIdFromElement;
+window.getCardIdFromElement = getCardIdFromElement;
 window.findTaskById = findTaskById;
 
 // extractFirstTag function now in utils/tagUtils.js
@@ -384,7 +384,7 @@ window.findTaskById = findTaskById;
 
 
 /**
- * Wraps rendered HTML content in task-section divs for keyboard navigation
+ * Wraps rendered HTML content in card-section divs for keyboard navigation
  * Sections are separated by <hr> tags
  * @param {string} html - Rendered HTML content
  * @returns {string} HTML with sections wrapped
@@ -393,7 +393,7 @@ function wrapTaskSections(html) {
     // Always create at least one section, even for empty content
     // This ensures tasks are focusable with keyboard navigation
     if (!html || !html.trim()) {
-        return `<div class="task-section" tabindex="0"></div>`;
+        return `<div class="card-section" tabindex="0"></div>`;
     }
 
     // Create a temporary container to parse the HTML
@@ -404,7 +404,7 @@ function wrapTaskSections(html) {
 
     if (hrs.length === 0) {
         // No HRs: wrap entire content in a section
-        return `<div class="task-section" tabindex="0">${html}</div>`;
+        return `<div class="card-section" tabindex="0">${html}</div>`;
     }
 
     // Has HRs: wrap sections between HRs
@@ -437,7 +437,7 @@ function wrapTaskSections(html) {
             const sectionHtml = section.nodes.map(node =>
                 node.nodeType === Node.ELEMENT_NODE ? node.outerHTML : node.textContent
             ).join('');
-            return `<div class="task-section" tabindex="0">${sectionHtml}</div>`;
+            return `<div class="card-section" tabindex="0">${sectionHtml}</div>`;
         }
     }).join('');
 }
@@ -656,7 +656,7 @@ function generateTagMenuItems(id, type, columnId = null) {
     // Get enabled categories based on element type
     const enabledCategories = type === 'column'
         ? (window.enabledTagCategoriesColumn || {})
-        : (window.enabledTagCategoriesTask || {});
+        : (window.enabledTagCategoriesCard || {});
 
     // Map group keys to config keys (kebab-case to camelCase)
     const groupKeyToConfigKey = (groupKey) => {
@@ -785,7 +785,7 @@ function regenerateAllBurgerMenus() {
     });
 
     // Find all task dropdowns and update their tag menu sections
-    document.querySelectorAll('.task-item').forEach(taskElement => {
+    document.querySelectorAll('.card-item').forEach(taskElement => {
         const cardId = taskElement.getAttribute('data-card-id');
         const columnElement = taskElement.closest('.kanban-full-height-column');
         const columnId = columnElement?.getAttribute('data-column-id');
@@ -1002,7 +1002,7 @@ function renderSingleColumn(columnId, columnData) {
 
     const allColumns = Array.from(document.querySelectorAll('.kanban-full-height-column[data-column-id]'));
     const columnIndex = allColumns.indexOf(existingColumnElement);
-    const existingTaskCount = existingColumnElement.querySelectorAll('.task-item').length;
+    const existingTaskCount = existingColumnElement.querySelectorAll('.card-item').length;
     if (window.kanbanDebug && window.kanbanDebug.enabled) {
         window.kanbanDebug.log('[kanban.boardRenderer.renderSingleColumn.replace]', {
             columnId: columnId,
@@ -1038,7 +1038,7 @@ function renderSingleColumn(columnId, columnData) {
         newTasksContainer.scrollTop = scrollTop;
     }
 
-    const renderedTaskIds = Array.from(newColumnElement.querySelectorAll('.task-item'))
+    const renderedTaskIds = Array.from(newColumnElement.querySelectorAll('.card-item'))
         .map(taskElement => taskElement.getAttribute('data-card-id'));
     if (window.kanbanDebug && window.kanbanDebug.enabled) {
         window.kanbanDebug.log('[kanban.boardRenderer.renderSingleColumn.dom]', {
@@ -1072,8 +1072,8 @@ function renderSingleColumn(columnId, columnData) {
     // handlers that were attached to the old element and its children
 
     // Initialize all tasks in the new column
-    newColumnElement.querySelectorAll('.task-item').forEach(taskElement => {
-        initializeTaskElement(taskElement);
+    newColumnElement.querySelectorAll('.card-item').forEach(taskElement => {
+        initializeCardElement(taskElement);
     });
 
     // Re-setup drag & drop for all columns and tasks to ensure event handlers are properly attached
@@ -1118,7 +1118,7 @@ function renderSingleTask(cardId, cardData, columnId) {
     }
 
     // Get the task index from the existing element
-    const taskIndex = parseInt(existingTaskElement.getAttribute('data-card-index') || '0', 10);
+    const cardIndex = parseInt(existingTaskElement.getAttribute('data-card-index') || '0', 10);
 
     // Clean up old tag handlers for this task to prevent memory leaks
     if (window.tagHandlers) {
@@ -1135,7 +1135,7 @@ function renderSingleTask(cardId, cardData, columnId) {
     const columnTitle = column?.title || '';
 
     // Create new task element HTML
-    const newTaskHtml = createTaskElement(cardData, columnId, taskIndex, columnTitle);
+    const newTaskHtml = createTaskElement(cardData, columnId, cardIndex, columnTitle);
     if (!newTaskHtml) {
         return false;
     }
@@ -1157,8 +1157,8 @@ function renderSingleTask(cardId, cardData, columnId) {
     existingTaskElement.parentNode.replaceChild(newTaskElement, existingTaskElement);
 
     // Initialize the new task element (drag handle, etc.)
-    if (typeof initializeTaskElement === 'function') {
-        initializeTaskElement(newTaskElement);
+    if (typeof initializeCardElement === 'function') {
+        initializeCardElement(newTaskElement);
     }
 
     // Update image sources for the new content
@@ -1718,9 +1718,9 @@ function renderBoard(options = null) {
 
     // Initialize all task elements after full board render
     // This ensures drag handlers, edit handlers, and visual elements are properly set up
-    const taskItems = boardElement.querySelectorAll('.task-item');
+    const taskItems = boardElement.querySelectorAll('.card-item');
     taskItems.forEach(taskElement => {
-        initializeTaskElement(taskElement);
+        initializeCardElement(taskElement);
     });
 
     // Inject header/footer bars after DOM is rendered
@@ -2078,11 +2078,11 @@ function getTaskEditContent(task) {
  * Used by: createColumnElement() for each task
  * @param {Object} task - Task data object
  * @param {string} columnId - Parent column ID
- * @param {number} taskIndex - Position in task array
+ * @param {number} cardIndex - Position in task array
  * @param {string} [columnTitle] - Parent column title (for temporal gating)
  * @returns {string} Complete HTML for task card
  */
-function createTaskElement(task, columnId, taskIndex, columnTitle) {
+function createTaskElement(task, columnId, cardIndex, columnTitle) {
     if (!task) {
         return '';
     }
@@ -2213,18 +2213,18 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const hiddenContentAttr = isHiddenContent ? ' data-hidden-content="true"' : '';
 
     return `
-        <div class="${['task-item', isCollapsed ? 'collapsed' : '', headerClasses || '', footerClasses || '', taskIncludeErrorClass].filter(cls => cls && cls.trim()).join(' ')}${loadingClass}"
+        <div class="${['card-item', isCollapsed ? 'collapsed' : '', headerClasses || '', footerClasses || '', taskIncludeErrorClass].filter(cls => cls && cls.trim()).join(' ')}${loadingClass}"
              data-card-id="${task.id}"
-             data-card-index="${taskIndex}"${primaryTagAttribute}${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
+             data-card-index="${cardIndex}"${primaryTagAttribute}${borderTagAttribute}${bgTagAttribute}${allTagsAttribute}${temporalAttributeString}${taskIncludeErrorAttr}${hiddenContentAttr}
              style="${paddingTopStyle} ${paddingBottomStyle}">
             ${loadingOverlay}
             ${headerBarsHtml}
             ${cornerBadgesHtml}
-            <div class="task-header">
-                <div class="task-drag-handle" title="Drag to move task">⋮⋮</div>
-                <span class="task-collapse-toggle ${isCollapsed ? 'rotated' : ''}" onclick="toggleTaskCollapseById('${task.id}', '${columnId}'); updateFoldAllButton('${columnId}')">▶</span>
-                <div class="task-title-container">
-                <div class="task-title-display">${renderedTitle}</div>
+            <div class="card-header">
+                <div class="card-drag-handle" title="Drag to move task">⋮⋮</div>
+                <span class="card-collapse-toggle ${isCollapsed ? 'rotated' : ''}" onclick="toggleTaskCollapseById('${task.id}', '${columnId}'); updateFoldAllButton('${columnId}')">▶</span>
+                <div class="card-title-container">
+                <div class="card-title-display">${renderedTitle}</div>
                 </div>
                 <div class="donut-menu">
                     <button class="donut-menu-btn" onmousedown="event.preventDefault();" onclick="toggleDonutMenu(event, this)">☰</button>
@@ -2268,10 +2268,10 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
                 </div>
             </div>
 
-            <div class="task-description-container">
-                <div class="task-description-display markdown-content"
+            <div class="card-description-container">
+                <div class="card-description-display markdown-content"
                         onclick="handleDescriptionClick(event, this, '${task.id}', '${columnId}')">${renderedDescription}</div>
-                <textarea class="task-description-edit"
+                <textarea class="card-description-edit"
                             data-field="description"
                             placeholder="Add description (Markdown supported)..."
                             style="display: none;">${escapeHtml(taskContent)}</textarea>
@@ -2476,8 +2476,8 @@ function setupColumnResizeObserver() {
     });
 
     // Observe all existing column-content elements
-    // NOTE: We only observe containers, NOT individual task-items
-    // Observing 600+ task-items causes feedback loops and 100% CPU
+    // NOTE: We only observe containers, NOT individual card-items
+    // Observing 600+ card-items causes feedback loops and 100% CPU
     // Container resize is sufficient - it changes when any child content changes
     document.querySelectorAll('.column-content').forEach(columnContent => {
         columnResizeObserver.observe(columnContent);
@@ -2502,10 +2502,10 @@ function setupColumnResizeObserver() {
             if (m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
                 return true;
             }
-            // Class changes on task-item (task collapse) or column elements (column fold)
+            // Class changes on card-item (task collapse) or column elements (column fold)
             if (m.type === 'attributes' && m.attributeName === 'class') {
                 if (target.classList) {
-                    if (target.classList.contains('task-item') || target.classList.contains('kanban-full-height-column')) {
+                    if (target.classList.contains('card-item') || target.classList.contains('kanban-full-height-column')) {
                         return true;
                     }
                 }
@@ -2655,7 +2655,7 @@ function handleMediaOpen(event, target, cardId = null, columnId = null) {
         // Look for task container
         containerElement = target.closest(`[data-card-id="${cardId}"]`);
         if (!containerElement) {
-            containerElement = target.closest('.task-item');
+            containerElement = target.closest('.card-item');
         }
 
         // Get includeContext from the task if it exists
@@ -2969,7 +2969,7 @@ function toggleTaskDescriptionCheckbox(checkboxEl, cardId, columnId) {
     }
 
     const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
-    const displayElement = taskElement?.querySelector?.('.task-description-display');
+    const displayElement = taskElement?.querySelector?.('.card-description-display');
     if (displayElement) {
         let renderedHtml = renderMarkdown(updatedContent, task.includeContext);
         if (typeof window.wrapTaskSections === 'function') {
@@ -3346,7 +3346,7 @@ function assignTitleBarColors() {
     // Group bars by parent element so header+footer on same element share one color
     const parentMap = new Map();
     document.querySelectorAll('[data-title-bar="true"]').forEach(bar => {
-        const parent = bar.closest('.kanban-full-height-column, .task-item');
+        const parent = bar.closest('.kanban-full-height-column, .card-item');
         if (!parent) return;
         if (!parentMap.has(parent)) parentMap.set(parent, []);
         parentMap.get(parent).push(bar);
@@ -3414,7 +3414,7 @@ function assignTitleBarColors() {
 }\n`;
 
         // Task background + border (same structure as tag card system)
-        css += `.task-item[data-title-color-index="${idx}"] {
+        css += `.card-item[data-title-color-index="${idx}"] {
     background-color: ${tintedBg} !important;
     border: ${border} !important;
 }\n`;
@@ -3609,10 +3609,10 @@ function addSingleTaskToDOM(columnId, task, insertIndex = -1) {
     }
 
     // Get the task index within the column
-    const taskIndex = insertIndex >= 0 ? insertIndex : column.cards.length - 1;
+    const cardIndex = insertIndex >= 0 ? insertIndex : column.cards.length - 1;
 
     // Create the task element HTML
-    const taskHtml = createTaskElement(task, columnId, taskIndex, column.title);
+    const taskHtml = createTaskElement(task, columnId, cardIndex, column.title);
 
     // Create a temporary container to parse HTML
     const tempDiv = document.createElement('div');
@@ -3621,7 +3621,7 @@ function addSingleTaskToDOM(columnId, task, insertIndex = -1) {
 
     // Get only task elements (exclude add-task-btn and other non-task children)
     // This is critical because the add-task-btn may be hidden but still in DOM
-    const taskElements = tasksContainer.querySelectorAll(':scope > .task-item');
+    const taskElements = tasksContainer.querySelectorAll(':scope > .card-item');
 
     try {
         // Insert the task at the correct position among task elements only
@@ -3662,7 +3662,7 @@ function addSingleTaskToDOM(columnId, task, insertIndex = -1) {
     }
 
     // Initialize task (drag handlers, edit handlers, visual elements)
-    initializeTaskElement(taskElement);
+    initializeCardElement(taskElement);
 
     // Update column task count
     updateColumnTaskCount(columnId);

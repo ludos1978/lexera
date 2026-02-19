@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.224.7",
+  "version": "0.225.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -5633,7 +5633,7 @@
           "uniqueItems": true,
           "markdownDescription": "**Column Tag Categories** - Select which categories appear in column burger menus. All 33 categories available. See 'Tag Category Reference' above for details.\n\n**Column Defaults (4):** Workflow, Positivity, Colors, Complexity"
         },
-        "markdown-kanban.enabledTagCategoriesTask": {
+        "markdown-kanban.enabledTagCategoriesCard": {
           "type": "array",
           "items": {
             "type": "string",

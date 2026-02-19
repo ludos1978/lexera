@@ -186,7 +186,7 @@ body {
 .include-error .include-path-overlay-container .include-menu-btn,
 .include-container.include-error .include-path-overlay-container .include-menu-btn,
 .kanban-full-height-column.include-error .include-path-overlay-container .include-menu-btn,
-.task-item.include-error .include-path-overlay-container .include-menu-btn {
+.card-item.include-error .include-path-overlay-container .include-menu-btn {
   position: absolute !important;
   top: 3px !important;
   right: 3px !important;
@@ -222,7 +222,7 @@ body {
 .include-error .include-path-overlay-container .include-menu-btn:hover,
 .include-container.include-error .include-path-overlay-container .include-menu-btn:hover,
 .kanban-full-height-column.include-error .include-path-overlay-container .include-menu-btn:hover,
-.task-item.include-error .include-path-overlay-container .include-menu-btn:hover {
+.card-item.include-error .include-path-overlay-container .include-menu-btn:hover {
   background: var(--vscode-errorBackground, rgba(255, 0, 0, 0.5)) !important;
 }
 
@@ -1785,29 +1785,29 @@ body.marp-settings-hidden .donut-menu-submenu .marp-menu-panel {
    under the .file-info-bar container query section */
 
 /* Small font mode for cards */
-body.small-card-fonts .task-item {
+body.small-card-fonts .card-item {
   font-size: 0.75em;
 }
 
-body.small-card-fonts .task-title-display,
-body.small-card-fonts .task-description-display,
-body.small-card-fonts .task-description-edit,
-body.small-card-fonts .task-description-wysiwyg {
+body.small-card-fonts .card-title-display,
+body.small-card-fonts .card-description-display,
+body.small-card-fonts .card-description-edit,
+body.small-card-fonts .card-description-wysiwyg {
   font-size: 0.85em;
   line-height: 1.3;
 }
 
-body.small-card-fonts .task-item {
+body.small-card-fonts .card-item {
   padding: 6px;
 }
 
-body.small-card-fonts .task-header {
+body.small-card-fonts .card-header {
   gap: 6px;
   margin-bottom: 3px;
 }
 
 /* Smaller images in small font mode */
-body.small-card-fonts .task-description-container .markdown-content img {
+body.small-card-fonts .card-description-container .markdown-content img {
   max-width: 48%;
   max-height: 200px;
   display: inline-block;
@@ -1815,7 +1815,7 @@ body.small-card-fonts .task-description-container .markdown-content img {
   margin: 2px 2px;
 }
 
-body.small-card-fonts .task-title-container .markdown-content img {
+body.small-card-fonts .card-title-container .markdown-content img {
   max-width: 48%;
   max-height: 30px;
   margin: 1px 1px;
@@ -2003,12 +2003,12 @@ body.small-card-fonts .task-title-container .markdown-content img {
 }
 
 /* Ensure header/footer bars work in task items */
-.task-item .header-bars-container {
+.card-item .header-bars-container {
   order: -1;
   flex-shrink: 0;
 }
 
-.task-item .footer-bars-container {
+.card-item .footer-bars-container {
   order: 999;
   flex-shrink: 0;
 }
@@ -2471,7 +2471,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 /* Embed container inside task description */
 .task-description .embed-container,
-.task-description-wysiwyg .embed-container {
+.card-description-wysiwyg .embed-container {
   margin: 0.5em 0;
 }
 
@@ -2554,7 +2554,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .task-description .web-preview-container,
-.task-description-wysiwyg .web-preview-container {
+.card-description-wysiwyg .web-preview-container {
   margin: 0.5em 0;
 }
 
@@ -2675,7 +2675,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Task items */
-.task-item {
+.card-item {
   /* background-color: var(--task-background); */
   border-radius: 4px;
   /* margin-bottom: var(--whitespace-div2); */
@@ -2696,54 +2696,54 @@ figure:has(.diagram-placeholder .image-not-found) {
 /* --- header vertical spacer --- */
 
 /* causes problems when the tasks are folded */
-/* .task-item { 
+/* .card-item { 
   gap: var(--whitespace-div8);
 } */
 
-.task-header {
+.card-header {
   margin-top: var(--whitespace-div8);
   margin-bottom: var(--whitespace-div8);
 }
 
-/* .task-item .collapsed {
+/* .card-item .collapsed {
 
 } */
 
-/* .task-item.collapsed .task-header {
+/* .card-item.collapsed .card-header {
   padding-bottom: var(--whitespace-div8);
 } */
 
-.task-item.collapsed .task-header:not(:has()) {
+.card-item.collapsed .card-header:not(:has()) {
   padding-bottom: var(--whitespace-div8);
 }
 
-.task-description-display {
+.card-description-display {
   margin: 0px;
 }
 
-.task-section > p:first-child {
+.card-section > p:first-child {
   padding-top: 0px;
   margin: 0px;
 }
 
-/* .task-description-display {
+/* .card-description-display {
   padding-bottom: var(--whitespace-div8);
 } */
 
-.task-description-display {
+.card-description-display {
   padding-bottom: var(--whitespace-div8);
 }
 
-.task-section > p:last-child {
+.card-section > p:last-child {
   margin: 0px;
   padding-bottom: 0px;
 }
 
-/* .task-header {
+/* .card-header {
   margin-top: var(--whitespace-div8);
 } */
 
-/* .kanban-full-height-column:not(.collapsed-vertical):not(.collapsed-horizontal) .task-header {
+/* .kanban-full-height-column:not(.collapsed-vertical):not(.collapsed-horizontal) .card-header {
   margin-bottom: var(--whitespace-div8);
 } */
 
@@ -2752,15 +2752,15 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 /* --- tasks vertical spacer --- */
 
-.task-item:first-of-type {
+.card-item:first-of-type {
   margin-top: var(--whitespace-div4);
 }
 
-/* .task-item {
+/* .card-item {
   margin-bottom: var(--whitespace-div4);
 } */
 
-.task-item:last-of-type {
+.card-item:last-of-type {
   margin-bottom: 0;
 }
 
@@ -2779,7 +2779,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   /* padding: 0 var(--whitespace-div4) var(--whitespace-div4) var(--whitespace-div4); */
 }
 
-.task-item:not(:first-child)::after {
+.card-item:not(:first-child)::after {
   content: '';
   position: absolute;
   top: calc(0px - var(--whitespace-div4) - 1px);
@@ -2803,7 +2803,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 /* CRITICAL FIX: Prevent task content from being draggable (only drag handle should be draggable) */
 /* This prevents text selections from being dragged and creating unintended tasks */
-.task-item * {
+.card-item * {
   -webkit-user-drag: none;
   -khtml-user-drag: none;
   -moz-user-drag: none;
@@ -2812,7 +2812,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Allow only the drag handle to be draggable */
-.task-drag-handle {
+.card-drag-handle {
   -webkit-user-drag: element !important;
   -khtml-user-drag: element !important;
   -moz-user-drag: element !important;
@@ -2820,7 +2820,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   user-drag: element !important;
 }
 
-.task-drag-handle:active {
+.card-drag-handle:active {
   cursor: grabbing;
 }
 
@@ -2856,44 +2856,44 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Apply min and max height when task height is limited */
-.task-height-limited .task-item {
+.card-height-limited .card-item {
   min-height: var(--task-height) !important;
   max-height: var(--task-height) !important;
 }
 
-/* .task-item:last-child {
+/* .card-item:last-child {
   margin-bottom: 0;
 } */
 
-.task-item:hover {
+.card-item:hover {
   border: none;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.task-item.collapsed .task-description-container {
+.card-item.collapsed .card-description-container {
   display: none;
 }
 
-.task-item:not(.collapsed) .task-title-container {
+.card-item:not(.collapsed) .card-title-container {
   display: none;
 }
 
-.task-item.collapsed .task-title-container {
+.card-item.collapsed .card-title-container {
   display: flex;
 }
 
 /* Hidden content reveal button - only visible when #hidden tag is active */
-.task-item:not([data-hidden-content="true"]) .hidden-content-toggle,
+.card-item:not([data-hidden-content="true"]) .hidden-content-toggle,
 .kanban-full-height-column:not([data-hidden-content="true"]) .hidden-content-toggle {
   display: none;
 }
 
 /* Hidden content overlay - tasks with #hidden tag */
-.task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-container {
+.card-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .card-description-container {
   position: relative;
 }
 
-.task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-container::after {
+.card-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .card-description-container::after {
   content: 'Content hidden — use the menu to show the contents';
   position: absolute;
   top: 0;
@@ -2911,23 +2911,23 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Prevent selecting/editing hidden content */
-.task-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-description-display {
+.card-item[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .card-description-display {
   pointer-events: none;
   user-select: none;
 }
 
 /* Hide title when collapsed task has #hidden tag */
-.task-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-title-container {
+.card-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .card-title-container {
   position: relative;
 }
 
-.task-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-title-display {
+.card-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .card-title-display {
   color: transparent;
   user-select: none;
   pointer-events: none;
 }
 
-.task-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .task-title-container::after {
+.card-item.collapsed[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .card-title-container::after {
   content: '(hidden content)';
   position: absolute;
   left: 4px;
@@ -2945,7 +2945,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 
 
-.task-header {
+.card-header {
   position: relative; /* Needed for absolutely positioned badge containers */
   display: flex;
   align-items: center;
@@ -2962,7 +2962,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 /* Drag handles */
 .drag-handle,
-.task-drag-handle {
+.card-drag-handle {
   /* background: var(--button-alternative-background); */
   /* color: var(--button-alternative-foreground); */
   /* border: var(--button-alternative-border); */
@@ -2981,17 +2981,17 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .drag-handle:hover,
-.task-drag-handle:hover {
+.card-drag-handle:hover {
   background: var(--button-alternative-background-hover);
   color: var(--button-alternative-foreground-hover);
 }
 
 .drag-handle:active,
-.task-drag-handle:active {
+.card-drag-handle:active {
   cursor: grabbing;
 }
 
-.task-drag-handle {
+.card-drag-handle {
   line-height: 1;
   /* Accent color + border to distinguish from column drag handles */
   background: var(--vscode-button-background, #0e639c);
@@ -2999,14 +2999,14 @@ figure:has(.diagram-placeholder .image-not-found) {
   /* border: 2px solid var(--vscode-focusBorder, #007fd4) !important; */
 }
 
-.task-drag-handle:hover {
+.card-drag-handle:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
   border-color: var(--vscode-button-hoverBackground, #1177bb) !important;
 }
 
 /* Collapse toggles */
 .collapse-toggle,
-.task-collapse-toggle {
+.card-collapse-toggle {
   background: var(--button-background);
   color: var(--button-foreground);
   border: var(--button-border);
@@ -3026,20 +3026,20 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .collapse-toggle:hover,
-.task-collapse-toggle:hover {
+.card-collapse-toggle:hover {
   background: var(--button-secondary-background-hover);
 }
 
 .collapse-toggle.rotated,
-.task-collapse-toggle.rotated {
+.card-collapse-toggle.rotated {
   transform: rotate(0deg);
 }
 
-.task-collapse-toggle {
+.card-collapse-toggle {
 }
 
 /* Task title container */
-.task-title-container {
+.card-title-container {
   flex: auto;
   display: flex;
   align-items: center;
@@ -3050,11 +3050,11 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 }
 
-.task-title-container:hover {
+.card-title-container:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
-.task-title-display {
+.card-title-display {
   word-break: break-word;
   overflow-wrap: break-word;
   /* padding: 0px 4px; */
@@ -3067,18 +3067,18 @@ figure:has(.diagram-placeholder .image-not-found) {
   line-height: 1.4;
 }
 
-.task-item.collapsed .task-title-display {
+.card-item.collapsed .card-title-display {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.task-title-display:hover {
+.card-title-display:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
 /* Task description */
-.task-description-container {
+.card-description-container {
   /* margin-top: 4px; */
   margin-left: 4px;
   order: 3;
@@ -3105,7 +3105,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: inline;
 }
 
-.task-description-display {
+.card-description-display {
   font-size: 13px;
   border: 1px solid transparent;
   border-radius: 3px;
@@ -3121,7 +3121,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .md-task-checkbox,
-.task-description-display .md-task-checkbox,
+.card-description-display .md-task-checkbox,
 .wysiwyg-task-checkbox {
   display: inline-flex;
   align-items: center;
@@ -3138,7 +3138,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .md-task-checkbox.checked,
-.task-description-display .md-task-checkbox.checked,
+.card-description-display .md-task-checkbox.checked,
 .wysiwyg-task-checkbox.checked,
 .wysiwyg-task-checkbox[data-checked="true"] {
   background: var(--vscode-button-background);
@@ -3146,7 +3146,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .md-task-checkbox.checked::after,
-.task-description-display .md-task-checkbox.checked::after,
+.card-description-display .md-task-checkbox.checked::after,
 .wysiwyg-task-checkbox.checked::after,
 .wysiwyg-task-checkbox[data-checked="true"]::after {
   content: '✓';
@@ -3155,13 +3155,13 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .md-task-checkbox:hover,
-.task-description-display .md-task-checkbox:hover,
+.card-description-display .md-task-checkbox:hover,
 .wysiwyg-task-checkbox:hover {
   border-color: var(--vscode-focusBorder);
 }
 
 /* Task section styling for content between HRs */
-.task-section {
+.card-section {
   max-height: inherit;
   max-width: inherit;
   display: inline;
@@ -3170,7 +3170,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Focus styling for task sections */
-.task-section:focus {
+.card-section:focus {
   outline: 3px solid var(--section-focus-color);
   outline-offset: -3px;
 }
@@ -3183,15 +3183,15 @@ figure:has(.diagram-placeholder .image-not-found) {
   opacity: 0.7;
 }
 
-.task-title-display:empty::before {
+.card-title-display:empty::before {
   content: "Add title...";
   color: var(--vscode-descriptionForeground);
   font-style: italic;
   opacity: 0.7;
 }
 
-.task-description-display:empty::before,
-.task-description-display:has(> .task-section:only-child:empty)::before {
+.card-description-display:empty::before,
+.card-description-display:has(> .card-section:only-child:empty)::before {
   content: "Add description...";
   color: var(--vscode-descriptionForeground);
   font-size: 13px;
@@ -3202,8 +3202,8 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Broken task include - show disabled message instead of "Add description" */
-.task-item.include-error .task-description-display:empty::before,
-.task-item.include-error .task-description-display:has(> .task-section:only-child:empty)::before {
+.card-item.include-error .card-description-display:empty::before,
+.card-item.include-error .card-description-display:has(> .card-section:only-child:empty)::before {
   content: "Description unavailable for broken include";
   cursor: not-allowed;
   opacity: 0.5;
@@ -3220,8 +3220,8 @@ figure:has(.diagram-placeholder .image-not-found) {
 
 /* Edit fields */
 .column-title-edit,
-.task-title-edit,
-.task-description-edit {
+.card-title-edit,
+.card-description-edit {
   border: 1px solid var(--vscode-focusBorder);
   border-radius: 3px;
   background: var(--vscode-input-background);
@@ -3232,8 +3232,8 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 .column-title-edit:focus,
-.task-title-edit:focus,
-.task-description-edit:focus {
+.card-title-edit:focus,
+.card-description-edit:focus {
   outline: none;
   border-color: var(--vscode-focusBorder);
 }
@@ -3247,7 +3247,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   min-width: 0;
 }
 
-.task-title-edit {
+.card-title-edit {
   font-size: 14px;
   line-height: 1.4;
   word-break: break-word;
@@ -3258,7 +3258,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   /* width: var(--task-title-width); */
 }
 
-.task-description-edit {
+.card-description-edit {
   font-size: 13px;
   line-height: 1.25;
   padding: 4px 8px;
@@ -3271,7 +3271,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   word-break: break-word;
 }
 
-.task-description-wysiwyg {
+.card-description-wysiwyg {
   font-size: 13px;
   line-height: 1.4;
   padding: 0 8px;
@@ -3287,11 +3287,11 @@ figure:has(.diagram-placeholder .image-not-found) {
   caret-color: var(--vscode-editorCursor-foreground, currentColor);
 }
 
-.task-description-wysiwyg:focus-within {
+.card-description-wysiwyg:focus-within {
   outline-color: transparent;
 }
 
-.task-description-wysiwyg .ProseMirror {
+.card-description-wysiwyg .ProseMirror {
   display: block;
   outline: none;
   white-space: pre-wrap;
@@ -3312,81 +3312,81 @@ figure:has(.diagram-placeholder .image-not-found) {
   caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #000));
 }
 
-.task-description-wysiwyg .ProseMirror-focused,
-.task-overlay-wysiwyg .ProseMirror-focused {
+.card-description-wysiwyg .ProseMirror-focused,
+.card-overlay-wysiwyg .ProseMirror-focused {
   outline: none;
   box-shadow: none;
   border: none;
 }
 
-.task-description-wysiwyg .ProseMirror:focus {
+.card-description-wysiwyg .ProseMirror:focus {
   caret-color: var(--vscode-editorCursor-foreground, var(--vscode-foreground, #000));
 }
 
-.task-description-wysiwyg .ProseMirror * {
+.card-description-wysiwyg .ProseMirror * {
   caret-color: inherit;
 }
 
-.task-description-wysiwyg .ProseMirror ::selection {
+.card-description-wysiwyg .ProseMirror ::selection {
   background: var(--vscode-editor-selectionBackground, rgba(0, 120, 215, 0.3));
 }
 
-.task-description-wysiwyg .ProseMirror .ProseMirror-selectednode {
+.card-description-wysiwyg .ProseMirror .ProseMirror-selectednode {
   outline: 2px solid var(--vscode-focusBorder, #007acc);
 }
 
-.task-description-wysiwyg .ProseMirror h1,
-.task-description-wysiwyg .ProseMirror h2,
-.task-description-wysiwyg .ProseMirror h3,
-.task-description-wysiwyg .ProseMirror h4,
-.task-description-wysiwyg .ProseMirror h5,
-.task-description-wysiwyg .ProseMirror h6 {
+.card-description-wysiwyg .ProseMirror h1,
+.card-description-wysiwyg .ProseMirror h2,
+.card-description-wysiwyg .ProseMirror h3,
+.card-description-wysiwyg .ProseMirror h4,
+.card-description-wysiwyg .ProseMirror h5,
+.card-description-wysiwyg .ProseMirror h6 {
   margin: 0.25em 0;
 }
 
-.task-description-wysiwyg .ProseMirror p {
+.card-description-wysiwyg .ProseMirror p {
   margin: 0.5em 0 !important;
   padding: 0;
 }
 
-.task-description-wysiwyg .ProseMirror ul,
-.task-description-wysiwyg .ProseMirror ol {
+.card-description-wysiwyg .ProseMirror ul,
+.card-description-wysiwyg .ProseMirror ol {
   margin: 0.125em 0;
   padding-left: 1.5em;
 }
 
-.task-description-wysiwyg .ProseMirror code {
+.card-description-wysiwyg .ProseMirror code {
   padding: 0.1em 0.3em;
   border-radius: 3px;
   font-size: 0.9em;
 }
 
-.task-description-wysiwyg .ProseMirror pre {
+.card-description-wysiwyg .ProseMirror pre {
   padding: 0.5em;
   border-radius: 3px;
   overflow-x: auto;
   margin: 0.25em 0;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram {
+.card-description-wysiwyg .wysiwyg-diagram {
   background: var(--vscode-editor-background);
   border: 1px solid var(--vscode-panel-border);
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
+.card-description-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
   align-self: flex-start;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram code {
+.card-description-wysiwyg .wysiwyg-diagram code {
   font-family: var(--vscode-editor-font-family);
 }
 
-.task-description-wysiwyg .ProseMirror a {
+.card-description-wysiwyg .ProseMirror a {
   color: var(--vscode-textLink-foreground);
   text-decoration: none;
 }
 
-.task-description-wysiwyg img {
+.card-description-wysiwyg img {
   max-width: 100%;
   max-height: 400px;
   width: auto;
@@ -3396,69 +3396,69 @@ figure:has(.diagram-placeholder .image-not-found) {
   object-fit: contain;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-file {
+.card-description-wysiwyg .wysiwyg-diagram-file {
   display: block;
   width: fit-content;
   max-width: 100%;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-file .diagram-placeholder,
-.task-description-wysiwyg .wysiwyg-diagram-file .diagram-rendered {
+.card-description-wysiwyg .wysiwyg-diagram-file .diagram-placeholder,
+.card-description-wysiwyg .wysiwyg-diagram-file .diagram-rendered {
   display: block;
   width: 100%;
   max-width: 100%;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-file .diagram-rendered {
+.card-description-wysiwyg .wysiwyg-diagram-file .diagram-rendered {
   height: auto;
   max-height: 400px;
   object-fit: contain;
 }
 
-.task-description-wysiwyg .wysiwyg-media-block {
+.card-description-wysiwyg .wysiwyg-media-block {
   display: block;
   width: fit-content;
   max-width: 100%;
   margin: 0 3px;
 }
 
-.task-description-wysiwyg .image-path-overlay-container.wysiwyg-media-block {
+.card-description-wysiwyg .image-path-overlay-container.wysiwyg-media-block {
   display: block;
   width: fit-content;
   max-width: 100%;
 }
 
-.task-description-wysiwyg .video-path-overlay-container {
+.card-description-wysiwyg .video-path-overlay-container {
   display: block;
   width: 100%;
   max-width: 100%;
 }
 
-.task-description-wysiwyg .video-path-overlay-container video,
-.task-description-wysiwyg .video-path-overlay-container audio {
+.card-description-wysiwyg .video-path-overlay-container video,
+.card-description-wysiwyg .video-path-overlay-container audio {
   display: block;
   width: 100%;
   max-width: 100%;
 }
 
-.task-description-wysiwyg .wysiwyg-include-inline,
-.task-description-wysiwyg .wysiwyg-include-block,
-.task-description-wysiwyg .wysiwyg-media,
-.task-description-wysiwyg .wysiwyg-wiki-link,
-.task-description-wysiwyg .wysiwyg-tag,
-.task-description-wysiwyg .wysiwyg-date-tag,
-.task-description-wysiwyg .wysiwyg-person-tag,
-.task-description-wysiwyg .wysiwyg-temporal-tag,
-.task-description-wysiwyg .wysiwyg-footnote,
-.task-overlay-wysiwyg .wysiwyg-include-inline,
-.task-overlay-wysiwyg .wysiwyg-include-block,
-.task-overlay-wysiwyg .wysiwyg-media,
-.task-overlay-wysiwyg .wysiwyg-wiki-link,
-.task-overlay-wysiwyg .wysiwyg-tag,
-.task-overlay-wysiwyg .wysiwyg-date-tag,
-.task-overlay-wysiwyg .wysiwyg-person-tag,
-.task-overlay-wysiwyg .wysiwyg-temporal-tag,
-.task-overlay-wysiwyg .wysiwyg-footnote {
+.card-description-wysiwyg .wysiwyg-include-inline,
+.card-description-wysiwyg .wysiwyg-include-block,
+.card-description-wysiwyg .wysiwyg-media,
+.card-description-wysiwyg .wysiwyg-wiki-link,
+.card-description-wysiwyg .wysiwyg-tag,
+.card-description-wysiwyg .wysiwyg-date-tag,
+.card-description-wysiwyg .wysiwyg-person-tag,
+.card-description-wysiwyg .wysiwyg-temporal-tag,
+.card-description-wysiwyg .wysiwyg-footnote,
+.card-overlay-wysiwyg .wysiwyg-include-inline,
+.card-overlay-wysiwyg .wysiwyg-include-block,
+.card-overlay-wysiwyg .wysiwyg-media,
+.card-overlay-wysiwyg .wysiwyg-wiki-link,
+.card-overlay-wysiwyg .wysiwyg-tag,
+.card-overlay-wysiwyg .wysiwyg-date-tag,
+.card-overlay-wysiwyg .wysiwyg-person-tag,
+.card-overlay-wysiwyg .wysiwyg-temporal-tag,
+.card-overlay-wysiwyg .wysiwyg-footnote {
   background: var(--button-secondary-background);
   color: var(--button-secondary-foreground);
   border-radius: 3px;
@@ -3467,13 +3467,13 @@ figure:has(.diagram-placeholder .image-not-found) {
   display: inline-block;
 }
 
-.task-description-wysiwyg .wysiwyg-media[data-type="image"],
-.task-description-wysiwyg .wysiwyg-media[data-type="video"],
-.task-description-wysiwyg .wysiwyg-media[data-type="audio"] {
+.card-description-wysiwyg .wysiwyg-media[data-type="image"],
+.card-description-wysiwyg .wysiwyg-media[data-type="video"],
+.card-description-wysiwyg .wysiwyg-media[data-type="audio"] {
   background: transparent;
 }
 
-.task-description-wysiwyg .wysiwyg-edit-btn {
+.card-description-wysiwyg .wysiwyg-edit-btn {
   margin-right: 6px;
   padding: 0 6px;
   border: 1px solid var(--vscode-panel-border);
@@ -3485,22 +3485,22 @@ figure:has(.diagram-placeholder .image-not-found) {
   cursor: pointer;
 }
 
-.task-description-wysiwyg .wysiwyg-edit-btn:hover {
+.card-description-wysiwyg .wysiwyg-edit-btn:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
-.task-description-wysiwyg .wysiwyg-include-block,
-.task-description-wysiwyg .wysiwyg-media {
+.card-description-wysiwyg .wysiwyg-include-block,
+.card-description-wysiwyg .wysiwyg-media {
   display: inline-flex;
   align-items: center;
 }
 
-.task-description-wysiwyg .wysiwyg-include-block {
+.card-description-wysiwyg .wysiwyg-include-block {
   display: flex;
   gap: 6px;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block {
+.card-description-wysiwyg .wysiwyg-diagram-block {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -3510,35 +3510,35 @@ figure:has(.diagram-placeholder .image-not-found) {
   padding: 8px;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block:not(.is-editing) .wysiwyg-diagram {
+.card-description-wysiwyg .wysiwyg-diagram-block:not(.is-editing) .wysiwyg-diagram {
   display: none;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
   gap: 10px;
   align-items: start;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview {
   grid-column: 1;
   border-right: 1px solid var(--vscode-panel-border);
   padding-right: 8px;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram {
   grid-column: 2;
   margin: 0;
   border-left: 1px solid var(--vscode-panel-border);
   padding-left: 8px;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::before,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::before {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::before,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::before {
   content: "```" attr(data-lang);
   display: block;
   color: var(--vscode-descriptionForeground);
@@ -3546,8 +3546,8 @@ figure:has(.diagram-placeholder .image-not-found) {
   margin-bottom: 4px;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::after,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::after {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::after,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram::after {
   content: "```";
   display: block;
   color: var(--vscode-descriptionForeground);
@@ -3555,11 +3555,11 @@ figure:has(.diagram-placeholder .image-not-found) {
   margin-top: 4px;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
+.card-description-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
   display: none;
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn {
+.card-description-wysiwyg .wysiwyg-multicolumn {
   position: relative;
   margin: 10px 3px;
   padding: 0;
@@ -3569,7 +3569,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   overflow: visible;
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn {
+.card-overlay-wysiwyg .wysiwyg-multicolumn {
   position: relative;
   margin: 10px 3px;
   padding: 0;
@@ -3579,7 +3579,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   overflow: visible;
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn-toolbar {
+.card-description-wysiwyg .wysiwyg-multicolumn-toolbar {
   position: absolute;
   top: 0;
   left: 0;
@@ -3590,7 +3590,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   z-index: 20;
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn-toolbar {
+.card-overlay-wysiwyg .wysiwyg-multicolumn-toolbar {
   position: absolute;
   top: 0;
   left: 0;
@@ -3601,7 +3601,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   z-index: 20;
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn-btn {
+.card-description-wysiwyg .wysiwyg-multicolumn-btn {
   width: 14px;
   height: 14px;
   padding: 0;
@@ -3619,7 +3619,7 @@ figure:has(.diagram-placeholder .image-not-found) {
   transform: translateY(-6px);
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn-btn {
+.card-overlay-wysiwyg .wysiwyg-multicolumn-btn {
   width: 14px;
   height: 14px;
   padding: 0;
@@ -3637,103 +3637,103 @@ figure:has(.diagram-placeholder .image-not-found) {
   transform: translateY(-6px);
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn-btn:hover {
+.card-description-wysiwyg .wysiwyg-multicolumn-btn:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn-btn:hover {
+.card-overlay-wysiwyg .wysiwyg-multicolumn-btn:hover {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn-columns {
+.card-description-wysiwyg .wysiwyg-multicolumn-columns {
   display: flex;
   gap: 10px;
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn-columns {
+.card-overlay-wysiwyg .wysiwyg-multicolumn-columns {
   display: flex;
   gap: 10px;
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn-column {
+.card-description-wysiwyg .wysiwyg-multicolumn-column {
   flex: 1 1 0;
   min-width: 0;
   padding: 10px;
   border-left: none;
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn-column {
+.card-overlay-wysiwyg .wysiwyg-multicolumn-column {
   flex: 1 1 0;
   min-width: 0;
   padding: 10px;
   border-left: none;
 }
 
-.task-description-wysiwyg .wysiwyg-multicolumn-column + .wysiwyg-multicolumn-column {
+.card-description-wysiwyg .wysiwyg-multicolumn-column + .wysiwyg-multicolumn-column {
   border-left: 1px solid var(--vscode-panel-border);
 }
 
-.task-overlay-wysiwyg .wysiwyg-multicolumn-column + .wysiwyg-multicolumn-column {
+.card-overlay-wysiwyg .wysiwyg-multicolumn-column + .wysiwyg-multicolumn-column {
   border-left: 1px solid var(--vscode-panel-border);
 }
 
 
-.task-description-wysiwyg .wysiwyg-diagram-preview,
-.task-overlay-wysiwyg .wysiwyg-diagram-preview {
+.card-description-wysiwyg .wysiwyg-diagram-preview,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview {
   margin: 0;
   display: block;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview {
   /* height: 240px; */
   /* max-height: 240px; */
   overflow: auto;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-preview .diagram-overlay-container,
-.task-overlay-wysiwyg .wysiwyg-diagram-preview .diagram-overlay-container,
-.task-description-wysiwyg .wysiwyg-diagram-preview .mermaid-diagram,
-.task-overlay-wysiwyg .wysiwyg-diagram-preview .mermaid-diagram,
-.task-description-wysiwyg .wysiwyg-diagram-preview .plantuml-diagram,
-.task-overlay-wysiwyg .wysiwyg-diagram-preview .plantuml-diagram {
+.card-description-wysiwyg .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-description-wysiwyg .wysiwyg-diagram-preview .mermaid-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview .mermaid-diagram,
+.card-description-wysiwyg .wysiwyg-diagram-preview .plantuml-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview .plantuml-diagram {
   /* width: 100%; */
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .diagram-overlay-container,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .diagram-overlay-container,
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .mermaid-diagram,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .mermaid-diagram,
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .plantuml-diagram,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .plantuml-diagram {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .diagram-overlay-container,
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .mermaid-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .mermaid-diagram,
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .plantuml-diagram,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview .plantuml-diagram {
   height: -webkite-fill-available;
   width: -webkite-fill-available;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-preview svg,
-.task-overlay-wysiwyg .wysiwyg-diagram-preview svg {
+.card-description-wysiwyg .wysiwyg-diagram-preview svg,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview svg {
   width: 100%;
   height: auto;
   max-width: 100%;
   display: block;
 }
 
-.task-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview svg,
-.task-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview svg {
+.card-description-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview svg,
+.card-overlay-wysiwyg .wysiwyg-diagram-block.is-editing .wysiwyg-diagram-preview svg {
   max-height: none;
 }
 
-.task-description-wysiwyg .diagram-overlay-container,
-.task-description-wysiwyg .mermaid-diagram,
-.task-description-wysiwyg .plantuml-diagram,
-.task-description-wysiwyg .mermaid-placeholder,
-.task-description-wysiwyg .plantuml-placeholder,
-.task-description-wysiwyg .diagram-placeholder {
+.card-description-wysiwyg .diagram-overlay-container,
+.card-description-wysiwyg .mermaid-diagram,
+.card-description-wysiwyg .plantuml-diagram,
+.card-description-wysiwyg .mermaid-placeholder,
+.card-description-wysiwyg .plantuml-placeholder,
+.card-description-wysiwyg .diagram-placeholder {
   margin: 0;
 }
 
-.task-description-wysiwyg .wysiwyg-include-block,
-.task-overlay-wysiwyg .wysiwyg-include-block {
+.card-description-wysiwyg .wysiwyg-include-block,
+.card-overlay-wysiwyg .wysiwyg-include-block {
   margin: 2px 3px;
   padding: 2px 6px;
 }
@@ -3758,7 +3758,7 @@ figure:has(.diagram-placeholder .image-not-found) {
 }
 
 /* Hide add-task button when column has tasks */
-.column-content:has(.task-item) .add-task-btn {
+.column-content:has(.card-item) .add-task-btn {
   display: none;
 }
 
@@ -4680,7 +4680,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 /* Vertically folded columns use sticky positioning based on sticky stack mode setting */
 /* Removed position: relative override to allow JavaScript sticky positioning control */
 
-.task-header > .donut-menu {
+.card-header > .donut-menu {
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -5551,7 +5551,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 /* Row tags */
 
 /* Drag and drop styles */
-.task-item.dragging {
+.card-item.dragging {
   opacity: 0.5;
   will-change: transform, opacity;
 }
@@ -5688,7 +5688,7 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 }
 
 /* Dim the dragged task during drag (stays in original position) */
-.task-item.drag-source {
+.card-item.drag-source {
   opacity: 0.3;
   filter: grayscale(50%);
   will-change: transform, opacity;
@@ -5817,17 +5817,17 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   text-decoration: underline;
 }
 
-.task-title-container .markdown-content h1,
-.task-title-container .markdown-content h2,
-.task-title-container .markdown-content h3,
-.task-title-container .markdown-content h4,
-.task-title-container .markdown-content h5,
-.task-title-container .markdown-content h6 {
+.card-title-container .markdown-content h1,
+.card-title-container .markdown-content h2,
+.card-title-container .markdown-content h3,
+.card-title-container .markdown-content h4,
+.card-title-container .markdown-content h5,
+.card-title-container .markdown-content h6 {
   margin: 0;
   line-height: inherit;
 }
 
-.task-title-container .markdown-content p {
+.card-title-container .markdown-content p {
   margin: 0;
   display: inline;
 }
@@ -5864,7 +5864,7 @@ blockquote {
   vertical-align: middle;
 }
 
-.task-title-container .markdown-content img {
+.card-title-container .markdown-content img {
   max-width: 100%;
   max-height: 60px;
   margin: 2px 0;
@@ -5872,7 +5872,7 @@ blockquote {
   vertical-align: middle;
 }
 
-.task-description-container .markdown-content img {
+.card-description-container .markdown-content img {
   max-width: 100%;
   max-height: 400px;
   width: auto;
@@ -6245,9 +6245,9 @@ blockquote {
 }
 
 /* Highlight lines/paragraphs containing tags in description */
-.task-description-display p:has(.kanban-tag),
-.task-description-display li:has(.kanban-tag),
-.task-description-display div:has(.kanban-tag):not(.include-container):not(.task-section):not(.include-content-area) {
+.card-description-display p:has(.kanban-tag),
+.card-description-display li:has(.kanban-tag),
+.card-description-display div:has(.kanban-tag):not(.include-container):not(.card-section):not(.include-content-area) {
   background-color: var(--vscode-list-hoverBackground);
   padding: 2px 4px;
   /* margin: 2px 0; */
@@ -6259,7 +6259,7 @@ blockquote {
    Without this, consecutive tagged lines (#++, #--) in the same paragraph would
    all inherit the last matching CSS :has() rule. The split creates separate <p>
    elements so each line gets independent tag styling. */
-.task-description-display p.md-tag-line {
+.card-description-display p.md-tag-line {
   margin: 0;
 }
 
@@ -6277,19 +6277,19 @@ blockquote {
   transition: padding 0.2s ease;
 }
 
-.task-item[data-task-tag] {
+.card-item[data-task-tag] {
   transition: padding 0.2s ease;
 }
 
 .column-title-text .kanban-tag,
-.task-title-display .kanban-tag {
+.card-title-display .kanban-tag {
   vertical-align: left;
   display: inline-table;
 }
 
 /* Ensure tags in task descriptions are strictly inline without any card-level styling */
 /* Double class selector increases specificity to override [data-tag] rules without !important */
-.task-description-display .kanban-tag.kanban-tag {
+.card-description-display .kanban-tag.kanban-tag {
   vertical-align: middle;
   display: inline;
   position: static;
@@ -6305,8 +6305,8 @@ blockquote {
 }
 
 /* Explicitly prevent any pseudo-elements on description tags */
-.task-description-display .kanban-tag.kanban-tag::before,
-.task-description-display .kanban-tag.kanban-tag::after {
+.card-description-display .kanban-tag.kanban-tag::before,
+.card-description-display .kanban-tag.kanban-tag::after {
   display: none;
   content: none;
 }
@@ -6422,7 +6422,7 @@ blockquote {
   [data-current-time="true"],
   [data-current-hour="true"]
 ) :is(.column-header, .column-title, .column-content, .column-footer),
-.task-item:is(
+.card-item:is(
   [data-current-week="true"],
   [data-current-day="true"],
   [data-current-weekday="true"],
@@ -6433,11 +6433,11 @@ blockquote {
 }
 
 /* Direct selectors as fallback for temporal highlighting */
-.task-item[data-current-time="true"],
-.task-item[data-current-day="true"],
-.task-item[data-current-week="true"],
-.task-item[data-current-weekday="true"],
-.task-item[data-current-hour="true"] {
+.card-item[data-current-time="true"],
+.card-item[data-current-day="true"],
+.card-item[data-current-week="true"],
+.card-item[data-current-weekday="true"],
+.card-item[data-current-hour="true"] {
   border-right: var(--current-week-border-width) var(--current-week-border-style) var(--current-week-highlight-color) !important;
 }
 
@@ -6450,7 +6450,7 @@ body.week-highlight-background .kanban-full-height-column[data-current-week="tru
   opacity: 0.2;
 }
 
-body.week-highlight-background .task-item[data-current-week="true"] {
+body.week-highlight-background .card-item[data-current-week="true"] {
   background-color: var(--current-week-highlight-color) !important;
   opacity: 0.9;
 }
@@ -6463,21 +6463,21 @@ body.week-highlight-glow .kanban-full-height-column[data-current-week="true"] .c
   box-shadow: var(--current-week-glow-size) var(--current-week-highlight-color) !important;
 }
 
-body.week-highlight-glow .task-item[data-current-week="true"] {
+body.week-highlight-glow .card-item[data-current-week="true"] {
   box-shadow: var(--current-week-glow-size) var(--current-week-highlight-color) !important;
 }
 
 /* Line-level temporal highlighting for minute slots in task descriptions */
 /* When a paragraph contains an active minute slot (!:15-:30), highlight the entire line */
-.task-description-display p:has([data-temporal-line-active="true"]),
-.task-description-display li:has([data-temporal-line-active="true"]) {
+.card-description-display p:has([data-temporal-line-active="true"]),
+.card-description-display li:has([data-temporal-line-active="true"]) {
   border-right: var(--current-week-border-width) var(--current-week-border-style) var(--current-week-highlight-color) !important;
   padding-right: 8px;
   margin-right: -4px;
 }
 
 /* Highlight individual active temporal tags ONLY in task descriptions (not headers) */
-.task-description-display .kanban-temporal-tag.temporal-active {
+.card-description-display .kanban-temporal-tag.temporal-active {
   border-right: var(--current-week-border-width) var(--current-week-border-style) var(--current-week-highlight-color) !important;
   padding-right: 4px;
   border-radius: 2px;
@@ -6506,8 +6506,8 @@ body.week-highlight-glow .task-item[data-current-week="true"] {
 
 .kanban-full-height-column::before,
 .kanban-full-height-column::after,
-.task-item::before,
-.task-item::after {
+.card-item::before,
+.card-item::after {
   pointer-events: none;
 }
 
@@ -7234,7 +7234,7 @@ body.font-family-consolas {
 }
 
 /* Card focus styles for keyboard navigation */
-.task-item.card-focused {
+.card-item.card-focused {
     outline: 3px solid var(--task-focus-color);
     outline-offset: -3px;
     position: relative;
@@ -7990,7 +7990,7 @@ figcaption {
 
 .task-overlay-markdown,
 .task-overlay-preview,
-.task-overlay-wysiwyg {
+.card-overlay-wysiwyg {
   flex: 1;
   min-width: 0;
   display: none;
@@ -8010,20 +8010,20 @@ figcaption {
   border-right: 1px solid var(--vscode-panel-border);
 }
 
-.task-overlay-editor[data-mode="wysiwyg"] .task-overlay-wysiwyg {
+.task-overlay-editor[data-mode="wysiwyg"] .card-overlay-wysiwyg {
   display: block;
 }
 
-.task-overlay-wysiwyg {
+.card-overlay-wysiwyg {
   overflow: auto;
 }
 
-.task-overlay-wysiwyg .ProseMirror {
+.card-overlay-wysiwyg .ProseMirror {
   width: 100%;
   box-sizing: border-box;
 }
 
-.task-overlay-wysiwyg .wysiwyg-diagram-block {
+.card-overlay-wysiwyg .wysiwyg-diagram-block {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -8033,35 +8033,35 @@ figcaption {
   padding: 8px;
 }
 
-.task-overlay-wysiwyg .wysiwyg-diagram-block:not(.is-editing) .wysiwyg-diagram {
+.card-overlay-wysiwyg .wysiwyg-diagram-block:not(.is-editing) .wysiwyg-diagram {
   display: none;
 }
 
-.task-overlay-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
+.card-overlay-wysiwyg .wysiwyg-diagram-block .wysiwyg-edit-btn {
   display: none;
 }
 
-.task-overlay-wysiwyg img,
-.task-overlay-wysiwyg video,
-.task-overlay-wysiwyg iframe,
-.task-overlay-wysiwyg canvas,
-.task-overlay-wysiwyg svg {
+.card-overlay-wysiwyg img,
+.card-overlay-wysiwyg video,
+.card-overlay-wysiwyg iframe,
+.card-overlay-wysiwyg canvas,
+.card-overlay-wysiwyg svg {
   max-width: 100%;
-  max-height: var(--task-overlay-wysiwyg-height, 100%);
+  max-height: var(--card-overlay-wysiwyg-height, 100%);
   height: auto;
 }
 
-.task-overlay-wysiwyg .image-path-overlay-container,
-.task-overlay-wysiwyg .video-path-overlay-container,
-.task-overlay-wysiwyg .wysiwyg-media,
-.task-overlay-wysiwyg .wysiwyg-media-block,
-.task-overlay-wysiwyg .wysiwyg-diagram-preview {
+.card-overlay-wysiwyg .image-path-overlay-container,
+.card-overlay-wysiwyg .video-path-overlay-container,
+.card-overlay-wysiwyg .wysiwyg-media,
+.card-overlay-wysiwyg .wysiwyg-media-block,
+.card-overlay-wysiwyg .wysiwyg-diagram-preview {
   max-width: 100%;
-  max-height: var(--task-overlay-wysiwyg-height, 100%);
+  max-height: var(--card-overlay-wysiwyg-height, 100%);
   box-sizing: border-box;
 }
 
-.task-overlay-wysiwyg .wysiwyg-media-block {
+.card-overlay-wysiwyg .wysiwyg-media-block {
   margin: 0 3px;
 }
 
@@ -10082,15 +10082,15 @@ th {
 /* Font Size Classes - 0.5x */
 body.font-size-0_5x .column-title,
 body.font-size-0_5x .column-title-edit,
-body.font-size-0_5x .task-title-display,
-body.font-size-0_5x .task-title-edit {
+body.font-size-0_5x .card-title-display,
+body.font-size-0_5x .card-title-edit {
   font-size: calc(var(--vscode-font-size, 14px) * 0.5) !important;
   line-height: 1.4 !important;
 }
 
-body.font-size-0_5x .task-description-display,
-body.font-size-0_5x .task-description-edit,
-body.font-size-0_5x .task-description-wysiwyg {
+body.font-size-0_5x .card-description-display,
+body.font-size-0_5x .card-description-edit,
+body.font-size-0_5x .card-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 0.45) !important;
   line-height: 1.4 !important;
 }
@@ -10098,15 +10098,15 @@ body.font-size-0_5x .task-description-wysiwyg {
 /* Font Size Classes - 0.75x */
 body.font-size-0_75x .column-title,
 body.font-size-0_75x .column-title-edit,
-body.font-size-0_75x .task-title-display,
-body.font-size-0_75x .task-title-edit {
+body.font-size-0_75x .card-title-display,
+body.font-size-0_75x .card-title-edit {
   font-size: calc(var(--vscode-font-size, 14px) * 0.75) !important;
   line-height: 1.4 !important;
 }
 
-body.font-size-0_75x .task-description-display,
-body.font-size-0_75x .task-description-edit,
-body.font-size-0_75x .task-description-wysiwyg {
+body.font-size-0_75x .card-description-display,
+body.font-size-0_75x .card-description-edit,
+body.font-size-0_75x .card-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 0.675) !important;
   line-height: 1.4 !important;
 }
@@ -10114,15 +10114,15 @@ body.font-size-0_75x .task-description-wysiwyg {
 /* Font Size Classes - 1x (default) */
 body.font-size-1x .column-title,
 body.font-size-1x .column-title-edit,
-body.font-size-1x .task-title-display,
-body.font-size-1x .task-title-edit {
+body.font-size-1x .card-title-display,
+body.font-size-1x .card-title-edit {
   font-size: calc(var(--vscode-font-size, 14px) * 1) !important;
   line-height: 1.4 !important;
 }
 
-body.font-size-1x .task-description-display,
-body.font-size-1x .task-description-edit,
-body.font-size-1x .task-description-wysiwyg {
+body.font-size-1x .card-description-display,
+body.font-size-1x .card-description-edit,
+body.font-size-1x .card-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 0.9) !important;
   line-height: 1.4 !important;
 }
@@ -10130,15 +10130,15 @@ body.font-size-1x .task-description-wysiwyg {
 /* Font Size Classes - 1.25x */
 body.font-size-1_25x .column-title,
 body.font-size-1_25x .column-title-edit,
-body.font-size-1_25x .task-title-display,
-body.font-size-1_25x .task-title-edit {
+body.font-size-1_25x .card-title-display,
+body.font-size-1_25x .card-title-edit {
   font-size: calc(var(--vscode-font-size, 14px) * 1.25) !important;
   line-height: 1.4 !important;
 }
 
-body.font-size-1_25x .task-description-display,
-body.font-size-1_25x .task-description-edit,
-body.font-size-1_25x .task-description-wysiwyg {
+body.font-size-1_25x .card-description-display,
+body.font-size-1_25x .card-description-edit,
+body.font-size-1_25x .card-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 1.125) !important;
   line-height: 1.4 !important;
 }
@@ -10146,15 +10146,15 @@ body.font-size-1_25x .task-description-wysiwyg {
 /* Font Size Classes - 1.5x */
 body.font-size-1_5x .column-title,
 body.font-size-1_5x .column-title-edit,
-body.font-size-1_5x .task-title-display,
-body.font-size-1_5x .task-title-edit {
+body.font-size-1_5x .card-title-display,
+body.font-size-1_5x .card-title-edit {
   font-size: calc(var(--vscode-font-size, 14px) * 1.5) !important;
   line-height: 1.2 !important;
 }
 
-body.font-size-1_5x .task-description-display,
-body.font-size-1_5x .task-description-edit,
-body.font-size-1_5x .task-description-wysiwyg {
+body.font-size-1_5x .card-description-display,
+body.font-size-1_5x .card-description-edit,
+body.font-size-1_5x .card-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 1.35) !important;
   line-height: 1.3 !important;
 }
@@ -10162,15 +10162,15 @@ body.font-size-1_5x .task-description-wysiwyg {
 /* Font Size Classes - 2x */
 body.font-size-2x .column-title,
 body.font-size-2x .column-title-edit,
-body.font-size-2x .task-title-display,
-body.font-size-2x .task-title-edit {
+body.font-size-2x .card-title-display,
+body.font-size-2x .card-title-edit {
   font-size: calc(var(--vscode-font-size, 14px) * 2) !important;
   line-height: 1.1 !important;
 }
 
-body.font-size-2x .task-description-display,
-body.font-size-2x .task-description-edit,
-body.font-size-2x .task-description-wysiwyg {
+body.font-size-2x .card-description-display,
+body.font-size-2x .card-description-edit,
+body.font-size-2x .card-description-wysiwyg {
   font-size: calc(var(--vscode-font-size, 14px) * 1.8) !important;
   line-height: 1.15 !important;
 }

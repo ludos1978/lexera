@@ -230,7 +230,7 @@ function applyFoldingStates() {
     // Apply task folding states
     window.collapsedTasks.forEach(cardId => {
         const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
-        const toggle = taskElement?.querySelector('.task-collapse-toggle');
+        const toggle = taskElement?.querySelector('.card-collapse-toggle');
 
         if (taskElement) {
             taskElement.classList.add('collapsed');
@@ -349,9 +349,9 @@ function getFoldAllButtonState(columnId) {
     if (!column || column.cards.length === 0) {return 'fold-mixed';}
 
     const collapsedCount = column.cards.filter(task => window.collapsedTasks.has(task.id)).length;
-    const totalTasks = column.cards.length;
+    const totalCards = column.cards.length;
 
-    if (collapsedCount === totalTasks) {
+    if (collapsedCount === totalCards) {
         return 'fold-collapsed'; // All folded
     } else if (collapsedCount === 0) {
         return 'fold-expanded'; // All expanded
@@ -436,7 +436,7 @@ function toggleAllTasksInColumn(columnId) {
     }
 
     // Get all task elements currently in this column's tasks container
-    const taskElements = tasksContainer.querySelectorAll('.task-item[data-card-id]');
+    const taskElements = tasksContainer.querySelectorAll('.card-item[data-card-id]');
     if (taskElements.length === 0) {
         return;
     }
@@ -449,11 +449,11 @@ function toggleAllTasksInColumn(columnId) {
         }
     });
 
-    const totalTasks = taskElements.length;
+    const totalCards = taskElements.length;
 
     // Determine action based on current state
     let shouldCollapse;
-    if (collapsedCount === totalTasks) {
+    if (collapsedCount === totalCards) {
         // All folded -> expand all
         shouldCollapse = false;
     } else if (collapsedCount === 0) {
@@ -656,7 +656,7 @@ function toggleTaskCollapse(taskElement, skipRecalculation = false) {
         return;
     }
 
-    const toggle = taskElement.querySelector('.task-collapse-toggle');
+    const toggle = taskElement.querySelector('.card-collapse-toggle');
     if (!toggle) {
         console.error(`[toggleTaskCollapse] Toggle button not found in task:`, cardId);
         return;
@@ -678,7 +678,7 @@ function toggleTaskCollapse(taskElement, skipRecalculation = false) {
     }
 
     // Update folded summary text (plain text only)
-    const titleDisplay = taskElement.querySelector('.task-title-display');
+    const titleDisplay = taskElement.querySelector('.card-title-display');
     if (titleDisplay) {
         const task = window.findTaskById ? window.findTaskById(cardId) : null;
         if (task) {

@@ -312,13 +312,13 @@ function generateTagStyles() {
                     const bgDark = cardColors.backgroundDark || cardColors.background;
 
                     const cardBg = colorUtils.interpolateColor(editorBg, bgDark, 0.25);
-                    styles += `.task-item:not([data-card-tag]) {
+                    styles += `.card-item:not([data-card-tag]) {
                         background-color: ${cardBg} !important;
                         position: relative;
                     }\n`;
 
                     const cardHoverBg = colorUtils.interpolateColor(editorBg, bgDark, 0.35);
-                    styles += `.task-item:not([data-card-tag]):hover {
+                    styles += `.card-item:not([data-card-tag]):hover {
                         background-color: ${cardHoverBg} !important;
                     }\n`;
                 }
@@ -331,9 +331,9 @@ function generateTagStyles() {
             //     const bWidth = b.width;
             //     const bColor = b.color;
             //     if (b.position === 'left') {
-            //         styles += `.task-item:not([data-card-tag]) { border-left: ${bWidth} ${bStyle} ${bColor} !important; }\n`;
+            //         styles += `.card-item:not([data-card-tag]) { border-left: ${bWidth} ${bStyle} ${bColor} !important; }\n`;
             //     } else {
-            //         styles += `.task-item:not([data-card-tag]) { border: ${bWidth} ${bStyle} ${bColor} !important; }\n`;
+            //         styles += `.card-item:not([data-card-tag]) { border: ${bWidth} ${bStyle} ${bColor} !important; }\n`;
             //     }
             // }
         }
@@ -370,10 +370,10 @@ function generateTagStyles() {
                     }\n`;
 
                     // Highlight lines/paragraphs containing this tag in descriptions
-                    // Only p and li elements, not the task-section div wrappers
+                    // Only p and li elements, not the card-section div wrappers
                     const lineBgAlpha = themeColors.background + '20'; // Add 20 for ~12% opacity
-                    styles += `.task-description-display p:has(.kanban-tag[data-tag="${attrTagName}"]),
-.task-description-display li:has(.kanban-tag[data-tag="${attrTagName}"]) {
+                    styles += `.card-description-display p:has(.kanban-tag[data-tag="${attrTagName}"]),
+.card-description-display li:has(.kanban-tag[data-tag="${attrTagName}"]) {
     background-color: ${lineBgAlpha} !important;
     border-left: 2px solid ${themeColors.background} !important;
     padding: 2px 4px !important;
@@ -458,14 +458,14 @@ function generateTagStyles() {
                     // Card background styles - only for primary tag
                     // Interpolate 25% towards the darker color
                     const cardBg = colorUtils.interpolateColor(editorBg, bgDark, 0.25);
-                    styles += `.task-item[data-card-bg-tag="${attrTagName}"] {
+                    styles += `.card-item[data-card-bg-tag="${attrTagName}"] {
                         background-color: ${cardBg} !important;
                         position: relative;
                     }\n`;
 
                     // Card hover state - interpolate 35% towards the darker color
                     const cardHoverBg = colorUtils.interpolateColor(editorBg, bgDark, 0.35);
-                    styles += `.task-item[data-card-bg-tag="${attrTagName}"]:hover {
+                    styles += `.card-item[data-card-bg-tag="${attrTagName}"]:hover {
                         background-color: ${cardHoverBg} !important;
                     }\n`;
                 }
@@ -490,7 +490,7 @@ function generateTagStyles() {
                             styles += `.kanban-full-height-column[data-column-border-tag="${attrTagName}"] .column-footer {
                                 border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
                             }\n`;
-                            styles += `.task-item[data-card-border-tag="${attrTagName}"] {
+                            styles += `.card-item[data-card-border-tag="${attrTagName}"] {
                                 border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
                             }\n`;
                         } else {
@@ -514,7 +514,7 @@ function generateTagStyles() {
                                 border-right: ${borderWidth} ${borderStyle} ${borderColor} !important;
                                 border-bottom: ${borderWidth} ${borderStyle} ${borderColor} !important;
                             }\n`;
-                            styles += `.task-item[data-card-border-tag="${attrTagName}"] {
+                            styles += `.card-item[data-card-border-tag="${attrTagName}"] {
                                 border: ${borderWidth} ${borderStyle} ${borderColor} !important;
                             }\n`;
                         }
@@ -706,7 +706,7 @@ function generateTagStyles() {
                             }\n`;
 
                             // Apply to tasks
-                            styles += `.task-item[data-card-bg-tag="${attrTagName}"] {
+                            styles += `.card-item[data-card-bg-tag="${attrTagName}"] {
                                 ${effectStyles}
                             }\n`;
                         }
@@ -864,10 +864,10 @@ function ensureTagStyleExists(tagName) {
             const cardBg = colorUtils.interpolateColor(editorBg, bgDark, 0.25);
             const cardHoverBg = colorUtils.interpolateColor(editorBg, bgDark, 0.35);
 
-            newStyles += `.task-item[data-card-bg-tag="${tagName}"] {
+            newStyles += `.card-item[data-card-bg-tag="${tagName}"] {
     background-color: ${cardBg} !important;
 }
-.task-item[data-card-bg-tag="${tagName}"]:hover {
+.card-item[data-card-bg-tag="${tagName}"]:hover {
     background-color: ${cardHoverBg} !important;
 }\n`;
         }
@@ -892,7 +892,7 @@ function ensureTagStyleExists(tagName) {
 .kanban-full-height-column[data-column-border-tag="${tagName}"] .column-footer {
                 border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }
-.task-item[data-card-border-tag="${tagName}"] {
+.card-item[data-card-border-tag="${tagName}"] {
                 border-left: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }\n`;
         } else {
@@ -915,7 +915,7 @@ function ensureTagStyleExists(tagName) {
                 border-right: ${borderWidth} ${borderStyle} ${borderColor} !important;
                 border-bottom: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }
-.task-item[data-card-border-tag="${tagName}"] {
+.card-item[data-card-border-tag="${tagName}"] {
                 border: ${borderWidth} ${borderStyle} ${borderColor} !important;
             }\n`;
         }

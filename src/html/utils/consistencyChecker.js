@@ -171,7 +171,7 @@
      */
     function checkTaskParentConsistency() {
         const issues = [];
-        const domTasks = document.querySelectorAll('.task-item[data-card-id]');
+        const domTasks = document.querySelectorAll('.card-item[data-card-id]');
 
         // Build a map of cardId -> columnId from cachedBoard
         const taskToColumn = new Map();

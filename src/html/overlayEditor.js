@@ -27,7 +27,7 @@
         panel: overlay.querySelector('.task-overlay-panel'),
         titleInput: overlay.querySelector('.task-overlay-title-input'),
         previewWrap: overlay.querySelector('.task-overlay-preview'),
-        wysiwygWrap: overlay.querySelector('.task-overlay-wysiwyg'),
+        wysiwygWrap: overlay.querySelector('.card-overlay-wysiwyg'),
         textarea: overlay.querySelector('.task-overlay-textarea'),
         settings: overlay.querySelector('.task-overlay-settings')
     };
@@ -548,7 +548,7 @@
         const rect = elements.wysiwygWrap.getBoundingClientRect();
         if (!rect.height) { return; }
         const maxHeight = Math.floor(rect.height * 0.8);
-        overlay.style.setProperty('--task-overlay-wysiwyg-height', `${maxHeight}px`);
+        overlay.style.setProperty('--card-overlay-wysiwyg-height', `${maxHeight}px`);
     }
 
     function persistPreference(key, value) {

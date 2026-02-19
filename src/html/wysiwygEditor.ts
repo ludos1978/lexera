@@ -500,7 +500,7 @@ export class WysiwygEditor {
         syncWysiwygImages(this.view.dom);
         this.emitSelectionChange(this.view.state);
 
-        if (this.container.classList.contains('task-overlay-wysiwyg')) {
+        if (this.container.classList.contains('card-overlay-wysiwyg')) {
             this.overlayClickHandler = (event: MouseEvent) => {
                 if (event.button !== 0) {
                     return;

@@ -32,7 +32,7 @@ export interface ElementLocation {
     columnIndex: number;
     columnTitle: string;
     cardId?: string;
-    taskIndex?: number;
+    cardIndex?: number;
     /** Raw first non-empty line of card content — used for content-based navigation */
     cardTitle?: string;
     /** Display-friendly task summary (markdown syntax stripped) */
@@ -130,13 +130,13 @@ export class BoardContentScanner {
         return lines.find(l => l.trim().length > 0) ?? '';
     }
 
-    private _buildTaskLocation(column: KanbanColumn, columnIndex: number, task: KanbanCard, taskIndex: number, field: ElementLocation['field']): ElementLocation {
+    private _buildCardLocation(column: KanbanColumn, columnIndex: number, task: KanbanCard, cardIndex: number, field: ElementLocation['field']): ElementLocation {
         return {
             columnId: column.id,
             columnIndex,
             columnTitle: this._getColumnTitle(column),
             cardId: task.id,
-            taskIndex,
+            cardIndex,
             cardTitle: this._getCardTitle(task),
             taskSummary: this._getTaskSummary(task),
             field
@@ -182,9 +182,9 @@ export class BoardContentScanner {
             }
 
             // Check tasks
-            for (let taskIndex = 0; taskIndex < column.cards.length; taskIndex++) {
-                const task = column.cards[taskIndex];
-                const taskLocation = this._buildTaskLocation(column, columnIndex, task, taskIndex, 'cardContent');
+            for (let cardIndex = 0; cardIndex < column.cards.length; cardIndex++) {
+                const task = column.cards[cardIndex];
+                const cardLocation = this._buildCardLocation(column, columnIndex, task, cardIndex, 'cardContent');
 
                 // Determine task include base path:
                 // 1. Use task's own includeContext if available
@@ -192,7 +192,7 @@ export class BoardContentScanner {
                 const taskIncludeBasePath = task.includeContext?.includeDir || columnIncludeBasePath;
 
                 // Check full task content (use include base path if available)
-                this._extractFromContent(task.content, taskLocation, elements, taskIncludeBasePath);
+                this._extractFromContent(task.content, cardLocation, elements, taskIncludeBasePath);
             }
         }
 
@@ -323,14 +323,14 @@ export class BoardContentScanner {
             }
 
             // Search tasks
-            for (let taskIndex = 0; taskIndex < column.cards.length; taskIndex++) {
-                const task = column.cards[taskIndex];
+            for (let cardIndex = 0; cardIndex < column.cards.length; cardIndex++) {
+                const task = column.cards[cardIndex];
                 const taskContent = task.content || '';
                 if (matcher.matches(prepareText(taskContent))) {
                     matches.push({
                         matchText: query,
                         context: buildContext(taskContent),
-                        location: this._buildTaskLocation(column, columnIndex, task, taskIndex, 'cardContent')
+                        location: this._buildCardLocation(column, columnIndex, task, cardIndex, 'cardContent')
                     });
                 }
             }

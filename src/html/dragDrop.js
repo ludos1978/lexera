@@ -486,9 +486,9 @@ function setupGlobalDragAndDrop() {
                 const isDragHandle = target &&
                     typeof target.closest === 'function' && (
                         target.classList?.contains('drag-handle') ||
-                        target.classList?.contains('task-drag-handle') ||
+                        target.classList?.contains('card-drag-handle') ||
                         target.closest('.drag-handle') ||
-                        target.closest('.task-drag-handle') ||
+                        target.closest('.card-drag-handle') ||
                         target.closest('.column-drag-handle')
                     );
 
@@ -1079,7 +1079,7 @@ function setupGlobalDragAndDrop() {
         const originalColumnElement = dragState.originalTaskParent?.closest('.kanban-full-height-column');
         const originalColumnId = dragState.originalTaskColumnId || originalColumnElement?.dataset.columnId;
 
-        const finalTaskItems = Array.from(finalParent.querySelectorAll(':scope > .task-item'));
+        const finalTaskItems = Array.from(finalParent.querySelectorAll(':scope > .card-item'));
         const finalIndex = finalTaskItems.indexOf(taskItem);
 
         // Check if position actually changed
@@ -1109,8 +1109,8 @@ function setupGlobalDragAndDrop() {
             const finalColumn = window.cachedBoard.columns.find(col => col.id === finalColumnId);
 
             if (originalColumn && finalColumn) {
-                const taskIndex = originalColumn.cards.findIndex(t => t.id === cardId);
-                if (taskIndex >= 0) {
+                const cardIndex = originalColumn.cards.findIndex(t => t.id === cardId);
+                if (cardIndex >= 0) {
                     const insertIndex = toIndex >= 0 ? Math.min(toIndex, finalColumn.cards.length) : finalColumn.cards.length;
                     const undoSnapshot = JSON.parse(JSON.stringify(window.cachedBoard));
 
@@ -1133,7 +1133,7 @@ function setupGlobalDragAndDrop() {
                         currentBoard: undoSnapshot
                     });
 
-                    const [task] = originalColumn.cards.splice(taskIndex, 1);
+                    const [task] = originalColumn.cards.splice(cardIndex, 1);
 
                     // Add task to new column at correct position
                     finalColumn.cards.splice(insertIndex, 0, task);
@@ -1158,10 +1158,10 @@ function setupGlobalDragAndDrop() {
                     if (originalColumnId !== finalColumnId) {
                         const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
                         if (taskElement) {
-                            const taskItemEl = taskElement.closest('.task-item');
+                            const taskItemEl = taskElement.closest('.card-item');
                             if (taskItemEl) {
-                                // Update task-title-container onclick
-                                const titleContainer = taskItemEl.querySelector('.task-title-container');
+                                // Update card-title-container onclick
+                                const titleContainer = taskItemEl.querySelector('.card-title-container');
                                 if (titleContainer) {
                                     const oldOnclick = titleContainer.getAttribute('onclick');
                                     if (oldOnclick) {
@@ -1186,8 +1186,8 @@ function setupGlobalDragAndDrop() {
                                     }
                                 }
 
-                                // Update task-collapse-toggle onclick
-                                const collapseToggle = taskItemEl.querySelector('.task-collapse-toggle');
+                                // Update card-collapse-toggle onclick
+                                const collapseToggle = taskItemEl.querySelector('.card-collapse-toggle');
                                 if (collapseToggle) {
                                     const oldOnclick = collapseToggle.getAttribute('onclick');
                                     if (oldOnclick) {
@@ -1203,10 +1203,10 @@ function setupGlobalDragAndDrop() {
                     }
 
                     // Re-initialize the task element after move
-                    if (typeof window.initializeTaskElement === 'function') {
+                    if (typeof window.initializeCardElement === 'function') {
                         const movedTaskElement = document.querySelector(`[data-card-id="${cardId}"]`);
                         if (movedTaskElement) {
-                            window.initializeTaskElement(movedTaskElement);
+                            window.initializeCardElement(movedTaskElement);
                         }
                     }
                 }
@@ -1783,7 +1783,7 @@ function setupGlobalDragAndDrop() {
             if (dragState.affectedColumns && dragState.affectedColumns.size > 0) {
                 dragState.affectedColumns.forEach(tasksContainer => {
                     if (tasksContainer && tasksContainer.querySelectorAll) {
-                        tasksContainer.querySelectorAll('.task-item').forEach(task => {
+                        tasksContainer.querySelectorAll('.card-item').forEach(task => {
                             task.classList.remove('drag-transitioning');
                         });
                     }
@@ -1791,7 +1791,7 @@ function setupGlobalDragAndDrop() {
                 dragState.affectedColumns.clear();
             } else {
                 // Fallback: clean all tasks if tracking failed
-                boardElement.querySelectorAll('.task-item').forEach(task => {
+                boardElement.querySelectorAll('.card-item').forEach(task => {
                     task.classList.remove('drag-transitioning');
                 });
             }
@@ -2725,7 +2725,7 @@ function getIncludeContextForDrop(event) {
         return null;
     }
     const target = document.elementFromPoint(event.clientX, event.clientY);
-    const taskElement = target?.closest?.('.task-item');
+    const taskElement = target?.closest?.('.card-item');
     if (!taskElement) {
         return null;
     }
@@ -2890,7 +2890,7 @@ function restoreTaskPosition() {
     } else if (dragState.originalTaskIndex >= 0) {
         // Use index as fallback
         const children = Array.from(dragState.originalTaskParent.children);
-        const taskItems = children.filter(c => c.classList.contains('task-item'));
+        const taskItems = children.filter(c => c.classList.contains('card-item'));
         if (dragState.originalTaskIndex < taskItems.length) {
             dragState.originalTaskParent.insertBefore(dragState.draggedTask, taskItems[dragState.originalTaskIndex]);
         } else {
@@ -2970,8 +2970,8 @@ function setupTaskDragAndDropForColumn(columnElement) {
     });
 
     // Setup drag handles for all tasks in this column
-    columnElement.querySelectorAll('.task-drag-handle').forEach(handle => {
-        setupTaskDragHandle(handle);
+    columnElement.querySelectorAll('.card-drag-handle').forEach(handle => {
+        setupCardDragHandle(handle);
     });
 }
 
@@ -2990,7 +2990,7 @@ function setupTaskDragAndDrop() {
     });
 }
 
-function setupTaskDragHandle(handle) {
+function setupCardDragHandle(handle) {
     // Prevent duplicate event listeners
     if (handle.dataset.dragSetup === 'true') {
         return;
@@ -3000,7 +3000,7 @@ function setupTaskDragHandle(handle) {
     handle.draggable = true;
 
     handle.addEventListener('dragstart', e => {
-        const taskItem = e.target && e.target.closest ? e.target.closest('.task-item') : null;
+        const taskItem = e.target && e.target.closest ? e.target.closest('.card-item') : null;
 
         if (taskItem) {
             e.stopPropagation();
@@ -3021,7 +3021,7 @@ function setupTaskDragHandle(handle) {
             dragState.draggedTask = taskItem;
             dragState.originalTaskParent = taskItem.parentNode;
             dragState.originalTaskNextSibling = taskItem.nextSibling;
-            const originalTaskItems = Array.from(dragState.originalTaskParent.querySelectorAll(':scope > .task-item'));
+            const originalTaskItems = Array.from(dragState.originalTaskParent.querySelectorAll(':scope > .card-item'));
             dragState.originalTaskIndex = originalTaskItems.indexOf(taskItem);
             dragState.originalTaskColumnId = columnId || null;
             dragState.isDragging = true; // IMPORTANT: Set this BEFORE setting data
@@ -3156,10 +3156,10 @@ function findDropPositionHierarchical(mouseX, mouseY, draggedTask = null) {
         };
     }
 
-    const tasks = tasksContainer.querySelectorAll(':scope > .task-item');
+    const tasks = tasksContainer.querySelectorAll(':scope > .card-item');
     let insertionIndex = -1; // -1 means append at end
 
-    let taskIndex = 0;
+    let cardIndex = 0;
     for (const task of tasks) {
         // Skip the dragged task if provided
         if (draggedTask && task === draggedTask) {
@@ -3172,10 +3172,10 @@ function findDropPositionHierarchical(mouseX, mouseY, draggedTask = null) {
 
         if (mouseY < taskMidpoint) {
             // Insert BEFORE this task
-            insertionIndex = taskIndex;
+            insertionIndex = cardIndex;
             break;
         }
-        taskIndex++;
+        cardIndex++;
     }
 
     return {
@@ -3822,7 +3822,7 @@ function setupColumnDragAndDrop() {
                 if (!tasksContainer) {return;}
 
                 // Find TASK position by iterating and checking task midpoint
-                const tasks = tasksContainer.querySelectorAll(':scope > .task-item');
+                const tasks = tasksContainer.querySelectorAll(':scope > .card-item');
                 let afterElement = null;
 
                 for (const task of tasks) {
@@ -4842,19 +4842,19 @@ function restoreParkedItemByIndex(index) {
 
             // Find the column containing this task and its index
             let targetColumnId = null;
-            let taskIndex = -1;
+            let cardIndex = -1;
             for (const col of window.cachedBoard.columns) {
                 const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     targetColumnId = col.id;
-                    taskIndex = idx;
+                    cardIndex = idx;
                     break;
                 }
             }
 
             // Use incremental rendering instead of full board re-render
             if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
-                window.addSingleTaskToDOM(targetColumnId, task, taskIndex);
+                window.addSingleTaskToDOM(targetColumnId, task, cardIndex);
             } else {
                 // Fallback to full render
                 if (typeof window.renderBoard === 'function') {
@@ -5572,19 +5572,19 @@ function restoreDeletedItemByIndex(index) {
 
             // Find the column containing this task and its index
             let targetColumnId = null;
-            let taskIndex = -1;
+            let cardIndex = -1;
             for (const col of window.cachedBoard.columns) {
                 const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     targetColumnId = col.id;
-                    taskIndex = idx;
+                    cardIndex = idx;
                     break;
                 }
             }
 
             // Use incremental rendering instead of full board re-render
             if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
-                window.addSingleTaskToDOM(targetColumnId, task, taskIndex);
+                window.addSingleTaskToDOM(targetColumnId, task, cardIndex);
             } else {
                 // Fallback to full render
                 if (typeof window.renderBoard === 'function') {
@@ -6231,19 +6231,19 @@ function restoreArchivedItemByIndex(index) {
 
             // Find the column containing this task and its index
             let targetColumnId = null;
-            let taskIndex = -1;
+            let cardIndex = -1;
             for (const col of window.cachedBoard.columns) {
                 const idx = col.cards?.findIndex(t => t.id === task.id);
                 if (idx !== undefined && idx >= 0) {
                     targetColumnId = col.id;
-                    taskIndex = idx;
+                    cardIndex = idx;
                     break;
                 }
             }
 
             // Use incremental rendering instead of full board re-render
             if (targetColumnId && typeof window.addSingleTaskToDOM === 'function') {
-                window.addSingleTaskToDOM(targetColumnId, task, taskIndex);
+                window.addSingleTaskToDOM(targetColumnId, task, cardIndex);
             } else {
                 // Fallback to full render
                 if (typeof window.renderBoard === 'function') {

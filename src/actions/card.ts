@@ -109,10 +109,10 @@ export const remove = (
         const column = findColumn(board, columnId);
         if (!column) return false;
 
-        const taskIndex = findCardIndex(column, cardId);
-        if (taskIndex === -1) return false;
+        const cardIndex = findCardIndex(column, cardId);
+        if (cardIndex === -1) return false;
 
-        column.cards.splice(taskIndex, 1);
+        column.cards.splice(cardIndex, 1);
         return true;
     }
 });
@@ -252,10 +252,10 @@ export const move = (
         const toColumn = findColumn(board, toColumnId);
         if (!fromColumn || !toColumn) return false;
 
-        const taskIndex = findCardIndex(fromColumn, cardId);
-        if (taskIndex === -1) return false;
+        const cardIndex = findCardIndex(fromColumn, cardId);
+        if (cardIndex === -1) return false;
 
-        const [task] = fromColumn.cards.splice(taskIndex, 1);
+        const [task] = fromColumn.cards.splice(cardIndex, 1);
         toColumn.cards.splice(newIndex, 0, task);
         return true;
     }
@@ -280,10 +280,10 @@ export const moveToColumn = (
         const toColumn = findColumn(board, toColumnId);
         if (!fromColumn || !toColumn) return false;
 
-        const taskIndex = findCardIndex(fromColumn, cardId);
-        if (taskIndex === -1) return false;
+        const cardIndex = findCardIndex(fromColumn, cardId);
+        if (cardIndex === -1) return false;
 
-        const [task] = fromColumn.cards.splice(taskIndex, 1);
+        const [task] = fromColumn.cards.splice(cardIndex, 1);
         toColumn.cards.push(task);
         return true;
     }
@@ -303,17 +303,17 @@ export const duplicate = (
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const taskIndex = findCardIndex(column, cardId);
-        if (taskIndex === -1) return null;
+        const cardIndex = findCardIndex(column, cardId);
+        if (cardIndex === -1) return null;
 
-        const originalCard = column.cards[taskIndex];
+        const originalCard = column.cards[cardIndex];
         const newCard: KanbanCard = {
             ...JSON.parse(JSON.stringify(originalCard)),
             id: IdGenerator.generateCardId()
         };
 
         // Insert after the original
-        column.cards.splice(taskIndex + 1, 0, newCard);
+        column.cards.splice(cardIndex + 1, 0, newCard);
         return newCard.id;
     }
 });
@@ -354,15 +354,15 @@ export const insertBefore = (
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const taskIndex = findCardIndex(column, cardId);
-        if (taskIndex === -1) return null;
+        const cardIndex = findCardIndex(column, cardId);
+        if (cardIndex === -1) return null;
 
         const newCard: KanbanCard = {
             id: IdGenerator.generateCardId(),
             content: ''
         };
 
-        column.cards.splice(taskIndex, 0, newCard);
+        column.cards.splice(cardIndex, 0, newCard);
         return newCard.id;
     }
 });
@@ -381,15 +381,15 @@ export const insertAfter = (
         const column = findColumn(board, columnId);
         if (!column) return null;
 
-        const taskIndex = findCardIndex(column, cardId);
-        if (taskIndex === -1) return null;
+        const cardIndex = findCardIndex(column, cardId);
+        if (cardIndex === -1) return null;
 
         const newCard: KanbanCard = {
             id: IdGenerator.generateCardId(),
             content: ''
         };
 
-        column.cards.splice(taskIndex + 1, 0, newCard);
+        column.cards.splice(cardIndex + 1, 0, newCard);
         return newCard.id;
     }
 });

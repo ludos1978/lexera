@@ -104,7 +104,7 @@ function moveTaskInDOM(cardId, columnId, newIndex, targetColumnId = null) {
     const sourceStack = sourceColumn?.closest('.kanban-column-stack');
 
     // Get all task items in the target container (excluding the task being moved if same column)
-    const taskItems = Array.from(targetContainer.querySelectorAll('.task-item'))
+    const taskItems = Array.from(targetContainer.querySelectorAll('.card-item'))
         .filter(el => el.dataset.cardId !== cardId);
 
     // Find the add button to insert before if needed
@@ -148,8 +148,8 @@ function moveTaskInDOM(cardId, columnId, newIndex, targetColumnId = null) {
 
         // Defensive: re-run initialization hooks in case external modules
         // attached listeners based on previous column context.
-        if (typeof window.initializeTaskElement === 'function') {
-            window.initializeTaskElement(taskElement);
+        if (typeof window.initializeCardElement === 'function') {
+            window.initializeCardElement(taskElement);
         }
     }
 
@@ -1781,7 +1781,7 @@ function copyToClipboard(text) {
 
 function toggleHiddenContent(cardId) {
     closeAllMenus();
-    const taskElement = document.querySelector(`.task-item[data-card-id="${cardId}"]`);
+    const taskElement = document.querySelector(`.card-item[data-card-id="${cardId}"]`);
     if (!taskElement) { return; }
 
     const isRevealed = taskElement.getAttribute('data-hidden-revealed') === 'true';
@@ -1804,7 +1804,7 @@ function toggleHiddenColumnContent(columnId) {
     if (!columnElement) { return; }
 
     // Toggle all hidden tasks within this column
-    const hiddenTasks = columnElement.querySelectorAll('.task-item[data-hidden-content="true"]');
+    const hiddenTasks = columnElement.querySelectorAll('.card-item[data-hidden-content="true"]');
     const isRevealed = columnElement.getAttribute('data-hidden-revealed') === 'true';
     hiddenTasks.forEach(task => {
         if (isRevealed) {
@@ -1922,39 +1922,39 @@ function moveTaskInDirection(cardId, columnId, direction) {
     if (!found) return;
 
     const { column } = found;
-    const taskIndex = column.cards.findIndex(t => t.id === cardId);
-    if (taskIndex < 0) return;
+    const cardIndex = column.cards.findIndex(t => t.id === cardId);
+    if (cardIndex < 0) return;
 
     let newIndex;
     const lastIndex = column.cards.length - 1;
 
     switch (direction) {
         case 'top':
-            if (taskIndex === 0) return; // Already at top
-            column.cards.splice(taskIndex, 1);
+            if (cardIndex === 0) return; // Already at top
+            column.cards.splice(cardIndex, 1);
             column.cards.unshift(found.task);
             newIndex = 0;
             break;
 
         case 'up':
-            if (taskIndex === 0) return; // Can't go up
+            if (cardIndex === 0) return; // Can't go up
             // Swap with previous
-            [column.cards[taskIndex], column.cards[taskIndex - 1]] =
-                [column.cards[taskIndex - 1], column.cards[taskIndex]];
-            newIndex = taskIndex - 1;
+            [column.cards[cardIndex], column.cards[cardIndex - 1]] =
+                [column.cards[cardIndex - 1], column.cards[cardIndex]];
+            newIndex = cardIndex - 1;
             break;
 
         case 'down':
-            if (taskIndex === lastIndex) return; // Can't go down
+            if (cardIndex === lastIndex) return; // Can't go down
             // Swap with next
-            [column.cards[taskIndex], column.cards[taskIndex + 1]] =
-                [column.cards[taskIndex + 1], column.cards[taskIndex]];
-            newIndex = taskIndex + 1;
+            [column.cards[cardIndex], column.cards[cardIndex + 1]] =
+                [column.cards[cardIndex + 1], column.cards[cardIndex]];
+            newIndex = cardIndex + 1;
             break;
 
         case 'bottom':
-            if (taskIndex === lastIndex) return; // Already at bottom
-            column.cards.splice(taskIndex, 1);
+            if (cardIndex === lastIndex) return; // Already at bottom
+            column.cards.splice(cardIndex, 1);
             column.cards.push(found.task);
             newIndex = column.cards.length - 1;
             break;
@@ -1999,14 +1999,14 @@ function moveTaskToColumn(cardId, fromColumnId, toColumnId) {
         return;
     }
 
-    const taskIndex = fromColumn.cards.findIndex(t => t.id === cardId);
-    if (taskIndex < 0) {
+    const cardIndex = fromColumn.cards.findIndex(t => t.id === cardId);
+    if (cardIndex < 0) {
         closeAllMenus();
         return;
     }
 
     // Update cache - move task to end of target column
-    const task = fromColumn.cards.splice(taskIndex, 1)[0];
+    const task = fromColumn.cards.splice(cardIndex, 1)[0];
     toColumn.cards.push(task);
 
     // Update DOM directly - move to end of target column
@@ -2059,7 +2059,7 @@ function updateColumnEmptyState(columnId) {
     if (column?.includeError) { return; }
 
     // Count actual task elements (not placeholder buttons)
-    const taskElements = tasksContainer.querySelectorAll('.task-item');
+    const taskElements = tasksContainer.querySelectorAll('.card-item');
     const hasAddButton = tasksContainer.querySelector('.add-task-btn');
 
     // Add button if column is empty (CSS handles hiding when tasks present)
@@ -2099,7 +2099,7 @@ function updateCacheForNewTask(columnId, newTask, insertIndex = -1) {
                         scrollToElementIfNeeded(taskElement, 'card');
 
                         // Start editing the title
-                        const titleContainer = taskElement.querySelector('.task-title-container');
+                        const titleContainer = taskElement.querySelector('.card-title-container');
                         if (titleContainer) {
                             window.editTitle(titleContainer, newTask.id, columnId);
                         }
@@ -2478,7 +2478,7 @@ function updateTaskDisplayImmediate(cardId, newTitle, isActive, tagName) {
     if (!taskElement) return;
 
     // Update title display
-    const titleElement = taskElement.querySelector('.task-title-display');
+    const titleElement = taskElement.querySelector('.card-title-display');
     if (titleElement) {
         const foldedTitle = window.getCollapsedTaskTitleText
             ? window.getCollapsedTaskTitleText({ content: newTitle || '' })
@@ -2489,7 +2489,7 @@ function updateTaskDisplayImmediate(cardId, newTitle, isActive, tagName) {
     }
 
     // Update edit field
-    const editElement = taskElement.querySelector('.task-title-edit');
+    const editElement = taskElement.querySelector('.card-title-edit');
     if (editElement) editElement.value = newTitle;
 
     // Single source of truth: updateVisualTagState handles all tag/temporal attributes
@@ -3100,10 +3100,10 @@ function updateCornerBadgesImmediate(elementId, elementType, newTitle) {
         element.removeAttribute('data-all-tags');
     }
 
-    // For columns, append to column-title; for tasks, append to task-header
+    // For columns, append to column-title; for tasks, append to card-header
     const targetContainer = elementType === 'column'
         ? element.querySelector('.column-title') || element
-        : element.querySelector('.task-header') || element;
+        : element.querySelector('.card-header') || element;
 
     // Remove existing badge containers
     targetContainer.querySelectorAll('.corner-badges-container').forEach(el => el.remove());
@@ -3639,7 +3639,7 @@ function updateAllVisualTagElements(element, allTags, elementType) {
             for (const column of window.cachedBoard.columns) {
                 const task = column.cards.find(t => t.id === cardId);
                 if (task) {
-                    const displayElement = element.querySelector('.task-title-display');
+                    const displayElement = element.querySelector('.card-title-display');
                     if (displayElement) {
                         const foldedTitle = window.getCollapsedTaskTitleText
                             ? window.getCollapsedTaskTitleText(task)
@@ -3688,8 +3688,8 @@ function updateAllVisualTagElements(element, allTags, elementType) {
             }
         });
     } else {
-        // For tasks, remove visual elements from task-header and task element
-        const taskHeader = element.querySelector('.task-header');
+        // For tasks, remove visual elements from card-header and task element
+        const taskHeader = element.querySelector('.card-header');
         if (taskHeader) {
             taskHeader.querySelectorAll('.corner-badges-container').forEach(el => el.remove());
         }
@@ -3834,10 +3834,10 @@ function updateAllVisualTagElements(element, allTags, elementType) {
                     cornerContainer.appendChild(badgeElement);
                 });
 
-                // For columns, append to column-title; for tasks, append to task-header
+                // For columns, append to column-title; for tasks, append to card-header
                 const targetContainer = elementType === 'column'
                     ? element.querySelector('.column-title') || element
-                    : element.querySelector('.task-header') || element;
+                    : element.querySelector('.card-header') || element;
                 targetContainer.appendChild(cornerContainer);
             });
         }
@@ -3851,7 +3851,7 @@ function updateAllVisualTagElements(element, allTags, elementType) {
     let tagsForCardStyling = allTags;
     if (elementType === 'card') {
         // For tasks, check if tags exist in description and exclude them
-        const taskDescDisplay = element.querySelector('.task-description-display');
+        const taskDescDisplay = element.querySelector('.card-description-display');
         if (taskDescDisplay) {
             const descriptionTags = new Set();
             // Find all tag spans in the description

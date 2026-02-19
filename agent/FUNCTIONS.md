@@ -12,7 +12,7 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 ## Recent Updates (2026-02-19) - Fix: Save blocked by dirty buffer after embed delete + undo
 
 ### Modified: `src/commands/PathCommands.ts`
-- `PathCommands_handleDeleteFromMarkdown` — (REWRITTEN) No longer uses WorkspaceEdit to modify the VS Code buffer. Now operates at board level: searches task.content and column.title for the path, modifies in-place, saves undo entry via UndoCapture, emits boardChanged, sends targeted updateTaskContent. Falls back to in-memory setContent for paths outside board structure.
+- `PathCommands_handleDeleteFromMarkdown` — (REWRITTEN) No longer uses WorkspaceEdit to modify the VS Code buffer. Now operates at board level: searches task.content and column.title for the path, modifies in-place, saves undo entry via UndoCapture, emits boardChanged, sends targeted updateCardContent. Falls back to in-memory setContent for paths outside board structure.
 - `PathCommands__buildDeleteElementRegex` — (NEW) Extracted regex builder for delete element matching (images, links, HTML imgs, includes, with optional strikethrough). Uses non-capturing groups.
 - `PathCommands__removeElementFromText` — (NEW) Shared helper that applies the delete regex to text and cleans up triple newlines. Returns null if nothing matched.
 
@@ -40,7 +40,7 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 - `_replaceIframeWithFallback(element, url)` — (MODIFIED) JSDoc updated: accepts any `Element`, not just `HTMLIFrameElement`.
 - Image renderer web preview branch — (MODIFIED) Removed plain `<a>` link early return when `openAutomatically=false`. Both `renderWebPreview` and `renderEmbed` handle this via `_renderEmbedPlaceholder`.
 
-### Modified: `src/html/taskEditor.js`
+### Modified: `src/html/cardEditor.js`
 - Global paste handler — (MODIFIED) Extended to also handle `.task-description-edit` fields with programmatic paste (preventDefault + manual value assignment), fixing invisible paste in VS Code webview.
 
 ---
@@ -90,7 +90,7 @@ New standalone WebDAV sync server and VS Code integration for bidirectional book
 
 ### New Package: `packages/shared/`
 Shared types and parser between VS Code extension and ludos-sync.
-- `packages/shared/src/kanbanTypes.ts` — KanbanTask, KanbanColumn, KanbanBoard, BoardSettings interfaces (sync-relevant subset)
+- `packages/shared/src/kanbanTypes.ts` — KanbanCard, KanbanColumn, KanbanBoard, BoardSettings interfaces (sync-relevant subset)
 - `packages/shared/src/markdownParser.ts-SharedMarkdownParser` — Lightweight kanban markdown parser/generator (no VS Code deps)
   - `parseMarkdown(content)` — Parse markdown into KanbanBoard
   - `generateMarkdown(board)` — Generate markdown from KanbanBoard
@@ -99,7 +99,7 @@ Shared types and parser between VS Code extension and ludos-sync.
 ### New Package: `packages/ludos-sync/`
 Standalone WebDAV server for bookmark sync via Floccus.
 
-- `packages/ludos-sync/src/mappers/XbelMapper.ts-XbelMapper` — Bidirectional XBEL XML ↔ KanbanColumn/KanbanTask mapping. Top-level folders=columns, sub-folder paths=task titles, bookmarks aggregated as links per task.
+- `packages/ludos-sync/src/mappers/XbelMapper.ts-XbelMapper` — Bidirectional XBEL XML ↔ KanbanColumn/KanbanCard mapping. Top-level folders=columns, sub-folder paths=task titles, bookmarks aggregated as links per task.
   - `parseXbel(xml)` — Parse XBEL XML into tree of XbelFolder nodes (preserves nesting)
   - `generateXbel(root)` — Generate nested XBEL XML from tree structure
   - `xbelToColumns(root)` — Convert XBEL tree to kanban columns (sub-paths as task first lines, aggregated bookmark links)
@@ -248,7 +248,7 @@ WebviewViewProvider (viewType: `kanbanBoardsSidebar`) replacing both KanbanSideb
 - `setSearchQuery(query)` — Route external search commands (tag clicks)
 - `_collectBoardsForScope(scope)` — Collect boards for search scope ('active', 'listed', 'open')
 - `_handleSearch(query, useRegex, scope, searchType)` — Execute text/broken search via BoardContentScanner
-- `_handleNavigateToElement(boardUri, columnId, taskId)` — Navigate to board element
+- `_handleNavigateToElement(boardUri, columnId, cardId)` — Navigate to board element
 - `_sendStateToWebview()` — Send full state (boards, locked, searches, sortMode, hasActivePanel)
 
 ### New File: `src/html/boardsPanel.js` + `src/html/boardsPanel.css`
@@ -287,11 +287,11 @@ Added Archive functionality similar to Park/Trash that allows users to archive t
 - `handleArchiveDropTargetDragOver(event)` — Handle dragover on archive drop target
 - `handleArchiveDropTargetDragLeave(event)` — Handle dragleave from archive drop target
 - `handleArchiveDropTargetDrop(event)` — Handle drop on archive drop target to archive item
-- `archiveTask(taskElement)` — Move task to archive (add archived tag, update UI)
+- `archiveCard(cardElement)` — Move card to archive (add archived tag, update UI)
 - `archiveColumn(columnElement)` — Move column to archive (add archived tag, update UI)
 - `handleArchivedItemDragStart(event, index)` — Handle drag start for restoring archived item
 - `handleArchivedItemDragEnd(event)` — Handle drag end for archived item
-- `restoreArchivedTask(archivedIndex, dropPosition)` — Restore archived task to board at drop position
+- `restoreArchivedCard(archivedIndex, dropPosition)` — Restore archived card to board at drop position
 - `restoreArchivedColumn(archivedIndex, dropPosition, capturedStack, capturedBeforeCol)` — Restore archived column to board
 - `restoreArchivedItemByIndex(index)` — Restore archived item to original location
 - `exportArchivedItem(index)` — Export single archived item to archive file
@@ -307,7 +307,7 @@ Added Archive functionality similar to Park/Trash that allows users to archive t
 - `handleExportArchivedItems(message, context)` — Export archived items to {filename}-archive.md file
 - `getArchiveHeader()` — Generate frontmatter header for new archive files
 - `generateArchiveContent(items, timestamp)` — Convert archived items to markdown format
-- `formatTaskForExport(task)` — Format single task as markdown checkbox
+- `formatCardForExport(card)` — Format single card as markdown checkbox
 - `removeInternalTags(text)` — Remove all internal hidden tags from text
 
 ### Modified: `src/constants/FileNaming.ts`
@@ -332,13 +332,13 @@ Added Archive functionality similar to Park/Trash that allows users to archive t
 - Added `archivedItemsExported` message handler to call `handleArchivedItemsExported()`
 
 ### Modified: `src/html/menuOperations.js`
-- `parkTaskFromMenu(taskId, columnId)` — Menu handler to park a task (finds element and calls parkTask)
-- `archiveTaskFromMenu(taskId, columnId)` — Menu handler to archive a task (finds element and calls archiveTask)
+- `parkCardFromMenu(cardId, columnId)` — Menu handler to park a card (finds element and calls parkCard)
+- `archiveCardFromMenu(cardId, columnId)` — Menu handler to archive a card (finds element and calls archiveCard)
 - `parkColumnFromMenu(columnId)` — Menu handler to park a column (finds element and calls parkColumn)
 - `archiveColumnFromMenu(columnId)` — Menu handler to archive a column (finds element and calls archiveColumn)
 
 ### Modified: `src/html/boardRenderer.js`
-- Task burger menu now includes "Park card" and "Archive card" options before "Delete card"
+- Card burger menu now includes "Park card" and "Archive card" options before "Delete card"
 - Column burger menu now includes "Park column" and "Archive column" options before "Delete column"
 
 ### Modified: `src/messageHandler.ts`
@@ -362,7 +362,7 @@ Added ability to drop external files (from desktop, VS Code explorer) into inlin
 ### Modified: `src/html/overlayEditor.js`
 - Removed local definitions of `isUrl`, `normalizeUriList`, `buildMarkdownLinks`, `resolveDropContent` - now uses global versions from webview.js
 
-### Modified: `src/html/taskEditor.js`
+### Modified: `src/html/cardEditor.js`
 - `_setupInputHandler()` — (MODIFIED) Added dragover/drop event handlers for textarea editing. Calculates drop position from mouse coordinates and inserts markdown links at that position. For title fields, joins multiple links with spaces instead of newlines.
 - `_setupWysiwygHandlers()` — (MODIFIED) Added dragover/drop event handlers for WYSIWYG editing. Uses editor.insertText() to insert markdown at cursor position.
 
@@ -379,11 +379,11 @@ Refactored `restoreParkedColumn` and `restoreDeletedColumn` to avoid full board 
 - `notifyBoardUpdateNoRender()` — New function to notify backend of changes without triggering full re-render
 - `restoreParkedColumn()` — (MODIFIED) Now creates column element via createColumnElement and inserts directly into DOM instead of calling renderBoard. Uses syncColumnDataToDOMOrder + finalizeColumnDrop pattern like normal column drops.
 - `restoreDeletedColumn()` — (MODIFIED) Same optimization as restoreParkedColumn - direct DOM manipulation instead of full render.
-- `restoreParkedTask()` — (MODIFIED) Now creates task element via addSingleTaskToDOM instead of full render.
-- `restoreDeletedTask()` — (MODIFIED) Same optimization as restoreParkedTask.
-- `parkTask()` — (MODIFIED) Now removes task DOM element directly instead of full render.
+- `restoreParkedCard()` — (MODIFIED) Now creates card element via addSingleTaskToDOM instead of full render.
+- `restoreDeletedCard()` — (MODIFIED) Same optimization as restoreParkedCard.
+- `parkCard()` — (MODIFIED) Now removes card DOM element directly instead of full render.
 - `parkColumn()` — (MODIFIED) Now removes column DOM element directly instead of full render.
-- `trashTask()` — (MODIFIED) Now removes task DOM element directly instead of full render.
+- `trashCard()` — (MODIFIED) Now removes card DOM element directly instead of full render.
 - `doTrashColumn()` — (MODIFIED) Now removes column DOM element directly instead of full render.
 - `trashParkedItem()` — (MODIFIED) Now updates both UI lists without full render (item moves from parked to deleted, no DOM changes needed).
 
@@ -403,12 +403,12 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 - `handleTrashDropTargetDragOver(event)` — Handle dragover on trash drop target
 - `handleTrashDropTargetDragLeave(event)` — Handle dragleave from trash drop target
 - `handleTrashDropTargetDrop(event)` — Handle drop on trash drop target to delete item
-- `trashTask(taskElement)` — Move task to trash (add deleted tag, remove from board, update UI)
+- `trashCard(cardElement)` — Move card to trash (add deleted tag, remove from board, update UI)
 - `trashColumn(columnElement)` — Move column to trash (add deleted tag, remove from board, update UI)
 - `trashParkedItem(parkedIndex)` — Move parked item to trash (with confirmation dialog)
 - `handleDeletedItemDragStart(event, index)` — Handle drag start for restoring deleted item
 - `handleDeletedItemDragEnd(event)` — Handle drag end for deleted item
-- `restoreDeletedTask(deletedIndex, dropPosition)` — Restore deleted task to board at drop position
+- `restoreDeletedCard(deletedIndex, dropPosition)` — Restore deleted card to board at drop position
 - `restoreDeletedColumn(deletedIndex, dropPosition)` — Restore deleted column to board at drop position
 - `restoreDeletedItemByIndex(index)` — Restore deleted item to original location (or first column)
 - `permanentlyRemoveDeletedItem(index)` — Permanently delete item from trash (with confirmation)
@@ -417,7 +417,7 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 - `getDeletedItems()` — Get current deleted items array
 
 ### Modified: `src/html/menuOperations.js`
-- `deleteTask(taskId, columnId)` — (MODIFIED) Now uses trash system via `window.trashTask()` instead of physical removal
+- `deleteCard(cardId, columnId)` — (MODIFIED) Now uses trash system via `window.trashCard()` instead of physical removal
 - `deleteColumn(columnId)` — (MODIFIED) Now uses trash system via `window.trashColumn()` instead of physical removal
 
 ### Modified: `src/html/boardRenderer.js`
@@ -846,7 +846,7 @@ Service for interactive web image search using a headed Playwright browser.
 - `PathCommands._addSourceUrlTitle(imagePath, sourceUrl, basePath)` - Adds source URL as markdown image title: ![alt](path "sourceUrl")
 
 ### Updates to `src/core/bridge/MessageTypes.ts`
-- `WebSearchForImageMessage` - New message type for web image search (altText, oldPath, taskId, columnId, isColumnTitle, includeContext)
+- `WebSearchForImageMessage` - New message type for web image search (altText, oldPath, cardId, columnId, isColumnTitle, includeContext)
 
 ### Updates to `src/services/ConfigurationService.ts`
 - Added `imageSearch: { engine, customUrl }` to KanbanConfiguration interface and defaults
@@ -1002,7 +1002,7 @@ Service for converting Excel spreadsheets (.xlsx, .xls, .ods) to PNG images usin
 - `src/kanbanSearchProvider.ts` now reveals the main kanban webview panel before navigating to a search result, ensuring focus switches to the board.
 - `src/commands/UICommands.ts` now handles `openSearchPanel` messages to reveal the Kanban Search sidebar, and `src/html/webview.js` routes Ctrl/Cmd+F to that sidebar instead of the in-webview search overlay.
 - `src/kanbanWebviewPanel.ts` now initializes PanelContext, ConcurrencyManager, and WebviewBridge debug mode as disabled by default (debug must be toggled manually).
-- `src/html/taskEditor.js` now handles Tab/Shift+Tab to indent/unindent with spaces (no field switching) and Alt+Enter to end editing; indentation uses a two-space unit and preserves selections.
+- `src/html/cardEditor.js` now handles Tab/Shift+Tab to indent/unindent with spaces (no field switching) and Alt+Enter to end editing; indentation uses a two-space unit and preserves selections.
 - `src/html/webview.html` version menu item now toggles debug mode via click, and `src/html/webview.js` updates the displayed version to append "(debug)" while active.
 - `src/html/webview.js` now maintains `window.kanbanDebug` state and sends `setDebugMode` messages to the backend on toggle; board updates apply debugMode and refresh the version label.
 - `src/core/bridge/MessageTypes.ts` adds `debugMode` to `BoardUpdateMessage` and introduces `SetDebugModeMessage` for frontend-initiated debug toggles.
@@ -1014,7 +1014,7 @@ Service for converting Excel spreadsheets (.xlsx, .xls, .ods) to PNG images usin
 - `src/panel/IncludeFileCoordinator.ts`, `src/core/events/BoardSyncHandler.ts`, `src/html/webview.js`, `src/html/boardRenderer.js`, and `src/html/markdown-it-include-browser.js` now gate verbose debug logs behind the debug mode flag.
 - `src/core/events/BoardSyncHandler.ts` `_handleBoardChanged()` and `_propagateEditsToIncludeFiles()` now log undo/redo execution order and include update/missing paths, and resolve include paths via decoded lookups for undo/redo.
 - `src/files/MarkdownFileRegistry.ts` `generateBoard()` now resolves include files using decoded paths with absolute fallbacks to keep include columns/tasks in sync.
-- `src/panel/IncludeFileCoordinator.ts` `_sendColumnIncludeUpdate()` and `_sendTaskIncludeUpdate()` now match include references against both relative and absolute paths to avoid missed updates.
+- `src/panel/IncludeFileCoordinator.ts` `_sendColumnIncludeUpdate()` and `_sendCardIncludeUpdate()` now match include references against both relative and absolute paths to avoid missed updates.
 - `src/commands/UICommands.ts` `handleUndo()` and `handleRedo()` now log when they emit board:changed for undo/redo sequencing.
 - `src/services/WebviewUpdateService.ts` `sendBoardUpdate()` now logs refresh options to track post-undo full refreshes.
 - `src/kanbanFileService.ts` `setupDocumentChangeListener()` only sends document dirty state to the debug overlay. Does NOT react to VS Code buffer changes — the kanban board only updates when file data changes on disk (detected by file watcher).
@@ -1029,7 +1029,7 @@ Service for converting Excel spreadsheets (.xlsx, .xls, .ods) to PNG images usin
 - `src/panel/WebviewManager.ts` `generateHtml()` now preserves `enableCommandUris` when setting webview options.
 - `src/commands/CommandRegistry.ts` now orders handlers per message type by priority and respects `canHandle()` when dispatching.
 - `src/services/WebviewUpdateService.ts` now reads extension version from VS Code extension metadata instead of a local package.json require.
-- `src/core/stores/UndoCapture.ts` added `TaskMovePayload` + `forTaskMove()` to capture drag move positions for undo/redo.
+- `src/core/stores/UndoCapture.ts` added `CardMovePayload` + `forCardMove()` to capture drag move positions for undo/redo.
 - `src/core/stores/BoardStore.ts` added `cloneBoard()` helper for undo/redo state snapshots.
 - `src/commands/EditModeCommands.ts` now captures drag move undo entries whenever from/to columns are available, resolving indices from the saved board when needed.
 - `src/commands/UICommands.ts` now logs redo stack state and redo results for debugging.
@@ -1262,7 +1262,7 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - **New**: `_sendBoardUpdate()` - Consolidates board update message logic
 - **Why**: Was duplicated in 3 places (23, 20, and 32 lines each)
 - **Solution**: Single helper method includes ALL 15+ config fields
-- **Bug Fixed**: _handleContentChange was missing columnBorder, taskBorder, htmlRenderMode
+- **Bug Fixed**: _handleContentChange was missing columnBorder, cardBorder, htmlRenderMode
 
 **File:** [src/kanbanWebviewPanel.ts:1563-1763](src/kanbanWebviewPanel.ts#L1563-L1763)
 - **Simplified**: `_handleContentChange()` - Reduced from 229 lines to 201 lines
@@ -1316,9 +1316,9 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 
 #### Edit Mode Protection
 **Files:** [src/html/webview.js:2650-2677](src/html/webview.js#L2650-L2677), [src/html/webview.js:2732-2759](src/html/webview.js#L2732-L2759)
-- Added `isEditing` guards to `updateColumnContent` and `updateTaskContent`
+- Added `isEditing` guards to `updateColumnContent` and `updateCardContent`
 - **Why**: DOM re-rendering during edit mode destroys active editor
-- **Solution**: Skip rendering when `window.taskEditor.currentEditor` is active
+- **Solution**: Skip rendering when `window.cardEditor.currentEditor` is active
 
 ---
 
@@ -1370,15 +1370,15 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/kanbanWebviewPanel-KanbanWebviewPanel_debugWebviewPermissions - Debug webview permission configuration
 - src/kanbanWebviewPanel-KanbanWebviewPanel_setupDocumentChangeListener - Setup listener for document changes
 - src/kanbanWebviewPanel-KanbanWebviewPanel_forceReloadFromFile - Force reload file from disk
-- src/kanbanWebviewPanel-KanbanWebviewPanel_reprocessTaskIncludes - Reprocess all task includes
-- src/kanbanWebviewPanel-KanbanWebviewPanel_checkTaskIncludeUnsavedChanges - Check if task has unsaved include changes
+- src/kanbanWebviewPanel-KanbanWebviewPanel_reprocessCardIncludes - Reprocess all card includes
+- src/kanbanWebviewPanel-KanbanWebviewPanel_checkCardIncludeUnsavedChanges - Check if card has unsaved include changes
 - src/kanbanWebviewPanel-KanbanWebviewPanel_checkColumnIncludeUnsavedChanges - Check if column has unsaved include changes
 - src/kanbanWebviewPanel-KanbanWebviewPanel_hasUnsavedIncludeFileChanges - Check if specific include has unsaved changes
-- src/kanbanWebviewPanel-KanbanWebviewPanel_saveTaskIncludeChanges - Save changes to task include file
+- src/kanbanWebviewPanel-KanbanWebviewPanel_saveCardIncludeChanges - Save changes to card include file
 - src/kanbanWebviewPanel-KanbanWebviewPanel_updateIncludeContentUnified - Update include content in unified system
-- src/kanbanWebviewPanel-KanbanWebviewPanel_loadNewTaskIncludeContent - Load content from new task include files
+- src/kanbanWebviewPanel-KanbanWebviewPanel_loadNewCardIncludeContent - Load content from new card include files
 - src/kanbanWebviewPanel-KanbanWebviewPanel_saveAllColumnIncludeChanges - Save all column include changes
-- src/kanbanWebviewPanel-KanbanWebviewPanel_saveAllTaskIncludeChanges - Save all task include changes
+- src/kanbanWebviewPanel-KanbanWebviewPanel_saveAllCardIncludeChanges - Save all card include changes
 - src/kanbanWebviewPanel-KanbanWebviewPanel_ensureIncludeFileRegistered - Ensure include file is registered
 - src/kanbanWebviewPanel-KanbanWebviewPanel_saveMainKanbanChanges - Save main kanban file changes
 - src/kanbanWebviewPanel-KanbanWebviewPanel_openFileWithReuseCheck - Open file with editor reuse check
@@ -1400,20 +1400,20 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/includeFileManager-IncludeFileManager_updateUnifiedIncludeSystem - Update unified include tracking system
 - src/includeFileManager-IncludeFileManager_ensureIncludeFileRegistered - Ensure include file is registered
 - src/includeFileManager-IncludeFileManager_loadNewIncludeContent - Load content from new column include files
-- src/includeFileManager-IncludeFileManager_loadNewTaskIncludeContent - Load content from new task include files
+- src/includeFileManager-IncludeFileManager_loadNewCardIncludeContent - Load content from new card include files
 - src/includeFileManager-IncludeFileManager_readAndUpdateIncludeContent - Read and update include file content
 - src/includeFileManager-IncludeFileManager__readFileContent - Read file content from disk (internal helper with documentGetter)
 - src/includeFileManager-IncludeFileManager_readFileContent - Read content from a file on disk
 - src/includeFileManager-IncludeFileManager_refreshIncludeFileContents - Refresh include file contents without affecting board
 - src/includeFileManager-IncludeFileManager_recheckIncludeFileChanges - Re-check if include files have changed after reload
 - src/includeFileManager-IncludeFileManager_saveColumnIncludeChanges - Save changes to column include file
-- src/includeFileManager-IncludeFileManager_saveTaskIncludeChanges - Save changes to task include file
+- src/includeFileManager-IncludeFileManager_saveCardIncludeChanges - Save changes to card include file
 - src/includeFileManager-IncludeFileManager_saveAllColumnIncludeChanges - Save all column include changes
-- src/includeFileManager-IncludeFileManager_saveAllTaskIncludeChanges - Save all task include changes
+- src/includeFileManager-IncludeFileManager_saveAllCardIncludeChanges - Save all card include changes
 - src/includeFileManager-IncludeFileManager_saveIncludeFileChanges - Save include file changes to disk
 - src/includeFileManager-IncludeFileManager_saveIncludeFileAsBackup - Save include file as backup
 - src/includeFileManager-IncludeFileManager_checkColumnIncludeUnsavedChanges - Check if column has unsaved include changes
-- src/includeFileManager-IncludeFileManager_checkTaskIncludeUnsavedChanges - Check if task has unsaved include changes
+- src/includeFileManager-IncludeFileManager_checkCardIncludeUnsavedChanges - Check if card has unsaved include changes
 - src/includeFileManager-IncludeFileManager_hasUnsavedIncludeFileChanges - Check if specific include has unsaved changes
 - src/includeFileManager-IncludeFileManager_trackIncludeFileUnsavedChanges - Track unsaved changes in include files
 - src/includeFileManager-IncludeFileManager_checkForExternalIncludeFileChanges - Check for external changes in include files
@@ -1422,11 +1422,11 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/includeFileManager-IncludeFileManager_updateIncludeContentUnified - Update include content in unified system
 - src/includeFileManager-IncludeFileManager_updateIncludeFile - Update include file from external change
 - src/includeFileManager-IncludeFileManager_updateInlineIncludeFile - Update inline include file
-- src/includeFileManager-IncludeFileManager_updateTaskIncludeWithConflictDetection - Update task include with conflict detection
-- src/includeFileManager-IncludeFileManager_reprocessTaskIncludes - Reprocess all task includes
+- src/includeFileManager-IncludeFileManager_updateCardIncludeWithConflictDetection - Update card include with conflict detection
+- src/includeFileManager-IncludeFileManager_reprocessCardIncludes - Reprocess all card includes
 - src/includeFileManager-IncludeFileManager_handleIncludeFileConflict - Handle include file conflict
 - src/includeFileManager-IncludeFileManager_isColumnIncludeFile - Check if file is column include
-- src/includeFileManager-IncludeFileManager_isTaskIncludeFile - Check if file is task include
+- src/includeFileManager-IncludeFileManager_isCardIncludeFile - Check if file is card include
 - src/includeFileManager-IncludeFileManager_handleExternalFileChange - Handle external file change event
 - src/includeFileManager-IncludeFileManager_writeFileContent - Write file content to disk
 - src/includeFileManager-IncludeFileManager_getRecentlyReloadedFiles - Get recently reloaded files set
@@ -1578,8 +1578,8 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/messageHandler-MessageHandler_handleRegisterInlineInclude - Handle inline include registration
 - src/messageHandler-MessageHandler_handleRequestIncludeFileName - Handle include filename request
 - src/messageHandler-MessageHandler_handleRequestEditIncludeFileName - Handle edit include filename request
-- src/messageHandler-MessageHandler_handleRequestEditTaskIncludeFileName - Handle edit task include filename
-- src/messageHandler-MessageHandler_handleRequestTaskIncludeFileName - Handle task include filename request
+- src/messageHandler-MessageHandler_handleRequestEditCardIncludeFileName - Handle edit card include filename
+- src/messageHandler-MessageHandler_handleRequestCardIncludeFileName - Handle card include filename request
 - src/messageHandler-MessageHandler_handleGetExportDefaultFolder - Get default export folder
 - src/messageHandler-MessageHandler_handleSelectExportFolder - Handle export folder selection
 - src/messageHandler-MessageHandler_handleAskOpenExportFolder - Ask to open export folder
@@ -1591,7 +1591,7 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/messageHandler-MessageHandler_getUnifiedFileState - Get unified file state info
 - src/messageHandler-MessageHandler_collectTrackedFilesDebugInfo - Collect debug info for tracked files
 - src/messageHandler-MessageHandler_clearAllTrackedFileCaches - Clear all tracked file caches
-- src/messageHandler-MessageHandler_handleUpdateTaskFromStrikethroughDeletion - Handle task strikethrough deletion
+- src/messageHandler-MessageHandler_handleUpdateCardFromStrikethroughDeletion - Handle card strikethrough deletion
 - src/messageHandler-MessageHandler_handleUpdateColumnTitleFromStrikethroughDeletion - Handle column title strikethrough
 - src/messageHandler-MessageHandler_handleGetMarpThemes - Get available Marp themes
 - src/messageHandler-MessageHandler_handlePollMarpThemes - Poll for Marp themes
@@ -1603,7 +1603,7 @@ Both INIT (initial load) and FOCUS (window focus) now use `FileSyncHandler.syncA
 - src/messageHandler-MessageHandler_handleExport - Handle export operation
 - src/messageHandler-MessageHandler_handleAutoExportMode - Handle auto-export mode
 - src/messageHandler-MessageHandler_handleSwitchColumnIncludeFile - Switch column include file without saving main file, save old file if needed, create/load new file, update column content
-- src/messageHandler-MessageHandler_handleSwitchTaskIncludeFile - Switch task include file without saving main file, save old file if needed, create/load new file, update task content
+- src/messageHandler-MessageHandler_handleSwitchCardIncludeFile - Switch card include file without saving main file, save old file if needed, create/load new file, update card content
 - src/messageHandler-MessageHandler_handleForceWriteAllContent - (NEW 2025-11-05) Force write all content from frontend to backend files unconditionally, bypasses change detection when sync is broken
 - src/messageHandler-MessageHandler_handleVerifyContentSync - (NEW 2025-11-05) Verify content synchronization between frontend and backend, compares actual content not just flags
 
@@ -1709,12 +1709,12 @@ Sidebar TreeView for listing and managing kanban boards in workspace. Supports a
 - src/boardOperations-BoardOperations_removeColumn - Remove column from board
 - src/boardOperations-BoardOperations_moveColumn - Move column to new position
 - src/boardOperations-BoardOperations_updateColumnTitle - Update column title
-- src/boardOperations-BoardOperations_addTask - Add new task to column
-- src/boardOperations-BoardOperations_removeTask - Remove task from column
-- src/boardOperations-BoardOperations_moveTask - Move task between columns
-- src/boardOperations-BoardOperations_updateTaskTitle - Update task title
-- src/boardOperations-BoardOperations_updateTaskDescription - Update task description
-- src/boardOperations-BoardOperations_toggleTaskComplete - Toggle task completion state
+- src/boardOperations-BoardOperations_addCard - Add new card to column
+- src/boardOperations-BoardOperations_removeCard - Remove card from column
+- src/boardOperations-BoardOperations_moveCard - Move card between columns
+- src/boardOperations-BoardOperations_updateCardTitle - Update card title
+- src/boardOperations-BoardOperations_updateCardDescription - Update card description
+- src/boardOperations-BoardOperations_toggleCardComplete - Toggle card completion state
 
 ## src/markdownParser.ts
 
@@ -1722,9 +1722,9 @@ Sidebar TreeView for listing and managing kanban boards in workspace. Supports a
 - src/markdownParser-kanbanBoardToMarkdown - Convert kanban board to markdown. Preserves checkbox state: writes `- [x]` when `task.checked`, else `- [ ]`.
 - src/markdownParser-extractYamlFrontmatter - Extract YAML frontmatter from markdown
 - src/markdownParser-parseColumn - Parse column from markdown
-- src/markdownParser-parseTask - Parse task from markdown
+- src/markdownParser-parseCard - Parse card from markdown
 - src/markdownParser-columnToMarkdown - Convert column to markdown
-- src/markdownParser-taskToMarkdown - Convert task to markdown
+- src/markdownParser-cardToMarkdown - Convert card to markdown
 
 ## src/undoRedoManager.ts - UndoRedoManager
 
@@ -1772,7 +1772,7 @@ Sidebar TreeView for listing and managing kanban boards in workspace. Supports a
 - src/configurationService-ConfigurationService_clearCache - Clear configuration cache
 - src/configurationService-ConfigurationService_getTagConfiguration - Get tag configuration
 - src/configurationService-ConfigurationService_getEnabledTagCategoriesColumn - Get enabled tag categories for columns
-- src/configurationService-ConfigurationService_getEnabledTagCategoriesTask - Get enabled tag categories for tasks
+- src/configurationService-ConfigurationService_getEnabledTagCategoriesCard - Get enabled tag categories for cards
 - src/configurationService-ConfigurationService_getCustomTagCategories - Get custom tag categories
 - src/configurationService-ConfigurationService_getLayoutConfiguration - Get layout configuration
 - src/configurationService-ConfigurationService_getBackupConfiguration - Get backup configuration
@@ -1784,18 +1784,18 @@ Sidebar TreeView for listing and managing kanban boards in workspace. Supports a
 ## src/presentationParser.ts - PresentationParser
 
 - src/presentationParser-PresentationParser_parsePresentation - Parse presentation markdown into slides
-- src/presentationParser-PresentationParser_slidesToTasks - Convert slides to kanban tasks
-- src/presentationParser-PresentationParser_tasksToPresentation - Convert tasks to presentation format
-- src/presentationParser-PresentationParser_parseMarkdownToTasks - Parse markdown file to tasks
+- src/presentationParser-PresentationParser_slidesToCards - Convert slides to kanban cards
+- src/presentationParser-PresentationParser_cardsToPresentation - Convert cards to presentation format
+- src/presentationParser-PresentationParser_parseMarkdownToCards - Parse markdown file to cards
 
 ## src/utils/idGenerator.ts - IdGenerator
 
 - src/utils/idGenerator-IdGenerator_generateUUID - Generate RFC4122 UUID v4
 - src/utils/idGenerator-IdGenerator_generateColumnId - Generate column ID with prefix
-- src/utils/idGenerator-IdGenerator_generateTaskId - Generate task ID with prefix
+- src/utils/idGenerator-IdGenerator_generateCardId - Generate card ID with prefix
 - src/utils/idGenerator-IdGenerator_isValidUUID - Validate UUID format
 - src/utils/idGenerator-IdGenerator_isValidColumnId - Validate column ID format
-- src/utils/idGenerator-IdGenerator_isValidTaskId - Validate task ID format
+- src/utils/idGenerator-IdGenerator_isValidCardId - Validate card ID format
 - src/utils/idGenerator-IdGenerator_extractUUID - Extract UUID from prefixed ID
 - src/utils/idGenerator-IdGenerator_getShortId - Generate short display ID
 
@@ -1866,7 +1866,7 @@ Sidebar TreeView for listing and managing kanban boards in workspace. Supports a
 - src/services/MarpConverter-MarpConverter_kanbanToMarp - Convert kanban board to Marp presentation
 - src/services/MarpConverter-MarpConverter_createMarpFrontmatter - Create Marp YAML frontmatter
 - src/services/MarpConverter-MarpConverter_columnToSlides - Convert column to Marp slides
-- src/services/MarpConverter-MarpConverter_taskToSlide - Convert task to Marp slide
+- src/services/MarpConverter-MarpConverter_cardToSlide - Convert card to Marp slide
 - src/services/MarpConverter-MarpConverter_convertMarkdownToMarp - Convert kanban markdown to Marp
 - src/services/MarpConverter-MarpConverter_addMarpDirectives - Add Marp directives to markdown
 
@@ -1918,12 +1918,12 @@ All logic migrated to `src/plugins/export/PandocExportPlugin.ts`.
   - REGEX_SINGLE: Non-global regex for single match
 - **FILE_TYPES** - File type constants (MAIN, INCLUDE_COLUMN, INCLUDE_TASK, INCLUDE_REGULAR)
 - **Purpose**: Eliminates 783+ duplicate string instances across the codebase
-- **Used by**: markdownParser.ts, messageHandler.ts, boardOperations.ts, ColumnCommands.ts, TaskCommands.ts
+- **Used by**: markdownParser.ts, messageHandler.ts, boardOperations.ts, ColumnCommands.ts, CardCommands.ts
 
 **Functions:**
 - **extractIncludeFiles(title: string): string[]** - Extract include file paths from a title string
   - Returns array of file paths found in !!!include(path)!!! syntax
-  - Added 2025-12-22 to consolidate duplicate implementations from ColumnCommands and TaskCommands
+  - Added 2025-12-22 to consolidate duplicate implementations from ColumnCommands and CardCommands
 
 **Note**: All include syntax pattern matching should use INCLUDE_SYNTAX constants instead of hardcoded strings.
 
@@ -2049,22 +2049,22 @@ Total functions documented: **495**
 - src/files/ColumnIncludeFile-ColumnIncludeFile_getColumnId - Get column ID
 - src/files/ColumnIncludeFile-ColumnIncludeFile_setColumnTitle - Set column title
 - src/files/ColumnIncludeFile-ColumnIncludeFile_getColumnTitle - Get column title
-- src/files/ColumnIncludeFile-ColumnIncludeFile_parseToTasks - Parse presentation format to tasks array
-- src/files/ColumnIncludeFile-ColumnIncludeFile_generateFromTasks - Generate presentation format from tasks
-- src/files/ColumnIncludeFile-ColumnIncludeFile_updateTasks - Update tasks (regenerate content)
+- src/files/ColumnIncludeFile-ColumnIncludeFile_parseToCards - Parse presentation format to cards array
+- src/files/ColumnIncludeFile-ColumnIncludeFile_generateFromCards - Generate presentation format from cards
+- src/files/ColumnIncludeFile-ColumnIncludeFile_updateCards - Update cards (regenerate content)
 - src/files/ColumnIncludeFile-ColumnIncludeFile_validate - Validate presentation format content
 
-## src/files/TaskIncludeFile.ts - TaskIncludeFile
+## src/files/CardIncludeFile.ts - CardIncludeFile
 
-- src/files/TaskIncludeFile-TaskIncludeFile_setTaskId - Set task ID this include belongs to
-- src/files/TaskIncludeFile-TaskIncludeFile_getTaskId - Get task ID
-- src/files/TaskIncludeFile-TaskIncludeFile_setTaskTitle - Set task title
-- src/files/TaskIncludeFile-TaskIncludeFile_getTaskTitle - Get task title
-- src/files/TaskIncludeFile-TaskIncludeFile_setColumnId - Set column ID containing task
-- src/files/TaskIncludeFile-TaskIncludeFile_getColumnId - Get column ID
-- src/files/TaskIncludeFile-TaskIncludeFile_getTaskDescription - Get task description content
-- src/files/TaskIncludeFile-TaskIncludeFile_setTaskDescription - Set task description content
-- src/files/TaskIncludeFile-TaskIncludeFile_validate - Validate task include content
+- src/files/CardIncludeFile-CardIncludeFile_setCardId - Set card ID this include belongs to
+- src/files/CardIncludeFile-CardIncludeFile_getCardId - Get card ID
+- src/files/CardIncludeFile-CardIncludeFile_setCardTitle - Set card title
+- src/files/CardIncludeFile-CardIncludeFile_getCardTitle - Get card title
+- src/files/CardIncludeFile-CardIncludeFile_setColumnId - Set column ID containing card
+- src/files/CardIncludeFile-CardIncludeFile_getColumnId - Get column ID
+- src/files/CardIncludeFile-CardIncludeFile_getCardDescription - Get card description content
+- src/files/CardIncludeFile-CardIncludeFile_setCardDescription - Set card description content
+- src/files/CardIncludeFile-CardIncludeFile_validate - Validate card include content
 
 ## src/files/RegularIncludeFile.ts - RegularIncludeFile
 
@@ -2089,7 +2089,7 @@ Total functions documented: **495**
 - src/files/MarkdownFileRegistry-MarkdownFileRegistry_getMainFile - Get main kanban file
 - src/files/MarkdownFileRegistry-MarkdownFileRegistry_getIncludeFiles - Get all include files
 - src/files/MarkdownFileRegistry-MarkdownFileRegistry_getColumnIncludeFiles - Get column include files
-- src/files/MarkdownFileRegistry-MarkdownFileRegistry_getTaskIncludeFiles - Get task include files
+- src/files/MarkdownFileRegistry-MarkdownFileRegistry_getCardIncludeFiles - Get card include files
 - src/files/MarkdownFileRegistry-MarkdownFileRegistry_getRegularIncludeFiles - Get regular include files
 - src/files/MarkdownFileRegistry-MarkdownFileRegistry_getFilesWithConflicts - Get files with conflicts
 - src/files/MarkdownFileRegistry-MarkdownFileRegistry_getFilesWithUnsavedChanges - Get files with unsaved changes
@@ -2112,7 +2112,7 @@ Total functions documented: **495**
 
 - src/files/FileFactory-FileFactory_createMainFile - Create MainKanbanFile instance
 - src/files/FileFactory-FileFactory_createColumnInclude - Create ColumnIncludeFile instance
-- src/files/FileFactory-FileFactory_createTaskInclude - Create TaskIncludeFile instance
+- src/files/FileFactory-FileFactory_createCardInclude - Create CardIncludeFile instance
 - src/files/FileFactory-FileFactory_createRegularInclude - Create RegularIncludeFile instance
 - src/files/FileFactory-FileFactory_createInclude - Create include file with type auto-detection
 
@@ -2149,8 +2149,8 @@ Total functions documented: **495**
 - src/html/markdown-it-include-browser-formatIncludeLabel - Build standardized include label text for markdown-it include render paths
 
 ### Modified Functions (2026-01-06):
-- src/html/dragDrop-setupTaskDragHandle - Store original task index based on task-item order for reliable drag restore/undo positioning
-- src/html/dragDrop-processTaskDrop - Use task-only indices for final position tracking and undo payload from-index consistency
+- src/html/dragDrop-setupCardDragHandle - Store original card index based on task-item order for reliable drag restore/undo positioning
+- src/html/dragDrop-processCardDrop - Use card-only indices for final position tracking and undo payload from-index consistency
 - src/core/stores/BoardStore-undo - Restore task-move undos from stored snapshot while preserving targeted column updates
 - src/core/stores/BoardStore-redo - Restore task-move redos from stored snapshot while preserving targeted column updates
 
@@ -2163,7 +2163,7 @@ Total functions documented: **495**
 - src/html/boardRenderer-setupImageLoadingWatchers - Set up image loading watchers for all stacks; each stack waits for ALL its images before recalculating once; called AFTER initial stack calculation (at 50ms)
 
 ### Modified Functions (2025-11-22):
-- src/html/menuOperations-deleteTask - Added stack height recalculation after task deletion to update positions of all columns in the stack
+- src/html/menuOperations-deleteCard - Added stack height recalculation after card deletion to update positions of all columns in the stack
 - src/html/dragDrop-handleVSCodeFileDrop - Enhanced to detect image files and read contents to save to MEDIA folder instead of creating broken links; works for external file drops (Finder/Explorer)
 - src/html/dragDrop-handleVSCodeUriDrop - Enhanced to detect image URIs and intelligently copy or link files; checks if image is already in workspace before copying
 - src/messageHandler-handleMessage - Added cases for 'saveDroppedImageFromContents' and 'copyImageToMedia' to handle dropped images
@@ -2298,10 +2298,10 @@ Plugin-based architecture for import/export operations. Provides unified interfa
 - src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_canHandle - Only handles column-header context
 - src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_detectIncludes - Detect !!!include()!!! in column headers
 - src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_createFile - Create ColumnIncludeFile instance
-- src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_parseContent - Parse presentation to KanbanTask[] (preserves IDs by position)
-- src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_generateContent - Generate presentation from KanbanTask[]
+- src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_parseContent - Parse presentation to KanbanCard[] (preserves IDs by position)
+- src/plugins/import/ColumnIncludePlugin-ColumnIncludePlugin_generateContent - Generate presentation from KanbanCard[]
 
-## src/plugins/import/TaskIncludePlugin.ts - TaskIncludePlugin
+## src/plugins/import/CardIncludePlugin.ts - CardIncludePlugin
 
 ### Properties:
 - metadata.id: 'task-include'
@@ -2310,10 +2310,10 @@ Plugin-based architecture for import/export operations. Provides unified interfa
 - metadata.contextLocation: 'task-title'
 
 ### Methods:
-- src/plugins/import/TaskIncludePlugin-TaskIncludePlugin_canHandle - Only handles task-title context
-- src/plugins/import/TaskIncludePlugin-TaskIncludePlugin_detectIncludes - Detect !!!include()!!! in task titles
-- src/plugins/import/TaskIncludePlugin-TaskIncludePlugin_createFile - Create TaskIncludeFile instance
-- src/plugins/import/TaskIncludePlugin-TaskIncludePlugin_parseContent - Returns raw content (used as task description)
+- src/plugins/import/CardIncludePlugin-CardIncludePlugin_canHandle - Only handles task-title context
+- src/plugins/import/CardIncludePlugin-CardIncludePlugin_detectIncludes - Detect !!!include()!!! in task titles
+- src/plugins/import/CardIncludePlugin-CardIncludePlugin_createFile - Create CardIncludeFile instance
+- src/plugins/import/CardIncludePlugin-CardIncludePlugin_parseContent - Returns raw content (used as task description)
 
 ## src/plugins/import/RegularIncludePlugin.ts - RegularIncludePlugin
 
@@ -2427,7 +2427,7 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 ### Outgoing Messages (Backend → Frontend):
 - **BoardUpdateMessage** - Full board state update
 - **UpdateColumnContentMessage** - Single column content update
-- **UpdateTaskContentMessage** - Single task content update
+- **UpdateCardContentMessage** - Single card content update
 - **UndoRedoStatusMessage** - Undo/redo availability status
 - **FileInfoMessage** - File information update
 - **OperationStartedMessage** - Operation started notification
@@ -2447,10 +2447,10 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 - **RedoMessage** - Redo request
 - **RequestBoardUpdateMessage** - Request board update
 - **BoardUpdateFromFrontendMessage** - Board update from user edits
-- **EditTaskMessage** - Edit task request
-- **MoveTaskMessage** - Move task request
-- **AddTaskMessage** - Add task request
-- **DeleteTaskMessage** - Delete task request
+- **EditCardMessage** - Edit card request
+- **MoveCardMessage** - Move card request
+- **AddCardMessage** - Add card request
+- **DeleteCardMessage** - Delete card request
 - **AddColumnMessage** - Add column request
 - **MoveColumnMessage** - Move column request
 - **DeleteColumnMessage** - Delete column request
@@ -2590,10 +2590,10 @@ WebviewBridge provides a typed, promise-based interface for webview communicatio
 ## Hidden Content Feature (2026-02-11)
 
 ### New: `src/html/menuOperations.js`
-- `toggleHiddenContent(taskId)` — Toggles the `data-hidden-revealed` attribute on a task with `#hidden` tag; updates the menu button text between "Reveal content" and "Hide content".
+- `toggleHiddenContent(cardId)` — Toggles the `data-hidden-revealed` attribute on a card with `#hidden` tag; updates the menu button text between "Reveal content" and "Hide content".
 
 ### Modified: `src/html/boardRenderer.js`
-- `createTaskElement()` — Added `#hidden` tag detection using `tagUtils.patterns.hiddenTag`; adds `data-hidden-content="true"` attribute to task-item div; adds conditional "Reveal content" button in burger menu.
+- `createCardElement()` — Added `#hidden` tag detection using `tagUtils.patterns.hiddenTag`; adds `data-hidden-content="true"` attribute to task-item div; adds conditional "Reveal content" button in burger menu.
 
 ### Modified: `src/html/webview.css`
 - Added CSS rules for `.task-item[data-hidden-content="true"]` — content hiding overlay via `::after` pseudo-element on `.task-description-container`; blocks pointer events on hidden description.
@@ -2692,11 +2692,11 @@ Per-board color stored in YAML frontmatter (`boardColor: #hex`), shown as tint o
 ## Bug Fix (2026-02-19) - Broken Elements Search Improvements
 
 ### Modified: `src/dashboard/DashboardTypes.ts`
-- `DashboardBrokenElement` — Replaced `columnIndex`/`taskIndex` with `columnId`/`taskId` for ID-based navigation instead of fragile index-based navigation.
+- `DashboardBrokenElement` — Replaced `columnIndex`/`cardIndex` with `columnId`/`cardId` for ID-based navigation instead of fragile index-based navigation.
 
 ### Modified: `src/kanbanDashboardProvider.ts`
-- `_refreshData()` — Now stores `columnId`/`taskId` from scanner results instead of `columnIndex`/`taskIndex`.
-- `renderBrokenItem()` — Renders `data-column-id`/`data-task-id` attributes instead of index attributes.
+- `_refreshData()` — Now stores `columnId`/`cardId` from scanner results instead of `columnIndex`/`cardIndex`.
+- `renderBrokenItem()` — Renders `data-column-id`/`data-card-id` attributes instead of index attributes.
 - `attachBrokenListeners()` — Uses `navigateToElement()` (ID-based) instead of `navigateToTask()` (index-based).
 
 ### Modified: `src/services/BoardContentScanner.ts`

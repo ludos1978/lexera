@@ -107,7 +107,7 @@ function openPath(pathOrElement, cardId, columnId, isColumnTitle) {
         const container = sourceElement.closest(
             '.image-path-overlay-container, .video-path-overlay-container, .include-path-overlay-container, .image-not-found-container, .video-not-found-container, .image-path-menu, .include-path-menu, .image-not-found-menu, .video-not-found-menu'
         );
-        const taskElement = container?.closest('.task-item');
+        const taskElement = container?.closest('.card-item');
         const columnElement = container?.closest('.kanban-full-height-column') || container?.closest('[data-column-id]');
         const columnTitleElement = container?.closest('.column-title');
 
@@ -297,7 +297,7 @@ function searchForIncludeFile(buttonElement, filePath, isColumnTitle) {
     // Extract cardId from closest task element (only for task includes)
     let cardId = null;
     if (isColumnTitle !== 'true') {
-        const taskEl = buttonElement.closest('.task-item');
+        const taskEl = buttonElement.closest('.card-item');
         cardId = taskEl?.getAttribute('data-card-id');
     }
 
@@ -478,7 +478,7 @@ function togglePathMenu(container, filePath, mediaType) {
     const escapedPath = filePath.replace(/'/g, "\\'").replace(/"/g, '\\"');
 
     // Find task/column context for targeted updates
-    const taskElement = container.closest('.task-item');
+    const taskElement = container.closest('.card-item');
     const columnElement = container.closest('.kanban-full-height-column') || container.closest('[data-column-id]');
     const columnTitleElement = container.closest('.column-title');
     const cardId = taskElement?.dataset?.cardId || '';
@@ -1360,7 +1360,7 @@ function upgradeImageOverlayToBroken(overlayContainer, simpleSpan, originalSrc) 
     }
 
     // Find task/column context for targeted updates
-    const taskElement = overlayContainer.closest('.task-item');
+    const taskElement = overlayContainer.closest('.card-item');
     const columnElement = overlayContainer.closest('.kanban-full-height-column') || overlayContainer.closest('[data-column-id]');
     const cardId = taskElement?.dataset?.cardId;
     const columnId = columnElement?.dataset?.columnId;
@@ -1623,7 +1623,7 @@ function setupMediaPathEventDelegation() {
         }
 
         // Find task/column context for targeted updates
-        const taskElement = container.closest('.task-item');
+        const taskElement = container.closest('.card-item');
         const columnElement = container.closest('.kanban-full-height-column') || container.closest('[data-column-id]');
         const cardId = taskElement?.dataset?.cardId;
         const columnId = columnElement?.dataset?.columnId;

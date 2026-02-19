@@ -206,9 +206,9 @@ class TaskEditor {
         const self = this;
         document.addEventListener('paste', (e) => {
             const target = e.target;
-            const isTitleField = target && (target.classList.contains('task-title-edit') ||
+            const isTitleField = target && (target.classList.contains('card-title-edit') ||
                 target.classList.contains('column-title-edit'));
-            const isDescriptionField = target && target.classList.contains('task-description-edit');
+            const isDescriptionField = target && target.classList.contains('card-description-edit');
 
             if (isTitleField || isDescriptionField) {
                 e.preventDefault();
@@ -239,9 +239,9 @@ class TaskEditor {
         // Detect Shift+Cmd+V / Shift+Ctrl+V for smart paste (URL encoding + image handling)
         document.addEventListener('keydown', async (e) => {
             const target = e.target;
-            const isTitleField = target && (target.classList.contains('task-title-edit') ||
+            const isTitleField = target && (target.classList.contains('card-title-edit') ||
                 target.classList.contains('column-title-edit'));
-            const isDescriptionField = target && target.classList.contains('task-description-edit');
+            const isDescriptionField = target && target.classList.contains('card-description-edit');
 
             // Shift+Cmd+V (Mac) or Shift+Ctrl+V (Windows) - URL encoding paste + image handling
             if ((isTitleField || isDescriptionField) &&
@@ -328,9 +328,9 @@ class TaskEditor {
 
                                     window.addEventListener('message', imageHandler);
 
-                                    const domTaskId = typeof window.getTaskIdFromElement === 'function'
-                                        ? window.getTaskIdFromElement(target)
-                                        : target?.closest?.('.task-item')?.dataset?.cardId;
+                                    const domTaskId = typeof window.getCardIdFromElement === 'function'
+                                        ? window.getCardIdFromElement(target)
+                                        : target?.closest?.('.card-item')?.dataset?.cardId;
                                     const domColumnId = typeof window.getColumnIdFromElement === 'function'
                                         ? window.getColumnIdFromElement(target)
                                         : target?.closest?.('[data-column-id]')?.dataset?.columnId;
@@ -503,20 +503,20 @@ class TaskEditor {
                 e.preventDefault();
                 // In task title: Alt+Enter transitions to description editing
                 // In other fields: Alt+Enter saves
-                if (element.classList.contains('task-title-edit')) {
+                if (element.classList.contains('card-title-edit')) {
                     this.transitionToDescription();
                 } else {
                     this.save();
                 }
             } else if (e.key === 'Enter' && !e.shiftKey) {
-                if (element.classList.contains('task-title-edit') ||
+                if (element.classList.contains('card-title-edit') ||
                     element.classList.contains('column-title-edit')) {
                     e.preventDefault();
                     this.save();
                 }
             } else if (e.key === 'Enter' && e.shiftKey) {
                 // Shift+Enter: End editing (save changes)
-                if (element.classList.contains('task-title-edit') ||
+                if (element.classList.contains('card-title-edit') ||
                     element.classList.contains('column-title-edit')) {
                     e.preventDefault();
                     this.save();
@@ -624,13 +624,13 @@ class TaskEditor {
         let displayElement, editElement, containerElement;
 
         if (type === 'task-title') {
-            containerElement = element.closest('.task-item') || element;
-            displayElement = containerElement.querySelector('.task-title-display');
-            editElement = containerElement.querySelector('.task-title-edit');
+            containerElement = element.closest('.card-item') || element;
+            displayElement = containerElement.querySelector('.card-title-display');
+            editElement = containerElement.querySelector('.card-title-edit');
         } else if (type === 'task-description') {
-            containerElement = element.closest('.task-description-container') || element;
-            displayElement = containerElement.querySelector('.task-description-display');
-            editElement = containerElement.querySelector('.task-description-edit');
+            containerElement = element.closest('.card-description-container') || element;
+            displayElement = containerElement.querySelector('.card-description-display');
+            editElement = containerElement.querySelector('.card-description-edit');
         } else if (type === 'column-title') {
             containerElement = element.closest('.kanban-full-height-column') || element;
             displayElement = containerElement.querySelector('.column-title-text');
@@ -1015,9 +1015,9 @@ class TaskEditor {
      * @private
      */
     _setupEditVisibility(displayElement, editElement, wysiwygContainer = null, containerElement = null) {
-        // SIMPLIFIED: Lock task-item height to prevent flex shrink cascade
+        // SIMPLIFIED: Lock card-item height to prevent flex shrink cascade
         // This is the ONE mechanism that prevents scroll jump - no spacers or scroll restoration needed
-        const taskItem = containerElement?.closest('.task-item');
+        const taskItem = containerElement?.closest('.card-item');
         if (taskItem && !taskItem._editingHeightLock) {
             taskItem._editingHeightLock = {
                 height: taskItem.style.height,
@@ -1034,7 +1034,7 @@ class TaskEditor {
             void taskItem.offsetHeight; // Force reflow before visibility change
         }
 
-        // Change visibility - scroll WON'T clamp because task-item height is locked
+        // Change visibility - scroll WON'T clamp because card-item height is locked
         if (displayElement) { displayElement.style.display = 'none'; }
         if (wysiwygContainer) {
             editElement.style.display = 'none';
@@ -1122,7 +1122,7 @@ class TaskEditor {
             element: editElement,
             displayElement: displayElement,
             type: type,
-            cardId: cardId || window.getTaskIdFromElement(editElement),
+            cardId: cardId || window.getCardIdFromElement(editElement),
             columnId: columnId || window.getColumnIdFromElement(editElement),
             originalValue: editElement.value,
             containerElement: containerElement,
@@ -1253,7 +1253,7 @@ class TaskEditor {
             insertPosition = Math.min(Math.max(0, charOffset), editElement.value.length);
 
             // Check if this is a title field - join with spaces instead of newlines
-            const isTitleField = editElement.classList.contains('task-title-edit') ||
+            const isTitleField = editElement.classList.contains('card-title-edit') ||
                                  editElement.classList.contains('column-title-edit');
             const insertText = isTitleField ? markdown.replace(/\n/g, ' ') : markdown;
 
@@ -1282,7 +1282,7 @@ class TaskEditor {
 
         // DEBUG: Log how many edit elements exist
         if (window.kanbanDebug?.enabled) {
-            const allEditElements = document.querySelectorAll('.task-description-edit');
+            const allEditElements = document.querySelectorAll('.card-description-edit');
             console.log('[SETUP-DEBUG] Setting up input handler', {
                 editElementCount: allEditElements.length,
                 elementId: editElement.closest('[data-card-id]')?.dataset?.cardId
@@ -1602,11 +1602,11 @@ class TaskEditor {
             return null;
         }
 
-        const descriptionContainer = editElement?.closest?.('.task-description-container') || containerElement;
-        let wysiwygContainer = descriptionContainer.querySelector('.task-description-wysiwyg');
+        const descriptionContainer = editElement?.closest?.('.card-description-container') || containerElement;
+        let wysiwygContainer = descriptionContainer.querySelector('.card-description-wysiwyg');
         if (!wysiwygContainer) {
             wysiwygContainer = document.createElement('div');
-            wysiwygContainer.className = 'task-description-wysiwyg task-description-edit';
+            wysiwygContainer.className = 'card-description-wysiwyg card-description-edit';
             wysiwygContainer.setAttribute('data-field', 'description');
             descriptionContainer.appendChild(wysiwygContainer);
         }
@@ -1642,7 +1642,7 @@ class TaskEditor {
 
                     const activeElement = document.activeElement;
                     const isEditingElsewhere = this._isInlineEditorElement(activeElement) ||
-                        Boolean(activeElement?.closest && activeElement.closest('.task-description-wysiwyg'));
+                        Boolean(activeElement?.closest && activeElement.closest('.card-description-wysiwyg'));
                     // Don't auto-save if focus moved to a modal/dialog (it will return)
                     const isInModal = activeElement?.closest?.('.modal-overlay, .template-dialog-overlay, .input-modal, [role="dialog"]');
                     if (!isEditingElsewhere && !isInModal) {
@@ -1753,8 +1753,8 @@ class TaskEditor {
             element &&
             element.classList &&
             (
-                element.classList.contains('task-title-edit') ||
-                element.classList.contains('task-description-edit') ||
+                element.classList.contains('card-title-edit') ||
+                element.classList.contains('card-description-edit') ||
                 element.classList.contains('column-title-edit')
             )
         );
@@ -1908,8 +1908,8 @@ class TaskEditor {
     startEdit(element, type, cardId = null, columnId = null, preserveCursor = false) {
         // Task summary line is derived from unified content and must not be edited directly.
         if (type === 'task-title') {
-            const taskItem = element?.closest?.('.task-item');
-            const descriptionContainer = taskItem?.querySelector?.('.task-description-container');
+            const taskItem = element?.closest?.('.card-item');
+            const descriptionContainer = taskItem?.querySelector?.('.card-description-container');
             return this.startEdit(descriptionContainer || element, 'task-description', cardId, columnId, preserveCursor);
         }
 
@@ -2058,7 +2058,7 @@ class TaskEditor {
 
         const cardId = this.currentEditor.cardId;
         const columnId = this.currentEditor.columnId;
-        const taskItem = this.currentEditor.element.closest('.task-item');
+        const taskItem = this.currentEditor.element.closest('.card-item');
 
         // Use the same save logic as regular saves to handle task includes correctly
         this.saveCurrentField();
@@ -2077,7 +2077,7 @@ class TaskEditor {
         
         // Immediately start editing description (no async needed)
         this.isTransitioning = false;
-        const descContainer = taskItem.querySelector('.task-description-container');
+        const descContainer = taskItem.querySelector('.card-description-container');
         if (descContainer) {
             this.startEdit(descContainer, 'task-description', cardId, columnId);
         }
@@ -2524,7 +2524,7 @@ class TaskEditor {
         }
 
         // Update visual tag state (task-level tags from header only)
-        const taskElement = element.closest('.task-item');
+        const taskElement = element.closest('.card-item');
         if (taskElement) {
             const taskHeaderText = window.taskContentUtils?.getTaskHeader
                 ? window.taskContentUtils.getTaskHeader(value)
@@ -2618,7 +2618,7 @@ class TaskEditor {
         if (type === 'task-description') {
             const taskElement = document.querySelector(`[data-card-id="${cardId}"]`);
             if (taskElement) {
-                const titleDisplayElement = taskElement.querySelector('.task-title-display');
+                const titleDisplayElement = taskElement.querySelector('.card-title-display');
                 if (titleDisplayElement) {
                     const isCollapsed = taskElement.classList.contains('collapsed');
                     if (isCollapsed) {
@@ -2706,8 +2706,8 @@ class TaskEditor {
         this._requestStackLayoutRecalc(closeColumnId);
         this._flushStackLayoutRecalc();
 
-        // Release task-item height lock AFTER layout recalc to prevent scroll jump
-        const taskItem = element.closest('.task-item');
+        // Release card-item height lock AFTER layout recalc to prevent scroll jump
+        const taskItem = element.closest('.card-item');
         if (taskItem && taskItem._editingHeightLock) {
             // Wait for layout to stabilize before releasing height lock
             requestAnimationFrame(() => {
@@ -2736,7 +2736,7 @@ class TaskEditor {
         this._clearPostCloseFocusTimeout();
         if (type === 'task-title' || type === 'task-description') {
             // Find the task item to focus
-            const taskItem = element.closest('.task-item');
+            const taskItem = element.closest('.card-item');
             if (taskItem) {
                 // Small delay to ensure display element is visible
                 this._postCloseFocusTimeout = setTimeout(() => {
@@ -2745,7 +2745,7 @@ class TaskEditor {
                         return;
                     }
 
-                    const focusTarget = taskItem.querySelector('.task-section[tabindex], .task-section');
+                    const focusTarget = taskItem.querySelector('.card-section[tabindex], .card-section');
                     if (!focusTarget) {
                         return;
                     }
@@ -2780,7 +2780,7 @@ class TaskEditor {
 
         // Keep folded summary text synced after edit completion.
         if (type === 'task-title' || type === 'task-description') {
-            const taskItem = element.closest('.task-item');
+            const taskItem = element.closest('.card-item');
             if (taskItem) {
                 const cardId = taskItem.getAttribute('data-card-id');
                 const isCollapsed = taskItem.classList.contains('collapsed');
@@ -2789,7 +2789,7 @@ class TaskEditor {
                     // Get task data from cached board
                     const task = findTaskById(cardId);
                     if (task) {
-                        const titleDisplay = taskItem.querySelector('.task-title-display');
+                        const titleDisplay = taskItem.querySelector('.card-title-display');
                         if (titleDisplay) {
                             const collapsedTitle = window.getCollapsedTaskTitleText
                                 ? window.getCollapsedTaskTitleText(task)
@@ -2879,7 +2879,7 @@ class TaskEditor {
         }
 
         // Keep the task item height lock in sync when editing descriptions
-        const taskItem = textarea.closest ? textarea.closest('.task-item') : null;
+        const taskItem = textarea.closest ? textarea.closest('.card-item') : null;
         if (taskItem && taskItem._editingHeightLock) {
             const lockedHeight = taskItem.offsetHeight;
             const neededHeight = Math.max(taskItem.scrollHeight, taskItem._editingHeightLock.originalHeight || 0);
@@ -3094,7 +3094,7 @@ function editDescription(element, cardId, columnId) {
     }
 
     // Find the actual container if needed
-    const container = element.closest('.task-description-container') || element;
+    const container = element.closest('.card-description-container') || element;
     taskEditor.startEdit(container, 'task-description', cardId, columnId, true); // preserveCursor=true for clicks
 }
 

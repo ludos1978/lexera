@@ -2256,8 +2256,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Check if we're in a kanban element that has its own handler
         if (e.target.closest('.column-title') || 
-            e.target.closest('.task-title-container') || 
-            e.target.closest('.task-description-container')) {
+            e.target.closest('.card-title-container') || 
+            e.target.closest('.card-description-container')) {
             return; // Let the specific handlers deal with it
         }
         
@@ -2513,7 +2513,7 @@ function performFocusActions(focusTargets) {
 if (!webviewEventListenersInitialized) {
     document.addEventListener('click', (e) => {
         // Don't clear focus if clicking on a card
-        if (!e.target.closest('.task-item') && window.getCurrentFocusedCard()) {
+        if (!e.target.closest('.card-item') && window.getCurrentFocusedCard()) {
             window.focusCard(null);
         }
     });
@@ -2941,8 +2941,8 @@ if (!webviewEventListenersInitialized) {
             if (message.enabledTagCategoriesColumn !== undefined) {
                 window.enabledTagCategoriesColumn = message.enabledTagCategoriesColumn;
             }
-            if (message.enabledTagCategoriesTask !== undefined) {
-                window.enabledTagCategoriesTask = message.enabledTagCategoriesTask;
+            if (message.enabledTagCategoriesCard !== undefined) {
+                window.enabledTagCategoriesCard = message.enabledTagCategoriesCard;
             }
 
             // Merge custom tag categories into tagColors
@@ -3238,8 +3238,8 @@ if (!webviewEventListenersInitialized) {
             if (configData.enabledTagCategoriesColumn !== undefined) {
                 window.enabledTagCategoriesColumn = configData.enabledTagCategoriesColumn;
             }
-            if (configData.enabledTagCategoriesTask !== undefined) {
-                window.enabledTagCategoriesTask = configData.enabledTagCategoriesTask;
+            if (configData.enabledTagCategoriesCard !== undefined) {
+                window.enabledTagCategoriesCard = configData.enabledTagCategoriesCard;
             }
 
             // Apply date locale setting for temporal tag parsing
@@ -4423,8 +4423,8 @@ if (!webviewEventListenersInitialized) {
 
         case 'scrollToElementByIndex':
             // Handle position-based scroll request from dashboard (IDs change on each parse)
-            console.log('[Webview] scrollToElementByIndex received:', message.columnIndex, message.taskIndex);
-            scrollToAndHighlightByIndex(message.columnIndex, message.taskIndex, message.highlight);
+            console.log('[Webview] scrollToElementByIndex received:', message.columnIndex, message.cardIndex);
+            scrollToAndHighlightByIndex(message.columnIndex, message.cardIndex, message.highlight);
             break;
     }
 });
@@ -4834,11 +4834,11 @@ function performEditorRedo() {
  * Scroll to and highlight an element by position index
  * Used by the Dashboard for position-based navigation (since IDs change on each parse)
  * @param {number} columnIndex - The 0-based column index
- * @param {number} [taskIndex] - Optional 0-based task index within the column
+ * @param {number} [cardIndex] - Optional 0-based task index within the column
  * @param {boolean} [highlight] - Whether to add highlight animation
  */
-function scrollToAndHighlightByIndex(columnIndex, taskIndex, highlight = true) {
-    console.log('[scrollToAndHighlightByIndex] START columnIndex:', columnIndex, 'taskIndex:', taskIndex);
+function scrollToAndHighlightByIndex(columnIndex, cardIndex, highlight = true) {
+    console.log('[scrollToAndHighlightByIndex] START columnIndex:', columnIndex, 'cardIndex:', cardIndex);
 
     // Get all columns (excluding hidden ones like backlog)
     const allColumns = Array.from(document.querySelectorAll('.kanban-full-height-column[data-column-id]'));
@@ -4856,20 +4856,20 @@ function scrollToAndHighlightByIndex(columnIndex, taskIndex, highlight = true) {
     let targetElement = columnElement;
     let cardId = undefined;
 
-    if (taskIndex !== undefined && taskIndex >= 0 && columnElement) {
+    if (cardIndex !== undefined && cardIndex >= 0 && columnElement) {
         // Task match - find the specific task
-        const allTasks = Array.from(columnElement.querySelectorAll('.task-item[data-card-id]'));
+        const allTasks = Array.from(columnElement.querySelectorAll('.card-item[data-card-id]'));
         console.log('[scrollToAndHighlightByIndex] Tasks in column:', allTasks.length);
 
-        if (taskIndex < allTasks.length) {
-            targetElement = allTasks[taskIndex];
+        if (cardIndex < allTasks.length) {
+            targetElement = allTasks[cardIndex];
             cardId = targetElement?.getAttribute('data-card-id');
-            console.log('[scrollToAndHighlightByIndex] Found task at index', taskIndex, 'with ID:', cardId);
+            console.log('[scrollToAndHighlightByIndex] Found task at index', cardIndex, 'with ID:', cardId);
         } else {
-            console.warn('[scrollToAndHighlightByIndex] Task index out of range:', taskIndex, 'total:', allTasks.length);
+            console.warn('[scrollToAndHighlightByIndex] Task index out of range:', cardIndex, 'total:', allTasks.length);
         }
-    } else if (taskIndex === -1 && columnElement) {
-        // Column match (taskIndex === -1) - target the column header for centering
+    } else if (cardIndex === -1 && columnElement) {
+        // Column match (cardIndex === -1) - target the column header for centering
         const columnHeader = columnElement.querySelector('.column-header');
         if (columnHeader) {
             console.log('[scrollToAndHighlightByIndex] Column match - targeting column header');
@@ -4878,13 +4878,13 @@ function scrollToAndHighlightByIndex(columnIndex, taskIndex, highlight = true) {
     }
 
     if (!targetElement) {
-        console.warn('[scrollToAndHighlightByIndex] Could not find element at indices', { columnIndex, taskIndex });
+        console.warn('[scrollToAndHighlightByIndex] Could not find element at indices', { columnIndex, cardIndex });
         return;
     }
 
     // Delegate to the main scroll function using the found IDs
     // For column matches, pass field='columnTitle' to help with highlighting
-    const field = (taskIndex === -1) ? 'columnTitle' : undefined;
+    const field = (cardIndex === -1) ? 'columnTitle' : undefined;
     scrollToAndHighlight(columnId, cardId, highlight, undefined, undefined, field);
 }
 
@@ -4905,7 +4905,7 @@ function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, e
     console.log('[scrollToAndHighlight] columnElement found:', !!columnElement);
 
     const taskElement = columnElement && cardId
-        ? columnElement.querySelector(`.task-item[data-card-id="${cardId}"]`)
+        ? columnElement.querySelector(`.card-item[data-card-id="${cardId}"]`)
         : null;
     console.log('[scrollToAndHighlight] taskElement found:', !!taskElement);
 
@@ -4915,7 +4915,7 @@ function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, e
 
     // Debug: If column found, list all task IDs
     if (columnElement) {
-        const allTasks = columnElement.querySelectorAll('.task-item[data-card-id]');
+        const allTasks = columnElement.querySelectorAll('.card-item[data-card-id]');
         console.log('[scrollToAndHighlight] All task IDs in column:', Array.from(allTasks).map(t => t.dataset.cardId));
     }
 
@@ -4932,7 +4932,7 @@ function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, e
             return columnElement.querySelector('.column-title') || columnElement;
         }
         if (field === 'cardContent' && taskElement) {
-            return taskElement.querySelector('.task-description-display') || taskElement;
+            return taskElement.querySelector('.card-description-display') || taskElement;
         }
         return taskElement || columnElement || null;
     };
@@ -5095,7 +5095,7 @@ function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, e
 
     if (!targetElement && cardId) {
         // Fallback: Find the task card anywhere
-        targetElement = document.querySelector(`.task-item[data-card-id="${cardId}"]`);
+        targetElement = document.querySelector(`.card-item[data-card-id="${cardId}"]`);
     }
 
     if (!targetElement && columnId) {
@@ -5143,7 +5143,7 @@ function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, e
                 window.collapsedTasks.delete(cardId);
             }
             // Update folded summary text
-            const titleDisplay = taskElement.querySelector('.task-title-display');
+            const titleDisplay = taskElement.querySelector('.card-title-display');
             if (titleDisplay) {
                 titleDisplay.textContent = '';
             }
@@ -5298,12 +5298,12 @@ function scrollToAndHighlight(columnId, cardId, highlight = true, elementPath, e
     // Add highlight animation if requested
     if (highlight) {
         // Determine the element to highlight:
-        // - For tasks: always highlight the whole task-item, not inner elements
+        // - For tasks: always highlight the whole card-item, not inner elements
         // - For columns: highlight only inner elements (not the full-height wrapper or stack)
         let elementsToHighlight = [];
 
-        // Find the task-item to highlight - either from taskElement or by finding parent of targetElement
-        const taskToHighlight = taskElement || (targetElement ? targetElement.closest('.task-item') : null);
+        // Find the card-item to highlight - either from taskElement or by finding parent of targetElement
+        const taskToHighlight = taskElement || (targetElement ? targetElement.closest('.card-item') : null);
 
         if (taskToHighlight) {
             // Always highlight the complete task card
@@ -5370,7 +5370,7 @@ function highlightMatchedText(container, matchText) {
                 if (tagName === 'script' || tagName === 'style' || tagName === 'textarea' || tagName === 'input') {
                     return NodeFilter.FILTER_REJECT;
                 }
-                if (parent.classList.contains('task-title-edit') || parent.classList.contains('task-description-edit')) {
+                if (parent.classList.contains('card-title-edit') || parent.classList.contains('card-description-edit')) {
                     return NodeFilter.FILTER_REJECT;
                 }
                 // Only accept nodes that contain the search text
@@ -5473,15 +5473,15 @@ document.addEventListener('keydown', (e) => {
         activeElement.tagName === 'INPUT' || 
         activeElement.tagName === 'TEXTAREA' || 
         activeElement.classList.contains('column-title-edit') ||
-        activeElement.classList.contains('task-title-edit') ||
-        activeElement.classList.contains('task-description-edit') ||
+        activeElement.classList.contains('card-title-edit') ||
+        activeElement.classList.contains('card-description-edit') ||
         activeElement.classList.contains('ProseMirror') ||
-        (activeElement.closest && activeElement.closest('.task-description-wysiwyg'))
+        (activeElement.closest && activeElement.closest('.card-description-wysiwyg'))
     );
     
     
     // Check if focused on a task section
-    const isFocusedOnSection = activeElement && activeElement.classList.contains('task-section');
+    const isFocusedOnSection = activeElement && activeElement.classList.contains('card-section');
     const isFocusedOnTask = window.getCurrentFocusedCard() !== null;
 
     // Hierarchical arrow key navigation
@@ -5509,7 +5509,7 @@ document.addEventListener('keydown', (e) => {
 
     // Escape to exit section focus and return to card focus
     if (e.key === 'Escape' && !isEditing && isFocusedOnSection) {
-        const taskItem = activeElement.closest('.task-item');
+        const taskItem = activeElement.closest('.card-item');
         if (taskItem) {
             taskItem.focus();
         }
@@ -5766,10 +5766,10 @@ function insertFileLink(fileInfo) {
         
         // FOR IMAGES: Also add to the other field if needed
         if (isImage && (activeEditor.type === 'task-title' || activeEditor.type === 'task-description')) {
-            const taskItem = element.closest('.task-item');
+            const taskItem = element.closest('.card-item');
             const otherField = activeEditor.type === 'task-title' ? 
-                taskItem.querySelector('.task-description-edit') : 
-                taskItem.querySelector('.task-title-edit');
+                taskItem.querySelector('.card-description-edit') : 
+                taskItem.querySelector('.card-title-edit');
             
             if (otherField) {
                 const otherValue = otherField.value;
@@ -5938,7 +5938,7 @@ function updateBorderStyles() {
 
 function calculateTaskDescriptionHeight() {
     // Only calculate if we're in height-limited mode
-    if (!document.body.classList.contains('task-height-limited')) {
+    if (!document.body.classList.contains('card-height-limited')) {
         return;
     }
 
@@ -5948,11 +5948,11 @@ function calculateTaskDescriptionHeight() {
     }
 
     // Get all task items
-    document.querySelectorAll('.task-item').forEach(taskItem => {
-        const descContainer = taskItem.querySelector('.task-description-container');
+    document.querySelectorAll('.card-item').forEach(taskItem => {
+        const descContainer = taskItem.querySelector('.card-description-container');
         if (!descContainer) {return;}
 
-        // Calculate the total height of other elements in the task-item
+        // Calculate the total height of other elements in the card-item
         let usedHeight = 0;
 
         // Add header bars height if present
@@ -5962,7 +5962,7 @@ function calculateTaskDescriptionHeight() {
         }
 
         // Add task header height
-        const taskHeader = taskItem.querySelector('.task-header');
+        const taskHeader = taskItem.querySelector('.card-header');
         if (taskHeader) {
             usedHeight += taskHeader.offsetHeight;
         }
@@ -6025,9 +6025,9 @@ function updateTaskMinHeight(value) {
 
     // Apply height limitation when value is not 'auto'
     if (value !== 'auto') {
-        document.body.classList.add('task-height-limited');
+        document.body.classList.add('card-height-limited');
     } else {
-        document.body.classList.remove('task-height-limited');
+        document.body.classList.remove('card-height-limited');
     }
 
     // Add/remove class for tall task heights that interfere with sticky headers
@@ -6238,7 +6238,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Recalculate task description heights when window resizes (for vh units)
     window.addEventListener('resize', () => {
-        if (document.body.classList.contains('task-height-limited')) {
+        if (document.body.classList.contains('card-height-limited')) {
             calculateTaskDescriptionHeight();
         }
     });

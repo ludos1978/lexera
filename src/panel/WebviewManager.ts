@@ -365,7 +365,7 @@ export class WebviewManager {
             'markdownRenderer.js',
             'wysiwyg-editor.js',
             'overlayEditor.js',
-            'taskEditor.js',
+            'cardEditor.js',
             'boardRenderer.js',
             'dragDrop.js',
             'menuOperations.js',

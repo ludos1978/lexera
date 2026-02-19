@@ -221,8 +221,8 @@ export class DashboardScanner {
         const calendarEvents: UpcomingItem[] = [];
         const undatedTasks: UndatedTask[] = [];
         const tagCounts = new Map<string, { count: number; type: 'hash' | 'temporal' }>();
-        let totalTasks = 0;
-        let temporalTasks = 0;
+        let totalCards = 0;
+        let temporalCards = 0;
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -250,17 +250,17 @@ export class DashboardScanner {
                 );
             }
 
-            let taskIndex = 0;
+            let cardIndex = 0;
             for (const task of column.cards || []) {
                 const taskText = task.content || '';
 
                 // Skip archived/deleted tasks
                 if (isArchivedOrDeleted(taskText)) {
-                    taskIndex++;
+                    cardIndex++;
                     continue;
                 }
 
-                totalTasks++;
+                totalCards++;
                 const taskLines = taskText.replace(/\r\n/g, '\n').split('\n');
                 const taskSummary = taskLines.find(line => line.trim().length > 0) ?? taskLines[0] ?? '';
                 const firstLine = taskLines[0] || '';
@@ -280,7 +280,7 @@ export class DashboardScanner {
                 const resolved = resolveTaskTemporals(taskText, columnTemporal);
 
                 if (resolved.length > 0) {
-                    temporalTasks++;
+                    temporalCards++;
                 }
 
                 // Skip checked tasks (checked = done)
@@ -290,7 +290,7 @@ export class DashboardScanner {
                         r => r.temporal.hasExplicitYear === false
                     );
                     if (!hasYearlessRecurring) {
-                        taskIndex++;
+                        cardIndex++;
                         continue;
                     }
                 }
@@ -385,7 +385,7 @@ export class DashboardScanner {
                             boardName,
                             columnIndex,
                             columnTitle,
-                            taskIndex,
+                            cardIndex,
                             cardTitle: taskSummary,
                             taskSummary: r.lineContent || taskSummary,
                             temporalTag: r.temporal.tag,
@@ -421,7 +421,7 @@ export class DashboardScanner {
                         boardName,
                         columnIndex,
                         columnTitle,
-                        taskIndex,
+                        cardIndex,
                         cardTitle: taskSummary,
                         taskSummary: r.lineContent || taskSummary,
                         temporalTag: r.temporal.tag,
@@ -439,7 +439,7 @@ export class DashboardScanner {
                     });
                 }
 
-                taskIndex++;
+                cardIndex++;
             }
             columnIndex++;
         }
@@ -458,7 +458,7 @@ export class DashboardScanner {
             upcomingItems,
             calendarEvents,
             undatedTasks,
-            summary: { boardUri, boardName, tags, totalTasks, temporalTasks }
+            summary: { boardUri, boardName, tags, totalCards, temporalCards }
         };
     }
 
@@ -498,13 +498,13 @@ export class DashboardScanner {
             // Track if any task in this column matched directly
             let anyTaskMatchedDirectly = false;
 
-            let taskIndex = 0;
+            let cardIndex = 0;
             for (const task of column.cards || []) {
                 const taskText = task.content || '';
 
                 // Skip archived/deleted tasks
                 if (isArchivedOrDeleted(taskText)) {
-                    taskIndex++;
+                    cardIndex++;
                     continue;
                 }
 
@@ -521,7 +521,7 @@ export class DashboardScanner {
                             boardName,
                             columnIndex,
                             columnTitle,
-                            taskIndex,
+                            cardIndex,
                             cardTitle: summaryLine || '',
                             taskSummary: summaryLine || '',
                             matchedTag: tag.name
@@ -530,18 +530,18 @@ export class DashboardScanner {
                         break; // Only add task once even if multiple tags match
                     }
                 }
-                taskIndex++;
+                cardIndex++;
             }
 
             // If column has the tag but no tasks matched directly, add a column-level result
-            // Use taskIndex = -1 to indicate this is a column match, not a task match
+            // Use cardIndex = -1 to indicate this is a column match, not a task match
             if (columnHasTag && !anyTaskMatchedDirectly) {
                 results.push({
                     boardUri,
                     boardName,
                     columnIndex,
                     columnTitle,
-                    taskIndex: -1,  // -1 indicates column-level match
+                    cardIndex: -1,  // -1 indicates column-level match
                     cardTitle: '',  // No specific card
                     taskSummary: '',  // No specific task
                     matchedTag: columnMatchingTag?.name || searchTag

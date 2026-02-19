@@ -32,7 +32,7 @@ function logNavigationScroll(reason, element, options = {}) {
 // Card navigation functions
 function updateCardList() {
     // Use more flexible selector to handle class name variations
-    const allTaskItems = document.querySelectorAll('[class*="task-item"]');
+    const allTaskItems = document.querySelectorAll('[class*="card-item"]');
 
     allCards = Array.from(allTaskItems).filter(card => {
         const column = card.closest('.kanban-full-height-column');
@@ -96,7 +96,7 @@ function focusSection(section) {
     }
 
     // Find the parent task card
-    const taskCard = section.closest('.task-item');
+    const taskCard = section.closest('.card-item');
     if (taskCard) {
         // Update card focus state
         if (currentFocusedCard && currentFocusedCard !== taskCard) {
@@ -115,7 +115,7 @@ function focusSection(section) {
 
 // Helper function to get visible (non-collapsed) task cards from a column
 function getVisibleTaskCards(column) {
-    const allTaskItems = Array.from(column.querySelectorAll('[class*="task-item"]'));
+    const allTaskItems = Array.from(column.querySelectorAll('[class*="card-item"]'));
     return allTaskItems.filter(task => !task.classList.contains('collapsed'));
 }
 
@@ -255,7 +255,7 @@ function navigateToCard(direction) {
 function handleTaskNavigation(key) {
     if (key === 'ArrowDown') {
         // Go to first section of current task
-        const sections = currentFocusedCard.querySelectorAll('.task-section');
+        const sections = currentFocusedCard.querySelectorAll('.card-section');
         if (sections.length > 0) {
             focusSection(sections[0]);
         }
@@ -274,8 +274,8 @@ function handleTaskNavigation(key) {
 
 // Handle navigation from section level
 function handleSectionNavigation(key, currentSection) {
-    const taskItem = currentSection.closest('.task-item');
-    const allSections = Array.from(taskItem.querySelectorAll('.task-section'));
+    const taskItem = currentSection.closest('.card-item');
+    const allSections = Array.from(taskItem.querySelectorAll('.card-section'));
     const currentIndex = allSections.indexOf(currentSection);
 
     if (key === 'ArrowDown') {
@@ -286,12 +286,12 @@ function handleSectionNavigation(key, currentSection) {
             // At last section, go to first section of next task
             const column = taskItem.closest('.kanban-full-height-column');
             const columnCards = getVisibleTaskCards(column);
-            const taskIndex = columnCards.indexOf(taskItem);
+            const cardIndex = columnCards.indexOf(taskItem);
 
-            if (taskIndex < columnCards.length - 1) {
+            if (cardIndex < columnCards.length - 1) {
                 // Next task in same column
-                const nextTask = columnCards[taskIndex + 1];
-                const nextSections = nextTask.querySelectorAll('.task-section');
+                const nextTask = columnCards[cardIndex + 1];
+                const nextSections = nextTask.querySelectorAll('.card-section');
                 if (nextSections.length > 0) {
                     focusSection(nextSections[0]);
                 }
@@ -308,7 +308,7 @@ function handleSectionNavigation(key, currentSection) {
 
                         if (nextColumnCards.length > 0) {
                             const firstTask = nextColumnCards[0];
-                            const firstTaskSections = firstTask.querySelectorAll('.task-section');
+                            const firstTaskSections = firstTask.querySelectorAll('.card-section');
 
                             if (firstTaskSections.length > 0) {
                                 focusSection(firstTaskSections[0]);
@@ -327,12 +327,12 @@ function handleSectionNavigation(key, currentSection) {
             // At first section, go to last section of previous task
             const column = taskItem.closest('.kanban-full-height-column');
             const columnCards = getVisibleTaskCards(column);
-            const taskIndex = columnCards.indexOf(taskItem);
+            const cardIndex = columnCards.indexOf(taskItem);
 
-            if (taskIndex > 0) {
+            if (cardIndex > 0) {
                 // Previous task in same column
-                const prevTask = columnCards[taskIndex - 1];
-                const prevSections = prevTask.querySelectorAll('.task-section');
+                const prevTask = columnCards[cardIndex - 1];
+                const prevSections = prevTask.querySelectorAll('.card-section');
                 if (prevSections.length > 0) {
                     focusSection(prevSections[prevSections.length - 1]);
                 }
@@ -349,7 +349,7 @@ function handleSectionNavigation(key, currentSection) {
 
                         if (prevColumnCards.length > 0) {
                             const lastTask = prevColumnCards[prevColumnCards.length - 1];
-                            const lastTaskSections = lastTask.querySelectorAll('.task-section');
+                            const lastTaskSections = lastTask.querySelectorAll('.card-section');
 
                             if (lastTaskSections.length > 0) {
                                 focusSection(lastTaskSections[lastTaskSections.length - 1]);
@@ -379,7 +379,7 @@ function handleSectionNavigation(key, currentSection) {
                 if (targetColumnCards.length > 0) {
                     // Always go to first task's first section in the column
                     const targetTask = targetColumnCards[0];
-                    const targetSections = targetTask.querySelectorAll('.task-section');
+                    const targetSections = targetTask.querySelectorAll('.card-section');
 
                     if (targetSections.length > 0) {
                         focusSection(targetSections[0]);

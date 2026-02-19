@@ -274,7 +274,7 @@ class DragStateManager {
             return type === 'column';
         }
 
-        if (element.classList.contains('task-item')) {
+        if (element.classList.contains('card-item')) {
             return type === 'task';
         }
 

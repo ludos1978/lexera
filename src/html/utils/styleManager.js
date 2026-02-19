@@ -117,11 +117,11 @@ styleManager.applyCardHeight = function(height) {
     // Use the correct CSS variable name
     this.setCSSVariable('task-height', actualHeight);
 
-    // Properly manage the task-height-limited class
+    // Properly manage the card-height-limited class
     if (height !== 'auto') {
-        document.body.classList.add('task-height-limited');
+        document.body.classList.add('card-height-limited');
     } else {
-        document.body.classList.remove('task-height-limited');
+        document.body.classList.remove('card-height-limited');
     }
 };
 

@@ -314,7 +314,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             index === self.findIndex(t =>
                 t.boardUri === item.boardUri &&
                 t.columnIndex === item.columnIndex &&
-                t.taskIndex === item.taskIndex
+                t.cardIndex === item.cardIndex
             )
         );
 
@@ -1840,7 +1840,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         function renderTaggedItem(item, indentLevel) {
-            const isColumnMatch = item.taskIndex === -1;
+            const isColumnMatch = item.cardIndex === -1;
             let html = '<div class="tree-row tag-search-result' + (isColumnMatch ? ' column-match' : '') + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
             html += 'data-column-title="' + escapeHtml(item.columnTitle) + '" data-card-title="' + escapeHtml(item.cardTitle || '') + '">';
             html += '<div class="tree-indent">';

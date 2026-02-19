@@ -288,8 +288,8 @@ export class ConfigurationService {
         return this.getEnabledCategories('enabledTagCategoriesColumn');
     }
 
-    public getEnabledTagCategoriesTask(): { [key: string]: boolean } {
-        return this.getEnabledCategories('enabledTagCategoriesTask');
+    public getEnabledTagCategoriesCard(): { [key: string]: boolean } {
+        return this.getEnabledCategories('enabledTagCategoriesCard');
     }
 
     public getCustomTagCategories(): { [key: string]: any } {
@@ -322,7 +322,7 @@ export class ConfigurationService {
             htmlContentRenderMode: this.defaults.htmlContentRenderMode,
             tagColors: this.getConfig('tagColors'),
             enabledTagCategoriesColumn: this.getEnabledTagCategoriesColumn(),
-            enabledTagCategoriesTask: this.getEnabledTagCategoriesTask(),
+            enabledTagCategoriesCard: this.getEnabledTagCategoriesCard(),
             customTagCategories: this.getCustomTagCategories(),
             tagVisibility: this.defaults.tagVisibility,
             exportTagVisibility: this.getConfig('exportTagVisibility'),

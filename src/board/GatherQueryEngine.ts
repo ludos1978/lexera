@@ -147,20 +147,20 @@ export class GatherQueryEngine {
         cardDestinations.forEach((targetColumn, cardId) => {
             let sourceColumn: KanbanColumn | null = null;
             let task: KanbanCard | null = null;
-            let taskIndex = -1;
+            let cardIndex = -1;
 
             for (const column of board.columns) {
                 const index = column.cards.findIndex(t => t.id === cardId);
                 if (index !== -1) {
                     sourceColumn = column;
                     task = column.cards[index];
-                    taskIndex = index;
+                    cardIndex = index;
                     break;
                 }
             }
 
             if (sourceColumn && task && sourceColumn.id !== targetColumn.id) {
-                sourceColumn.cards.splice(taskIndex, 1);
+                sourceColumn.cards.splice(cardIndex, 1);
                 targetColumn.cards.push(task);
             }
         });

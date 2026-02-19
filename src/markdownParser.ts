@@ -117,7 +117,7 @@ export class MarkdownKanbanParser {
       let footerLines: string[] = [];
       let yamlStartFound = false;
       let columnIndex = 0;  // Add counter for columns
-      let taskIndexInColumn = 0;  // Add counter for tasks within column
+      let cardIndexInColumn = 0;  // Add counter for tasks within column
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -251,7 +251,7 @@ export class MarkdownKanbanParser {
           }
 
           columnIndex++;
-          taskIndexInColumn = 0;  // Reset task counter for new column
+          cardIndexInColumn = 0;  // Reset task counter for new column
           continue;
         }
 
@@ -275,7 +275,7 @@ export class MarkdownKanbanParser {
               checked: isChecked ? true : undefined
             };
 
-            taskIndexInColumn++;
+            cardIndexInColumn++;
             collectingDescription = true;
           } else if (currentColumn && currentColumn.includeMode) {
             // For include columns, skip task parsing as tasks are already generated

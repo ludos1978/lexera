@@ -306,7 +306,7 @@ The board content is generated dynamically by `boardRenderer.js`.
 │           ├── .column-loading-placeholder (when loading)
 │           │   ├── .loading-spinner
 │           │   └── .loading-text
-│           ├── .task-item (multiple)
+│           ├── .card-item (multiple)
 │           └── .add-task-btn
 │
 ├── .column-footer                              [STICKY FOOTER]
@@ -340,7 +340,7 @@ The board content is generated dynamically by `boardRenderer.js`.
 ### Task Structure
 
 ```
-.task-item [data-task-id="..."]
+.card-item [data-card-id="..."]
 │   Classes: .collapsed, .has-header-bar, .has-footer-bar, .task-loading
 │
 ├── .loading-overlay (when loading)
@@ -350,21 +350,21 @@ The board content is generated dynamically by `boardRenderer.js`.
 ├── [header bars - dynamic]                     .header-bars-container
 ├── [corner badges - dynamic]                   .corner-badge-{position}
 │
-├── .task-header
-│   ├── .task-drag-handle                       # ⋮⋮ grip
-│   ├── .task-collapse-toggle (.rotated when collapsed)
-│   ├── .task-title-container
-│   │   ├── .task-title-display.markdown-content
-│   │   └── .task-title-edit (<textarea>)
+├── .card-header
+│   ├── .card-drag-handle                       # ⋮⋮ grip
+│   ├── .card-collapse-toggle (.rotated when collapsed)
+│   ├── .card-title-container
+│   │   ├── .card-title-display.markdown-content
+│   │   └── .card-title-edit (<textarea>)
 │   └── .task-menu-container
 │       └── .donut-menu
 │           ├── .donut-menu-btn
 │           └── .donut-menu-dropdown
 │
-├── .task-description-container
-│   ├── .task-description-display.markdown-content
-│   │   └── .task-section (multiple - keyboard navigable)
-│   └── .task-description-edit (<textarea>)
+├── .card-description-container
+│   ├── .card-description-display.markdown-content
+│   │   └── .card-section (multiple - keyboard navigable)
+│   └── .card-description-edit (<textarea>)
 │
 └── [footer bars - dynamic]                     .footer-bars-container
 ```
@@ -372,7 +372,7 @@ The board content is generated dynamically by `boardRenderer.js`.
 #### Task CSS Key Properties
 
 ```css
-.task-item {
+.card-item {
   border-radius: 4px;
   gap: var(--whitespace-div2);
   margin-bottom: var(--whitespace-div2);
@@ -383,12 +383,12 @@ The board content is generated dynamically by `boardRenderer.js`.
   overflow: visible;
 }
 
-.task-item.collapsed .task-description-container {
+.card-item.collapsed .card-description-container {
   display: none;
 }
 
 /* Separator line between tasks */
-.task-item:not(:last-child)::after {
+.card-item:not(:last-child)::after {
   content: '';
   position: absolute;
   bottom: 0px;
@@ -402,7 +402,7 @@ The board content is generated dynamically by `boardRenderer.js`.
 ### Task Section Content (Markdown Rendered)
 
 ```
-.task-section [tabindex="0"]
+.card-section [tabindex="0"]
 │
 ├── [TEXT CONTENT]
 │   └── <p>, <h1>-<h6>, <ul>, <ol>, <blockquote>, etc.
@@ -520,8 +520,8 @@ Used for both columns and tasks.
 | `.kanban-column-stack` | Stack container (groups columns) | Dynamic |
 | `.kanban-full-height-column` | Column container | Dynamic |
 | `.tasks-container` | Task list container | Inside column |
-| `.task-item` | Task card | Dynamic |
-| `.task-section` | Navigable markdown section | Inside task description |
+| `.card-item` | Task card | Dynamic |
+| `.card-section` | Navigable markdown section | Inside task description |
 
 ### Column State Classes
 
@@ -580,11 +580,11 @@ Used for both columns and tasks.
 | `.add-column-btn` | Add column button |
 | `.donut-menu-btn` | Menu trigger button |
 | `.collapse-toggle` | Collapse/expand chevron |
-| `.task-collapse-toggle` | Task collapse toggle |
+| `.card-collapse-toggle` | Task collapse toggle |
 | `.pin-btn` | Pin toggle button |
 | `.fold-all-btn` | Fold all tasks button |
 | `.drag-handle` | Drag grip handle |
-| `.task-drag-handle` | Task drag handle |
+| `.card-drag-handle` | Task drag handle |
 | `.column-drag-handle` | Column drag handle |
 
 ### Button State Classes
@@ -619,7 +619,7 @@ Used for both columns and tasks.
 | `.week-highlight-glow` | Week glow effect mode |
 | `.sticky-stack-mode-titleonly` | Only title sticky in stacks |
 | `.small-card-fonts` | Reduced font size mode |
-| `.task-height-limited` | Fixed task heights mode |
+| `.card-height-limited` | Fixed task heights mode |
 
 ---
 
@@ -646,12 +646,12 @@ Used for both columns and tasks.
 
 | Attribute | Purpose | Example |
 |-----------|---------|---------|
-| `data-task-id` | Unique identifier | `task-72bedfc8-7d9b-43ef-bd1c-82d621924454` |
-| `data-task-index` | Position in column | `0`, `1`, `2` |
-| `data-task-bg-tag` | Background color tag | `blue`, `yellow` |
-| `data-task-border-tag` | Border style tag | Tag name |
+| `data-card-id` | Unique identifier | `task-72bedfc8-7d9b-43ef-bd1c-82d621924454` |
+| `data-card-index` | Position in column | `0`, `1`, `2` |
+| `data-card-bg-tag` | Background color tag | `blue`, `yellow` |
+| `data-card-border-tag` | Border style tag | Tag name |
 | `data-all-tags` | All tags (space-separated) | `blue important` |
-| `data-task-initialized` | JS handlers attached | `true` |
+| `data-card-initialized` | JS handlers attached | `true` |
 | `data-current-*` | Temporal highlights | `true` |
 
 ### Menu Attributes
@@ -671,8 +671,8 @@ Used for both columns and tasks.
 |-----------|---------|
 | `draggable="true"` | Element can be dragged |
 | `data-drag-setup` | Drag handlers attached |
-| `data-task-initialized` | Task element fully initialized |
-| `data-task-drag-setup` | Task container ready |
+| `data-card-initialized` | Task element fully initialized |
+| `data-card-drag-setup` | Task container ready |
 
 ---
 
@@ -796,16 +796,16 @@ Dynamic styles are injected via `#dynamic-tag-styles`:
 .kanban-full-height-column[data-column-border-tag="tagname"] .column-footer { }
 
 /* Task styling by tag */
-.task-item[data-task-bg-tag="tagname"] { }
-.task-item[data-task-bg-tag="tagname"]:hover { }
-.task-item[data-task-border-tag="tagname"] { }
+.card-item[data-card-bg-tag="tagname"] { }
+.card-item[data-card-bg-tag="tagname"]:hover { }
+.card-item[data-card-border-tag="tagname"] { }
 
 /* Tag badge styling */
 .kanban-tag[data-tag="tagname"] { }
 
 /* Description line highlighting */
-.task-description-display p:has(.kanban-tag[data-tag="tagname"]),
-.task-description-display li:has(.kanban-tag[data-tag="tagname"]) { }
+.card-description-display p:has(.kanban-tag[data-tag="tagname"]),
+.card-description-display li:has(.kanban-tag[data-tag="tagname"]) { }
 
 /* Header/footer bars */
 .header-bar-tagname { }
@@ -852,7 +852,7 @@ Dynamic styles are injected via `#dynamic-tag-styles`:
 
 .kanban-full-height-column[data-current-day="true"] .column-title { }
 
-.task-item[data-current-time="true"] { }
+.card-item[data-current-time="true"] { }
 
 /* Highlight modes (body classes) */
 body.week-highlight-background .kanban-full-height-column[data-current-week="true"] { }
@@ -997,8 +997,8 @@ These are set by `updateStackLayoutCore()`:
 ## CSS Simplification Opportunities
 
 ### 1. Tag-Based Color System
-Currently colors are applied via `data-task-bg-tag`/`data-column-bg-tag` attributes.
-CSS uses attribute selectors like `[data-task-bg-tag="blue"]`.
+Currently colors are applied via `data-card-bg-tag`/`data-column-bg-tag` attributes.
+CSS uses attribute selectors like `[data-card-bg-tag="blue"]`.
 **Opportunity**: Consolidate tag color definitions into CSS variables per tag.
 
 ### 2. Menu Pattern Consolidation
@@ -1053,7 +1053,7 @@ Many tag-based styles use `!important` to override defaults.
 | `webview.html` | Main HTML structure |
 | `webview.css` | Core styles (~4500 lines) |
 | `boardRenderer.js` | Column/task HTML generation |
-| `taskEditor.js` | Task editing UI |
+| `cardEditor.js` | Task editing UI |
 | `menuOperations.js` | Menu handling |
 | `utils/tagStyleManager.js` | Dynamic tag styles |
 | `utils/stackLayoutManager.js` | Stack layout calculations |

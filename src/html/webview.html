@@ -97,7 +97,7 @@
         }
 
         /* Ensure aspect ratio is preserved in task descriptions */
-        .task-description-container .plantuml-diagram svg {
+        .card-description-container .plantuml-diagram svg {
             max-width: 100% !important;
             max-height: none !important;
             width: auto !important;
@@ -167,7 +167,7 @@
             margin: 1em auto !important;
         }
 
-        .task-description-container .markdown-content img[src*="plantuml"] {
+        .card-description-container .markdown-content img[src*="plantuml"] {
             max-width: 100% !important;
             max-height: none !important;
             height: auto !important;
@@ -214,7 +214,7 @@
         }
 
         /* Ensure aspect ratio is preserved in task descriptions */
-        .task-description-container .mermaid-diagram svg {
+        .card-description-container .mermaid-diagram svg {
             max-width: 100% !important;
             max-height: none !important;
             width: auto !important;
@@ -284,7 +284,7 @@
             margin: 1em auto !important;
         }
 
-        .task-description-container .markdown-content img[src*="mermaid"] {
+        .card-description-container .markdown-content img[src*="mermaid"] {
             max-width: 100% !important;
             max-height: none !important;
             height: auto !important;
@@ -720,7 +720,7 @@
                 </div>
 
                 <!-- WYSIWYG mode -->
-                <div class="task-overlay-wysiwyg">
+                <div class="card-overlay-wysiwyg">
                     <!-- Requires: WysiwygEditor instance, toolbar integration, and drag/drop insertion -->
                 </div>
             </div>
@@ -1163,7 +1163,7 @@
 
     <!-- Core modules -->
     <script src="markdownRenderer.js"></script>
-    <script src="taskEditor.js"></script>
+    <script src="cardEditor.js"></script>
     <script src="boardRenderer.js"></script>
     <script src="dragDrop.js"></script>
     <script src="menuOperations.js"></script>

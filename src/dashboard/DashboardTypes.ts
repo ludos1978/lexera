@@ -63,8 +63,8 @@ export interface UpcomingItem {
     columnIndex: number;
     /** Column title — used for content-based navigation */
     columnTitle: string;
-    /** Task index (0-based) — kept for sorting/grouping */
-    taskIndex: number;
+    /** Card index (0-based) — kept for sorting/grouping */
+    cardIndex: number;
     /** First line of the card content — used to find the card within the column */
     cardTitle: string;
     /** The specific task/line that produced this result (e.g. the temporal line) */
@@ -123,10 +123,10 @@ export interface BoardTagSummary {
     boardName: string;
     /** List of tags with counts */
     tags: TagInfo[];
-    /** Total number of tasks in the board */
-    totalTasks: number;
-    /** Number of tasks with temporal tags */
-    temporalTasks: number;
+    /** Total number of cards in the board */
+    totalCards: number;
+    /** Number of cards with temporal tags */
+    temporalCards: number;
     /** Board color from YAML frontmatter */
     boardColor?: string;
     boardColorDark?: string;
@@ -277,8 +277,8 @@ export interface TagSearchResult {
     columnIndex: number;
     /** Column title — used for content-based navigation */
     columnTitle: string;
-    /** Task index (0-based) — kept for sorting */
-    taskIndex: number;
+    /** Card index (0-based) — kept for sorting */
+    cardIndex: number;
     /** First line of the card content — used to find the card */
     cardTitle: string;
     /** Task summary line */

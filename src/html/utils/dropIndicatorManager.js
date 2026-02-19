@@ -141,7 +141,7 @@ function _positionTaskDropIndicator(indicator, tasksContainer, afterElement, ski
             insertionY = addButton.getBoundingClientRect().top - 2;
         } else {
             // Find last non-skipped task
-            const tasks = tasksContainer.querySelectorAll(':scope > .task-item');
+            const tasks = tasksContainer.querySelectorAll(':scope > .card-item');
             let lastTask = null;
             for (const task of tasks) {
                 if (task !== skipElement) lastTask = task;
@@ -188,7 +188,7 @@ function showTaskDropIndicator(tasksContainer, options = {}) {
 
     // Calculate afterElement from clientY if not provided directly
     if (afterElement === undefined && clientY !== undefined) {
-        const tasks = tasksContainer.querySelectorAll(':scope > .task-item');
+        const tasks = tasksContainer.querySelectorAll(':scope > .card-item');
         afterElement = null;
 
         for (const task of tasks) {

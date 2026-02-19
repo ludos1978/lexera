@@ -1,7 +1,7 @@
 /**
  * Pure temporal parsing functions extracted from DashboardScanner.
  *
- * Parses @-prefixed temporal tags: dates, weeks, weekdays, months, quarters, time ranges.
+ * Parses @-prefixed temporal tags: dates, weeks (@w1/@kw1/@week1), weekdays, months (EN+DE), quarters, time ranges.
  * No VS Code dependencies — used by both the extension and ludos-sync.
  *
  * Multiple tags of the same type on a line are OR-connected (alternatives).
@@ -94,14 +94,14 @@ function parseDateTagFull(tagContent: string): { date: Date; hasExplicitYear: bo
 export function parseWeekTag(tagContent: string): Date | null {
     const content = tagContent.startsWith('@') ? tagContent.slice(1) : tagContent;
 
-    const weekYearMatch = content.match(/^(\d{4})[-.]?(?:[wW]|[kK][wW])(\d{1,2})$/);
+    const weekYearMatch = content.match(/^(\d{4})[-.]?(?:[wW]eek|[kK][wW]|[wW])(\d{1,2})$/);
     if (weekYearMatch) {
         const year = parseInt(weekYearMatch[1], 10);
         const week = parseInt(weekYearMatch[2], 10);
         return getDateOfISOWeek(week, year);
     }
 
-    const weekMatch = content.match(/^(?:[wW]|[kK][wW])(\d{1,2})$/);
+    const weekMatch = content.match(/^(?:[wW]eek|[kK][wW]|[wW])(\d{1,2})$/);
     if (weekMatch) {
         const week = parseInt(weekMatch[1], 10);
         const year = new Date().getFullYear();
@@ -155,18 +155,18 @@ export function parseWeekdayName(name: string): number | null {
  */
 export function parseMonthName(name: string): number | null {
     const months: Record<string, number> = {
-        'jan': 1, 'january': 1,
-        'feb': 2, 'february': 2,
-        'mar': 3, 'march': 3,
+        'jan': 1, 'january': 1, 'januar': 1,
+        'feb': 2, 'february': 2, 'februar': 2,
+        'mar': 3, 'march': 3, 'mär': 3, 'mrz': 3, 'märz': 3,
         'apr': 4, 'april': 4,
-        'may': 5,
-        'jun': 6, 'june': 6,
-        'jul': 7, 'july': 7,
+        'may': 5, 'mai': 5,
+        'jun': 6, 'june': 6, 'juni': 6,
+        'jul': 7, 'july': 7, 'juli': 7,
         'aug': 8, 'august': 8,
         'sep': 9, 'september': 9,
-        'oct': 10, 'october': 10,
+        'oct': 10, 'october': 10, 'okt': 10, 'oktober': 10,
         'nov': 11, 'november': 11,
-        'dec': 12, 'december': 12
+        'dec': 12, 'december': 12, 'dez': 12, 'dezember': 12
     };
     return months[name.toLowerCase()] ?? null;
 }
@@ -196,6 +196,40 @@ export function getISOWeek(date: Date): number {
  */
 function getLastDayOfMonth(year: number, month: number): Date {
     return new Date(year, month, 0);
+}
+
+/**
+ * Get the Nth occurrence of a weekday in a given month.
+ * @param year - Calendar year
+ * @param month - Month number (1-12)
+ * @param n - Occurrence (1 = first, 2 = second, etc.)
+ * @param weekday - JS convention: 0=Sun, 1=Mon, ..., 6=Sat
+ * @returns The date, or null if the Nth occurrence doesn't exist in the month
+ */
+function getNthWeekdayOfMonth(year: number, month: number, n: number, weekday: number): Date | null {
+    const firstOfMonth = new Date(year, month - 1, 1);
+    const firstDayOfWeek = firstOfMonth.getDay(); // 0=Sun
+    let daysUntilFirst = weekday - firstDayOfWeek;
+    if (daysUntilFirst < 0) daysUntilFirst += 7;
+    const dayOfMonth = daysUntilFirst + 1 + (n - 1) * 7;
+    const lastDay = getLastDayOfMonth(year, month).getDate();
+    if (dayOfMonth > lastDay) return null;
+    return new Date(year, month - 1, dayOfMonth);
+}
+
+/**
+ * Get the date range for week N of a given month.
+ * Week 1 = days 1-7, week 2 = days 8-14, etc.
+ */
+function getWeekOfMonthRange(year: number, month: number, weekNum: number): { start: Date; end: Date } | null {
+    const startDay = (weekNum - 1) * 7 + 1;
+    const lastDay = getLastDayOfMonth(year, month).getDate();
+    if (startDay > lastDay) return null;
+    const endDay = Math.min(weekNum * 7, lastDay);
+    return {
+        start: new Date(year, month - 1, startDay),
+        end: new Date(year, month - 1, endDay)
+    };
 }
 
 /**
@@ -270,6 +304,18 @@ function extractTemporalTokens(text: string): TemporalToken[] {
         }
     }
 
+    // Single time with colon: @09:30 (only if no time range or 4-digit time found)
+    if (tokens.filter(t => t.type === 'time').length === 0) {
+        const singleTimeColonRe = /@(\d{1,2}):(\d{2})(?=\s|$)/g;
+        while ((m = singleTimeColonRe.exec(text)) !== null) {
+            const hours = parseInt(m[1], 10);
+            const mins = parseInt(m[2], 10);
+            if (hours < 24 && mins < 60) {
+                tokens.push({ type: 'time', tag: m[0], value: 0, hasExplicitYear: true, timeSlot: m[0] });
+            }
+        }
+    }
+
     // AM/PM time: @12pm, @9am (US locale only)
     if (tokens.filter(t => t.type === 'time').length === 0 && !isLocaleDayFirst()) {
         const ampmRe = /@(\d{1,2})(am|pm)/gi;
@@ -312,9 +358,9 @@ function extractTemporalTokens(text: string): TemporalToken[] {
         }
     }
 
-    // --- Week tags: @KW7, @W5, @2026-W8, @kw8|kw38 (OR syntax with pipe) ---
+    // --- Week tags: @KW7, @W5, @week3, @2026-W8, @kw8|kw38 (OR syntax with pipe) ---
     // Match individual week tags (space-separated) and pipe-OR groups
-    const weekRe = /@(?:(\d{4})[-.]?)?(?:[wW]|[kK][wW])(\d{1,2})(?:\|(?:[wW]|[kK][wW])?(\d{1,2}))*(?=\s|$)/g;
+    const weekRe = /@(?:(\d{4})[-.]?)?(?:[wW]eek|[kK][wW]|[wW])(\d{1,2})(?:\|(?:[wW]eek|[kK][wW]|[wW])?(\d{1,2}))*(?=\s|$)/g;
     while ((m = weekRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         const fullMatch = m[0];
@@ -324,7 +370,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
         // Extract all week numbers from the match (handles pipe OR syntax)
         const weekNumbers: number[] = [];
-        const weekNumPattern = /(?:[wW]|[kK][wW])?(\d{1,2})/g;
+        const weekNumPattern = /(?:[wW]eek|[kK][wW]|[wW])?(\d{1,2})/g;
         const tagContent = fullMatch.slice(1); // skip @
         let numMatch;
         while ((numMatch = weekNumPattern.exec(tagContent)) !== null) {
@@ -358,7 +404,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
     }
 
     // --- Month tags: @JAN, @january, etc. ---
-    const monthNames = 'jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|september|oct|october|nov|november|dec|december';
+    const monthNames = 'jan|january|januar|feb|february|februar|mar|march|mär|mrz|märz|apr|april|may|mai|jun|june|juni|jul|july|juli|aug|august|sep|september|oct|october|okt|oktober|nov|november|dec|december|dez|dezember';
     const monthRe = new RegExp('@(' + monthNames + ')(?=\\s|$)', 'gi');
     while ((m = monthRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
@@ -456,7 +502,59 @@ function combineTemporalTokens(
         return results;
     }
 
-    // Weeks (OR) × Weekdays (OR) cross-product
+    // Months (OR) × Weeks (OR) × Weekdays (OR) — Nth weekday of month
+    // e.g. @jan @w1 @mon = first Monday in January
+    if (months.length > 0 && weeks.length > 0 && weekdays.length > 0) {
+        for (const mo of months) {
+            for (const wk of weeks) {
+                for (const wd of weekdays) {
+                    const date = getNthWeekdayOfMonth(mo.year!, mo.value, wk.value, wd.value);
+                    if (date) {
+                        results.push({
+                            tag: buildTag([mo, wk, wd]),
+                            date,
+                            month: mo.value,
+                            week: wk.value,
+                            weekday: wd.value,
+                            year: mo.year,
+                            timeSlot,
+                            hasExplicitDate: true,
+                            hasExplicitYear: false,
+                            checkboxState
+                        });
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    // Months (OR) × Weeks (OR) — week N of month (date range)
+    // e.g. @jan @w2 = days 8-14 of January
+    if (months.length > 0 && weeks.length > 0) {
+        for (const mo of months) {
+            for (const wk of weeks) {
+                const range = getWeekOfMonthRange(mo.year!, mo.value, wk.value);
+                if (range) {
+                    results.push({
+                        tag: buildTag([mo, wk]),
+                        date: range.start,
+                        dateEnd: range.end,
+                        month: mo.value,
+                        week: wk.value,
+                        year: mo.year,
+                        timeSlot,
+                        hasExplicitDate: true,
+                        hasExplicitYear: false,
+                        checkboxState
+                    });
+                }
+            }
+        }
+        return results;
+    }
+
+    // Weeks (OR) × Weekdays (OR) cross-product (ISO weeks, no month context)
     if (weeks.length > 0 && weekdays.length > 0) {
         for (const wk of weeks) {
             for (const wd of weekdays) {
@@ -477,7 +575,7 @@ function combineTemporalTokens(
         return results;
     }
 
-    // Weeks only (no weekday)
+    // Weeks only (no weekday, no month — ISO week)
     if (weeks.length > 0) {
         for (const wk of weeks) {
             results.push({
