@@ -18,18 +18,43 @@ export function getDefaultConfigPath(): string {
   return path.join(configDir, 'ludos-sync', 'sync.json');
 }
 
-export interface WorkspaceBoardConfig {
-  file: string;
-  name?: string;
+/**
+ * Sync options shared between workspace defaults and per-board overrides.
+ * When adding a new sync option, add it here — it will automatically be
+ * available at both workspace level (default) and board level (override).
+ */
+export interface SyncOptions {
   bookmarkSync?: boolean;
   calendarSync?: boolean;
-  xbelName?: string;
   calendarSlug?: string;
   calendarName?: string;
 }
 
-export interface WorkspaceConfig {
+export interface WorkspaceBoardConfig extends SyncOptions {
+  file: string;
+  name?: string;
+  xbelName?: string;
+}
+
+/**
+ * Workspace config. SyncOptions at this level serve as defaults for all
+ * boards in the workspace. Individual boards can override any option.
+ */
+export interface WorkspaceConfig extends SyncOptions {
   boards: WorkspaceBoardConfig[];
+}
+
+/**
+ * Resolve a board's effective sync options by merging:
+ *   board override → workspace default → fallback (true)
+ */
+export function resolveBoardOptions(board: WorkspaceBoardConfig, workspace: WorkspaceConfig): Required<SyncOptions> {
+  return {
+    bookmarkSync: board.bookmarkSync ?? workspace.bookmarkSync ?? true,
+    calendarSync: board.calendarSync ?? workspace.calendarSync ?? true,
+    calendarSlug: board.calendarSlug ?? workspace.calendarSlug ?? '',
+    calendarName: board.calendarName ?? workspace.calendarName ?? '',
+  };
 }
 
 export interface SyncConfig {
@@ -80,9 +105,10 @@ export class ConfigManager {
         log.verbose(`Config loaded: port=${config.port}, auth=${config.auth ? 'enabled' : 'disabled'}, bookmarks.enabled=${config.bookmarks?.enabled}, calendar.enabled=${config.calendar?.enabled}, ${workspaceKeys.length} workspace(s), ${totalBoards} board(s)`);
         for (const wsKey of workspaceKeys) {
           const ws = config.workspaces[wsKey];
-          log.verbose(`  Workspace: ${wsKey} (${ws.boards?.length || 0} boards)`);
+          log.verbose(`  Workspace: ${wsKey} (${ws.boards?.length || 0} boards) defaults: bookmarkSync=${ws.bookmarkSync ?? '(unset)'} calendarSync=${ws.calendarSync ?? '(unset)'} calendarSlug=${ws.calendarSlug ?? '(unset)'}`);
           for (const board of ws.boards || []) {
-            log.verbose(`    Board: file="${board.file}" name="${board.name || '(none)'}" bookmarkSync=${board.bookmarkSync ?? true} calendarSync=${board.calendarSync ?? true}`);
+            const resolved = resolveBoardOptions(board, ws);
+            log.verbose(`    Board: file="${board.file}" name="${board.name || '(none)'}" bookmarkSync=${resolved.bookmarkSync} calendarSync=${resolved.calendarSync} calendarSlug=${resolved.calendarSlug || '(none)'}`);
           }
         }
         return config;

@@ -11,7 +11,7 @@ import * as path from 'path';
 import { BookmarkAdapter } from './adapters/BookmarkAdapter';
 import { LocalhostAuth } from './auth/LocalhostAuth';
 import { BoardFileWatcher } from './fileWatcher';
-import { ConfigManager, SyncConfig } from './config';
+import { ConfigManager, SyncConfig, resolveBoardOptions } from './config';
 import { createCaldavRouter } from './middleware/caldavMiddleware';
 import { log } from './logger';
 
@@ -208,8 +208,9 @@ export class SyncServer {
       const ws = workspaces[wsKey];
       for (const board of ws.boards || []) {
         const filePath = path.resolve(board.file);
-        const wantBookmarks = config.bookmarks?.enabled && board.bookmarkSync !== false;
-        const wantCalendar = config.calendar?.enabled && board.calendarSync !== false;
+        const opts = resolveBoardOptions(board, ws);
+        const wantBookmarks = config.bookmarks?.enabled && opts.bookmarkSync;
+        const wantCalendar = config.calendar?.enabled && opts.calendarSync;
 
         if (wantBookmarks) {
           const xbelName = board.xbelName || path.basename(filePath, '.md') + '.xbel';
@@ -218,8 +219,8 @@ export class SyncServer {
         }
 
         if (wantCalendar) {
-          const slug = board.calendarSlug || path.basename(filePath, '.md');
-          const name = board.calendarName;
+          const slug = opts.calendarSlug || path.basename(filePath, '.md');
+          const name = opts.calendarName;
           this.boardWatcher.addBoard(filePath, undefined, { calendarSlug: slug, calendarName: name });
           log.info(`Watching board (calendar): ${filePath} -> slug=${slug}`);
         }
