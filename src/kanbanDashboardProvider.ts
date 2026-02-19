@@ -292,8 +292,13 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             }
         }
 
-        // Sort upcoming items by date
+        // Sort upcoming items: recurring states first (overdue → outdated → resetToRepeat),
+        // then by date
+        const recurringOrder: Record<string, number> = { overdue: 0, outdated: 1, resetToRepeat: 2 };
         upcomingItems.sort((a, b) => {
+            const aRecurring = a.recurringState ? recurringOrder[a.recurringState] : 3;
+            const bRecurring = b.recurringState ? recurringOrder[b.recurringState] : 3;
+            if (aRecurring !== bRecurring) return aRecurring - bRecurring;
             if (a.date && b.date) {
                 return a.date.getTime() - b.date.getTime();
             }
@@ -845,6 +850,23 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             color: var(--vscode-errorForeground);
             opacity: 0.8;
         }
+        /* Outdated (soon discarded) styling */
+        .outdated .entry-title {
+            color: var(--vscode-editorWarning-foreground, #cca700);
+            opacity: 0.7;
+        }
+        .outdated .entry-location {
+            color: var(--vscode-editorWarning-foreground, #cca700);
+            opacity: 0.6;
+        }
+        /* Reset to repeat styling */
+        .reset-to-repeat .entry-title {
+            color: var(--vscode-editorInfo-foreground, #3794ff);
+        }
+        .reset-to-repeat .entry-location {
+            color: var(--vscode-editorInfo-foreground, #3794ff);
+            opacity: 0.8;
+        }
 
         /* ===========================================
            Sections
@@ -1336,10 +1358,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 html += '</div>';
                 html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
 
-                // Group by date within board
+                // Group by date/recurring state within board
                 const dateGroups = {};
                 boardItems.forEach(item => {
-                    const dateKey = item.date ? formatDate(new Date(item.date), item.week, item.year, item.weekday) : 'No Date';
+                    const dateKey = formatUpcomingGroupKey(item);
                     if (!dateGroups[dateKey]) dateGroups[dateKey] = [];
                     dateGroups[dateKey].push(item);
                 });
@@ -1367,10 +1389,10 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         function renderUpcomingMerged(container, items) {
-            // Group by date only (merged across boards)
+            // Group by date/recurring state (merged across boards)
             const groups = {};
             items.forEach(item => {
-                const dateKey = item.date ? formatDate(new Date(item.date), item.week, item.year, item.weekday) : 'No Date';
+                const dateKey = formatUpcomingGroupKey(item);
                 if (!groups[dateKey]) groups[dateKey] = [];
                 groups[dateKey].push(item);
             });
@@ -1396,8 +1418,11 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         }
 
         function renderUpcomingItem(item, indentLevel) {
-            const overdueClass = item.isOverdue ? ' overdue' : '';
-            let html = '<div class="tree-row upcoming-item' + overdueClass + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            let stateClass = '';
+            if (item.recurringState === 'overdue' || item.isOverdue) stateClass = ' overdue';
+            else if (item.recurringState === 'outdated') stateClass = ' outdated';
+            else if (item.recurringState === 'resetToRepeat') stateClass = ' reset-to-repeat';
+            let html = '<div class="tree-row upcoming-item' + stateClass + '"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
             html += 'data-column-index="' + item.columnIndex + '" data-task-index="' + item.taskIndex + '">';
             html += '<div class="tree-indent">';
             for (let i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
@@ -1841,9 +1866,38 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             });
         }
 
-        function formatDate(date, week, year, weekday) {
-            const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        function formatUpcomingGroupKey(item) {
+            // Recurring state items get their own group labels
+            if (item.recurringState === 'overdue') return '!! Overdue';
+            if (item.recurringState === 'outdated') return '!! Outdated, soon discarded';
+            if (item.recurringState === 'resetToRepeat') return '!! Reset to repeat';
+            if (!item.date) return 'No Date';
+            return formatDate(new Date(item.date), item.week, item.year, item.weekday, item.month, item.quarter);
+        }
 
+        function formatDate(date, week, year, weekday, month, quarter) {
+            const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            // Quarter display
+            if (quarter !== undefined && quarter !== null) {
+                const currentYear = new Date().getFullYear();
+                let result = 'Q' + quarter;
+                if (year && year !== currentYear) result += ' ' + year;
+                if (weekday !== undefined && weekday !== null) result += ' ' + weekdayNames[weekday];
+                return result;
+            }
+
+            // Month display
+            if (month !== undefined && month !== null) {
+                const currentYear = new Date().getFullYear();
+                let result = monthNames[month - 1];
+                if (year && year !== currentYear) result += ' ' + year;
+                if (weekday !== undefined && weekday !== null) result += ' ' + weekdayNames[weekday];
+                return result;
+            }
+
+            // Week display
             if (week !== undefined && week !== null) {
                 const currentYear = new Date().getFullYear();
                 let result = 'KW ' + week;

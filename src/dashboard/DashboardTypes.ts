@@ -83,6 +83,16 @@ export interface UpcomingItem {
     rawTitle: string;
     /** True if this is an overdue deadline task (unchecked and past date) */
     isOverdue?: boolean;
+    /** End date for range-based temporal tags (week end, month end, quarter end) */
+    dateEnd?: Date;
+    /** Month number (1-12) for month-based tags */
+    month?: number;
+    /** Quarter number (1-4) for quarter-based tags */
+    quarter?: number;
+    /** False for yearless recurring tags (@KW7, @JAN), true for explicit year (@2026-W7) */
+    hasExplicitYear?: boolean;
+    /** Recurring state for yearless tags: overdue, outdated, or needs reset */
+    recurringState?: 'overdue' | 'outdated' | 'resetToRepeat';
 }
 
 /**

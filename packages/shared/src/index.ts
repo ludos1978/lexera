@@ -5,6 +5,7 @@ export {
   setDateLocale, isLocaleDayFirst,
   parseDateTag, parseWeekTag,
   getDateOfISOWeek, getWeekdayOfISOWeek,
-  parseWeekdayName, getISOWeek,
+  parseWeekdayName, parseMonthName, parseQuarterTag,
+  getISOWeek,
   extractTemporalInfo, resolveTaskTemporals,
 } from './temporalParser';
