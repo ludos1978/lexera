@@ -129,6 +129,7 @@ export class BoardFileWatcher {
       }
 
       const content = fs.readFileSync(filePath, 'utf8');
+      const fileMtime = fs.statSync(filePath).mtime;
       const board = SharedMarkdownParser.parseMarkdown(content);
 
       if (!board.valid) {
@@ -146,7 +147,7 @@ export class BoardFileWatcher {
         board,
         xbelCache: xbelXml,
         etag,
-        lastModified: new Date(),
+        lastModified: fileMtime,
         calendarSlug: options?.calendarSlug,
         calendarName: options?.calendarName,
       };
@@ -176,7 +177,7 @@ export class BoardFileWatcher {
     if (!state.calendarSlug) return;
     // Use filePath as boardId so tasks from different boards get unique UIDs
     // even when multiple boards share the same calendar slug (workspace mode)
-    const tasks = IcalMapper.columnsToIcalTasks(state.board.columns, state.filePath);
+    const tasks = IcalMapper.columnsToIcalTasks(state.board.columns, state.filePath, state.lastModified);
     const calName = state.calendarName || state.board.title || state.calendarSlug;
     const ical = IcalMapper.generateCalendar(tasks, calName);
     state.icalTasks = tasks;

@@ -28,6 +28,7 @@ export interface IcalTask {
   dtstart?: string;
   dtend?: string;
   due?: string;
+  dtstamp: string;
   status: string;
   percentComplete?: number;
   categories: string[];
@@ -91,6 +92,19 @@ function formatIcalDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}${m}${d}`;
+}
+
+/**
+ * Format a Date as iCal DTSTAMP (YYYYMMDDTHHMMSSZ) — UTC.
+ */
+function formatDtstamp(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  const h = String(date.getUTCHours()).padStart(2, '0');
+  const min = String(date.getUTCMinutes()).padStart(2, '0');
+  const sec = String(date.getUTCSeconds()).padStart(2, '0');
+  return `${y}${m}${d}T${h}${min}${sec}Z`;
 }
 
 /**
@@ -161,9 +175,10 @@ export class IcalMapper {
    *
    * @param boardId Unique identifier per board (e.g. file path) used for UID generation.
    */
-  static columnsToIcalTasks(columns: KanbanColumn[], boardId: string): IcalTask[] {
+  static columnsToIcalTasks(columns: KanbanColumn[], boardId: string, lastModified?: Date): IcalTask[] {
     const results: IcalTask[] = [];
     const occurrences = new Map<string, number>();
+    const dtstamp = formatDtstamp(lastModified || new Date());
 
     for (const column of columns) {
       // Skip archived/deleted columns
@@ -192,7 +207,7 @@ export class IcalMapper {
           const uid = generateUid(boardId, column.title, r.lineContent, occ);
 
           const summary = this.cleanSummary(r.lineContent || taskSummaryLine);
-          const event = this.buildEvent(uid, summary, r.effectiveDate, r.temporal, r.effectiveWeek, r.effectiveWeekday, checked, categories, column.title);
+          const event = this.buildEvent(uid, summary, r.effectiveDate, r.temporal, r.effectiveWeek, r.effectiveWeekday, checked, categories, column.title, dtstamp);
           if (event) {
             results.push(event);
           }
@@ -274,7 +289,8 @@ export class IcalMapper {
     uid: string, summary: string, effectiveDate: Date,
     lineTemporal: TemporalInfo, effectiveWeek: number | undefined,
     effectiveWeekday: number | undefined,
-    checked: boolean, categories: string[], columnTitle: string
+    checked: boolean, categories: string[], columnTitle: string,
+    dtstamp: string
   ): IcalTask | null {
     let dtstart: string | undefined;
     let dtend: string | undefined;
@@ -293,7 +309,7 @@ export class IcalMapper {
       nextMonday.setDate(monday.getDate() + 7);
       dtstart = formatIcalDate(monday);
       dtend = formatIcalDate(nextMonday); // iCal DATE DTEND is exclusive
-      due = formatIcalDate(monday);
+      due = formatIcalDate(nextMonday); // deadline = end of week (exclusive, matching DTEND)
     } else {
       // Single date → all-day event
       dtstart = formatIcalDate(effectiveDate);
@@ -307,6 +323,7 @@ export class IcalMapper {
       dtstart,
       dtend,
       due,
+      dtstamp,
       status: checked ? 'COMPLETED' : 'CONFIRMED',
       categories,
       columnTitle,
@@ -370,8 +387,8 @@ export class IcalMapper {
       lines.push(`DESCRIPTION:${escapeIcalText(task.description)}`);
     }
 
-    // DTSTAMP is required — use epoch as a fixed value since we're read-only
-    lines.push(`DTSTAMP:${formatIcalDate(new Date())}T000000Z`);
+    // DTSTAMP is required — use file mtime so it's stable across regenerations
+    lines.push(`DTSTAMP:${task.dtstamp}`);
 
     lines.push(`END:${task.type}`);
 

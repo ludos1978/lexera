@@ -818,17 +818,15 @@ export function resolveTaskTemporals(
             const effectiveWeekday = lineTemporal.weekday;
             let hasEffectiveDate = lineTemporal.hasExplicitDate === true;
 
-            // Time-only tags inherit date from task title or column
+            // Time-only tags inherit the calendar date but NOT the week/month structural context
             if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
                 if (taskTemporalContext?.date) {
                     effectiveDate = taskTemporalContext.date;
                     effectiveDateEnd = taskTemporalContext.dateEnd;
-                    effectiveWeek = taskTemporalContext.week;
                     hasEffectiveDate = true;
                 } else if (columnTemporal?.date && columnTemporal.hasExplicitDate) {
                     effectiveDate = columnTemporal.date;
                     effectiveDateEnd = columnTemporal.dateEnd;
-                    effectiveWeek = columnTemporal.week;
                     hasEffectiveDate = true;
                 }
             }

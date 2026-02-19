@@ -82,19 +82,14 @@ function escapeXml(str: string): string {
 }
 
 /**
- * Deduplicate tasks when merging from multiple boards sharing a calendar slug.
- * First deduplicates by UID (exact same source), then by content (same
- * summary + dtstart + dtend across different boards).
+ * Deduplicate tasks by UID when merging from multiple boards sharing a calendar slug.
+ * UIDs incorporate boardId (= filePath), so cross-board events won't collide.
  */
 function deduplicateTasks(tasks: import('../mappers/IcalMapper').IcalTask[]): import('../mappers/IcalMapper').IcalTask[] {
   const seenUids = new Set<string>();
-  const seenContent = new Set<string>();
   return tasks.filter(task => {
     if (seenUids.has(task.uid)) return false;
     seenUids.add(task.uid);
-    const key = `${task.summary}\0${task.dtstart || ''}\0${task.dtend || ''}`;
-    if (seenContent.has(key)) return false;
-    seenContent.add(key);
     return true;
   });
 }
