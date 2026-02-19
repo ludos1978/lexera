@@ -124,9 +124,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 case 'dashboardRefresh':
                     this._refreshData();
                     break;
-                case 'dashboardNavigate':
-                    await this._handleNavigate(message.boardUri, message.columnIndex, message.taskIndex);
-                    break;
                 case 'dashboardTagSearch':
                     await this._handleTagSearch(message.tag);
                     break;
@@ -398,29 +395,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             logger.error(`[Dashboard] Error scanning board ${boardUri}:`, error);
             return null;
-        }
-    }
-
-    /**
-     * Handle navigation to a specific task
-     */
-    private async _handleNavigate(boardUri: string, columnIndex: number, taskIndex: number): Promise<void> {
-        try {
-            const uri = vscode.Uri.parse(boardUri);
-            const document = await vscode.workspace.openTextDocument(uri);
-
-            KanbanWebviewPanel.createOrShow(this._extensionUri, this._extensionContext, document);
-
-            const panelKey = document.uri.toString();
-            const panel = KanbanWebviewPanel.getPanelForDocument(panelKey);
-
-            if (panel) {
-                panel.scrollToElementByIndex(columnIndex, taskIndex, true);
-            } else {
-                logger.error(`[Dashboard] Panel not found for document: ${panelKey}`);
-            }
-        } catch (error) {
-            logger.error(`[Dashboard] Error navigating to task:`, error);
         }
     }
 
@@ -1995,15 +1969,6 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         function setSortMode(mode) {
             vscode.postMessage({ type: 'dashboardSetSortMode', sortMode: mode });
-        }
-
-        function navigateToTask(boardUri, columnIndex, taskIndex) {
-            vscode.postMessage({
-                type: 'dashboardNavigate',
-                boardUri,
-                columnIndex,
-                taskIndex
-            });
         }
 
         function navigateToElement(boardUri, columnTitle, cardTitle) {

@@ -264,16 +264,6 @@ export interface DashboardUpdateConfigMessage {
 }
 
 /**
- * Request to navigate to a specific task
- */
-export interface DashboardNavigateMessage {
-    type: 'dashboardNavigate';
-    boardUri: string;
-    columnIndex: number;
-    taskIndex: number;
-}
-
-/**
  * Result from tag search
  */
 export interface TagSearchResult {
@@ -414,7 +404,6 @@ export type DashboardIncomingMessage =
     | DashboardAddBoardMessage
     | DashboardRemoveBoardMessage
     | DashboardUpdateConfigMessage
-    | DashboardNavigateMessage
     | DashboardNavigateToElementMessage
     | DashboardTagSearchMessage
     | DashboardAddTagFilterMessage

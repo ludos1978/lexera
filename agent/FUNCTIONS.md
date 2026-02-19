@@ -432,10 +432,10 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 - Added `.trash-drop-footer` and `.trash-empty-btn` for "Empty Trash" button
 
 ### Modified: `src/html/utils/exportTreeBuilder.js`
-- `PARKED_TAG`, `DELETED_TAG` — Constants for hidden tag filtering
-- `ExportTreeBuilder.isHiddenItem(title, description)` — Check if item should be hidden from export
-- `ExportTreeBuilder.buildExportTree()` — (MODIFIED) Filters out columns with parked/deleted tags
-- `ExportTreeBuilder.getCleanColumnTitle()` — (MODIFIED) Strips hidden tags from titles
+- `PARKED_TAG`, `DELETED_TAG`, `EXCLUDE_TAG_PATTERN` — Constants for hidden/exclude tag filtering
+- `ExportTreeBuilder.isHiddenItem(title, description)` — Check if item should be hidden from export (parked, deleted, or #exclude in title)
+- `ExportTreeBuilder.buildExportTree()` — (MODIFIED) Filters out columns with parked/deleted/#exclude tags
+- `ExportTreeBuilder.getCleanColumnTitle()` — (MODIFIED) Strips hidden and #exclude tags from titles
 
 ---
 

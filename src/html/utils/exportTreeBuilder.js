@@ -7,13 +7,14 @@
     // Hidden tag constants for filtering (scoped to IIFE to avoid global collision)
     const PARKED_TAG = '#hidden-internal-parked';
     const DELETED_TAG = '#hidden-internal-deleted';
+    const EXCLUDE_TAG_PATTERN = /#exclude(?=\s|$)/i;
 
     class ExportTreeBuilder {
         /**
          * Check if a column or task should be hidden from export
          */
         static isHiddenItem(title, description) {
-            const titleHasTag = title && (title.includes(PARKED_TAG) || title.includes(DELETED_TAG));
+            const titleHasTag = title && (title.includes(PARKED_TAG) || title.includes(DELETED_TAG) || EXCLUDE_TAG_PATTERN.test(title));
             const descHasTag = description && (description.includes(PARKED_TAG) || description.includes(DELETED_TAG));
             return titleHasTag || descHasTag;
         }
@@ -160,6 +161,7 @@
                 .replace(/#stack\b/gi, '')
                 .replace(/#hidden-internal-parked\b/gi, '')
                 .replace(/#hidden-internal-deleted\b/gi, '')
+                .replace(/#exclude\b/gi, '')
                 .trim();
         }
 
