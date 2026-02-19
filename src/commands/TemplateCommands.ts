@@ -215,7 +215,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             const emptyColumn = {
                 id: `col-${Date.now()}`,
                 title: columnTitle,
-                tasks: [],
+                cards: [],
                 settings: {}
             };
 
@@ -389,7 +389,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             logger.debug(`[TemplateCommands.processTemplateColumns] Column title: "${col.title}" -> "${processedTitle}"`);
 
             // Process tasks
-            const processedTasks = (col.tasks || []).map((task: TemplateTask) => {
+            const processedTasks = (col.cards || []).map((task: TemplateTask) => {
                 const processedTaskContent = VariableProcessor.substitute(
                     task.content || '',
                     variables,
@@ -412,7 +412,7 @@ export class TemplateCommands extends SwitchBasedCommand {
             return {
                 id: IdGenerator.generateColumnId(),
                 title: processedTitle,
-                tasks: processedTasks
+                cards: processedTasks
             };
         });
     }

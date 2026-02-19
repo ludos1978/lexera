@@ -179,7 +179,7 @@ export class ActionExecutor {
      */
     private sendTaskUpdate(board: KanbanBoard, taskId: string, columnId: string): void {
         const column = findColumn(board, columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === taskId);
 
         if (!task || !column) return;
 
@@ -209,7 +209,7 @@ export class ActionExecutor {
         const message: UpdateColumnContentExtendedMessage = {
             type: 'updateColumnContent',
             columnId: column.id,
-            tasks: column.tasks,
+            cards: column.cards,
             columnTitle: column.title,
             displayTitle: column.displayTitle,
             includeMode: column.includeMode || false,

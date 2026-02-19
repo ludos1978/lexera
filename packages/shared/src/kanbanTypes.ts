@@ -35,7 +35,7 @@ export interface KanbanCard {
 export interface KanbanColumn {
   id: string;
   title: string;
-  tasks: KanbanCard[];
+  cards: KanbanCard[];
 }
 
 export interface BoardSettings {

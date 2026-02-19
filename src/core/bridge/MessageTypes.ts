@@ -449,7 +449,7 @@ export interface ShortcutEntry {
 export interface UpdateColumnContentExtendedMessage extends BaseMessage {
     type: 'updateColumnContent';
     columnId: string;
-    tasks: KanbanCard[];
+    cards: KanbanCard[];
     columnTitle: string;
     displayTitle?: string;
     includeMode: boolean;

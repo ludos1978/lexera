@@ -104,7 +104,7 @@ export class ColumnCommands extends SwitchBasedCommand {
             : path.resolve(mainFileDir, includeFilePath);
 
         // Generate presentation format content from the column's tasks
-        const tasksContent = PresentationGenerator.fromTasks(column.tasks, {
+        const tasksContent = PresentationGenerator.fromTasks(column.cards, {
             filterIncludes: true,
             includeMarpDirectives: false
         });
@@ -163,13 +163,13 @@ ${tasksContent}`;
 
             // DATA LOSS PREVENTION: Check if column has existing tasks that would be lost
             const isAddingIncludeToRegularColumn = !oldIncludeMatches && hasColumnIncludeMatches && !column.includeMode;
-            const hasExistingTasks = column.tasks && column.tasks.length > 0;
+            const hasExistingTasks = column.cards && column.cards.length > 0;
 
             let preloadedContent: Map<string, string> | undefined;
 
             if (isAddingIncludeToRegularColumn && hasExistingTasks) {
                 const choice = await vscode.window.showWarningMessage(
-                    `This column has ${column.tasks.length} existing task(s). Adding an include will replace them with the included file's content.`,
+                    `This column has ${column.cards.length} existing task(s). Adding an include will replace them with the included file's content.`,
                     { modal: true },
                     'Append tasks to include file',
                     'Discard tasks',

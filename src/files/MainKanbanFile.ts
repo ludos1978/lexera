@@ -393,7 +393,7 @@ export class MainKanbanFile extends MarkdownFile {
         }
 
         for (const column of board.columns) {
-            if (!column || !Array.isArray(column.tasks)) {
+            if (!column || !Array.isArray(column.cards)) {
                 throw new Error(
                     `[MainKanbanFile] Refusing to save malformed board snapshot for "${this.getRelativePath()}".`
                 );
@@ -485,11 +485,11 @@ export class MainKanbanFile extends MarkdownFile {
                 return {
                     title: column.title,
                     includeMode: true,
-                    tasks: []
+                    cards: []
                 };
             }
 
-            const tasks = column.tasks.map(task => {
+            const tasks = column.cards.map(task => {
                 const persistedContent = task.includeMode && task.originalTitle
                     ? task.originalTitle
                     : task.content;
@@ -502,7 +502,7 @@ export class MainKanbanFile extends MarkdownFile {
             return {
                 title: column.title,
                 includeMode: false,
-                tasks
+                cards: tasks
             };
         });
 

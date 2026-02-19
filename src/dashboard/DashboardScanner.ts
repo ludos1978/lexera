@@ -251,7 +251,7 @@ export class DashboardScanner {
             }
 
             let taskIndex = 0;
-            for (const task of column.tasks || []) {
+            for (const task of column.cards || []) {
                 const taskText = task.content || '';
 
                 // Skip archived/deleted tasks
@@ -499,7 +499,7 @@ export class DashboardScanner {
             let anyTaskMatchedDirectly = false;
 
             let taskIndex = 0;
-            for (const task of column.tasks || []) {
+            for (const task of column.cards || []) {
                 const taskText = task.content || '';
 
                 // Skip archived/deleted tasks

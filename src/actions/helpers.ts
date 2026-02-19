@@ -16,7 +16,7 @@ export function findColumn(board: KanbanBoard, columnId: string): KanbanColumn |
  * Find task index within a column
  */
 export function findCardIndex(column: KanbanColumn, taskId: string): number {
-    return column.tasks.findIndex(t => t.id === taskId);
+    return column.cards.findIndex(t => t.id === taskId);
 }
 
 /**
@@ -107,9 +107,9 @@ export function findCardById(
     taskId: string
 ): { task: KanbanCard; column: KanbanColumn; index: number } | undefined {
     for (const column of board.columns) {
-        const index = column.tasks.findIndex(t => t.id === taskId);
+        const index = column.cards.findIndex(t => t.id === taskId);
         if (index !== -1) {
-            return { task: column.tasks[index], column, index };
+            return { task: column.cards[index], column, index };
         }
     }
     return undefined;
@@ -119,7 +119,7 @@ export function findCardById(
  * Find the column that contains a task with the given ID
  */
 export function findColumnContainingCard(board: KanbanBoard, taskId: string): KanbanColumn | undefined {
-    return board.columns.find(c => c.tasks.some(t => t.id === taskId));
+    return board.columns.find(c => c.cards.some(t => t.id === taskId));
 }
 
 /**
@@ -134,8 +134,8 @@ export function findCardInColumn(
     const column = findColumn(board, columnId);
     if (!column) return undefined;
 
-    const index = column.tasks.findIndex(t => t.id === taskId);
+    const index = column.cards.findIndex(t => t.id === taskId);
     if (index === -1) return undefined;
 
-    return { task: column.tasks[index], column, index };
+    return { task: column.cards[index], column, index };
 }

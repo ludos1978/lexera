@@ -296,7 +296,7 @@ export class UndoCapture {
      */
     private static findColumnForTask(board: KanbanBoard, taskId: string): string | undefined {
         for (const column of board.columns) {
-            const task = column.tasks.find(t => t.id === taskId);
+            const task = column.cards.find(t => t.id === taskId);
             if (task) {
                 return column.id;
             }
@@ -309,7 +309,7 @@ export class UndoCapture {
      */
     private static findTaskInBoard(board: KanbanBoard, taskId: string): unknown | undefined {
         for (const column of board.columns) {
-            const task = column.tasks.find(t => t.id === taskId);
+            const task = column.cards.find(t => t.id === taskId);
             if (task) {
                 return task;
             }

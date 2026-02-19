@@ -211,7 +211,7 @@ export class BoardSyncHandler {
                     }
 
                     const includeFile = file as IncludeFile;
-                    const content = includeFile.generateFromTasks(column.tasks);
+                    const content = includeFile.generateFromTasks(column.cards);
                     const currentContent = includeFile.getContent();
 
                     // CRITICAL PROTECTION: Never replace existing content with empty
@@ -227,7 +227,7 @@ export class BoardSyncHandler {
                                 trigger,
                                 columnId: column.id,
                                 includePath: includeFile.getPath(),
-                                taskCount: column.tasks.length,
+                                taskCount: column.cards.length,
                                 contentLength: content.length
                             });
                         }

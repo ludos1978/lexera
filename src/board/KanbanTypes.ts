@@ -29,7 +29,7 @@ export interface KanbanCard {
 export interface KanbanColumn {
   id: string;
   title: string;
-  tasks: KanbanCard[];
+  cards: KanbanCard[];
   includeMode?: boolean;  // When true, tasks are generated from included files
   includeFiles?: string[]; // Paths to included presentation files
   originalTitle?: string;  // Original title before include processing

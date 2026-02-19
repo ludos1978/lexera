@@ -623,14 +623,14 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                     if (file && fileExistsOnDisk) {
                         // Parse tasks from include file, preserving existing task IDs
                         const includeFile = file as IncludeFile;
-                        const tasks = includeFile.parseToTasks(column.tasks, column.id, mainFilePath);
-                        column.tasks = tasks;
+                        const tasks = includeFile.parseToTasks(column.cards, column.id, mainFilePath);
+                        column.cards = tasks;
                         (column as any).includeError = false;
                     } else if (!fileExistsOnDisk) {
                         logger.warn(`[MarkdownFileRegistry] generateBoard() - Column include ERROR: ${relativePath}`);
                         // Error details shown on hover via include badge
                         // Don't create error task - just show empty column with error badge
-                        column.tasks = [];
+                        column.cards = [];
                         // Mark column as having include error
                         (column as any).includeError = true;
                     }

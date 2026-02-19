@@ -772,7 +772,7 @@ export class PathCommands extends SwitchBasedCommand {
             : findColumnContainingCard(board, taskId);
         if (!column) return;
 
-        const task = column.tasks.find(t => t.id === taskId);
+        const task = column.cards.find(t => t.id === taskId);
         if (!task) return;
 
         // Apply the same title transformation used by _addSourceUrlToImageTitle
@@ -866,7 +866,7 @@ export class PathCommands extends SwitchBasedCommand {
         if (board?.valid) {
             // Search tasks
             for (const column of board.columns) {
-                for (const task of column.tasks) {
+                for (const task of column.cards) {
                     if (!task.content?.includes(pathToDelete)) { continue; }
                     const cleaned = this._removeElementFromText(task.content, regex);
                     if (cleaned === null) { continue; }
@@ -988,7 +988,7 @@ export class PathCommands extends SwitchBasedCommand {
             const column = capturedEdit.columnId
                 ? findColumn(board, capturedEdit.columnId)
                 : findColumnContainingCard(board, capturedEdit.taskId);
-            const task = column?.tasks.find(t => t.id === capturedEdit.taskId);
+            const task = column?.cards.find(t => t.id === capturedEdit.taskId);
             if (task) {
                 task.content = capturedEdit.value;
                 updated = true;

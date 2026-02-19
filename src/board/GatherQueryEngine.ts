@@ -60,7 +60,7 @@ export class GatherQueryEngine {
 
         // First, identify all sticky tasks
         board.columns.forEach(column => {
-            column.tasks.forEach(task => {
+            column.cards.forEach(task => {
                 const taskText = task.content || '';
                 if (hasSticky(taskText)) {
                     stickyTasks.add(task.id);
@@ -104,7 +104,7 @@ export class GatherQueryEngine {
 
         // FIRST PASS: Process each card against all regular gather rules
         board.columns.forEach(sourceColumn => {
-            sourceColumn.tasks.forEach(task => {
+            sourceColumn.cards.forEach(task => {
                 if (stickyTasks.has(task.id)) { return; }
 
                 const taskText = task.content || '';
@@ -127,7 +127,7 @@ export class GatherQueryEngine {
         // NEW TAG SYSTEM: Check for @ temporal tags or # tags (which now include people)
         if (ungatheredRules.length > 0) {
             board.columns.forEach(sourceColumn => {
-                sourceColumn.tasks.forEach(task => {
+                sourceColumn.cards.forEach(task => {
                     if (stickyTasks.has(task.id) || matchedCards.has(task.id)) { return; }
 
                     const taskText = task.content || '';
@@ -150,18 +150,18 @@ export class GatherQueryEngine {
             let taskIndex = -1;
 
             for (const column of board.columns) {
-                const index = column.tasks.findIndex(t => t.id === taskId);
+                const index = column.cards.findIndex(t => t.id === taskId);
                 if (index !== -1) {
                     sourceColumn = column;
-                    task = column.tasks[index];
+                    task = column.cards[index];
                     taskIndex = index;
                     break;
                 }
             }
 
             if (sourceColumn && task && sourceColumn.id !== targetColumn.id) {
-                sourceColumn.tasks.splice(taskIndex, 1);
-                targetColumn.tasks.push(task);
+                sourceColumn.cards.splice(taskIndex, 1);
+                targetColumn.cards.push(task);
             }
         });
 
@@ -366,7 +366,7 @@ export class GatherQueryEngine {
      * Sort column tasks by date
      */
     private _sortColumnByDate(column: KanbanColumn): void {
-        column.tasks.sort((a, b) => {
+        column.cards.sort((a, b) => {
             const dateA = extractDate(a.content || '');
             const dateB = extractDate(b.content || '');
 
@@ -388,7 +388,7 @@ export class GatherQueryEngine {
             return lines.find(line => line.trim().length > 0) ?? lines[0] ?? '';
         };
 
-        column.tasks.sort((a, b) => {
+        column.cards.sort((a, b) => {
             const titleA = getFirstLine(a.content);
             const titleB = getFirstLine(b.content);
             return titleA.localeCompare(titleB);

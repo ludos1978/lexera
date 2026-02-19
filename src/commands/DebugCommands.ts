@@ -742,9 +742,9 @@ export class DebugCommands extends SwitchBasedCommand {
 
                         if (matches) {
                             // Parse fresh tasks from updated content
-                            const freshTasks = incFile.parseToTasks(column.tasks, column.id, mainFile.getPath());
+                            const freshTasks = incFile.parseToTasks(column.cards, column.id, mainFile.getPath());
                             logger.debug(`[DebugCommands] onContentChanged: parsed ${freshTasks.length} tasks for column "${column.id}"`);
-                            column.tasks = freshTasks;
+                            column.cards = freshTasks;
                             columnsUpdated++;
                         }
                     }
@@ -777,8 +777,8 @@ export class DebugCommands extends SwitchBasedCommand {
                                 for (const relPath of column.includeFiles) {
                                     const incFile = fileRegistry.getByRelativePath(relPath);
                                     if (incFile && incFile.getFileType() !== 'main') {
-                                        const tasks = (incFile as IncludeFile).parseToTasks(column.tasks, column.id, mainFilePath);
-                                        column.tasks = tasks;
+                                        const tasks = (incFile as IncludeFile).parseToTasks(column.cards, column.id, mainFilePath);
+                                        column.cards = tasks;
                                         logger.debug(`[DebugCommands] onContentChanged (main): parsed ${tasks.length} tasks from "${relPath}"`);
                                     }
                                 }
@@ -1330,7 +1330,7 @@ export class DebugCommands extends SwitchBasedCommand {
             if (matches.length === 0) {
                 return null;
             }
-            const contents = matches.map(column => file.generateFromTasks(column.tasks));
+            const contents = matches.map(column => file.generateFromTasks(column.cards));
             return this.ensureConsistentIncludeContent(contents, 'include-column', file.getRelativePath());
         }
 

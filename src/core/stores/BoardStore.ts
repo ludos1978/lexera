@@ -181,7 +181,7 @@ export class BoardStore implements vscode.Disposable {
     setOriginalTaskOrder(board: KanbanBoard): void {
         this._state.originalTaskOrder.clear();
         board.columns.forEach(column => {
-            this._state.originalTaskOrder.set(column.id, column.tasks.map(t => t.id));
+            this._state.originalTaskOrder.set(column.id, column.cards.map(t => t.id));
         });
     }
 

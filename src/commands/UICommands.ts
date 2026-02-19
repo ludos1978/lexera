@@ -175,7 +175,7 @@ export class UICommands extends SwitchBasedCommand {
                 logger.debug('[kanban.UICommands.tryTargetedUpdate.column]', {
                     columnId: columnId,
                     columnFound: !!column,
-                    taskCount: column?.tasks?.length ?? 0
+                    taskCount: column?.cards?.length ?? 0
                 });
                 if (!column) {
                     return false;
@@ -183,7 +183,7 @@ export class UICommands extends SwitchBasedCommand {
                 const message: UpdateColumnContentExtendedMessage = {
                     type: 'updateColumnContent',
                     columnId: column.id,
-                    tasks: column.tasks,
+                    cards: column.cards,
                     columnTitle: column.title,
                     displayTitle: column.displayTitle,
                     includeMode: column.includeMode || false,
@@ -198,7 +198,7 @@ export class UICommands extends SwitchBasedCommand {
         if (allTasks) {
             for (const target of targets) {
                 const column = board.columns.find(c => c.id === target.columnId);
-                const task = column?.tasks.find(t => t.id === target.id);
+                const task = column?.cards.find(t => t.id === target.id);
                 if (!task || !column) {
                     return false;
                 }

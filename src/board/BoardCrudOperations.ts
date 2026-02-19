@@ -46,7 +46,7 @@ export class BoardCrudOperations {
     public setOriginalTaskOrder(board: KanbanBoard): void {
         this._originalTaskOrder.clear();
         board.columns.forEach(column => {
-            this._originalTaskOrder.set(column.id, column.tasks.map(t => t.id));
+            this._originalTaskOrder.set(column.id, column.cards.map(t => t.id));
         });
     }
 
@@ -58,12 +58,12 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return undefined; }
 
-        const taskIndex = column.tasks.findIndex(task => task.id === taskId);
+        const taskIndex = column.cards.findIndex(task => task.id === taskId);
         if (taskIndex === -1) { return undefined; }
 
         return {
             column,
-            task: column.tasks[taskIndex],
+            task: column.cards[taskIndex],
             index: taskIndex
         };
     }
@@ -81,13 +81,13 @@ export class BoardCrudOperations {
             return false;
         }
 
-        const taskIndex = fromColumn.tasks.findIndex(task => task.id === taskId);
+        const taskIndex = fromColumn.cards.findIndex(task => task.id === taskId);
         if (taskIndex === -1) {
             return false;
         }
 
-        const task = fromColumn.tasks.splice(taskIndex, 1)[0];
-        toColumn.tasks.splice(newIndex, 0, task);
+        const task = fromColumn.cards.splice(taskIndex, 1)[0];
+        toColumn.cards.splice(newIndex, 0, task);
         return true;
     }
 
@@ -100,7 +100,7 @@ export class BoardCrudOperations {
             content: normalizeCardContent(taskData.content ?? '')
         };
 
-        column.tasks.push(newTask);
+        column.cards.push(newTask);
         return true;
     }
 
@@ -113,10 +113,10 @@ export class BoardCrudOperations {
             content: normalizeCardContent(taskData.content ?? '')
         };
 
-        if (insertionIndex >= 0 && insertionIndex <= column.tasks.length) {
-            column.tasks.splice(insertionIndex, 0, newTask);
+        if (insertionIndex >= 0 && insertionIndex <= column.cards.length) {
+            column.cards.splice(insertionIndex, 0, newTask);
         } else {
-            column.tasks.push(newTask);
+            column.cards.push(newTask);
         }
         return true;
     }
@@ -125,10 +125,10 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const taskIndex = column.tasks.findIndex(task => task.id === taskId);
+        const taskIndex = column.cards.findIndex(task => task.id === taskId);
         if (taskIndex === -1) { return false; }
 
-        column.tasks.splice(taskIndex, 1);
+        column.cards.splice(taskIndex, 1);
         return true;
     }
 
@@ -141,7 +141,7 @@ export class BoardCrudOperations {
         const column = this.findColumn(board, columnId);
         if (!column) { return false; }
 
-        const task = column.tasks.find(t => t.id === taskId);
+        const task = column.cards.find(t => t.id === taskId);
         if (!task) { return false; }
 
         if (taskData.content !== undefined) {
@@ -169,7 +169,7 @@ export class BoardCrudOperations {
             displayTitle: result.task.displayTitle
         };
 
-        result.column.tasks.splice(result.index + 1, 0, newTask);
+        result.column.cards.splice(result.index + 1, 0, newTask);
         return true;
     }
 
@@ -182,7 +182,7 @@ export class BoardCrudOperations {
             content: ''
         };
 
-        result.column.tasks.splice(result.index, 0, newTask);
+        result.column.cards.splice(result.index, 0, newTask);
         return true;
     }
 
@@ -195,7 +195,7 @@ export class BoardCrudOperations {
             content: ''
         };
 
-        result.column.tasks.splice(result.index + 1, 0, newTask);
+        result.column.cards.splice(result.index + 1, 0, newTask);
         return true;
     }
 
@@ -203,8 +203,8 @@ export class BoardCrudOperations {
         const result = this.findTask(board, columnId, taskId);
         if (!result || result.index === 0) { return false; }
 
-        const task = result.column.tasks.splice(result.index, 1)[0];
-        result.column.tasks.unshift(task);
+        const task = result.column.cards.splice(result.index, 1)[0];
+        result.column.cards.unshift(task);
         return true;
     }
 
@@ -212,28 +212,28 @@ export class BoardCrudOperations {
         const result = this.findTask(board, columnId, taskId);
         if (!result || result.index === 0) { return false; }
 
-        const task = result.column.tasks[result.index];
-        result.column.tasks[result.index] = result.column.tasks[result.index - 1];
-        result.column.tasks[result.index - 1] = task;
+        const task = result.column.cards[result.index];
+        result.column.cards[result.index] = result.column.cards[result.index - 1];
+        result.column.cards[result.index - 1] = task;
         return true;
     }
 
     public moveTaskDown(board: KanbanBoard, taskId: string, columnId: string): boolean {
         const result = this.findTask(board, columnId, taskId);
-        if (!result || result.index === result.column.tasks.length - 1) { return false; }
+        if (!result || result.index === result.column.cards.length - 1) { return false; }
 
-        const task = result.column.tasks[result.index];
-        result.column.tasks[result.index] = result.column.tasks[result.index + 1];
-        result.column.tasks[result.index + 1] = task;
+        const task = result.column.cards[result.index];
+        result.column.cards[result.index] = result.column.cards[result.index + 1];
+        result.column.cards[result.index + 1] = task;
         return true;
     }
 
     public moveTaskToBottom(board: KanbanBoard, taskId: string, columnId: string): boolean {
         const result = this.findTask(board, columnId, taskId);
-        if (!result || result.index === result.column.tasks.length - 1) { return false; }
+        if (!result || result.index === result.column.cards.length - 1) { return false; }
 
-        const task = result.column.tasks.splice(result.index, 1)[0];
-        result.column.tasks.push(task);
+        const task = result.column.cards.splice(result.index, 1)[0];
+        result.column.cards.push(task);
         return true;
     }
 
@@ -243,11 +243,11 @@ export class BoardCrudOperations {
 
         if (!fromColumn || !toColumn) { return false; }
 
-        const taskIndex = fromColumn.tasks.findIndex(task => task.id === taskId);
+        const taskIndex = fromColumn.cards.findIndex(task => task.id === taskId);
         if (taskIndex === -1) { return false; }
 
-        const task = fromColumn.tasks.splice(taskIndex, 1)[0];
-        toColumn.tasks.push(task);
+        const task = fromColumn.cards.splice(taskIndex, 1)[0];
+        toColumn.cards.push(task);
         return true;
     }
 
@@ -392,13 +392,13 @@ export class BoardCrudOperations {
         };
 
         if (sortType === 'title') {
-            column.tasks.sort((a, b) => {
+            column.cards.sort((a, b) => {
                 const titleA = getFirstLine(a.content);
                 const titleB = getFirstLine(b.content);
                 return titleA.localeCompare(titleB);
             });
         } else if (sortType === 'numericTag') {
-            column.tasks.sort((a, b) => {
+            column.cards.sort((a, b) => {
                 const numA = extractNumericTag(getFirstLine(a.content));
                 const numB = extractNumericTag(getFirstLine(b.content));
 
@@ -412,19 +412,19 @@ export class BoardCrudOperations {
             // Use provided original order, fall back to internal (for test compatibility)
             const order = originalOrder ?? this._originalTaskOrder.get(columnId);
             if (order) {
-                const taskMap = new Map(column.tasks.map(t => [t.id, t]));
-                column.tasks = [];
+                const taskMap = new Map(column.cards.map(t => [t.id, t]));
+                column.cards = [];
 
                 order.forEach(taskId => {
                     const task = taskMap.get(taskId);
                     if (task) {
-                        column.tasks.push(task);
+                        column.cards.push(task);
                         taskMap.delete(taskId);
                     }
                 });
 
                 taskMap.forEach(task => {
-                    column.tasks.push(task);
+                    column.cards.push(task);
                 });
             }
         }

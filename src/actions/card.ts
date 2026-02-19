@@ -25,7 +25,7 @@ export const updateContent = (
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === taskId);
         if (!task) return false;
 
         task.content = normalizeCardContent(newContent);
@@ -45,7 +45,7 @@ export const update = (
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === taskId);
         if (!task) return false;
 
         if (taskData.content !== undefined) {
@@ -86,10 +86,10 @@ export const add = (
             regularIncludeFiles: taskData.regularIncludeFiles || []
         };
 
-        if (index !== undefined && index >= 0 && index <= column.tasks.length) {
-            column.tasks.splice(index, 0, newCard);
+        if (index !== undefined && index >= 0 && index <= column.cards.length) {
+            column.cards.splice(index, 0, newCard);
         } else {
-            column.tasks.push(newCard);
+            column.cards.push(newCard);
         }
 
         return newCard.id;
@@ -112,7 +112,7 @@ export const remove = (
         const taskIndex = findCardIndex(column, taskId);
         if (taskIndex === -1) return false;
 
-        column.tasks.splice(taskIndex, 1);
+        column.cards.splice(taskIndex, 1);
         return true;
     }
 });
@@ -134,8 +134,8 @@ export const reorder = (
         const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1) return false;
 
-        const [task] = column.tasks.splice(currentIndex, 1);
-        column.tasks.splice(newIndex, 0, task);
+        const [task] = column.cards.splice(currentIndex, 1);
+        column.cards.splice(newIndex, 0, task);
         return true;
     }
 });
@@ -156,8 +156,8 @@ export const moveToTop = (
         const currentIndex = findCardIndex(column, taskId);
         if (currentIndex === -1 || currentIndex === 0) return false;
 
-        const [task] = column.tasks.splice(currentIndex, 1);
-        column.tasks.unshift(task);
+        const [task] = column.cards.splice(currentIndex, 1);
+        column.cards.unshift(task);
         return true;
     }
 });
@@ -179,9 +179,9 @@ export const moveUp = (
         if (currentIndex === -1 || currentIndex === 0) return false;
 
         // Swap with task above
-        const task = column.tasks[currentIndex];
-        column.tasks[currentIndex] = column.tasks[currentIndex - 1];
-        column.tasks[currentIndex - 1] = task;
+        const task = column.cards[currentIndex];
+        column.cards[currentIndex] = column.cards[currentIndex - 1];
+        column.cards[currentIndex - 1] = task;
         return true;
     }
 });
@@ -200,12 +200,12 @@ export const moveDown = (
         if (!column) return false;
 
         const currentIndex = findCardIndex(column, taskId);
-        if (currentIndex === -1 || currentIndex === column.tasks.length - 1) return false;
+        if (currentIndex === -1 || currentIndex === column.cards.length - 1) return false;
 
         // Swap with task below
-        const task = column.tasks[currentIndex];
-        column.tasks[currentIndex] = column.tasks[currentIndex + 1];
-        column.tasks[currentIndex + 1] = task;
+        const task = column.cards[currentIndex];
+        column.cards[currentIndex] = column.cards[currentIndex + 1];
+        column.cards[currentIndex + 1] = task;
         return true;
     }
 });
@@ -224,10 +224,10 @@ export const moveToBottom = (
         if (!column) return false;
 
         const currentIndex = findCardIndex(column, taskId);
-        if (currentIndex === -1 || currentIndex === column.tasks.length - 1) return false;
+        if (currentIndex === -1 || currentIndex === column.cards.length - 1) return false;
 
-        const [task] = column.tasks.splice(currentIndex, 1);
-        column.tasks.push(task);
+        const [task] = column.cards.splice(currentIndex, 1);
+        column.cards.push(task);
         return true;
     }
 });
@@ -255,8 +255,8 @@ export const move = (
         const taskIndex = findCardIndex(fromColumn, taskId);
         if (taskIndex === -1) return false;
 
-        const [task] = fromColumn.tasks.splice(taskIndex, 1);
-        toColumn.tasks.splice(newIndex, 0, task);
+        const [task] = fromColumn.cards.splice(taskIndex, 1);
+        toColumn.cards.splice(newIndex, 0, task);
         return true;
     }
 });
@@ -283,8 +283,8 @@ export const moveToColumn = (
         const taskIndex = findCardIndex(fromColumn, taskId);
         if (taskIndex === -1) return false;
 
-        const [task] = fromColumn.tasks.splice(taskIndex, 1);
-        toColumn.tasks.push(task);
+        const [task] = fromColumn.cards.splice(taskIndex, 1);
+        toColumn.cards.push(task);
         return true;
     }
 });
@@ -306,14 +306,14 @@ export const duplicate = (
         const taskIndex = findCardIndex(column, taskId);
         if (taskIndex === -1) return null;
 
-        const originalCard = column.tasks[taskIndex];
+        const originalCard = column.cards[taskIndex];
         const newCard: KanbanCard = {
             ...JSON.parse(JSON.stringify(originalCard)),
             id: IdGenerator.generateCardId()
         };
 
         // Insert after the original
-        column.tasks.splice(taskIndex + 1, 0, newCard);
+        column.cards.splice(taskIndex + 1, 0, newCard);
         return newCard.id;
     }
 });
@@ -331,7 +331,7 @@ export const updateIncludeFiles = (
     targets: [{ type: 'task', id: taskId, columnId }],
     execute: (board) => {
         const column = findColumn(board, columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === taskId);
         if (!task) return false;
 
         task.includeFiles = includeFiles;
@@ -362,7 +362,7 @@ export const insertBefore = (
             content: ''
         };
 
-        column.tasks.splice(taskIndex, 0, newCard);
+        column.cards.splice(taskIndex, 0, newCard);
         return newCard.id;
     }
 });
@@ -389,7 +389,7 @@ export const insertAfter = (
             content: ''
         };
 
-        column.tasks.splice(taskIndex + 1, 0, newCard);
+        column.cards.splice(taskIndex + 1, 0, newCard);
         return newCard.id;
     }
 });

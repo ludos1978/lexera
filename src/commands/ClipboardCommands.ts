@@ -733,7 +733,7 @@ export class ClipboardCommands extends SwitchBasedCommand {
             return null;
         }
         const column = board.columns.find(col => col.id === columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === taskId);
         return task?.includeContext || null;
     }
 

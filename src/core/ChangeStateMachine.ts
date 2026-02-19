@@ -371,7 +371,7 @@ export class ChangeStateMachine {
         // Send loading state to frontend (clear old content for UX)
         if (loadTarget && panel) {
             if (loadTarget.type === 'column') {
-                loadTarget.column.tasks = [];
+                loadTarget.column.cards = [];
                 loadTarget.column.includeFiles = [];
                 loadTarget.column.includeMode = false;
                 this._sendColumnUpdate(panel, loadTarget.column, null, true);
@@ -639,7 +639,7 @@ export class ChangeStateMachine {
             columnId: column.id,
             columnTitle: column.title,
             displayTitle: column.displayTitle,
-            tasks: isLoadingContent ? [] : column.tasks,
+            cards: isLoadingContent ? [] : column.cards,
             includeMode: isLoadingContent ? false : column.includeMode,
             includeFiles: isLoadingContent ? [] : column.includeFiles,
             isLoadingContent,

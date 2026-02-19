@@ -17,7 +17,7 @@ export const sortAllTasks = (
     targets: [], // Full board refresh
     execute: (board) => {
         for (const column of board.columns) {
-            column.tasks.sort(sortFn);
+            column.cards.sort(sortFn);
         }
         return true;
     }
@@ -36,7 +36,7 @@ export const sortColumnTasks = (
         const column = board.columns.find(c => c.id === columnId);
         if (!column) return false;
 
-        column.tasks.sort(sortFn);
+        column.cards.sort(sortFn);
         return true;
     }
 });

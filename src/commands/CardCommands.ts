@@ -240,7 +240,7 @@ export class CardCommands extends SwitchBasedCommand {
         }
 
         const column = findColumn(board, columnId);
-        const task = column?.tasks.find(t => t.id === taskId);
+        const task = column?.cards.find(t => t.id === taskId);
         if (!task) {
             return this.failure('Task not found');
         }

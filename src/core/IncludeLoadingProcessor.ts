@@ -75,7 +75,7 @@ export class IncludeLoadingProcessor {
                 isColumnSwitch = true;
             } else if (event.target === 'task') {
                 targetColumn = (event.columnIdForTask ? findColumn(board, event.columnIdForTask) : null) ?? null;
-                targetTask = targetColumn?.tasks.find(t => t.id === event.targetId) || null;
+                targetTask = targetColumn?.cards.find(t => t.id === event.targetId) || null;
             }
         } else if (event.type === 'user_edit' && event.params.includeSwitch) {
             if (event.editType === 'column_title') {
@@ -83,7 +83,7 @@ export class IncludeLoadingProcessor {
                 isColumnSwitch = true;
             } else if (event.editType === 'task_content') {
                 targetColumn = (event.params.taskId ? findColumnContainingCard(board, event.params.taskId) : null) ?? null;
-                targetTask = event.params.taskId ? (targetColumn?.tasks.find(t => t.id === event.params.taskId) || null) : null;
+                targetTask = event.params.taskId ? (targetColumn?.cards.find(t => t.id === event.params.taskId) || null) : null;
             }
         }
 
@@ -162,7 +162,7 @@ export class IncludeLoadingProcessor {
             const column = target.column;
             column.includeFiles = [];
             column.includeMode = false;
-            column.tasks = [];
+            column.cards = [];
             if (newTitle !== undefined) {
                 column.title = newTitle;
                 column.originalTitle = newTitle;
@@ -274,7 +274,7 @@ export class IncludeLoadingProcessor {
                 continue;
             }
 
-            const fileTasks = includeFile.parseToTasks(column.tasks, column.id, mainFilePath);
+            const fileTasks = includeFile.parseToTasks(column.cards, column.id, mainFilePath);
 
             // Debug logging
             if (fileTasks.length === 0) {
@@ -285,7 +285,7 @@ export class IncludeLoadingProcessor {
             context.result.updatedFiles.push(relativePath);
         }
 
-        column.tasks = tasks;
+        column.cards = tasks;
         logger.debug(`[IncludeLoadingProcessor] _loadColumnContent finished: columnId=${column.id}, includeError=${column.includeError}, taskCount=${tasks.length}, hasErrorTask=${tasks.some(t => t.includeError)}`);
     }
 
