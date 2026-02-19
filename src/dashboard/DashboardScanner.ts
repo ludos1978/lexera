@@ -309,7 +309,7 @@ export class DashboardScanner {
                         // Skip lines already captured by temporal resolution
                         if (resolvedLineContents.has(trimmed)) continue;
                         // Skip lines with any @ tag (temporal that may not have resolved)
-                        if (/@\S/.test(trimmed)) continue;
+                        if (/(?<=^|\s)@\S/.test(trimmed)) continue;
                         const subTaskSummary = trimmed.substring(6).trim();
                         if (subTaskSummary.length > 0) {
                             undatedTasks.push({

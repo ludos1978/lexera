@@ -135,7 +135,7 @@ function filterTagsForExport(text, tagVisibility = 'allexcludinglayout') {
             return text.replace(/#\w+\b/gi, '').trim();
         case 'none':
             // Export no tags - remove all tags
-            return text.replace(/#\w+\b/gi, '').replace(/@\w+\b/gi, '').trim();
+            return text.replace(/#\w+\b/gi, '').replace(/(?<=^|\s)@\w+\b/gi, '').trim();
         default:
             // Default to allexcludinglayout behavior
             return text.replace(/#row\d+\b/gi, '').replace(/#span\d+\b/gi, '').replace(/#stack\b/gi, '').trim();

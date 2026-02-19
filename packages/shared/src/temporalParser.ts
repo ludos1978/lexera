@@ -269,7 +269,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // --- Time tokens ---
     // Time range with colons: @09:00-17:00
-    const timeRangeColonRe = /@(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/g;
+    const timeRangeColonRe = /(?<=^|\s)@(\d{1,2}:\d{2})-(\d{1,2}:\d{2})/g;
     let m;
     while ((m = timeRangeColonRe.exec(text)) !== null) {
         tokens.push({ type: 'time', tag: m[0], value: 0, hasExplicitYear: true, timeSlot: m[0] });
@@ -277,7 +277,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // Time range without colons: @1200-1400
     if (tokens.filter(t => t.type === 'time').length === 0) {
-        const timeRangeNoColonRe = /@(\d{4})-(\d{4})/g;
+        const timeRangeNoColonRe = /(?<=^|\s)@(\d{4})-(\d{4})/g;
         while ((m = timeRangeNoColonRe.exec(text)) !== null) {
             const start = m[1];
             const end = m[2];
@@ -293,7 +293,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // 4-digit time: @1230 (only if no time range found)
     if (tokens.filter(t => t.type === 'time').length === 0) {
-        const time4Re = /@(\d{4})(?![-./\d])/g;
+        const time4Re = /(?<=^|\s)@(\d{4})(?![-./\d])/g;
         while ((m = time4Re.exec(text)) !== null) {
             const digits = m[1];
             const hours = parseInt(digits.substring(0, 2), 10);
@@ -306,7 +306,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // Single time with colon: @09:30 (only if no time range or 4-digit time found)
     if (tokens.filter(t => t.type === 'time').length === 0) {
-        const singleTimeColonRe = /@(\d{1,2}):(\d{2})(?=\s|$)/g;
+        const singleTimeColonRe = /(?<=^|\s)@(\d{1,2}):(\d{2})(?=\s|$)/g;
         while ((m = singleTimeColonRe.exec(text)) !== null) {
             const hours = parseInt(m[1], 10);
             const mins = parseInt(m[2], 10);
@@ -318,7 +318,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // AM/PM time: @12pm, @9am (US locale only)
     if (tokens.filter(t => t.type === 'time').length === 0 && !isLocaleDayFirst()) {
-        const ampmRe = /@(\d{1,2})(am|pm)/gi;
+        const ampmRe = /(?<=^|\s)@(\d{1,2})(am|pm)/gi;
         while ((m = ampmRe.exec(text)) !== null) {
             tokens.push({ type: 'time', tag: m[0], value: 0, hasExplicitYear: true, timeSlot: m[0] });
         }
@@ -334,7 +334,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
     }
 
     // --- Year tags: @Y2026 or @J2026 ---
-    const yearRe = /@[YyJj](\d{4})/g;
+    const yearRe = /(?<=^|\s)@[YyJj](\d{4})/g;
     while ((m = yearRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         const year = parseInt(m[1], 10);
@@ -346,7 +346,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
     }
 
     // --- Date tags: @DD.MM.YYYY, @YYYY-MM-DD, @DD.MM etc. ---
-    const dateRe = /@(\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?)/g;
+    const dateRe = /(?<=^|\s)@(\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?)/g;
     while ((m = dateRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         const parsed = parseDateTagFull(m[0]);
@@ -360,7 +360,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // --- Week tags: @KW7, @W5, @week3, @2026-W8, @kw8|kw38 (OR syntax with pipe) ---
     // Match individual week tags (space-separated) and pipe-OR groups
-    const weekRe = /@(?:(\d{4})[-.]?)?(?:[wW]eek|[kK][wW]|[wW])(\d{1,2})(?:\|(?:[wW]eek|[kK][wW]|[wW])?(\d{1,2}))*(?=\s|$)/g;
+    const weekRe = /(?<=^|\s)@(?:(\d{4})[-.]?)?(?:[wW]eek|[kK][wW]|[wW])(\d{1,2})(?:\|(?:[wW]eek|[kK][wW]|[wW])?(\d{1,2}))*(?=\s|$)/g;
     while ((m = weekRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         const fullMatch = m[0];
@@ -390,7 +390,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
     }
 
     // --- Quarter tags: @Q1, @Q2, @Q3, @Q4 ---
-    const quarterRe = /@[qQ]([1-4])(?=\s|$)/g;
+    const quarterRe = /(?<=^|\s)@[qQ]([1-4])(?=\s|$)/g;
     while ((m = quarterRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         const quarter = parseInt(m[1], 10);
@@ -405,7 +405,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
     // --- Month tags: @JAN, @january, etc. ---
     const monthNames = 'jan|january|januar|feb|february|februar|mar|march|mär|mrz|märz|apr|april|may|mai|jun|june|juni|jul|july|juli|aug|august|sep|september|oct|october|okt|oktober|nov|november|dec|december|dez|dezember';
-    const monthRe = new RegExp('@(' + monthNames + ')(?=\\s|$)', 'gi');
+    const monthRe = new RegExp('(?<=^|\\s)@(' + monthNames + ')(?=\\s|$)', 'gi');
     while ((m = monthRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         const monthNum = parseMonthName(m[1]);
@@ -422,7 +422,7 @@ function extractTemporalTokens(text: string): TemporalToken[] {
     }
 
     // --- Weekday tags: @mon, @friday, etc. ---
-    const weekdayRe = /@(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/gi;
+    const weekdayRe = /(?<=^|\s)@(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/gi;
     while ((m = weekdayRe.exec(text)) !== null) {
         if (timePositions.has(m.index)) continue;
         // Avoid matching if this position was already consumed by a month tag
@@ -717,7 +717,7 @@ function detectCheckboxState(text: string): 'unchecked' | 'checked' | 'none' {
     const lines = text.split('\n');
     for (const line of lines) {
         // Check the first line that has an @ temporal tag
-        if (/@\S/.test(line)) {
+        if (/(?<=^|\s)@\S/.test(line)) {
             if (/^\s*- \[[xX]\]/.test(line)) return 'checked';
             if (/^\s*- \[ \]/.test(line)) return 'unchecked';
             return 'none';

@@ -171,7 +171,7 @@ export class TextMatcher {
         }
 
         // Temporal tags: @date, @week, @time (@ prefix is now for all temporal)
-        const temporalMatches = text.matchAll(/@([^\s]+)/g);
+        const temporalMatches = text.matchAll(/(?<=^|\s)@([^\s]+)/g);
         for (const match of temporalMatches) {
             tags.push({ name: '@' + match[1], type: 'temporal' });
         }

@@ -79,26 +79,26 @@ class TagUtils {
             // - European short: @28.01.25, @28-01-25, @28/01/25 (DD.MM.YY)
             // - Day-month only: @28.01, @28-01, @28/01 (DD.MM - current year assumed)
             // Combined pattern matches all formats, parsing logic determines interpretation
-            dateTags: new RegExp(`${P.T}(\\d{1,4}[-./]\\d{1,2}(?:[-./]\\d{2,4})?)(?=\\s|$)`, 'g'),
+            dateTags: new RegExp(`(?<=^|\\s)${P.T}(\\d{1,4}[-./]\\d{1,2}(?:[-./]\\d{2,4})?)(?=\\s|$)`, 'g'),
 
             // Week patterns (@w15, @W15, @kw15, @KW15, @2025.w15, @2025-w15, @2025.kw15)
             // Supports both English 'w/W' and German 'kw/KW' (Kalenderwoche) prefixes
-            weekTags: new RegExp(`${P.T}(?:(\\d{4})[-.]?)?(?:[wW]|[kK][wW])(\\d{1,2})(?=\\s|$)`, 'g'),
+            weekTags: new RegExp(`(?<=^|\\s)${P.T}(?:(\\d{4})[-.]?)?(?:[wW]|[kK][wW])(\\d{1,2})(?=\\s|$)`, 'g'),
 
             // Weekday patterns (@mon, @monday, @tue, @tuesday, etc.)
-            weekdayTags: new RegExp(`${P.T}(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\\s|$)`, 'gi'),
+            weekdayTags: new RegExp(`(?<=^|\\s)${P.T}(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\\s|$)`, 'gi'),
 
             // Time patterns (@15:30, @9am, @10pm, @22:00)
-            timeTags: new RegExp(`${P.T}(\\d{1,2}(?::\\d{2})?(?:am|pm)?)(?=\\s|$)`, 'gi'),
+            timeTags: new RegExp(`(?<=^|\\s)${P.T}(\\d{1,2}(?::\\d{2})?(?:am|pm)?)(?=\\s|$)`, 'gi'),
 
             // Time slot patterns (@15:30-17:00, @9am-5pm)
-            timeSlotTags: new RegExp(`${P.T}(\\d{1,2}(?::\\d{2})?(?:am|pm)?)-(\\d{1,2}(?::\\d{2})?(?:am|pm)?)(?=\\s|$)`, 'gi'),
+            timeSlotTags: new RegExp(`(?<=^|\\s)${P.T}(\\d{1,2}(?::\\d{2})?(?:am|pm)?)-(\\d{1,2}(?::\\d{2})?(?:am|pm)?)(?=\\s|$)`, 'gi'),
 
             // Minute slot patterns (@:15-:30, @:00-:15) - inherit hour from parent time slot
-            minuteSlotTags: new RegExp(`${P.T}:(\\d{1,2})-:(\\d{1,2})(?=\\s|$)`, 'gi'),
+            minuteSlotTags: new RegExp(`(?<=^|\\s)${P.T}:(\\d{1,2})-:(\\d{1,2})(?=\\s|$)`, 'gi'),
 
             // Generic temporal tag - captures everything after @ until whitespace (for future extensions)
-            temporalTag: new RegExp(`${P.T}([^\\s]+)`, 'g'),
+            temporalTag: new RegExp(`(?<=^|\\s)${P.T}([^\\s]+)`, 'g'),
 
             // Priority/state tags
             priorityTag: new RegExp(`${P.H}(high|medium|low|urgent)(?=\\s|$)`, 'i'),

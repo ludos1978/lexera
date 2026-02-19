@@ -14,7 +14,7 @@ export function extractDate(text: string, dateType: string = 'due'): string | nu
 
     // Match shorthand format @YYYY-MM-DD or @DD-MM-YYYY (assumes it's a due date)
     if (dateType === 'due') {
-        const shortMatch = text.match(/@(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})(?:\s|$)/);
+        const shortMatch = text.match(/(?<=^|\s)@(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})(?:\s|$)/);
         if (shortMatch) {
             const dateStr = shortMatch[1];
             // Convert DD-MM-YYYY to YYYY-MM-DD for comparison
@@ -27,7 +27,7 @@ export function extractDate(text: string, dateType: string = 'due'): string | nu
     }
 
     // Match typed format @type:date (e.g., @due:2025-03-27, @done:2025-03-27)
-    const typedRegex = new RegExp(`@${dateType}:(\\d{4}-\\d{2}-\\d{2}|\\d{2}-\\d{2}-\\d{4})(?:\\s|$)`);
+    const typedRegex = new RegExp(`(?<=^|\\s)@${dateType}:(\\d{4}-\\d{2}-\\d{2}|\\d{2}-\\d{2}-\\d{4})(?:\\s|$)`);
     const typedMatch = text.match(typedRegex);
     if (typedMatch) {
         const dateStr = typedMatch[1];

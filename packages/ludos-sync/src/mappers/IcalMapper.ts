@@ -42,7 +42,7 @@ export interface IcalTask {
  */
 function parseTimeRange(timeSlot: string): { startH: number; startM: number; endH: number; endM: number } | null {
   // @09:00-17:00
-  const colonRangeMatch = timeSlot.match(/@(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);
+  const colonRangeMatch = timeSlot.match(/(?<=^|\s)@(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})/);
   if (colonRangeMatch) {
     return {
       startH: parseInt(colonRangeMatch[1], 10),
@@ -52,7 +52,7 @@ function parseTimeRange(timeSlot: string): { startH: number; startM: number; end
     };
   }
   // @0900-1700
-  const noColonRangeMatch = timeSlot.match(/@(\d{2})(\d{2})-(\d{2})(\d{2})/);
+  const noColonRangeMatch = timeSlot.match(/(?<=^|\s)@(\d{2})(\d{2})-(\d{2})(\d{2})/);
   if (noColonRangeMatch) {
     return {
       startH: parseInt(noColonRangeMatch[1], 10),
@@ -62,7 +62,7 @@ function parseTimeRange(timeSlot: string): { startH: number; startM: number; end
     };
   }
   // Single time @09:30 → 1-hour duration
-  const singleColonMatch = timeSlot.match(/@(\d{1,2}):(\d{2})/);
+  const singleColonMatch = timeSlot.match(/(?<=^|\s)@(\d{1,2}):(\d{2})/);
   if (singleColonMatch) {
     const startH = parseInt(singleColonMatch[1], 10);
     const startM = parseInt(singleColonMatch[2], 10);
@@ -71,7 +71,7 @@ function parseTimeRange(timeSlot: string): { startH: number; startM: number; end
     return { startH, startM, endH, endM };
   }
   // Single time @0930 → 1-hour duration
-  const single4Match = timeSlot.match(/@(\d{2})(\d{2})/);
+  const single4Match = timeSlot.match(/(?<=^|\s)@(\d{2})(\d{2})/);
   if (single4Match) {
     const startH = parseInt(single4Match[1], 10);
     const startM = parseInt(single4Match[2], 10);
@@ -232,22 +232,22 @@ export class IcalMapper {
   private static stripTemporalTags(text: string): string {
     return text
       // Time ranges: @09:00-17:00, @0900-1700
-      .replace(/@\d{1,2}:\d{2}-\d{1,2}:\d{2}/g, '')
-      .replace(/@\d{4}-\d{4}/g, '')
+      .replace(/(?<=^|\s)@\d{1,2}:\d{2}-\d{1,2}:\d{2}/g, '')
+      .replace(/(?<=^|\s)@\d{4}-\d{4}/g, '')
       // 4-digit time: @1230
-      .replace(/@\d{4}(?![-./\d])/g, '')
+      .replace(/(?<=^|\s)@\d{4}(?![-./\d])/g, '')
       // Single time: @09:30
-      .replace(/@\d{1,2}:\d{2}(?=\s|$)/g, '')
+      .replace(/(?<=^|\s)@\d{1,2}:\d{2}(?=\s|$)/g, '')
       // AM/PM time: @12pm, @9am
-      .replace(/@\d{1,2}(?:am|pm)/gi, '')
+      .replace(/(?<=^|\s)@\d{1,2}(?:am|pm)/gi, '')
       // Date tags: @DD.MM.YYYY, @YYYY-MM-DD, @DD.MM
-      .replace(/@\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?/g, '')
+      .replace(/(?<=^|\s)@\d{1,4}[-./]\d{1,2}(?:[-./]\d{2,4})?/g, '')
       // Year tags: @Y2026, @J2026
-      .replace(/@[YyJj]\d{4}/g, '')
+      .replace(/(?<=^|\s)@[YyJj]\d{4}/g, '')
       // Week tags with OR syntax: @kw8|kw38, @KW8, @W4, @2025-W4
-      .replace(/@(?:\d{4}[-.]?)?(?:[wW]|[kK][wW])\d{1,2}(?:\|(?:[wW]|[kK][wW])?\d{1,2})*/g, '')
+      .replace(/(?<=^|\s)@(?:\d{4}[-.]?)?(?:[wW]|[kK][wW])\d{1,2}(?:\|(?:[wW]|[kK][wW])?\d{1,2})*/g, '')
       // Weekday tags: @mon, @friday
-      .replace(/@(?:mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/gi, '')
+      .replace(/(?<=^|\s)@(?:mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)(?=\s|$)/gi, '')
       // Clean up extra whitespace
       .replace(/\s{2,}/g, ' ')
       .trim();

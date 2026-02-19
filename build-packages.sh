@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────
-#  build-packages.sh  —  Build all packages (shared, marp-engine, ludos-sync)
+#  build-packages.sh  —  Build all packages
 #
 #  Usage:
 #    ./build-packages.sh              Build all packages
 #    ./build-packages.sh --clean      Clean dist/ before building
-#    ./build-packages.sh --only X     Build only package X (shared|marp-engine|ludos-sync)
+#    ./build-packages.sh --only X     Build only package X (shared|marp-engine|ludos-sync|ludos-sync-menubar)
 # ─────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SHARED_DIR="$SCRIPT_DIR/packages/shared"
 MARP_DIR="$SCRIPT_DIR/packages/marp-engine"
 SYNC_DIR="$SCRIPT_DIR/packages/ludos-sync"
+MENUBAR_DIR="$SCRIPT_DIR/packages/ludos-sync-menubar"
 
 CLEAN=false
 ONLY=""
@@ -75,6 +76,14 @@ if should_build "ludos-sync"; then
   fi
   npm run build
   echo "  ludos-sync built."
+fi
+
+# ── Build ludos-sync-menubar (install Python deps) ────────────────
+if should_build "ludos-sync-menubar"; then
+  echo "Building ludos-sync-menubar..."
+  cd "$MENUBAR_DIR"
+  pip install -r requirements.txt 2>/dev/null || pip3 install -r requirements.txt
+  echo "  ludos-sync-menubar built."
 fi
 
 echo ""

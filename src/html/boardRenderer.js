@@ -3160,7 +3160,7 @@ function injectStackableBars(targetElement = null) {
                     labelText = labelText
                         .replace(/!!!include\(([^)]+)\)!!!/g, (_, path) => path.split('/').pop().replace(/\.[^.]+$/, '')) // !!!include(path)!!! → filename
                         .replace(/#[a-zA-Z0-9_][a-zA-Z0-9_-]*/g, '')  // #tags
-                        .replace(/@[^\s]+/g, '')                        // @temporal
+                        .replace(/(?<=^|\s)@[^\s]+/g, '')               // @temporal
                         .replace(/\?\#[^\s]+/g, '')                     // ?#query tags
                         .replace(/\*\*([^*]+)\*\*/g, '$1')             // **bold**
                         .replace(/\*([^*]+)\*/g, '$1')                  // *italic*

@@ -9,7 +9,7 @@ export class TagUtils {
     // Regular expressions for different tag patterns
     // Tags are space-delimited: match up to whitespace or end-of-string
     private static readonly BASIC_TAG_PATTERN = /#[a-zA-Z][^\s]*/g;
-    private static readonly AT_TAG_PATTERN = /@[^\s]+/g;
+    private static readonly AT_TAG_PATTERN = /(?<=^|\s)@[^\s]+/g;
     private static readonly ROW_TAG_PATTERN = /#row\d*(?=\s|$)/gi;
     private static readonly SPAN_TAG_PATTERN = /#span\d*(?=\s|$)/gi;
     private static readonly STACK_TAG_PATTERN = /#stack(?=\s|$)/gi;
