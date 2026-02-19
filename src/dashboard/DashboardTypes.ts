@@ -204,6 +204,8 @@ export interface UndatedTask {
 export interface DashboardData {
     /** Deadline tasks (checkbox tasks with temporal tags) */
     upcomingItems: UpcomingItem[];
+    /** Calendar events (temporal tags without checkbox) */
+    calendarEvents: UpcomingItem[];
     /** Undated tasks (checkbox tasks without temporal tags) */
     undatedTasks: UndatedTask[];
     /** Tag summaries per board */

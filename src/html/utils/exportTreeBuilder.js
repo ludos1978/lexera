@@ -11,12 +11,19 @@
 
     class ExportTreeBuilder {
         /**
-         * Check if a column or task should be hidden from export
+         * Check if a column or task should be hidden from the export tree entirely (parked/deleted)
          */
         static isHiddenItem(title, description) {
-            const titleHasTag = title && (title.includes(PARKED_TAG) || title.includes(DELETED_TAG) || EXCLUDE_TAG_PATTERN.test(title));
+            const titleHasTag = title && (title.includes(PARKED_TAG) || title.includes(DELETED_TAG));
             const descHasTag = description && (description.includes(PARKED_TAG) || description.includes(DELETED_TAG));
             return titleHasTag || descHasTag;
+        }
+
+        /**
+         * Check if a column has the #exclude tag (shown in tree but not exportable)
+         */
+        static isExcludedItem(title) {
+            return title && EXCLUDE_TAG_PATTERN.test(title);
         }
 
         /**
@@ -52,7 +59,8 @@
                 rowMap.get(rowNumber).push({
                     column,
                     columnIndex,
-                    isStacked: this.isColumnStacked(column.title)
+                    isStacked: this.isColumnStacked(column.title),
+                    excluded: this.isExcludedItem(column.title)
                 });
             });
 
@@ -94,7 +102,7 @@
                         // Add columns to stack
                         stack.forEach(item => {
                             const columnTitle = this.getCleanColumnTitle(item.column.title) || 'Untitled';
-                            stackNode.children.push({
+                            const node = {
                                 type: 'column',
                                 label: `Column: ${columnTitle}`,
                                 selected: false,
@@ -102,7 +110,9 @@
                                 columnIndex: item.columnIndex,
                                 columnId: item.column.id,
                                 children: []
-                            });
+                            };
+                            if (item.excluded) node.excluded = true;
+                            stackNode.children.push(node);
                         });
 
                         rowNode.children.push(stackNode);
@@ -110,7 +120,7 @@
                         // Single column (not stacked)
                         const item = stack[0];
                         const columnTitle = this.getCleanColumnTitle(item.column.title) || 'Untitled';
-                        rowNode.children.push({
+                        const node = {
                             type: 'column',
                             label: `Column: ${columnTitle}`,
                             selected: false,
@@ -118,7 +128,9 @@
                             columnIndex: item.columnIndex,
                             columnId: item.column.id,
                             children: []
-                        });
+                        };
+                        if (item.excluded) node.excluded = true;
+                        rowNode.children.push(node);
                     }
                 });
 
@@ -216,8 +228,8 @@
          * Collect all column indexes from a node and its descendants
          */
         static collectColumnIndexes(node, columnIndexes) {
-            if (node.type === 'column' && node.columnIndex !== undefined) {
-                // This is a column node - add its index
+            if (node.type === 'column' && node.columnIndex !== undefined && !node.excluded) {
+                // This is a column node - add its index (skip excluded columns)
                 columnIndexes.add(node.columnIndex);
             }
 
@@ -235,7 +247,7 @@
         static toggleSelection(tree, nodeId, selected) {
             // Find and toggle the node
             const node = this.findNodeById(tree, nodeId);
-            if (!node) return tree;
+            if (!node || node.excluded) return tree;
 
             node.selected = selected;
 
@@ -261,7 +273,9 @@
         static selectAllChildren(node, selected) {
             if (!node.children) return;
             node.children.forEach(child => {
-                child.selected = selected;
+                if (!child.excluded) {
+                    child.selected = selected;
+                }
                 this.selectAllChildren(child, selected);
             });
         }
@@ -277,15 +291,16 @@
             // Recursively update children first
             node.children.forEach(child => this.updateParentSelection(child));
 
-            // Update this node's selection based on its children
-            const allChildrenSelected = node.children.every(child => child.selected);
-            const anyChildDeselected = node.children.some(child => !child.selected);
+            // Update this node's selection based on its children (excluded children are ignored)
+            const selectableChildren = node.children.filter(child => !child.excluded);
+            const allChildrenSelected = selectableChildren.length > 0 && selectableChildren.every(child => child.selected);
+            const anyChildDeselected = selectableChildren.some(child => !child.selected);
 
-            if (allChildrenSelected && node.children.length > 0) {
-                // All children selected -> select parent
+            if (allChildrenSelected && selectableChildren.length > 0) {
+                // All selectable children selected -> select parent
                 node.selected = true;
             } else if (anyChildDeselected) {
-                // Any child deselected -> deselect parent
+                // Any selectable child deselected -> deselect parent
                 node.selected = false;
             }
         }

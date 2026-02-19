@@ -216,8 +216,9 @@ export class DashboardScanner {
         boardUri: string,
         boardName: string,
         timeframeDays: number
-    ): { upcomingItems: UpcomingItem[]; undatedTasks: UndatedTask[]; summary: BoardTagSummary } {
+    ): { upcomingItems: UpcomingItem[]; calendarEvents: UpcomingItem[]; undatedTasks: UndatedTask[]; summary: BoardTagSummary } {
         const upcomingItems: UpcomingItem[] = [];
+        const calendarEvents: UpcomingItem[] = [];
         const undatedTasks: UndatedTask[] = [];
         const tagCounts = new Map<string, { count: number; type: 'hash' | 'temporal' }>();
         let totalTasks = 0;
@@ -328,8 +329,11 @@ export class DashboardScanner {
                         r.temporal, task.checked, isFirstLine
                     );
 
-                    // Skip checked sub-line items (non-recurring)
-                    if (effectiveCheckbox === 'checked' && r.temporal.hasExplicitYear !== false) {
+                    // Calendar event = temporal line without checkbox
+                    const isCalendarEvent = effectiveCheckbox === 'none';
+
+                    // Skip checked sub-line items (non-recurring) — checkbox items only
+                    if (!isCalendarEvent && effectiveCheckbox === 'checked' && r.temporal.hasExplicitYear !== false) {
                         continue;
                     }
 
@@ -338,6 +342,8 @@ export class DashboardScanner {
 
                     const isChecked = effectiveCheckbox === 'checked';
                     const isUnchecked = effectiveCheckbox === 'unchecked';
+                    // Calendar events go into calendarEvents, checkbox items into upcomingItems
+                    const targetCollection = isCalendarEvent ? calendarEvents : upcomingItems;
 
                     // --- Yearless recurring tag handling ---
                     if (r.temporal.hasExplicitYear === false) {
@@ -346,8 +352,9 @@ export class DashboardScanner {
                             && r.temporal.month === undefined
                             && r.temporal.quarter === undefined;
 
+                        // Calendar events: treat as unchecked for recurring classification
                         const classification = classifyRecurringState(
-                            r.effectiveDate, isChecked, isWeeklyRecurring
+                            r.effectiveDate, isCalendarEvent ? false : isChecked, isWeeklyRecurring
                         );
 
                         if (classification === 'skip') continue;
@@ -373,7 +380,7 @@ export class DashboardScanner {
                             recurringState = classification;
                         }
 
-                        upcomingItems.push({
+                        targetCollection.push({
                             boardUri,
                             boardName,
                             columnIndex,
@@ -391,9 +398,9 @@ export class DashboardScanner {
                             quarter: r.temporal.quarter,
                             timeSlot: r.temporal.timeSlot,
                             rawTitle: taskSummary || '',
-                            isOverdue: recurringState === 'overdue' || recurringState === 'outdated',
+                            isOverdue: isCalendarEvent ? false : (recurringState === 'overdue' || recurringState === 'outdated'),
                             hasExplicitYear: false,
-                            recurringState
+                            recurringState: isCalendarEvent ? undefined : recurringState
                         });
                         continue;
                     }
@@ -405,11 +412,11 @@ export class DashboardScanner {
 
                     const checkDate = new Date(r.effectiveDate);
                     checkDate.setHours(0, 0, 0, 0);
-                    const isOverdue = isUnchecked && checkDate < today;
+                    const isOverdue = !isCalendarEvent && isUnchecked && checkDate < today;
 
                     if (!withinTimeframe && !isOverdue) continue;
 
-                    upcomingItems.push({
+                    targetCollection.push({
                         boardUri,
                         boardName,
                         columnIndex,
@@ -439,6 +446,7 @@ export class DashboardScanner {
 
         logger.debug('[DashboardScanner] END scan', {
             upcomingItems: upcomingItems.length,
+            calendarEvents: calendarEvents.length,
             undatedTasks: undatedTasks.length
         });
 
@@ -448,6 +456,7 @@ export class DashboardScanner {
 
         return {
             upcomingItems,
+            calendarEvents,
             undatedTasks,
             summary: { boardUri, boardName, tags, totalTasks, temporalTasks }
         };

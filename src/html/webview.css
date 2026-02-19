@@ -5359,6 +5359,13 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
+.export-selector-column.excluded,
+.export-selector-stacked-column.excluded {
+  opacity: 0.4;
+  cursor: default;
+  border-style: dashed;
+}
+
 /* Link Handling Options */
 .link-handling-options {
   margin-left: 24px;

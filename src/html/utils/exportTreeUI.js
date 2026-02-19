@@ -137,16 +137,22 @@ class ExportTreeUI {
     renderColumn(columnNode) {
         const columnDiv = document.createElement('div');
         columnDiv.className = 'export-selector-column';
-        columnDiv.className += columnNode.selected ? ' selected' : '';
+        if (columnNode.excluded) {
+            columnDiv.className += ' excluded';
+        } else {
+            columnDiv.className += columnNode.selected ? ' selected' : '';
+        }
         columnDiv.dataset.nodeId = window.ExportTreeBuilder.generateNodeId(columnNode);
 
         const title = this.getColumnTitle(columnNode.label);
         columnDiv.textContent = title;
 
-        columnDiv.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleNode(columnDiv.dataset.nodeId);
-        });
+        if (!columnNode.excluded) {
+            columnDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleNode(columnDiv.dataset.nodeId);
+            });
+        }
 
         return columnDiv;
     }
@@ -157,16 +163,22 @@ class ExportTreeUI {
     renderStackedColumn(columnNode) {
         const columnDiv = document.createElement('div');
         columnDiv.className = 'export-selector-stacked-column';
-        columnDiv.className += columnNode.selected ? ' selected' : '';
+        if (columnNode.excluded) {
+            columnDiv.className += ' excluded';
+        } else {
+            columnDiv.className += columnNode.selected ? ' selected' : '';
+        }
         columnDiv.dataset.nodeId = window.ExportTreeBuilder.generateNodeId(columnNode);
 
         const title = this.getColumnTitle(columnNode.label);
         columnDiv.textContent = title;
 
-        columnDiv.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleNode(columnDiv.dataset.nodeId);
-        });
+        if (!columnNode.excluded) {
+            columnDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleNode(columnDiv.dataset.nodeId);
+            });
+        }
 
         return columnDiv;
     }

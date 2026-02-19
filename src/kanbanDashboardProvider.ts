@@ -195,6 +195,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         const sortMode = registry.sortMode;
 
         const upcomingItems: UpcomingItem[] = [];
+        const calendarEvents: UpcomingItem[] = [];
         const undatedTasks: UndatedTask[] = [];
         const boardSummaries: BoardTagSummary[] = [];
         const taggedItems: TagSearchResult[] = [];
@@ -208,6 +209,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                 if (!result) continue;
 
                 upcomingItems.push(...result.upcomingItems);
+                calendarEvents.push(...result.calendarEvents);
                 undatedTasks.push(...result.undatedTasks);
                 boardSummaries.push(result.summary);
 
@@ -293,7 +295,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
         // Sort upcoming items: recurring states first (overdue → outdated → resetToRepeat),
         // then by date
         const recurringOrder: Record<string, number> = { overdue: 0, outdated: 1, resetToRepeat: 2 };
-        upcomingItems.sort((a, b) => {
+        const dateSorter = (a: UpcomingItem, b: UpcomingItem) => {
             const aRecurring = a.recurringState ? recurringOrder[a.recurringState] : 3;
             const bRecurring = b.recurringState ? recurringOrder[b.recurringState] : 3;
             if (aRecurring !== bRecurring) return aRecurring - bRecurring;
@@ -303,7 +305,9 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             if (a.date) return -1;
             if (b.date) return 1;
             return 0;
-        });
+        };
+        upcomingItems.sort(dateSorter);
+        calendarEvents.sort(dateSorter);
 
         // Remove duplicate tagged items (same task might match multiple tags)
         const uniqueTaggedItems = taggedItems.filter((item, index, self) =>
@@ -323,6 +327,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
 
         const data: DashboardData = {
             upcomingItems,
+            calendarEvents,
             undatedTasks,
             boardSummaries,
             config,
@@ -348,6 +353,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
      */
     private async _scanBoard(boardUri: string, timeframe: TimeframeDays): Promise<{
         upcomingItems: UpcomingItem[];
+        calendarEvents: UpcomingItem[];
         undatedTasks: UndatedTask[];
         summary: BoardTagSummary;
         board: import('./markdownParser').KanbanBoard;
@@ -1183,6 +1189,21 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             </div>
         </div>
 
+        <!-- Calendar Section -->
+        <div class="section">
+            <div class="tree-row section-header" data-section="calendar">
+                <div class="tree-indent"><div class="indent-guide"></div></div>
+                <div class="tree-twistie collapsible expanded"></div>
+                <div class="tree-contents">
+                    <h3>Calendar</h3>
+                </div>
+            </div>
+            <div class="section-content" id="calendar-content">
+                <div class="empty-message" id="calendar-empty"><div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div><span class="empty-message-text">No calendar events</span></div>
+                <div id="calendar-list"></div>
+            </div>
+        </div>
+
         <!-- Tagged Items Section -->
         <div class="section">
             <div class="tree-row section-header" data-section="tagged">
@@ -1327,6 +1348,7 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             updateSortModeButtons();
             renderUndatedTasks();
             renderUpcomingItems();
+            renderCalendarEvents();
             renderTaggedItems();
             renderBrokenElements();
             renderSearchResults();
@@ -1566,6 +1588,132 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
                     const boardUri = item.getAttribute('data-board-uri');
                     const columnTitle = item.getAttribute('data-column-title');
                     const cardTitle = item.getAttribute('data-card-title');
+                    navigateToElement(boardUri, columnTitle, cardTitle);
+                });
+            });
+            attachToggleListeners(container);
+        }
+
+        function renderCalendarEvents() {
+            const container = document.getElementById('calendar-list');
+            const emptyMsg = document.getElementById('calendar-empty');
+            const items = dashboardData.calendarEvents || [];
+
+            if (items.length === 0) {
+                container.innerHTML = '';
+                emptyMsg.style.display = 'block';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+            const sortMode = dashboardData.sortMode || 'boardFirst';
+
+            if (sortMode === 'boardFirst') {
+                renderCalendarBoardFirst(container, items);
+            } else {
+                renderCalendarMerged(container, items);
+            }
+        }
+
+        function renderCalendarBoardFirst(container, items) {
+            var boards = {};
+            items.forEach(function(item) {
+                if (!boards[item.boardName]) boards[item.boardName] = [];
+                boards[item.boardName].push(item);
+            });
+
+            var html = '';
+            for (var boardName in boards) {
+                var boardItems = boards[boardName];
+                var boardKey = 'calendar/board/' + boardName;
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row tree-group-toggle"' + boardColorStyle(boardName) + ' data-group-key="' + escapeHtml(boardKey) + '">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(boardKey) + '"></div>';
+                html += '<div class="tree-contents">' + boardColorDot(boardName) + '<span class="tree-label-name">' + escapeHtml(boardName) + ' (' + boardItems.length + ')</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items"' + groupItemsStyle(boardKey) + '>';
+
+                var dateGroups = {};
+                boardItems.forEach(function(item) {
+                    var dateKey = formatUpcomingGroupKey(item);
+                    if (!dateGroups[dateKey]) dateGroups[dateKey] = [];
+                    dateGroups[dateKey].push(item);
+                });
+
+                for (var date in dateGroups) {
+                    var dateItems = dateGroups[date];
+                    var dateGroupKey = boardKey + '/' + date;
+                    html += '<div class="tree-group">';
+                    html += '<div class="tree-row tree-group-toggle" data-group-key="' + escapeHtml(dateGroupKey) + '">';
+                    html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                    html += '<div class="tree-twistie collapsible' + groupExpandedClass(dateGroupKey) + '"></div>';
+                    html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(date) + '</span></div>';
+                    html += '</div>';
+                    html += '<div class="tree-group-items"' + groupItemsStyle(dateGroupKey) + '>';
+                    dateItems.forEach(function(item) {
+                        html += renderCalendarItem(item, 4);
+                    });
+                    html += '</div></div>';
+                }
+
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachCalendarListeners(container);
+        }
+
+        function renderCalendarMerged(container, items) {
+            var groups = {};
+            items.forEach(function(item) {
+                var dateKey = formatUpcomingGroupKey(item);
+                if (!groups[dateKey]) groups[dateKey] = [];
+                groups[dateKey].push(item);
+            });
+
+            var html = '';
+            for (var date in groups) {
+                var groupItems = groups[date];
+                var gKey = 'calendar/date/' + date;
+                html += '<div class="tree-group">';
+                html += '<div class="tree-row date-group-header tree-group-toggle" data-group-key="' + escapeHtml(gKey) + '">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie collapsible' + groupExpandedClass(gKey) + '"></div>';
+                html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(date) + '</span></div>';
+                html += '</div>';
+                html += '<div class="tree-group-items"' + groupItemsStyle(gKey) + '>';
+                groupItems.forEach(function(item) {
+                    html += renderCalendarItem(item, 3);
+                });
+                html += '</div></div>';
+            }
+
+            container.innerHTML = html;
+            attachCalendarListeners(container);
+        }
+
+        function renderCalendarItem(item, indentLevel) {
+            var html = '<div class="tree-row calendar-item"' + boardColorStyle(item.boardName) + ' data-board-uri="' + escapeHtml(item.boardUri) + '" ';
+            html += 'data-column-title="' + escapeHtml(item.columnTitle) + '" data-card-title="' + escapeHtml(item.cardTitle) + '">';
+            html += '<div class="tree-indent">';
+            for (var i = 0; i < indentLevel; i++) html += '<div class="indent-guide"></div>';
+            html += '</div>';
+            html += '<div class="tree-twistie"></div>';
+            html += '<div class="tree-contents"><div class="tree-label-2line">';
+            html += '<span class="entry-title">' + escapeHtml(item.taskSummary) + '</span>';
+            html += '<span class="entry-location">' + escapeHtml(item.boardName) + ' / ' + escapeHtml(item.columnTitle) + '</span>';
+            html += '</div></div>';
+            html += '</div>';
+            return html;
+        }
+
+        function attachCalendarListeners(container) {
+            container.querySelectorAll('.calendar-item').forEach(function(item) {
+                item.addEventListener('click', function() {
+                    var boardUri = item.getAttribute('data-board-uri');
+                    var columnTitle = item.getAttribute('data-column-title');
+                    var cardTitle = item.getAttribute('data-card-title');
                     navigateToElement(boardUri, columnTitle, cardTitle);
                 });
             });
