@@ -2939,33 +2939,8 @@ figure:has(.diagram-placeholder .image-not-found) {
   pointer-events: none;
 }
 
-/* Hidden content overlay - columns with #hidden tag */
-.kanban-full-height-column[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .column-content {
-  position: relative;
-}
-
-.kanban-full-height-column[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .column-content::after {
-  content: 'Content hidden — use the menu to show the contents';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-descriptionForeground);
-  font-style: italic;
-  font-size: 12px;
-  z-index: var(--z-base);
-}
-
-/* Prevent interaction with hidden column content */
-.kanban-full-height-column[data-hidden-content="true"]:not([data-hidden-revealed="true"]) .column-content .task-item {
-  pointer-events: none;
-  user-select: none;
-}
+/* #hide/#hidden on column — tasks are individually hidden (no column overlay) */
+/* Column "Reveal all" button visibility is handled by .hidden-content-toggle rule above */
 
 
 

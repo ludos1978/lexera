@@ -1870,8 +1870,8 @@ function createColumnElement(column, columnIndex) {
     // Check for #sticky tag to determine sticky state (default: false = not sticky)
     const hasStickyTag = /#sticky\b/i.test(column.title);
 
-    // Check for #hidden tag to hide column content (consistent with updateVisualTagState)
-    const isColumnHidden = allTags.includes('hidden');
+    // Check for #hide/#hidden tag — column-level tag propagates to tasks (not column overlay)
+    const isColumnHidden = allTags.includes('hidden') || allTags.includes('hide');
 
     // Column include error: ONLY when ALL THREE conditions are met:
     // 1. Column has includeFiles (it's actually a column include)
@@ -1959,7 +1959,7 @@ function createColumnElement(column, columnIndex) {
 								<div class="donut-menu">
 										<button class="donut-menu-btn" onmousedown="event.preventDefault();" onclick="toggleDonutMenu(event, this)">☰</button>
 										<div class="donut-menu-dropdown">
-												<button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenColumnContent('${column.id}')">Reveal content</button>
+												<button class="donut-menu-item hidden-content-toggle" onclick="toggleHiddenColumnContent('${column.id}')">Reveal all</button>
 												<button class="donut-menu-item" onclick="insertColumnBefore('${column.id}')">Insert column before</button>
 												<button class="donut-menu-item" onclick="insertColumnAfter('${column.id}')">Insert column after</button>
 												<button class="donut-menu-item" onclick="duplicateColumn('${column.id}')">Duplicate column</button>
@@ -2207,9 +2207,9 @@ function createTaskElement(task, columnId, taskIndex, columnTitle) {
     const taskIncludeErrorAttr = hasTaskIncludeError ? ' data-include-error="true"' : '';
 
     // Detect #hidden or #hide tag in task header (consistent with updateVisualTagState)
-    // Also check if parent column has #hide tag — propagates to each task individually
+    // Also check if parent column has #hide/#hidden — propagates to each task individually
     const columnTags = getActiveTagsInTitle(columnTitleForTemporal);
-    const isHiddenContent = allTags.includes('hidden') || allTags.includes('hide') || columnTags.includes('hide');
+    const isHiddenContent = allTags.includes('hidden') || allTags.includes('hide') || columnTags.includes('hide') || columnTags.includes('hidden');
     const hiddenContentAttr = isHiddenContent ? ' data-hidden-content="true"' : '';
 
     return `

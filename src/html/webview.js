@@ -654,34 +654,38 @@ function createFileMarkdownLink(filePath) {
     const hasExtension = lastDotIndex > 0 && lastDotIndex < fileName.length - 1;
     const extension = hasExtension ? fileName.slice(lastDotIndex + 1).toLowerCase() : '';
 
-    // Image file extensions
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif'];
-    // Markdown file extensions
+    // Markdown → [[wiki-link]]
     const markdownExtensions = ['md', 'markdown', 'mdown', 'mkd', 'mdx'];
-
-    if (imageExtensions.includes(extension)) {
-        // Image: ![](path) - use URL encoding for spaces and special characters
-        const safePath = escapeFilePath(filePath);
-        return `![](${safePath})`;
-    } else if (markdownExtensions.includes(extension)) {
-        // Markdown: [[filename]] - wiki links don't use URL encoding, just escape special chars
+    if (markdownExtensions.includes(extension)) {
         if (filePath.includes('/') || filePath.includes('\\')) {
-            const wikiPath = ValidationUtils.escapeWikiLinkPath(filePath);
-            return `[[${wikiPath}]]`;
-        } else {
-            // For simple filenames, also use wiki link escaping
-            const wikiFileName = ValidationUtils.escapeWikiLinkPath(fileName);
-            return `[[${wikiFileName}]]`;
+            return `[[${ValidationUtils.escapeWikiLinkPath(filePath)}]]`;
         }
-    } else if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
-        // URL: <url> - URLs are already encoded
-        return `<${filePath}>`;
-    } else {
-        // Other files: [filename](path) - use URL encoding
-        const safePath = escapeFilePath(filePath);
-        const baseName = hasExtension ? fileName.slice(0, lastDotIndex) : fileName;
-        return `[${baseName}](${safePath})`;
+        return `[[${ValidationUtils.escapeWikiLinkPath(fileName)}]]`;
     }
+
+    // HTTP(S) URLs → [domain](url)
+    if (/^https?:\/\//i.test(filePath)) {
+        return `[${extractDomainFromUrl(filePath)}](${filePath})`;
+    }
+
+    // Other protocol links (mailto:, tel:, etc.) → <url>
+    if (fileTypeUtils.isProtocolUrl(filePath)) {
+        return `<${filePath}>`;
+    }
+
+    // Bare email addresses → <mailto:email>
+    if (fileTypeUtils.isEmail(filePath)) {
+        return `<mailto:${filePath}>`;
+    }
+
+    // Images → ![](path)
+    if (fileTypeUtils.isImageFile(fileName)) {
+        return `![](${escapeFilePath(filePath)})`;
+    }
+
+    // Other files → [filename](path)
+    const baseName = hasExtension ? fileName.slice(0, lastDotIndex) : fileName;
+    return `[${baseName}](${escapeFilePath(filePath)})`;
 }
 
 // Shared drop utility functions (used by overlayEditor and taskEditor)
@@ -756,76 +760,60 @@ async function resolveDropContent(dataTransfer) {
 }
 
 async function processClipboardText(text) {
-    // Handle multiple lines - check for multiple file paths first
     const lines = text.split(/\r\n|\r|\n/).map(line => line.trim()).filter(line => line.length > 0);
 
+    // Multi-line: check for linkable items (file paths, URLs, emails)
     if (lines.length > 1) {
-        const filePaths = lines.filter(line => isFilePath(line));
+        const linkableLines = lines.filter(line =>
+            isFilePath(line) || fileTypeUtils.isProtocolUrl(line) || fileTypeUtils.isEmail(line)
+        );
 
-        if (filePaths.length > 1) {
-            // Multiple file paths - create links for each
-            const links = filePaths.map(filePath => createFileMarkdownLink(filePath));
-            const content = links.join('\n');
-
+        if (linkableLines.length > 1) {
             return {
-                title: `${filePaths.length} Files`,
-                content: content,
+                title: `${linkableLines.length} Links`,
+                content: linkableLines.map(line => createFileMarkdownLink(line)).join('\n'),
                 isLink: true,
                 multipleFiles: true
             };
         }
     }
 
-    // Single line processing
-    // Check if it's a URL
-    const urlRegex = /^https?:\/\/[^\s]+$/;
-    if (urlRegex.test(text)) {
-        try {
-            // Try to fetch title from URL
-            const title = await fetchUrlTitle(text);
-            return {
-                title: title || extractDomainFromUrl(text),
-                content: `[${title || extractDomainFromUrl(text)}](${text})`,
-                isLink: true
-            };
-        } catch (error) {
-            // Fallback to domain name as title
-            return {
-                title: extractDomainFromUrl(text),
-                content: `[${extractDomainFromUrl(text)}](${text})`,
-                isLink: true
-            };
-        }
-    }
-
-    // Check if it's a single file path
-    if (isFilePath(text.trim())) {
-        const filePath = text.trim();
-        const fileName = extractPathLeaf(filePath) || filePath;
-        const content = createFileMarkdownLink(filePath);
-
+    // Single line: protocol URL
+    if (fileTypeUtils.isProtocolUrl(text)) {
         return {
-            title: fileName,
-            content: content,
+            title: /^https?:\/\//i.test(text) ? extractDomainFromUrl(text) : text,
+            content: createFileMarkdownLink(text),
             isLink: true
         };
     }
-    
+
+    // Single line: email address
+    if (fileTypeUtils.isEmail(text)) {
+        return {
+            title: text,
+            content: createFileMarkdownLink(text),
+            isLink: true
+        };
+    }
+
+    // Single line: file path
+    if (isFilePath(text.trim())) {
+        const filePath = text.trim();
+        return {
+            title: extractPathLeaf(filePath) || filePath,
+            content: createFileMarkdownLink(filePath),
+            isLink: true
+        };
+    }
+
     // Check if content looks like presentation format (has --- slide separators)
-    // Look for --- on its own line (with optional whitespace), more permissive than parser
-    // This allows pasting as a column with multiple tasks
-    // Use multiline mode to match --- at start of any line
     const isPresentationFormat = /^---[ \t]*$/m.test(text);
 
     // Check if it contains a URL within text
-    const urlInTextRegex = /https?:\/\/[^\s]+/g;
-    if (urlInTextRegex.test(text)) {
-        // Extract title from first line if available
-        const lines = text.split('\n');
-        const title = lines[0].length > 50 ? lines[0].substring(0, 50) + '...' : lines[0];
-
+    if (/https?:\/\/[^\s]+/g.test(text)) {
+        const firstLine = lines[0] || '';
         return {
-            title: title || 'Clipboard Content',
+            title: (firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine) || 'Clipboard Content',
             content: text,
             isLink: false,
             isPresentationFormat: isPresentationFormat
@@ -833,11 +821,9 @@ async function processClipboardText(text) {
     }
 
     // Regular text content
-    const textLines = text.split('\n');
-    const title = textLines[0].length > 50 ? textLines[0].substring(0, 50) + '...' : textLines[0];
-
+    const firstLine = lines[0] || '';
     return {
-        title: title || 'Clipboard Content',
+        title: (firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine) || 'Clipboard Content',
         content: text,
         isLink: false,
         isPresentationFormat: isPresentationFormat
@@ -857,19 +843,6 @@ function extractDomainFromUrl(url) {
     }
 }
 
-async function fetchUrlTitle(url) {
-    try {
-        // Note: This will likely be blocked by CORS in most cases
-        // But we'll try anyway, with a fallback to domain name
-        const response = await fetch(url, { mode: 'cors' });
-        const text = await response.text();
-        const titleMatch = text.match(/<title[^>]*>([^<]*)<\/title>/i);
-        return titleMatch ? titleMatch[1].trim() : null;
-    } catch (error) {
-        // CORS will usually block this, so we'll use domain as fallback
-        return null;
-    }
-}
 
 // Refresh clipboard card UI - reads clipboard and updates visual state
 async function refreshClipboardUI(force = false) {

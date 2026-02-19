@@ -629,7 +629,7 @@ class SimpleMenuManager {
             const activeTags = this.getActiveTagsForElement(type, id, columnId);
 
             if (group === 'special') {
-                tags = ['header', 'footer', 'hidden', 'exclude'];
+                tags = ['header', 'footer', 'hide', 'exclude'];
             } else if (group === 'custom') {
                 tags = window.getUserAddedTags();
             } else {
@@ -1803,16 +1803,30 @@ function toggleHiddenColumnContent(columnId) {
     const columnElement = document.querySelector(`.kanban-full-height-column[data-column-id="${columnId}"]`);
     if (!columnElement) { return; }
 
+    // Toggle all hidden tasks within this column
+    const hiddenTasks = columnElement.querySelectorAll('.task-item[data-hidden-content="true"]');
     const isRevealed = columnElement.getAttribute('data-hidden-revealed') === 'true';
+    hiddenTasks.forEach(task => {
+        if (isRevealed) {
+            task.removeAttribute('data-hidden-revealed');
+        } else {
+            task.setAttribute('data-hidden-revealed', 'true');
+        }
+        const taskToggleBtn = task.querySelector('.hidden-content-toggle');
+        if (taskToggleBtn) {
+            taskToggleBtn.textContent = isRevealed ? 'Reveal content' : 'Hide content';
+        }
+    });
+
+    // Track column-level reveal state for the column toggle button
     if (isRevealed) {
         columnElement.removeAttribute('data-hidden-revealed');
     } else {
         columnElement.setAttribute('data-hidden-revealed', 'true');
     }
-
-    const toggleBtn = columnElement.querySelector('.hidden-content-toggle');
-    if (toggleBtn) {
-        toggleBtn.textContent = isRevealed ? 'Reveal content' : 'Hide content';
+    const columnToggleBtn = columnElement.querySelector('.column-title-section .hidden-content-toggle');
+    if (columnToggleBtn) {
+        columnToggleBtn.textContent = isRevealed ? 'Reveal all' : 'Hide all';
     }
 }
 
@@ -3298,7 +3312,7 @@ function updateTagCategoryCounts(id, type, columnId = null) {
     // Update special tag group count
     const specialMenuItem = activeDropdown.querySelector('[data-group="special"]');
     if (specialMenuItem) {
-        const specialTags = ['header', 'footer', 'hidden', 'exclude'];
+        const specialTags = ['header', 'footer', 'hide', 'exclude'];
         const activeSpecialCount = specialTags.filter(tag =>
             activeTags.includes(tag.toLowerCase())
         ).length;
@@ -3544,7 +3558,7 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
             for (const col of window.cachedBoard.columns) {
                 if (col.tasks.find(t => t.id === taskId)) {
                     const colTags = window.getActiveTagsInTitle ? window.getActiveTagsInTitle(col.title || '') : [];
-                    hasHiddenTag = colTags.includes('hide');
+                    hasHiddenTag = colTags.includes('hide') || colTags.includes('hidden');
                     break;
                 }
             }

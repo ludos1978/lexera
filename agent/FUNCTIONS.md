@@ -9,6 +9,24 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-18) - Smart Paste & Embed Link Refactoring
+
+### Modified: `src/html/webview.js`
+- `createFileMarkdownLink(filePath)` — (MODIFIED) Now handles: markdown → `[[]]`, protocol URLs (http, ftp, ssh, tel, mailto) → `<url>`, email addresses → `<mailto:email>`, embeddable files (images, diagrams, spreadsheets, documents, PDF, EPUB, inline text/data) → `![](path)`, other files → `[name](path)`. Previously only handled images and http URLs.
+- `processClipboardText(text)` — (MODIFIED) Routes single URLs through `createFileMarkdownLink` instead of `[title](url)` with async title fetch. Multi-line now also detects URLs and emails (not just file paths). Removed async CORS title fetching.
+- `fetchUrlTitle(url)` — REMOVED (was CORS-blocked in most cases, no longer needed)
+
+### Modified: `src/html/markdownRenderer.js`
+- `_checkRenderedIframes()` — (MODIFIED) Extracted `collectUrl()` helper for DRY URL collection. Now also scans embed placeholders (`.embed-activate-btn[title]`) for preflight checks.
+- `_markIframeUrlBlocked(url)` — (MODIFIED) Now also replaces blocked embed placeholders (`.embed-activate-overlay`) via `_replaceIframeWithFallback`.
+- `_replaceIframeWithFallback(element, url)` — (MODIFIED) JSDoc updated: accepts any `Element`, not just `HTMLIFrameElement`.
+- Image renderer web preview branch — (MODIFIED) Removed plain `<a>` link early return when `openAutomatically=false`. Both `renderWebPreview` and `renderEmbed` handle this via `_renderEmbedPlaceholder`.
+
+### Modified: `src/html/taskEditor.js`
+- Global paste handler — (MODIFIED) Extended to also handle `.task-description-edit` fields with programmatic paste (preventDefault + manual value assignment), fixing invisible paste in VS Code webview.
+
+---
+
 ## Recent Updates (2026-02-18) - 4-Mode Color Picker with Flexoki Palette
 
 ### Rewritten: `src/html/utils/colorPickerComponent.js`

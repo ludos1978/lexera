@@ -182,7 +182,28 @@ class FileTypeUtils {
         return this.FILE_EXTENSIONS.text.includes(extension);
     }
 
+    /**
+     * Check if text is a protocol URL (mailto:, tel:, http(s)://, etc.)
+     * Excludes file:// which is treated as a file path
+     * @param {string} text - Text to check
+     * @returns {boolean} True if it's a protocol URL
+     */
+    isProtocolUrl(text) {
+        if (!text || typeof text !== 'string') { return false; }
+        if (/^(?:mailto:|tel:)/i.test(text)) { return true; }
+        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(text) && !text.startsWith('file://')) { return true; }
+        return false;
+    }
 
+    /**
+     * Check if text is a bare email address (no mailto: prefix)
+     * @param {string} text - Text to check
+     * @returns {boolean} True if it's an email address
+     */
+    isEmail(text) {
+        if (!text || typeof text !== 'string') { return false; }
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim());
+    }
 
     /**
      * Extract file extension from filename (private helper)
