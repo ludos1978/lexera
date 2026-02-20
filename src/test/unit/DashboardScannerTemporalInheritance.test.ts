@@ -15,7 +15,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
             columns: [
                 {
                     title: 'Schedule',
-                    tasks: [
+                    cards: [
                         {
                             content: `Task\n${line}`
                         }
@@ -45,12 +45,12 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
             columns: [
                 {
                     title: 'Schedule',
-                    tasks: [
+                    cards: [
                         {
                             content: [
                                 `Final Presentation @${year}-kw${week}`,
-                                '- @08:00-10:00 : Setup',
-                                '- @10:30-12:00 : Presentations'
+                                '- [ ] @08:00-10:00 : Setup',
+                                '- [ ] @10:30-12:00 : Presentations'
                             ].join('\n')
                         }
                     ]
@@ -89,13 +89,13 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
             columns: [
                 {
                     title: 'Schedule',
-                    tasks: [
+                    cards: [
                         {
                             content: [
                                 'Final Presentation',
                                 `## Final Presentation @${year}-kw${week}`,
                                 '- Exhibition over the full day.',
-                                '- @08:00-10:00 : Setup'
+                                '- [ ] @08:00-10:00 : Setup'
                             ].join('\n')
                         }
                     ]
@@ -128,9 +128,9 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
             columns: [
                 {
                     title: 'Schedule',
-                    tasks: [
+                    cards: [
                         {
-                            content: 'Daily Work\n- @08:00-10:00 : Setup'
+                            content: 'Daily Work\n- [ ] @08:00-10:00 : Setup'
                         }
                     ]
                 }
@@ -157,7 +157,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
         const week = 25;
         const expectedDate = getDateOfISOWeek(week, year);
 
-        const item = scanSingleTemporalLine(`- @${year}-kw${week} @08:00-10:00`);
+        const item = scanSingleTemporalLine(`- [ ] @${year}-kw${week} @08:00-10:00`);
         expect(item).toBeDefined();
         expect(item.temporalTag).toBe(`@${year}-kw${week}`);
         expect(item.timeSlot).toBe('@08:00-10:00');
@@ -174,7 +174,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
         const week = 26;
         const expectedDate = getDateOfISOWeek(week, year);
 
-        const item = scanSingleTemporalLine(`- @${year}.w${week}`);
+        const item = scanSingleTemporalLine(`- [ ] @${year}.w${week}`);
         expect(item).toBeDefined();
         expect(item.temporalTag).toBe(`@${year}.w${week}`);
         expect(item.week).toBe(week);
@@ -188,7 +188,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
     it('parses ISO date tags and day-first date tags', () => {
         const year = new Date().getFullYear() + 1;
 
-        const isoItem = scanSingleTemporalLine(`- @${year}-03-27`);
+        const isoItem = scanSingleTemporalLine(`- [ ] @${year}-03-27`);
         expect(isoItem).toBeDefined();
         expect(isoItem.temporalTag).toBe(`@${year}-03-27`);
         const isoDate = new Date(isoItem.date!);
@@ -197,7 +197,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
         expect(isoDate.getMonth()).toBe(2);
         expect(isoDate.getDate()).toBe(27);
 
-        const dayFirstItem = scanSingleTemporalLine(`- @27.03.${year}`);
+        const dayFirstItem = scanSingleTemporalLine(`- [ ] @27.03.${year}`);
         expect(dayFirstItem).toBeDefined();
         expect(dayFirstItem.temporalTag).toBe(`@27.03.${year}`);
         const dayFirstDate = new Date(dayFirstItem.date!);
@@ -211,7 +211,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const rangeNoColon = scanSingleTemporalLine('- @1200-1400');
+        const rangeNoColon = scanSingleTemporalLine('- [ ] @1200-1400');
         expect(rangeNoColon).toBeDefined();
         expect(rangeNoColon.temporalTag).toBe('@1200-1400');
         expect(rangeNoColon.timeSlot).toBe('@1200-1400');
@@ -219,7 +219,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
         rangeDate.setHours(0, 0, 0, 0);
         expect(rangeDate.getTime()).toBe(today.getTime());
 
-        const fourDigitTime = scanSingleTemporalLine('- @1230');
+        const fourDigitTime = scanSingleTemporalLine('- [ ] @1230');
         expect(fourDigitTime).toBeDefined();
         expect(fourDigitTime.temporalTag).toBe('@1230');
         expect(fourDigitTime.timeSlot).toBe('@1230');
@@ -230,7 +230,7 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
 
     it('does not treat plain years as time tags', () => {
         const year = new Date().getFullYear() + 1;
-        const item = scanSingleTemporalLine(`- @Y${year}`);
+        const item = scanSingleTemporalLine(`- [ ] @Y${year}`);
         expect(item).toBeDefined();
         expect(item.temporalTag).toBe(`@Y${year}`);
         expect(item.timeSlot).toBeUndefined();

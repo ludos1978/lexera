@@ -24,6 +24,7 @@ CONFIG_PATH = os.path.join(_xdg, "ludos-sync", "sync.json")
 LOG_PATH = os.path.expanduser("~/.ludos-sync.log")
 ERR_LOG_PATH = os.path.expanduser("~/.ludos-sync.err.log")
 PLIST_PATH = os.path.expanduser("~/Library/LaunchAgents/com.ludos.sync.plist")
+ICON_PATH = os.path.join(PROJECT_ROOT, "imgs", "logo.png")
 
 POLL_INTERVAL = 5
 
@@ -68,6 +69,8 @@ def fetch_status(port):
 class LudosSyncApp(rumps.App):
     def __init__(self):
         super().__init__("○", quit_button=None)
+        if os.path.isfile(ICON_PATH):
+            self.icon = ICON_PATH
         self.node_bin = find_node()
         self.server_proc = None
         self.config = load_config()

@@ -191,7 +191,9 @@
       "Bash(pkill:*)",
       "Bash(kill:*)",
       "Bash(npx esbuild:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(identify:*)",
+      "Bash(file:*)"
     ],
     "deny": [],
     "ask": []
