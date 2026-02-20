@@ -92,6 +92,8 @@ class LudosSyncApp(rumps.App):
         self.status_item = rumps.MenuItem("Status: Checking…")
         self.boards_item = rumps.MenuItem("Boards")
         self.boards_item.add(rumps.MenuItem("No boards"))
+        self.clients_item = rumps.MenuItem("Recent Clients")
+        self.clients_item.add(rumps.MenuItem("No clients"))
         self.toggle_item = rumps.MenuItem(
             "▶ Start Server", callback=self.toggle_server
         )
@@ -110,6 +112,7 @@ class LudosSyncApp(rumps.App):
             self.status_item,
             None,
             self.boards_item,
+            self.clients_item,
             None,
             self.toggle_item,
             self.config_item,
@@ -140,6 +143,9 @@ class LudosSyncApp(rumps.App):
 
         if prev != self.status_data:
             self._refresh_ui()
+        else:
+            # Always update relative times even if data unchanged
+            self._refresh_clients()
 
     def _refresh_ui(self):
         if self.status_data:
@@ -157,6 +163,7 @@ class LudosSyncApp(rumps.App):
             self.toggle_item.title = "▶ Start Server"
 
         self._refresh_boards()
+        self._refresh_clients()
         self.login_item.state = os.path.exists(PLIST_PATH)
 
     def _refresh_boards(self):
@@ -207,6 +214,34 @@ class LudosSyncApp(rumps.App):
             sub.add(rumps.MenuItem(f"Bookmarks: {'✓' if bm_on else '✗'}"))
             sub.add(rumps.MenuItem(f"Calendar: {'✓' if cal_on else '✗'}"))
             self.boards_item.add(sub)
+
+    def _refresh_clients(self):
+        self.clients_item.clear()
+        clients = (self.status_data or {}).get("recentClients", [])
+        if not clients:
+            self.clients_item.add(rumps.MenuItem("No clients"))
+            return
+
+        now = datetime.now().astimezone()
+        for c in clients:
+            name = c.get("processName", "?")
+            count = c.get("requestCount", 0)
+            last_iso = c.get("lastAccess", "")
+            ago = ""
+            if last_iso:
+                try:
+                    last_dt = datetime.fromisoformat(last_iso.replace("Z", "+00:00"))
+                    delta = now - last_dt
+                    secs = int(delta.total_seconds())
+                    if secs < 60:
+                        ago = f"{secs}s ago"
+                    else:
+                        ago = f"{secs // 60}m ago"
+                except (ValueError, TypeError):
+                    ago = last_iso
+            self.clients_item.add(
+                rumps.MenuItem(f"{name}  ({count} req, {ago})")
+            )
 
     # ── Actions ───────────────────────────────────────────────────
     def toggle_server(self, _):

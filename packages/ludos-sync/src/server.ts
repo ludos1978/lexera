@@ -14,6 +14,13 @@ import { BoardFileWatcher } from './fileWatcher';
 import { ConfigManager, SyncConfig, resolveBoardOptions } from './config';
 import { createCaldavRouter } from './middleware/caldavMiddleware';
 import { log } from './logger';
+import { resolveProcessName, recordAccess, getRecentClients, stopTracking } from './clientTracker';
+import type { Socket } from 'net';
+
+// Augment Socket to carry the resolved process name
+interface TrackedSocket extends Socket {
+  _processNamePromise?: Promise<string>;
+}
 
 export interface ServerInfo {
   port: number;
@@ -45,9 +52,17 @@ export class SyncServer {
     // Create Express app
     this.app = express();
 
-    // Request logging middleware
+    // Request logging + client tracking middleware
+    // Process name is resolved at connection open time (see httpServer 'connection' handler below)
     this.app.use((req, _res, next) => {
-      log.http(req.method, req.url, `from ${req.socket.remoteAddress}`);
+      const sock = req.socket as TrackedSocket;
+      const namePromise = sock._processNamePromise || Promise.resolve('unknown');
+      namePromise.then((proc) => {
+        log.http(req.method, req.url, `from ${proc} (${req.socket.remoteAddress})`);
+        if (req.url !== '/status') {
+          recordAccess(proc, req.method, req.url);
+        }
+      });
       next();
     });
 
@@ -128,6 +143,7 @@ export class SyncServer {
           etag: b.etag,
           lastModified: b.lastModified.toISOString(),
         })),
+        recentClients: getRecentClients(),
       });
     });
 
@@ -160,10 +176,12 @@ export class SyncServer {
         }
       });
 
-      // Track TCP connections
-      this.httpServer.on('connection', (socket) => {
+      // Resolve process name eagerly when TCP connection opens (socket is still alive)
+      this.httpServer.on('connection', (socket: TrackedSocket) => {
         const remote = `${socket.remoteAddress}:${socket.remotePort}`;
         log.verbose(`[Connection] opened from ${remote}`);
+        // Start lsof resolution immediately while the port is still open
+        socket._processNamePromise = resolveProcessName(socket.remoteAddress, socket.remotePort);
         socket.on('close', () => {
           log.verbose(`[Connection] closed from ${remote}`);
         });
@@ -179,6 +197,7 @@ export class SyncServer {
   async stop(): Promise<void> {
     this.boardWatcher.stopAll();
     this.configManager.stopWatching();
+    stopTracking();
 
     if (this.httpServer) {
       return new Promise((resolve) => {
