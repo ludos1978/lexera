@@ -79,7 +79,7 @@ export class BoardFileWatcher {
         this.suppressPaths.delete(resolved);
         return;
       }
-      log.info(`Board file changed externally: ${resolved}`);
+      log.verbose(`Board file changed externally: ${resolved}`);
       // Preserve calendar config across reloads
       const existingState = this.boardStates.get(resolved);
       this.loadBoard(resolved, effectiveXbelName, {
@@ -159,7 +159,7 @@ export class BoardFileWatcher {
 
       this.boardStates.set(filePath, state);
 
-      log.info(`Board loaded: ${filePath} (${board.columns.length} columns, etag=${etag})`);
+      log.verbose(`Board loaded: ${filePath} (${board.columns.length} columns, etag=${etag})`);
       log.verbose(`Board "${board.title}" columns: [${board.columns.map(c => c.title).join(', ')}]`);
       log.verbose(`XBEL cache: ${xbelXml.length} bytes`);
       if (state.icalCache) {
@@ -199,7 +199,7 @@ export class BoardFileWatcher {
     const content = `---\nkanban-plugin: board\n---\n\n# ${title}\n`;
 
     fs.writeFileSync(filePath, content, 'utf8');
-    log.info(`Created new board file: ${filePath}`);
+    log.verbose(`Created new board file: ${filePath}`);
   }
 
   /**

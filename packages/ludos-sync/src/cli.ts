@@ -38,7 +38,7 @@ program
     if (opts.verbose) setVerbose(true);
 
     const configPath = path.resolve(opts.config);
-    log.info(`Config: ${configPath}`);
+    log.verbose(`Config: ${configPath}`);
     log.verbose(`Verbose logging enabled`);
 
     const configManager = new ConfigManager(configPath);

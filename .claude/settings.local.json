@@ -204,7 +204,9 @@
       "WebFetch(domain:py2app.readthedocs.io)",
       "WebFetch(domain:discourse.wicg.io)",
       "WebFetch(domain:stupidtech.io)",
-      "Bash(codesign:*)"
+      "Bash(codesign:*)",
+      "Bash(vsce:*)",
+      "Bash(mdfind:*)"
     ],
     "deny": [],
     "ask": []

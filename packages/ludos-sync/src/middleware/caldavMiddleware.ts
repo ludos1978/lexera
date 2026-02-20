@@ -73,6 +73,12 @@ ${notFoundProps.map(p => '        ' + p).join('\n')}
   return xml;
 }
 
+/**
+ * Read-only privilege set XML fragment.
+ * Tells CalDAV clients (especially Apple Calendar) this calendar is read-only.
+ */
+const READ_ONLY_PRIVILEGE_SET = `<D:current-user-privilege-set><D:privilege><D:read/></D:privilege><D:privilege><D:read-current-user-privilege-set/></D:privilege></D:current-user-privilege-set>`;
+
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -123,6 +129,30 @@ function parseRequestedProps(body: string): Set<string> | null {
 }
 
 /**
+ * Extract property element names from a PROPPATCH XML body.
+ * Returns raw element names (e.g. "A:calendar-color", "D:displayname").
+ */
+function extractProppatchPropNames(body: string): string[] {
+  if (!body || body.trim().length === 0) return [];
+  try {
+    // Match self-closing or opening tags inside <D:prop> (or <prop>, <d:prop>)
+    // This regex-based approach is more robust than XML parsing for varying NS prefixes.
+    const propBlockMatch = body.match(/<[^>]*prop[^>]*>([\s\S]*?)<\/[^>]*prop[^>]*>/i);
+    if (!propBlockMatch) return [];
+    const propBlock = propBlockMatch[1];
+    const tagRegex = /<([a-zA-Z][a-zA-Z0-9:_-]*)[^/>]*\/?>/g;
+    const names: string[] = [];
+    let match;
+    while ((match = tagRegex.exec(propBlock)) !== null) {
+      names.push(match[1]);
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Create the CalDAV Express Router.
  */
 export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: string): Router {
@@ -132,6 +162,24 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
   router.use((_req: Request, res: Response, next) => {
     res.setHeader('DAV', '1, calendar-access');
     res.setHeader('Allow', 'OPTIONS, GET, HEAD, PROPFIND, REPORT');
+    // Signal read-only access to CalDAV clients
+    res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, HEAD, PROPFIND, REPORT');
+    next();
+  });
+
+  // Log every CalDAV request (method, path, key headers) — verbose only
+  router.use((req: Request, res: Response, next) => {
+    const depth = req.headers['depth'] || '-';
+    const contentType = req.headers['content-type'] || '-';
+    log.verbose(`[CalDAV] ${req.method} ${req.path} (depth=${depth}, content-type=${contentType})`);
+
+    // Capture response status
+    const origEnd = res.end.bind(res);
+    res.end = function (this: Response, ...args: unknown[]) {
+      log.verbose(`[CalDAV] ${req.method} ${req.path} -> ${res.statusCode}`);
+      return (origEnd as (...a: unknown[]) => Response)(...args);
+    } as typeof res.end;
+
     next();
   });
 
@@ -220,6 +268,7 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
           `<D:displayname>${escapeXml(name)}</D:displayname>`,
           `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
           `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
+          READ_ONLY_PRIVILEGE_SET,
         ]));
       }
     }
@@ -275,6 +324,7 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       `<D:displayname>${escapeXml(name)}</D:displayname>`,
       `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
       `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
+      READ_ONLY_PRIVILEGE_SET,
     ]));
 
     // List .ics members if depth > 0 or REPORT
@@ -361,11 +411,42 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       .send(fullCal);
   });
 
-  // Catch-all for unsupported methods
+  // -- PROPPATCH: Apple Calendar sends these to set display properties (color, order).
+  // Return a DAV-compliant 207 multistatus acknowledging the request without error,
+  // silently ignoring the property changes. This prevents Calendar.app from showing
+  // "Access to calendar is not permitted" errors on read-only calendars.
   router.all('*', (req: Request, res: Response) => {
-    log.verbose(`[CalDAV] Unsupported: ${req.method} ${req.path}`);
+    if (req.method === 'PROPPATCH') {
+      const bodyStr = String(req.body || '');
+      log.verbose(`[CalDAV] PROPPATCH ${req.path} (ignored, read-only) body=${bodyStr.substring(0, 500)}`);
+      // Parse which properties the client tried to set and return them as "200 OK"
+      // so the client doesn't show an error. The properties won't actually persist.
+      const propNames = extractProppatchPropNames(bodyStr);
+      const href = `/caldav${req.path}`;
+      const propXml = propNames.length > 0
+        ? propNames.map(p => `        <${p}/>`).join('\n')
+        : '        <D:displayname/>';
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="${DAV_NS}" xmlns:C="${CALDAV_NS}" xmlns:CS="http://calendarserver.org/ns/" xmlns:A="http://apple.com/ns/ical/">
+  <D:response>
+    <D:href>${escapeXml(href)}</D:href>
+    <D:propstat>
+      <D:prop>
+${propXml}
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>`;
+      res.status(207).type('application/xml; charset=utf-8').send(xml);
+      return;
+    }
+
+    const writeBody = req.body ? String(req.body).substring(0, 500) : '(no body)';
+    log.warn(`[CalDAV] Unhandled: ${req.method} ${req.path} body=${writeBody}`);
     // Read-only: reject write methods
-    if (['PUT', 'DELETE', 'MKCALENDAR', 'PROPPATCH'].includes(req.method)) {
+    if (['PUT', 'DELETE', 'MKCALENDAR'].includes(req.method)) {
+      log.warn(`[CalDAV] Rejecting write: ${req.method} ${req.path} -> 403`);
       res.status(403).send('Read-only CalDAV server');
       return;
     }

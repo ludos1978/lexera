@@ -106,14 +106,14 @@ export class BookmarkResource implements Resource {
     }
     const xbelXml = Buffer.concat(chunks).toString('utf8');
 
-    log.info(`PUT ${this.resourceName}: received ${xbelXml.length} bytes from client`);
+    log.verbose(`PUT ${this.resourceName}: received ${xbelXml.length} bytes from client`);
     log.verbose(`PUT ${this.resourceName}: applying XBEL to ${this.boardState.filePath}`);
 
     await this.boardWatcher.applyXbelToBoard(this.boardState.filePath, xbelXml);
 
     // Refresh board state reference
     this.boardState = this.boardWatcher.getBoardState(this.boardState.filePath) || null;
-    log.info(`PUT ${this.resourceName}: board updated, new etag=${this.boardState?.etag}`);
+    log.verbose(`PUT ${this.resourceName}: board updated, new etag=${this.boardState?.etag}`);
   }
 
   async create(_user: User): Promise<void> {

@@ -84,7 +84,11 @@ class LudosSyncApp(rumps.App):
         self.port = (self.config or {}).get("port", 8080) or 8080
         self.status_data = None
 
+        self.verbose = False
+
         # Persistent menu items
+        self.name_item = rumps.MenuItem("Ludos Sync")
+        self.name_item.set_callback(None)
         self.status_item = rumps.MenuItem("Status: Checking…")
         self.boards_item = rumps.MenuItem("Boards")
         self.boards_item.add(rumps.MenuItem("No boards"))
@@ -93,11 +97,16 @@ class LudosSyncApp(rumps.App):
         )
         self.config_item = rumps.MenuItem("Open Config…", callback=self.open_config)
         self.logs_item = rumps.MenuItem("View Logs…", callback=self.open_logs)
+        self.verbose_item = rumps.MenuItem(
+            "Verbose Logging", callback=self.toggle_verbose
+        )
+        self.verbose_item.state = False
         self.login_item = rumps.MenuItem("Start at Login", callback=self.toggle_login)
         self.login_item.state = os.path.exists(PLIST_PATH)
         self.quit_item = rumps.MenuItem("Quit", callback=self.quit_app)
 
         self.menu = [
+            self.name_item,
             self.status_item,
             None,
             self.boards_item,
@@ -105,6 +114,7 @@ class LudosSyncApp(rumps.App):
             self.toggle_item,
             self.config_item,
             self.logs_item,
+            self.verbose_item,
             None,
             self.login_item,
             self.quit_item,
@@ -222,6 +232,8 @@ class LudosSyncApp(rumps.App):
         cmd = [self.node_bin, CLI_PATH, "start"]
         if os.path.isfile(CONFIG_PATH):
             cmd += ["--config", CONFIG_PATH]
+        if self.verbose:
+            cmd += ["--verbose"]
 
         log = open(LOG_PATH, "a")
         err = open(ERR_LOG_PATH, "a")
@@ -261,6 +273,17 @@ class LudosSyncApp(rumps.App):
         self.status_item.title = "Status: Stopped"
         self.toggle_item.title = "▶ Start Server"
         self._refresh_boards()
+
+    def toggle_verbose(self, sender):
+        self.verbose = not self.verbose
+        sender.state = self.verbose
+        # Restart server if running so the flag takes effect
+        is_running = self.status_data or (
+            self.server_proc and self.server_proc.poll() is None
+        )
+        if is_running:
+            self._stop()
+            self._start()
 
     def open_config(self, _):
         if os.path.isfile(CONFIG_PATH):

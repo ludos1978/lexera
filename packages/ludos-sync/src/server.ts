@@ -54,10 +54,11 @@ export class SyncServer {
     // Basic Auth middleware — only active when auth credentials are configured
     if (config.auth) {
       const { username, password } = config.auth;
-      log.info('Basic Auth enabled for all endpoints');
+      log.verbose('Basic Auth enabled for all endpoints');
       this.app.use((req, res, next) => {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Basic ')) {
+          log.warn(`Auth rejected: ${req.method} ${req.url} — missing Basic Auth header`);
           res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
           res.status(401).send('Authentication required');
           return;
@@ -65,6 +66,7 @@ export class SyncServer {
         const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
         const colonIndex = decoded.indexOf(':');
         if (colonIndex === -1) {
+          log.warn(`Auth rejected: ${req.method} ${req.url} — malformed header`);
           res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
           res.status(401).send('Authentication required');
           return;
@@ -72,6 +74,7 @@ export class SyncServer {
         const reqUser = decoded.slice(0, colonIndex);
         const reqPass = decoded.slice(colonIndex + 1);
         if (reqUser !== username || reqPass !== password) {
+          log.warn(`Auth rejected: ${req.method} ${req.url} — invalid credentials for "${reqUser}"`);
           res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
           res.status(401).send('Invalid credentials');
           return;
@@ -94,7 +97,7 @@ export class SyncServer {
         })
       );
     } else {
-      log.info('Bookmarks sync is disabled in config');
+      log.verbose('Bookmarks sync is disabled in config');
     }
 
     // Mount CalDAV server at /caldav/ for calendar sync
@@ -147,11 +150,10 @@ export class SyncServer {
           const totalTasks = calBoards.reduce((sum, b) => sum + (b.icalTasks?.length || 0), 0);
           const calSlugs = new Set(calBoards.map(b => b.calendarSlug));
 
-          log.info(`Server started on http://localhost:${addr.port}`);
-          log.info(`Loaded ${allBoards.length} board(s): ${calBoards.length} with calendar sync (${totalTasks} tasks across ${calSlugs.size} calendar(s))`);
-          log.info(`Bookmarks endpoint: http://localhost:${addr.port}/bookmarks/`);
-          log.info(`CalDAV endpoint: http://localhost:${addr.port}/caldav/`);
-          log.info(`CalDAV discovery: http://localhost:${addr.port}/.well-known/caldav`);
+          log.info(`Server started on http://localhost:${addr.port} — ${allBoards.length} board(s), ${calSlugs.size} calendar(s), ${totalTasks} tasks`);
+          log.verbose(`Bookmarks endpoint: http://localhost:${addr.port}/bookmarks/`);
+          log.verbose(`CalDAV endpoint: http://localhost:${addr.port}/caldav/`);
+          log.verbose(`CalDAV discovery: http://localhost:${addr.port}/.well-known/caldav`);
           resolve(this.serverInfo);
         } else {
           reject(new Error('Failed to get server address'));
@@ -161,9 +163,9 @@ export class SyncServer {
       // Track TCP connections
       this.httpServer.on('connection', (socket) => {
         const remote = `${socket.remoteAddress}:${socket.remotePort}`;
-        log.info(`[Connection] opened from ${remote}`);
+        log.verbose(`[Connection] opened from ${remote}`);
         socket.on('close', () => {
-          log.info(`[Connection] closed from ${remote}`);
+          log.verbose(`[Connection] closed from ${remote}`);
         });
       });
 
@@ -215,21 +217,21 @@ export class SyncServer {
         if (wantBookmarks) {
           const xbelName = board.xbelName || path.basename(filePath, '.md') + '.xbel';
           this.boardWatcher.addBoard(filePath, board.xbelName);
-          log.info(`Watching board (bookmarks): ${filePath} -> ${xbelName}`);
+          log.verbose(`Watching board (bookmarks): ${filePath} -> ${xbelName}`);
         }
 
         if (wantCalendar) {
           const slug = opts.calendarSlug || path.basename(filePath, '.md');
           const name = opts.calendarName;
           this.boardWatcher.addBoard(filePath, undefined, { calendarSlug: slug, calendarName: name });
-          log.info(`Watching board (calendar): ${filePath} -> slug=${slug}`);
+          log.verbose(`Watching board (calendar): ${filePath} -> slug=${slug}`);
         }
       }
     }
 
     // Watch config file for changes
     this.configManager.watch((newConfig) => {
-      log.info('Config changed, updating board watchers...');
+      log.verbose('Config changed, updating board watchers...');
       this.boardWatcher.stopAll();
       this.setupBoardWatchers(newConfig);
     });

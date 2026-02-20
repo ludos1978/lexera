@@ -74,6 +74,10 @@ tools/
 # OS files
 .DS_Store
 
+# macOS framework symlinks (cause vsce EISDIR secret-scan error)
+**/Python.framework/Resources
+**/Python.framework/Versions/Current
+
 # Media & packaging artifacts
 *.mp4
 *.zip
