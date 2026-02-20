@@ -247,8 +247,9 @@ def run_app(input_filenames, args):
 		print("   input_filepath: " + str(input_filepath))
 		print("  marp_output_filepath: " + str(marp_output_filepath))
 
-		# marp paths and parameters
-		marppresenterpath="/Users/rspoerri/_SYNC/_SYSTEM/_MarpEngine"
+		# marp paths and parameters — resolve relative to this script
+		_script_dir = Path(__file__).resolve().parent
+		marppresenterpath = str((_script_dir / ".." / "engine").resolve())
 
 		engine_parameter = marppresenterpath + "/engine.js"
 		theme_parameter  = marppresenterpath + "/themes/"

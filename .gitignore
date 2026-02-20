@@ -39,3 +39,5 @@ mermaid-cache/
 xlsx-cache/
 excalidraw-cache/
 __pycache__
+to_delete/
+*.app/

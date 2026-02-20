@@ -40,6 +40,10 @@ if $CLEAN; then
     echo "Cleaning shared dist..."
     rm -rf "$SHARED_DIR/dist"
   fi
+  if should_build "marp-engine"; then
+    echo "Cleaning marp-engine node_modules..."
+    rm -rf "$MARP_DIR/engine/node_modules"
+  fi
   if should_build "ludos-sync"; then
     echo "Cleaning ludos-sync dist..."
     rm -rf "$SYNC_DIR/dist"
@@ -57,13 +61,10 @@ if should_build "shared"; then
   echo "  @ludos/shared built."
 fi
 
-# ── Build marp-engine (install dependencies) ─────────────────────
+# ── Build marp-engine ─────────────────────────────────────────────
 if should_build "marp-engine"; then
   echo "Building marp-engine..."
-  cd "$MARP_DIR/engine"
-  if [ ! -d "node_modules" ]; then
-    npm install
-  fi
+  "$SCRIPT_DIR/build-marp-engine.sh"
   echo "  marp-engine built."
 fi
 

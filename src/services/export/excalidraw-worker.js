@@ -4,7 +4,7 @@
  * including modern features like custom fonts (fontFamily 5+)
  */
 
-const { chromium } = require('playwright');
+const { chromium } = require('playwright-core');
 
 // Read input from stdin
 let inputData = '';

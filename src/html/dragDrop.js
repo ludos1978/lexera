@@ -1399,9 +1399,9 @@ function setupGlobalDragAndDrop() {
             window.cachedBoard.columns.find(col => col.id === colId)
         ).filter(Boolean);
 
-        // Preserve hidden columns (parked/deleted) at the end - they're not in DOM
+        // Preserve hidden columns (parked/deleted/archived) at the end - they're not in DOM
         const hiddenColumns = window.cachedBoard.columns.filter(col =>
-            col.title?.includes(PARKED_TAG) || col.title?.includes(DELETED_TAG)
+            col.title?.includes(PARKED_TAG) || col.title?.includes(DELETED_TAG) || col.title?.includes(ARCHIVED_TAG)
         );
 
         window.cachedBoard.columns = [...reorderedColumns, ...hiddenColumns];

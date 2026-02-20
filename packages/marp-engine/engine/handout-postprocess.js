@@ -22,7 +22,7 @@ const path = require('path');
 // Try to load playwright (optional for PDF generation)
 let chromium = null;
 try {
-  chromium = require('playwright').chromium;
+  chromium = require('playwright-core').chromium;
 } catch (e) {
   // Playwright not available - PDF generation won't work
 }

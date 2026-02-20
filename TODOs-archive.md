@@ -1,8 +1,21 @@
+
 ---
 kanban-plugin: board
 ---
 
-## Open Todos
+## Archived Todos
+
+- [x] modify the export paths so that all exports go into a _Export folder on the main kanban files             
+  location. below that we create the individual export folders. But the structure must be          
+  {mainFilename}-{timeStamp}-{exportSelection} where the values are the same values we are          
+  already using. explain the new structure to me before implementig it! 
+
+- [x] when an column include is broken it might display the include and the error in a wrong column. i assume it's because of an index based location detection!
+
+- [x] all fonts make problems in editing. they have vertical or horizontal offsets where they show  
+  selections and the cursor! this is a problem we did not have all the time. so it must be      
+  fixable! might it be related to displaying the invisible characters (space, newline, tab      
+  etc.)?
 
 - [x] if the column has a tag #title the text is put in the column header with a colored background. The colors is defined by the index of the #title tag (first title tag get color 1, second color tag gets color 2). colors are from a hsv model with strong colors!
 

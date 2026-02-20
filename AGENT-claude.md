@@ -1,4 +1,5 @@
 ## Most important RULEs
+- When accessing columns and tasks try to do it using the ID's if we can assume they arent modfied during the time we work with them (they are modified on loading the board and maybe at other times as well)!
 - Never guess anything, allways verify the code.
 - DONT USE TIMING IN ANY CIRCUMSTANCE EXCEPT WHEN THERE IS NO ALTERNATIVE. YOU MUST ASK FOR PERMISSION FROM THE USER TO ADD TIMING BASED CODE!!! EVERY TIME!!!
 - Dont modify the AGENT.md, except on explicit user request which must mention the AGENT.md filename!

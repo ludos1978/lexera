@@ -153,18 +153,12 @@ function updateColumnRowTag(columnId, newRow, options) {
         }
     }
 
-    // CRITICAL: Get current column ID by POSITION from currentBoard (source of truth)
-    // DOM might have stale IDs if a boardUpdate just arrived
+    // Get column ID from DOM attribute (not index - hidden columns cause index mismatch)
     let currentColumnId = columnId; // Default to what we have
-
-    // Find column's position in DOM to match with current board
     if (columnElement) {
-        const allColumns = Array.from(document.querySelectorAll('.kanban-full-height-column'));
-        const columnIndex = allColumns.indexOf(columnElement);
-
-        if (columnIndex !== -1 && currentBoard?.columns?.[columnIndex]) {
-            // Match by position - use current ID from board at this position
-            currentColumnId = currentBoard.columns[columnIndex].id;
+        const domColumnId = columnElement.getAttribute('data-column-id');
+        if (domColumnId) {
+            currentColumnId = domColumnId;
         }
     }
 

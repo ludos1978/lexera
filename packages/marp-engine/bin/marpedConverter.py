@@ -6,6 +6,10 @@ import argparse
 import datetime
 import shutil
 
+# Resolve engine directory relative to this script's location
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_ENGINE_DIR = _SCRIPT_DIR / ".." / "engine"
+
 
 class MarpConverter:
 		def __init__(self, output_format, additional_parameters=None, filename_addon=""):
@@ -17,9 +21,9 @@ class MarpConverter:
 				self.filename_addon = filename_addon
 				self.current_working_directory = Path('.').absolute()
 				self.relative_export_path = Path(f"_Export_{self.output_format.upper()}")
-				
+
 				# marp paths and parameters
-				self.marppresenterpath = "/Users/rspoerri/_SYNC/_SYSTEM/_MarpEngine"
+				self.marppresenterpath = str(_ENGINE_DIR.resolve())
 				self.engine_parameter = f"{self.marppresenterpath}/engine.js"
 				self.theme_parameter = f"{self.marppresenterpath}/themes/"
 				

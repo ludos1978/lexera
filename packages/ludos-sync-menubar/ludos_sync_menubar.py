@@ -13,7 +13,12 @@ import rumps
 
 # ── Paths ─────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+try:
+    from _buildconfig import PROJECT_ROOT
+except ImportError:
+    PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
 CLI_PATH = os.path.join(PROJECT_ROOT, "packages", "ludos-sync", "dist", "cli.js")
 MACOS_SCRIPT = os.path.join(
     PROJECT_ROOT, "packages", "ludos-sync", "scripts", "start-macos.sh"
@@ -24,7 +29,9 @@ CONFIG_PATH = os.path.join(_xdg, "ludos-sync", "sync.json")
 LOG_PATH = os.path.expanduser("~/.ludos-sync.log")
 ERR_LOG_PATH = os.path.expanduser("~/.ludos-sync.err.log")
 PLIST_PATH = os.path.expanduser("~/Library/LaunchAgents/com.ludos.sync.plist")
-ICON_PATH = os.path.join(PROJECT_ROOT, "imgs", "logo.png")
+
+_bundled_icon = os.path.join(SCRIPT_DIR, "logo.png")
+ICON_PATH = _bundled_icon if os.path.isfile(_bundled_icon) else os.path.join(PROJECT_ROOT, "imgs", "logo.png")
 
 POLL_INTERVAL = 5
 
@@ -49,7 +56,7 @@ def find_node():
 def load_config():
     """Load the sync.json config file."""
     try:
-        with open(CONFIG_PATH) as f:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return None
@@ -68,7 +75,7 @@ def fetch_status(port):
 # ── App ───────────────────────────────────────────────────────────
 class LudosSyncApp(rumps.App):
     def __init__(self):
-        super().__init__("○", quit_button=None)
+        super().__init__("", quit_button=None)
         if os.path.isfile(ICON_PATH):
             self.icon = ICON_PATH
         self.node_bin = find_node()
@@ -128,15 +135,15 @@ class LudosSyncApp(rumps.App):
         if self.status_data:
             p = self.status_data.get("port", self.port)
             self.status_item.title = f"Status: Running on port {p}"
-            self.title = "●"
+            self.title = ""
             self.toggle_item.title = "■ Stop Server"
         elif self.server_proc:
             self.status_item.title = "Status: Starting…"
-            self.title = "◐"
+            self.title = ""
             self.toggle_item.title = "■ Stop Server"
         else:
             self.status_item.title = "Status: Stopped"
-            self.title = "○"
+            self.title = ""
             self.toggle_item.title = "▶ Start Server"
 
         self._refresh_boards()
@@ -224,7 +231,7 @@ class LudosSyncApp(rumps.App):
         log.close()
         err.close()
 
-        self.title = "◐"
+        self.title = ""
         self.status_item.title = "Status: Starting…"
         self.toggle_item.title = "■ Stop Server"
 
@@ -250,7 +257,7 @@ class LudosSyncApp(rumps.App):
 
         self.status_data = None
         self.server_proc = None
-        self.title = "○"
+        self.title = ""
         self.status_item.title = "Status: Stopped"
         self.toggle_item.title = "▶ Start Server"
         self._refresh_boards()

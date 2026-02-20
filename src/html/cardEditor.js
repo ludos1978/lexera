@@ -2201,14 +2201,13 @@ class TaskEditor {
     _saveColumnTitleWithIncludes(column, columnId, newTitle, hasIncludes, element) {
         column.title = newTitle;
 
-        // Get column element and current column ID by position
+        // Get column ID from DOM attribute (not index - hidden columns cause index mismatch)
         const columnElement = element.closest('.kanban-full-height-column');
         let currentColumnId = columnId;
         if (columnElement) {
-            const allColumns = Array.from(document.querySelectorAll('.kanban-full-height-column'));
-            const columnIndex = allColumns.indexOf(columnElement);
-            if (columnIndex !== -1 && window.currentBoard?.columns?.[columnIndex]) {
-                currentColumnId = window.currentBoard.columns[columnIndex].id;
+            const domColumnId = columnElement.getAttribute('data-column-id');
+            if (domColumnId) {
+                currentColumnId = domColumnId;
             }
         }
 

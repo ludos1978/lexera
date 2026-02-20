@@ -199,7 +199,12 @@
       "WebFetch(domain:css-tricks.com)",
       "WebFetch(domain:phuoc.ng)",
       "WebFetch(domain:discuss.codemirror.net)",
-      "WebFetch(domain:www.jayfreestone.com)"
+      "WebFetch(domain:www.jayfreestone.com)",
+      "WebFetch(domain:lonekorean.github.io)",
+      "WebFetch(domain:py2app.readthedocs.io)",
+      "WebFetch(domain:discourse.wicg.io)",
+      "WebFetch(domain:stupidtech.io)",
+      "Bash(codesign:*)"
     ],
     "deny": [],
     "ask": []

@@ -56,7 +56,7 @@ export class BrowserService {
 
         // 3. Playwright-managed browser
         try {
-            const { chromium } = require('playwright');
+            const { chromium } = require('playwright-core');
             const pwPath = chromium.executablePath();
             if (pwPath && fs.existsSync(pwPath)) {
                 return pwPath;
@@ -104,7 +104,7 @@ export class BrowserService {
      */
     static async launchHeadless(options?: Record<string, unknown>): Promise<any> {
         const execPath = await BrowserService.ensureBrowser();
-        const { chromium } = require('playwright');
+        const { chromium } = require('playwright-core');
         return chromium.launch({
             headless: true,
             executablePath: execPath,
@@ -120,7 +120,7 @@ export class BrowserService {
      */
     static async launchHeaded(options?: Record<string, unknown>): Promise<any> {
         const execPath = await BrowserService.ensureBrowser();
-        const { chromium } = require('playwright');
+        const { chromium } = require('playwright-core');
         return chromium.launch({
             headless: false,
             executablePath: execPath,
@@ -143,7 +143,7 @@ export class BrowserService {
      */
     static async launchPersistentHeaded(userDataDir: string, options?: Record<string, unknown>): Promise<any> {
         const execPath = await BrowserService.ensureBrowser();
-        const { chromium } = require('playwright');
+        const { chromium } = require('playwright-core');
 
         // Ensure the profile directory exists
         if (!fs.existsSync(userDataDir)) {

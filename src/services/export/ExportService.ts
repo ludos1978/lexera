@@ -15,7 +15,7 @@ import { PluginRegistry } from '../../plugins/registry/PluginRegistry';
 import { ConfigurationService } from '../ConfigurationService';
 import { pluginConfigService } from '../PluginConfigService';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
-import { generateTimestamp } from '../../constants/FileNaming';
+import { generateTimestamp, getFileNamingConfig } from '../../constants/FileNaming';
 import { DOTTED_EXTENSIONS } from '../../shared/fileTypeDefinitions';
 import { MarkdownPatterns, HtmlPatterns, isUrl } from '../../shared/regexPatterns';
 import { AssetHandler } from '../assets/AssetHandler';
@@ -1408,16 +1408,17 @@ export class ExportService {
 
     /**
      * Generate default export folder name based on source filename and timestamp
-     * Format: {filename}-YYYYMMDD-HHmm (using local time)
+     * Format: {sourceDir}/_Export/{filename}-{timestamp}-FULL
      */
     public static generateDefaultExportFolder(sourceDocumentPath: string): string {
         // Ensure we have an absolute path
         const absoluteSourcePath = path.resolve(sourceDocumentPath);
         const sourceDir = path.dirname(absoluteSourcePath);
-        const sourceBasename = path.basename(absoluteSourcePath, '.md');
+        const sourceBasename = path.basename(absoluteSourcePath, '.md').substring(0, 16);
         const timestamp = generateTimestamp();
+        const { exportFolder: exportFolderName } = getFileNamingConfig();
 
-        const exportFolder = path.join(sourceDir, `${sourceBasename}-${timestamp}`);
+        const exportFolder = path.join(sourceDir, exportFolderName, `${sourceBasename}-${timestamp}-FULL`);
         return exportFolder;
     }
 

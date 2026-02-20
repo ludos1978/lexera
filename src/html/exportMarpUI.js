@@ -50,7 +50,7 @@ function generateExportFolderName(selectedLabels) {
     // Generate timestamp
     const timestamp = window.DateUtils.generateTimestamp();
 
-    return `${shortFilename}-${exportRange}-EXPORT-${timestamp}`;
+    return `${shortFilename}-${timestamp}-${exportRange}`;
 }
 
 /**
@@ -76,7 +76,7 @@ function updateExportFolderName() {
 
     const workspacePath = getWorkspacePath();
     const folderName = generateExportFolderName(selectedLabels);
-    folderInput.value = `${workspacePath}/${folderName}`;
+    folderInput.value = `${workspacePath}/${DEFAULT_EXPORT_FOLDER}/${folderName}`;
 }
 
 // =============================================================================
