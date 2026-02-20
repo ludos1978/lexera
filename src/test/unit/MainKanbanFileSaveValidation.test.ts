@@ -12,7 +12,7 @@ function createBoard(): KanbanBoard {
             {
                 id: 'column-1',
                 title: 'Todo',
-                tasks: [
+                cards: [
                     {
                         id: 'task-1',
                         content: 'Task A\nDescription A'

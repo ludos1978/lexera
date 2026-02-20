@@ -428,7 +428,7 @@ export class DashboardScanner {
                         date: r.effectiveDate,
                         dateEnd: r.effectiveDateEnd,
                         week: r.effectiveWeek,
-                        year: r.temporal.year,
+                        year: r.effectiveYear ?? r.temporal.year,
                         weekday: r.effectiveWeekday,
                         month: r.temporal.month,
                         quarter: r.temporal.quarter,

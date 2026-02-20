@@ -17,27 +17,27 @@ function createTestBoardWithRows(): KanbanBoard {
             {
                 id: 'col-1',
                 title: 'Backlog',
-                tasks: [{ id: 'task-1', content: 'Task 1' }]
+                cards: [{ id: 'task-1', content: 'Task 1' }]
             },
             {
                 id: 'col-2',
                 title: 'To Do #row1',
-                tasks: [{ id: 'task-2', content: 'Task 2' }]
+                cards: [{ id: 'task-2', content: 'Task 2' }]
             },
             {
                 id: 'col-3',
                 title: 'In Progress #row1',
-                tasks: []
+                cards: []
             },
             {
                 id: 'col-4',
                 title: 'Review #row2',
-                tasks: []
+                cards: []
             },
             {
                 id: 'col-5',
                 title: 'Done #row2',
-                tasks: []
+                cards: []
             }
         ]
     };

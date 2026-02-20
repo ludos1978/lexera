@@ -57,7 +57,7 @@ describe('BoardSyncHandler include cleanup sync', () => {
                 {
                     id: 'col-1',
                     title: 'Column',
-                    tasks: []
+                    cards: []
                 }
             ]
         };

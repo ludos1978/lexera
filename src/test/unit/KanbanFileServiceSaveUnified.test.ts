@@ -452,13 +452,13 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
                 {
                     id: 'col-a',
                     title: 'A',
-                    tasks: [{ id: 'task-a', content: 'Alpha' }],
+                    cards: [{ id: 'task-a', content: 'Alpha' }],
                     includeFiles: ['includes/shared.md']
                 },
                 {
                     id: 'col-b',
                     title: 'B',
-                    tasks: [{ id: 'task-b', content: 'Beta' }],
+                    cards: [{ id: 'task-b', content: 'Beta' }],
                     includeFiles: ['includes/shared.md']
                 }
             ]
@@ -510,13 +510,13 @@ describe('KanbanFileService.saveUnified pre-save conflict targeting', () => {
                 {
                     id: 'col-a',
                     title: 'A',
-                    tasks: [{ id: 'task-a', content: 'Alpha' }],
+                    cards: [{ id: 'task-a', content: 'Alpha' }],
                     includeFiles: ['includes/shared.md']
                 },
                 {
                     id: 'col-b',
                     title: 'B',
-                    tasks: [{ id: 'task-b', content: 'Alpha' }],
+                    cards: [{ id: 'task-b', content: 'Alpha' }],
                     includeFiles: ['includes/shared.md']
                 }
             ]

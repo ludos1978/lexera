@@ -193,7 +193,13 @@
       "Bash(npx esbuild:*)",
       "Bash(git mv:*)",
       "Bash(identify:*)",
-      "Bash(file:*)"
+      "Bash(file:*)",
+      "Bash(npx ts-node:*)",
+      "WebFetch(domain:codersblock.com)",
+      "WebFetch(domain:css-tricks.com)",
+      "WebFetch(domain:phuoc.ng)",
+      "WebFetch(domain:discuss.codemirror.net)",
+      "WebFetch(domain:www.jayfreestone.com)"
     ],
     "deny": [],
     "ask": []

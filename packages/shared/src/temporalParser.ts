@@ -370,8 +370,14 @@ function extractTemporalTokens(text: string): TemporalToken[] {
 
         // Extract all week numbers from the match (handles pipe OR syntax)
         const weekNumbers: number[] = [];
-        const weekNumPattern = /(?:[wW]eek|[kK][wW]|[wW])?(\d{1,2})/g;
-        const tagContent = fullMatch.slice(1); // skip @
+        // Require week prefix (kw/w/week) or pipe separator before the number
+        // to avoid matching year digits as week numbers
+        const weekNumPattern = /(?:(?:[wW]eek|[kK][wW]|[wW])|(?<=\|))(\d{1,2})/g;
+        let tagContent = fullMatch.slice(1); // skip @
+        // Strip year prefix to avoid matching year digits as week numbers
+        if (explicitYear !== undefined) {
+            tagContent = tagContent.replace(/^\d{4}[-.]?/, '');
+        }
         let numMatch;
         while ((numMatch = weekNumPattern.exec(tagContent)) !== null) {
             weekNumbers.push(parseInt(numMatch[1], 10));
@@ -739,6 +745,7 @@ export interface ResolvedTemporal {
     effectiveDateEnd?: Date;
     effectiveWeek?: number;
     effectiveWeekday?: number;
+    effectiveYear?: number;
 }
 
 /**
@@ -815,18 +822,26 @@ export function resolveTaskTemporals(
             let effectiveDate = lineTemporal.date;
             let effectiveDateEnd = lineTemporal.dateEnd;
             let effectiveWeek = lineTemporal.week;
+            let effectiveYear = lineTemporal.year;
             const effectiveWeekday = lineTemporal.weekday;
             let hasEffectiveDate = lineTemporal.hasExplicitDate === true;
 
-            // Time-only tags inherit the calendar date but NOT the week/month structural context
+            // Time-only tags inherit date, week, and year from task title or column context
             if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
                 if (taskTemporalContext?.date) {
                     effectiveDate = taskTemporalContext.date;
                     effectiveDateEnd = taskTemporalContext.dateEnd;
+                    if (taskTemporalContext.week !== undefined) effectiveWeek = taskTemporalContext.week;
+                    if (taskTemporalContext.year !== undefined) effectiveYear = taskTemporalContext.year;
                     hasEffectiveDate = true;
                 } else if (columnTemporal?.date && columnTemporal.hasExplicitDate) {
                     effectiveDate = columnTemporal.date;
                     effectiveDateEnd = columnTemporal.dateEnd;
+                    if (columnTemporal.week !== undefined) effectiveWeek = columnTemporal.week;
+                    if (columnTemporal.year !== undefined) effectiveYear = columnTemporal.year;
+                    hasEffectiveDate = true;
+                } else if (lineTemporal.date) {
+                    // No context — keep time-only tag scoped to today
                     hasEffectiveDate = true;
                 }
             }
@@ -845,6 +860,7 @@ export function resolveTaskTemporals(
                 effectiveDateEnd,
                 effectiveWeek,
                 effectiveWeekday,
+                effectiveYear,
             });
         }
     }
