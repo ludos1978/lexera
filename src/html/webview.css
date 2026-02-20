@@ -5710,16 +5710,10 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 
 .special-char-overlay {
   position: absolute;
-  inset: 0;
   pointer-events: none;
-  font-family: var(--vscode-font-family);
-  font-size: inherit;
-  line-height: inherit;
   white-space: pre-wrap;
-  line-break: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
   overflow: hidden;
-  padding: 4px;
   z-index: 2;
 }
 
@@ -5730,26 +5724,60 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
 }
 
 .special-char-overlay .special-char {
-  position: relative;
-  display: inline-block;
+  display: inline;
   color: transparent;
   pointer-events: none;
 }
 
-.special-char-overlay .special-char::after {
+/* Space: centered dot via CSS radial-gradient (zero layout impact, CodeMirror technique) */
+.special-char-overlay .special-space {
+  background-image: radial-gradient(circle at 50% 55%, var(--vscode-editorWhitespace-foreground, var(--vscode-descriptionForeground)) 13%, transparent 13%);
+}
+
+/* Tab: arrow indicator (tabs are rare, position: relative only on this element) */
+.special-char-overlay .special-tab {
+  position: relative;
+}
+.special-char-overlay .special-tab::after {
+  content: '⇥';
   position: absolute;
   top: 0;
   left: 0;
   font-size: 0.9em;
-  color: var(--vscode-descriptionForeground);
+  color: var(--vscode-editorWhitespace-foreground, var(--vscode-descriptionForeground));
   user-select: none;
   pointer-events: none;
 }
 
-.special-char-overlay .special-space::after { content: '·'; }
-.special-char-overlay .special-tab::after { content: '⇥'; }
-.special-char-overlay .special-newline::after { content: '↵'; top: -12px; }
-.special-char-overlay .special-carriage-return::after { content: '␍'; }
+/* Newline: marker at end of line (empty span, no flow impact) */
+.special-char-overlay .special-newline {
+  position: relative;
+}
+.special-char-overlay .special-newline::after {
+  content: '↵';
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 0.9em;
+  color: var(--vscode-editorWhitespace-foreground, var(--vscode-descriptionForeground));
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Carriage return: marker (empty span, no flow impact) */
+.special-char-overlay .special-carriage-return {
+  position: relative;
+}
+.special-char-overlay .special-carriage-return::after {
+  content: '␍';
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 0.9em;
+  color: var(--vscode-editorWhitespace-foreground, var(--vscode-descriptionForeground));
+  user-select: none;
+  pointer-events: none;
+}
 
 .special-char-textarea {
   color: transparent !important;
@@ -7128,6 +7156,18 @@ body.tall-task-height .column-title {
   src: url('fonts/plus-jakarta-sans-latin-700-normal.woff2') format('woff2');
 }
 @font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  src: url('fonts/poppins-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 700;
+  src: url('fonts/poppins-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
   font-family: 'Inter';
   font-style: normal;
   font-weight: 400;
@@ -7199,6 +7239,10 @@ body.font-family-plusjakarta {
 
 body.font-family-inter {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+body.font-family-poppins {
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 }
 
 body.font-family-helvetica {

@@ -1459,6 +1459,11 @@ function renderSpecialCharacterHtml(text) {
             builder.push(`<span class="special-char special-${type}">${escapeHtml(char)}</span>`);
         }
     }
+    // Trailing newline fix: a div ignores the last empty line after \n,
+    // but a textarea renders it. Append an extra newline to compensate.
+    if (text.endsWith('\n')) {
+        builder.push('\n');
+    }
     return builder.join('');
 }
 
@@ -1512,21 +1517,37 @@ function alignSpecialCharOverlayStyles(editElement) {
     if (!editElement || !editElement._specialCharOverlay) { return; }
     const overlay = editElement._specialCharOverlay;
     const computed = window.getComputedStyle(editElement);
+
+    // Position overlay inside textarea's border area so padding aligns
+    overlay.style.top = computed.borderTopWidth;
+    overlay.style.right = computed.borderRightWidth;
+    overlay.style.bottom = computed.borderBottomWidth;
+    overlay.style.left = computed.borderLeftWidth;
+
+    // Font properties (all required for pixel-perfect text matching)
     overlay.style.fontFamily = computed.fontFamily;
     overlay.style.fontSize = computed.fontSize;
     overlay.style.lineHeight = computed.lineHeight;
     overlay.style.fontWeight = computed.fontWeight;
     overlay.style.fontStyle = computed.fontStyle;
+    overlay.style.fontVariant = computed.fontVariant;
+    overlay.style.fontStretch = computed.fontStretch;
+
+    // Text layout properties
     overlay.style.letterSpacing = computed.letterSpacing;
     overlay.style.wordSpacing = computed.wordSpacing;
     overlay.style.textTransform = computed.textTransform;
     overlay.style.textIndent = computed.textIndent;
     overlay.style.textAlign = computed.textAlign;
+    overlay.style.textDecoration = computed.textDecoration;
+    overlay.style.direction = computed.direction;
+    overlay.style.tabSize = computed.tabSize;
+
+    // Box model properties
     overlay.style.paddingTop = computed.paddingTop;
     overlay.style.paddingRight = computed.paddingRight;
     overlay.style.paddingBottom = computed.paddingBottom;
     overlay.style.paddingLeft = computed.paddingLeft;
-
     overlay.style.boxSizing = computed.boxSizing;
 }
 function removeSpecialCharOverlay(editElement) {
