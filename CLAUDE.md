@@ -1,1 +1,1 @@
-read the AGENT.md file!
+read the AGENT.md and the AGENT-claude.md file!
