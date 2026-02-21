@@ -2312,6 +2312,9 @@ let isRecalculatingHeights = false; // Prevent infinite loops
 let pendingRecalcNeeded = false; // Track if recalc was requested during processing
 let heightPollingInterval = null; // Polling interval for delayed content rendering
 let heightPollingEndTime = 0; // When to stop polling
+let dirtyColumns = new Set(); // Column IDs that need height recalculation
+let guardedColumns = new Set(); // Column IDs currently being recalculated (blocks MutationObserver re-dirtying)
+let dirtyColumnRecalcScheduled = false; // Whether a rAF is pending for dirty column processing
 
 // Baseline heights before DOM changes - used to detect if recalculation is needed
 let baselineHeights = new Map();
@@ -2362,19 +2365,67 @@ function updateBaselineHeights() {
     });
 }
 
+// Schedule a batched recalculation of dirty columns via requestAnimationFrame
+function scheduleDirtyColumnRecalc() {
+    if (dirtyColumnRecalcScheduled) return;
+    dirtyColumnRecalcScheduled = true;
+    requestAnimationFrame(() => {
+        dirtyColumnRecalcScheduled = false;
+        processDirtyColumns();
+    });
+}
+
+// Process all dirty columns: guard them, recalculate their stacks, then clear guards
+function processDirtyColumns() {
+    if (dirtyColumns.size === 0) return;
+
+    const columnsToProcess = new Set(dirtyColumns);
+    dirtyColumns.clear();
+
+    // Guard these columns to prevent MutationObserver re-dirtying from our own DOM changes
+    for (const colId of columnsToProcess) {
+        guardedColumns.add(colId);
+    }
+
+    // Find affected stacks
+    const affectedStacks = new Set();
+    for (const colId of columnsToProcess) {
+        const colEl = document.querySelector(`.kanban-full-height-column[data-column-id="${colId}"]`);
+        if (!colEl) continue;
+        const stack = colEl.closest('.kanban-column-stack') || colEl.parentElement?.closest('.kanban-column-stack');
+        if (stack) affectedStacks.add(stack);
+    }
+
+    // Recalculate only affected stacks
+    affectedStacks.forEach(stack => {
+        updateStackLayoutDebounced(stack);
+    });
+
+    // Clear guards after layout changes settle (2 frames for DOM update propagation)
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            for (const colId of columnsToProcess) {
+                guardedColumns.delete(colId);
+            }
+        });
+    });
+
+    // Start polling for delayed rendering (images, fonts, etc.)
+    startHeightPolling();
+}
+
 // Poll for height changes after content modifications
 // This catches delayed rendering (images, fonts, iframes, etc.)
 function startHeightPolling() {
     const POLLING_DURATION = 2000; // Poll for 2 seconds
     const POLLING_INTERVAL = 200; // Check every 200ms (reduced from 100ms)
 
-    // Extend polling time if already polling
-    heightPollingEndTime = Date.now() + POLLING_DURATION;
-
-    // Don't start a new interval if one is already running
+    // Don't start a new interval if one is already running — prevents infinite deadline extension
     if (heightPollingInterval) {
         return;
     }
+
+    heightPollingEndTime = Date.now() + POLLING_DURATION;
 
     if (window.kanbanDebug?.enabled) {
         console.log('[PERF-DEBUG] heightPolling.start', {
@@ -2395,9 +2446,11 @@ function startHeightPolling() {
             return;
         }
 
-        // Check if any heights differ from baseline
-        let heightChanged = false;
+        // Check per-column which heights differ from baseline
         const activeEditorColumnId = getActiveEditorColumnId();
+        const changedStacks = new Set();
+        const changedColumnIds = new Set();
+
         document.querySelectorAll('.kanban-full-height-column').forEach(col => {
             const colId = col.getAttribute('data-column-id');
             if (activeEditorColumnId && colId === activeEditorColumnId) {
@@ -2409,20 +2462,38 @@ function startHeightPolling() {
                 const currentHeight = content.scrollHeight;
                 const baselineHeight = baselineHeights.get(colId);
                 if (baselineHeight !== undefined && currentHeight !== baselineHeight) {
-                    heightChanged = true;
+                    changedColumnIds.add(colId);
+                    const stack = col.closest('.kanban-column-stack') || col.parentElement?.closest('.kanban-column-stack');
+                    if (stack) changedStacks.add(stack);
                 }
             }
         });
 
-        // If any height differs from baseline, recalculate and update baseline
-        if (heightChanged) {
+        // Only recalculate stacks with actual height changes, guard those columns
+        if (changedStacks.size > 0) {
             if (window.kanbanDebug?.enabled) {
-                console.log('[PERF-DEBUG] heightPolling.recalc');
+                console.log('[PERF-DEBUG] heightPolling.recalc', { columns: [...changedColumnIds] });
             }
-            document.querySelectorAll('.kanban-column-stack').forEach(stack => {
+
+            // Guard changed columns during recalculation
+            for (const colId of changedColumnIds) {
+                guardedColumns.add(colId);
+            }
+
+            changedStacks.forEach(stack => {
                 updateStackLayoutDebounced(stack);
             });
+
             updateBaselineHeights();
+
+            // Clear guards after layout settles
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    for (const colId of changedColumnIds) {
+                        guardedColumns.delete(colId);
+                    }
+                });
+            });
         }
     }, POLLING_INTERVAL);
 }
@@ -2504,44 +2575,53 @@ function setupColumnResizeObserver() {
         // Guard against callbacks firing after disposal
         if (!document.getElementById('kanban-board')) return;
 
-        // Check for structural changes OR class changes
-        const hasRelevantChanges = mutations.some(m => {
-            const target = m.target;
-            if (isFromActiveEditorColumn(target)) {
-                return false;
-            }
+        // Extract per-column affected IDs from mutations
+        const affectedColumnIds = new Set();
 
+        for (const m of mutations) {
+            const target = m.target;
+            if (isFromActiveEditorColumn(target)) continue;
+
+            // Check relevance
+            let isRelevant = false;
             if (m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0)) {
-                return true;
+                isRelevant = true;
             }
             // Class changes on card-item (task collapse) or column elements (column fold)
             if (m.type === 'attributes' && m.attributeName === 'class') {
-                if (target.classList) {
-                    if (target.classList.contains('card-item') || target.classList.contains('kanban-full-height-column')) {
-                        return true;
-                    }
+                if (target.classList && (target.classList.contains('card-item') || target.classList.contains('kanban-full-height-column'))) {
+                    isRelevant = true;
                 }
             }
-            return false;
-        });
+            if (!isRelevant) continue;
 
-        if (!hasRelevantChanges) {
-            return;
+            // Extract column from mutation target
+            let column = null;
+            if (target instanceof Element) {
+                column = target.classList?.contains('kanban-full-height-column')
+                    ? target
+                    : target.closest('.kanban-full-height-column');
+            } else if (target.parentElement) {
+                column = target.parentElement.closest('.kanban-full-height-column');
+            }
+            if (!column) continue;
+
+            const colId = column.getAttribute('data-column-id');
+            if (!colId) continue;
+
+            // Skip columns currently being recalculated (guard prevents feedback loop)
+            if (guardedColumns.has(colId)) continue;
+
+            affectedColumnIds.add(colId);
         }
 
-        // If we're currently recalculating, just mark that another recalc is needed
-        if (isRecalculatingHeights) {
-            pendingRecalcNeeded = true;
-            return;
+        if (affectedColumnIds.size === 0) return;
+
+        // Add to dirty set and schedule batched recalculation
+        for (const colId of affectedColumnIds) {
+            dirtyColumns.add(colId);
         }
-
-        // Recalculate, then poll for height changes (catches delayed rendering)
-        document.querySelectorAll('.kanban-column-stack').forEach(stack => {
-            updateStackLayoutDebounced(stack);
-        });
-
-        // Start polling for height changes - content might still be loading
-        startHeightPolling();
+        scheduleDirtyColumnRecalc();
     });
 
     // Observe all column-content elements for DOM changes AND class changes

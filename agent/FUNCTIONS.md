@@ -2163,6 +2163,12 @@ Total functions documented: **495**
 
 ## src/html/boardRenderer.js - Board Rendering and Layout System
 
+### Modified Functions (2026-02-21 - Per-column height recalculation):
+- src/html/boardRenderer-scheduleDirtyColumnRecalc - Schedule a batched recalculation of dirty columns via requestAnimationFrame; prevents multiple rAFs from queuing up
+- src/html/boardRenderer-processDirtyColumns - Process dirty columns: guard them (prevents MutationObserver feedback loop), find their stacks, recalculate only affected stacks, clear guards after layout settles (2 rAF frames)
+- src/html/boardRenderer-startHeightPolling - Modified: no longer extends deadline when already polling (prevents infinite polling loop); per-column height comparison with guard mechanism during recalculation
+- src/html/boardRenderer-MutationObserver callback - Modified: extracts per-column affected IDs from mutations, skips guarded columns, adds to dirtyColumns set, schedules batched recalculation instead of recalculating all stacks immediately
+
 ### New Functions (2025-11-22):
 - src/html/boardRenderer-waitForStackImagesAndRecalculate - Wait for ALL images in a stack to load, then recalculate stack heights once; ensures final column positions are correct after all images have loaded (overlaps during loading are acceptable); handles cached images and failed images (5s timeout)
 - src/html/boardRenderer-setupImageLoadingWatchers - Set up image loading watchers for all stacks; each stack waits for ALL its images before recalculating once; called AFTER initial stack calculation (at 50ms)
