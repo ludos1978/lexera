@@ -1139,13 +1139,9 @@ function setupGlobalDragAndDrop() {
                     finalColumn.cards.splice(insertIndex, 0, task);
 
                     // Sync shared include columns after card move
-                    const syncAffected = [...syncSharedIncludeColumns(originalColumnId)];
-                    if (originalColumnId !== finalColumnId) {
-                        syncAffected.push(...syncSharedIncludeColumns(finalColumnId));
-                    }
-                    if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
-                        window.renderBoard({ columns: syncAffected });
-                    }
+                    const affectedCols = [originalColumnId];
+                    if (originalColumnId !== finalColumnId) affectedCols.push(finalColumnId);
+                    syncAndRenderSiblings(affectedCols);
 
                     // Update column displays after task move
                     if (typeof window.updateColumnDisplay === 'function') {
@@ -2841,10 +2837,7 @@ function createTasksWithContent(tasksData, dropPosition, explicitColumnId = null
         }
 
         // Sync shared include columns after inserting new tasks
-        const syncAffected = syncSharedIncludeColumns(targetColumnId);
-        if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
-            window.renderBoard({ columns: syncAffected });
-        }
+        syncAndRenderSiblings([targetColumnId]);
 
         // Mark as unsaved changes (syncs modified board to backend)
         if (typeof markUnsavedChanges === 'function') {
@@ -4290,34 +4283,37 @@ function syncSharedIncludeColumns(sourceColumnId) {
 window.syncSharedIncludeColumns = syncSharedIncludeColumns;
 
 /**
+ * Sync shared include siblings for the given column IDs and re-render them.
+ * Single consolidated helper — call after ANY mutation to a shared-include column.
+ * Returns the array of sibling column IDs that were synced.
+ */
+function syncAndRenderSiblings(columnIds) {
+    if (!columnIds || columnIds.length === 0) return [];
+    const allSiblings = [];
+    for (const colId of columnIds) {
+        allSiblings.push(...syncSharedIncludeColumns(colId));
+    }
+    if (allSiblings.length > 0 && typeof window.renderBoard === 'function') {
+        window.renderBoard({ columns: allSiblings });
+    }
+    return allSiblings;
+}
+window.syncAndRenderSiblings = syncAndRenderSiblings;
+
+/**
  * Notify backend of board changes, syncing shared includes first.
- * Replaces repeated markUnsavedChanges + boardUpdate patterns.
+ * Used by restore functions that handle their own rendering before this call.
  */
 function sendBoardUpdateToBackend(sourceColumnIds) {
-    const additionalColumns = [];
-    if (sourceColumnIds) {
-        for (const colId of sourceColumnIds) {
-            additionalColumns.push(...syncSharedIncludeColumns(colId));
-        }
-    }
+    syncAndRenderSiblings(sourceColumnIds);
     if (typeof markUnsavedChanges === 'function') {
         markUnsavedChanges();
     }
     vscode.postMessage({ type: 'boardUpdate', board: window.cachedBoard });
-    // Re-render synced sibling columns
-    if (additionalColumns.length > 0 && typeof window.renderBoard === 'function') {
-        window.renderBoard({ columns: additionalColumns });
-    }
 }
 
 function notifyBoardUpdate(affectedColumnIds) {
-    // Sync shared includes for affected columns
-    const additionalColumns = [];
-    if (affectedColumnIds) {
-        for (const colId of affectedColumnIds) {
-            additionalColumns.push(...syncSharedIncludeColumns(colId));
-        }
-    }
+    const siblingColumns = syncAndRenderSiblings(affectedColumnIds);
 
     if (typeof markUnsavedChanges === 'function') {
         markUnsavedChanges();
@@ -4327,14 +4323,10 @@ function notifyBoardUpdate(affectedColumnIds) {
         board: window.cachedBoard
     });
 
-    // Re-render including synced sibling columns
-    const allAffected = affectedColumnIds
-        ? [...new Set([...affectedColumnIds, ...additionalColumns])]
-        : null;
-
+    // Re-render the directly affected columns (siblings already rendered by syncAndRenderSiblings)
     if (typeof window.renderBoard === 'function') {
-        if (allAffected && allAffected.length > 0) {
-            window.renderBoard({ columns: allAffected });
+        if (affectedColumnIds && affectedColumnIds.length > 0) {
+            window.renderBoard({ columns: affectedColumnIds });
         } else {
             window.renderBoard();
         }

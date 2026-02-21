@@ -2415,11 +2415,8 @@ class TaskEditor {
         this._updateTaskTagStyling(task, cardId, columnId);
 
         // Sync shared include columns after card edit and re-render siblings
-        if (typeof window.syncSharedIncludeColumns === 'function') {
-            const syncAffected = window.syncSharedIncludeColumns(columnId);
-            if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
-                window.renderBoard({ columns: syncAffected });
-            }
+        if (typeof window.syncAndRenderSiblings === 'function') {
+            window.syncAndRenderSiblings([columnId]);
         }
 
         // Send to backend
