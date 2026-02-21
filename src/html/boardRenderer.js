@@ -1357,6 +1357,18 @@ function renderBoard(options = null) {
                         renderSingleColumn(columnId, column);
                     }
                 });
+
+                // Recalculate stacked column layout after selective column re-render
+                if (typeof applyStackedColumnStyles === 'function') {
+                    if (window.stackedColumnStylesTimeout) {
+                        clearTimeout(window.stackedColumnStylesTimeout);
+                    }
+                    window.stackedColumnStylesTimeout = setTimeout(() => {
+                        applyStackedColumnStyles();
+                        window.stackedColumnStylesTimeout = null;
+                    }, 50);
+                }
+
                 return;
             }
         }

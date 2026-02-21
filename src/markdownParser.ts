@@ -183,15 +183,15 @@ export class MarkdownKanbanParser {
           const includeFilePaths = this.detectIncludes(columnTitle, 'column-header');
 
           if (includeFilePaths.length > 0) {
-            // This is a column include - process included files as Marp presentations
-            const includeFiles: string[] = [];
-            includeFilePaths.forEach(filePath => {
-              includeFiles.push(filePath);
-              // Track for file watching (FOUNDATION-1: Use normalized comparison)
-              if (!columnIncludeFiles.some(p => MarkdownFile.isSameFile(p, filePath))) {
-                columnIncludeFiles.push(filePath);
-              }
-            });
+            if (includeFilePaths.length > 1) {
+              logger.warn(`[Parser] Column has ${includeFilePaths.length} includes, only one include per column is supported. Using first: ${includeFilePaths[0]}`);
+            }
+            // This is a column include - only one include per column is supported
+            const includeFiles: string[] = [includeFilePaths[0]];
+            // Track for file watching (FOUNDATION-1: Use normalized comparison)
+            if (!columnIncludeFiles.some(p => MarkdownFile.isSameFile(p, includeFilePaths[0]))) {
+              columnIncludeFiles.push(includeFilePaths[0]);
+            }
 
             // Generate tasks from included files (only when resolveIncludes is true)
             // When resolveIncludes=false (e.g., exporting with mergeIncludes=false),

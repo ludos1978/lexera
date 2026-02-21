@@ -97,6 +97,8 @@ boardColorLight: #f5f5ff
 
 ## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
 
+## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
+
 ## # A #1 #red
 - [ ] #pink
   ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
@@ -108,5 +110,7 @@ boardColorLight: #f5f5ff
   ![screenshot.png](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947){height="650px"}
 - [ ] Search
   ![test media]()
+
+## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0 #stack #hidden-internal-deleted
 
 

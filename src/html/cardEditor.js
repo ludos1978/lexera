@@ -2414,6 +2414,14 @@ class TaskEditor {
         // Update tag styling
         this._updateTaskTagStyling(task, cardId, columnId);
 
+        // Sync shared include columns after card edit and re-render siblings
+        if (typeof window.syncSharedIncludeColumns === 'function') {
+            const syncAffected = window.syncSharedIncludeColumns(columnId);
+            if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
+                window.renderBoard({ columns: syncAffected });
+            }
+        }
+
         // Send to backend
         vscode.postMessage({
             type: 'editCard',

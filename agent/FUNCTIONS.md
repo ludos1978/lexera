@@ -376,6 +376,10 @@ Refactored `restoreParkedColumn` and `restoreDeletedColumn` to avoid full board 
 - `window.createColumnElement` — Now exposed globally for creating column DOM elements without full render
 
 ### Modified: `src/html/dragDrop.js`
+- `notifyBoardUpdate(affectedColumnIds?)` — (MODIFIED) Accepts optional array of column IDs. Syncs shared include columns for each affected column via `syncSharedIncludeColumns`, then calls `markUnsavedChanges`, sends `boardUpdate`, and re-renders affected columns (including synced siblings). Card-level callers (trashTask, parkTask, archiveTask) pass their column ID; column-level and multi-column callers omit it for full render.
+- `normalizeIncludePath(p)` — Normalizes include file paths for comparison (lowercase, forward slashes, strip leading ./). Mirrors backend normalizePathForLookup logic.
+- `syncSharedIncludeColumns(sourceColumnId)` — Deep-copies all cards from the source column to every sibling column sharing the same include file (using normalized path comparison), regenerating column-specific IDs (`task-${columnId}-${index}`). Returns array of additionally affected column IDs. Exposed globally as `window.syncSharedIncludeColumns`. Supersedes the removed `propagateInternalTagToSharedIncludes`.
+- `sendBoardUpdateToBackend(sourceColumnIds)` — Syncs shared include columns for each provided column ID, then calls `markUnsavedChanges` and sends `boardUpdate` to backend. Used by restore functions that don't go through `notifyBoardUpdate`.
 - `notifyBoardUpdateNoRender()` — New function to notify backend of changes without triggering full re-render
 - `restoreParkedColumn()` — (MODIFIED) Now creates column element via createColumnElement and inserts directly into DOM instead of calling renderBoard. Uses syncColumnDataToDOMOrder + finalizeColumnDrop pattern like normal column drops.
 - `restoreDeletedColumn()` — (MODIFIED) Same optimization as restoreParkedColumn - direct DOM manipulation instead of full render.

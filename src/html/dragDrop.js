@@ -1138,6 +1138,15 @@ function setupGlobalDragAndDrop() {
                     // Add task to new column at correct position
                     finalColumn.cards.splice(insertIndex, 0, task);
 
+                    // Sync shared include columns after card move
+                    const syncAffected = [...syncSharedIncludeColumns(originalColumnId)];
+                    if (originalColumnId !== finalColumnId) {
+                        syncAffected.push(...syncSharedIncludeColumns(finalColumnId));
+                    }
+                    if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
+                        window.renderBoard({ columns: syncAffected });
+                    }
+
                     // Update column displays after task move
                     if (typeof window.updateColumnDisplay === 'function') {
                         window.updateColumnDisplay(originalColumnId);
@@ -2831,6 +2840,12 @@ function createTasksWithContent(tasksData, dropPosition, explicitColumnId = null
             targetColumn.cards.push(...newTasks);
         }
 
+        // Sync shared include columns after inserting new tasks
+        const syncAffected = syncSharedIncludeColumns(targetColumnId);
+        if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
+            window.renderBoard({ columns: syncAffected });
+        }
+
         // Mark as unsaved changes (syncs modified board to backend)
         if (typeof markUnsavedChanges === 'function') {
             markUnsavedChanges();
@@ -4233,7 +4248,77 @@ function clearInternalTagsFromTask(task) {
     setTaskContent(task, removeInternalTags(getTaskContent(task)));
 }
 
-function notifyBoardUpdate() {
+/**
+ * Normalize include file paths for comparison (lowercase, forward slashes, strip leading ./).
+ */
+function normalizeIncludePath(p) {
+    let n = p.trim().toLowerCase().replace(/\\/g, '/');
+    while (n.startsWith('./')) { n = n.slice(2); }
+    return n;
+}
+
+/**
+ * Sync all card data from a source column to every sibling column sharing the same include file.
+ * Deep-copies cards and regenerates column-specific IDs.
+ * Returns array of additionally affected column IDs.
+ */
+function syncSharedIncludeColumns(sourceColumnId) {
+    if (!window.cachedBoard || !window.cachedBoard.columns) return [];
+    const sourceColumn = window.cachedBoard.columns.find(c => c.id === sourceColumnId);
+    if (!sourceColumn || !sourceColumn.includeFiles || sourceColumn.includeFiles.length === 0) return [];
+
+    const sourceNormalized = sourceColumn.includeFiles.map(normalizeIncludePath);
+    const affectedColumnIds = [];
+
+    for (const otherColumn of window.cachedBoard.columns) {
+        if (otherColumn.id === sourceColumnId) continue;
+        if (!otherColumn.includeFiles || otherColumn.includeFiles.length === 0) continue;
+        const hasSharedInclude = otherColumn.includeFiles.some(f =>
+            sourceNormalized.includes(normalizeIncludePath(f))
+        );
+        if (!hasSharedInclude) continue;
+
+        // Deep copy cards with regenerated column-specific IDs
+        otherColumn.cards = sourceColumn.cards.map((card, index) => ({
+            ...JSON.parse(JSON.stringify(card)),
+            id: `task-${otherColumn.id}-${index}`
+        }));
+        affectedColumnIds.push(otherColumn.id);
+    }
+    return affectedColumnIds;
+}
+window.syncSharedIncludeColumns = syncSharedIncludeColumns;
+
+/**
+ * Notify backend of board changes, syncing shared includes first.
+ * Replaces repeated markUnsavedChanges + boardUpdate patterns.
+ */
+function sendBoardUpdateToBackend(sourceColumnIds) {
+    const additionalColumns = [];
+    if (sourceColumnIds) {
+        for (const colId of sourceColumnIds) {
+            additionalColumns.push(...syncSharedIncludeColumns(colId));
+        }
+    }
+    if (typeof markUnsavedChanges === 'function') {
+        markUnsavedChanges();
+    }
+    vscode.postMessage({ type: 'boardUpdate', board: window.cachedBoard });
+    // Re-render synced sibling columns
+    if (additionalColumns.length > 0 && typeof window.renderBoard === 'function') {
+        window.renderBoard({ columns: additionalColumns });
+    }
+}
+
+function notifyBoardUpdate(affectedColumnIds) {
+    // Sync shared includes for affected columns
+    const additionalColumns = [];
+    if (affectedColumnIds) {
+        for (const colId of affectedColumnIds) {
+            additionalColumns.push(...syncSharedIncludeColumns(colId));
+        }
+    }
+
     if (typeof markUnsavedChanges === 'function') {
         markUnsavedChanges();
     }
@@ -4241,9 +4326,18 @@ function notifyBoardUpdate() {
         type: 'boardUpdate',
         board: window.cachedBoard
     });
-    // Re-render board immediately so parked/deleted items disappear from view
+
+    // Re-render including synced sibling columns
+    const allAffected = affectedColumnIds
+        ? [...new Set([...affectedColumnIds, ...additionalColumns])]
+        : null;
+
     if (typeof window.renderBoard === 'function') {
-        window.renderBoard();
+        if (allAffected && allAffected.length > 0) {
+            window.renderBoard({ columns: allAffected });
+        } else {
+            window.renderBoard();
+        }
     }
 }
 
@@ -4470,7 +4564,7 @@ function parkTask(taskElement) {
     // Just add the tag - initializeParkedItems will handle the rest during render
     appendInternalTagToTask(task, PARKED_TAG);
 
-    notifyBoardUpdate();
+    notifyBoardUpdate([columnId]);
 }
 
 /**
@@ -4638,13 +4732,7 @@ function restoreParkedTask(parkedIndex, dropPosition) {
     updateParkedItemsUI();
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(targetColumnId ? [targetColumnId] : null);
 }
 
 /**
@@ -4809,13 +4897,7 @@ function removeParkedItem(index) {
     }
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(null);
 }
 
 /**
@@ -4835,13 +4917,13 @@ function restoreParkedItemByIndex(index) {
     });
 
     // Item is already in cachedBoard - just remove the PARKED_TAG
+    let targetColumnId = null;
     if (item.type === 'card') {
         const task = item.data;
         if (task) {
             clearInternalTagsFromTask(task);
 
             // Find the column containing this task and its index
-            let targetColumnId = null;
             let cardIndex = -1;
             for (const col of window.cachedBoard.columns) {
                 const idx = col.cards?.findIndex(t => t.id === task.id);
@@ -4888,13 +4970,7 @@ function restoreParkedItemByIndex(index) {
     updateParkedItemsUI();
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(targetColumnId ? [targetColumnId] : null);
 }
 
 /**
@@ -5192,7 +5268,7 @@ function trashTask(taskElement) {
     // Just add the tag - initializeDeletedItems will handle the rest during render
     appendInternalTagToTask(task, DELETED_TAG);
 
-    notifyBoardUpdate();
+    notifyBoardUpdate([columnId]);
 }
 
 /**
@@ -5482,13 +5558,7 @@ function restoreDeletedTask(deletedIndex, dropPosition) {
     }
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(targetColumnId ? [targetColumnId] : null);
 }
 
 /**
@@ -5565,13 +5635,13 @@ function restoreDeletedItemByIndex(index) {
     });
 
     // Item is already in cachedBoard with tag - just remove the tag
+    let targetColumnId = null;
     if (item.type === 'card') {
         const task = item.data;
         if (task) {
             clearInternalTagsFromTask(task);
 
             // Find the column containing this task and its index
-            let targetColumnId = null;
             let cardIndex = -1;
             for (const col of window.cachedBoard.columns) {
                 const idx = col.cards?.findIndex(t => t.id === task.id);
@@ -5621,13 +5691,7 @@ function restoreDeletedItemByIndex(index) {
     }
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(targetColumnId ? [targetColumnId] : null);
 }
 
 /**
@@ -5985,7 +6049,7 @@ function archiveTask(taskElement) {
     // Just add the tag - initializeArchivedItems will handle the rest during render
     appendInternalTagToTask(task, ARCHIVED_TAG);
 
-    notifyBoardUpdate();
+    notifyBoardUpdate([columnId]);
 }
 
 /**
@@ -6153,13 +6217,7 @@ function restoreArchivedTask(archivedIndex, dropPosition) {
     updateArchivedItemsUI();
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(targetColumnId ? [targetColumnId] : null);
 }
 
 /**
@@ -6224,13 +6282,13 @@ function restoreArchivedItemByIndex(index) {
     });
 
     // Item is already in cachedBoard - just remove the ARCHIVED_TAG
+    let targetColumnId = null;
     if (item.type === 'card') {
         const task = item.data;
         if (task) {
             clearInternalTagsFromTask(task);
 
             // Find the column containing this task and its index
-            let targetColumnId = null;
             let cardIndex = -1;
             for (const col of window.cachedBoard.columns) {
                 const idx = col.cards?.findIndex(t => t.id === task.id);
@@ -6277,13 +6335,7 @@ function restoreArchivedItemByIndex(index) {
     updateArchivedItemsUI();
 
     // Notify backend and mark as unsaved (without re-render)
-    if (typeof markUnsavedChanges === 'function') {
-        markUnsavedChanges();
-    }
-    vscode.postMessage({
-        type: 'boardUpdate',
-        board: window.cachedBoard
-    });
+    sendBoardUpdateToBackend(targetColumnId ? [targetColumnId] : null);
 }
 
 /**
@@ -6353,13 +6405,7 @@ function handleArchivedItemsExported(message) {
         updateArchivedItemsUI();
 
         // Notify backend and mark as unsaved
-        if (typeof markUnsavedChanges === 'function') {
-            markUnsavedChanges();
-        }
-        vscode.postMessage({
-            type: 'boardUpdate',
-            board: window.cachedBoard
-        });
+        sendBoardUpdateToBackend(null);
     }
 }
 

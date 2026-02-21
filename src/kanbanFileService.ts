@@ -732,6 +732,11 @@ export class KanbanFileService {
             candidates.set(key, candidate);
         };
 
+        // Process each include file only once (first column wins).
+        // Shared includes (same file in multiple columns) have independent card copies
+        // that may diverge; the first column in board order is the authoritative source.
+        const processedIncludeFiles = new Set<string>();
+
         for (const column of board.columns) {
             if (!column.includeFiles || column.includeFiles.length === 0) {
                 continue;
@@ -742,6 +747,12 @@ export class KanbanFileService {
                 if (!includeFile) {
                     continue;
                 }
+
+                const fileKey = includeFile.getPath();
+                if (processedIncludeFiles.has(fileKey)) {
+                    continue;
+                }
+                processedIncludeFiles.add(fileKey);
 
                 let content: string;
                 try {

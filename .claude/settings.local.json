@@ -206,7 +206,8 @@
       "WebFetch(domain:stupidtech.io)",
       "Bash(codesign:*)",
       "Bash(vsce:*)",
-      "Bash(mdfind:*)"
+      "Bash(mdfind:*)",
+      "Bash(gh auth:*)"
     ],
     "deny": [],
     "ask": []

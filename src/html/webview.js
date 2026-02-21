@@ -3857,9 +3857,17 @@ if (!webviewEventListenersInitialized) {
                         hasNewTasks: !!hasNewTasks
                     });
 
-                    // Re-render just this column
+                    // Sync shared include siblings after column data update
+                    let syncAffected = [];
+                    if (typeof window.syncSharedIncludeColumns === 'function') {
+                        syncAffected = window.syncSharedIncludeColumns(message.columnId);
+                    }
+
+                    // Re-render just this column (and any synced siblings)
                     // renderSingleColumn skips+defers if it contains the inline editor
-                    if (typeof window.renderSingleColumn === 'function') {
+                    if (syncAffected.length > 0 && typeof window.renderBoard === 'function') {
+                        window.renderBoard({ columns: [message.columnId, ...syncAffected] });
+                    } else if (typeof window.renderSingleColumn === 'function') {
                         window.renderSingleColumn(message.columnId, column);
                     } else if (typeof window.renderBoard === 'function') {
                         window.renderBoard();

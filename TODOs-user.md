@@ -206,3 +206,4 @@ DO A VERY DETAILED ANALYSIS
 
   Collects all cards that didn't match any gather rule:
 
+- [ ] Shared-include column sync: when the same include file is referenced by multiple columns, editing a card in one column does not sync the change to other columns. This causes "ambiguous include content" save errors. The save validation (`_validateDeterministicIncludeWritesBeforeSave`) correctly blocks the save because the generated content differs between columns. Fix: either sync card edits across all columns sharing the same include file in real-time, or pick one authoritative column at save time. Note: trash/park/archive tag propagation for shared includes is already handled by `propagateInternalTagToSharedIncludes()` in dragDrop.js.

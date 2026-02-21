@@ -5,6 +5,14 @@ kanban-plugin: board
 
 ## Archived Todos
 
+- [ ] when an file is included multiple times in one board and is modified at one place it causes these errors "❌ Save error from backend: Save aborted: ambiguous include content detected for 3 file(s): 01-Game_Toy_Gamer/0190-EN-Homework.md (column:col-d1beecb5-a793-4001-a0a4-70965fc46918, column:col-9f45ed2d-3c04-4689-8a4a-650dd317fc9e); 02-Coreloops_Rules/0200-EN-Schedule.md (column:col-f58dfcbf-81dd-41d2-8691-1c6dc6caab0c, column:col-49114511-8346-4a3f-8bb0-33d7aa51bbe6); 02-Coreloops_Rules/0210-EN-Homework_Review.md (column:col-0ef45793-7c9c-48b7-8411-b9678b4b9308, column:col-b103a0ca-400b-4304-854e-21b2f5b2bf7d). A writable include file must map to exactly one board content source per save.
+handleSaveError @ menuOperations.js:2836
+(anonymous) @ webview.js:3106
+postMessage
+(anonymous) @ index.html?id=22018862-ec54-484e-9673-7a3163c7a83b&parentId=5&origin=9c424ccd-b920-4c32-abdd-0dd3aea93a2b&swVersion=4&extensionId=ludos.ludos-kanban&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app:1282
+HostMessaging.channel.port1.onmessage @ index.html?id=22018862-ec54-484e-9673-7a3163c7a83b&parentId=5&origin=9c424ccd-b920-4c32-abdd-0dd3aea93a2b&swVersion=4&extensionId=ludos.ludos-kanban&platform=electron&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=vscode-file%3A%2F%2Fvscode-app:342
+workbench.desktop.main.js:4160 Save failed: Save aborted: ambiguous include content detected for 3 file(s): 01-Game_Toy_Gamer/0190-EN-Homework.md (column:col-d1beecb5-a793-4001-a0a4-70965fc46918, column:col-9f45ed2d-3c04-4689-8a4a-650dd317fc9e); 02-Coreloops_Rules/0200-EN-Schedule.md (column:col-f58dfcbf-81dd-41d2-8691-1c6dc6caab0c, column:col-49114511-8346-4a3f-8bb0-33d7aa51bbe6); 02-Coreloops_Rules/0210-EN-Homework_Review.md (column:col-0ef45793-7c9c-48b7-8411-b9678b4b9308, column:col-b103a0ca-400b-4304-854e-21b2f5b2bf7d). A writable include file must map to exactly one board content source per save."
+
 - [x] modify the export paths so that all exports go into a _Export folder on the main kanban files             
   location. below that we create the individual export folders. But the structure must be          
   {mainFilename}-{timeStamp}-{exportSelection} where the values are the same values we are          

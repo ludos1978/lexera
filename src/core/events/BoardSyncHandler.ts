@@ -178,7 +178,10 @@ export class BoardSyncHandler {
         const isDebug = this._deps.panelContext.debugMode;
         const webviewBridge = this._deps.getWebviewBridge();
 
-        // Update column include files with current task content
+        // Update column include files with current task content.
+        // Process each include file only once (first column in board order wins).
+        // Shared includes have independent card copies that may diverge.
+        const processedIncludes = new Set<string>();
         for (const column of board.columns) {
             if (column.includeFiles && column.includeFiles.length > 0) {
                 for (const relativePath of column.includeFiles) {
@@ -209,6 +212,13 @@ export class BoardSyncHandler {
                     if (file.shouldPreserveRawContent()) {
                         continue;
                     }
+
+                    // Skip shared includes already processed from another column
+                    const filePath = file.getPath();
+                    if (processedIncludes.has(filePath)) {
+                        continue;
+                    }
+                    processedIncludes.add(filePath);
 
                     const includeFile = file as IncludeFile;
                     const content = includeFile.generateFromTasks(column.cards);
