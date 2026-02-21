@@ -242,3 +242,102 @@ describe('DashboardScanner temporal inheritance for time slots', () => {
         expect(itemDate.getDate()).toBe(1);
     });
 });
+
+// ─── 4-Level Temporal Tag Cascading Tests ────────────────────────────
+
+import { resolveTaskTemporals } from '@ludos/shared';
+
+function getWeekdayOfISOWeek(week: number, year: number, weekday: number): Date {
+    const jan4 = new Date(year, 0, 4);
+    const dayOfWeek = jan4.getDay() || 7;
+    const monday = new Date(jan4);
+    monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+    const daysFromMonday = weekday === 0 ? 6 : weekday - 1;
+    const result = new Date(monday);
+    result.setDate(monday.getDate() + daysFromMonday);
+    result.setHours(0, 0, 0, 0);
+    return result;
+}
+
+describe('4-Level Temporal Tag Cascading', () => {
+    it('column @jan @mon + card @kw2 → month+weekday+week cross-product', () => {
+        const results = resolveTaskTemporals('Task @kw2', '@jan @mon');
+
+        expect(results.length).toBeGreaterThanOrEqual(1);
+        const r = results[0];
+        expect(r.temporal.month).toBe(1);    // January from column
+        expect(r.temporal.weekday).toBe(1);  // Monday from column
+        expect(r.temporal.week).toBe(2);     // Week 2 from card
+    });
+
+    it('column @jan @mon + card line @tue → Tuesday overrides Monday', () => {
+        const results = resolveTaskTemporals(
+            'Task\n- [ ] Meeting @tue',
+            '@jan @mon'
+        );
+
+        const meetingResult = results.find(r => r.temporal.tag === '@tue');
+        expect(meetingResult).toBeDefined();
+        expect(meetingResult!.temporal.month).toBe(1);    // January inherited from column
+        expect(meetingResult!.temporal.weekday).toBe(2);  // Tuesday overrides Monday
+    });
+
+    it('sub-item inherits parent line tokens, overrides time only', () => {
+        const year = new Date().getFullYear() + 1;
+        const week = 10;
+        const results = resolveTaskTemporals(
+            [
+                `Sprint @${year}-kw${week} @mon`,
+                '  - [ ] @09:00-10:00 Standup'
+            ].join('\n'),
+            'Schedule'
+        );
+
+        const subItem = results.find(r => r.temporal.tag === '@09:00-10:00');
+        expect(subItem).toBeDefined();
+        expect(subItem!.effectiveWeek).toBe(week);
+        expect(subItem!.effectiveWeekday).toBe(1);  // Monday from parent
+        expect(subItem!.temporal.timeSlot).toBe('@09:00-10:00');
+
+        // Verify date = Monday of that week
+        const expectedDate = getWeekdayOfISOWeek(week, year, 1);
+        const itemDate = new Date(subItem!.effectiveDate);
+        itemDate.setHours(0, 0, 0, 0);
+        expect(itemDate.getTime()).toBe(expectedDate.getTime());
+    });
+
+    it('sub-item does NOT pollute sibling context', () => {
+        const year = new Date().getFullYear() + 1;
+        const week = 10;
+        const results = resolveTaskTemporals(
+            [
+                `Sprint @${year}-kw${week} @mon`,
+                '  - [ ] @tue Retro',       // sub-item overrides to Tuesday
+                '- [ ] @09:00-10:00 Review'  // top-level: should still inherit Monday
+            ].join('\n'),
+            'Schedule'
+        );
+
+        const retroResult = results.find(r => r.temporal.tag === '@tue');
+        expect(retroResult).toBeDefined();
+        expect(retroResult!.effectiveWeekday).toBe(2);  // Tuesday (sub-item override)
+
+        const reviewResult = results.find(r => r.temporal.tag === '@09:00-10:00');
+        expect(reviewResult).toBeDefined();
+        expect(reviewResult!.effectiveWeek).toBe(week);
+        expect(reviewResult!.effectiveWeekday).toBe(1);  // Monday from context, not sub-item's Tuesday
+    });
+
+    it('column cascades to time-only line when card title has no temporal', () => {
+        const results = resolveTaskTemporals(
+            'Plain Card Title\n- [ ] @09:00-10:00 Meeting',
+            '@jan @mon'
+        );
+
+        const meetingResult = results.find(r => r.temporal.tag === '@09:00-10:00');
+        expect(meetingResult).toBeDefined();
+        expect(meetingResult!.temporal.month).toBe(1);    // January from column
+        expect(meetingResult!.temporal.weekday).toBe(1);  // Monday from column
+        expect(meetingResult!.temporal.timeSlot).toBe('@09:00-10:00');
+    });
+});

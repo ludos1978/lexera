@@ -277,7 +277,7 @@ export class DashboardScanner {
                 }
 
                 // Shared temporal resolution (same logic as IcalMapper)
-                const resolved = resolveTaskTemporals(taskText, columnTemporal);
+                const resolved = resolveTaskTemporals(taskText, rawColumnTitle);
 
                 if (resolved.length > 0) {
                     temporalCards++;

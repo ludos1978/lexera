@@ -17,7 +17,7 @@
  */
 
 import * as crypto from 'crypto';
-import { KanbanColumn, KanbanCard, extractTemporalInfo, resolveTaskTemporals, TemporalInfo, isArchivedOrDeleted } from '@ludos/shared';
+import { KanbanColumn, KanbanCard, resolveTaskTemporals, TemporalInfo, isArchivedOrDeleted } from '@ludos/shared';
 import { log } from '../logger';
 
 export interface IcalTask {
@@ -184,9 +184,6 @@ export class IcalMapper {
       // Skip archived/deleted columns
       if (isArchivedOrDeleted(column.title || '')) continue;
 
-      const columnTemporals = extractTemporalInfo(column.title || '');
-      const columnTemporal = columnTemporals.length > 0 ? columnTemporals[0] : null;
-
       for (const task of column.cards) {
         const content = task.content || '';
 
@@ -198,7 +195,7 @@ export class IcalMapper {
         const taskSummaryLine = content.split('\n')[0] || '';
 
         // Shared temporal resolution (same logic as DashboardScanner)
-        const resolved = resolveTaskTemporals(content, columnTemporal);
+        const resolved = resolveTaskTemporals(content, column.title || null);
 
         for (const r of resolved) {
           const occKey = `${column.title}\0${r.lineContent}`;

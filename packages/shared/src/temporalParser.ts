@@ -784,85 +784,129 @@ export function extractTemporalInfo(text: string): TemporalInfo[] {
     return combineTemporalTokens(tokens, checkboxState);
 }
 
+// ─── Token-level merging across hierarchy levels ─────────────────────
+
+/**
+ * Merge temporal token arrays across hierarchy levels.
+ * Same-type tokens from a later level override earlier levels entirely;
+ * different-type tokens accumulate (enabling cross-product combining).
+ *
+ * Order: Column < Card title < Content line < Sub-item
+ */
+function mergeTokenLevels(...levels: TemporalToken[][]): TemporalToken[] {
+    let merged: TemporalToken[] = [];
+    for (const level of levels) {
+        if (level.length === 0) continue;
+        const levelTypes = new Set(level.map(t => t.type));
+        merged = merged.filter(t => !levelTypes.has(t.type));
+        merged = [...merged, ...level];
+    }
+    return merged;
+}
+
 // ─── Task-level temporal resolution ──────────────────────────────────
 
 /**
- * Resolve temporal tags for all lines in a task, with hierarchical inheritance.
+ * Resolve temporal tags for all lines in a task, with 4-level hierarchical
+ * token merging: Column title < Card title < Content line < Sub-item.
  *
- * Processes each line of taskContent, calling extractTemporalInfo per line.
- * Time-only tags (no explicit date) inherit their date from the task title
- * temporal context or the column temporal context.
+ * Same-type tokens override (child wins), different-type tokens AND together
+ * via cross-product combining.  Each result's `temporal.tag` is the LINE's
+ * own tag (preserves filtering like `temporalTag === '@08:00-10:00'`), while
+ * all semantic fields come from the merged token set.
  *
  * Used by both DashboardScanner and IcalMapper to ensure identical behavior.
  *
  * @param taskContent  Full task content (may be multi-line)
- * @param columnTemporal  Temporal info extracted from the column title (or null)
+ * @param columnTitle  Raw column title string (or null)
  */
 export function resolveTaskTemporals(
     taskContent: string,
-    columnTemporal: TemporalInfo | null
+    columnTitle: string | null
 ): ResolvedTemporal[] {
     const results: ResolvedTemporal[] = [];
     const lines = taskContent.split('\n');
 
-    // Extract task title temporal from first line
-    const titleLine = lines[0] || '';
-    const titleTemporals = extractTemporalInfo(titleLine);
-    const titleTemporal = titleTemporals.length > 0 ? titleTemporals[0] : null;
+    // Level 1: column tokens
+    const columnTokens = columnTitle ? extractTemporalTokens(columnTitle) : [];
 
-    // Track task-level temporal context (updated as lines are processed)
-    let taskTemporalContext: TemporalInfo | null =
-        (titleTemporal?.hasExplicitDate && titleTemporal.date) ? titleTemporal : null;
+    // Level 2: card title tokens (first line)
+    const titleLine = lines[0] || '';
+    const titleTokens = extractTemporalTokens(titleLine);
+
+    // Running context = merge(column, title) — updated by top-level lines
+    let contextTokens = mergeTokenLevels(columnTokens, titleTokens);
+
+    // Track most recent top-level line's tokens (for sub-item inheritance)
+    let parentLineTokens: TemporalToken[] = [];
 
     for (const line of lines) {
-        const lineTemporals = extractTemporalInfo(line);
-        if (lineTemporals.length === 0) continue;
+        const lineTokens = extractTemporalTokens(line);
+        if (lineTokens.length === 0) continue;
 
-        for (const lineTemporal of lineTemporals) {
-            let effectiveDate = lineTemporal.date;
-            let effectiveDateEnd = lineTemporal.dateEnd;
-            let effectiveWeek = lineTemporal.week;
-            let effectiveYear = lineTemporal.year;
-            const effectiveWeekday = lineTemporal.weekday;
-            let hasEffectiveDate = lineTemporal.hasExplicitDate === true;
+        const trimmed = line.trim();
+        const checkboxState = detectCheckboxState(line);
 
-            // Time-only tags inherit date, week, and year from task title or column context
-            if (lineTemporal.timeSlot && !lineTemporal.hasExplicitDate) {
-                if (taskTemporalContext?.date) {
-                    effectiveDate = taskTemporalContext.date;
-                    effectiveDateEnd = taskTemporalContext.dateEnd;
-                    if (taskTemporalContext.week !== undefined) effectiveWeek = taskTemporalContext.week;
-                    if (taskTemporalContext.year !== undefined) effectiveYear = taskTemporalContext.year;
+        // Detect sub-item: 2+ leading spaces before "- "
+        const isSubItem = /^ {2,}- /.test(line) || /^\t+- /.test(line);
+
+        // Line's own tag (for display / filtering) — combine line tokens only
+        const lineOnlyResults = combineTemporalTokens(lineTokens, checkboxState);
+        const lineTag = lineOnlyResults.length > 0 ? lineOnlyResults[0].tag : lineTokens.map(t => t.tag).join(' ');
+
+        // Merge tokens: column < context < [parentLine if sub-item] < line
+        let mergedTokens: TemporalToken[];
+        if (isSubItem) {
+            mergedTokens = mergeTokenLevels(columnTokens, contextTokens, parentLineTokens, lineTokens);
+        } else {
+            mergedTokens = mergeTokenLevels(columnTokens, contextTokens, lineTokens);
+        }
+
+        // Combine merged tokens into TemporalInfo results
+        const mergedResults = combineTemporalTokens(mergedTokens, checkboxState);
+
+        for (const merged of mergedResults) {
+            if (!merged.date && !merged.timeSlot) continue;
+
+            // Time-only with no date context → scoped to today
+            let effectiveDate = merged.date;
+            let hasEffectiveDate = merged.hasExplicitDate === true;
+            if (merged.timeSlot && !merged.hasExplicitDate) {
+                if (merged.date) {
                     hasEffectiveDate = true;
-                } else if (columnTemporal?.date && columnTemporal.hasExplicitDate) {
-                    effectiveDate = columnTemporal.date;
-                    effectiveDateEnd = columnTemporal.dateEnd;
-                    if (columnTemporal.week !== undefined) effectiveWeek = columnTemporal.week;
-                    if (columnTemporal.year !== undefined) effectiveYear = columnTemporal.year;
-                    hasEffectiveDate = true;
-                } else if (lineTemporal.date) {
-                    // No context — keep time-only tag scoped to today
+                } else {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    effectiveDate = today;
                     hasEffectiveDate = true;
                 }
-            }
-
-            // Update task temporal context for subsequent lines
-            if (lineTemporal.hasExplicitDate && lineTemporal.date) {
-                taskTemporalContext = lineTemporal;
             }
 
             if (!hasEffectiveDate || !effectiveDate) continue;
 
             results.push({
-                lineContent: line.trim(),
-                temporal: lineTemporal,
+                lineContent: trimmed,
+                temporal: {
+                    ...merged,
+                    tag: lineTag,  // preserve line's own tag for filtering
+                },
                 effectiveDate,
-                effectiveDateEnd,
-                effectiveWeek,
-                effectiveWeekday,
-                effectiveYear,
+                effectiveDateEnd: merged.dateEnd,
+                effectiveWeek: merged.week,
+                effectiveWeekday: merged.weekday,
+                effectiveYear: merged.year,
             });
         }
+
+        // Update context: top-level lines with non-time tokens update context
+        if (!isSubItem) {
+            const hasNonTimeTokens = lineTokens.some(t => t.type !== 'time');
+            if (hasNonTimeTokens) {
+                contextTokens = mergeTokenLevels(contextTokens, lineTokens);
+            }
+            parentLineTokens = lineTokens;
+        }
+        // Sub-items do NOT update context or parentLineTokens
     }
 
     return results;
