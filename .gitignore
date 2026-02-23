@@ -41,3 +41,6 @@ excalidraw-cache/
 __pycache__
 to_delete/
 *.app/
+packages/ludos-dashboard/src-tauri/target/
+packages/ludos-dashboard/src-tauri/gen/
+packages/ludos-dashboard/src-tauri/icons/
