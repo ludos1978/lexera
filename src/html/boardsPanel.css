@@ -282,19 +282,19 @@ body {
 .indent-guide {
     width: 8px;
     box-sizing: border-box;
-    border-right: 1px solid transparent;
-}
-
-.boards-container:hover .indent-guide {
-    border-right-color: var(--vscode-tree-indentGuidesStroke, rgba(128, 128, 128, 0.4));
+    border-right: 1px solid var(--vscode-tree-indentGuidesStroke, rgba(128, 128, 128, 0.4));
 }
 
 .tree-twistie {
-    width: 12px;
+    width: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+}
+
+.tree-twistie.collapsible {
+    width: 16px;
 }
 
 .tree-twistie.collapsible::before {
@@ -372,7 +372,7 @@ body {
 }
 
 .board-item-header {
-    padding: 0 6px 0 12px;
+    padding: 0 6px 0 0;
 }
 
 .board-item-header.active-board {
@@ -702,4 +702,33 @@ body {
 
 .board-color-clear:hover {
     opacity: 1;
+}
+
+/* ============= Column Tree ============= */
+.column-tree-toggle {
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+
+.board-item-header:hover .column-tree-toggle {
+    opacity: 0.8;
+}
+
+.column-tree-toggle:hover {
+    opacity: 1;
+}
+
+.card-icon {
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+.card-icon.checked {
+    color: var(--vscode-testing-iconPassed, #73c991);
+    opacity: 0.8;
+}
+
+.card-checked {
+    text-decoration: line-through;
+    opacity: 0.5;
 }

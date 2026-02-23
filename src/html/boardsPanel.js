@@ -23,6 +23,10 @@
     const expandedBoards = new Set();
     let allBoardsConfigExpanded = false;
 
+    // Column tree state tracking
+    const columnsExpandedBoards = new Set(); // which boards show their column tree
+    const expandedColumns = new Set(); // which 'filePath:colIdx' show their cards
+
     // ============= Smart Update System =============
     // Prevents unnecessary full DOM re-renders by diffing state.
     // Only does a full re-render when board data actually changed.
@@ -142,6 +146,52 @@
         }
     }
 
+    // ============= Column Tree =============
+
+    /**
+     * Render column/card tree HTML for a board's column data.
+     * Reusable pure function: data in → HTML out.
+     * @param {Array} columns - [{title, cardCount, cards: [{title, checked}]}]
+     * @param {string} boardFilePath - board file path for keying expand state
+     * @returns {string} HTML string
+     */
+    function renderColumnTree(columns, boardFilePath) {
+        if (!columns || columns.length === 0) { return ''; }
+        var html = '';
+        columns.forEach(function(col, colIdx) {
+            var colKey = boardFilePath + ':' + colIdx;
+            var isFolded = !expandedColumns.has(colKey);
+
+            // tree-group wrapper (matches dashboard group pattern)
+            html += '<div class="tree-group' + (isFolded ? ' folded' : '') + '">';
+
+            // Column group header (tree-group-toggle)
+            html += '<div class="tree-row tree-group-toggle column-tree-row" data-col-key="' + escapeHtml(colKey) + '">';
+            html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+            html += '<div class="tree-twistie collapsible' + (isFolded ? '' : ' expanded') + '"></div>';
+            html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(col.title) + ' (' + col.cardCount + ')</span></div>';
+            html += '</div>';
+
+            // Card items (visibility controlled by .tree-group.folded CSS)
+            html += '<div class="tree-group-items">';
+            col.cards.forEach(function(card) {
+                html += '<div class="tree-row card-tree-row">';
+                html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div><div class="indent-guide"></div></div>';
+                html += '<div class="tree-twistie"></div>';
+                html += '<div class="tree-contents"><div class="tree-label-2line">';
+                var checkIcon = card.checked ? '<span class="codicon codicon-pass-filled card-icon checked"></span> ' : '';
+                html += '<span class="entry-title' + (card.checked ? ' card-checked' : '') + '">' + checkIcon + escapeHtml(card.title) + '</span>';
+                html += '<span class="entry-location">' + escapeHtml(col.title) + '</span>';
+                html += '</div></div>';
+                html += '</div>';
+            });
+            html += '</div>'; // tree-group-items
+
+            html += '</div>'; // tree-group
+        });
+        return html;
+    }
+
     // ============= Board List =============
 
     function renderBoards() {
@@ -160,15 +210,20 @@
 
         // "All Boards" entry — same markup as board entries, with lock + gear
         const allBoardsExpanded = allBoardsConfigExpanded;
+        const isLocked = currentState.locked;
         html += '<div class="board-item">';
         html += '<div class="tree-row board-item-header" id="all-boards-row">';
+        html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+        html += '<div class="tree-twistie"></div>';
         html += '<div class="tree-contents">';
         html += '<span class="tree-label-name">All Boards</span>';
         html += '</div>';
         html += '<button class="lock-btn" id="lock-btn" title="Toggle lock"><span class="codicon codicon-lock"></span></button>';
-        html += '<div class="tree-twistie collapsible board-toggle' + (allBoardsExpanded ? ' expanded' : '') + '" id="all-boards-toggle-btn" title="All boards settings"></div>';
+        if (!isLocked) {
+            html += '<div class="tree-twistie collapsible board-toggle' + (allBoardsExpanded ? ' expanded' : '') + '" id="all-boards-toggle-btn" title="All boards settings"></div>';
+        }
         html += '</div>';
-        html += '<div class="all-boards-config" id="all-boards-config"' + (allBoardsExpanded ? '' : ' style="display: none;"') + '>';
+        html += '<div class="all-boards-config" id="all-boards-config"' + (allBoardsExpanded && !isLocked ? '' : ' style="display: none;"') + '>';
         html += '<div id="all-boards-config-content"></div>';
         html += '</div>';
         html += '</div>';
@@ -185,22 +240,25 @@
             var activeColor = isDark ? (board.boardColorDark || board.boardColor) : (board.boardColorLight || board.boardColor);
             var headerStyle = activeColor ? ' style="background-color: ' + escapeHtml(activeColor) + ';"' : '';
             var isActiveBoard = currentState.activeBoardUri && currentState.activeBoardUri === board.uri;
+            var isColumnsExpanded = columnsExpandedBoards.has(board.filePath);
             html += '<div class="tree-row board-item-header' + (isActiveBoard ? ' active-board' : '') + '"' +
                 headerStyle +
                 (canDrag ? ' draggable="true"' : '') +
                 ' data-file-path="' + escapeHtml(board.filePath) + '"' +
                 ' data-board-uri="' + escapeHtml(board.uri) + '">';
+            html += '<div class="tree-indent"><div class="indent-guide"></div></div>';
+            html += '<div class="tree-twistie collapsible column-tree-toggle' + (isColumnsExpanded ? ' expanded' : '') + '" data-file-path="' + escapeHtml(board.filePath) + '" title="Toggle columns"></div>';
             html += '<div class="tree-contents">';
             html += '<span class="tree-label-name" title="' + escapeHtml(board.filePath) + '">' + escapeHtml(board.name) + '</span>';
             html += '</div>';
-            if (!currentState.locked) {
+            if (!isLocked) {
                 html += '<button class="board-remove-btn" data-file-path="' + escapeHtml(board.filePath) + '" title="Remove">✕</button>';
+                html += '<div class="tree-twistie collapsible board-toggle' + (isExpanded ? ' expanded' : '') + '" title="Toggle settings"></div>';
             }
-            html += '<div class="tree-twistie collapsible board-toggle' + (isExpanded ? ' expanded' : '') + '" title="Toggle settings"></div>';
             html += '</div>';
 
-            // Config body
-            html += '<div class="board-config-body' + (isExpanded ? ' expanded' : '') + '">';
+            // Config body (hidden when locked since toggle is not available)
+            html += '<div class="board-config-body' + (isExpanded && !isLocked ? ' expanded' : '') + '">';
 
             // Timeframe row
             html += '<div class="tree-row board-config-row">';
@@ -296,6 +354,12 @@
             }
 
             html += '</div>'; // config body end
+
+            // Column tree (below config body)
+            if (isColumnsExpanded && board.columns) {
+                html += renderColumnTree(board.columns, board.filePath);
+            }
+
             html += '</div>'; // board item end
         });
 
@@ -329,9 +393,37 @@
         // Board header click to open board
         boardsList.querySelectorAll('.board-item-header[data-file-path]').forEach(header => {
             header.addEventListener('click', (e) => {
-                if (e.target.closest('.board-remove-btn') || e.target.closest('.board-toggle')) { return; }
+                if (e.target.closest('.board-remove-btn') || e.target.closest('.board-toggle') || e.target.closest('.column-tree-toggle')) { return; }
                 const filePath = header.dataset.filePath;
                 vscode.postMessage({ type: 'openBoard', filePath });
+            });
+        });
+
+        // Column tree toggle (expand/collapse columns for a board)
+        boardsList.querySelectorAll('.column-tree-toggle').forEach(function(toggle) {
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var filePath = toggle.dataset.filePath;
+                var isNowExpanded = !columnsExpandedBoards.has(filePath);
+                if (isNowExpanded) { columnsExpandedBoards.add(filePath); }
+                else { columnsExpandedBoards.delete(filePath); }
+                vscode.postMessage({ type: 'setColumnsExpanded', filePath: filePath, expanded: isNowExpanded });
+            });
+        });
+
+        // Column row click (expand/collapse cards within a column)
+        // Uses CSS-driven fold via .tree-group.folded (matches dashboard pattern)
+        boardsList.querySelectorAll('.column-tree-row').forEach(function(row) {
+            row.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var colKey = row.dataset.colKey;
+                var group = row.closest('.tree-group');
+                var twistie = row.querySelector('.tree-twistie');
+                var isFolding = !group.classList.contains('folded');
+                group.classList.toggle('folded', isFolding);
+                twistie.classList.toggle('expanded', !isFolding);
+                if (isFolding) { expandedColumns.delete(colKey); }
+                else { expandedColumns.add(colKey); }
             });
         });
 

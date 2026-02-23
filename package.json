@@ -5995,6 +5995,11 @@
           "id": "kanbanBoards",
           "title": "Kanban Boards",
           "icon": "$(notebook)"
+        },
+        {
+          "id": "kanbanDashboardContainer",
+          "title": "Kanban Dashboard",
+          "icon": "$(notebook)"
         }
       ]
     },
@@ -6004,7 +6009,9 @@
           "type": "webview",
           "id": "kanbanBoardsSidebar",
           "name": "Kanban Boards"
-        },
+        }
+      ],
+      "kanbanDashboardContainer": [
         {
           "type": "webview",
           "id": "kanbanDashboard",

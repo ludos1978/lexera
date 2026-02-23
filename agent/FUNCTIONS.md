@@ -9,6 +9,26 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-23) - Column/Card Tree in Boards Panel
+
+### Modified: `src/kanbanBoardsProvider.ts`
+- `isHiddenItem(text)` — (NEW, module-level) Checks if text contains any hidden tag (parked, deleted, archived) using HIDDEN_TAGS from @ludos/shared.
+- `extractCardFirstLine(card)` — (NEW, module-level) Extracts first visible line from a KanbanCard for display. Uses displayTitle if available, else first non-empty line of content.
+- `KanbanBoardsProvider._columnsExpandedBoards` — (NEW field) Set<string> tracking which boards have their column tree expanded.
+- `KanbanBoardsProvider._doSendStateToWebview` — (MODIFIED) For boards in _columnsExpandedBoards, parses markdown with resolveIncludes=false and sends column summaries (title, cardCount, cards with title+checked) filtered by hidden tags.
+- Message handler `setColumnsExpanded` — (NEW) Adds/removes board filePath from _columnsExpandedBoards and triggers state update.
+
+### Modified: `src/html/boardsPanel.js`
+- `renderColumnTree(columns, boardFilePath)` — (NEW) Pure function rendering column/card tree HTML. Columns show with twistie, list icon, title, card count badge. Cards show with check/circle icon, title, strikethrough for checked.
+- `columnsExpandedBoards` / `expandedColumns` — (NEW state) Sets tracking which boards show column tree and which columns show cards.
+- `renderBoards()` — (MODIFIED) Added column-tree twistie left of board name, column tree rendering after config body.
+- `attachBoardEventListeners()` — (MODIFIED) Added listeners for .column-tree-toggle (sends setColumnsExpanded to backend) and .column-tree-row (toggles expandedColumns locally).
+
+### Modified: `src/html/boardsPanel.css`
+- (NEW) Styles for .column-tree-toggle, .column-tree-row/.card-tree-row .tree-contents, .column-icon, .column-card-count, .card-icon, .card-icon.checked, .card-checked.
+
+---
+
 ## Recent Updates (2026-02-19) - Fix: Save blocked by dirty buffer after embed delete + undo
 
 ### Modified: `src/commands/PathCommands.ts`

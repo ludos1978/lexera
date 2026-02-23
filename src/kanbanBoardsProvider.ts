@@ -21,6 +21,42 @@ import { BoardRegistryService } from './services/BoardRegistryService';
 import { KanbanWebviewPanel } from './kanbanWebviewPanel';
 import { MarkdownKanbanParser } from './markdownParser';
 import { logger } from './utils/logger';
+import { HIDDEN_TAGS } from '@ludos/shared';
+import { KanbanCard, KanbanColumn } from './board/KanbanTypes';
+
+/** Check if text contains any hidden tag (parked, deleted, archived) */
+function isHiddenItem(text: string): boolean {
+    return text.includes(HIDDEN_TAGS.PARKED)
+        || text.includes(HIDDEN_TAGS.DELETED)
+        || text.includes(HIDDEN_TAGS.ARCHIVED);
+}
+
+/** Extract the first visible line from a card for display in the column tree */
+function extractCardFirstLine(card: KanbanCard): string {
+    if (card.displayTitle) { return stripMarkdownHeading(card.displayTitle); }
+    const content = card.content || '';
+    const lines = content.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) { return stripMarkdownHeading(trimmed); }
+    }
+    return '(empty)';
+}
+
+/** Strip markdown heading prefix (# ## ### etc.) from a line */
+function stripMarkdownHeading(text: string): string {
+    return text.replace(/^#{1,6}\s+/, '');
+}
+
+/** Clean %INCLUDE_BADGE:filepath% placeholders from a column title for sidebar display */
+function cleanColumnTitle(col: KanbanColumn): string {
+    const title = col.displayTitle || col.title;
+    // Replace %INCLUDE_BADGE:filepath% with just the filename (no extension)
+    const cleaned = title.replace(/%INCLUDE_BADGE:([^%]+)%/g, (_match, filePath: string) => {
+        return path.basename(filePath, path.extname(filePath));
+    });
+    return cleaned.trim() || path.basename(col.includeFiles?.[0] || '', '.md') || col.title;
+}
 
 /**
  * KanbanBoardsProvider - Boards management sidebar panel
@@ -33,6 +69,7 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
     private _registry: BoardRegistryService;
     private _disposables: vscode.Disposable[] = [];
     private _stateDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+    private _columnsExpandedBoards: Set<string> = new Set();
 
     constructor(extensionUri: vscode.Uri) {
         this._extensionUri = extensionUri;
@@ -119,6 +156,16 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                     await this._registry.removeDefaultTagFilter(message.tag);
                     break;
 
+                // Column tree expand state
+                case 'setColumnsExpanded':
+                    if (message.expanded) {
+                        this._columnsExpandedBoards.add(message.filePath);
+                    } else {
+                        this._columnsExpandedBoards.delete(message.filePath);
+                    }
+                    this._sendStateToWebview();
+                    break;
+
                 // Board color
                 case 'setBoardColor':
                     await this._handleSetBoardColor(message.filePath, message.color, message.settingKey || 'boardColor');
@@ -161,6 +208,7 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             let boardColor: string | undefined;
             let boardColorDark: string | undefined;
             let boardColorLight: string | undefined;
+            let columns: { title: string; cardCount: number; cards: { title: string; checked: boolean }[] }[] | undefined;
             try {
                 const content = fs.readFileSync(b.filePath, 'utf8');
                 const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -173,6 +221,29 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                         else if (m[1] === 'boardColorLight') { boardColorLight = m[2]; }
                     }
                 }
+
+                // Parse column tree data for expanded boards
+                if (this._columnsExpandedBoards.has(b.filePath)) {
+                    try {
+                        const basePath = path.dirname(b.filePath);
+                        const parseResult = MarkdownKanbanParser.parseMarkdown(content, basePath, undefined, b.filePath, true);
+                        columns = parseResult.board.columns
+                            .filter((col: KanbanColumn) => !isHiddenItem(col.title))
+                            .map((col: KanbanColumn) => {
+                                const visibleCards = col.cards.filter((card: KanbanCard) => !isHiddenItem(card.content));
+                                return {
+                                    title: cleanColumnTitle(col),
+                                    cardCount: visibleCards.length,
+                                    cards: visibleCards.map((card: KanbanCard) => ({
+                                        title: extractCardFirstLine(card),
+                                        checked: !!card.checked
+                                    }))
+                                };
+                            });
+                    } catch (parseErr) {
+                        logger.error('[BoardsProvider] Error parsing board for column tree:', parseErr);
+                    }
+                }
             } catch { /* file unreadable, skip */ }
             return {
                 filePath: b.filePath,
@@ -181,7 +252,8 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                 config: b.config,
                 boardColor,
                 boardColorDark,
-                boardColorLight
+                boardColorLight,
+                columns
             };
         });
 
