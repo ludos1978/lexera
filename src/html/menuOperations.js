@@ -3571,6 +3571,28 @@ function updateVisualTagState(element, allTags, elementType, isCollapsed) {
         element.removeAttribute('data-hidden-revealed');
     }
 
+    // When a column's #hide state changes, propagate to all child cards
+    if (elementType === 'column') {
+        const childCards = element.querySelectorAll('.card-item');
+        if (hasHiddenTag) {
+            // Column has #hide — all cards get hidden
+            childCards.forEach(card => {
+                card.setAttribute('data-hidden-content', 'true');
+            });
+        } else {
+            // Column lost #hide — only keep hidden on cards with their own #hide/#hidden tag
+            childCards.forEach(card => {
+                const cardTags = (card.getAttribute('data-all-tags') || '').split(' ').filter(t => t.trim());
+                if (cardTags.includes('hidden') || cardTags.includes('hide')) {
+                    card.setAttribute('data-hidden-content', 'true');
+                } else {
+                    card.removeAttribute('data-hidden-content');
+                    card.removeAttribute('data-hidden-revealed');
+                }
+            });
+        }
+    }
+
     // Update temporal attributes (current day/week/weekday/hour/time)
     if (window.menuUtils?.updateTemporalAttributes) {
         if (elementType === 'column') {
