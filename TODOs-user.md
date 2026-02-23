@@ -4,7 +4,9 @@
 
 - [ ] when searching allow to limit seaches for l: links
 
-- [ ] Add the option to unfold the columns that are below a kanban board within the kanban boards list (on the separate view). it must be automatically updated with each modification of colums! make it a modular element that could be activated within the board view as a side element as well (the list of all columns within a board). within the board itself it only lists the own columns.
+- [ ] Add the option to unfold the columns that are below a kanban board within the kanban boards list (on the separate view). it must be automatically updated with each modification of colums! make it a modular element that could be activated within the board view as a side element as well (the list of all columns within a board). within the board itself the list only shows it's own columns. the columns should accept drops from other boards, external drops etc. when dropped on columns it adds them at the end, when dropped over a kanban board it create a column named "Incoming" which is another category of the kind "Park", "Tash", "Archive". Also add the option to unfold the columns which lists the titles of the cards! make this a re-usable element as well!
+
+- [ ] If an column is in the "Park" (or Trash or Archive) on hover it shows the columns within it, which can also be dragged out into new locations.
 
 - [ ] a tag like #preparation should add a header above the column if it's in the column title. but it disappears after what i assume is a redrawing of it. it's first correctly added after editing the title.
 
