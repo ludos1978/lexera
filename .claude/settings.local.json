@@ -207,7 +207,8 @@
       "Bash(codesign:*)",
       "Bash(vsce:*)",
       "Bash(mdfind:*)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "WebFetch(domain:code.visualstudio.com)"
     ],
     "deny": [],
     "ask": []

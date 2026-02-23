@@ -1,4 +1,8 @@
 ## Most important RULEs
+- Before changing any CSS property, read the full current CSS context of the element and its parent chain. Don't change a value without knowing what it currently is and what the surrounding values are.
+- When a fix doesn't work, don't try another value — stop and analyze why the previous attempt failed. If I had asked "why didn't transparent work?" I would have understood the webkit scrollbar layer model instead of blindly cycling through values.
+- For every change, state the concrete mismatch first. Before writing any edit, identify: "X is currently set to A, but it should be B because C." If I can't fill in all three parts, I haven't verified enough.
+
 - dont apologize, find out why an error or mishap occured and describe it to the user!
 - When accessing columns and tasks try to do it using the ID's if we can assume they arent modfied during the time we work with them (they are modified on loading the board and maybe at other times as well)!
 - Never guess anything, allways verify the code.

@@ -15,6 +15,27 @@ body {
     font-size: 13px;
     color: var(--vscode-foreground);
     background-color: var(--vscode-sideBar-background);
+    overflow-y: scroll;
+}
+
+body::-webkit-scrollbar {
+    width: 10px;
+}
+
+body::-webkit-scrollbar-track {
+    background: var(--vscode-sideBar-background);
+}
+
+body::-webkit-scrollbar-thumb {
+    background: transparent;
+}
+
+body:hover::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-background);
+}
+
+body::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground);
 }
 
 /* ============= Container ============= */
@@ -286,15 +307,11 @@ body {
 }
 
 .tree-twistie {
-    width: 8px;
+    width: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-}
-
-.tree-twistie.collapsible {
-    width: 16px;
 }
 
 .tree-twistie.collapsible::before {
@@ -414,6 +431,23 @@ body {
 }
 
 .board-remove-btn:hover {
+    opacity: 1;
+}
+
+.board-open-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0px 0px 0px 3px;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    opacity: 0.5;
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
+}
+
+.board-open-btn:hover {
     opacity: 1;
 }
 

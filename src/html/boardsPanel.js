@@ -251,7 +251,9 @@
             html += '<div class="tree-contents">';
             html += '<span class="tree-label-name" title="' + escapeHtml(board.filePath) + '">' + escapeHtml(board.name) + '</span>';
             html += '</div>';
-            if (!isLocked) {
+            if (isLocked) {
+                html += '<button class="board-open-btn" data-file-path="' + escapeHtml(board.filePath) + '" title="Open board"><span class="codicon codicon-go-to-file"></span></button>';
+            } else {
                 html += '<button class="board-remove-btn" data-file-path="' + escapeHtml(board.filePath) + '" title="Remove">✕</button>';
                 html += '<div class="tree-twistie collapsible board-toggle' + (isExpanded ? ' expanded' : '') + '" title="Toggle settings"></div>';
             }
@@ -393,9 +395,17 @@
         // Board header click to open board
         boardsList.querySelectorAll('.board-item-header[data-file-path]').forEach(header => {
             header.addEventListener('click', (e) => {
-                if (e.target.closest('.board-remove-btn') || e.target.closest('.board-toggle') || e.target.closest('.column-tree-toggle')) { return; }
+                if (e.target.closest('.board-remove-btn') || e.target.closest('.board-open-btn') || e.target.closest('.board-toggle') || e.target.closest('.column-tree-toggle')) { return; }
                 const filePath = header.dataset.filePath;
                 vscode.postMessage({ type: 'openBoard', filePath });
+            });
+        });
+
+        // Open board buttons (visible when locked)
+        boardsList.querySelectorAll('.board-open-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                vscode.postMessage({ type: 'openBoard', filePath: btn.dataset.filePath });
             });
         });
 

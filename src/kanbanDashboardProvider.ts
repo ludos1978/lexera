@@ -712,6 +712,28 @@ export class KanbanDashboardProvider implements vscode.WebviewViewProvider {
             font-family: var(--vscode-font-family);
             font-size: var(--dashboard-font-size);
             color: var(--vscode-foreground);
+            background-color: var(--vscode-sideBar-background);
+            overflow-y: scroll;
+        }
+
+        body::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        body::-webkit-scrollbar-track {
+            background: var(--vscode-sideBar-background);
+        }
+
+        body::-webkit-scrollbar-thumb {
+            background: transparent;
+        }
+
+        body:hover::-webkit-scrollbar-thumb {
+            background: var(--vscode-scrollbarSlider-background);
+        }
+
+        body::-webkit-scrollbar-thumb:hover {
+            background: var(--vscode-scrollbarSlider-hoverBackground);
         }
         .dashboard-container {
             display: flex;
