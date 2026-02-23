@@ -210,7 +210,12 @@
       "Bash(gh auth:*)",
       "WebFetch(domain:code.visualstudio.com)",
       "WebFetch(domain:deepwiki.com)",
-      "WebFetch(domain:issues.chromium.org)"
+      "WebFetch(domain:issues.chromium.org)",
+      "Bash(cargo tauri:*)",
+      "WebFetch(domain:v2.tauri.app)",
+      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/packages/ludos-dashboard/build-dashboard.sh:*)",
+      "Bash(cargo --version:*)",
+      "Bash(rustc:*)"
     ],
     "deny": [],
     "ask": []
