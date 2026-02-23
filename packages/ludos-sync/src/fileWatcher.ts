@@ -320,6 +320,80 @@ export class BoardFileWatcher {
     return operation;
   }
 
+  /**
+   * Add a card to a specific column in a board file.
+   * Uses mutex to prevent concurrent read-modify-write.
+   * Follows the applyXbelToBoard pattern.
+   */
+  async addCardToColumn(filePath: string, colIndex: number, content: string): Promise<void> {
+    const resolved = path.resolve(filePath);
+
+    const existing = this.mutex.get(resolved) || Promise.resolve();
+    const operation = existing.then(async () => {
+      const state = this.boardStates.get(resolved);
+      if (!state) {
+        throw new Error(`Board not tracked: ${resolved}`);
+      }
+
+      // Read current board from disk (freshest state)
+      const currentContent = fs.readFileSync(resolved, 'utf8');
+      const currentBoard = SharedMarkdownParser.parseMarkdown(currentContent);
+
+      if (!currentBoard.valid) {
+        throw new Error(`Board file is not valid kanban: ${resolved}`);
+      }
+
+      if (colIndex < 0 || colIndex >= currentBoard.columns.length) {
+        throw new Error(`Column index ${colIndex} out of range (0-${currentBoard.columns.length - 1})`);
+      }
+
+      // Add the new card to the target column
+      const newCard: import('@ludos/shared').KanbanCard = {
+        id: `task-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`,
+        content,
+        checked: false,
+      };
+      currentBoard.columns[colIndex].cards.push(newCard);
+
+      // Generate updated markdown
+      const newMarkdown = SharedMarkdownParser.generateMarkdown(currentBoard);
+
+      // Suppress file watcher for our own write
+      this.suppressPaths.add(resolved);
+
+      // Atomic write
+      const tmpPath = resolved + '.ludos-sync.tmp';
+      fs.writeFileSync(tmpPath, newMarkdown, 'utf8');
+      fs.renameSync(tmpPath, resolved);
+
+      // Update cache
+      const xbelRoot = XbelMapper.columnsToXbel(currentBoard.columns);
+      const xbelXml = XbelMapper.generateXbel(xbelRoot);
+      const etag = this.computeEtag(xbelXml);
+
+      const updatedState: BoardState = {
+        filePath: resolved,
+        xbelName: state.xbelName,
+        board: currentBoard,
+        xbelCache: xbelXml,
+        etag,
+        lastModified: new Date(),
+        calendarSlug: state.calendarSlug,
+        calendarName: state.calendarName,
+      };
+
+      if (updatedState.calendarSlug) {
+        this.updateIcalCache(updatedState);
+      }
+
+      this.boardStates.set(resolved, updatedState);
+      log.verbose(`[API] Added card to column ${colIndex} of ${resolved}`);
+    });
+
+    this.mutex.set(resolved, operation.catch(() => {}));
+    return operation;
+  }
+
   private computeEtag(content: string): string {
     return '"' + crypto.createHash('md5').update(content).digest('hex') + '"';
   }

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ludos Dashboard</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <span class="header-title">Ludos</span>
+    <div class="search-container">
+      <input id="search-input" class="search-input" type="text" placeholder="Search cards...">
+    </div>
+    <div class="header-actions">
+      <div id="connection-dot" class="connection-dot" title="Connection status"></div>
+      <button id="settings-btn" class="btn-icon" title="Settings">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- Layout -->
+  <div class="layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">Boards</div>
+      <div id="board-list" class="board-list"></div>
+    </div>
+
+    <!-- Main -->
+    <div id="main-content" class="main">
+      <div id="board-header" class="board-header hidden"></div>
+      <div id="columns-container" class="columns-container hidden"></div>
+      <div id="search-results" class="search-results hidden"></div>
+      <div id="empty-state" class="empty-state">
+        <div class="empty-state-icon">&#9776;</div>
+        <div>Connecting to ludos-sync...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Dialog -->
+  <div id="settings-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <div class="dialog-title">Settings</div>
+      <div class="dialog-field">
+        <label class="dialog-label" for="settings-url">Server URL</label>
+        <input id="settings-url" class="dialog-input" type="text" placeholder="http://localhost:24457">
+      </div>
+      <div class="dialog-actions">
+        <button id="settings-cancel" class="btn-small btn-cancel">Cancel</button>
+        <button id="settings-save" class="btn-small btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
