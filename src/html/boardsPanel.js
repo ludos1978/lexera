@@ -166,7 +166,7 @@
             html += '<div class="tree-group' + (isFolded ? ' folded' : '') + '">';
 
             // Column group header (tree-group-toggle)
-            html += '<div class="tree-row tree-group-toggle column-tree-row" data-col-key="' + escapeHtml(colKey) + '">';
+            html += '<div class="tree-row tree-group-toggle column-tree-row" data-col-key="' + escapeHtml(colKey) + '" data-col-index="' + col.originalIndex + '" data-file-path="' + escapeHtml(boardFilePath) + '">';
             html += '<div class="tree-indent"><div class="indent-guide"></div><div class="indent-guide"></div></div>';
             html += '<div class="tree-twistie collapsible' + (isFolded ? '' : ' expanded') + '"></div>';
             html += '<div class="tree-contents"><span class="tree-label-name">' + escapeHtml(col.title) + ' (' + col.cardCount + ')</span></div>';
@@ -553,6 +553,60 @@
                 });
             });
         });
+
+        // Drop targets for adding cards (only when locked)
+        if (currentState && currentState.locked) {
+            // Board header drop targets
+            boardsList.querySelectorAll('.board-item-header[data-file-path]').forEach(function(header) {
+                header.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    header.classList.add('drop-target');
+                });
+                header.addEventListener('dragleave', function() {
+                    header.classList.remove('drop-target');
+                });
+                header.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    header.classList.remove('drop-target');
+                    var text = e.dataTransfer.getData('text/plain');
+                    if (text) {
+                        vscode.postMessage({
+                            type: 'dropCard',
+                            filePath: header.dataset.filePath,
+                            content: text
+                        });
+                    }
+                });
+            });
+
+            // Column row drop targets
+            boardsList.querySelectorAll('.column-tree-row[data-col-index]').forEach(function(row) {
+                row.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                    row.classList.add('drop-target');
+                });
+                row.addEventListener('dragleave', function() {
+                    row.classList.remove('drop-target');
+                });
+                row.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    row.classList.remove('drop-target');
+                    var text = e.dataTransfer.getData('text/plain');
+                    if (text) {
+                        vscode.postMessage({
+                            type: 'dropCard',
+                            filePath: row.dataset.filePath,
+                            columnIndex: parseInt(row.dataset.colIndex, 10),
+                            content: text
+                        });
+                    }
+                });
+            });
+        }
 
         // Drag & drop for reordering
         if (!currentState || currentState.locked) { return; }

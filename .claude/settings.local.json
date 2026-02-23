@@ -208,7 +208,9 @@
       "Bash(vsce:*)",
       "Bash(mdfind:*)",
       "Bash(gh auth:*)",
-      "WebFetch(domain:code.visualstudio.com)"
+      "WebFetch(domain:code.visualstudio.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:issues.chromium.org)"
     ],
     "deny": [],
     "ask": []

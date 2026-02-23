@@ -9,6 +9,22 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 
 ---
 
+## Recent Updates (2026-02-23) - Drop Targets on Boards Panel Sidebar
+
+### Modified: `src/kanbanBoardsProvider.ts`
+- `KanbanBoardsProvider._handleDropCard(filePath, content, columnIndex?)` — (NEW) Handles dropped text content onto a board or column. For include columns: appends `\n\n---\n\ncontent` to include file. For regular columns: creates new KanbanCard, adds to column, regenerates markdown with generateMarkdown(). If no columnIndex given, targets first include-column or first regular column.
+- `KanbanBoardsProvider._doSendStateToWebview` — (MODIFIED) Column data now includes `includeMode`, `includeFiles`, and `originalIndex` fields for drop target support.
+- Message handler `dropCard` — (NEW) Receives `{ filePath, content, columnIndex? }` and delegates to `_handleDropCard`.
+
+### Modified: `src/html/boardsPanel.js`
+- `renderColumnTree(columns, boardFilePath)` — (MODIFIED) Column tree rows now include `data-col-index` (originalIndex) and `data-file-path` attributes for drop target identification.
+- `attachBoardEventListeners()` — (MODIFIED) When locked, adds dragover/dragleave/drop event listeners on board headers (board-level drop) and column rows (column-level drop). Sends `dropCard` message to backend with text/plain content.
+
+### Modified: `src/html/boardsPanel.css`
+- (NEW) `.drop-target` styles for board headers and column rows — dashed outline with hover background for visual drag-over feedback.
+
+---
+
 ## Recent Updates (2026-02-23) - Column/Card Tree in Boards Panel
 
 ### Modified: `src/kanbanBoardsProvider.ts`

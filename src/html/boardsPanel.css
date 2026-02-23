@@ -679,6 +679,14 @@ body::-webkit-scrollbar-thumb:hover {
     cursor: grabbing;
 }
 
+/* Drop targets for card creation (locked mode) */
+.board-item-header.drop-target,
+.column-tree-row.drop-target {
+    background: var(--vscode-list-hoverBackground);
+    outline: 1px dashed var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
 /* ============= Board Group for multi-board results ============= */
 .board-group {
     border-bottom: 1px solid var(--vscode-panel-border, transparent);

@@ -156,6 +156,11 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                     await this._registry.removeDefaultTagFilter(message.tag);
                     break;
 
+                // Drop card onto board/column
+                case 'dropCard':
+                    await this._handleDropCard(message.filePath, message.content, message.columnIndex);
+                    break;
+
                 // Column tree expand state
                 case 'setColumnsExpanded':
                     if (message.expanded) {
@@ -208,7 +213,7 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             let boardColor: string | undefined;
             let boardColorDark: string | undefined;
             let boardColorLight: string | undefined;
-            let columns: { title: string; cardCount: number; cards: { title: string; checked: boolean }[] }[] | undefined;
+            let columns: { title: string; cardCount: number; cards: { title: string; checked: boolean }[]; includeMode?: boolean; includeFiles?: string[]; originalIndex: number }[] | undefined;
             try {
                 const content = fs.readFileSync(b.filePath, 'utf8');
                 const yamlMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -228,8 +233,9 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                         const basePath = path.dirname(b.filePath);
                         const parseResult = MarkdownKanbanParser.parseMarkdown(content, basePath, undefined, b.filePath, true);
                         columns = parseResult.board.columns
-                            .filter((col: KanbanColumn) => !isHiddenItem(col.title))
-                            .map((col: KanbanColumn) => {
+                            .map((col: KanbanColumn, idx: number) => ({ col, originalIndex: idx }))
+                            .filter(({ col }) => !isHiddenItem(col.title))
+                            .map(({ col, originalIndex }) => {
                                 const visibleCards = col.cards.filter((card: KanbanCard) => !isHiddenItem(card.content));
                                 return {
                                     title: cleanColumnTitle(col),
@@ -237,7 +243,10 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
                                     cards: visibleCards.map((card: KanbanCard) => ({
                                         title: extractCardFirstLine(card),
                                         checked: !!card.checked
-                                    }))
+                                    })),
+                                    includeMode: col.includeMode,
+                                    includeFiles: col.includeFiles,
+                                    originalIndex
                                 };
                             });
                     } catch (parseErr) {
@@ -314,6 +323,54 @@ export class KanbanBoardsProvider implements vscode.WebviewViewProvider {
             this._sendStateToWebview();
         } catch (error) {
             logger.error('[BoardsProvider] Error setting board color:', error);
+        }
+    }
+
+    private async _handleDropCard(filePath: string, content: string, columnIndex?: number): Promise<void> {
+        if (!content || !filePath) { return; }
+        try {
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            const basePath = path.dirname(filePath);
+            const parseResult = MarkdownKanbanParser.parseMarkdown(fileContent, basePath, undefined, filePath, true);
+            const board = parseResult.board;
+
+            // Determine target column index
+            let targetIdx: number;
+            if (columnIndex !== undefined) {
+                targetIdx = columnIndex;
+            } else {
+                // Board-level drop: first include-column, or first regular column as fallback
+                const includeIdx = board.columns.findIndex((col: KanbanColumn) => col.includeMode && !isHiddenItem(col.title));
+                targetIdx = includeIdx >= 0 ? includeIdx : board.columns.findIndex((col: KanbanColumn) => !isHiddenItem(col.title));
+            }
+
+            if (targetIdx < 0 || targetIdx >= board.columns.length) {
+                logger.error('[BoardsProvider.dropCard] No valid target column found');
+                return;
+            }
+
+            const targetCol = board.columns[targetIdx];
+
+            if (targetCol.includeMode && targetCol.includeFiles && targetCol.includeFiles.length > 0) {
+                // Include column: append slide to the include file
+                const includeFilePath = targetCol.includeFiles[0];
+                const includeContent = fs.readFileSync(includeFilePath, 'utf8');
+                const appendContent = includeContent.trimEnd() + '\n\n---\n\n' + content + '\n';
+                fs.writeFileSync(includeFilePath, appendContent, 'utf8');
+            } else {
+                // Regular column: add a new card and regenerate markdown
+                const newCard: KanbanCard = {
+                    id: 'drop-' + Date.now(),
+                    content: content,
+                    checked: false
+                };
+                targetCol.cards.push(newCard);
+                const updatedMarkdown = MarkdownKanbanParser.generateMarkdown(board);
+                fs.writeFileSync(filePath, updatedMarkdown, 'utf8');
+            }
+            this._sendStateToWebview();
+        } catch (error) {
+            logger.error('[BoardsProvider.dropCard] Error handling drop:', error);
         }
     }
 
