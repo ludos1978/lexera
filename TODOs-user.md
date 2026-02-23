@@ -1,3 +1,11 @@
+- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
+
+- [ ] i want to have a better diff system that allows visual change acceptance from changes that are made in the file, vs changes that are made in the kanban. with a fallback to the line by line changes diff and merge.
+
+- [ ] when searching allow to limit seaches for l: links
+
+- [ ] Add the option to unfold the columns that are below a kanban board within the kanban boards list (on the separate view). it must be automatically updated with each modification of colums! make it a modular element that could be activated within the board view as a side element as well (the list of all columns within a board). within the board itself it only lists the own columns.
+
 - [ ] a tag like #preparation should add a header above the column if it's in the column title. but it disappears after what i assume is a redrawing of it. it's first correctly added after editing the title.
 
 - [ ] the ludos-sync (calendar & task sync server) should show when a connections is setup and when it's disconnected.
