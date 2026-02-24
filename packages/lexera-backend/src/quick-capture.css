@@ -1,0 +1,248 @@
+:root {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d2d;
+  --bg-hover: #383838;
+  --border: #3c3c3c;
+  --text-primary: #cccccc;
+  --text-secondary: #969696;
+  --text-bright: #e0e0e0;
+  --accent: #0078d4;
+  --accent-hover: #1a8cff;
+  --success: #4ec9b0;
+  --error: #f44747;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: transparent;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.capture-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  height: 100vh;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* Draggable title bar area */
+.capture-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.capture-header * {
+  -webkit-app-region: no-drag;
+}
+
+.capture-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: 0;
+  -webkit-app-region: drag;
+  cursor: grab;
+  flex: 1;
+}
+
+.capture-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  text-align: center;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: pointer;
+}
+
+.drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(0, 120, 212, 0.08);
+}
+
+.drop-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.file-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.file-preview .file-item {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-preview .file-item .remove-file {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.file-preview .file-item .remove-file:hover {
+  color: var(--error);
+}
+
+.file-preview img.thumb {
+  max-width: 120px;
+  max-height: 80px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* Clipboard section */
+.clipboard-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-height: 0;
+}
+
+.field-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.content-preview {
+  flex: 1;
+  min-height: 60px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  resize: none;
+  outline: none;
+}
+
+.content-preview:focus {
+  border-color: var(--accent);
+}
+
+/* Selectors */
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.field-select:focus {
+  border-color: var(--accent);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-send {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-send:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-cancel {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-cancel:hover {
+  background: var(--bg-hover);
+}
+
+/* Status */
+.status-msg {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.status-msg.success {
+  color: var(--success);
+  background: rgba(78, 201, 176, 0.1);
+}
+
+.status-msg.error {
+  color: var(--error);
+  background: rgba(244, 71, 71, 0.1);
+}
+
+.hidden { display: none !important; }

@@ -41,6 +41,13 @@ excalidraw-cache/
 __pycache__
 to_delete/
 *.app/
+packages/target/
+packages/Cargo.lock
 packages/ludos-dashboard/src-tauri/target/
 packages/ludos-dashboard/src-tauri/gen/
 packages/ludos-dashboard/src-tauri/icons/
+packages/lexera-backend/src-tauri/gen/
+packages/lexera-backend/src-tauri/icons/
+packages/lexera-kanban/src-tauri/gen/
+packages/lexera-kanban/src-tauri/icons/
+.fingerprint/

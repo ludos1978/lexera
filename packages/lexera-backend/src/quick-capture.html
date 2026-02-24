@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Capture</title>
+  <link rel="stylesheet" href="quick-capture.css">
+</head>
+<body>
+  <div class="capture-container">
+    <div class="capture-header">
+      <h2 class="capture-title">Quick Capture</h2>
+      <span class="capture-hint">esc to close</span>
+    </div>
+
+    <div id="drop-zone" class="drop-zone">
+      <div id="drop-label" class="drop-label">Drop files here</div>
+      <div id="file-preview" class="file-preview hidden"></div>
+    </div>
+
+    <div id="clipboard-section" class="clipboard-section">
+      <label class="field-label">Clipboard content</label>
+      <textarea id="content-preview" class="content-preview" readonly></textarea>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="board-select">Board</label>
+        <select id="board-select" class="field-select"></select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="column-select">Column</label>
+        <select id="column-select" class="field-select"></select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btn-cancel" class="btn btn-cancel">Cancel</button>
+      <button id="btn-send" class="btn btn-send" disabled>Send</button>
+    </div>
+
+    <div id="status-msg" class="status-msg hidden"></div>
+  </div>
+
+  <script src="quick-capture.js"></script>
+</body>
+</html>

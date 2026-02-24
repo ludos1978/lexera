@@ -1,0 +1,23 @@
+{
+  "productName": "Lexera Kanban",
+  "version": "0.1.0",
+  "identifier": "com.lexera.kanban",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "bundle": {
+    "icon": ["icons/icon.png"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Lexera Kanban",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "minWidth": 600,
+        "minHeight": 400
+      }
+    ]
+  }
+}

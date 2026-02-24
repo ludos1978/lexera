@@ -215,7 +215,14 @@
       "WebFetch(domain:v2.tauri.app)",
       "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/packages/ludos-dashboard/build-dashboard.sh:*)",
       "Bash(cargo --version:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(cd /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/packages && cargo check --package lexera-core 2>&1)",
+      "Bash(cargo check:*)",
+      "WebFetch(domain:docs.rs)"
     ],
     "deny": [],
     "ask": []

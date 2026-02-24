@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lexera Backend</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <span class="header-title">Lexera</span>
+    <div class="search-container">
+      <input id="search-input" class="search-input" type="text" placeholder="Search cards...">
+    </div>
+    <div class="header-actions">
+      <div id="connection-dot" class="connection-dot" title="Connection status"></div>
+    </div>
+  </div>
+
+  <!-- Layout -->
+  <div class="layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header">Boards</div>
+      <div id="board-list" class="board-list"></div>
+    </div>
+
+    <!-- Main -->
+    <div id="main-content" class="main">
+      <div id="board-header" class="board-header hidden"></div>
+      <div id="columns-container" class="columns-container hidden"></div>
+      <div id="search-results" class="search-results hidden"></div>
+      <div id="empty-state" class="empty-state">
+        <div class="empty-state-icon">&#9776;</div>
+        <div>Connecting to Lexera Backend...</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

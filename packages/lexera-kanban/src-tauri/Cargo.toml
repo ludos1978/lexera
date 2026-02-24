@@ -1,0 +1,11 @@
+[package]
+name = "lexera-kanban"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lexera-core = { path = "../../lexera-core" }
+tauri = { version = "2" }
+
+[build-dependencies]
+tauri-build = { version = "2" }
