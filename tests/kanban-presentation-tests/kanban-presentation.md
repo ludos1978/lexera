@@ -25,6 +25,7 @@ boardColorLight: #f5f5ff
   - b
   
   - c
+- [ ] asdf
 
 ## # Heading 1 in Columntitle #footer #header #stack
 - [ ] ## Heading 2 in Tasktitle #exclude

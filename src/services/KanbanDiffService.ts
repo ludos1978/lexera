@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { MarkdownFileRegistry } from '../files/MarkdownFileRegistry';
+import { MarkdownFile } from '../files/MarkdownFile';
 import { logger } from '../utils/logger';
 
 /**
@@ -222,13 +223,13 @@ export class KanbanDiffService implements vscode.Disposable {
             file.setContent(newContent, false);
             // CRITICAL: Mark file to preserve raw content - prevents regeneration from overwriting diff edits
             file.setPreserveRawContent(true);
-            const relPath = (file as any).getRelativePath?.() || filePath;
+            const relPath = file.getRelativePath?.() || filePath;
             logger.debug(`[KanbanDiffService] syncKanbanChangesToRegistry: Updated content for "${filePath}" (${file.getFileType()}, relPath="${relPath}"), preserveRaw=true, hasUnsaved=${file.hasUnsavedChanges()}`);
         } else {
             logger.warn(`[KanbanDiffService] syncKanbanChangesToRegistry: File not found in registry: "${filePath}"`);
             // List all registered files for debugging
             const allFiles = this.fileRegistry.getAll();
-            logger.debug(`[KanbanDiffService] Registered files: [${allFiles.map((f: any) => f.getRelativePath?.() || f.getPath()).join(', ')}]`);
+            logger.debug(`[KanbanDiffService] Registered files: [${allFiles.map((f: MarkdownFile) => f.getRelativePath?.() || f.getPath()).join(', ')}]`);
         }
 
         // Notify callback with debouncing (300ms) to avoid excessive updates while typing

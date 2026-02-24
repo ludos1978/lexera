@@ -610,13 +610,13 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                     if (fileExistsOnDisk) {
                         // File exists on disk - clear error even if not registered yet
                         // Content will be loaded when IncludeLoadingProcessor runs
-                        (column as any).includeError = false;
+                        column.includeError = false;
                     }
 
                     // CRITICAL FIX: Type guard to prevent treating MainKanbanFile as IncludeFile
                     if (file && file.getFileType() === 'main') {
                         logger.error(`[MarkdownFileRegistry] generateBoard() BUG: Include path resolved to MainKanbanFile: ${relativePath}`);
-                        (column as any).includeError = true;
+                        column.includeError = true;
                         continue;
                     }
 
@@ -625,14 +625,14 @@ export class MarkdownFileRegistry implements vscode.Disposable {
                         const includeFile = file as IncludeFile;
                         const tasks = includeFile.parseToTasks(column.cards, column.id, mainFilePath);
                         column.cards = tasks;
-                        (column as any).includeError = false;
+                        column.includeError = false;
                     } else if (!fileExistsOnDisk) {
                         logger.warn(`[MarkdownFileRegistry] generateBoard() - Column include ERROR: ${relativePath}`);
                         // Error details shown on hover via include badge
                         // Don't create error task - just show empty column with error badge
                         column.cards = [];
                         // Mark column as having include error
-                        (column as any).includeError = true;
+                        column.includeError = true;
                     }
                     // else: file exists but not registered - error already cleared above, content loads later
                 }

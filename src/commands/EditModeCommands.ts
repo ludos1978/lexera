@@ -22,6 +22,15 @@ import { hasMessageHandler } from '../types/PanelCommandAccess';
 import { UndoCapture } from '../core/stores/UndoCapture';
 import { KanbanColumn, KanbanCard } from '../board/KanbanTypes';
 import { logger } from '../utils/logger';
+import type {
+    EditingStartedMessage,
+    RenderSkippedMessage,
+    RenderCompletedMessage,
+    MarkUnsavedChangesMessage,
+    SaveUndoStateMessage,
+    UpdateMarpGlobalSettingMessage,
+    RequestMessage
+} from '../core/bridge/MessageTypes';
 
 /**
  * Edit Mode Commands Handler
@@ -114,7 +123,7 @@ export class EditModeCommands extends SwitchBasedCommand {
         }
         // Also set edit mode on include files if editing within an include
         const board = context.getCurrentBoard();
-        const msg = message as any;
+        const msg = message as EditingStartedMessage;
         if (board && (msg.cardId || msg.columnId)) {
             const allFiles = fileRegistry?.getAll() || [];
             for (const file of allFiles) {
@@ -156,7 +165,7 @@ export class EditModeCommands extends SwitchBasedCommand {
     // ============= RENDER LIFECYCLE =============
 
     private async _handleRenderSkipped(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
-        const msg = message as any;
+        const msg = message as RenderSkippedMessage;
         if (msg.itemType === 'column' && msg.itemId) {
             context.markColumnDirty(msg.itemId);
         } else if (msg.itemType === 'card' && msg.itemId) {
@@ -166,7 +175,7 @@ export class EditModeCommands extends SwitchBasedCommand {
     }
 
     private async _handleRenderCompleted(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
-        const msg = message as any;
+        const msg = message as RenderCompletedMessage;
         if (msg.itemType === 'column' && msg.itemId) {
             context.clearColumnDirty(msg.itemId);
         } else if (msg.itemType === 'card' && msg.itemId) {
@@ -176,7 +185,7 @@ export class EditModeCommands extends SwitchBasedCommand {
     }
 
     private async _handleColumnsUnfolded(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
-        const msg = message as any;
+        const msg = message as RequestMessage;
         const messageHandler = this._getMessageHandler(context);
         if (msg.requestId && messageHandler?._handleColumnsUnfolded) {
             messageHandler._handleColumnsUnfolded(msg.requestId);
@@ -187,7 +196,7 @@ export class EditModeCommands extends SwitchBasedCommand {
     // ============= BOARD STATE OPERATIONS =============
 
     private async _handleMarkUnsavedChanges(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
-        const msg = message as any;
+        const msg = message as MarkUnsavedChangesMessage;
         if (msg.cachedBoard) {
             context.emitBoardChanged(msg.cachedBoard, 'edit');
         }
@@ -195,7 +204,7 @@ export class EditModeCommands extends SwitchBasedCommand {
     }
 
     private async _handleSaveUndoState(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
-        const msg = message as any;
+        const msg = message as SaveUndoStateMessage;
         const boardToSave = msg.currentBoard || context.getCurrentBoard();
         if (boardToSave) {
             const operation = msg.operation || 'saveUndoState';
@@ -224,16 +233,18 @@ export class EditModeCommands extends SwitchBasedCommand {
                         fromIndex: resolvedFromIndex,
                         toIndex: resolvedToIndex
                     });
-                    context.boardStore.saveUndoEntry(
-                        UndoCapture.forTaskMove(boardToSave, {
-                            type: 'task-move',
-                            cardId: msg.cardId,
-                            fromColumnId: msg.fromColumnId,
-                            fromIndex: resolvedFromIndex,
-                            toColumnId: msg.toColumnId,
-                            toIndex: resolvedToIndex
-                        }, operation)
-                    );
+                    if (msg.cardId && msg.fromColumnId && msg.toColumnId) {
+                        context.boardStore.saveUndoEntry(
+                            UndoCapture.forTaskMove(boardToSave, {
+                                type: 'task-move',
+                                cardId: msg.cardId,
+                                fromColumnId: msg.fromColumnId,
+                                fromIndex: resolvedFromIndex,
+                                toColumnId: msg.toColumnId,
+                                toIndex: resolvedToIndex
+                            }, operation)
+                        );
+                    }
                 } else {
                     const columnId = msg.toColumnId || msg.fromColumnId || msg.columnId;
                     if (columnId) {
@@ -289,7 +300,7 @@ export class EditModeCommands extends SwitchBasedCommand {
     // ============= MARP & EDITOR =============
 
     private async _handleUpdateMarpGlobalSetting(message: IncomingMessage, context: CommandContext): Promise<CommandResult> {
-        const msg = message as any;
+        const msg = message as UpdateMarpGlobalSettingMessage;
         const messageHandler = this._getMessageHandler(context);
         if (messageHandler?.handleUpdateMarpGlobalSetting) {
             await messageHandler.handleUpdateMarpGlobalSetting(msg.key, msg.value);

@@ -18,6 +18,12 @@ import { pluginConfigService } from '../services/PluginConfigService';
 import { PluginRegistry } from '../plugins/registry/PluginRegistry';
 import { ExportPlugin } from '../plugins/interfaces/ExportPlugin';
 import { safeFileUri } from '../utils/uriUtils';
+import type {
+    ExportMessage,
+    SelectExportFolderMessage,
+    OpenInMarpPreviewMessage,
+    AskOpenExportFolderMessage
+} from '../core/bridge/MessageTypes';
 import { getErrorMessage } from '../utils/stringUtils';
 import { FileChangeEvent } from '../files/MarkdownFile';
 import { showError, showInfo } from '../services/NotificationService';
@@ -80,13 +86,13 @@ export class ExportCommands extends SwitchBasedCommand {
         'export': (msg, ctx) => this.handleExportWithTracking(msg, ctx),
         'stopAutoExport': async (_msg, ctx) => { await this.handleStopAutoExport(ctx); return this.success(); },
         'getExportDefaultFolder': async (_msg, ctx) => { await this.handleGetExportDefaultFolder(ctx); return this.success(); },
-        'selectExportFolder': async (msg, ctx) => { await this.handleSelectExportFolder(ctx, (msg as any).defaultPath); return this.success(); },
+        'selectExportFolder': async (msg, ctx) => { await this.handleSelectExportFolder(ctx, msg as SelectExportFolderMessage); return this.success(); },
         'getMarpThemes': async (_msg, ctx) => { await this.handleGetMarpThemes(ctx); return this.success(); },
         'pollMarpThemes': async (_msg, ctx) => { await this.handlePollMarpThemes(ctx); return this.success(); },
-        'openInMarpPreview': async (msg, ctx) => { await this.handleOpenInMarpPreview((msg as any).filePath); return this.success(); },
+        'openInMarpPreview': async (msg, ctx) => { await this.handleOpenInMarpPreview(msg as OpenInMarpPreviewMessage); return this.success(); },
         'checkMarpStatus': async (_msg, ctx) => { await this.handleCheckMarpStatus(ctx); return this.success(); },
         'getMarpAvailableClasses': async (_msg, ctx) => { await this.handleGetMarpAvailableClasses(ctx); return this.success(); },
-        'askOpenExportFolder': async (msg, _ctx) => { await this.handleAskOpenExportFolder((msg as any).path); return this.success(); },
+        'askOpenExportFolder': async (msg, _ctx) => { await this.handleAskOpenExportFolder(msg as AskOpenExportFolderMessage); return this.success(); },
         'checkPandocStatus': async (_msg, ctx) => { await this.handleCheckPandocStatus(ctx); return this.success(); }
     };
 
@@ -108,7 +114,8 @@ export class ExportCommands extends SwitchBasedCommand {
         const exportId = `export_${Date.now()}`;
         await this.startOperation(exportId, 'export', 'Exporting...', context);
         try {
-            await this.handleExport((message as any).options as NewExportOptions, context, exportId, cts);
+            const exportMessage = message as ExportMessage;
+            await this.handleExport(exportMessage.options as unknown as NewExportOptions, context, exportId, cts);
             await this.endOperation(exportId, context);
         } catch (error) {
             await this.endOperation(exportId, context);
@@ -473,8 +480,9 @@ export class ExportCommands extends SwitchBasedCommand {
     /**
      * Select export folder via dialog
      */
-    private async handleSelectExportFolder(_context: CommandContext, defaultPath?: string): Promise<void> {
+    private async handleSelectExportFolder(_context: CommandContext, message: SelectExportFolderMessage): Promise<void> {
         try {
+            const defaultPath = message.defaultPath;
             const result = await vscode.window.showOpenDialog({
                 canSelectFiles: false,
                 canSelectFolders: true,
@@ -497,8 +505,9 @@ export class ExportCommands extends SwitchBasedCommand {
     /**
      * Ask to open export folder after export
      */
-    private async handleAskOpenExportFolder(exportPath: string): Promise<void> {
+    private async handleAskOpenExportFolder(message: AskOpenExportFolderMessage): Promise<void> {
         try {
+            const exportPath = message.path;
             const result = await vscode.window.showInformationMessage(
                 'Export completed successfully!',
                 'Reveal in Finder/Explorer',
@@ -558,9 +567,9 @@ export class ExportCommands extends SwitchBasedCommand {
     /**
      * Open a markdown file in Marp preview
      */
-    private async handleOpenInMarpPreview(filePath: string): Promise<void> {
+    private async handleOpenInMarpPreview(message: OpenInMarpPreviewMessage): Promise<void> {
         try {
-            await MarpExtensionService.openInMarpPreview(filePath);
+            await MarpExtensionService.openInMarpPreview(message.filePath);
         } catch (error) {
             logger.error('[ExportCommands.handleOpenInMarpPreview] Error:', error);
             const errorMessage = getErrorMessage(error);
