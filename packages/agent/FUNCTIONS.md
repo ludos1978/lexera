@@ -181,7 +181,8 @@ Format: `path-module_functionname` — Description
 ### Main View Rendering
 
 - app-renderMainView() — Main render: board, search results, or empty state
-- app-renderBoardHeader() — Render header with title, parked count, fold-all
+- app-renderBoardHeader() — Render header with title, parked count, fold-all, print button
+- app-enterBoardTitleEdit(titleEl) — Inline editor for board title (double-click to rename)
 - app-getParkedCount() — Count cards with #hidden-internal-parked tag
 - app-toggleFoldAll() — Toggle fold state of all columns/rows/stacks
 - app-showParkedItems() — Collect parked cards and display modal
@@ -249,7 +250,9 @@ Format: `path-module_functionname` — Description
 ### Column Context Menu & Operations
 
 - app-closeColumnContextMenu() — Remove column context menu
-- app-showColumnContextMenu(x, y, colIndex) — Show column context menu (rename, add, fold, sort, delete)
+- app-showColumnContextMenu(x, y, colIndex) — Show column context menu (rename, add, fold, sort, move-to-stack, delete)
+- app-showMoveToStackSubmenu(menu, parentItem, colIndex) — Show submenu listing all stacks for moving column (new format only)
+- app-moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) — Move column to a different stack in new format
 - app-handleColumnAction(action, colIndex) — Process column menu actions (rename, add, fold, sort, delete)
 - app-sortColumnCards(colIndex, mode) — Sort cards in column by 'title' (alphabetical) or 'tag' (numeric tag value)
 - app-extractNumericTag(content) — Extract first numeric hashtag value from card header lines
@@ -299,8 +302,10 @@ Format: `path-module_functionname` — Description
 
 ### Card Content Rendering
 
+- app-loadMermaidLibrary() — Lazy-load mermaid.js from CDN for diagram rendering
+- app-processMermaidQueue() — Render queued mermaid diagrams after library loads
 - app-renderTable(lines, startIdx, boardId) — Parse markdown table lines into HTML table with alignment
-- app-renderCardContent(content, boardId) — Convert card markdown to HTML (headings, lists, code blocks, tables, embeds, etc.)
+- app-renderCardContent(content, boardId) — Convert card markdown to HTML (headings, lists, code blocks, mermaid diagrams, tables, embeds, etc.)
 - app-renderInline(text, boardId) — Render inline markdown (links, bold, italic, code, tags, temporal tags)
 - app-resolveTemporalTag(tag) — Resolve @today, @tomorrow, @days+N, @weekday, @date(YYYY-MM-DD) to date string
 - app-formatDate(d) — Format Date object as YYYY-MM-DD string

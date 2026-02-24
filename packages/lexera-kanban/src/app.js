@@ -22,6 +22,10 @@ const LexeraDashboard = (function () {
   var undoStack = [];
   var redoStack = [];
   var MAX_UNDO = 30;
+  var mermaidIdCounter = 0;
+  var mermaidReady = false;
+  var mermaidLoading = false;
+  var pendingMermaidRenders = [];
 
   // DOM refs
   const $boardList = document.getElementById('board-list');
@@ -504,7 +508,10 @@ const LexeraDashboard = (function () {
   }
 
   function is_archived_or_deleted(text) {
-    return text.indexOf('#hidden-internal-deleted') !== -1 || text.indexOf('#hidden-internal-archived') !== -1;
+    if (text.indexOf('#hidden-internal-deleted') !== -1 || text.indexOf('#hidden-internal-archived') !== -1) return true;
+    // Plain #hidden tag also hides from display (but not #hidden-internal-*)
+    if (/(^|\s)#hidden(\s|$)/.test(text)) return true;
+    return false;
   }
 
   function findColumnTitleByIndex(index) {
@@ -551,6 +558,7 @@ const LexeraDashboard = (function () {
       html += '<button class="board-action-btn has-items" id="btn-parked" title="Show parked items">Parked (' + parkedCount + ')</button>';
     }
     html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold All</button>';
+    html += '<button class="board-action-btn" id="btn-print" title="Print board">Print</button>';
     html += '<button class="board-action-btn" id="btn-settings" title="Board settings">Settings</button>';
     html += '</div>';
     $boardHeader.innerHTML = html;
@@ -567,12 +575,57 @@ const LexeraDashboard = (function () {
         showParkedItems();
       });
     }
+    var printBtn = document.getElementById('btn-print');
+    if (printBtn) {
+      printBtn.addEventListener('click', function () {
+        window.print();
+      });
+    }
     var settingsBtn = document.getElementById('btn-settings');
     if (settingsBtn) {
       settingsBtn.addEventListener('click', function () {
         showBoardSettingsDialog();
       });
     }
+    // Double-click board title to rename
+    var titleEl = $boardHeader.querySelector('.board-header-title');
+    if (titleEl) {
+      titleEl.addEventListener('dblclick', function () {
+        enterBoardTitleEdit(titleEl);
+      });
+      titleEl.title = 'Double-click to rename';
+      titleEl.style.cursor = 'pointer';
+    }
+  }
+
+  function enterBoardTitleEdit(titleEl) {
+    if (!fullBoardData) return;
+    var input = document.createElement('input');
+    input.className = 'board-title-input';
+    input.value = fullBoardData.title || '';
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function save() {
+      var newTitle = input.value.trim();
+      if (newTitle && newTitle !== fullBoardData.title) {
+        pushUndo();
+        fullBoardData.title = newTitle;
+        if (activeBoardData) activeBoardData.title = newTitle;
+        saveFullBoard();
+      }
+      renderBoardHeader();
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') {
+        input.removeEventListener('blur', save);
+        renderBoardHeader();
+      }
+    });
   }
 
   function getParkedCount() {
@@ -881,6 +934,12 @@ const LexeraDashboard = (function () {
       redo();
       return;
     }
+    // Save: Ctrl/Cmd+S
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      if (fullBoardData && activeBoardId) saveFullBoard();
+      return;
+    }
   });
 
   function applyBoardSettings() {
@@ -932,10 +991,18 @@ const LexeraDashboard = (function () {
       colEl.classList.add('folded');
     }
 
+    // Check if column has include source
+    var fullCol = getFullColumn(col.index);
+    var includeIndicator = '';
+    if (fullCol && fullCol.includeSource) {
+      includeIndicator = '<span class="column-include-badge" title="Include: ' + escapeAttr(fullCol.includeSource.rawPath || '') + '">&#128279;</span>';
+    }
+
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
       '<span class="column-title">' + escapeHtml(displayTitle) + '</span>' +
+      includeIndicator +
       '<span class="column-count">' + col.cards.length + '</span>' +
       '<button class="column-menu-btn" title="Column options">&#8942;</button>';
     (function (columnEl, dragEl, colIdx) {
@@ -1076,6 +1143,14 @@ const LexeraDashboard = (function () {
       renderNewFormatBoard();
     } else {
       renderLegacyColumns();
+    }
+    // Process any queued mermaid diagrams after rendering
+    if (pendingMermaidRenders.length > 0) {
+      if (mermaidReady) {
+        processMermaidQueue();
+      } else {
+        loadMermaidLibrary();
+      }
     }
   }
 
@@ -2211,7 +2286,7 @@ const LexeraDashboard = (function () {
     closeCardContextMenu();
     var menu = document.createElement('div');
     menu.className = 'card-context-menu';
-    menu.innerHTML =
+    var menuHtml =
       '<div class="card-menu-item" data-col-action="rename">Rename</div>' +
       '<div class="card-menu-item" data-col-action="add-before">Add Column Before</div>' +
       '<div class="card-menu-item" data-col-action="add-after">Add Column After</div>' +
@@ -2220,9 +2295,15 @@ const LexeraDashboard = (function () {
       '<div class="card-menu-item" data-col-action="unfold-all">Unfold All Cards</div>' +
       '<div class="card-menu-divider"></div>' +
       '<div class="card-menu-item" data-col-action="sort-title">Sort by Title</div>' +
-      '<div class="card-menu-item" data-col-action="sort-tag">Sort by Tag Value</div>' +
-      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item" data-col-action="sort-tag">Sort by Tag Value</div>';
+    // "Move to Stack" submenu for new format boards
+    if (isNewFormat()) {
+      menuHtml += '<div class="card-menu-divider"></div>' +
+        '<div class="card-menu-item card-menu-submenu" data-col-action="move-to-stack">Move to Stack &#9656;</div>';
+    }
+    menuHtml += '<div class="card-menu-divider"></div>' +
       '<div class="card-menu-item card-menu-danger" data-col-action="delete">Delete Column</div>';
+    menu.innerHTML = menuHtml;
 
     document.body.appendChild(menu);
     var menuRect = menu.getBoundingClientRect();
@@ -2237,11 +2318,70 @@ const LexeraDashboard = (function () {
       var actionEl = e.target.closest('[data-col-action]');
       if (!actionEl) return;
       var action = actionEl.getAttribute('data-col-action');
+      // Handle move-to-stack: show submenu instead of closing
+      if (action === 'move-to-stack') {
+        showMoveToStackSubmenu(menu, actionEl, colIndex);
+        return;
+      }
+      var moveMatch = action.match(/^move-to-stack-(\d+)-(\d+)$/);
+      if (moveMatch) {
+        closeColumnContextMenu();
+        moveColumnToStack(colIndex, parseInt(moveMatch[1]), parseInt(moveMatch[2]));
+        return;
+      }
       closeColumnContextMenu();
       handleColumnAction(action, colIndex);
     });
 
     activeColMenu = menu;
+  }
+
+  function showMoveToStackSubmenu(menu, parentItem, colIndex) {
+    // Remove any existing submenu
+    var existing = menu.querySelector('.col-move-submenu');
+    if (existing) { existing.remove(); return; }
+    var sub = document.createElement('div');
+    sub.className = 'card-context-menu col-move-submenu';
+    for (var r = 0; r < fullBoardData.rows.length; r++) {
+      var row = fullBoardData.rows[r];
+      sub.innerHTML += '<div class="card-menu-header">' + escapeHtml(row.title) + '</div>';
+      for (var s = 0; s < row.stacks.length; s++) {
+        sub.innerHTML += '<div class="card-menu-item" data-col-action="move-to-stack-' + r + '-' + s + '">' +
+          escapeHtml(row.stacks[s].title) + '</div>';
+      }
+    }
+    menu.appendChild(sub);
+    // Position submenu to the right of the parent item
+    var pr = parentItem.getBoundingClientRect();
+    sub.style.position = 'absolute';
+    sub.style.left = menu.offsetWidth + 'px';
+    sub.style.top = (parentItem.offsetTop) + 'px';
+    // Adjust if it goes off-screen
+    var sr = sub.getBoundingClientRect();
+    if (sr.right > window.innerWidth) {
+      sub.style.left = (-sr.width) + 'px';
+    }
+    if (sr.bottom > window.innerHeight) {
+      sub.style.top = (parentItem.offsetTop - sr.height + parentItem.offsetHeight) + 'px';
+    }
+  }
+
+  function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) {
+    if (!fullBoardData || !isNewFormat()) return;
+    // Find and remove column from current location
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var container = findColumnContainer(colIndex);
+    if (!container) return;
+    pushUndo();
+    var removed = container.arr.splice(container.localIdx, 1)[0];
+    // Add to target stack
+    var targetStack = fullBoardData.rows[targetRowIdx] && fullBoardData.rows[targetRowIdx].stacks[targetStackIdx];
+    if (!targetStack) return;
+    targetStack.columns.push(removed);
+    saveFullBoard();
+    updateDisplayFromFullBoard();
+    renderColumns();
   }
 
   function handleColumnAction(action, colIndex) {
@@ -2900,6 +3040,49 @@ const LexeraDashboard = (function () {
     return out;
   }
 
+  function loadMermaidLibrary() {
+    if (mermaidReady || mermaidLoading) return;
+    mermaidLoading = true;
+    var script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+    script.onload = function () {
+      mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose', fontFamily: 'inherit' });
+      mermaidReady = true;
+      mermaidLoading = false;
+      processMermaidQueue();
+    };
+    script.onerror = function () {
+      mermaidLoading = false;
+      // Show error in all pending placeholders
+      for (var i = 0; i < pendingMermaidRenders.length; i++) {
+        var el = document.getElementById(pendingMermaidRenders[i].id);
+        if (el) el.innerHTML = '<span class="mermaid-error">Failed to load Mermaid library</span>';
+      }
+      pendingMermaidRenders = [];
+    };
+    document.head.appendChild(script);
+  }
+
+  function processMermaidQueue() {
+    if (!mermaidReady || pendingMermaidRenders.length === 0) return;
+    var queue = pendingMermaidRenders.slice();
+    pendingMermaidRenders = [];
+    queue.forEach(function (item) {
+      var el = document.getElementById(item.id);
+      if (!el) return;
+      try {
+        mermaid.render(item.id + '-svg', item.code).then(function (result) {
+          el.className = 'mermaid-diagram';
+          el.innerHTML = result.svg;
+        }).catch(function (err) {
+          el.innerHTML = '<span class="mermaid-error">Mermaid error: ' + escapeHtml(err.message || String(err)) + '</span>';
+        });
+      } catch (err) {
+        el.innerHTML = '<span class="mermaid-error">Mermaid error: ' + escapeHtml(err.message || String(err)) + '</span>';
+      }
+    });
+  }
+
   function renderCardContent(content, boardId) {
     var lines = content.split('\n');
     var html = '';
@@ -2926,8 +3109,15 @@ const LexeraDashboard = (function () {
           codeLines.push(lines[i]);
           i++;
         }
-        var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
-        html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+        if (lang.toLowerCase() === 'mermaid') {
+          var mermaidId = 'mermaid-' + (++mermaidIdCounter);
+          var code = codeLines.join('\n');
+          html += '<div class="mermaid-placeholder" id="' + mermaidId + '">Loading diagram...</div>';
+          pendingMermaidRenders.push({ id: mermaidId, code: code });
+        } else {
+          var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
+          html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+        }
         continue;
       }
 
