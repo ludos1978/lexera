@@ -299,6 +299,18 @@ Format: `path-module_functionname` — Description
 
 ### Card Content Rendering
 
-- app-renderCardContent(content, boardId) — Convert card markdown to HTML
-- app-renderInline(text, boardId) — Render inline markdown (links, bold, italic, code, tags)
+- app-renderTable(lines, startIdx, boardId) — Parse markdown table lines into HTML table with alignment
+- app-renderCardContent(content, boardId) — Convert card markdown to HTML (headings, lists, code blocks, tables, embeds, etc.)
+- app-renderInline(text, boardId) — Render inline markdown (links, bold, italic, code, tags, temporal tags)
+- app-resolveTemporalTag(tag) — Resolve @today, @tomorrow, @days+N, @weekday, @date(YYYY-MM-DD) to date string
+- app-formatDate(d) — Format Date object as YYYY-MM-DD string
 - app-escapeHtml(str) — Escape text for HTML output
+
+### Conflict Resolution & Notifications
+
+- app-showConflictDialog(conflictCount, autoMerged) — Show merge conflict dialog with Keep/Reload options
+- app-showNotification(message) — Show toast notification at bottom-right with auto-dismiss
+
+### Card Edit Formatting
+
+- app-insertFormatting(textarea, fmt) — Insert markdown formatting (bold/italic/code/link) around selection in textarea

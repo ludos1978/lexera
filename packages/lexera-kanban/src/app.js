@@ -777,10 +777,61 @@ const LexeraDashboard = (function () {
     showSaving();
     lastSaveTime = Date.now();
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      if (result && result.hasConflicts) {
+        showConflictDialog(result.conflicts, result.autoMerged);
+      } else if (result && result.merged && result.autoMerged > 0) {
+        showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
+        await loadBoard(activeBoardId);
+      }
     } finally {
       hideSaving();
     }
+  }
+
+  function showConflictDialog(conflictCount, autoMerged) {
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    dialog.innerHTML =
+      '<div class="dialog-title">Merge Conflict</div>' +
+      '<div style="margin-bottom:12px;color:var(--text-primary);font-size:13px">' +
+        'The board was modified externally while you were editing.' +
+        (autoMerged > 0 ? '<br>' + autoMerged + ' change(s) were merged automatically.' : '') +
+        '<br><strong>' + conflictCount + ' conflict(s)</strong> could not be resolved automatically.' +
+      '</div>' +
+      '<div class="dialog-actions">' +
+        '<button class="btn-small btn-cancel" data-conflict-action="reload">Load Server Version</button>' +
+        '<button class="btn-small btn-primary" data-conflict-action="keep">Keep My Version</button>' +
+      '</div>';
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    dialog.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-conflict-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-conflict-action');
+      overlay.remove();
+      if (action === 'reload') {
+        loadBoard(activeBoardId);
+      }
+      // 'keep' — do nothing, our version was already saved by the backend
+    });
+  }
+
+  function showNotification(message) {
+    var el = document.createElement('div');
+    el.className = 'notification';
+    el.textContent = message;
+    document.body.appendChild(el);
+    el.offsetHeight; // force reflow
+    el.classList.add('visible');
+    setTimeout(function () {
+      el.classList.remove('visible');
+      setTimeout(function () { el.remove(); }, 300);
+    }, 3000);
   }
 
   function pushUndo() {
@@ -1890,12 +1941,51 @@ const LexeraDashboard = (function () {
           loadBoard(activeBoardId);
         }
       }
+      // Formatting shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        var fmt = null;
+        if (e.key === 'b') fmt = { wrap: '**' };
+        else if (e.key === 'i') fmt = { wrap: '*' };
+        else if (e.key === '`') fmt = { wrap: '`' };
+        else if (e.key === 'k') fmt = { prefix: '[', suffix: '](url)' };
+        if (fmt) {
+          e.preventDefault();
+          insertFormatting(textarea, fmt);
+          autoResize();
+        }
+      }
     });
 
     textarea.addEventListener('blur', function () {
       if (editCancelled) return;
       saveCardEdit(cardEl, colIndex, fullIdx, textarea.value);
     });
+  }
+
+  function insertFormatting(textarea, fmt) {
+    var start = textarea.selectionStart;
+    var end = textarea.selectionEnd;
+    var text = textarea.value;
+    var selected = text.substring(start, end);
+
+    var replacement;
+    if (fmt.wrap) {
+      replacement = fmt.wrap + (selected || 'text') + fmt.wrap;
+    } else {
+      replacement = fmt.prefix + (selected || 'text') + fmt.suffix;
+    }
+
+    textarea.value = text.substring(0, start) + replacement + text.substring(end);
+
+    // Place cursor: if there was a selection, select the content between markers
+    if (selected) {
+      var contentStart = start + (fmt.wrap ? fmt.wrap.length : fmt.prefix.length);
+      textarea.setSelectionRange(contentStart, contentStart + selected.length);
+    } else {
+      var contentStart = start + (fmt.wrap ? fmt.wrap.length : fmt.prefix.length);
+      textarea.setSelectionRange(contentStart, contentStart + 4); // select 'text'
+    }
+    textarea.dispatchEvent(new Event('input'));
   }
 
   async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
@@ -2769,6 +2859,47 @@ const LexeraDashboard = (function () {
 
   // --- Util ---
 
+  function renderTable(lines, startIdx, boardId) {
+    var headerLine = lines[startIdx].trim();
+    var sepLine = lines[startIdx + 1].trim();
+
+    function parseCells(line) {
+      // Split by | and trim, removing empty first/last from leading/trailing |
+      var parts = line.split('|');
+      if (parts[0].trim() === '') parts.shift();
+      if (parts.length > 0 && parts[parts.length - 1].trim() === '') parts.pop();
+      return parts.map(function (c) { return c.trim(); });
+    }
+
+    var headers = parseCells(headerLine);
+    var seps = parseCells(sepLine);
+    var aligns = seps.map(function (s) {
+      if (s.charAt(0) === ':' && s.charAt(s.length - 1) === ':') return 'center';
+      if (s.charAt(s.length - 1) === ':') return 'right';
+      return 'left';
+    });
+
+    var out = '<table class="md-table"><thead><tr>';
+    for (var h = 0; h < headers.length; h++) {
+      out += '<th style="text-align:' + aligns[h] + '">' + renderInline(headers[h], boardId) + '</th>';
+    }
+    out += '</tr></thead><tbody>';
+
+    for (var r = startIdx + 2; r < lines.length; r++) {
+      if (lines[r].trim().indexOf('|') !== 0) break;
+      var cells = parseCells(lines[r]);
+      out += '<tr>';
+      for (var c = 0; c < headers.length; c++) {
+        var val = c < cells.length ? cells[c] : '';
+        var align = c < aligns.length ? aligns[c] : 'left';
+        out += '<td style="text-align:' + align + '">' + renderInline(val, boardId) + '</td>';
+      }
+      out += '</tr>';
+    }
+    out += '</tbody></table>';
+    return out;
+  }
+
   function renderCardContent(content, boardId) {
     var lines = content.split('\n');
     var html = '';
@@ -2797,6 +2928,16 @@ const LexeraDashboard = (function () {
         }
         var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
         html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+        continue;
+      }
+
+      // Markdown tables: |col|col| with |---|---| separator
+      if (line.trim().indexOf('|') === 0 && i + 1 < lines.length && /^\|[\s:]*-+/.test(lines[i + 1].trim())) {
+        closeList();
+        html += renderTable(lines, i, boardId);
+        // Skip past table lines
+        while (i < lines.length && lines[i].trim().indexOf('|') === 0) i++;
+        i--; // compensate for loop increment
         continue;
       }
 
@@ -2935,7 +3076,50 @@ const LexeraDashboard = (function () {
     // Tags: #tag-name (word boundary, not inside HTML attributes)
     safe = safe.replace(/(^|\s)(#[a-zA-Z][\w-]*)/g, '$1<span class="tag">$2</span>');
 
+    // Temporal tags: @today, @tomorrow, @date(YYYY-MM-DD), @days+N, @weekday
+    safe = safe.replace(/(^|\s)(@(?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/gi, function (_, pre, tag) {
+      var resolved = resolveTemporalTag(tag);
+      return pre + '<span class="temporal-tag" title="' + resolved + '">' + tag + '</span>';
+    });
+
     return safe;
+  }
+
+  function resolveTemporalTag(tag) {
+    var lower = tag.toLowerCase();
+    var now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    if (lower === '@today') return formatDate(now);
+    if (lower === '@tomorrow') { now.setDate(now.getDate() + 1); return formatDate(now); }
+    if (lower === '@yesterday') { now.setDate(now.getDate() - 1); return formatDate(now); }
+
+    var daysMatch = lower.match(/@days([+-])(\d+)/);
+    if (daysMatch) {
+      var offset = parseInt(daysMatch[2], 10) * (daysMatch[1] === '+' ? 1 : -1);
+      now.setDate(now.getDate() + offset);
+      return formatDate(now);
+    }
+
+    var dateMatch = tag.match(/@date\((\d{4}-\d{2}-\d{2})\)/i);
+    if (dateMatch) return dateMatch[1];
+
+    var weekdays = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    var dayName = lower.substring(1); // strip @
+    if (weekdays[dayName] !== undefined) {
+      var target = weekdays[dayName];
+      var current = now.getDay();
+      var diff = target - current;
+      if (diff <= 0) diff += 7;
+      now.setDate(now.getDate() + diff);
+      return formatDate(now);
+    }
+
+    return tag;
+  }
+
+  function formatDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
   function escapeHtml(str) {
