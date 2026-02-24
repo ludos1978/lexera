@@ -338,6 +338,8 @@ body {
 
 .card strong { font-weight: 600; color: var(--text-bright); }
 .card em { font-style: italic; }
+.card s { opacity: 0.6; }
+.card .wiki-link { color: var(--accent); cursor: default; }
 
 /* Embed containers */
 .embed-container {
@@ -786,6 +788,24 @@ body {
   max-height: 28px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Card focus (keyboard navigation) */
+.card.focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Interactive checkboxes */
+.card-checkbox {
+  cursor: pointer;
+  margin-right: 4px;
+  vertical-align: middle;
+  accent-color: var(--accent);
+}
+
+.checkbox-item {
+  list-style: none;
 }
 
 .hidden { display: none !important; }
