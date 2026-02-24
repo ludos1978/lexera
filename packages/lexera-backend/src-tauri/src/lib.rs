@@ -6,6 +6,7 @@ pub mod api;
 mod server;
 mod tray;
 mod capture;
+mod clipboard_watcher;
 
 use std::sync::Arc;
 use std::path::PathBuf;
@@ -14,13 +15,21 @@ use lexera_core::storage::local::LocalStorage;
 use lexera_core::include::resolver::IncludeMap;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
+use tauri::Manager;
 use crate::state::{AppState, ResolvedIncoming};
 
 pub fn run() {
     env_logger::init();
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![capture::read_clipboard, capture::close_capture])
+        .invoke_handler(tauri::generate_handler![
+            capture::read_clipboard,
+            capture::read_clipboard_image,
+            capture::get_clipboard_history,
+            capture::remove_clipboard_entry,
+            capture::snap_capture_window,
+            capture::close_capture,
+        ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -167,6 +176,14 @@ pub fn run() {
                     Err(e) => log::error!("Failed to start server: {}", e),
                 }
             });
+
+            // Create shared clipboard history and start watcher
+            let clipboard_history: capture::ClipboardHistory = Arc::new(std::sync::Mutex::new(Vec::new()));
+            app.manage(clipboard_history.clone());
+
+            let app_handle_for_watcher = app.handle().clone();
+            let _watcher_shutdown = clipboard_watcher::start_clipboard_watcher(&app_handle_for_watcher, clipboard_history);
+            app.manage(std::sync::Mutex::new(Some(_watcher_shutdown)));
 
             Ok(())
         })

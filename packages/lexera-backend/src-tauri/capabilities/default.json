@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default permissions for Lexera Backend",
-  "windows": ["main", "quick-capture"],
+  "windows": ["quick-capture"],
   "permissions": [
     "core:default",
     "global-shortcut:allow-register",

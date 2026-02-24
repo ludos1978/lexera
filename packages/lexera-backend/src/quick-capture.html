@@ -8,19 +8,21 @@
 </head>
 <body>
   <div class="capture-container">
-    <div class="capture-header">
-      <h2 class="capture-title">Quick Capture</h2>
-      <span class="capture-hint">esc to close</span>
+    <div class="capture-header" data-tauri-drag-region>
+      <h2 class="capture-title" data-tauri-drag-region>Quick Capture</h2>
+      <button id="btn-snap-left" class="snap-btn" title="Snap to left edge">◂</button>
+      <button id="btn-snap-right" class="snap-btn" title="Snap to right edge">▸</button>
+      <span class="capture-hint">esc</span>
+    </div>
+
+    <div id="history-section" class="history-section">
+      <label class="field-label">Clipboard history</label>
+      <div id="history-list" class="history-list"></div>
     </div>
 
     <div id="drop-zone" class="drop-zone">
       <div id="drop-label" class="drop-label">Drop files here</div>
       <div id="file-preview" class="file-preview hidden"></div>
-    </div>
-
-    <div id="clipboard-section" class="clipboard-section">
-      <label class="field-label">Clipboard content</label>
-      <textarea id="content-preview" class="content-preview" readonly></textarea>
     </div>
 
     <div class="field-row">

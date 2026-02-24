@@ -1,60 +1,61 @@
 /**
- * Quick Capture — standalone popup for clipboard/drop capture into kanban boards.
- * Communicates with the Lexera Backend REST API.
+ * Quick Capture — popup for clipboard history + file drop capture into kanban boards.
+ * Shows clipboard history entries. User selects entries to send to a board.
  */
 (function () {
   'use strict';
 
-  // We discover the port from /status, but default to common port
   let baseUrl = '';
   let boards = [];
   let droppedFiles = [];
-  let clipboardText = '';
+  let selectedEntryIds = new Set();
 
   const els = {
+    historyList: document.getElementById('history-list'),
     dropZone: document.getElementById('drop-zone'),
     dropLabel: document.getElementById('drop-label'),
     filePreview: document.getElementById('file-preview'),
-    clipboardSection: document.getElementById('clipboard-section'),
-    contentPreview: document.getElementById('content-preview'),
     boardSelect: document.getElementById('board-select'),
     columnSelect: document.getElementById('column-select'),
     btnSend: document.getElementById('btn-send'),
     btnCancel: document.getElementById('btn-cancel'),
+    btnSnapLeft: document.getElementById('btn-snap-left'),
+    btnSnapRight: document.getElementById('btn-snap-right'),
     statusMsg: document.getElementById('status-msg'),
   };
 
   // --- Init ---
 
   async function init() {
-    // Try to discover the backend port from common ports
     baseUrl = await discoverBackend();
     if (!baseUrl) {
       showStatus('Cannot connect to Lexera Backend', 'error');
       return;
     }
 
-    // Read clipboard via Tauri IPC (bypasses browser permission requirements)
-    try {
-      clipboardText = await window.__TAURI_INTERNALS__.invoke('read_clipboard');
-      if (clipboardText) {
-        els.contentPreview.value = clipboardText;
-      }
-    } catch (e) {
-      console.warn('Tauri clipboard read failed:', e);
-    }
-
-    // Load boards
+    await loadClipboardHistory();
     await loadBoards();
 
-    // Load defaults from /status
-    try {
-      const status = await apiGet('/status');
-      if (status.incoming) {
-        selectDefault(status.incoming.board_id, status.incoming.column);
+    // Restore saved board/column, fall back to server-configured incoming
+    const savedBoard = localStorage.getItem('lexera-qc-board');
+    const savedColumn = localStorage.getItem('lexera-qc-column');
+    if (savedBoard) {
+      selectDefault(savedBoard, savedColumn !== null ? parseInt(savedColumn, 10) : undefined);
+    } else {
+      try {
+        const status = await apiGet('/status');
+        if (status.incoming) {
+          selectDefault(status.incoming.board_id, status.incoming.column);
+        }
+      } catch (e) {
+        // No defaults configured
       }
-    } catch (e) {
-      // No defaults configured
+    }
+
+    // Restore snap position
+    const savedSnap = localStorage.getItem('lexera-qc-snap');
+    if (savedSnap) {
+      window.__TAURI_INTERNALS__.invoke('snap_capture_window', { side: savedSnap }).catch(() => {});
     }
 
     updateSendButton();
@@ -62,7 +63,6 @@
   }
 
   async function discoverBackend() {
-    // Try to read port from the URL or try common ports
     const ports = [8083, 8080, 8081, 8082, 9080];
     for (const port of ports) {
       try {
@@ -78,6 +78,123 @@
       }
     }
     return null;
+  }
+
+  // --- Clipboard history ---
+
+  async function loadClipboardHistory() {
+    try {
+      const entries = await window.__TAURI_INTERNALS__.invoke('get_clipboard_history');
+      renderHistory(entries);
+    } catch (e) {
+      console.warn('Failed to load clipboard history:', e);
+    }
+  }
+
+  function renderHistory(entries) {
+    els.historyList.innerHTML = '';
+
+    if (!entries || entries.length === 0) {
+      els.historyList.innerHTML = '<div class="history-empty">No clipboard entries</div>';
+      return;
+    }
+
+    for (const entry of entries) {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      if (selectedEntryIds.has(entry.id)) {
+        item.classList.add('selected');
+      }
+      item.dataset.id = entry.id;
+
+      // Checkbox
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'history-checkbox';
+      checkbox.checked = selectedEntryIds.has(entry.id);
+      checkbox.addEventListener('change', (e) => {
+        e.stopPropagation();
+        toggleEntry(entry.id, checkbox.checked);
+      });
+      item.appendChild(checkbox);
+
+      // Content preview
+      const content = document.createElement('div');
+      content.className = 'history-content';
+
+      if (entry.image_data) {
+        const img = document.createElement('img');
+        img.className = 'history-thumb';
+        img.src = 'data:image/png;base64,' + entry.image_data;
+        content.appendChild(img);
+      }
+
+      if (entry.text) {
+        const text = document.createElement('span');
+        text.className = 'history-text';
+        text.textContent = entry.text.length > 120 ? entry.text.substring(0, 120) + '...' : entry.text;
+        content.appendChild(text);
+      }
+
+      item.appendChild(content);
+
+      // Remove button
+      const remove = document.createElement('span');
+      remove.className = 'history-remove';
+      remove.textContent = '\u00d7';
+      remove.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeEntry(entry.id);
+      });
+      item.appendChild(remove);
+
+      // Click to toggle selection
+      item.addEventListener('click', (e) => {
+        if (e.target === checkbox) return;
+        checkbox.checked = !checkbox.checked;
+        toggleEntry(entry.id, checkbox.checked);
+      });
+
+      els.historyList.appendChild(item);
+    }
+
+    // Auto-select the newest entry if nothing is selected
+    if (selectedEntryIds.size === 0 && entries.length > 0) {
+      toggleEntry(entries[0].id, true);
+      const first = els.historyList.querySelector('.history-item');
+      if (first) {
+        first.classList.add('selected');
+        const cb = first.querySelector('.history-checkbox');
+        if (cb) cb.checked = true;
+      }
+    }
+  }
+
+  function toggleEntry(id, selected) {
+    if (selected) {
+      selectedEntryIds.add(id);
+    } else {
+      selectedEntryIds.delete(id);
+    }
+    // Update visual state
+    const items = els.historyList.querySelectorAll('.history-item');
+    for (const item of items) {
+      if (parseInt(item.dataset.id) === id) {
+        item.classList.toggle('selected', selected);
+      }
+    }
+    updateSendButton();
+  }
+
+  async function removeEntry(id) {
+    selectedEntryIds.delete(id);
+    try {
+      await window.__TAURI_INTERNALS__.invoke('remove_clipboard_entry', { id });
+    } catch (e) {
+      console.warn('Failed to remove entry:', e);
+    }
+    await loadClipboardHistory();
+    updateSendButton();
   }
 
   // --- API helpers ---
@@ -168,27 +285,33 @@
   // --- Event listeners ---
 
   function setupEventListeners() {
-    // Board change
     els.boardSelect.addEventListener('change', () => {
       const boardId = els.boardSelect.value;
       if (boardId) {
+        localStorage.setItem('lexera-qc-board', boardId);
         loadColumns(boardId);
       } else {
+        localStorage.removeItem('lexera-qc-board');
         els.columnSelect.innerHTML = '<option value="">Select board first</option>';
       }
       updateSendButton();
     });
 
-    // Column change
-    els.columnSelect.addEventListener('change', updateSendButton);
+    els.columnSelect.addEventListener('change', () => {
+      const colVal = els.columnSelect.value;
+      if (colVal) {
+        localStorage.setItem('lexera-qc-column', colVal);
+      }
+      updateSendButton();
+    });
 
-    // Cancel
     els.btnCancel.addEventListener('click', () => closeWindow());
-
-    // Send
     els.btnSend.addEventListener('click', handleSend);
 
-    // Keyboard shortcuts
+    // Snap buttons
+    els.btnSnapLeft.addEventListener('click', () => snapTo('left'));
+    els.btnSnapRight.addEventListener('click', () => snapTo('right'));
+
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         closeWindow();
@@ -215,7 +338,6 @@
       handleDrop(e.dataTransfer);
     });
 
-    // Click on drop zone to open file picker
     els.dropZone.addEventListener('click', () => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -317,12 +439,36 @@
     els.btnSend.textContent = 'Sending...';
 
     try {
+      // Get selected history entries
+      let historyEntries = [];
+      try {
+        const allEntries = await window.__TAURI_INTERNALS__.invoke('get_clipboard_history');
+        historyEntries = allEntries.filter(e => selectedEntryIds.has(e.id));
+      } catch (e) {
+        // No history available
+      }
+
       const parts = [];
 
-      // Handle clipboard text
-      const text = els.contentPreview.value.trim();
-      if (text) {
-        parts.push(isUrl(text) ? formatAsMarkdownLink(text) : text);
+      // Process selected clipboard history entries
+      for (const entry of historyEntries) {
+        // Handle image from history entry
+        if (entry.image_data) {
+          const byteString = atob(entry.image_data);
+          const bytes = new Uint8Array(byteString.length);
+          for (let i = 0; i < byteString.length; i++) {
+            bytes[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'image/png' });
+          const file = new File([blob], entry.image_filename || 'clipboard.png', { type: 'image/png' });
+          const result = await apiUpload(`/boards/${boardId}/media`, file);
+          parts.push(`![${file.name}](${result.path})`);
+        }
+
+        // Handle text from history entry
+        if (entry.text) {
+          parts.push(isUrl(entry.text) ? formatAsMarkdownLink(entry.text) : entry.text);
+        }
       }
 
       // Handle dropped files
@@ -345,9 +491,18 @@
       const content = parts.join('\n');
       await apiPost(`/boards/${boardId}/columns/${colIndex}/cards`, { content });
 
-      showStatus('Captured!', 'success');
+      // Remove sent entries from history
+      for (const id of selectedEntryIds) {
+        try {
+          await window.__TAURI_INTERNALS__.invoke('remove_clipboard_entry', { id });
+        } catch (e) {
+          // Ignore removal errors
+        }
+      }
+      selectedEntryIds.clear();
+      droppedFiles = [];
 
-      // Close after a brief delay
+      showStatus('Captured!', 'success');
       setTimeout(() => closeWindow(), 600);
     } catch (e) {
       showStatus(`Failed: ${e.message}`, 'error');
@@ -361,7 +516,7 @@
   function updateSendButton() {
     const hasBoard = !!els.boardSelect.value;
     const hasColumn = !!els.columnSelect.value;
-    const hasContent = els.contentPreview.value.trim().length > 0 || droppedFiles.length > 0;
+    const hasContent = selectedEntryIds.size > 0 || droppedFiles.length > 0;
     els.btnSend.disabled = !(hasBoard && hasColumn && hasContent);
   }
 
@@ -372,6 +527,13 @@
     if (type === 'success') {
       setTimeout(() => els.statusMsg.classList.add('hidden'), 3000);
     }
+  }
+
+  function snapTo(side) {
+    localStorage.setItem('lexera-qc-snap', side);
+    window.__TAURI_INTERNALS__.invoke('snap_capture_window', { side }).catch((e) => {
+      console.warn('Failed to snap window:', e);
+    });
   }
 
   function closeWindow() {

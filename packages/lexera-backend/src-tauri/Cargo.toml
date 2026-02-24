@@ -17,6 +17,8 @@ env_logger = "0.11"
 tokio-stream = { version = "0.1", features = ["sync"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
+clipboard-rs = "0.2"
+base64 = "0.22"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
