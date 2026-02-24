@@ -205,6 +205,7 @@ body {
   padding: 12px;
   gap: 12px;
   align-items: flex-start;
+  font-size: var(--board-font-size, 13px);
 }
 
 /* Column group: wrapper for one or more stacked columns */
@@ -214,7 +215,7 @@ body {
   gap: 12px;
   min-width: 250px;
   max-width: 320px;
-  flex: 0 0 280px;
+  flex: 0 0 var(--board-column-width, 280px);
 }
 
 .column {
@@ -272,6 +273,7 @@ body {
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
+  border-left: 3px solid transparent;
   border-radius: 4px;
   padding: 8px 10px;
   margin-bottom: 4px;
@@ -703,9 +705,87 @@ body {
 
 /* Drag-and-drop feedback */
 .column-group.dragging, .board-item.dragging { opacity: 0.4; }
+.card.dragging { opacity: 0.4; }
 .column-group.drag-over-left { box-shadow: -3px 0 0 0 var(--accent); }
 .column-group.drag-over-right { box-shadow: 3px 0 0 0 var(--accent); }
 .board-item.drag-over-top { box-shadow: 0 -2px 0 0 var(--accent); }
 .board-item.drag-over-bottom { box-shadow: 0 2px 0 0 var(--accent); }
+.card-drop-indicator { height: 2px; background: var(--accent); margin: 2px 0; border-radius: 1px; }
+
+/* Card editing */
+.card.editing { padding: 0; border-color: var(--accent); }
+.card-edit-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.4;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Card context menu */
+.card-context-menu {
+  position: fixed;
+  min-width: 140px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  overflow: hidden;
+}
+
+.card-menu-item {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.card-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.card-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.card-menu-danger {
+  color: var(--error);
+}
+
+.card-menu-danger:hover {
+  background: rgba(244, 71, 71, 0.15);
+}
+
+/* Card collapse */
+.card-collapse-toggle {
+  display: inline;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin-right: 4px;
+  user-select: none;
+}
+
+.card-collapse-toggle:hover {
+  color: var(--text-primary);
+}
+
+.card.collapsed {
+  max-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .hidden { display: none !important; }

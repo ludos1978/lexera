@@ -65,5 +65,34 @@ const LexeraApi = (function () {
     } catch { return false; }
   }
 
-  return { discover, getBoards, getBoardColumns, addCard, search, checkStatus };
+  function mediaUrl(boardId, filename) {
+    return (baseUrl || '') + '/boards/' + boardId + '/media/' + encodeURIComponent(filename);
+  }
+
+  function fileUrl(boardId, path) {
+    return (baseUrl || '') + '/boards/' + boardId + '/file?path=' + encodeURIComponent(path);
+  }
+
+  async function fileInfo(boardId, path) {
+    return request('/boards/' + boardId + '/file-info?path=' + encodeURIComponent(path));
+  }
+
+  async function saveBoard(boardId, boardData) {
+    return request('/boards/' + boardId, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(boardData),
+    });
+  }
+
+  function connectSSE(onEvent) {
+    if (!baseUrl) return null;
+    var es = new EventSource(baseUrl + '/events');
+    es.onmessage = function (msg) {
+      try { onEvent(JSON.parse(msg.data)); } catch (e) { /* ignore parse errors */ }
+    };
+    return es;
+  }
+
+  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo };
 })();

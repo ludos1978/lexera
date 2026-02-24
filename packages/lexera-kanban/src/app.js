@@ -7,12 +7,16 @@ const LexeraDashboard = (function () {
   let boards = [];
   let activeBoardId = null;
   let activeBoardData = null;
+  let fullBoardData = null;
   let connected = false;
   let searchMode = false;
   let searchResults = null;
   let pollInterval = null;
   let addCardColumn = null;
   var dragSource = null;
+  var isEditing = false;
+  var pendingRefresh = false;
+  var eventSource = null;
 
   // DOM refs
   const $boardList = document.getElementById('board-list');
@@ -127,6 +131,38 @@ const LexeraDashboard = (function () {
     pollInterval = setInterval(poll, 5000);
   }
 
+  function connectSSEIfReady() {
+    if (eventSource) return;
+    eventSource = LexeraApi.connectSSE(handleSSEEvent);
+    if (eventSource) {
+      // Reduce polling to 30s health checks while SSE is active
+      clearInterval(pollInterval);
+      pollInterval = setInterval(poll, 30000);
+      eventSource.onerror = function () {
+        eventSource.close();
+        eventSource = null;
+        // Restore normal polling
+        clearInterval(pollInterval);
+        pollInterval = setInterval(poll, 5000);
+      };
+    }
+  }
+
+  function handleSSEEvent(event) {
+    if (!activeBoardId || searchMode) return;
+    var kind = event.kind || event.type || '';
+    // Check if event is for our active board
+    var boardId = event.board_id || event.boardId || '';
+    if (boardId && boardId !== activeBoardId) return;
+    if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
+      if (isEditing) {
+        pendingRefresh = true;
+      } else {
+        loadBoard(activeBoardId);
+      }
+    }
+  }
+
   // --- Polling ---
 
   async function poll() {
@@ -138,6 +174,8 @@ const LexeraDashboard = (function () {
       setConnected(false);
       return;
     }
+
+    connectSSEIfReady();
 
     try {
       const data = await LexeraApi.getBoards();
@@ -151,6 +189,7 @@ const LexeraDashboard = (function () {
         } else {
           activeBoardId = null;
           activeBoardData = null;
+          fullBoardData = null;
           renderMainView();
         }
       }
@@ -243,12 +282,39 @@ const LexeraDashboard = (function () {
 
   async function loadBoard(boardId) {
     try {
-      activeBoardData = await LexeraApi.getBoardColumns(boardId);
+      var response = await LexeraApi.getBoardColumns(boardId);
+      fullBoardData = response.fullBoard || null;
+      activeBoardData = response;
       renderMainView();
     } catch {
       activeBoardData = null;
+      fullBoardData = null;
       renderMainView();
     }
+  }
+
+  function updateDisplayFromFullBoard() {
+    if (!fullBoardData || !activeBoardData) return;
+    var columns = fullBoardData.columns
+      .map(function (col, index) {
+        if (is_archived_or_deleted(col.title)) return null;
+        var cards = col.cards.filter(function (c) { return !is_archived_or_deleted(c.content); });
+        return { index: index, title: col.title, cards: cards };
+      })
+      .filter(function (c) { return c !== null; });
+    activeBoardData.columns = columns;
+  }
+
+  function is_archived_or_deleted(text) {
+    return text.indexOf('#hidden-internal-deleted') !== -1 || text.indexOf('#hidden-internal-archived') !== -1;
+  }
+
+  function findColumnTitleByIndex(index) {
+    if (!fullBoardData) return null;
+    if (index >= 0 && index < fullBoardData.columns.length) {
+      return fullBoardData.columns[index].title;
+    }
+    return null;
   }
 
   // --- Main View ---
@@ -275,7 +341,20 @@ const LexeraDashboard = (function () {
     $boardHeader.classList.remove('hidden');
     $boardHeader.textContent = activeBoardData.title || 'Untitled';
     $columnsContainer.classList.remove('hidden');
+    applyBoardSettings();
     renderColumns();
+  }
+
+  function applyBoardSettings() {
+    // Reset custom properties
+    $columnsContainer.style.removeProperty('--board-column-width');
+    $columnsContainer.style.removeProperty('--board-font-size');
+    $columnsContainer.style.removeProperty('--board-color');
+    if (!fullBoardData || !fullBoardData.boardSettings) return;
+    var s = fullBoardData.boardSettings;
+    if (s.columnWidth) $columnsContainer.style.setProperty('--board-column-width', s.columnWidth);
+    if (s.fontSize) $columnsContainer.style.setProperty('--board-font-size', s.fontSize);
+    if (s.boardColor) $columnsContainer.style.setProperty('--board-color', s.boardColor);
   }
 
   function renderColumns() {
@@ -321,13 +400,47 @@ const LexeraDashboard = (function () {
 
         var cardsEl = document.createElement('div');
         cardsEl.className = 'column-cards';
+        cardsEl.setAttribute('data-col-index', col.index.toString());
+        var collapsedCards = getCollapsedCards(activeBoardId);
         for (var j = 0; j < col.cards.length; j++) {
           var card = col.cards[j];
           var cardEl = document.createElement('div');
           cardEl.className = 'card' + (card.checked ? ' checked' : '');
+          cardEl.draggable = true;
+          cardEl.setAttribute('data-col-index', col.index.toString());
+          cardEl.setAttribute('data-card-index', j.toString());
+          cardEl.setAttribute('data-card-id', card.id);
+          var firstTag = getFirstTag(card.content);
+          if (firstTag) cardEl.style.borderLeftColor = getTagColor(firstTag);
+          if (collapsedCards.indexOf(card.id) !== -1) cardEl.classList.add('collapsed');
+          var toggle = document.createElement('span');
+          toggle.className = 'card-collapse-toggle';
+          toggle.textContent = cardEl.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
+          (function (toggleEl, el) {
+            toggleEl.addEventListener('click', function (e) {
+              e.stopPropagation();
+              el.classList.toggle('collapsed');
+              toggleEl.textContent = el.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
+              saveCardCollapseState(activeBoardId);
+            });
+          })(toggle, cardEl);
           cardEl.innerHTML = renderCardContent(card.content, activeBoardId);
+          cardEl.insertBefore(toggle, cardEl.firstChild);
+          (function (el, ci, cj) {
+            el.addEventListener('dblclick', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              enterCardEditMode(el, ci, cj);
+            });
+            el.addEventListener('contextmenu', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              showCardContextMenu(e.clientX, e.clientY, ci, cj);
+            });
+          })(cardEl, col.index, j);
           cardsEl.appendChild(cardEl);
         }
+        setupCardDnD(cardsEl, col.index);
         colEl.appendChild(cardsEl);
 
         var footer = document.createElement('div');
@@ -440,6 +553,304 @@ const LexeraDashboard = (function () {
     }
   }
 
+  // --- Card DnD ---
+
+  function setupCardDnD(cardsEl, colIndex) {
+    cardsEl.addEventListener('dragstart', function (e) {
+      var cardEl = e.target.closest('.card');
+      if (!cardEl) return;
+      e.stopPropagation();
+      dragSource = {
+        type: 'card',
+        colIndex: parseInt(cardEl.getAttribute('data-col-index'), 10),
+        cardIndex: parseInt(cardEl.getAttribute('data-card-index'), 10),
+      };
+      e.dataTransfer.effectAllowed = 'move';
+      cardEl.classList.add('dragging');
+    }, true);
+
+    cardsEl.addEventListener('dragover', function (e) {
+      if (!dragSource || dragSource.type !== 'card') return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      clearCardDropIndicators();
+      var insertIdx = findCardInsertIndex(e, cardsEl);
+      showCardDropIndicator(cardsEl, insertIdx);
+    });
+
+    cardsEl.addEventListener('dragleave', function (e) {
+      if (!dragSource || dragSource.type !== 'card') return;
+      if (!cardsEl.contains(e.relatedTarget)) {
+        clearCardDropIndicators();
+      }
+    });
+
+    cardsEl.addEventListener('drop', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!dragSource || dragSource.type !== 'card') return;
+      clearCardDropIndicators();
+      var targetColIndex = parseInt(cardsEl.getAttribute('data-col-index'), 10);
+      var insertIdx = findCardInsertIndex(e, cardsEl);
+      moveCard(dragSource.colIndex, dragSource.cardIndex, targetColIndex, insertIdx);
+      dragSource = null;
+    });
+
+    cardsEl.addEventListener('dragend', function () {
+      clearCardDropIndicators();
+      var draggingEl = cardsEl.querySelector('.card.dragging');
+      if (draggingEl) draggingEl.classList.remove('dragging');
+      dragSource = null;
+    });
+  }
+
+  function findCardInsertIndex(e, cardsEl) {
+    var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
+    for (var i = 0; i < cards.length; i++) {
+      var rect = cards[i].getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        return i;
+      }
+    }
+    return cards.length;
+  }
+
+  function showCardDropIndicator(cardsEl, insertIdx) {
+    var indicator = document.createElement('div');
+    indicator.className = 'card-drop-indicator';
+    var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
+    if (insertIdx < cards.length) {
+      cardsEl.insertBefore(indicator, cards[insertIdx]);
+    } else {
+      cardsEl.appendChild(indicator);
+    }
+  }
+
+  function clearCardDropIndicators() {
+    var indicators = document.querySelectorAll('.card-drop-indicator');
+    for (var i = 0; i < indicators.length; i++) {
+      indicators[i].remove();
+    }
+  }
+
+  async function moveCard(fromColIdx, fromCardIdx, toColIdx, toInsertIdx) {
+    if (!fullBoardData || !activeBoardId) return;
+    var fromCol = fullBoardData.columns[fromColIdx];
+    var toCol = fullBoardData.columns[toColIdx];
+    if (!fromCol || !toCol) return;
+
+    // Get the visible (non-archived) cards to find the real index in fullBoardData
+    var fromFullIdx = getFullCardIndex(fromCol, fromCardIdx);
+    if (fromFullIdx === -1) return;
+
+    var card = fromCol.cards.splice(fromFullIdx, 1)[0];
+
+    // Calculate target index in the full cards array (-1 means append)
+    var toFullIdx = getFullCardIndex(toCol, toInsertIdx);
+    if (toFullIdx === -1) toFullIdx = toCol.cards.length;
+
+    toCol.cards.splice(toFullIdx, 0, card);
+
+    try {
+      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      // Reload to restore consistent state
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  function getFullCardIndex(col, visibleIdx) {
+    var visible = 0;
+    for (var i = 0; i < col.cards.length; i++) {
+      if (!is_archived_or_deleted(col.cards[i].content)) {
+        if (visible === visibleIdx) return i;
+        visible++;
+      }
+    }
+    return -1;
+  }
+
+  // --- Card Editing ---
+
+  function enterCardEditMode(cardEl, colIndex, cardIndex) {
+    if (!fullBoardData) return;
+    var col = fullBoardData.columns[colIndex];
+    if (!col) return;
+    var fullIdx = getFullCardIndex(col, cardIndex);
+    var card = col.cards[fullIdx];
+    if (!card) return;
+
+    isEditing = true;
+    var editCancelled = false;
+    cardEl.classList.add('editing');
+    var textarea = document.createElement('textarea');
+    textarea.className = 'card-edit-input';
+    textarea.value = card.content;
+    cardEl.innerHTML = '';
+    cardEl.appendChild(textarea);
+
+    function autoResize() {
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+    }
+    textarea.addEventListener('input', autoResize);
+    requestAnimationFrame(function () {
+      textarea.focus();
+      autoResize();
+    });
+
+    textarea.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        textarea.blur();
+      }
+      if (e.key === 'Escape') {
+        editCancelled = true;
+        isEditing = false;
+        cardEl.classList.remove('editing');
+        cardEl.innerHTML = renderCardContent(card.content, activeBoardId);
+        if (pendingRefresh) {
+          pendingRefresh = false;
+          loadBoard(activeBoardId);
+        }
+      }
+    });
+
+    textarea.addEventListener('blur', function () {
+      if (editCancelled) return;
+      saveCardEdit(cardEl, colIndex, fullIdx, textarea.value);
+    });
+  }
+
+  async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
+    isEditing = false;
+    if (!fullBoardData || !activeBoardId) return;
+    var col = fullBoardData.columns[colIndex];
+    if (!col || !col.cards[fullCardIdx]) return;
+
+    var oldContent = col.cards[fullCardIdx].content;
+    if (newContent === oldContent) {
+      cardEl.classList.remove('editing');
+      cardEl.innerHTML = renderCardContent(oldContent, activeBoardId);
+      if (pendingRefresh) {
+        pendingRefresh = false;
+        loadBoard(activeBoardId);
+      }
+      return;
+    }
+
+    col.cards[fullCardIdx].content = newContent;
+    try {
+      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+    if (pendingRefresh) {
+      pendingRefresh = false;
+      loadBoard(activeBoardId);
+    }
+  }
+
+  // --- Card Context Menu ---
+
+  var activeCardMenu = null;
+
+  function closeCardContextMenu() {
+    if (activeCardMenu) {
+      activeCardMenu.remove();
+      activeCardMenu = null;
+    }
+  }
+
+  function showCardContextMenu(x, y, colIndex, cardIndex) {
+    closeCardContextMenu();
+    var menu = document.createElement('div');
+    menu.className = 'card-context-menu';
+    menu.innerHTML =
+      '<div class="card-menu-item" data-card-action="edit">Edit</div>' +
+      '<div class="card-menu-item" data-card-action="duplicate">Duplicate</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item card-menu-danger" data-card-action="delete">Delete</div>';
+
+    // Viewport bounds checking
+    document.body.appendChild(menu);
+    var menuRect = menu.getBoundingClientRect();
+    if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 4;
+    if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 4;
+    if (x < 0) x = 4;
+    if (y < 0) y = 4;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+
+    menu.addEventListener('click', function (e) {
+      var actionEl = e.target.closest('[data-card-action]');
+      if (!actionEl) return;
+      var action = actionEl.getAttribute('data-card-action');
+      closeCardContextMenu();
+      handleCardMenuAction(action, colIndex, cardIndex);
+    });
+
+    activeCardMenu = menu;
+  }
+
+  function handleCardMenuAction(action, colIndex, cardIndex) {
+    if (action === 'edit') {
+      var cardsEls = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+      if (cardsEls.length > 0) {
+        enterCardEditMode(cardsEls[0], colIndex, cardIndex);
+      }
+    } else if (action === 'duplicate') {
+      duplicateCard(colIndex, cardIndex);
+    } else if (action === 'delete') {
+      deleteCard(colIndex, cardIndex);
+    }
+  }
+
+  async function duplicateCard(colIndex, cardIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    var col = fullBoardData.columns[colIndex];
+    if (!col) return;
+    var fullIdx = getFullCardIndex(col, cardIndex);
+    var card = col.cards[fullIdx];
+    if (!card) return;
+
+    var clone = JSON.parse(JSON.stringify(card));
+    clone.id = 'dup-' + Date.now();
+    clone.kid = null;
+    col.cards.splice(fullIdx + 1, 0, clone);
+
+    try {
+      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function deleteCard(colIndex, cardIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    var col = fullBoardData.columns[colIndex];
+    if (!col) return;
+    var fullIdx = getFullCardIndex(col, cardIndex);
+    if (fullIdx < 0 || fullIdx >= col.cards.length) return;
+
+    col.cards.splice(fullIdx, 1);
+
+    try {
+      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
   // --- Search ---
 
   let searchDebounce = null;
@@ -535,6 +946,9 @@ const LexeraDashboard = (function () {
   }
 
   document.addEventListener('click', function (e) {
+    // Close card context menu on any click (capture phase handles embed menu)
+    closeCardContextMenu();
+
     // Handle burger menu button clicks
     if (e.target.classList.contains('embed-menu-btn')) {
       e.stopPropagation();
@@ -755,6 +1169,69 @@ const LexeraDashboard = (function () {
     var dot = path.lastIndexOf('.');
     if (dot === -1 || dot === path.length - 1) return '';
     return path.substring(dot + 1).toLowerCase();
+  }
+
+  // --- Card Collapse ---
+
+  function getCollapsedCards(boardId) {
+    var saved = localStorage.getItem('lexera-card-collapse:' + boardId);
+    if (!saved) return [];
+    try { return JSON.parse(saved); } catch (e) { return []; }
+  }
+
+  function saveCardCollapseState(boardId) {
+    var collapsed = [];
+    var cards = $columnsContainer.querySelectorAll('.card[data-card-id]');
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i].classList.contains('collapsed')) {
+        collapsed.push(cards[i].getAttribute('data-card-id'));
+      }
+    }
+    localStorage.setItem('lexera-card-collapse:' + boardId, JSON.stringify(collapsed));
+  }
+
+  // --- Tag Colors ---
+
+  var TAG_COLORS = {
+    '#comment': '#d4883c',
+    '#note': '#c9b84e',
+    '#urgent': '#e05252',
+    '#feature': '#4ec98a',
+    '#bug': '#e05252',
+    '#todo': '#5c9cd4',
+    '#done': '#4ec9b0',
+    '#blocked': '#c94e7c',
+    '#question': '#9b7ed4',
+    '#idea': '#d4c24e',
+    '#review': '#5cc9c9',
+    '#wip': '#d49b4e',
+  };
+
+  var TAG_PALETTE = [
+    '#d4883c', '#5c9cd4', '#4ec98a', '#c94e7c',
+    '#9b7ed4', '#c9b84e', '#5cc9c9', '#d49b4e',
+    '#7ed47e', '#d45c8c', '#4ec9b0', '#d4644e',
+  ];
+
+  function getTagColor(tagName) {
+    var lower = tagName.toLowerCase();
+    if (TAG_COLORS[lower]) return TAG_COLORS[lower];
+    var hash = 0;
+    for (var i = 0; i < lower.length; i++) {
+      hash = ((hash << 5) - hash) + lower.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
+  }
+
+  function getFirstTag(content) {
+    var lines = content.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '') break; // end of card header
+      var match = lines[i].match(/(^|\s)(#[a-zA-Z][\w-]*)/);
+      if (match) return match[2];
+    }
+    return null;
   }
 
   // --- Util ---

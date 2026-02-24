@@ -4,6 +4,11 @@
 ///   GET  /boards/:boardId/columns             -> full column data with cards (+ ETag)
 ///   POST /boards/:boardId/columns/:colIndex/cards -> add card
 ///   POST /boards/:boardId/media               -> upload media file
+///   GET  /boards/:boardId/media/:filename     -> serve media file
+///   GET  /boards/:boardId/file?path=...       -> serve any file relative to board dir
+///   GET  /boards/:boardId/file-info?path=...  -> file metadata (size, type, etc.)
+///   POST /boards/:boardId/find-file            -> search for files by name in board dir
+///   POST /boards/:boardId/convert-path        -> convert relative↔absolute path in card
 ///   GET  /search?q=term                       -> search cards
 ///   GET  /events                              -> SSE stream of board changes
 ///   GET  /status                              -> health check (+ incoming config)
@@ -30,6 +35,11 @@ pub struct SearchQuery {
     q: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct FileQuery {
+    path: String,
+}
+
 #[derive(Serialize)]
 pub struct ErrorResponse {
     error: String,
@@ -38,6 +48,20 @@ pub struct ErrorResponse {
 #[derive(Deserialize)]
 pub struct AddCardBody {
     content: String,
+}
+
+#[derive(Deserialize)]
+pub struct FindFileBody {
+    filename: String,
+}
+
+#[derive(Deserialize)]
+pub struct ConvertPathBody {
+    #[serde(rename = "cardId")]
+    #[allow(dead_code)]
+    card_id: String,
+    path: String,
+    to: String, // "relative" or "absolute"
 }
 
 pub fn api_router() -> Router<AppState> {
@@ -53,6 +77,14 @@ pub fn api_router() -> Router<AppState> {
             "/boards/{board_id}/media",
             axum::routing::post(upload_media),
         )
+        .route(
+            "/boards/{board_id}/media/{filename}",
+            get(serve_media),
+        )
+        .route("/boards/{board_id}/file", get(serve_file))
+        .route("/boards/{board_id}/file-info", get(file_info))
+        .route("/boards/{board_id}/find-file", axum::routing::post(find_file))
+        .route("/boards/{board_id}/convert-path", axum::routing::post(convert_path))
         .route("/search", get(search))
         .route("/events", get(sse_events))
         .route("/status", get(status))
@@ -128,6 +160,7 @@ async fn get_board_columns(
             "title": board.title,
             "columns": columns,
             "version": version,
+            "fullBoard": board,
         })),
     ))
 }
@@ -345,6 +378,274 @@ async fn upload_media(
             "filename": final_name,
         })),
     ))
+}
+
+/// GET /boards/{board_id}/media/{filename} — serve a media file from the board's media folder.
+async fn serve_media(
+    State(state): State<AppState>,
+    Path((board_id, filename)): Path<(String, String)>,
+) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
+    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+    })?;
+
+    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let board_stem = board_path.file_stem().and_then(|s| s.to_str()).unwrap_or("board");
+    let media_dir = board_dir.join(format!("{}-Media", board_stem));
+    let file_path = media_dir.join(&filename);
+
+    // Prevent path traversal
+    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error: "Invalid filename".to_string() })));
+    }
+
+    let data = std::fs::read(&file_path).map_err(|_| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+    })?;
+
+    let content_type = match file_path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("pdf") => "application/pdf",
+        _ => "application/octet-stream",
+    };
+
+    let mut headers = HeaderMap::new();
+    headers.insert("content-type", content_type.parse().unwrap());
+    headers.insert("cache-control", "public, max-age=3600".parse().unwrap());
+
+    Ok((headers, data))
+}
+
+/// Resolve a file path relative to the board's directory, or as absolute if starts with /.
+fn resolve_board_file(state: &AppState, board_id: &str, file_path: &str) -> Result<PathBuf, (StatusCode, Json<ErrorResponse>)> {
+    let path = std::path::Path::new(file_path);
+    if path.is_absolute() {
+        let canonical = path.canonicalize().map_err(|_| {
+            (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+        })?;
+        return Ok(canonical);
+    }
+    let board_path = state.storage.get_board_path(board_id).ok_or_else(|| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+    })?;
+    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let resolved = board_dir.join(file_path);
+    resolved.canonicalize().map_err(|_| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+    })
+}
+
+fn content_type_for_ext(ext: Option<&str>) -> &'static str {
+    match ext {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mov") => "video/quicktime",
+        Some("mp3") => "audio/mpeg",
+        Some("wav") => "audio/wav",
+        Some("ogg") => "audio/ogg",
+        Some("pdf") => "application/pdf",
+        Some("json") => "application/json",
+        Some("csv") => "text/csv",
+        Some("txt") | Some("md") | Some("log") => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
+
+fn media_category(ext: Option<&str>) -> &'static str {
+    match ext {
+        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp") | Some("svg") | Some("bmp") | Some("ico") | Some("tiff") | Some("tif") => "image",
+        Some("mp4") | Some("webm") | Some("mov") | Some("avi") | Some("mkv") => "video",
+        Some("mp3") | Some("wav") | Some("ogg") | Some("flac") | Some("aac") | Some("m4a") => "audio",
+        Some("pdf") | Some("doc") | Some("docx") | Some("xls") | Some("xlsx") | Some("ppt") | Some("pptx") | Some("txt") | Some("md") | Some("csv") | Some("json") => "document",
+        _ => "unknown",
+    }
+}
+
+fn is_previewable(ext: Option<&str>) -> bool {
+    matches!(
+        ext,
+        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp") | Some("svg") | Some("bmp")
+        | Some("mp4") | Some("webm") | Some("mov")
+        | Some("mp3") | Some("wav") | Some("ogg")
+        | Some("pdf")
+    )
+}
+
+/// GET /boards/{board_id}/file?path=... — serve any file relative to the board directory.
+async fn serve_file(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Query(params): Query<FileQuery>,
+) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
+    let file_path = resolve_board_file(&state, &board_id, &params.path)?;
+    let data = std::fs::read(&file_path).map_err(|_| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+    })?;
+    let ext = file_path.extension().and_then(|e| e.to_str());
+    let ct = content_type_for_ext(ext);
+    let mut headers = HeaderMap::new();
+    headers.insert("content-type", ct.parse().unwrap());
+    headers.insert("cache-control", "public, max-age=3600".parse().unwrap());
+    if let Ok(meta) = std::fs::metadata(&file_path) {
+        if let Ok(modified) = meta.modified() {
+            if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
+                headers.insert("last-modified", dur.as_secs().to_string().parse().unwrap());
+            }
+        }
+        headers.insert("content-length", meta.len().to_string().parse().unwrap());
+    }
+    Ok((headers, data))
+}
+
+/// GET /boards/{board_id}/file-info?path=... — return metadata about a file.
+async fn file_info(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Query(params): Query<FileQuery>,
+) -> Json<serde_json::Value> {
+    let path = std::path::Path::new(&params.path);
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        let board_path = state.storage.get_board_path(&board_id);
+        let board_dir = board_path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        board_dir.join(&params.path)
+    };
+    let canonical = resolved.canonicalize();
+
+    let (exists, file_path) = match canonical {
+        Ok(p) => (true, Some(p)),
+        Err(_) => (false, None),
+    };
+
+    if !exists {
+        return Json(serde_json::json!({
+            "exists": false,
+            "path": params.path,
+            "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
+        }));
+    }
+
+    let fp = file_path.unwrap();
+    let ext = fp.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
+    let ext_ref = ext.as_deref();
+    let meta = std::fs::metadata(&fp).ok();
+    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+    let last_modified = meta
+        .as_ref()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    Json(serde_json::json!({
+        "exists": true,
+        "path": params.path,
+        "filename": fp.file_name().and_then(|s| s.to_str()).unwrap_or(""),
+        "extension": ext.as_deref().unwrap_or(""),
+        "size": size,
+        "lastModified": last_modified,
+        "mediaCategory": media_category(ext_ref),
+        "previewable": is_previewable(ext_ref),
+    }))
+}
+
+/// POST /boards/{board_id}/find-file — search for files matching a filename in the board dir tree.
+async fn find_file(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<FindFileBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+    })?;
+    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let target = body.filename.to_lowercase();
+    let mut matches = Vec::new();
+
+    fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize) {
+        if depth > 5 { return; }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, target, matches, depth + 1);
+            } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.to_lowercase().contains(target) {
+                    matches.push(path.to_string_lossy().to_string());
+                    if matches.len() >= 20 { return; }
+                }
+            }
+        }
+    }
+
+    walk(board_dir, &target, &mut matches, 0);
+
+    Ok(Json(serde_json::json!({
+        "query": body.filename,
+        "matches": matches,
+    })))
+}
+
+/// POST /boards/{board_id}/convert-path — convert a path between relative and absolute in a card.
+async fn convert_path(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<ConvertPathBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
+        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+    })?;
+    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    let new_path = if body.to == "absolute" {
+        let p = std::path::Path::new(&body.path);
+        if p.is_absolute() {
+            return Ok(Json(serde_json::json!({ "path": body.path, "changed": false })));
+        }
+        let abs = board_dir.join(&body.path).canonicalize().map_err(|_| {
+            (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Cannot resolve path".to_string() }))
+        })?;
+        abs.to_string_lossy().to_string()
+    } else {
+        // to relative
+        let p = std::path::Path::new(&body.path);
+        if !p.is_absolute() {
+            return Ok(Json(serde_json::json!({ "path": body.path, "changed": false })));
+        }
+        let canonical_board_dir = board_dir.canonicalize().unwrap_or_else(|_| board_dir.to_path_buf());
+        let canonical_file = p.canonicalize().map_err(|_| {
+            (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Cannot resolve path".to_string() }))
+        })?;
+        match canonical_file.strip_prefix(&canonical_board_dir) {
+            Ok(rel) => rel.to_string_lossy().to_string(),
+            Err(_) => {
+                return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse {
+                    error: "File is outside board directory".to_string(),
+                })));
+            }
+        }
+    };
+
+    Ok(Json(serde_json::json!({
+        "path": new_path,
+        "changed": true,
+    })))
 }
 
 /// Generate a unique filename by appending a counter if the file already exists.
