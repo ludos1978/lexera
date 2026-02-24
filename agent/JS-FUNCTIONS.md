@@ -379,9 +379,46 @@ if (!isEditing) {
 
 ---
 
+## packages/lexera-kanban/src/app.js - Standalone Kanban Dashboard
+
+- lexera_kanban_app-init - Initialize dashboard, setup search listener, start polling
+- lexera_kanban_app-poll - Poll backend for boards and connection status
+- lexera_kanban_app-setConnected - Update connection indicator state
+- lexera_kanban_app-renderBoardList - Render sidebar board list with DnD reordering and saved order
+- lexera_kanban_app-selectBoard - Select and load a board by ID
+- lexera_kanban_app-loadBoard - Fetch board column data from API and render
+- lexera_kanban_app-renderMainView - Render main view (board, search results, or empty state)
+- lexera_kanban_app-renderColumns - Render columns grouped by #stack tag with DnD reordering
+- lexera_kanban_app-submitCard - Submit new card to a column via API
+- lexera_kanban_app-hasStackTag - Check if column title contains #stack tag
+- lexera_kanban_app-stripStackTag - Remove #stack tag from title for display
+- lexera_kanban_app-buildColumnGroups - Group columns by #stack tag into column groups
+- lexera_kanban_app-getOrderedItems - Apply saved localStorage order to an array of items
+- lexera_kanban_app-saveOrder - Save item order to localStorage
+- lexera_kanban_app-reorderItems - Reorder array by moving source to target position (before/after)
+- lexera_kanban_app-reorderColumnGroups - Reorder column groups and persist to localStorage
+- lexera_kanban_app-reorderBoards - Reorder boards in sidebar and persist to localStorage
+- lexera_kanban_app-onSearchInput - Handle search input with debounce
+- lexera_kanban_app-performSearch - Execute search query via API
+- lexera_kanban_app-exitSearchMode - Exit search mode and restore board view
+- lexera_kanban_app-renderSearchResults - Render search results grouped by board
+- lexera_kanban_app-closeEmbedMenu - Close active embed context menu
+- lexera_kanban_app-showEmbedMenu - Show embed context menu with actions
+- lexera_kanban_app-handleEmbedAction - Handle embed menu action (refresh, info, open, path-fix, etc.)
+- lexera_kanban_app-openInSystem - Open file path in system application
+- lexera_kanban_app-showPathFixResults - Show path fix search results menu
+- lexera_kanban_app-formatFileSize - Format bytes to human-readable file size
+- lexera_kanban_app-getMediaCategory - Get media category from file extension
+- lexera_kanban_app-getFileExtension - Extract file extension from path
+- lexera_kanban_app-renderCardContent - Render card content as HTML with markdown support
+- lexera_kanban_app-renderInline - Render inline markdown (embeds, links, bold, italic, code, tags)
+- lexera_kanban_app-escapeHtml - Escape HTML special characters
+
+---
+
 ## Summary
 
-**Total JavaScript Files**: 33
+**Total JavaScript Files**: 34
 **Approximate Total Functions**: 200+
 
 ### Key JavaScript Modules:
