@@ -1,11 +1,26 @@
 ## Version 2
 
+- [ ] the file format should be changed to \                                                                
+  ---\                                                                                                  
+  yaml-header\                                                                                          
+  ---\                                                                                                  
+  # row name\                                                                                           
+  ## stack name\                                                                                        
+  ### column name\                                                                                      
+  - [ ] card name\                                                                                      
+    ...\                                                                                                
+  - [ ] ...\                                                                                            
+  \                                                                                                     
+  all of the elements should be moveable and foldable individuall. so a row can be folded, a stack can  
+  be folded and columns as well and cards. they can be dragged around and placed as needed. we will     
+  think about layout options for the groups later. currently rows are horizontally listed items,        
+  stacks are vertically listed items, column contain verticall listed items (the cards).
+
 - [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
 
-- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
+- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
 
 - [ ] when searching allow to limit seaches for l: links
-
 
 
 ## Version 1

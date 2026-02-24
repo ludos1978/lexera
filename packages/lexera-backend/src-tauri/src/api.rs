@@ -124,7 +124,7 @@ async fn get_board_columns(
     }
 
     let columns: Vec<serde_json::Value> = board
-        .columns
+        .all_columns()
         .iter()
         .enumerate()
         .filter(|(_, col)| !is_archived_or_deleted(&col.title))

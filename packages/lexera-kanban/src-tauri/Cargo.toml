@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 lexera-core = { path = "../../lexera-core" }
-tauri = { version = "2" }
+tauri = { version = "2", features = [] }
+opener = "0.7"
 
 [build-dependencies]
-tauri-build = { version = "2" }
+tauri-build = { version = "2", features = [] }

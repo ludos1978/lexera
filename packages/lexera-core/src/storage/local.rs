@@ -210,8 +210,9 @@ impl LocalStorage {
         // First pass: parse to detect include columns
         let preliminary = parser::parse_markdown(content);
 
-        // Check if any columns have includes
-        let has_includes = preliminary.columns.iter().any(|c| syntax::is_include(&c.title));
+        // Check if any columns have includes (check both formats)
+        let all_cols = preliminary.all_columns();
+        let has_includes = all_cols.iter().any(|c| syntax::is_include(&c.title));
 
         if !has_includes {
             // No includes — clean up map and return simple parse
@@ -221,8 +222,7 @@ impl LocalStorage {
 
         // Build include contents map by reading include files
         let mut include_contents = std::collections::HashMap::new();
-        let column_titles: Vec<(usize, &str)> = preliminary
-            .columns
+        let column_titles: Vec<(usize, &str)> = all_cols
             .iter()
             .enumerate()
             .map(|(i, c)| (i, c.title.as_str()))
@@ -350,7 +350,7 @@ impl BoardStorage for LocalStorage {
             .map(|(id, state)| {
                 let columns = state
                     .board
-                    .columns
+                    .all_columns()
                     .iter()
                     .enumerate()
                     .filter(|(_, col)| !is_archived_or_deleted(&col.title))
@@ -548,9 +548,8 @@ impl BoardStorage for LocalStorage {
         let mut results = Vec::new();
 
         for (board_id, state) in boards.iter() {
-            let visible_columns: Vec<_> = state
-                .board
-                .columns
+            let all_cols = state.board.all_columns();
+            let visible_columns: Vec<_> = all_cols
                 .iter()
                 .enumerate()
                 .filter(|(_, col)| !is_archived_or_deleted(&col.title))

@@ -85,6 +85,19 @@ const LexeraApi = (function () {
     });
   }
 
+  async function uploadMedia(boardId, file) {
+    var url = await discover();
+    if (!url) throw new Error('Backend not available');
+    var form = new FormData();
+    form.append('file', file, file.name);
+    var res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form });
+    if (!res.ok) {
+      var text = await res.text().catch(function () { return res.statusText; });
+      throw new Error(res.status + ': ' + text);
+    }
+    return res.json();
+  }
+
   function connectSSE(onEvent) {
     if (!baseUrl) return null;
     var es = new EventSource(baseUrl + '/events');
@@ -94,5 +107,5 @@ const LexeraApi = (function () {
     return es;
   }
 
-  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo };
+  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia };
 })();

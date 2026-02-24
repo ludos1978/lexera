@@ -223,7 +223,8 @@
       "Bash(cd /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/packages && cargo check --package lexera-core 2>&1)",
       "Bash(cargo check:*)",
       "WebFetch(domain:docs.rs)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "WebFetch(domain:crates.io)"
     ],
     "deny": [],
     "ask": []

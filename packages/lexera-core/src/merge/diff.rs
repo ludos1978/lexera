@@ -151,6 +151,7 @@ mod tests {
                     include_source: None,
                 })
                 .collect(),
+            rows: Vec::new(),
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,

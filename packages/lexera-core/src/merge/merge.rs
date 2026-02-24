@@ -248,6 +248,7 @@ pub fn three_way_merge(
         valid: ours.valid,
         title: ours.title.clone(),
         columns: merged_columns,
+        rows: ours.rows.clone(),
         yaml_header: ours.yaml_header.clone(),
         kanban_footer: ours.kanban_footer.clone(),
         board_settings: ours.board_settings.clone(),
@@ -296,6 +297,7 @@ mod tests {
                     include_source: None,
                 })
                 .collect(),
+            rows: Vec::new(),
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,

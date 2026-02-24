@@ -40,6 +40,22 @@ pub struct KanbanColumn {
     pub include_source: Option<IncludeSource>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanStack {
+    pub id: String,
+    pub title: String,
+    pub columns: Vec<KanbanColumn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KanbanRow {
+    pub id: String,
+    pub title: String,
+    pub stacks: Vec<KanbanStack>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardSettings {
@@ -85,10 +101,40 @@ pub struct KanbanBoard {
     pub valid: bool,
     pub title: String,
     pub columns: Vec<KanbanColumn>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rows: Vec<KanbanRow>,
     pub yaml_header: Option<String>,
     pub kanban_footer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_settings: Option<BoardSettings>,
+}
+
+impl KanbanBoard {
+    /// Get all columns from the board, regardless of format.
+    /// For new format: flattens rows→stacks→columns.
+    /// For legacy format: returns columns directly.
+    pub fn all_columns(&self) -> Vec<&KanbanColumn> {
+        if !self.rows.is_empty() {
+            self.rows.iter()
+                .flat_map(|row| row.stacks.iter())
+                .flat_map(|stack| stack.columns.iter())
+                .collect()
+        } else {
+            self.columns.iter().collect()
+        }
+    }
+
+    /// Get a mutable reference to all columns, regardless of format.
+    pub fn all_columns_mut(&mut self) -> Vec<&mut KanbanColumn> {
+        if !self.rows.is_empty() {
+            self.rows.iter_mut()
+                .flat_map(|row| row.stacks.iter_mut())
+                .flat_map(|stack| stack.columns.iter_mut())
+                .collect()
+        } else {
+            self.columns.iter_mut().collect()
+        }
+    }
 }
 
 /// Summary info for a board in list responses.

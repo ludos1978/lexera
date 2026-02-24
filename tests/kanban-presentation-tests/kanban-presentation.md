@@ -21,11 +21,17 @@ boardColorLight: #f5f5ff
   
 - [ ] #idea
   
+- [ ] asdf
 - [ ] - a
   - b
   
   - c
-- [ ] asdf
+- [ ] tself the list only shows it's own columns. the columns should accept drops from other boards, external drops etc. when dropped on columns it adds them at the end, when dropped over a kanban board it create a column named "Incoming" which is another category of the kin
+  
+  
+  - [ ] If an column is in the "Park" (or Trash or Archive) on hover it shows the columns within it, wh
+- [ ] ![clipboard-1771930244977.png](kanban-presentation-Media/clipboard-1771930244977.png)
+- [ ] ![clipboard-1771932416797.png](kanban-presentation-Media/clipboard-1771932416797.png)
 
 ## # Heading 1 in Columntitle #footer #header #stack
 - [ ] ## Heading 2 in Tasktitle #exclude

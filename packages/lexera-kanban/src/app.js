@@ -17,6 +17,11 @@ const LexeraDashboard = (function () {
   var isEditing = false;
   var pendingRefresh = false;
   var eventSource = null;
+  var lastSaveTime = 0;
+  var SAVE_DEBOUNCE_MS = 2000;
+  var undoStack = [];
+  var redoStack = [];
+  var MAX_UNDO = 30;
 
   // DOM refs
   const $boardList = document.getElementById('board-list');
@@ -74,6 +79,12 @@ const LexeraDashboard = (function () {
     try { return JSON.parse(saved); } catch (e) { return []; }
   }
 
+  function getFoldedItems(boardId, kind) {
+    var saved = localStorage.getItem('lexera-' + kind + '-fold:' + boardId);
+    if (!saved) return [];
+    try { return JSON.parse(saved); } catch (e) { return []; }
+  }
+
   function saveFoldState(boardId) {
     var folded = [];
     var cols = $columnsContainer.querySelectorAll('.column[data-col-title]');
@@ -83,6 +94,25 @@ const LexeraDashboard = (function () {
       }
     }
     localStorage.setItem('lexera-col-fold:' + boardId, JSON.stringify(folded));
+
+    // Also save row/stack fold states for new format
+    var rowFolded = [];
+    var rows = $columnsContainer.querySelectorAll('.board-row[data-row-title]');
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].classList.contains('folded')) {
+        rowFolded.push(rows[i].getAttribute('data-row-title'));
+      }
+    }
+    localStorage.setItem('lexera-row-fold:' + boardId, JSON.stringify(rowFolded));
+
+    var stackFolded = [];
+    var stacks = $columnsContainer.querySelectorAll('.board-stack[data-stack-title]');
+    for (var i = 0; i < stacks.length; i++) {
+      if (stacks[i].classList.contains('folded')) {
+        stackFolded.push(stacks[i].getAttribute('data-stack-title'));
+      }
+    }
+    localStorage.setItem('lexera-stack-fold:' + boardId, JSON.stringify(stackFolded));
   }
 
   function reorderItems(items, sourceIdx, targetIdx, insertBefore) {
@@ -128,6 +158,33 @@ const LexeraDashboard = (function () {
     });
 
     document.addEventListener('keydown', handleKeyNavigation);
+
+    // External file drop on columns container
+    $columnsContainer.addEventListener('dragover', function (e) {
+      if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    });
+    $columnsContainer.addEventListener('drop', function (e) {
+      if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+      if (!activeBoardId) return;
+      e.preventDefault();
+      handleFileDrop(e.dataTransfer.files, e.target);
+    });
+
+    // Clipboard paste for images
+    document.addEventListener('paste', function (e) {
+      if (!activeBoardId || isEditing) return;
+      if (!e.clipboardData || !e.clipboardData.files || e.clipboardData.files.length === 0) return;
+      var hasImage = false;
+      for (var i = 0; i < e.clipboardData.files.length; i++) {
+        if (e.clipboardData.files[i].type.indexOf('image/') === 0) { hasImage = true; break; }
+      }
+      if (!hasImage) return;
+      e.preventDefault();
+      handleFileDrop(e.clipboardData.files, null);
+    });
 
     poll();
     pollInterval = setInterval(poll, 5000);
@@ -231,10 +288,11 @@ const LexeraDashboard = (function () {
   function handleSSEEvent(event) {
     if (!activeBoardId || searchMode) return;
     var kind = event.kind || event.type || '';
-    // Check if event is for our active board
     var boardId = event.board_id || event.boardId || '';
     if (boardId && boardId !== activeBoardId) return;
     if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
+      // Skip reloads caused by our own saves
+      if (Date.now() - lastSaveTime < SAVE_DEBOUNCE_MS) return;
       if (isEditing) {
         pendingRefresh = true;
       } else {
@@ -373,9 +431,45 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function isNewFormat() {
+    return fullBoardData && fullBoardData.rows && fullBoardData.rows.length > 0;
+  }
+
+  /**
+   * Get a flat list of all columns from fullBoardData, regardless of format.
+   * For new format: walks rows→stacks→columns.
+   * For legacy: returns fullBoardData.columns directly.
+   */
+  function getAllFullColumns() {
+    if (isNewFormat()) {
+      var cols = [];
+      for (var r = 0; r < fullBoardData.rows.length; r++) {
+        var row = fullBoardData.rows[r];
+        for (var s = 0; s < row.stacks.length; s++) {
+          var stack = row.stacks[s];
+          for (var c = 0; c < stack.columns.length; c++) {
+            cols.push(stack.columns[c]);
+          }
+        }
+      }
+      return cols;
+    }
+    return fullBoardData.columns;
+  }
+
+  /**
+   * Get the column at flat index from fullBoardData (either format).
+   */
+  function getFullColumn(flatIndex) {
+    var cols = getAllFullColumns();
+    return (flatIndex >= 0 && flatIndex < cols.length) ? cols[flatIndex] : null;
+  }
+
   function updateDisplayFromFullBoard() {
     if (!fullBoardData || !activeBoardData) return;
-    var columns = fullBoardData.columns
+
+    var allCols = getAllFullColumns();
+    var columns = allCols
       .map(function (col, index) {
         if (is_archived_or_deleted(col.title)) return null;
         var cards = col.cards.filter(function (c) { return !is_archived_or_deleted(c.content); });
@@ -383,6 +477,30 @@ const LexeraDashboard = (function () {
       })
       .filter(function (c) { return c !== null; });
     activeBoardData.columns = columns;
+
+    // Build filtered rows hierarchy for new format rendering
+    if (isNewFormat()) {
+      activeBoardData.rows = fullBoardData.rows
+        .map(function (row) {
+          var stacks = row.stacks
+            .map(function (stack) {
+              var cols = stack.columns
+                .filter(function (col) { return !is_archived_or_deleted(col.title); })
+                .map(function (col) {
+                  var cards = col.cards.filter(function (c) { return !is_archived_or_deleted(c.content); });
+                  // Find this column's flat index
+                  var flatIdx = allCols.indexOf(col);
+                  return { index: flatIdx, title: col.title, cards: cards };
+                });
+              return { id: stack.id, title: stack.title, columns: cols };
+            })
+            .filter(function (stack) { return stack.columns.length > 0; });
+          return { id: row.id, title: row.title, stacks: stacks };
+        })
+        .filter(function (row) { return row.stacks.length > 0; });
+    } else {
+      activeBoardData.rows = [];
+    }
   }
 
   function is_archived_or_deleted(text) {
@@ -391,10 +509,8 @@ const LexeraDashboard = (function () {
 
   function findColumnTitleByIndex(index) {
     if (!fullBoardData) return null;
-    if (index >= 0 && index < fullBoardData.columns.length) {
-      return fullBoardData.columns[index].title;
-    }
-    return null;
+    var col = getFullColumn(index);
+    return col ? col.title : null;
   }
 
   // --- Main View ---
@@ -419,22 +535,485 @@ const LexeraDashboard = (function () {
 
     $emptyState.classList.add('hidden');
     $boardHeader.classList.remove('hidden');
-    $boardHeader.textContent = activeBoardData.title || 'Untitled';
+    renderBoardHeader();
     $columnsContainer.classList.remove('hidden');
     applyBoardSettings();
     renderColumns();
   }
 
+  function renderBoardHeader() {
+    var title = activeBoardData ? (activeBoardData.title || 'Untitled') : '';
+    var parkedCount = getParkedCount();
+    var html = '<span class="board-header-title">' + escapeHtml(title) + '</span>';
+    html += '<span id="saving-indicator" class="saving-indicator">Saving...</span>';
+    html += '<div class="board-header-actions">';
+    if (parkedCount > 0) {
+      html += '<button class="board-action-btn has-items" id="btn-parked" title="Show parked items">Parked (' + parkedCount + ')</button>';
+    }
+    html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold All</button>';
+    html += '<button class="board-action-btn" id="btn-settings" title="Board settings">Settings</button>';
+    html += '</div>';
+    $boardHeader.innerHTML = html;
+
+    var foldBtn = document.getElementById('btn-fold-all');
+    if (foldBtn) {
+      foldBtn.addEventListener('click', function () {
+        toggleFoldAll();
+      });
+    }
+    var parkedBtn = document.getElementById('btn-parked');
+    if (parkedBtn) {
+      parkedBtn.addEventListener('click', function () {
+        showParkedItems();
+      });
+    }
+    var settingsBtn = document.getElementById('btn-settings');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', function () {
+        showBoardSettingsDialog();
+      });
+    }
+  }
+
+  function getParkedCount() {
+    if (!fullBoardData) return 0;
+    var count = 0;
+    var allCols = getAllFullColumns();
+    for (var i = 0; i < allCols.length; i++) {
+      var col = allCols[i];
+      for (var j = 0; j < col.cards.length; j++) {
+        if (col.cards[j].content.indexOf('#hidden-internal-parked') !== -1) count++;
+      }
+    }
+    return count;
+  }
+
+  function toggleFoldAll() {
+    var foldables = $columnsContainer.querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
+    var allFolded = true;
+    for (var i = 0; i < foldables.length; i++) {
+      if (!foldables[i].classList.contains('folded')) { allFolded = false; break; }
+    }
+    for (var i = 0; i < foldables.length; i++) {
+      if (allFolded) {
+        foldables[i].classList.remove('folded');
+      } else {
+        foldables[i].classList.add('folded');
+      }
+    }
+    saveFoldState(activeBoardId);
+    var foldBtn = document.getElementById('btn-fold-all');
+    if (foldBtn) foldBtn.textContent = allFolded ? 'Fold All' : 'Unfold All';
+  }
+
+  function showParkedItems() {
+    if (!fullBoardData || !activeBoardId) return;
+    var parked = [];
+    var allCols = getAllFullColumns();
+    for (var i = 0; i < allCols.length; i++) {
+      var col = allCols[i];
+      for (var j = 0; j < col.cards.length; j++) {
+        var card = col.cards[j];
+        if (card.content.indexOf('#hidden-internal-parked') !== -1) {
+          parked.push({ colIndex: i, cardIndex: j, card: card, colTitle: col.title });
+        }
+      }
+    }
+    if (parked.length === 0) return;
+    showParkedDialog(parked);
+  }
+
+  function showParkedDialog(parkedItems) {
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'modal-dialog';
+    var html = '<div class="modal-title">Parked Items (' + parkedItems.length + ')</div>';
+    for (var i = 0; i < parkedItems.length; i++) {
+      var item = parkedItems[i];
+      var displayContent = item.card.content.replace(/#hidden-internal-parked/g, '').trim();
+      var firstLine = displayContent.split('\n')[0];
+      html += '<div class="parked-item" data-idx="' + i + '">';
+      html += '<div class="parked-item-content">' + escapeHtml(firstLine) + '</div>';
+      html += '<div class="parked-item-col">' + escapeHtml(item.colTitle) + '</div>';
+      html += '<button class="board-action-btn" data-unpark="' + i + '">Unpark</button>';
+      html += '</div>';
+    }
+    html += '<div style="text-align:center;margin-top:12px"><button class="board-action-btn" id="close-parked">Close</button></div>';
+    dialog.innerHTML = html;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay || e.target.id === 'close-parked') {
+        overlay.remove();
+        return;
+      }
+      var unparkBtn = e.target.closest('[data-unpark]');
+      if (unparkBtn) {
+        var idx = parseInt(unparkBtn.getAttribute('data-unpark'), 10);
+        var item = parkedItems[idx];
+        unparkCard(item.colIndex, item.cardIndex);
+        overlay.remove();
+      }
+    });
+  }
+
+  async function unparkCard(colIndex, fullCardIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    pushUndo();
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var card = col.cards[fullCardIndex];
+    if (!card) return;
+    card.content = card.content.replace(/\s*#hidden-internal-parked/g, '');
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderMainView();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  function showBoardSettingsDialog() {
+    if (!fullBoardData) return;
+    var s = fullBoardData.boardSettings || {};
+    var fields = [
+      { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
+      { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
+      { key: 'fontFamily', label: 'Font Family', placeholder: 'inherit', type: 'text' },
+      { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
+      { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
+      { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
+      { key: 'boardColor', label: 'Board Color', placeholder: '#1e1e1e', type: 'text' },
+      { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
+      { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
+      { key: 'stickyStackMode', label: 'Sticky Headers', placeholder: '', type: 'select', options: ['', 'column'] },
+      { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
+      { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'enabled', 'disabled'] }
+    ];
+
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    var html = '<div class="dialog-title">Board Settings</div>';
+
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      var val = s[f.key] != null ? s[f.key] : '';
+      html += '<div class="dialog-field">';
+      html += '<label class="dialog-label">' + escapeHtml(f.label) + '</label>';
+      if (f.type === 'select') {
+        html += '<select class="dialog-input" data-setting="' + f.key + '">';
+        for (var j = 0; j < f.options.length; j++) {
+          var opt = f.options[j];
+          var selected = (String(val) === opt) ? ' selected' : '';
+          html += '<option value="' + escapeHtml(opt) + '"' + selected + '>' + (opt || '(default)') + '</option>';
+        }
+        html += '</select>';
+      } else {
+        html += '<input class="dialog-input" type="' + f.type + '" data-setting="' + f.key + '" value="' + escapeAttr(String(val)) + '" placeholder="' + escapeAttr(f.placeholder) + '">';
+      }
+      html += '</div>';
+    }
+
+    html += '<div class="dialog-actions">';
+    html += '<button class="btn-small btn-cancel" id="settings-cancel">Cancel</button>';
+    html += '<button class="btn-small btn-primary" id="settings-save">Save</button>';
+    html += '</div>';
+
+    dialog.innerHTML = html;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+    document.getElementById('settings-cancel').addEventListener('click', function () {
+      overlay.remove();
+    });
+    document.getElementById('settings-save').addEventListener('click', function () {
+      pushUndo();
+      if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
+      var inputs = dialog.querySelectorAll('[data-setting]');
+      for (var k = 0; k < inputs.length; k++) {
+        var key = inputs[k].getAttribute('data-setting');
+        var value = inputs[k].value.trim();
+        if (value === '') {
+          fullBoardData.boardSettings[key] = null;
+        } else if (inputs[k].type === 'number' && value) {
+          fullBoardData.boardSettings[key] = parseInt(value, 10);
+        } else {
+          fullBoardData.boardSettings[key] = value;
+        }
+      }
+      saveFullBoard();
+      applyBoardSettings();
+      renderColumns();
+      overlay.remove();
+    });
+
+    var firstInput = dialog.querySelector('.dialog-input');
+    if (firstInput) firstInput.focus();
+  }
+
+  var savingTimeout = null;
+  function showSaving() {
+    var el = document.getElementById('saving-indicator');
+    if (el) el.classList.add('visible');
+    clearTimeout(savingTimeout);
+  }
+  function hideSaving() {
+    clearTimeout(savingTimeout);
+    savingTimeout = setTimeout(function () {
+      var el = document.getElementById('saving-indicator');
+      if (el) el.classList.remove('visible');
+    }, 500);
+  }
+
+  async function saveFullBoard() {
+    showSaving();
+    lastSaveTime = Date.now();
+    try {
+      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+    } finally {
+      hideSaving();
+    }
+  }
+
+  function pushUndo() {
+    if (!fullBoardData) return;
+    undoStack.push(JSON.stringify(fullBoardData));
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    redoStack = [];
+  }
+
+  async function undo() {
+    if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
+    redoStack.push(JSON.stringify(fullBoardData));
+    fullBoardData = JSON.parse(undoStack.pop());
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function redo() {
+    if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
+    undoStack.push(JSON.stringify(fullBoardData));
+    fullBoardData = JSON.parse(redoStack.pop());
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', function (e) {
+    // Undo: Ctrl/Cmd+Z
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    // Redo: Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey) || (e.key === 'Z' && e.shiftKey))) {
+      e.preventDefault();
+      redo();
+      return;
+    }
+  });
+
   function applyBoardSettings() {
-    // Reset custom properties
-    $columnsContainer.style.removeProperty('--board-column-width');
-    $columnsContainer.style.removeProperty('--board-font-size');
-    $columnsContainer.style.removeProperty('--board-color');
+    var cssProps = [
+      '--board-column-width', '--board-font-size', '--board-font-family',
+      '--board-color', '--board-color-dark', '--board-color-light',
+      '--board-row-height', '--board-max-row-height', '--board-card-min-height',
+      '--board-whitespace'
+    ];
+    for (var i = 0; i < cssProps.length; i++) {
+      $columnsContainer.style.removeProperty(cssProps[i]);
+    }
+    // Reset class-based settings
+    $columnsContainer.classList.remove('tag-visibility-hide', 'tag-visibility-dim');
+    $columnsContainer.classList.remove('sticky-headers');
+    $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
+    $columnsContainer.classList.remove('focus-scroll-mode');
+
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
     if (s.columnWidth) $columnsContainer.style.setProperty('--board-column-width', s.columnWidth);
     if (s.fontSize) $columnsContainer.style.setProperty('--board-font-size', s.fontSize);
+    if (s.fontFamily) $columnsContainer.style.setProperty('--board-font-family', s.fontFamily);
     if (s.boardColor) $columnsContainer.style.setProperty('--board-color', s.boardColor);
+    if (s.boardColorDark) $columnsContainer.style.setProperty('--board-color-dark', s.boardColorDark);
+    if (s.boardColorLight) $columnsContainer.style.setProperty('--board-color-light', s.boardColorLight);
+    if (s.rowHeight) $columnsContainer.style.setProperty('--board-row-height', s.rowHeight);
+    if (s.maxRowHeight) $columnsContainer.style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
+    if (s.cardMinHeight) $columnsContainer.style.setProperty('--board-card-min-height', s.cardMinHeight);
+    if (s.whitespace) $columnsContainer.style.setProperty('--board-whitespace', s.whitespace);
+    if (s.tagVisibility === 'hide') $columnsContainer.classList.add('tag-visibility-hide');
+    if (s.tagVisibility === 'dim') $columnsContainer.classList.add('tag-visibility-dim');
+    if (s.stickyStackMode) $columnsContainer.classList.add('sticky-headers');
+    if (s.htmlCommentRenderMode === 'hide') $columnsContainer.classList.add('html-comments-hide');
+    if (s.htmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
+    if (s.arrowKeyFocusScroll === 'enabled') $columnsContainer.classList.add('focus-scroll-mode');
+  }
+
+  /**
+   * Build a single column element (header, cards, footer) — shared by both formats.
+   */
+  function buildColumnElement(col, foldedCols, collapsedCards, parentDragEl) {
+    var displayTitle = stripStackTag(col.title);
+
+    var colEl = document.createElement('div');
+    colEl.className = 'column';
+    colEl.setAttribute('data-col-title', col.title);
+    if (foldedCols.indexOf(col.title) !== -1) {
+      colEl.classList.add('folded');
+    }
+
+    var header = document.createElement('div');
+    header.className = 'column-header';
+    header.innerHTML =
+      '<span class="column-title">' + escapeHtml(displayTitle) + '</span>' +
+      '<span class="column-count">' + col.cards.length + '</span>' +
+      '<button class="column-menu-btn" title="Column options">&#8942;</button>';
+    (function (columnEl, dragEl, colIdx) {
+      header.addEventListener('click', function (e) {
+        if (e.target.classList.contains('column-menu-btn')) return;
+        e.stopPropagation();
+        columnEl.classList.toggle('folded');
+        saveFoldState(activeBoardId);
+      });
+      header.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showColumnContextMenu(e.clientX, e.clientY, colIdx);
+      });
+      header.querySelector('.column-menu-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rect = this.getBoundingClientRect();
+        showColumnContextMenu(rect.right, rect.bottom, colIdx);
+      });
+      if (dragEl) {
+        header.addEventListener('mousedown', function (e) {
+          if (e.target.classList.contains('column-menu-btn')) return;
+          dragEl.draggable = true;
+        });
+        header.addEventListener('mouseup', function () {
+          dragEl.draggable = false;
+        });
+      }
+      header.querySelector('.column-title').addEventListener('dblclick', function (e) {
+        e.stopPropagation();
+        enterColumnRename(columnEl, colIdx);
+      });
+    })(colEl, parentDragEl, col.index);
+    colEl.appendChild(header);
+
+    var cardsEl = document.createElement('div');
+    cardsEl.className = 'column-cards';
+    cardsEl.setAttribute('data-col-index', col.index.toString());
+    for (var j = 0; j < col.cards.length; j++) {
+      var card = col.cards[j];
+      var cardEl = document.createElement('div');
+      cardEl.className = 'card' + (card.checked ? ' checked' : '');
+      cardEl.setAttribute('data-col-index', col.index.toString());
+      cardEl.setAttribute('data-card-index', j.toString());
+      cardEl.setAttribute('data-card-id', card.id);
+      var firstTag = getFirstTag(card.content);
+      if (firstTag) cardEl.style.borderLeftColor = getTagColor(firstTag);
+      if (collapsedCards.indexOf(card.id) !== -1) cardEl.classList.add('collapsed');
+      var toggle = document.createElement('span');
+      toggle.className = 'card-collapse-toggle';
+      toggle.textContent = cardEl.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
+      (function (toggleEl, el) {
+        toggleEl.addEventListener('click', function (e) {
+          e.stopPropagation();
+          el.classList.toggle('collapsed');
+          toggleEl.textContent = el.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
+          saveCardCollapseState(activeBoardId);
+        });
+      })(toggle, cardEl);
+      cardEl.innerHTML = renderCardContent(card.content, activeBoardId);
+      cardEl.insertBefore(toggle, cardEl.firstChild);
+      (function (el, ci, cj) {
+        el.addEventListener('dblclick', function (e) {
+          if (e.target.classList.contains('card-checkbox')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          enterCardEditMode(el, ci, cj);
+        });
+        el.addEventListener('contextmenu', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          showCardContextMenu(e.clientX, e.clientY, ci, cj);
+        });
+        el.addEventListener('change', function (e) {
+          if (!e.target.classList.contains('card-checkbox')) return;
+          e.stopPropagation();
+          toggleCheckbox(ci, cj, parseInt(e.target.getAttribute('data-line'), 10), e.target.checked);
+        });
+      })(cardEl, col.index, j);
+      cardsEl.appendChild(cardEl);
+    }
+    colEl.appendChild(cardsEl);
+
+    var footer = document.createElement('div');
+    footer.className = 'column-footer';
+
+    if (addCardColumn === col.index) {
+      footer.innerHTML =
+        '<textarea class="add-card-input" placeholder="Card content..." autofocus></textarea>' +
+        '<div class="add-card-actions">' +
+        '<button class="btn-small btn-primary add-card-submit">Add</button>' +
+        '<button class="btn-small btn-cancel add-card-cancel">Cancel</button>' +
+        '</div>';
+
+      (function (colIndex) {
+        var textarea = footer.querySelector('.add-card-input');
+        footer.querySelector('.add-card-submit').addEventListener('click', function () {
+          submitCard(colIndex, textarea.value);
+        });
+        footer.querySelector('.add-card-cancel').addEventListener('click', function () {
+          addCardColumn = null;
+          renderColumns();
+        });
+        textarea.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            submitCard(colIndex, textarea.value);
+          }
+          if (e.key === 'Escape') {
+            addCardColumn = null;
+            renderColumns();
+          }
+        });
+        requestAnimationFrame(function () { textarea.focus(); });
+      })(col.index);
+    } else {
+      var btn = document.createElement('button');
+      btn.className = 'add-card-btn';
+      btn.textContent = '+ Add card';
+      (function (colIndex) {
+        btn.addEventListener('click', function () {
+          addCardColumn = colIndex;
+          renderColumns();
+        });
+      })(col.index);
+      footer.appendChild(btn);
+    }
+
+    colEl.appendChild(footer);
+    return colEl;
   }
 
   function renderColumns() {
@@ -442,139 +1021,32 @@ const LexeraDashboard = (function () {
     $columnsContainer.innerHTML = '';
     if (!activeBoardData) return;
 
+    if (activeBoardData.rows && activeBoardData.rows.length > 0) {
+      renderNewFormatBoard();
+    } else {
+      renderLegacyColumns();
+    }
+  }
+
+  /**
+   * Render legacy flat-column format with column groups (#stack tags).
+   */
+  function renderLegacyColumns() {
+    $columnsContainer.classList.remove('new-format');
     var columns = getOrderedItems(activeBoardData.columns, 'lexera-col-order:' + activeBoardId, function (c) { return c.title; });
     var groups = buildColumnGroups(columns);
+    var foldedCols = getFoldedColumns(activeBoardId);
+    var collapsedCards = getCollapsedCards(activeBoardId);
 
     for (var g = 0; g < groups.length; g++) {
       var group = groups[g];
       var groupEl = document.createElement('div');
       groupEl.className = 'column-group';
-      groupEl.draggable = true;
       groupEl.setAttribute('data-group-index', g.toString());
-
-      var foldedCols = getFoldedColumns(activeBoardId);
 
       for (var c = 0; c < group.columns.length; c++) {
         var col = group.columns[c];
-        var displayTitle = stripStackTag(col.title);
-
-        var colEl = document.createElement('div');
-        colEl.className = 'column';
-        colEl.setAttribute('data-col-title', col.title);
-        if (foldedCols.indexOf(col.title) !== -1) {
-          colEl.classList.add('folded');
-        }
-
-        var header = document.createElement('div');
-        header.className = 'column-header';
-        header.innerHTML =
-          '<span>' + escapeHtml(displayTitle) + '</span>' +
-          '<span class="column-count">' + col.cards.length + '</span>';
-        (function (columnEl) {
-          header.addEventListener('click', function (e) {
-            e.stopPropagation();
-            columnEl.classList.toggle('folded');
-            saveFoldState(activeBoardId);
-          });
-        })(colEl);
-        colEl.appendChild(header);
-
-        var cardsEl = document.createElement('div');
-        cardsEl.className = 'column-cards';
-        cardsEl.setAttribute('data-col-index', col.index.toString());
-        var collapsedCards = getCollapsedCards(activeBoardId);
-        for (var j = 0; j < col.cards.length; j++) {
-          var card = col.cards[j];
-          var cardEl = document.createElement('div');
-          cardEl.className = 'card' + (card.checked ? ' checked' : '');
-          cardEl.draggable = true;
-          cardEl.setAttribute('data-col-index', col.index.toString());
-          cardEl.setAttribute('data-card-index', j.toString());
-          cardEl.setAttribute('data-card-id', card.id);
-          var firstTag = getFirstTag(card.content);
-          if (firstTag) cardEl.style.borderLeftColor = getTagColor(firstTag);
-          if (collapsedCards.indexOf(card.id) !== -1) cardEl.classList.add('collapsed');
-          var toggle = document.createElement('span');
-          toggle.className = 'card-collapse-toggle';
-          toggle.textContent = cardEl.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
-          (function (toggleEl, el) {
-            toggleEl.addEventListener('click', function (e) {
-              e.stopPropagation();
-              el.classList.toggle('collapsed');
-              toggleEl.textContent = el.classList.contains('collapsed') ? '\u25B8' : '\u25BE';
-              saveCardCollapseState(activeBoardId);
-            });
-          })(toggle, cardEl);
-          cardEl.innerHTML = renderCardContent(card.content, activeBoardId);
-          cardEl.insertBefore(toggle, cardEl.firstChild);
-          (function (el, ci, cj) {
-            el.addEventListener('dblclick', function (e) {
-              if (e.target.classList.contains('card-checkbox')) return;
-              e.preventDefault();
-              e.stopPropagation();
-              enterCardEditMode(el, ci, cj);
-            });
-            el.addEventListener('contextmenu', function (e) {
-              e.preventDefault();
-              e.stopPropagation();
-              showCardContextMenu(e.clientX, e.clientY, ci, cj);
-            });
-            el.addEventListener('change', function (e) {
-              if (!e.target.classList.contains('card-checkbox')) return;
-              e.stopPropagation();
-              toggleCheckbox(ci, cj, parseInt(e.target.getAttribute('data-line'), 10), e.target.checked);
-            });
-          })(cardEl, col.index, j);
-          cardsEl.appendChild(cardEl);
-        }
-        setupCardDnD(cardsEl, col.index);
-        colEl.appendChild(cardsEl);
-
-        var footer = document.createElement('div');
-        footer.className = 'column-footer';
-
-        if (addCardColumn === col.index) {
-          footer.innerHTML =
-            '<textarea class="add-card-input" placeholder="Card content..." autofocus></textarea>' +
-            '<div class="add-card-actions">' +
-            '<button class="btn-small btn-primary add-card-submit">Add</button>' +
-            '<button class="btn-small btn-cancel add-card-cancel">Cancel</button>' +
-            '</div>';
-
-          (function (colIndex) {
-            var textarea = footer.querySelector('.add-card-input');
-            footer.querySelector('.add-card-submit').addEventListener('click', function () {
-              submitCard(colIndex, textarea.value);
-            });
-            footer.querySelector('.add-card-cancel').addEventListener('click', function () {
-              addCardColumn = null;
-              renderColumns();
-            });
-            textarea.addEventListener('keydown', function (e) {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                submitCard(colIndex, textarea.value);
-              }
-              if (e.key === 'Escape') {
-                addCardColumn = null;
-                renderColumns();
-              }
-            });
-            requestAnimationFrame(function () { textarea.focus(); });
-          })(col.index);
-        } else {
-          var btn = document.createElement('button');
-          btn.className = 'add-card-btn';
-          btn.textContent = '+ Add card';
-          (function (colIndex) {
-            btn.addEventListener('click', function () {
-              addCardColumn = colIndex;
-              renderColumns();
-            });
-          })(col.index);
-          footer.appendChild(btn);
-        }
-
-        colEl.appendChild(footer);
+        var colEl = buildColumnElement(col, foldedCols, collapsedCards, groupEl);
         groupEl.appendChild(colEl);
       }
 
@@ -617,6 +1089,7 @@ const LexeraDashboard = (function () {
 
         groupEl.addEventListener('dragend', function () {
           this.classList.remove('dragging');
+          this.draggable = false;
           var allGroups = $columnsContainer.querySelectorAll('.column-group');
           for (var k = 0; k < allGroups.length; k++) {
             allGroups[k].classList.remove('drag-over-left', 'drag-over-right');
@@ -626,6 +1099,513 @@ const LexeraDashboard = (function () {
       })(g);
 
       $columnsContainer.appendChild(groupEl);
+    }
+  }
+
+  /**
+   * Render new-format board with rows → stacks → columns hierarchy.
+   */
+  function renderNewFormatBoard() {
+    $columnsContainer.classList.add('new-format');
+    var rows = activeBoardData.rows;
+    var foldedCols = getFoldedColumns(activeBoardId);
+    var foldedRows = getFoldedItems(activeBoardId, 'row');
+    var foldedStacks = getFoldedItems(activeBoardId, 'stack');
+    var collapsedCards = getCollapsedCards(activeBoardId);
+
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var rowEl = document.createElement('div');
+      rowEl.className = 'board-row';
+      rowEl.setAttribute('data-row-title', row.title);
+      rowEl.setAttribute('data-row-index', r.toString());
+      if (foldedRows.indexOf(row.title) !== -1) {
+        rowEl.classList.add('folded');
+      }
+
+      // Row header
+      var rowHeader = document.createElement('div');
+      rowHeader.className = 'board-row-header';
+      var totalCards = 0;
+      for (var si = 0; si < row.stacks.length; si++) {
+        for (var ci = 0; ci < row.stacks[si].columns.length; ci++) {
+          totalCards += row.stacks[si].columns[ci].cards.length;
+        }
+      }
+      rowHeader.innerHTML =
+        '<span class="board-row-title">' + escapeHtml(row.title) + '</span>' +
+        '<span class="board-row-count">' + totalCards + '</span>';
+      (function (el, rowIdx) {
+        rowHeader.addEventListener('click', function (e) {
+          if (e.target.closest('button')) return;
+          e.stopPropagation();
+          el.classList.toggle('folded');
+          saveFoldState(activeBoardId);
+        });
+        rowHeader.addEventListener('contextmenu', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          showRowContextMenu(e.clientX, e.clientY, rowIdx);
+        });
+        // Row drag handle
+        rowHeader.addEventListener('mousedown', function (e) {
+          if (e.target.closest('button')) return;
+          el.draggable = true;
+        });
+        rowHeader.addEventListener('mouseup', function () {
+          el.draggable = false;
+        });
+      })(rowEl, r);
+      rowEl.appendChild(rowHeader);
+
+      // Row DnD handlers
+      (function (rowIdx) {
+        rowEl.addEventListener('dragstart', function (e) {
+          if (e.target.closest('.board-stack, .column, .card')) return;
+          dragSource = { type: 'board-row', index: rowIdx };
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', '');
+          this.classList.add('dragging');
+        });
+        rowEl.addEventListener('dragover', function (e) {
+          if (!dragSource || dragSource.type !== 'board-row') return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          var allRows = $columnsContainer.querySelectorAll('.board-row');
+          for (var k = 0; k < allRows.length; k++) {
+            allRows[k].classList.remove('drag-over-top', 'drag-over-bottom');
+          }
+          var rect = this.getBoundingClientRect();
+          if (e.clientY < rect.top + rect.height / 2) {
+            this.classList.add('drag-over-top');
+          } else {
+            this.classList.add('drag-over-bottom');
+          }
+        });
+        rowEl.addEventListener('drop', function (e) {
+          e.preventDefault();
+          if (!dragSource || dragSource.type !== 'board-row') return;
+          var sourceIdx = dragSource.index;
+          var targetIdx = rowIdx;
+          if (sourceIdx === targetIdx) return;
+          var rect = this.getBoundingClientRect();
+          var insertBefore = e.clientY < rect.top + rect.height / 2;
+          reorderRows(sourceIdx, targetIdx, insertBefore);
+        });
+        rowEl.addEventListener('dragend', function () {
+          this.classList.remove('dragging');
+          this.draggable = false;
+          var allRows = $columnsContainer.querySelectorAll('.board-row');
+          for (var k = 0; k < allRows.length; k++) {
+            allRows[k].classList.remove('drag-over-top', 'drag-over-bottom');
+          }
+          dragSource = null;
+        });
+      })(r);
+
+      // Row content container
+      var rowContent = document.createElement('div');
+      rowContent.className = 'board-row-content';
+
+      for (var s = 0; s < row.stacks.length; s++) {
+        var stack = row.stacks[s];
+        var stackEl = document.createElement('div');
+        stackEl.className = 'board-stack';
+        stackEl.setAttribute('data-stack-title', stack.title);
+        stackEl.setAttribute('data-row-index', r.toString());
+        stackEl.setAttribute('data-stack-index', s.toString());
+        if (foldedStacks.indexOf(stack.title) !== -1) {
+          stackEl.classList.add('folded');
+        }
+
+        // Stack header
+        var stackHeader = document.createElement('div');
+        stackHeader.className = 'board-stack-header';
+        stackHeader.innerHTML =
+          '<span class="board-stack-title">' + escapeHtml(stack.title) + '</span>';
+        (function (el, rIdx, sIdx) {
+          stackHeader.addEventListener('click', function (e) {
+            if (e.target.closest('button')) return;
+            e.stopPropagation();
+            el.classList.toggle('folded');
+            saveFoldState(activeBoardId);
+          });
+          stackHeader.addEventListener('contextmenu', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showStackContextMenu(e.clientX, e.clientY, rIdx, sIdx);
+          });
+          // Stack drag handle
+          stackHeader.addEventListener('mousedown', function (e) {
+            if (e.target.closest('button')) return;
+            el.draggable = true;
+          });
+          stackHeader.addEventListener('mouseup', function () {
+            el.draggable = false;
+          });
+        })(stackEl, r, s);
+        stackEl.appendChild(stackHeader);
+
+        // Stack DnD handlers
+        (function (rIdx, sIdx) {
+          stackEl.addEventListener('dragstart', function (e) {
+            if (e.target.closest('.column, .card')) return;
+            e.stopPropagation();
+            dragSource = { type: 'board-stack', rowIndex: rIdx, stackIndex: sIdx };
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', '');
+            this.classList.add('dragging');
+          });
+          stackEl.addEventListener('dragover', function (e) {
+            if (!dragSource || dragSource.type !== 'board-stack') return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            var allStacks = $columnsContainer.querySelectorAll('.board-stack');
+            for (var k = 0; k < allStacks.length; k++) {
+              allStacks[k].classList.remove('drag-over-left', 'drag-over-right');
+            }
+            var rect = this.getBoundingClientRect();
+            if (e.clientX < rect.left + rect.width / 2) {
+              this.classList.add('drag-over-left');
+            } else {
+              this.classList.add('drag-over-right');
+            }
+          });
+          stackEl.addEventListener('drop', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!dragSource || dragSource.type !== 'board-stack') return;
+            var targetRowIdx = rIdx;
+            var targetStackIdx = sIdx;
+            if (dragSource.rowIndex === targetRowIdx && dragSource.stackIndex === targetStackIdx) return;
+            var rect = this.getBoundingClientRect();
+            var insertBefore = e.clientX < rect.left + rect.width / 2;
+            moveStack(dragSource.rowIndex, dragSource.stackIndex, targetRowIdx, targetStackIdx, insertBefore);
+          });
+          stackEl.addEventListener('dragend', function () {
+            this.classList.remove('dragging');
+            this.draggable = false;
+            var allStacks = $columnsContainer.querySelectorAll('.board-stack');
+            for (var k = 0; k < allStacks.length; k++) {
+              allStacks[k].classList.remove('drag-over-left', 'drag-over-right');
+            }
+            dragSource = null;
+          });
+        })(r, s);
+
+        // Stack content container
+        var stackContent = document.createElement('div');
+        stackContent.className = 'board-stack-content';
+
+        for (var c = 0; c < stack.columns.length; c++) {
+          var col = stack.columns[c];
+          var colEl = buildColumnElement(col, foldedCols, collapsedCards, null);
+          stackContent.appendChild(colEl);
+        }
+
+        stackEl.appendChild(stackContent);
+        rowContent.appendChild(stackEl);
+      }
+
+      rowEl.appendChild(rowContent);
+      $columnsContainer.appendChild(rowEl);
+    }
+  }
+
+  // --- New-format DnD mutations ---
+
+  async function reorderRows(sourceIdx, targetIdx, insertBefore) {
+    if (!fullBoardData || !isNewFormat()) return;
+    pushUndo();
+    var moved = fullBoardData.rows.splice(sourceIdx, 1)[0];
+    // Recalculate target after removal
+    var insertAt = targetIdx;
+    if (sourceIdx < targetIdx) insertAt--;
+    if (!insertBefore) insertAt++;
+    fullBoardData.rows.splice(insertAt, 0, moved);
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function moveStack(fromRowIdx, fromStackIdx, toRowIdx, toStackIdx, insertBefore) {
+    if (!fullBoardData || !isNewFormat()) return;
+    pushUndo();
+    // Map display indices to fullBoardData row indices
+    var fromRow = findFullDataRow(fromRowIdx);
+    var toRow = findFullDataRow(toRowIdx);
+    if (!fromRow || !toRow) return;
+
+    var moved = fromRow.stacks.splice(fromStackIdx, 1)[0];
+    var insertAt = toStackIdx;
+    if (fromRow === toRow && fromStackIdx < toStackIdx) insertAt--;
+    if (!insertBefore) insertAt++;
+    toRow.stacks.splice(insertAt, 0, moved);
+
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  /**
+   * Find the fullBoardData row that corresponds to a display row index.
+   * Matches by row title from activeBoardData.rows.
+   */
+  function findFullDataRow(displayRowIdx) {
+    if (!activeBoardData || !activeBoardData.rows || displayRowIdx >= activeBoardData.rows.length) return null;
+    var displayRow = activeBoardData.rows[displayRowIdx];
+    for (var i = 0; i < fullBoardData.rows.length; i++) {
+      if (fullBoardData.rows[i].id === displayRow.id) return fullBoardData.rows[i];
+    }
+    return null;
+  }
+
+  function findFullDataStack(displayRowIdx, displayStackIdx) {
+    var row = findFullDataRow(displayRowIdx);
+    if (!row || displayStackIdx >= activeBoardData.rows[displayRowIdx].stacks.length) return null;
+    var displayStack = activeBoardData.rows[displayRowIdx].stacks[displayStackIdx];
+    for (var i = 0; i < row.stacks.length; i++) {
+      if (row.stacks[i].id === displayStack.id) return row.stacks[i];
+    }
+    return null;
+  }
+
+  // --- Row & Stack Context Menus ---
+
+  var activeRowStackMenu = null;
+
+  function closeRowStackMenu() {
+    if (activeRowStackMenu) { activeRowStackMenu.remove(); activeRowStackMenu = null; }
+  }
+
+  function positionMenu(menu, x, y) {
+    document.body.appendChild(menu);
+    var menuRect = menu.getBoundingClientRect();
+    if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 4;
+    if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 4;
+    if (x < 0) x = 4;
+    if (y < 0) y = 4;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+  }
+
+  function showRowContextMenu(x, y, rowIdx) {
+    closeRowStackMenu();
+    closeColumnContextMenu();
+    closeCardContextMenu();
+    var menu = document.createElement('div');
+    menu.className = 'card-context-menu';
+    menu.innerHTML =
+      '<div class="card-menu-item" data-action="rename">Rename Row</div>' +
+      '<div class="card-menu-item" data-action="add-stack">Add Stack</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item" data-action="add-row-before">Add Row Before</div>' +
+      '<div class="card-menu-item" data-action="add-row-after">Add Row After</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item card-menu-danger" data-action="delete">Delete Row</div>';
+    positionMenu(menu, x, y);
+    menu.addEventListener('click', function (e) {
+      var actionEl = e.target.closest('[data-action]');
+      if (!actionEl) return;
+      var action = actionEl.getAttribute('data-action');
+      closeRowStackMenu();
+      handleRowAction(action, rowIdx);
+    });
+    activeRowStackMenu = menu;
+  }
+
+  function showStackContextMenu(x, y, rowIdx, stackIdx) {
+    closeRowStackMenu();
+    closeColumnContextMenu();
+    closeCardContextMenu();
+    var menu = document.createElement('div');
+    menu.className = 'card-context-menu';
+    menu.innerHTML =
+      '<div class="card-menu-item" data-action="rename">Rename Stack</div>' +
+      '<div class="card-menu-item" data-action="add-column">Add Column</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item card-menu-danger" data-action="delete">Delete Stack</div>';
+    positionMenu(menu, x, y);
+    menu.addEventListener('click', function (e) {
+      var actionEl = e.target.closest('[data-action]');
+      if (!actionEl) return;
+      var action = actionEl.getAttribute('data-action');
+      closeRowStackMenu();
+      handleStackAction(action, rowIdx, stackIdx);
+    });
+    activeRowStackMenu = menu;
+  }
+
+  function handleRowAction(action, rowIdx) {
+    if (action === 'rename') {
+      renameRowOrStack('row', rowIdx);
+    } else if (action === 'add-stack') {
+      addStackToRow(rowIdx);
+    } else if (action === 'add-row-before') {
+      addRow(rowIdx);
+    } else if (action === 'add-row-after') {
+      addRow(rowIdx + 1);
+    } else if (action === 'delete') {
+      deleteRow(rowIdx);
+    }
+  }
+
+  function handleStackAction(action, rowIdx, stackIdx) {
+    if (action === 'rename') {
+      renameRowOrStack('stack', rowIdx, stackIdx);
+    } else if (action === 'add-column') {
+      addColumnToStack(rowIdx, stackIdx);
+    } else if (action === 'delete') {
+      deleteStack(rowIdx, stackIdx);
+    }
+  }
+
+  function renameRowOrStack(type, rowIdx, stackIdx) {
+    var selector = type === 'row'
+      ? '.board-row[data-row-index="' + rowIdx + '"] .board-row-title'
+      : '.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"] .board-stack-title';
+    var titleEl = $columnsContainer.querySelector(selector);
+    if (!titleEl) return;
+    var target = type === 'row' ? findFullDataRow(rowIdx) : findFullDataStack(rowIdx, stackIdx);
+    if (!target) return;
+    var currentTitle = target.title;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'column-rename-input';
+    input.value = currentTitle;
+    titleEl.textContent = '';
+    titleEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    var done = false;
+    function save() {
+      if (done) return;
+      done = true;
+      var newTitle = input.value.trim();
+      if (newTitle && newTitle !== currentTitle) {
+        pushUndo();
+        target.title = newTitle;
+        saveFullBoard().then(function () {
+          updateDisplayFromFullBoard();
+          renderColumns();
+        }).catch(function () {
+          loadBoard(activeBoardId);
+        });
+      } else {
+        titleEl.textContent = currentTitle;
+      }
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { done = true; titleEl.textContent = currentTitle; }
+    });
+  }
+
+  async function addRow(atIndex) {
+    if (!fullBoardData || !isNewFormat()) return;
+    pushUndo();
+    var newRow = {
+      id: 'row-' + Date.now(),
+      title: 'New Row',
+      stacks: [{ id: 'stack-' + Date.now(), title: 'Default', columns: [{ title: 'New Column', cards: [] }] }]
+    };
+    fullBoardData.rows.splice(atIndex, 0, newRow);
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function deleteRow(rowIdx) {
+    var row = findFullDataRow(rowIdx);
+    if (!row) return;
+    var totalCards = 0;
+    for (var s = 0; s < row.stacks.length; s++) {
+      for (var c = 0; c < row.stacks[s].columns.length; c++) {
+        totalCards += row.stacks[s].columns[c].cards.length;
+      }
+    }
+    if (totalCards > 0) {
+      if (!confirm('Delete row "' + row.title + '" and all ' + totalCards + ' cards?')) return;
+    }
+    pushUndo();
+    var idx = fullBoardData.rows.indexOf(row);
+    if (idx !== -1) fullBoardData.rows.splice(idx, 1);
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function addStackToRow(rowIdx) {
+    var row = findFullDataRow(rowIdx);
+    if (!row) return;
+    pushUndo();
+    row.stacks.push({
+      id: 'stack-' + Date.now(),
+      title: 'New Stack',
+      columns: [{ title: 'New Column', cards: [] }]
+    });
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function deleteStack(rowIdx, stackIdx) {
+    var row = findFullDataRow(rowIdx);
+    var stack = findFullDataStack(rowIdx, stackIdx);
+    if (!row || !stack) return;
+    var totalCards = 0;
+    for (var c = 0; c < stack.columns.length; c++) {
+      totalCards += stack.columns[c].cards.length;
+    }
+    if (totalCards > 0) {
+      if (!confirm('Delete stack "' + stack.title + '" and all ' + totalCards + ' cards?')) return;
+    }
+    pushUndo();
+    var idx = row.stacks.indexOf(stack);
+    if (idx !== -1) row.stacks.splice(idx, 1);
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function addColumnToStack(rowIdx, stackIdx) {
+    var stack = findFullDataStack(rowIdx, stackIdx);
+    if (!stack) return;
+    pushUndo();
+    stack.columns.push({ title: 'New Column', cards: [] });
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
     }
   }
 
@@ -642,64 +1622,166 @@ const LexeraDashboard = (function () {
     }
   }
 
-  // --- Card DnD ---
+  // --- Card DnD (pointer-based, bypasses broken WebKit HTML5 DnD) ---
 
-  function setupCardDnD(cardsEl, colIndex) {
-    cardsEl.addEventListener('dragstart', function (e) {
-      var cardEl = e.target.closest('.card');
-      if (!cardEl) return;
-      e.stopPropagation();
-      dragSource = {
-        type: 'card',
-        colIndex: parseInt(cardEl.getAttribute('data-col-index'), 10),
-        cardIndex: parseInt(cardEl.getAttribute('data-card-index'), 10),
-      };
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', cardEl.getAttribute('data-card-id') || '');
-      cardEl.classList.add('dragging');
-    }, true);
+  var cardDrag = null; // { el, ghost, colIndex, cardIndex, startX, startY, started }
+  var DRAG_THRESHOLD = 5; // px before drag actually starts
 
-    cardsEl.addEventListener('dragover', function (e) {
-      if (!dragSource || dragSource.type !== 'card') return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      clearCardDropIndicators();
-      var insertIdx = findCardInsertIndex(e, cardsEl);
-      showCardDropIndicator(cardsEl, insertIdx);
-    });
+  // Single mousedown listener on the columns container (event delegation)
+  $columnsContainer.addEventListener('mousedown', function (e) {
+    // Only left mouse button
+    if (e.button !== 0) return;
+    // Don't start drag on interactive elements
+    if (e.target.closest('.card-checkbox, .card-collapse-toggle, .embed-menu-btn, .card-edit-input, a, button, textarea, input')) return;
+    var cardEl = e.target.closest('.card');
+    if (!cardEl) return;
+    // Don't drag if in edit mode
+    if (cardEl.classList.contains('editing')) return;
 
-    cardsEl.addEventListener('dragleave', function (e) {
-      if (!dragSource || dragSource.type !== 'card') return;
-      if (!cardsEl.contains(e.relatedTarget)) {
-        clearCardDropIndicators();
-      }
-    });
+    cardDrag = {
+      el: cardEl,
+      ghost: null,
+      colIndex: parseInt(cardEl.getAttribute('data-col-index'), 10),
+      cardIndex: parseInt(cardEl.getAttribute('data-card-index'), 10),
+      startX: e.clientX,
+      startY: e.clientY,
+      started: false,
+    };
+    e.preventDefault();
+  });
 
-    cardsEl.addEventListener('drop', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (!dragSource || dragSource.type !== 'card') return;
-      clearCardDropIndicators();
-      var targetColIndex = parseInt(cardsEl.getAttribute('data-col-index'), 10);
-      var insertIdx = findCardInsertIndex(e, cardsEl);
-      moveCard(dragSource.colIndex, dragSource.cardIndex, targetColIndex, insertIdx);
-      dragSource = null;
-    });
+  document.addEventListener('mousemove', function (e) {
+    if (!cardDrag) return;
 
-    cardsEl.addEventListener('dragend', function () {
-      clearCardDropIndicators();
-      var draggingEl = cardsEl.querySelector('.card.dragging');
-      if (draggingEl) draggingEl.classList.remove('dragging');
-      dragSource = null;
-    });
+    // Check threshold before starting actual drag
+    if (!cardDrag.started) {
+      var dx = e.clientX - cardDrag.startX;
+      var dy = e.clientY - cardDrag.startY;
+      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      cardDrag.started = true;
+      startCardDrag(e);
+    }
+
+    // Move ghost
+    if (cardDrag.ghost) {
+      cardDrag.ghost.style.left = (e.clientX + 8) + 'px';
+      cardDrag.ghost.style.top = (e.clientY - 12) + 'px';
+    }
+
+    // Find drop target
+    updateCardDropTarget(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mouseup', function (e) {
+    if (!cardDrag) return;
+    if (!cardDrag.started) {
+      // Was just a click, not a drag — cancel
+      cardDrag = null;
+      return;
+    }
+    finishCardDrag(e.clientX, e.clientY);
+  });
+
+  // Also cancel on Escape
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && cardDrag && cardDrag.started) {
+      cancelCardDrag();
+    }
+  });
+
+  function startCardDrag(e) {
+    var el = cardDrag.el;
+    el.classList.add('dragging');
+
+    // Create ghost element
+    var ghost = document.createElement('div');
+    ghost.className = 'card-drag-ghost';
+    ghost.textContent = el.textContent.substring(0, 80);
+    ghost.style.width = el.offsetWidth + 'px';
+    ghost.style.left = (e.clientX + 8) + 'px';
+    ghost.style.top = (e.clientY - 12) + 'px';
+    document.body.appendChild(ghost);
+    cardDrag.ghost = ghost;
+
+    // Clear text selection
+    var sel = window.getSelection();
+    if (sel) sel.removeAllRanges();
   }
 
-  function findCardInsertIndex(e, cardsEl) {
+  function updateCardDropTarget(mx, my) {
+    clearCardDropIndicators();
+
+    // Find which .column-cards container the mouse is over
+    var allContainers = $columnsContainer.querySelectorAll('.column-cards');
+    var targetContainer = null;
+    for (var i = 0; i < allContainers.length; i++) {
+      var rect = allContainers[i].getBoundingClientRect();
+      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
+        targetContainer = allContainers[i];
+        break;
+      }
+    }
+
+    // Remove highlight from all
+    for (var i = 0; i < allContainers.length; i++) {
+      allContainers[i].classList.remove('card-drag-over');
+    }
+
+    if (!targetContainer) return;
+    targetContainer.classList.add('card-drag-over');
+
+    // Find insert position within this container
+    var insertIdx = findCardInsertIndex(my, targetContainer);
+    showCardDropIndicator(targetContainer, insertIdx);
+  }
+
+  function finishCardDrag(mx, my) {
+    clearCardDropIndicators();
+
+    // Find target container
+    var allContainers = $columnsContainer.querySelectorAll('.column-cards');
+    var targetContainer = null;
+    for (var i = 0; i < allContainers.length; i++) {
+      var rect = allContainers[i].getBoundingClientRect();
+      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
+        targetContainer = allContainers[i];
+        break;
+      }
+      allContainers[i].classList.remove('card-drag-over');
+    }
+
+    if (targetContainer) {
+      targetContainer.classList.remove('card-drag-over');
+      var targetColIndex = parseInt(targetContainer.getAttribute('data-col-index'), 10);
+      var insertIdx = findCardInsertIndex(my, targetContainer);
+      moveCard(cardDrag.colIndex, cardDrag.cardIndex, targetColIndex, insertIdx);
+    }
+
+    cleanupCardDrag();
+  }
+
+  function cancelCardDrag() {
+    clearCardDropIndicators();
+    var allContainers = $columnsContainer.querySelectorAll('.column-cards');
+    for (var i = 0; i < allContainers.length; i++) {
+      allContainers[i].classList.remove('card-drag-over');
+    }
+    cleanupCardDrag();
+  }
+
+  function cleanupCardDrag() {
+    if (cardDrag) {
+      if (cardDrag.el) cardDrag.el.classList.remove('dragging');
+      if (cardDrag.ghost) cardDrag.ghost.remove();
+      cardDrag = null;
+    }
+  }
+
+  function findCardInsertIndex(mouseY, cardsEl) {
     var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
     for (var i = 0; i < cards.length; i++) {
       var rect = cards[i].getBoundingClientRect();
-      if (e.clientY < rect.top + rect.height / 2) {
+      if (mouseY < rect.top + rect.height / 2) {
         return i;
       }
     }
@@ -726,8 +1808,9 @@ const LexeraDashboard = (function () {
 
   async function moveCard(fromColIdx, fromCardIdx, toColIdx, toInsertIdx) {
     if (!fullBoardData || !activeBoardId) return;
-    var fromCol = fullBoardData.columns[fromColIdx];
-    var toCol = fullBoardData.columns[toColIdx];
+    pushUndo();
+    var fromCol = getFullColumn(fromColIdx);
+    var toCol = getFullColumn(toColIdx);
     if (!fromCol || !toCol) return;
 
     // Get the visible (non-archived) cards to find the real index in fullBoardData
@@ -743,7 +1826,7 @@ const LexeraDashboard = (function () {
     toCol.cards.splice(toFullIdx, 0, card);
 
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      await saveFullBoard();
       updateDisplayFromFullBoard();
       renderColumns();
     } catch (err) {
@@ -767,7 +1850,7 @@ const LexeraDashboard = (function () {
 
   function enterCardEditMode(cardEl, colIndex, cardIndex) {
     if (!fullBoardData) return;
-    var col = fullBoardData.columns[colIndex];
+    var col = getFullColumn(colIndex);
     if (!col) return;
     var fullIdx = getFullCardIndex(col, cardIndex);
     var card = col.cards[fullIdx];
@@ -817,8 +1900,9 @@ const LexeraDashboard = (function () {
 
   async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
     isEditing = false;
+    pushUndo();
     if (!fullBoardData || !activeBoardId) return;
-    var col = fullBoardData.columns[colIndex];
+    var col = getFullColumn(colIndex);
     if (!col || !col.cards[fullCardIdx]) return;
 
     var oldContent = col.cards[fullCardIdx].content;
@@ -834,7 +1918,7 @@ const LexeraDashboard = (function () {
 
     col.cards[fullCardIdx].content = newContent;
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      await saveFullBoard();
       updateDisplayFromFullBoard();
       renderColumns();
     } catch (err) {
@@ -850,7 +1934,8 @@ const LexeraDashboard = (function () {
 
   async function toggleCheckbox(colIndex, cardIndex, lineIndex, checked) {
     if (!fullBoardData || !activeBoardId) return;
-    var col = fullBoardData.columns[colIndex];
+    pushUndo();
+    var col = getFullColumn(colIndex);
     if (!col) return;
     var fullIdx = getFullCardIndex(col, cardIndex);
     if (fullIdx === -1) return;
@@ -867,7 +1952,7 @@ const LexeraDashboard = (function () {
     card.content = lines.join('\n');
 
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      await saveFullBoard();
       updateDisplayFromFullBoard();
       renderColumns();
     } catch (err) {
@@ -890,9 +1975,23 @@ const LexeraDashboard = (function () {
     closeCardContextMenu();
     var menu = document.createElement('div');
     menu.className = 'card-context-menu';
+
+    // Build "Move to Column" submenu
+    var moveHtml = '';
+    if (activeBoardData) {
+      for (var i = 0; i < activeBoardData.columns.length; i++) {
+        var c = activeBoardData.columns[i];
+        if (c.index === colIndex) continue;
+        moveHtml += '<div class="card-menu-item card-menu-sub" data-card-action="move-to:' + c.index + '">' + escapeHtml(stripStackTag(c.title)) + '</div>';
+      }
+    }
+
     menu.innerHTML =
       '<div class="card-menu-item" data-card-action="edit">Edit</div>' +
       '<div class="card-menu-item" data-card-action="duplicate">Duplicate</div>' +
+      '<div class="card-menu-item" data-card-action="move-up">Move Up</div>' +
+      '<div class="card-menu-item" data-card-action="move-down">Move Down</div>' +
+      (moveHtml ? '<div class="card-menu-divider"></div><div class="card-menu-label">Move to Column</div>' + moveHtml : '') +
       '<div class="card-menu-divider"></div>' +
       '<div class="card-menu-item" data-card-action="archive">Archive</div>' +
       '<div class="card-menu-item" data-card-action="park">Park</div>' +
@@ -927,6 +2026,13 @@ const LexeraDashboard = (function () {
       }
     } else if (action === 'duplicate') {
       duplicateCard(colIndex, cardIndex);
+    } else if (action === 'move-up') {
+      if (cardIndex > 0) moveCard(colIndex, cardIndex, colIndex, cardIndex - 1);
+    } else if (action === 'move-down') {
+      moveCard(colIndex, cardIndex, colIndex, cardIndex + 2);
+    } else if (action.indexOf('move-to:') === 0) {
+      var targetCol = parseInt(action.substring(8), 10);
+      moveCard(colIndex, cardIndex, targetCol, 0);
     } else if (action === 'archive') {
       tagCard(colIndex, cardIndex, '#hidden-internal-archived');
     } else if (action === 'park') {
@@ -938,7 +2044,8 @@ const LexeraDashboard = (function () {
 
   async function duplicateCard(colIndex, cardIndex) {
     if (!fullBoardData || !activeBoardId) return;
-    var col = fullBoardData.columns[colIndex];
+    pushUndo();
+    var col = getFullColumn(colIndex);
     if (!col) return;
     var fullIdx = getFullCardIndex(col, cardIndex);
     var card = col.cards[fullIdx];
@@ -950,7 +2057,7 @@ const LexeraDashboard = (function () {
     col.cards.splice(fullIdx + 1, 0, clone);
 
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      await saveFullBoard();
       updateDisplayFromFullBoard();
       renderColumns();
     } catch (err) {
@@ -960,7 +2067,8 @@ const LexeraDashboard = (function () {
 
   async function tagCard(colIndex, cardIndex, tag) {
     if (!fullBoardData || !activeBoardId) return;
-    var col = fullBoardData.columns[colIndex];
+    pushUndo();
+    var col = getFullColumn(colIndex);
     if (!col) return;
     var fullIdx = getFullCardIndex(col, cardIndex);
     if (fullIdx === -1) return;
@@ -973,7 +2081,7 @@ const LexeraDashboard = (function () {
     card.content = lines.join('\n');
 
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      await saveFullBoard();
       updateDisplayFromFullBoard();
       renderColumns();
     } catch (err) {
@@ -983,7 +2091,8 @@ const LexeraDashboard = (function () {
 
   async function deleteCard(colIndex, cardIndex) {
     if (!fullBoardData || !activeBoardId) return;
-    var col = fullBoardData.columns[colIndex];
+    pushUndo();
+    var col = getFullColumn(colIndex);
     if (!col) return;
     var fullIdx = getFullCardIndex(col, cardIndex);
     if (fullIdx < 0 || fullIdx >= col.cards.length) return;
@@ -991,13 +2100,257 @@ const LexeraDashboard = (function () {
     col.cards.splice(fullIdx, 1);
 
     try {
-      await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      await saveFullBoard();
       updateDisplayFromFullBoard();
       renderColumns();
     } catch (err) {
       await loadBoard(activeBoardId);
     }
   }
+
+  // --- Column Context Menu & Operations ---
+
+  var activeColMenu = null;
+
+  function closeColumnContextMenu() {
+    if (activeColMenu) { activeColMenu.remove(); activeColMenu = null; }
+  }
+
+  function showColumnContextMenu(x, y, colIndex) {
+    closeColumnContextMenu();
+    closeCardContextMenu();
+    var menu = document.createElement('div');
+    menu.className = 'card-context-menu';
+    menu.innerHTML =
+      '<div class="card-menu-item" data-col-action="rename">Rename</div>' +
+      '<div class="card-menu-item" data-col-action="add-before">Add Column Before</div>' +
+      '<div class="card-menu-item" data-col-action="add-after">Add Column After</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item" data-col-action="fold-all">Fold All Cards</div>' +
+      '<div class="card-menu-item" data-col-action="unfold-all">Unfold All Cards</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item" data-col-action="sort-title">Sort by Title</div>' +
+      '<div class="card-menu-item" data-col-action="sort-tag">Sort by Tag Value</div>' +
+      '<div class="card-menu-divider"></div>' +
+      '<div class="card-menu-item card-menu-danger" data-col-action="delete">Delete Column</div>';
+
+    document.body.appendChild(menu);
+    var menuRect = menu.getBoundingClientRect();
+    if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 4;
+    if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 4;
+    if (x < 0) x = 4;
+    if (y < 0) y = 4;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+
+    menu.addEventListener('click', function (e) {
+      var actionEl = e.target.closest('[data-col-action]');
+      if (!actionEl) return;
+      var action = actionEl.getAttribute('data-col-action');
+      closeColumnContextMenu();
+      handleColumnAction(action, colIndex);
+    });
+
+    activeColMenu = menu;
+  }
+
+  function handleColumnAction(action, colIndex) {
+    if (action === 'rename') {
+      var col = getFullColumn(colIndex);
+      if (!col) return;
+      var colEl = $columnsContainer.querySelector('.column[data-col-title="' + escapeAttr(col.title) + '"]');
+      if (colEl) enterColumnRename(colEl, colIndex);
+    } else if (action === 'add-before') {
+      addColumn(colIndex);
+    } else if (action === 'add-after') {
+      addColumn(colIndex + 1);
+    } else if (action === 'fold-all') {
+      toggleColCards(colIndex, true);
+    } else if (action === 'unfold-all') {
+      toggleColCards(colIndex, false);
+    } else if (action === 'sort-title') {
+      sortColumnCards(colIndex, 'title');
+    } else if (action === 'sort-tag') {
+      sortColumnCards(colIndex, 'tag');
+    } else if (action === 'delete') {
+      deleteColumn(colIndex);
+    }
+  }
+
+  function sortColumnCards(colIndex, mode) {
+    var col = getFullColumn(colIndex);
+    if (!col || col.cards.length < 2) return;
+    pushUndo();
+    col.cards.sort(function (a, b) {
+      if (mode === 'title') {
+        var titleA = a.content.split('\n')[0].toLowerCase();
+        var titleB = b.content.split('\n')[0].toLowerCase();
+        return titleA < titleB ? -1 : titleA > titleB ? 1 : 0;
+      }
+      if (mode === 'tag') {
+        var numA = extractNumericTag(a.content);
+        var numB = extractNumericTag(b.content);
+        if (numA === null && numB === null) return 0;
+        if (numA === null) return 1;
+        if (numB === null) return -1;
+        return numA - numB;
+      }
+      return 0;
+    });
+    saveFullBoard();
+    updateDisplayFromFullBoard();
+    renderColumns();
+  }
+
+  function extractNumericTag(content) {
+    var lines = content.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '') break;
+      var match = lines[i].match(/(^|\s)#(\d+(?:\.\d+)?)/);
+      if (match) return parseFloat(match[2]);
+    }
+    return null;
+  }
+
+  function escapeAttr(str) {
+    return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function enterColumnRename(colEl, colIndex) {
+    if (!fullBoardData) return;
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var titleEl = colEl.querySelector('.column-title');
+    if (!titleEl) return;
+    var currentTitle = stripStackTag(col.title);
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'column-rename-input';
+    input.value = currentTitle;
+    titleEl.textContent = '';
+    titleEl.appendChild(input);
+    input.focus();
+    input.select();
+
+    var done = false;
+    function save() {
+      if (done) return;
+      done = true;
+      var newTitle = input.value.trim();
+      if (newTitle && newTitle !== currentTitle) {
+        pushUndo();
+        // Preserve #stack tag if it was there
+        col.title = hasStackTag(col.title) ? newTitle + ' #stack' : newTitle;
+        saveFullBoard().then(function () {
+          updateDisplayFromFullBoard();
+          renderColumns();
+        }).catch(function () {
+          loadBoard(activeBoardId);
+        });
+      } else {
+        titleEl.textContent = currentTitle;
+      }
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { done = true; titleEl.textContent = currentTitle; }
+    });
+  }
+
+  /**
+   * Find the container array and local index for a flat column index.
+   * Returns { arr: array, localIdx: number } where arr is the columns array
+   * containing the column, and localIdx is its position within that array.
+   */
+  function findColumnContainer(flatIndex) {
+    if (isNewFormat()) {
+      var idx = 0;
+      for (var r = 0; r < fullBoardData.rows.length; r++) {
+        var row = fullBoardData.rows[r];
+        for (var s = 0; s < row.stacks.length; s++) {
+          var stack = row.stacks[s];
+          for (var c = 0; c < stack.columns.length; c++) {
+            if (idx === flatIndex) {
+              return { arr: stack.columns, localIdx: c };
+            }
+            idx++;
+          }
+        }
+      }
+      return null;
+    }
+    if (flatIndex >= 0 && flatIndex < fullBoardData.columns.length) {
+      return { arr: fullBoardData.columns, localIdx: flatIndex };
+    }
+    return null;
+  }
+
+  async function addColumn(atIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    pushUndo();
+    var newCol = { title: 'New Column', cards: [] };
+    var container = findColumnContainer(atIndex);
+    if (container) {
+      container.arr.splice(container.localIdx, 0, newCol);
+    } else if (isNewFormat()) {
+      // atIndex is past end — append to last stack of last row
+      var lastRow = fullBoardData.rows[fullBoardData.rows.length - 1];
+      if (lastRow && lastRow.stacks.length > 0) {
+        lastRow.stacks[lastRow.stacks.length - 1].columns.push(newCol);
+      }
+    } else {
+      fullBoardData.columns.splice(atIndex, 0, newCol);
+    }
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  async function deleteColumn(colIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    if (col.cards.length > 0) {
+      if (!confirm('Delete column "' + stripStackTag(col.title) + '" and all ' + col.cards.length + ' cards?')) return;
+    }
+    pushUndo();
+    var container = findColumnContainer(colIndex);
+    if (container) {
+      container.arr.splice(container.localIdx, 1);
+    }
+    try {
+      await saveFullBoard();
+      updateDisplayFromFullBoard();
+      renderColumns();
+    } catch (err) {
+      await loadBoard(activeBoardId);
+    }
+  }
+
+  function toggleColCards(colIndex, collapse) {
+    var cards = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"]');
+    for (var i = 0; i < cards.length; i++) {
+      if (collapse) {
+        cards[i].classList.add('collapsed');
+      } else {
+        cards[i].classList.remove('collapsed');
+      }
+      var toggle = cards[i].querySelector('.card-collapse-toggle');
+      if (toggle) toggle.textContent = collapse ? '\u25B8' : '\u25BE';
+    }
+    saveCardCollapseState(activeBoardId);
+  }
+
+  // Close context menus on outside click
+  document.addEventListener('click', function () {
+    closeColumnContextMenu();
+    closeRowStackMenu();
+  });
 
   // --- Search ---
 
@@ -1258,6 +2611,38 @@ const LexeraDashboard = (function () {
     }
   }
 
+  async function handleFileDrop(files, targetEl) {
+    if (!activeBoardId) return;
+    // Find which column the drop target is in
+    var colIndex = 0;
+    if (targetEl) {
+      var colEl = targetEl.closest('.column');
+      if (colEl) {
+        var ci = colEl.getAttribute('data-col-index');
+        if (ci !== null) colIndex = parseInt(ci, 10);
+      }
+    }
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      try {
+        var result = await LexeraApi.uploadMedia(activeBoardId, file);
+        if (result && result.filename) {
+          var embedSyntax = '![' + file.name + '](' + result.filename + ')';
+          var col = getFullColumn(colIndex);
+          if (col) {
+            pushUndo();
+            col.cards.push({ id: 'card-' + Date.now() + '-' + i, content: embedSyntax, checked: false, kid: null });
+            await saveFullBoard();
+            updateDisplayFromFullBoard();
+            renderColumns();
+          }
+        }
+      } catch (err) {
+        console.error('File upload failed:', err);
+      }
+    }
+  }
+
   function openInSystem(path) {
     if (hasTauri && window.__TAURI__ && window.__TAURI__.core) {
       window.__TAURI__.core.invoke('open_in_system', { path: path }).catch(function (e) {
@@ -1387,22 +2772,68 @@ const LexeraDashboard = (function () {
   function renderCardContent(content, boardId) {
     var lines = content.split('\n');
     var html = '';
-    var inList = false;
+    var listTag = null; // 'ul' or 'ol'
+
+    function closeList() {
+      if (listTag) { html += '</' + listTag + '>'; listTag = null; }
+    }
+    function openList(tag) {
+      if (listTag !== tag) { closeList(); html += '<' + tag + '>'; listTag = tag; }
+    }
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
 
+      // Fenced code blocks: ```lang ... ```
+      var fenceMatch = line.match(/^```(\w*)$/);
+      if (fenceMatch) {
+        closeList();
+        var lang = fenceMatch[1];
+        var codeLines = [];
+        i++;
+        while (i < lines.length && !(/^```$/.test(lines[i]))) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
+        html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
+        continue;
+      }
+
       // Empty line: close list if open, add line break
       if (line.trim() === '') {
-        if (inList) { html += '</ul>'; inList = false; }
+        closeList();
         html += '<br>';
+        continue;
+      }
+
+      // HTML comments: render as styled span (visibility controlled by board setting)
+      var commentMatch = line.match(/^<!--(.+?)-->$/);
+      if (commentMatch) {
+        closeList();
+        html += '<div class="html-comment">' + escapeHtml(commentMatch[1].trim()) + '</div>';
+        continue;
+      }
+
+      // Horizontal rule
+      if (/^---+$/.test(line.trim())) {
+        closeList();
+        html += '<hr>';
+        continue;
+      }
+
+      // Blockquote
+      var quoteMatch = line.match(/^>\s?(.*)/);
+      if (quoteMatch) {
+        closeList();
+        html += '<blockquote>' + renderInline(quoteMatch[1], boardId) + '</blockquote>';
         continue;
       }
 
       // Headings
       var headingMatch = line.match(/^(#{1,3})\s+(.+)/);
       if (headingMatch) {
-        if (inList) { html += '</ul>'; inList = false; }
+        closeList();
         var level = headingMatch[1].length;
         html += '<h' + level + '>' + renderInline(headingMatch[2], boardId) + '</h' + level + '>';
         continue;
@@ -1411,7 +2842,7 @@ const LexeraDashboard = (function () {
       // Checkbox list items (must be checked BEFORE unordered list)
       var checkMatch = line.match(/^-\s+\[([ xX])\]\s*(.*)/);
       if (checkMatch) {
-        if (!inList) { html += '<ul>'; inList = true; }
+        openList('ul');
         var checked = checkMatch[1] !== ' ';
         var checkedAttr = checked ? ' checked' : '';
         var strikePre = checked ? '<s>' : '';
@@ -1420,20 +2851,28 @@ const LexeraDashboard = (function () {
         continue;
       }
 
+      // Ordered list items
+      var olMatch = line.match(/^\d+\.\s+(.+)/);
+      if (olMatch) {
+        openList('ol');
+        html += '<li>' + renderInline(olMatch[1], boardId) + '</li>';
+        continue;
+      }
+
       // Unordered list items
       var listMatch = line.match(/^[-*]\s+(.+)/);
       if (listMatch) {
-        if (!inList) { html += '<ul>'; inList = true; }
+        openList('ul');
         html += '<li>' + renderInline(listMatch[1], boardId) + '</li>';
         continue;
       }
 
       // Regular line
-      if (inList) { html += '</ul>'; inList = false; }
+      closeList();
       html += '<div>' + renderInline(line, boardId) + '</div>';
     }
 
-    if (inList) html += '</ul>';
+    closeList();
     return html;
   }
 
