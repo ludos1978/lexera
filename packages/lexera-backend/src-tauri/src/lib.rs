@@ -41,6 +41,10 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            // Hide from Dock, show only as menu bar (tray) app
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let config_path = config::default_config_path();
             let config = config::load_config(&config_path);
             let port = config.port;

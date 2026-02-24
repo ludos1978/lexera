@@ -14,9 +14,15 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
 
     let menu = Menu::with_items(app, &[&status_item, &quick_capture, &quit])?;
 
-    let tray = TrayIconBuilder::new()
+    let mut builder = TrayIconBuilder::new()
         .menu(&menu)
-        .tooltip("Lexera Backend")
+        .tooltip("Lexera Backend");
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+
+    let tray = builder
         .on_menu_event(move |app, event| {
             match event.id().as_ref() {
                 "quick_capture" => {
