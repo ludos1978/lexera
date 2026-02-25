@@ -2652,20 +2652,58 @@ const LexeraDashboard = (function () {
     if (sel) sel.removeAllRanges();
   }
 
+  function isPointInsideRect(mx, my, rect) {
+    return mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom;
+  }
+
+  function findNodeAtPoint(nodeList, mx, my) {
+    for (var i = 0; i < nodeList.length; i++) {
+      var rect = nodeList[i].getBoundingClientRect();
+      if (isPointInsideRect(mx, my, rect)) return nodeList[i];
+    }
+    return null;
+  }
+
+  function removeClassFromNodeList(nodeList, className) {
+    for (var i = 0; i < nodeList.length; i++) nodeList[i].classList.remove(className);
+  }
+
+  function removeClassesFromNodeList(nodeList, classNames) {
+    for (var i = 0; i < nodeList.length; i++) {
+      nodeList[i].classList.remove.apply(nodeList[i].classList, classNames);
+    }
+  }
+
+  function getColumnCardsContainers() {
+    return $columnsContainer.querySelectorAll('.column-cards');
+  }
+
+  function findColumnCardsContainerAt(mx, my) {
+    return findNodeAtPoint(getColumnCardsContainers(), mx, my);
+  }
+
+  function clearCardDragOverHighlights() {
+    removeClassFromNodeList(getColumnCardsContainers(), 'card-drag-over');
+  }
+
+  function findStackDropZoneAt(mx, my) {
+    return findNodeAtPoint($columnsContainer.querySelectorAll('.stack-drop-zone'), mx, my);
+  }
+
+  function findDraggableColumnAt(mx, my) {
+    return findNodeAtPoint($columnsContainer.querySelectorAll('.column:not(.dragging)'), mx, my);
+  }
+
+  function findBoardStackAt(mx, my) {
+    return findNodeAtPoint($columnsContainer.querySelectorAll('.board-stack'), mx, my);
+  }
+
   function clearSidebarDropHighlights() {
-    var cols = $boardList.querySelectorAll('.tree-column.drop-target');
-    for (var i = 0; i < cols.length; i++) cols[i].classList.remove('drop-target');
+    removeClassFromNodeList($boardList.querySelectorAll('.tree-column.drop-target'), 'drop-target');
   }
 
   function findSidebarColumnAt(mx, my) {
-    var cols = $boardList.querySelectorAll('.tree-column[data-col-index]');
-    for (var i = 0; i < cols.length; i++) {
-      var rect = cols[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        return cols[i];
-      }
-    }
-    return null;
+    return findNodeAtPoint($boardList.querySelectorAll('.tree-column[data-col-index]'), mx, my);
   }
 
   function updateCardDropTarget(mx, my) {
@@ -2677,26 +2715,15 @@ const LexeraDashboard = (function () {
     if (sidebarCol) {
       sidebarCol.classList.add('drop-target');
       // Remove main area highlights
-      var allContainers = $columnsContainer.querySelectorAll('.column-cards');
-      for (var i = 0; i < allContainers.length; i++) allContainers[i].classList.remove('card-drag-over');
+      clearCardDragOverHighlights();
       return;
     }
 
     // Find which .column-cards container the mouse is over
-    var allContainers = $columnsContainer.querySelectorAll('.column-cards');
-    var targetContainer = null;
-    for (var i = 0; i < allContainers.length; i++) {
-      var rect = allContainers[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        targetContainer = allContainers[i];
-        break;
-      }
-    }
+    var targetContainer = findColumnCardsContainerAt(mx, my);
 
     // Remove highlight from all
-    for (var i = 0; i < allContainers.length; i++) {
-      allContainers[i].classList.remove('card-drag-over');
-    }
+    clearCardDragOverHighlights();
 
     if (!targetContainer) return;
     targetContainer.classList.add('card-drag-over');
@@ -2725,16 +2752,8 @@ const LexeraDashboard = (function () {
     }
 
     // Find target container in main area
-    var allContainers = $columnsContainer.querySelectorAll('.column-cards');
-    var targetContainer = null;
-    for (var i = 0; i < allContainers.length; i++) {
-      var rect = allContainers[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        targetContainer = allContainers[i];
-        break;
-      }
-      allContainers[i].classList.remove('card-drag-over');
-    }
+    var targetContainer = findColumnCardsContainerAt(mx, my);
+    clearCardDragOverHighlights();
 
     if (targetContainer) {
       targetContainer.classList.remove('card-drag-over');
@@ -2749,10 +2768,7 @@ const LexeraDashboard = (function () {
   function cancelCardDrag() {
     clearCardDropIndicators();
     clearSidebarDropHighlights();
-    var allContainers = $columnsContainer.querySelectorAll('.column-cards');
-    for (var i = 0; i < allContainers.length; i++) {
-      allContainers[i].classList.remove('card-drag-over');
-    }
+    clearCardDragOverHighlights();
     cleanupCardDrag();
   }
 
@@ -2961,83 +2977,73 @@ const LexeraDashboard = (function () {
     }
   }
 
-  // Generic hit-test: find which element in nodeList the mouse is over, add before/after indicator
-  function ptrFindHitNode(nodeList, mx, my, classBefore, classAfter, vertical) {
+  // Generic target resolver: returns { node, before } with edge snapping.
+  function resolveDropTarget(nodeList, mx, my, vertical) {
     for (var i = 0; i < nodeList.length; i++) {
       var rect = nodeList[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        if (vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2)) {
-          nodeList[i].classList.add(classBefore);
-        } else {
-          nodeList[i].classList.add(classAfter);
-        }
-        return;
+      if (isPointInsideRect(mx, my, rect)) {
+        var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
+        return { node: nodeList[i], before: before };
       }
     }
-    // Edge case: cursor outside all nodes — snap to nearest in the same cross-axis range
+
+    // Edge case: cursor outside all nodes — snap to nearest in the same cross-axis range.
     var lastInRange = null;
     for (var i = 0; i < nodeList.length; i++) {
       var rect = nodeList[i].getBoundingClientRect();
       var inCross = vertical ? (mx >= rect.left && mx <= rect.right) : (my >= rect.top && my <= rect.bottom);
       if (!inCross) continue;
       if (vertical ? (my <= rect.top) : (mx <= rect.left)) {
-        nodeList[i].classList.add(classBefore);
-        return;
+        return { node: nodeList[i], before: true };
       }
       if (vertical ? (my >= rect.bottom) : (mx >= rect.right)) {
         lastInRange = nodeList[i];
       }
     }
-    if (lastInRange) lastInRange.classList.add(classAfter);
+    if (lastInRange) return { node: lastInRange, before: false };
+    return null;
+  }
+
+  // Generic hit-test: find which element in nodeList the mouse is over, add before/after indicator.
+  function ptrFindHitNode(nodeList, mx, my, classBefore, classAfter, vertical) {
+    var target = resolveDropTarget(nodeList, mx, my, vertical);
+    if (!target) return;
+    target.node.classList.add(target.before ? classBefore : classAfter);
   }
 
   function updateColumnPtrDropTarget(mx, my) {
     // Check drop zones first (new-stack insertion points between stacks)
-    var zones = $columnsContainer.querySelectorAll('.stack-drop-zone');
-    for (var i = 0; i < zones.length; i++) {
-      var rect = zones[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        zones[i].classList.add('active');
-        return;
-      }
+    var zone = findStackDropZoneAt(mx, my);
+    if (zone) {
+      zone.classList.add('active');
+      return;
     }
     // Check columns (reorder within/between stacks)
-    var allCols = $columnsContainer.querySelectorAll('.column:not(.dragging)');
-    for (var i = 0; i < allCols.length; i++) {
-      var rect = allCols[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        if (my < rect.top + rect.height / 2) {
-          allCols[i].classList.add('drag-over-top');
-        } else {
-          allCols[i].classList.add('drag-over-bottom');
-        }
-        return;
+    var column = findDraggableColumnAt(mx, my);
+    if (column) {
+      var colRect = column.getBoundingClientRect();
+      if (my < colRect.top + colRect.height / 2) {
+        column.classList.add('drag-over-top');
+      } else {
+        column.classList.add('drag-over-bottom');
       }
+      return;
     }
     // Check stacks (move column into stack)
-    var allStacks = $columnsContainer.querySelectorAll('.board-stack');
-    for (var i = 0; i < allStacks.length; i++) {
-      var rect = allStacks[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        allStacks[i].classList.add('column-drop-target');
-        return;
-      }
+    var stack = findBoardStackAt(mx, my);
+    if (stack) {
+      stack.classList.add('column-drop-target');
+      return;
     }
   }
 
   function clearPtrDropIndicators() {
-    var treeNodes = $boardList.querySelectorAll('.tree-node');
-    for (var i = 0; i < treeNodes.length; i++) treeNodes[i].classList.remove('tree-drop-above', 'tree-drop-below');
-    var boardItems = $boardList.querySelectorAll('.board-item');
-    for (var i = 0; i < boardItems.length; i++) boardItems[i].classList.remove('drag-over-top', 'drag-over-bottom');
-    var allRows = $columnsContainer.querySelectorAll('.board-row');
-    for (var i = 0; i < allRows.length; i++) allRows[i].classList.remove('drag-over-top', 'drag-over-bottom');
-    var allStacks = $columnsContainer.querySelectorAll('.board-stack');
-    for (var i = 0; i < allStacks.length; i++) allStacks[i].classList.remove('drag-over-left', 'drag-over-right', 'column-drop-target');
-    var allCols = $columnsContainer.querySelectorAll('.column');
-    for (var i = 0; i < allCols.length; i++) allCols[i].classList.remove('drag-over-top', 'drag-over-bottom');
-    var zones = $columnsContainer.querySelectorAll('.stack-drop-zone');
-    for (var i = 0; i < zones.length; i++) zones[i].classList.remove('active');
+    removeClassesFromNodeList($boardList.querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
+    removeClassesFromNodeList($boardList.querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassesFromNodeList($columnsContainer.querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassesFromNodeList($columnsContainer.querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
+    removeClassesFromNodeList($columnsContainer.querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassFromNodeList($columnsContainer.querySelectorAll('.stack-drop-zone'), 'active');
   }
 
   function executePtrDrop(mx, my) {
@@ -3091,71 +3097,42 @@ const LexeraDashboard = (function () {
     }
   }
 
-  // Generic drop target finder: returns { node, before } or null
+  // Generic drop target finder.
   function ptrFindDropTarget(nodeList, mx, my, vertical) {
-    for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
-        return { node: nodeList[i], before: before };
-      }
-    }
-    // Edge case: cursor outside all nodes — snap to nearest in the same cross-axis range
-    var lastMatch = null;
-    for (var i = 0; i < nodeList.length; i++) {
-      var rect = nodeList[i].getBoundingClientRect();
-      var inCross = vertical ? (mx >= rect.left && mx <= rect.right) : (my >= rect.top && my <= rect.bottom);
-      if (!inCross) continue;
-      if (vertical ? (my <= rect.top) : (mx <= rect.left)) {
-        return { node: nodeList[i], before: true };
-      }
-      if (vertical ? (my >= rect.bottom) : (mx >= rect.right)) {
-        lastMatch = nodeList[i];
-      }
-    }
-    if (lastMatch) return { node: lastMatch, before: false };
-    return null;
+    return resolveDropTarget(nodeList, mx, my, vertical);
   }
 
   function executeColumnPtrDrop(mx, my, src) {
     // Check drop zones first (create new stack at specific position)
-    var zones = $columnsContainer.querySelectorAll('.stack-drop-zone');
-    for (var i = 0; i < zones.length; i++) {
-      var rect = zones[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        var targetRowIdx = parseInt(zones[i].getAttribute('data-row-index'), 10);
-        var insertIdx = parseInt(zones[i].getAttribute('data-insert-index'), 10);
-        moveColumnToNewStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, insertIdx);
-        return;
-      }
+    var zone = findStackDropZoneAt(mx, my);
+    if (zone) {
+      var targetRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
+      var insertIdx = parseInt(zone.getAttribute('data-insert-index'), 10);
+      moveColumnToNewStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, insertIdx);
+      return;
     }
     // Check columns (reorder)
-    var allCols = $columnsContainer.querySelectorAll('.column:not(.dragging)');
-    for (var i = 0; i < allCols.length; i++) {
-      var rect = allCols[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        var stackEl = allCols[i].closest('.board-stack');
-        var targetRowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
-        var targetStackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
-        var columns = stackEl.querySelectorAll('.board-stack-content > .column');
-        var targetColIdx = Array.prototype.indexOf.call(columns, allCols[i]);
-        var insertBefore = my < rect.top + rect.height / 2;
-        moveColumnWithinBoard(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx, targetColIdx, insertBefore);
-        return;
-      }
+    var column = findDraggableColumnAt(mx, my);
+    if (column) {
+      var colRect = column.getBoundingClientRect();
+      var stackEl = column.closest('.board-stack');
+      var targetRowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
+      var targetStackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
+      var columns = stackEl.querySelectorAll('.board-stack-content > .column');
+      var targetColIdx = Array.prototype.indexOf.call(columns, column);
+      var insertBefore = my < colRect.top + colRect.height / 2;
+      moveColumnWithinBoard(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx, targetColIdx, insertBefore);
+      return;
     }
     // Check stacks (move column into existing stack)
-    var allStacks = $columnsContainer.querySelectorAll('.board-stack');
-    for (var i = 0; i < allStacks.length; i++) {
-      var rect = allStacks[i].getBoundingClientRect();
-      if (mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom) {
-        var targetRowIdx = parseInt(allStacks[i].getAttribute('data-row-index'), 10);
-        var targetStackIdx = parseInt(allStacks[i].getAttribute('data-stack-index'), 10);
-        if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx) {
-          moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx);
-        }
-        return;
+    var stack = findBoardStackAt(mx, my);
+    if (stack) {
+      var targetRowIdx = parseInt(stack.getAttribute('data-row-index'), 10);
+      var targetStackIdx = parseInt(stack.getAttribute('data-stack-index'), 10);
+      if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx) {
+        moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx);
       }
+      return;
     }
   }
 
