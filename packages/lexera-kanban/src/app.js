@@ -1,4 +1,102 @@
 /**
+ * Lexera Log — Status bar + expandable log panel.
+ */
+var lexeraLogEntries = [];
+var LOG_MAX = 500;
+
+function lexeraLog(level, message) {
+  var entry = {
+    time: new Date(),
+    level: level,
+    message: typeof message === 'string' ? message : JSON.stringify(message)
+  };
+  lexeraLogEntries.push(entry);
+  if (lexeraLogEntries.length > LOG_MAX) lexeraLogEntries.shift();
+
+  // Update status bar with last message
+  var statusMsg = document.getElementById('status-msg');
+  var statusBar = document.getElementById('status-bar');
+  if (statusMsg) {
+    statusMsg.textContent = entry.message;
+    statusBar.className = 'status-bar status-' + level;
+  }
+
+  // Append to expanded log panel
+  var panel = document.getElementById('log-entries');
+  if (panel) {
+    var el = document.createElement('div');
+    el.className = 'log-entry log-' + level;
+    var ts = entry.time.toLocaleTimeString('en-GB', { hour12: false });
+    el.innerHTML = '<span class="log-time">' + ts + '</span>' +
+      '<span class="log-level">' + level.toUpperCase() + '</span>' +
+      '<span class="log-msg">' + entry.message.replace(/</g, '&lt;') + '</span>';
+    panel.appendChild(el);
+    panel.scrollTop = panel.scrollHeight;
+  }
+}
+
+// Intercept console.log/warn/error
+(function () {
+  var origLog = console.log, origWarn = console.warn, origError = console.error;
+  console.log = function () {
+    origLog.apply(console, arguments);
+    lexeraLog('info', Array.prototype.slice.call(arguments).join(' '));
+  };
+  console.warn = function () {
+    origWarn.apply(console, arguments);
+    lexeraLog('warn', Array.prototype.slice.call(arguments).join(' '));
+  };
+  console.error = function () {
+    origError.apply(console, arguments);
+    lexeraLog('error', Array.prototype.slice.call(arguments).join(' '));
+  };
+})();
+
+// Catch unhandled errors
+window.addEventListener('error', function (e) {
+  lexeraLog('error', 'Uncaught: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+});
+window.addEventListener('unhandledrejection', function (e) {
+  lexeraLog('error', 'Unhandled promise: ' + (e.reason || e));
+});
+
+// Log panel + status bar UI
+document.addEventListener('DOMContentLoaded', function () {
+  var panel = document.getElementById('log-panel');
+  var statusBar = document.getElementById('status-bar');
+  var clearBtn = document.getElementById('log-clear-btn');
+  var closeBtn = document.getElementById('log-close-btn');
+
+  // Click status bar to expand/collapse log panel
+  if (statusBar) statusBar.addEventListener('click', function () {
+    if (panel) panel.classList.toggle('hidden');
+  });
+
+  if (clearBtn) clearBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    document.getElementById('log-entries').innerHTML = '';
+    lexeraLogEntries = [];
+  });
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    panel.classList.add('hidden');
+  });
+});
+
+function toggleLogPanel() {
+  var panel = document.getElementById('log-panel');
+  if (panel) panel.classList.toggle('hidden');
+}
+
+// Ctrl+Shift+L to toggle log
+document.addEventListener('keydown', function (e) {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+    e.preventDefault();
+    toggleLogPanel();
+  }
+});
+
+/**
  * Lexera Kanban — Board viewer with markdown rendering.
  * Uses LexeraApi from api.js.
  */
@@ -3058,11 +3156,16 @@ const LexeraDashboard = (function () {
     });
   }, true);
 
-  var hasTauri = typeof window.__TAURI_INTERNALS__ !== 'undefined';
+  var hasTauri = !!(window.__TAURI_INTERNALS__ || (window.__TAURI__ && window.__TAURI__.core));
 
   function tauriInvoke(cmd, args) {
-    if (!hasTauri) return Promise.reject(new Error('Tauri not available'));
-    return window.__TAURI_INTERNALS__.invoke(cmd, args);
+    if (window.__TAURI_INTERNALS__) {
+      return window.__TAURI_INTERNALS__.invoke(cmd, args);
+    }
+    if (window.__TAURI__ && window.__TAURI__.core) {
+      return window.__TAURI__.core.invoke(cmd, args);
+    }
+    return Promise.reject(new Error('Tauri not available'));
   }
 
   /**
@@ -3275,9 +3378,12 @@ const LexeraDashboard = (function () {
   }
 
   function openInSystem(path) {
+    lexeraLog('info', 'Opening in system: ' + path);
     if (hasTauri) {
-      tauriInvoke('open_in_system', { path: path }).catch(function (e) {
-        console.error('open_in_system failed:', e);
+      tauriInvoke('open_in_system', { path: path }).then(function () {
+        lexeraLog('info', 'Opened: ' + path);
+      }).catch(function (e) {
+        lexeraLog('error', 'open_in_system failed: ' + e);
         showToast('Failed to open: ' + e, 'error');
       });
     } else {
@@ -3287,8 +3393,10 @@ const LexeraDashboard = (function () {
 
   function showInFinder(path) {
     if (hasTauri) {
-      tauriInvoke('show_in_folder', { path: path }).catch(function (e) {
-        console.error('show_in_folder failed:', e);
+      tauriInvoke('show_in_folder', { path: path }).then(function (result) {
+        lexeraLog('info', 'Revealed in Finder: ' + result);
+      }).catch(function (e) {
+        lexeraLog('error', 'Show in Finder failed: ' + e);
         showToast('Failed to reveal: ' + e, 'error');
       });
     }

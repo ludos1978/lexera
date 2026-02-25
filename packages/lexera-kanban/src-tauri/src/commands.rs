@@ -24,13 +24,32 @@ pub fn open_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn show_in_folder(path: String) -> Result<(), String> {
-    std::process::Command::new("open")
+pub fn show_in_folder(path: String) -> Result<String, String> {
+    // Canonicalize path to resolve relative paths and symlinks
+    let abs_path = std::path::Path::new(&path);
+    let resolved = if abs_path.is_absolute() {
+        abs_path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| format!("Cannot resolve path: {}", e))?
+            .join(abs_path)
+    };
+    let resolved_str = resolved.to_string_lossy().to_string();
+
+    if !resolved.exists() {
+        return Err(format!("File not found: {}", resolved_str));
+    }
+
+    let output = std::process::Command::new("open")
         .arg("-R")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| format!("Failed to reveal '{}': {}", path, e))?;
-    Ok(())
+        .arg(&resolved_str)
+        .output()
+        .map_err(|e| format!("Failed to reveal '{}': {}", resolved_str, e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("open -R failed: {}", stderr));
+    }
+    Ok(resolved_str)
 }
 
 #[derive(Deserialize, Clone)]
