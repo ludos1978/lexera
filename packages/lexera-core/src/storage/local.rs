@@ -167,6 +167,23 @@ impl LocalStorage {
         self.self_write_tracker.lock().unwrap().cleanup_expired();
     }
 
+    /// Remove a board from tracking. Does not delete the file on disk.
+    pub fn remove_board(&self, board_id: &str) -> Result<(), StorageError> {
+        let mut boards = self.boards.write().unwrap();
+        if boards.remove(board_id).is_none() {
+            return Err(StorageError::BoardNotFound(board_id.to_string()));
+        }
+        drop(boards);
+
+        // Clean up write lock
+        self.write_locks.lock().unwrap().remove(board_id);
+
+        // Clean up include map
+        self.include_map.write().unwrap().remove_board(board_id);
+
+        Ok(())
+    }
+
     /// Get the file path for a board ID.
     pub fn get_board_path(&self, board_id: &str) -> Option<PathBuf> {
         self.boards
@@ -272,13 +289,12 @@ impl LocalStorage {
             .get(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
 
-        let column = state
-            .board
-            .columns
+        let all_cols = state.board.all_columns();
+        let column = all_cols
             .get(col_index)
             .ok_or(StorageError::ColumnOutOfRange {
                 index: col_index,
-                max: state.board.columns.len().saturating_sub(1),
+                max: all_cols.len().saturating_sub(1),
             })?;
 
         let include_source = column

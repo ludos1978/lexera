@@ -67,6 +67,16 @@ pub fn load_config(path: &PathBuf) -> SyncConfig {
     }
 }
 
+/// Save config to path. Creates parent dirs if needed.
+pub fn save_config(path: &PathBuf, config: &SyncConfig) -> Result<(), std::io::Error> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(path, json)
+}
+
 /// Load local identity from ~/.config/lexera/identity.json.
 /// Creates the file with a new UUID on first run.
 pub fn load_or_create_identity() -> crate::auth::User {

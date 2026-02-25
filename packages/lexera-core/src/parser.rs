@@ -138,20 +138,18 @@ fn is_description_boundary(lines: &[&str], i: usize, new_format: bool) -> bool {
         next_index += 1;
     }
     let next_line = if next_index < lines.len() {
-        Some(lines[next_index])
+        lines[next_index]
     } else {
-        None
+        return true;
     };
-    next_line.is_none()
-        || next_line.unwrap().starts_with("- ")
-        || next_line.unwrap().starts_with("%%")
-        || next_line.unwrap().starts_with("---")
-        || (new_format && (
-            (next_line.unwrap().starts_with("# ") && !next_line.unwrap().starts_with("## "))
-            || (next_line.unwrap().starts_with("## ") && !next_line.unwrap().starts_with("### "))
-            || next_line.unwrap().starts_with("### ")
-        ))
-        || (!new_format && next_line.unwrap().starts_with("## "))
+    next_line.starts_with("- ")
+        || next_line.starts_with("%%")
+        || next_line.starts_with("---")
+        || (new_format
+            && ((next_line.starts_with("# ") && !next_line.starts_with("## "))
+                || (next_line.starts_with("## ") && !next_line.starts_with("### "))
+                || next_line.starts_with("### ")))
+        || (!new_format && next_line.starts_with("## "))
 }
 
 /// Parse legacy format: ## = column header, cards as list items.
@@ -315,7 +313,9 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
                     columns: Vec::new(),
                 });
             }
-            current_stack.as_mut().unwrap().columns.push(col);
+            if let Some(stack) = current_stack.as_mut() {
+                stack.columns.push(col);
+            }
         }
     }
 
@@ -332,7 +332,9 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
                     stacks: Vec::new(),
                 });
             }
-            current_row.as_mut().unwrap().stacks.push(stack);
+            if let Some(row) = current_row.as_mut() {
+                row.stacks.push(stack);
+            }
         }
     }
 
@@ -492,7 +494,7 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 pub fn parse_markdown_with_includes(content: &str, ctx: &ParseContext) -> KanbanBoard {
     let mut board = parse_markdown(content);
 
-    for col in &mut board.columns {
+    for col in board.all_columns_mut() {
         if let Some(raw_path) = syntax::extract_include_path(&col.title) {
             let resolved = resolve_include_path(&raw_path, &ctx.board_dir);
             let tags = syntax::strip_include(&col.title);

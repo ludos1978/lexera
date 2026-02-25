@@ -27,7 +27,9 @@ pub async fn spawn_server(
     log::info!("HTTP server listening on http://127.0.0.1:{}", actual_port);
 
     tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
+        if let Err(e) = axum::serve(listener, app).await {
+            log::error!("HTTP server exited with error: {}", e);
+        }
     });
 
     Ok(actual_port)

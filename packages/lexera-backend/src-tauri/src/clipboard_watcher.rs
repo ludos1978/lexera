@@ -35,8 +35,14 @@ impl ClipboardHandler for ClipboardChangeHandler {
 
 /// Start the clipboard watcher on a dedicated std::thread.
 /// Returns the WatcherShutdown handle for clean termination.
-pub fn start_clipboard_watcher(app: &AppHandle, history: ClipboardHistory) -> WatcherShutdown {
-    let mut watcher = ClipboardWatcherContext::new().expect("Failed to create clipboard watcher");
+pub fn start_clipboard_watcher(app: &AppHandle, history: ClipboardHistory) -> Option<WatcherShutdown> {
+    let mut watcher = match ClipboardWatcherContext::new() {
+        Ok(watcher) => watcher,
+        Err(e) => {
+            log::error!("[lexera.clipboard_watcher] Failed to create watcher: {}", e);
+            return None;
+        }
+    };
     let handler = ClipboardChangeHandler {
         app: app.clone(),
         history,
@@ -44,13 +50,16 @@ pub fn start_clipboard_watcher(app: &AppHandle, history: ClipboardHistory) -> Wa
     watcher.add_handler(handler);
     let shutdown = watcher.get_shutdown_channel();
 
-    std::thread::Builder::new()
+    if let Err(e) = std::thread::Builder::new()
         .name("clipboard-watcher".into())
         .spawn(move || {
             log::info!("[lexera.clipboard_watcher] Watcher thread started");
             watcher.start_watch();
         })
-        .expect("Failed to spawn clipboard watcher thread");
+    {
+        log::error!("[lexera.clipboard_watcher] Failed to spawn watcher thread: {}", e);
+        return None;
+    }
 
-    shutdown
+    Some(shutdown)
 }

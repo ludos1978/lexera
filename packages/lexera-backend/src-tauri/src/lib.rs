@@ -73,7 +73,7 @@ pub fn run() {
             }
 
             // Resolve incoming config (map file path to board ID)
-            let incoming = config.incoming.and_then(|inc| {
+            let incoming = config.incoming.clone().and_then(|inc| {
                 let inc_path = PathBuf::from(&inc.board);
                 board_paths.iter().find(|(_, p)| {
                     let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
@@ -91,6 +91,8 @@ pub fn run() {
             // Create file watcher
             let include_map = Arc::new(RwLock::new(IncludeMap::new()));
             let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<BoardChangeEvent>(256);
+
+            let watcher_arc: Arc<std::sync::Mutex<Option<FileWatcher>>> = Arc::new(std::sync::Mutex::new(None));
 
             let watcher_result = FileWatcher::new(include_map.clone());
 
@@ -111,15 +113,17 @@ pub fn run() {
                 }
                 drop(storage_map);
 
+                // Subscribe before moving watcher into Arc
+                let mut event_rx = watcher.event_sender().subscribe();
+
+                // Store watcher in Arc for AppState access
+                *watcher_arc.lock().unwrap() = Some(watcher);
+
                 // Spawn event processing loop
                 let storage_for_events = storage.clone();
                 let event_tx_for_forward = event_tx.clone();
-                let mut event_rx = watcher.event_sender().subscribe();
 
                 tauri::async_runtime::spawn(async move {
-                    // Keep watcher alive
-                    let _watcher = watcher;
-
                     loop {
                         match event_rx.recv().await {
                             Ok(event) => {
@@ -218,6 +222,9 @@ pub fn run() {
                 port,
                 incoming,
                 local_user_id: local_user.id.clone(),
+                config_path: config_path.clone(),
+                config: Arc::new(std::sync::Mutex::new(config)),
+                watcher: watcher_arc,
                 // Collaboration services
                 invite_service,
                 public_service,

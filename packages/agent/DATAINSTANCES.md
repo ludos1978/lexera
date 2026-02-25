@@ -1,6 +1,6 @@
 # Lexera v2 — Data Instances Reference
 
-Last Updated: 2026-02-24
+Last Updated: 2026-02-25
 
 ---
 
@@ -47,6 +47,7 @@ Last Updated: 2026-02-24
 │  ├── dragSource      — Current DnD source descriptor            │
 │  ├── isEditing       — Boolean card edit mode flag              │
 │  ├── pendingRefresh  — Suppressed refresh during edit           │
+│  ├── hierarchyLocked — Boolean lock for add/remove board ops    │
 │  ├── undoStack       — Array of JSON-stringified board states   │
 │  ├── redoStack       — Array of JSON-stringified board states   │
 │  ├── cardDrag        — Pointer-based card DnD state             │
@@ -158,6 +159,7 @@ Backend detects file change (file watcher)
 | `lexera-row-fold:{boardId}` | JSON array of row titles | Folded row titles (new format) |
 | `lexera-stack-fold:{boardId}` | JSON array of stack titles | Folded stack titles (new format) |
 | `lexera-board-order` | JSON array of board IDs | Board sidebar order |
+| `lexera-hierarchy-locked` | `'true'`/`'false'` | Sidebar add/remove lock state (default true) |
 | `lexera-card-collapse:{boardId}` | JSON array of card IDs | Collapsed card IDs |
 
 ---
@@ -178,12 +180,47 @@ One instance per tracked board file:
 
 ### AppState (Axum shared state)
 ```
-File: lexera-backend/src-tauri/src/api.rs
+File: lexera-backend/src-tauri/src/state.rs
 
 Single instance shared across all request handlers:
-- storage: Arc<LocalStorage>                    — Board storage singleton
-- event_tx: broadcast::Sender<String>           — SSE event broadcaster
-- incoming_config: IncomingConfig               — Watched directories and files
+- storage: Arc<LocalStorage>                              — Board storage singleton
+- event_tx: broadcast::Sender<BoardChangeEvent>           — SSE event broadcaster
+- port: u16                                               — Server port
+- incoming: Option<ResolvedIncoming>                      — Incoming board + column config
+- local_user_id: String                                   — Local user UUID
+- config_path: PathBuf                                    — Path to sync.json config file
+- config: Arc<Mutex<SyncConfig>>                          — Runtime-mutable config for add/remove boards
+- watcher: Arc<Mutex<Option<FileWatcher>>>                — File watcher for watching/unwatching board files
+- invite_service: Arc<Mutex<InviteService>>               — Invite management (in-memory)
+- public_service: Arc<Mutex<PublicRoomService>>            — Public room management (in-memory)
+- auth_service: Arc<Mutex<AuthService>>                   — User/role management (in-memory)
+```
+
+### Collaboration Services (all in-memory, non-persistent)
+
+**AuthService** (`auth.rs`):
+```
+- users: HashMap<String, User>                            — user_id → User
+- memberships: HashMap<(String, String), RoomRole>        — (room_id, user_id) → Owner/Editor/Viewer
+- room_members: HashMap<String, Vec<String>>              — room_id → [user_id]
+```
+
+**InviteService** (`invite.rs`):
+```
+- invites: HashMap<String, InviteRecord>                  — token (UUID) → InviteRecord
+  InviteRecord: room_id, created_by, expires_at, max_uses, uses, role
+```
+
+**PublicRoomService** (`public.rs`):
+```
+- rooms: HashMap<String, PublicRoomSettings>               — room_id → PublicRoomSettings
+  PublicRoomSettings: default_role (Editor/Viewer), max_users, member_count
+```
+
+### Config Files (disk)
+```
+~/.config/lexera/sync.json     — SyncConfig: port, boards list, incoming config
+~/.config/lexera/identity.json — User: id (UUID), name, email
 ```
 
 ---

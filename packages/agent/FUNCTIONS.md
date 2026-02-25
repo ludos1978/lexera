@@ -1,6 +1,6 @@
 # Lexera v2 — Functions Reference
 
-Last Updated: 2026-02-24
+Last Updated: 2026-02-25
 
 Format: `path-module_functionname` — Description
 
@@ -53,6 +53,7 @@ Format: `path-module_functionname` — Description
 - storage_local-LocalStorage-new() — Create new LocalStorage instance
 - storage_local-LocalStorage-board_id_from_path(file_path) — Deterministic board ID from path (SHA-256 first 12 hex)
 - storage_local-LocalStorage-add_board(file_path) — Add board file to tracking, read and parse it
+- storage_local-LocalStorage-remove_board(board_id) — Remove board from tracking, cleanup write_locks and include_map
 - storage_local-LocalStorage-reload_board(board_id) — Reload board from disk after file watcher event
 - storage_local-LocalStorage-check_self_write(path) — Check if file change is self-write via fingerprint
 - storage_local-LocalStorage-cleanup_expired_fingerprints() — Periodic cleanup of expired write fingerprints
@@ -97,6 +98,8 @@ Format: `path-module_functionname` — Description
 - api-file_info(board_id, path) — GET /boards/{id}/file-info?path= — file metadata
 - api-find_file(board_id, filename) — POST /boards/{id}/find-file — recursive file search
 - api-convert_path(board_id, body) — POST /boards/{id}/convert-path — path conversion
+- api-add_board_endpoint(body) — POST /boards — add board by file path, watch, update config
+- api-remove_board_endpoint(board_id) — DELETE /boards/{id} — remove board, unwatch, update config
 - api-search(query) — GET /search?q= — search cards across all boards
 - api-sse_events() — GET /events — SSE stream with 30s keep-alive
 - api-status() — GET /status — health check
@@ -108,6 +111,98 @@ Format: `path-module_functionname` — Description
 - api-media_category(ext) — Categorize file by extension
 - api-is_previewable(ext) — Check if file type is previewable
 - api-dedup_filename(dir, filename) — Generate unique filename if exists
+
+## lexera-backend/src-tauri/src/collab_api.rs
+
+### Collaboration Route Handlers
+
+- collab_api-collab_router() — Create Axum router with all collaboration routes
+- collab_api-create_invite(room_id, body, user) — POST /collab/rooms/{id}/invites — create invite link
+- collab_api-list_invites(room_id, user) — GET /collab/rooms/{id}/invites — list room invites
+- collab_api-accept_invite(token, user) — POST /collab/invites/{token}/accept — accept invite
+- collab_api-revoke_invite(room_id, token, user) — DELETE /collab/rooms/{id}/invites/{token} — revoke invite
+- collab_api-list_public_rooms() — GET /collab/public-rooms — list public rooms
+- collab_api-make_public(room_id, body, user) — POST /collab/rooms/{id}/make-public — make room public
+- collab_api-make_private(room_id, user) — DELETE /collab/rooms/{id}/make-public — make room private
+- collab_api-join_public(room_id, user) — POST /collab/rooms/{id}/join-public — join public room
+- collab_api-leave_room(room_id, user) — POST /collab/rooms/{id}/leave — leave room
+- collab_api-list_members(room_id, user) — GET /collab/rooms/{id}/members — list room members
+- collab_api-register_user(body) — POST /collab/users/register — register user
+- collab_api-get_user(user_id) — GET /collab/users/{id} — get user info
+- collab_api-get_me(state) — GET /collab/me — get local user identity
+
+## lexera-backend/src-tauri/src/auth.rs
+
+### AuthService (in-memory)
+
+- auth-AuthService-new() — Create new empty AuthService
+- auth-AuthService-register_user(user) — Register user, error if ID exists
+- auth-AuthService-get_user(user_id) — Get user by ID
+- auth-AuthService-add_to_room(room_id, user_id, role, joined_via) — Add/update user in room with role
+- auth-AuthService-get_role(room_id, user_id) — Get user's role in room
+- auth-AuthService-is_member(room_id, user_id) — Check room membership
+- auth-AuthService-can_write(room_id, user_id) — Check Owner/Editor permission
+- auth-AuthService-can_invite(room_id, user_id) — Check Owner permission
+- auth-AuthService-can_delete(room_id, user_id) — Check Owner permission
+- auth-AuthService-list_room_members(room_id) — List all members of a room
+- auth-AuthService-remove_from_room(room_id, user_id) — Remove user from room
+
+## lexera-backend/src-tauri/src/invite.rs
+
+### InviteService (in-memory)
+
+- invite-InviteService-new() — Create new empty InviteService
+- invite-InviteService-create_invite(room_id, created_by, expires_hours, max_uses, role) — Create invite with UUID token
+- invite-InviteService-accept_invite(token) — Accept invite, increment uses, return RoomJoin info
+- invite-InviteService-revoke_invite(room_id, token) — Remove invite token
+- invite-InviteService-list_invites(room_id) — List all invites for room
+- invite-InviteService-cleanup_expired() — Remove expired invites, return count removed
+
+## lexera-backend/src-tauri/src/public.rs
+
+### PublicRoomService (in-memory)
+
+- public-PublicRoomService-new() — Create new empty PublicRoomService
+- public-PublicRoomService-make_public(room_id, default_role, max_users) — Make room public with settings
+- public-PublicRoomService-make_private(room_id) — Remove room from public list
+- public-PublicRoomService-is_public(room_id) — Check if room is public
+- public-PublicRoomService-get_settings(room_id) — Get public room settings
+- public-PublicRoomService-increment_members(room_id) — Increment member count
+- public-PublicRoomService-decrement_members(room_id) — Decrement member count
+- public-PublicRoomService-list_public_rooms() — List all public rooms
+
+## lexera-backend/src-tauri/src/config.rs
+
+- config-default_config_path() — Returns ~/.config/lexera/sync.json path
+- config-load_config(path) — Load SyncConfig from JSON, returns default if missing
+- config-save_config(path, config) — Save SyncConfig as pretty-printed JSON, creates parent dirs
+- config-load_or_create_identity() — Load or create ~/.config/lexera/identity.json with UUID
+
+## lexera-backend/src-tauri/src/state.rs
+
+- state-AppState — Shared Axum state: storage, event_tx, port, incoming, local_user_id, config_path, config, watcher, collab services
+
+## lexera-backend/src-tauri/src/server.rs
+
+- server-spawn_server(state) — Spawn Axum HTTP server with CORS, returns actual port
+
+## lexera-backend/src-tauri/src/lib.rs
+
+- lib-run() — Tauri app setup: config, storage, watcher, collab services, HTTP server, tray
+
+## lexera-backend/src-tauri/src/tray.rs
+
+- tray-setup_tray(app_handle, port) — Create system tray with status menu
+
+## lexera-backend/src-tauri/src/capture.rs
+
+- capture-read_clipboard() — Tauri command: read clipboard text
+- capture-read_clipboard_image() — Tauri command: read clipboard image as base64
+- capture-get_clipboard_history() — Tauri command: get clipboard history
+- capture-remove_clipboard_entry(index) — Tauri command: remove entry from history
+- capture-snap_capture_window() — Tauri command: snap capture window to position
+- capture-close_capture() — Tauri command: close capture window
+- capture-capture_selection_and_open(app) — Open quick capture UI on hotkey
 
 ## lexera-kanban/src-tauri/src/commands.rs
 
@@ -130,6 +225,8 @@ Format: `path-module_functionname` — Description
 - api_js-fileInfo(boardId, path) — GET file metadata
 - api_js-saveBoard(boardId, boardData) — PUT full board
 - api_js-uploadMedia(boardId, file) — POST multipart file upload to board media folder, returns { filename }
+- api_js-addBoard(filePath) — POST /boards — add board by file path
+- api_js-removeBoard(boardId) — DELETE /boards/{id} — remove board from tracking
 - api_js-connectSSE(onEvent) — Establish SSE connection
 
 ## Frontend: lexera-kanban/src/app.js — LexeraDashboard
@@ -150,7 +247,9 @@ Format: `path-module_functionname` — Description
 
 ### Init & Keyboard
 
-- app-init() — Initialize event listeners and start polling
+- app-setDescendantTreeState(container, expand, boardId) — Alt+click helper: recursively expand/collapse all descendant tree nodes and persist state
+- app-updateLockButton(btn) — Update lock button icon and title based on hierarchyLocked state
+- app-init() — Initialize event listeners, Tauri drag-drop, and start polling
 - app-handleKeyNavigation(e) — Arrow keys, Enter, Escape for card navigation
 - app-navigateCards(key) — Move focus between cards
 - app-focusCard(cardEl) — Highlight and scroll card into view

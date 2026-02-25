@@ -1,6 +1,8 @@
 /// Axum REST API routes.
 ///
 ///   GET  /boards                              -> list all boards
+///   POST /boards                              -> add board by file path
+///   DELETE /boards/:boardId                   -> remove board from tracking
 ///   GET  /boards/:boardId/columns             -> full column data with cards (+ ETag)
 ///   POST /boards/:boardId/columns/:colIndex/cards -> add card
 ///   POST /boards/:boardId/media               -> upload media file
@@ -30,6 +32,17 @@ use lexera_core::types::is_archived_or_deleted;
 
 use crate::state::AppState;
 
+fn insert_header_safe(headers: &mut HeaderMap, name: &'static str, value: &str) {
+    match value.parse() {
+        Ok(parsed) => {
+            headers.insert(name, parsed);
+        }
+        Err(e) => {
+            log::warn!("Failed to set header {}={} ({})", name, value, e);
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct SearchQuery {
     q: Option<String>,
@@ -51,6 +64,11 @@ pub struct AddCardBody {
 }
 
 #[derive(Deserialize)]
+pub struct AddBoardBody {
+    file: String,
+}
+
+#[derive(Deserialize)]
 pub struct FindFileBody {
     filename: String,
 }
@@ -66,13 +84,13 @@ pub struct ConvertPathBody {
 
 pub fn api_router() -> Router<AppState> {
     Router::new()
-        .route("/boards", get(list_boards))
+        .route("/boards", get(list_boards).post(add_board_endpoint))
         .route("/boards/{board_id}/columns", get(get_board_columns))
         .route(
             "/boards/{board_id}/columns/{col_index}/cards",
             axum::routing::post(add_card),
         )
-        .route("/boards/{board_id}", axum::routing::put(write_board))
+        .route("/boards/{board_id}", axum::routing::put(write_board).delete(remove_board_endpoint))
         .route(
             "/boards/{board_id}/media",
             axum::routing::post(upload_media),
@@ -117,7 +135,7 @@ async fn get_board_columns(
         if let Ok(value) = if_none_match.to_str() {
             if value == etag {
                 let mut resp_headers = HeaderMap::new();
-                resp_headers.insert("etag", etag.parse().unwrap());
+                insert_header_safe(&mut resp_headers, "etag", &etag);
                 return Ok((StatusCode::NOT_MODIFIED, resp_headers, Json(serde_json::json!({}))));
             }
         }
@@ -150,7 +168,7 @@ async fn get_board_columns(
         .collect();
 
     let mut resp_headers = HeaderMap::new();
-    resp_headers.insert("etag", etag.parse().unwrap());
+    insert_header_safe(&mut resp_headers, "etag", &etag);
 
     Ok((
         StatusCode::OK,
@@ -227,6 +245,103 @@ async fn write_board(
             Err((status, Json(ErrorResponse { error: e.to_string() })))
         }
     }
+}
+
+/// POST /boards — add a new board by file path.
+async fn add_board_endpoint(
+    State(state): State<AppState>,
+    Json(body): Json<AddBoardBody>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    let path = PathBuf::from(&body.file);
+    if !path.exists() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: format!("File not found: {}", body.file) }),
+        ));
+    }
+    if path.extension().and_then(|e| e.to_str()) != Some("md") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Only .md files are supported".to_string() }),
+        ));
+    }
+
+    let board_id = state.storage.add_board(&path).map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() }))
+    })?;
+
+    // Watch the new board file
+    let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    if let Ok(mut watcher_guard) = state.watcher.lock() {
+        if let Some(ref mut watcher) = *watcher_guard {
+            if let Err(e) = watcher.watch_board(&board_id, &canonical) {
+                log::warn!("[lexera.api.add_board] Failed to watch board {}: {}", board_id, e);
+            }
+        }
+    }
+
+    // Update config and persist
+    if let Ok(mut cfg) = state.config.lock() {
+        let file_str = path.to_string_lossy().to_string();
+        if !cfg.boards.iter().any(|b| b.file == file_str) {
+            cfg.boards.push(crate::config::BoardEntry { file: file_str, name: None });
+            if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
+                log::warn!("[lexera.api.add_board] Failed to save config: {}", e);
+            }
+        }
+    }
+
+    // Broadcast board list change via SSE
+    let _ = state.event_tx.send(lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
+        board_id: board_id.clone(),
+    });
+
+    Ok((StatusCode::CREATED, Json(serde_json::json!({ "boardId": board_id }))))
+}
+
+/// DELETE /boards/{board_id} — remove a board from tracking (does not delete file).
+async fn remove_board_endpoint(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    // Get file path before removing
+    let file_path = state.storage.get_board_path(&board_id);
+
+    state.storage.remove_board(&board_id).map_err(|e| {
+        let status = match &e {
+            lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, Json(ErrorResponse { error: e.to_string() }))
+    })?;
+
+    // Unwatch the board file
+    if let Some(ref path) = file_path {
+        if let Ok(mut watcher_guard) = state.watcher.lock() {
+            if let Some(ref mut watcher) = *watcher_guard {
+                if let Err(e) = watcher.unwatch(path) {
+                    log::warn!("[lexera.api.remove_board] Failed to unwatch board {}: {}", board_id, e);
+                }
+            }
+        }
+    }
+
+    // Update config and persist
+    if let Some(ref path) = file_path {
+        let path_str = path.to_string_lossy().to_string();
+        if let Ok(mut cfg) = state.config.lock() {
+            cfg.boards.retain(|b| {
+                let entry_canonical = std::fs::canonicalize(&b.file).unwrap_or_else(|_| PathBuf::from(&b.file));
+                entry_canonical != *path
+                    && b.file != path_str
+            });
+            if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
+                log::warn!("[lexera.api.remove_board] Failed to save config: {}", e);
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
 }
 
 async fn search(
@@ -403,19 +518,15 @@ async fn serve_media(
         (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
     })?;
 
-    let content_type = match file_path.extension().and_then(|e| e.to_str()) {
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("svg") => "image/svg+xml",
-        Some("pdf") => "application/pdf",
-        _ => "application/octet-stream",
-    };
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase());
+    let content_type = content_type_for_ext(ext.as_deref());
 
     let mut headers = HeaderMap::new();
-    headers.insert("content-type", content_type.parse().unwrap());
-    headers.insert("cache-control", "public, max-age=3600".parse().unwrap());
+    insert_header_safe(&mut headers, "content-type", content_type);
+    insert_header_safe(&mut headers, "cache-control", "public, max-age=3600");
 
     Ok((headers, data))
 }
@@ -493,15 +604,17 @@ async fn serve_file(
     let ext = file_path.extension().and_then(|e| e.to_str());
     let ct = content_type_for_ext(ext);
     let mut headers = HeaderMap::new();
-    headers.insert("content-type", ct.parse().unwrap());
-    headers.insert("cache-control", "public, max-age=3600".parse().unwrap());
+    insert_header_safe(&mut headers, "content-type", ct);
+    insert_header_safe(&mut headers, "cache-control", "public, max-age=3600");
     if let Ok(meta) = std::fs::metadata(&file_path) {
         if let Ok(modified) = meta.modified() {
             if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
-                headers.insert("last-modified", dur.as_secs().to_string().parse().unwrap());
+                let modified_value = dur.as_secs().to_string();
+                insert_header_safe(&mut headers, "last-modified", &modified_value);
             }
         }
-        headers.insert("content-length", meta.len().to_string().parse().unwrap());
+        let len_value = meta.len().to_string();
+        insert_header_safe(&mut headers, "content-length", &len_value);
     }
     Ok((headers, data))
 }
@@ -538,7 +651,13 @@ async fn file_info(
         }));
     }
 
-    let fp = file_path.unwrap();
+    let Some(fp) = file_path else {
+        return Json(serde_json::json!({
+            "exists": false,
+            "path": params.path,
+            "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
+        }));
+    };
     let ext = fp.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
     let ext_ref = ext.as_deref();
     let meta = std::fs::metadata(&fp).ok();

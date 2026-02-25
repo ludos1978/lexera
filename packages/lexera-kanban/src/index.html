@@ -23,7 +23,13 @@
   <div class="layout">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-header">Boards</div>
+      <div class="sidebar-header">
+        <span>Hierarchy</span>
+        <div class="sidebar-header-actions">
+          <button id="btn-sidebar-lock" class="sidebar-btn" title="Lock hierarchy (prevent add/remove)">&#128274;</button>
+          <button id="btn-sidebar-sync" class="sidebar-btn" title="Sync with view">&#8982;</button>
+        </div>
+      </div>
       <div id="board-list" class="board-list"></div>
     </div>
 
@@ -34,7 +40,7 @@
       <div id="search-results" class="search-results hidden"></div>
       <div id="empty-state" class="empty-state">
         <div class="empty-state-icon">&#9776;</div>
-        <div>Connecting to Lexera Backend...</div>
+        <div>Select a board from the sidebar</div>
       </div>
     </div>
   </div>

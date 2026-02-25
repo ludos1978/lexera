@@ -107,5 +107,17 @@ const LexeraApi = (function () {
     return es;
   }
 
-  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia };
+  async function addBoard(filePath) {
+    return request('/boards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: filePath }),
+    });
+  }
+
+  async function removeBoard(boardId) {
+    return request('/boards/' + boardId, { method: 'DELETE' });
+  }
+
+  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard };
 })();

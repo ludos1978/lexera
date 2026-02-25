@@ -122,6 +122,7 @@ const LexeraDashboard = (function () {
   var redoStack = [];
   var MAX_UNDO = 30;
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
+  var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') !== 'false'; // default true
   var mermaidIdCounter = 0;
   var mermaidReady = false;
   var mermaidLoading = false;
@@ -395,6 +396,47 @@ const LexeraDashboard = (function () {
       handleFileDrop(e.clipboardData.files, null);
     });
 
+    // Tauri drag-drop: add .md files to sidebar when unlocked
+    var sidebarEl = document.querySelector('.sidebar');
+    if (window.__TAURI__) {
+      window.__TAURI__.event.listen('tauri://drag-over', function (event) {
+        if (hierarchyLocked) return;
+        var pos = event.payload.position;
+        if (sidebarEl && pos) {
+          var rect = sidebarEl.getBoundingClientRect();
+          if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) {
+            sidebarEl.classList.add('drop-zone-active');
+          } else {
+            sidebarEl.classList.remove('drop-zone-active');
+          }
+        }
+      });
+      window.__TAURI__.event.listen('tauri://drag-leave', function () {
+        if (sidebarEl) sidebarEl.classList.remove('drop-zone-active');
+      });
+      window.__TAURI__.event.listen('tauri://drag-drop', function (event) {
+        if (sidebarEl) sidebarEl.classList.remove('drop-zone-active');
+        if (hierarchyLocked) return;
+        var paths = event.payload.paths || [];
+        var pos = event.payload.position;
+        // Check if drop is on sidebar
+        if (sidebarEl && pos) {
+          var rect = sidebarEl.getBoundingClientRect();
+          if (pos.x < rect.left || pos.x > rect.right || pos.y < rect.top || pos.y > rect.bottom) return;
+        }
+        var mdFiles = paths.filter(function (p) { return p.endsWith('.md'); });
+        if (mdFiles.length === 0) return;
+        var addPromises = mdFiles.map(function (filePath) {
+          return LexeraApi.addBoard(filePath).catch(function (err) {
+            lexeraLog('error', 'Failed to add board: ' + err.message);
+          });
+        });
+        Promise.all(addPromises).then(function () {
+          poll();
+        });
+      });
+    }
+
     poll();
     pollInterval = setInterval(poll, 5000);
   }
@@ -593,6 +635,45 @@ const LexeraDashboard = (function () {
     saveSidebarTreeState(boardId, state);
   }
 
+  // Alt+click helper: expand or collapse all descendant tree nodes inside a container.
+  // `expand` = true means set children to expanded state; false = collapsed.
+  function setDescendantTreeState(container, expand, boardId) {
+    var childContainers = container.querySelectorAll('.tree-children');
+    var childToggles = container.querySelectorAll('.tree-toggle');
+    for (var i = 0; i < childContainers.length; i++) {
+      if (expand) childContainers[i].classList.add('expanded');
+      else childContainers[i].classList.remove('expanded');
+    }
+    for (var i = 0; i < childToggles.length; i++) {
+      if (expand) childToggles[i].classList.add('expanded');
+      else childToggles[i].classList.remove('expanded');
+    }
+    // Persist: collect all descendant tree-node IDs and batch-update state
+    var state = getSidebarTreeState(boardId);
+    var nodes = container.querySelectorAll('.tree-node[data-tree-id]');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var treeId = n.getAttribute('data-tree-id');
+      if (!treeId) continue;
+      var kind = n.classList.contains('tree-row') ? 'rows'
+        : n.classList.contains('tree-stack') ? 'stacks'
+        : n.classList.contains('tree-column') ? 'columns' : null;
+      if (!kind) continue;
+      var arr = state[kind] || [];
+      var idx = arr.indexOf(treeId);
+      // rows/stacks: in array = collapsed; columns: in array = expanded
+      if (kind === 'columns') {
+        if (expand && idx === -1) arr.push(treeId);
+        else if (!expand && idx !== -1) arr.splice(idx, 1);
+      } else {
+        if (expand && idx !== -1) arr.splice(idx, 1);
+        else if (!expand && idx === -1) arr.push(treeId);
+      }
+      state[kind] = arr;
+    }
+    saveSidebarTreeState(boardId, state);
+  }
+
   function countCardsInRow(row) {
     var n = 0;
     for (var s = 0; s < row.stacks.length; s++) {
@@ -649,7 +730,8 @@ const LexeraDashboard = (function () {
         '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
         (hasContent ? '<span class="board-item-toggle' + (isExpanded ? ' expanded' : '') + '">\u25B6</span>' : '<span class="board-item-toggle-spacer"></span>') +
         '<span class="board-item-title">' + escapeHtml(boardName) + '</span>' +
-        '<span class="board-item-count">' + totalCards + '</span>';
+        '<span class="board-item-count">' + totalCards + '</span>' +
+        (!hierarchyLocked ? '<span class="board-item-remove" title="Remove board">\u00D7</span>' : '');
 
       // Tree sub-list
       var tree = document.createElement('div');
@@ -776,21 +858,24 @@ const LexeraDashboard = (function () {
       wrapper.appendChild(tree);
 
       (function (boardId, boardIndex, wrapperEl, boardFilePath) {
-        // Toggle expand on board arrow click
+        // Toggle expand on board arrow click (Alt+click = recursive)
         var toggle = wrapperEl.querySelector('.board-item-toggle');
         if (toggle) {
           toggle.addEventListener('click', function (e) {
             e.stopPropagation();
             var ids = getSidebarExpandedBoards();
             var idx = ids.indexOf(boardId);
+            var treeContainer = wrapperEl.querySelector('.board-item-tree');
             if (idx !== -1) {
               ids.splice(idx, 1);
               toggle.classList.remove('expanded');
-              wrapperEl.querySelector('.board-item-tree').classList.remove('expanded');
+              treeContainer.classList.remove('expanded');
+              if (e.altKey) setDescendantTreeState(treeContainer, false, boardId);
             } else {
               ids.push(boardId);
               toggle.classList.add('expanded');
-              wrapperEl.querySelector('.board-item-tree').classList.add('expanded');
+              treeContainer.classList.add('expanded');
+              if (e.altKey) setDescendantTreeState(treeContainer, true, boardId);
             }
             saveSidebarExpandedBoards(ids);
           });
@@ -808,13 +893,14 @@ const LexeraDashboard = (function () {
               return;
             }
 
-            // Toggle arrow click
+            // Toggle arrow click (Alt+click = recursive)
             if (target.classList.contains('tree-toggle')) {
               e.stopPropagation();
               var node = target.closest('.tree-node');
               if (!node) return;
               var children = node.nextElementSibling;
               if (children && children.classList.contains('tree-children')) {
+                var expanding = !children.classList.contains('expanded');
                 children.classList.toggle('expanded');
                 target.classList.toggle('expanded');
                 // Persist fold state
@@ -827,6 +913,10 @@ const LexeraDashboard = (function () {
                   } else if (node.classList.contains('tree-column')) {
                     toggleSidebarTreeNode(boardId, 'columns', treeId);
                   }
+                }
+                // Alt+click: recursively expand/collapse all descendants
+                if (e.altKey) {
+                  setDescendantTreeState(children, expanding, boardId);
                 }
               }
               return;
@@ -867,10 +957,33 @@ const LexeraDashboard = (function () {
         }
 
         var boardRow = wrapperEl.querySelector('.board-item');
-        boardRow.addEventListener('click', function () {
+        boardRow.addEventListener('click', function (e) {
+          if (e.target.classList.contains('board-item-remove')) return;
           exitSearchMode();
           selectBoard(boardId);
         });
+
+        // Remove button handler
+        var removeBtn = boardRow.querySelector('.board-item-remove');
+        if (removeBtn) {
+          removeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (!confirm('Remove "' + (boardRow.querySelector('.board-item-title').textContent) + '" from sidebar?\n(The file will not be deleted.)')) return;
+            LexeraApi.removeBoard(boardId).then(function () {
+              boards = boards.filter(function (b) { return b.id !== boardId; });
+              if (activeBoardId === boardId) {
+                activeBoardId = null;
+                activeBoardData = null;
+                fullBoardData = null;
+              }
+              renderBoardList();
+              renderMainView();
+            }).catch(function (err) {
+              lexeraLog('error', 'Failed to remove board: ' + err.message);
+            });
+          });
+        }
+
         boardRow.addEventListener('contextmenu', function (e) {
           e.preventDefault();
           e.stopPropagation();
@@ -969,6 +1082,28 @@ const LexeraDashboard = (function () {
           var prev = $boardList.querySelector('.sync-highlight');
           if (prev) prev.classList.remove('sync-highlight');
         }
+      });
+    }
+  })();
+
+  // Lock button: controls add/remove board capability
+  function updateLockButton(btn) {
+    if (!btn) return;
+    btn.innerHTML = hierarchyLocked ? '&#128274;' : '&#128275;';
+    btn.title = hierarchyLocked ? 'Unlock hierarchy (allow add/remove)' : 'Lock hierarchy (prevent add/remove)';
+    btn.classList.toggle('active', !hierarchyLocked);
+  }
+
+  (function () {
+    var lockBtn = document.getElementById('btn-sidebar-lock');
+    updateLockButton(lockBtn);
+    if (lockBtn) {
+      lockBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        hierarchyLocked = !hierarchyLocked;
+        localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
+        updateLockButton(lockBtn);
+        renderBoardList();
       });
     }
   })();
@@ -2317,10 +2452,11 @@ const LexeraDashboard = (function () {
     if (!fullBoardData) return;
 
     pushUndo();
+    var ts = Date.now();
     var newRow = {
-      id: 'row-' + Date.now(),
+      id: 'row-' + ts,
       title: 'New Row',
-      stacks: [{ id: 'stack-' + Date.now(), title: 'Default', columns: [{ title: 'New Column', cards: [] }] }]
+      stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }] }]
     };
     fullBoardData.rows.splice(atIndex, 0, newRow);
     try {
@@ -2362,10 +2498,11 @@ const LexeraDashboard = (function () {
     var row = findFullDataRow(rowIdx);
     if (!row) return;
     pushUndo();
+    var ts = Date.now();
     row.stacks.push({
-      id: 'stack-' + Date.now(),
+      id: 'stack-' + ts,
       title: 'New Stack',
-      columns: [{ title: 'New Column', cards: [] }]
+      columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }]
     });
     try {
       await saveFullBoard();
@@ -2405,7 +2542,7 @@ const LexeraDashboard = (function () {
     var stack = findFullDataStack(rowIdx, stackIdx);
     if (!stack) return;
     pushUndo();
-    stack.columns.push({ title: 'New Column', cards: [] });
+    stack.columns.push({ id: 'col-' + Date.now(), title: 'New Column', cards: [] });
     try {
       await saveFullBoard();
       updateDisplayFromFullBoard();
@@ -3615,7 +3752,7 @@ const LexeraDashboard = (function () {
   async function addColumn(atIndex) {
     if (!fullBoardData || !activeBoardId) return;
     pushUndo();
-    var newCol = { title: 'New Column', cards: [] };
+    var newCol = { id: 'col-' + Date.now(), title: 'New Column', cards: [] };
     var container = findColumnContainer(atIndex);
     if (container) {
       container.arr.splice(container.localIdx, 0, newCol);
@@ -3624,7 +3761,7 @@ const LexeraDashboard = (function () {
       // Ensure at least one row/stack exists for empty boards.
       if (!fullBoardData.rows || fullBoardData.rows.length === 0) {
         fullBoardData.rows = [{
-          id: generate_id('row'),
+          id: 'row-' + Date.now(),
           title: fullBoardData.title || 'Board',
           stacks: []
         }];
@@ -3632,7 +3769,7 @@ const LexeraDashboard = (function () {
       var lastRow = fullBoardData.rows[fullBoardData.rows.length - 1];
       if (!lastRow.stacks || lastRow.stacks.length === 0) {
         lastRow.stacks = [{
-          id: generate_id('stack'),
+          id: 'stack-' + Date.now(),
           title: 'Default',
           columns: []
         }];
