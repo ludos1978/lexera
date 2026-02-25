@@ -463,6 +463,7 @@ body {
 .board-row {
   display: flex;
   flex-direction: row;
+  align-items: stretch;
   gap: 0;
   margin-bottom: 6px;
   min-width: 0;
@@ -473,10 +474,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   padding: 8px 3px;
   cursor: pointer;
   user-select: none;
+  background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   writing-mode: vertical-lr;
   flex-shrink: 0;
@@ -505,6 +508,9 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .board-row-count {
@@ -518,6 +524,7 @@ body {
   gap: 12px;
   overflow-x: auto;
   align-items: flex-start;
+  padding-left: 8px;
   padding-right: 40px;
   min-height: 60px;
   flex: 1;
@@ -588,9 +595,16 @@ body {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  min-width: 40px;
+  flex: 1;
 }
 .board-stack-title:hover {
   text-decoration: underline dotted;
+}
+.board-stack-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 .stack-delete-btn {
   margin-left: auto;
@@ -648,18 +662,21 @@ body {
 .columns-container.new-format {
   flex-direction: column;
   align-items: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Fill available vertical space with rows to avoid dead space under the board. */
 .columns-container.new-format .board-row {
   flex: 1 0 auto;
   margin-bottom: 0;
-  min-height: 0;
+  min-height: 120px;
 }
 
 /* Folded rows should collapse back to header-only height. */
 .columns-container.new-format .board-row.folded {
   flex: 0 0 auto;
+  min-height: 0;
 }
 
 /* Board setting: row max height */

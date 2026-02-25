@@ -1112,11 +1112,9 @@ const LexeraDashboard = (function () {
                 return { index: flatIdx, title: col.title, cards: cards };
               });
             return { id: stack.id, title: stack.title, columns: cols };
-          })
-          .filter(function (stack) { return stack.columns.length > 0; });
+          });
         return { id: row.id, title: row.title, stacks: stacks };
-      })
-      .filter(function (row) { return row.stacks.length > 0; });
+      });
   }
 
   function is_archived_or_deleted(text) {
@@ -1854,7 +1852,7 @@ const LexeraDashboard = (function () {
       }
       rowHeader.innerHTML =
         '<span class="drag-grip">\u22EE\u22EE</span>' +
-        '<span class="board-row-title">' + escapeHtml(row.title) + '</span>' +
+        '<span class="board-row-title">' + escapeHtml(row.title.length > 40 ? row.title.slice(0, 40) + '\u2026' : row.title) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>';
       (function (el, rowIdx) {
         rowHeader.addEventListener('click', function (e) {
@@ -1887,17 +1885,19 @@ const LexeraDashboard = (function () {
         stackEl.setAttribute('data-stack-title', stack.title);
         stackEl.setAttribute('data-row-index', r.toString());
         stackEl.setAttribute('data-stack-index', s.toString());
-        if (foldedStacks.indexOf(stack.title) !== -1) {
+        var isEmptyStack = !stack.columns || stack.columns.length === 0;
+        if (isEmptyStack || foldedStacks.indexOf(stack.title) !== -1) {
           stackEl.classList.add('folded');
         }
 
         // Stack header
         var stackHeader = document.createElement('div');
         stackHeader.className = 'board-stack-header';
-        var isEmptyStack = !stack.columns || stack.columns.length === 0;
+        var stackColCount = stack.columns ? stack.columns.length : 0;
         stackHeader.innerHTML =
           '<span class="drag-grip">\u22EE\u22EE</span>' +
-          '<span class="board-stack-title">' + escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) + '</span>' +
+          '<span class="board-stack-title">' + (stack.title ? escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) : '&nbsp;') + '</span>' +
+          '<span class="board-stack-count">' + stackColCount + '</span>' +
           (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '');
         (function (el, rIdx, sIdx) {
           var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
@@ -2836,6 +2836,21 @@ const LexeraDashboard = (function () {
         return;
       }
     }
+    // Edge case: cursor outside all nodes — snap to nearest in the same cross-axis range
+    var lastInRange = null;
+    for (var i = 0; i < nodeList.length; i++) {
+      var rect = nodeList[i].getBoundingClientRect();
+      var inCross = vertical ? (mx >= rect.left && mx <= rect.right) : (my >= rect.top && my <= rect.bottom);
+      if (!inCross) continue;
+      if (vertical ? (my <= rect.top) : (mx <= rect.left)) {
+        nodeList[i].classList.add(classBefore);
+        return;
+      }
+      if (vertical ? (my >= rect.bottom) : (mx >= rect.right)) {
+        lastInRange = nodeList[i];
+      }
+    }
+    if (lastInRange) lastInRange.classList.add(classAfter);
   }
 
   function updateColumnPtrDropTarget(mx, my) {
@@ -2947,6 +2962,20 @@ const LexeraDashboard = (function () {
         return { node: nodeList[i], before: before };
       }
     }
+    // Edge case: cursor outside all nodes — snap to nearest in the same cross-axis range
+    var lastMatch = null;
+    for (var i = 0; i < nodeList.length; i++) {
+      var rect = nodeList[i].getBoundingClientRect();
+      var inCross = vertical ? (mx >= rect.left && mx <= rect.right) : (my >= rect.top && my <= rect.bottom);
+      if (!inCross) continue;
+      if (vertical ? (my <= rect.top) : (mx <= rect.left)) {
+        return { node: nodeList[i], before: true };
+      }
+      if (vertical ? (my >= rect.bottom) : (mx >= rect.right)) {
+        lastMatch = nodeList[i];
+      }
+    }
+    if (lastMatch) return { node: lastMatch, before: false };
     return null;
   }
 
