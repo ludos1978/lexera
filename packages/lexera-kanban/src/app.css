@@ -28,6 +28,10 @@
   --scrollbar-track: transparent;
   --header-height: 40px;
   --sidebar-width: 260px;
+  --board-row-gap: 12px;
+  --board-stack-gap: 10px;
+  --board-column-gap: 6px;
+  --board-inner-padding: 8px;
   --btn-bg: #e0e0e0;
   --btn-bg-hover: #d0d0d0;
   --btn-fg: #333333;
@@ -435,8 +439,8 @@ body {
   flex: 1;
   display: flex;
   overflow-x: auto;
-  padding: 8px;
-  gap: 8px;
+  padding: var(--board-inner-padding);
+  gap: var(--board-stack-gap);
   align-items: flex-start;
   font-size: var(--board-font-size, 13px);
   font-family: var(--board-font-family, inherit);
@@ -465,23 +469,23 @@ body {
   flex-direction: row;
   align-items: stretch;
   gap: 0;
-  margin-bottom: 6px;
   min-width: 0;
   width: 100%;
 }
 
 .board-row-header {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 6px;
   padding: 8px 3px;
   cursor: pointer;
   user-select: none;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
-  writing-mode: vertical-lr;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
   flex-shrink: 0;
   width: 24px;
 }
@@ -494,11 +498,16 @@ body {
   writing-mode: horizontal-tb;
   transform: rotate(90deg);
   transition: transform 0.15s;
+  order: 100;
 }
 
 .board-row-header .drag-grip {
   writing-mode: horizontal-tb;
+  order: 90;
 }
+
+.board-row-title { order: 80; }
+.board-row-count { order: 70; }
 
 .board-row.folded .board-row-header::before {
   transform: rotate(0deg);
@@ -508,9 +517,6 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-bright);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .board-row-count {
@@ -521,11 +527,10 @@ body {
 .board-row-content {
   display: flex;
   flex-direction: row;
-  gap: 12px;
+  gap: var(--board-stack-gap);
   overflow-x: auto;
   align-items: flex-start;
-  padding-left: 8px;
-  padding-right: 40px;
+  padding: var(--board-inner-padding);
   min-height: 60px;
   flex: 1;
   min-width: 0;
@@ -539,15 +544,18 @@ body {
 .board-row.folded .board-row-header {
   flex-direction: row;
   writing-mode: horizontal-tb;
+  transform: none;
+  justify-content: flex-start;
   width: 100%;
   padding: 4px 8px;
   border-right: none;
   border-bottom: 1px solid var(--border);
 }
 
-.board-row.folded .board-row-header .drag-grip {
-  writing-mode: horizontal-tb;
-}
+.board-row.folded .board-row-header::before { order: 0; }
+.board-row.folded .board-row-header .drag-grip { order: 0; writing-mode: horizontal-tb; }
+.board-row.folded .board-row-title { order: 0; }
+.board-row.folded .board-row-count { order: 0; }
 
 .board-row.folded .board-row-content {
   display: none;
@@ -625,7 +633,8 @@ body {
 .board-stack-content {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--board-column-gap);
+  padding: var(--board-column-gap);
   flex: 1;
   min-width: 0;
 }
@@ -636,23 +645,34 @@ body {
   width: 24px;
 }
 .board-stack.folded .board-stack-header {
-  writing-mode: vertical-lr;
-  height: auto;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  height: 100%;
   border-bottom: none;
   border-radius: 4px;
   padding: 3px;
   align-items: center;
+  justify-content: flex-end;
 }
 .board-stack.folded .board-stack-header::before {
   writing-mode: horizontal-tb;
   flex-shrink: 0;
+  order: 100;
 }
 .board-stack.folded .board-stack-header .drag-grip {
   writing-mode: horizontal-tb;
   flex-shrink: 0;
+  order: 90;
 }
 .board-stack.folded .board-stack-title {
   flex-shrink: 0;
+  order: 80;
+}
+.board-stack.folded .board-stack-count {
+  order: 70;
+}
+.board-stack.folded .stack-delete-btn {
+  order: 60;
 }
 .board-stack.folded .board-stack-content {
   display: none;
@@ -662,6 +682,7 @@ body {
 .columns-container.new-format {
   flex-direction: column;
   align-items: stretch;
+  gap: var(--board-row-gap);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -669,7 +690,6 @@ body {
 /* Fill available vertical space with rows to avoid dead space under the board. */
 .columns-container.new-format .board-row {
   flex: 1 0 auto;
-  margin-bottom: 0;
   min-height: 120px;
 }
 
@@ -677,6 +697,14 @@ body {
 .columns-container.new-format .board-row.folded {
   flex: 0 0 auto;
   min-height: 0;
+}
+
+/* Board setting: spacious layout */
+.columns-container.layout-spacious {
+  --board-row-gap: 20px;
+  --board-stack-gap: 16px;
+  --board-column-gap: 10px;
+  --board-inner-padding: 14px;
 }
 
 /* Board setting: row max height */

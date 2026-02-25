@@ -1375,7 +1375,8 @@ const LexeraDashboard = (function () {
       { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
       { key: 'stickyStackMode', label: 'Sticky Headers', placeholder: '', type: 'select', options: ['', 'column'] },
       { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
-      { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'enabled', 'disabled'] }
+      { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'enabled', 'disabled'] },
+      { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] }
     ];
 
     var overlay = document.createElement('div');
@@ -1599,6 +1600,7 @@ const LexeraDashboard = (function () {
     $columnsContainer.classList.remove('sticky-headers');
     $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
     $columnsContainer.classList.remove('focus-scroll-mode');
+    $columnsContainer.classList.remove('layout-spacious');
 
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
@@ -1618,6 +1620,7 @@ const LexeraDashboard = (function () {
     if (s.htmlCommentRenderMode === 'hide') $columnsContainer.classList.add('html-comments-hide');
     if (s.htmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
     if (s.arrowKeyFocusScroll === 'enabled') $columnsContainer.classList.add('focus-scroll-mode');
+    if (s.layoutSpacing === 'spacious') $columnsContainer.classList.add('layout-spacious');
   }
 
   /**
