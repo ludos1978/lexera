@@ -21,6 +21,7 @@ pub struct AppState {
     pub event_tx: broadcast::Sender<BoardChangeEvent>,
     pub port: u16,
     pub incoming: Option<ResolvedIncoming>,
+    pub local_user_id: String,
     // Collaboration services wrapped in Arc<Mutex<...>> for thread safety and concurrent access
     pub invite_service: Arc<std::sync::Mutex<InviteService>>,
     pub public_service: Arc<std::sync::Mutex<PublicRoomService>>,

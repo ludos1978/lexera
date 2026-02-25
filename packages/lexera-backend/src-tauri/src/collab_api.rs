@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post, delete},
 };
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex, MutexGuard};
 use lexera_core::storage::BoardStorage;
 use crate::state::AppState;
 use crate::invite::{CreateInviteRequest, InviteLink, RoomJoin};
@@ -66,6 +67,19 @@ impl ErrorResponse {
 
 type Result<T> = std::result::Result<T, (StatusCode, Json<ErrorResponse>)>;
 
+fn internal_error(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse::new(&msg.into())),
+    )
+}
+
+fn lock_arc<'a, T>(service: &'a Arc<Mutex<T>>, name: &str) -> Result<MutexGuard<'a, T>> {
+    service
+        .lock()
+        .map_err(|e| internal_error(format!("{} service unavailable: {}", name, e)))
+}
+
 // ============================================================================
 // Invite Endpoints
 // ============================================================================
@@ -80,7 +94,7 @@ async fn create_invite(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     // Verify user can invite (owner only)
-    let auth_service = state.auth_service.lock().unwrap();
+    let auth_service = lock_arc(&state.auth_service, "auth")?;
     if !auth_service.is_member(&room_id, &user_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
     }
@@ -94,7 +108,7 @@ async fn create_invite(
         .map(|b| b.title.clone());
 
     // Create invite
-    let mut invite_service = state.invite_service.lock().unwrap();
+    let mut invite_service = lock_arc(&state.invite_service, "invite")?;
     let invite = invite_service.create_invite(
         CreateInviteRequest {
             room_id: room_id.clone(),
@@ -121,7 +135,7 @@ async fn list_invites(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     // Verify user can invite (owner only)
-    let auth_service = state.auth_service.lock().unwrap();
+    let auth_service = lock_arc(&state.auth_service, "auth")?;
     if !auth_service.is_member(&room_id, &user_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
     }
@@ -130,7 +144,7 @@ async fn list_invites(
     }
     drop(auth_service);
 
-    let invites = state.invite_service.lock().unwrap()
+    let invites = lock_arc(&state.invite_service, "invite")?
         .list_invites(&room_id);
 
     Ok(Json(invites))
@@ -145,7 +159,7 @@ async fn accept_invite(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     let join = {
-        let mut invite_service = state.invite_service.lock().unwrap();
+        let mut invite_service = lock_arc(&state.invite_service, "invite")?;
         invite_service.accept_invite(&token).map_err(|e| {
             match e {
                 crate::invite::InviteError::NotFound => {
@@ -166,7 +180,7 @@ async fn accept_invite(
     let role = RoomRole::from_str(&join.role)
         .ok_or_else(|| (StatusCode::BAD_REQUEST, Json(ErrorResponse::bad_request("Invalid role"))))?;
 
-    let mut auth_service = state.auth_service.lock().unwrap();
+    let mut auth_service = lock_arc(&state.auth_service, "auth")?;
     auth_service.add_to_room(&join.room_id, &user_id, role, "invite").map_err(|e| {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse::new(&e.to_string())))
     })?;
@@ -183,7 +197,7 @@ async fn revoke_invite(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     // Verify user is owner
-    let auth_service = state.auth_service.lock().unwrap();
+    let auth_service = lock_arc(&state.auth_service, "auth")?;
     if !auth_service.is_member(&room_id, &user_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
     }
@@ -192,7 +206,7 @@ async fn revoke_invite(
     }
     drop(auth_service);
 
-    state.invite_service.lock().unwrap()
+    lock_arc(&state.invite_service, "invite")?
         .revoke_invite(&token, &room_id)
         .map_err(|_| (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())))?;
 
@@ -213,12 +227,12 @@ struct MakePublicBody {
 /// GET /collab/public-rooms - List all public rooms
 async fn list_public_rooms(
     State(state): State<AppState>,
-) -> Json<Vec<PublicRoom>> {
-    let public = state.public_service.lock().unwrap();
+) -> Result<Json<Vec<PublicRoom>>> {
+    let public = lock_arc(&state.public_service, "public")?;
 
-    Json(public.list_public_rooms(|room_id| {
+    Ok(Json(public.list_public_rooms(|room_id| {
         state.storage.read_board(room_id).map(|b| b.title.clone())
-    }))
+    })))
 }
 
 /// POST /collab/rooms/{room_id}/make-public - Make a room public
@@ -231,7 +245,7 @@ async fn make_public(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     // Verify user can invite (owner only)
-    let auth_service = state.auth_service.lock().unwrap();
+    let auth_service = lock_arc(&state.auth_service, "auth")?;
     if !auth_service.is_member(&room_id, &user_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
     }
@@ -247,7 +261,7 @@ async fn make_public(
         default_role: body.default_role.clone(),
         max_users: body.max_users,
     };
-    let mut public = state.public_service.lock().unwrap();
+    let mut public = lock_arc(&state.public_service, "public")?;
     public.make_public(&req, member_count).map_err(|e| {
         (StatusCode::BAD_REQUEST, Json(ErrorResponse::bad_request(&e.to_string())))
     })?;
@@ -264,7 +278,7 @@ async fn make_private(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     // Verify user can invite (owner only)
-    let auth_service = state.auth_service.lock().unwrap();
+    let auth_service = lock_arc(&state.auth_service, "auth")?;
     if !auth_service.is_member(&room_id, &user_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
     }
@@ -273,7 +287,7 @@ async fn make_private(
     }
     drop(auth_service);
 
-    state.public_service.lock().unwrap()
+    lock_arc(&state.public_service, "public")?
         .make_private(&room_id);
 
     Ok(Json(SuccessResponse { success: true }))
@@ -294,8 +308,8 @@ async fn join_public(
 
     // Lock auth before public (consistent ordering with make_public/make_private/leave_room)
     // Hold both locks to make the max_users check + add atomic
-    let mut auth = state.auth_service.lock().unwrap();
-    let mut public = state.public_service.lock().unwrap();
+    let mut auth = lock_arc(&state.auth_service, "auth")?;
+    let mut public = lock_arc(&state.public_service, "public")?;
 
     if !public.is_public(&room_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
@@ -336,12 +350,12 @@ async fn leave_room(
 ) -> Result<Json<SuccessResponse>> {
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
-    let mut auth = state.auth_service.lock().unwrap();
+    let mut auth = lock_arc(&state.auth_service, "auth")?;
     auth.remove_from_room(&room_id, &user_id);
     drop(auth);
 
     // Update member count if public
-    let mut public = state.public_service.lock().unwrap();
+    let mut public = lock_arc(&state.public_service, "public")?;
     if public.is_public(&room_id) {
         public.update_member_count(&room_id, -1);
     }
@@ -358,7 +372,7 @@ async fn list_room_members(
     let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
     // Verify user is member
-    let auth = state.auth_service.lock().unwrap();
+    let auth = lock_arc(&state.auth_service, "auth")?;
     if !auth.is_member(&room_id, &user_id) {
         return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
     }
@@ -384,7 +398,7 @@ async fn register_user(
     State(state): State<AppState>,
     Json(body): Json<RegisterUserBody>,
 ) -> Result<Json<SuccessResponse>> {
-    let mut auth = state.auth_service.lock().unwrap();
+    let mut auth = lock_arc(&state.auth_service, "auth")?;
     auth.register_user(crate::auth::User {
         id: body.id.clone(),
         name: body.name.clone(),
@@ -410,7 +424,7 @@ async fn get_user(
     // Require authentication — caller must identify themselves
     let requester = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
 
-    let auth = state.auth_service.lock().unwrap();
+    let auth = lock_arc(&state.auth_service, "auth")?;
 
     // Verify requester is a registered user
     if auth.get_user(&requester).is_none() {
@@ -420,6 +434,16 @@ async fn get_user(
     let user = auth.get_user(&user_id)
         .ok_or_else(|| (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())))?;
 
+    Ok(Json(user.clone()))
+}
+
+/// GET /collab/me - Get the local user identity
+async fn get_me(
+    State(state): State<AppState>,
+) -> Result<Json<crate::auth::User>> {
+    let auth = lock_arc(&state.auth_service, "auth")?;
+    let user = auth.get_user(&state.local_user_id)
+        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse::new("Local user not found"))))?;
     Ok(Json(user.clone()))
 }
 
@@ -442,6 +466,7 @@ pub fn collab_router() -> Router<AppState> {
         .route("/collab/rooms/{room_id}/members", get(list_room_members))
 
         // Users
+        .route("/collab/me", get(get_me))
         .route("/collab/users/register", post(register_user))
         .route("/collab/users/{user_id}", get(get_user))
 }

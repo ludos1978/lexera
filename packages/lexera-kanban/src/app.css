@@ -157,7 +157,23 @@ body {
   text-transform: uppercase;
   color: var(--text-secondary);
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+
+.sidebar-sync-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.sidebar-sync-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.sidebar-sync-btn.active { color: var(--accent); }
 
 .board-list {
   flex: 1;
@@ -220,49 +236,105 @@ body {
   white-space: nowrap;
 }
 
-.board-item-columns {
+/* Board item tree (hierarchy below board name) */
+.board-item-tree {
   display: none;
-  padding-left: 28px;
+  padding-left: 18px;
 }
-.board-item-columns.expanded { display: block; }
+.board-item-tree.expanded { display: block; }
 
-.board-item-stack-group {
-  border-left: 2px solid var(--border);
-  margin-left: 6px;
-  padding-left: 4px;
-  margin-top: 1px;
-  margin-bottom: 1px;
-}
-
-.board-item-column {
+/* Tree node common */
+.tree-node {
   display: flex;
   align-items: center;
-  padding: 2px 10px;
+  padding: 1px 6px;
+  cursor: pointer;
+  border-radius: 3px;
   font-size: 12px;
   color: var(--text-secondary);
-  cursor: default;
-  border-radius: 3px;
-  transition: background 0.1s;
+  gap: 3px;
 }
-.board-item-column:hover { color: var(--text-primary); background: var(--bg-hover); }
-.board-item-column.drop-target {
-  background: var(--bg-active);
-  color: var(--text-primary);
-  outline: 1px solid var(--accent);
+.tree-node:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Indentation via nested .tree-children */
+.tree-children { padding-left: 14px; display: none; }
+.tree-children.expanded { display: block; }
+
+/* Tree toggle arrow */
+.tree-toggle {
+  font-size: 7px;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transform: rotate(0deg);
+  transition: transform 0.15s;
+  cursor: pointer;
+}
+.tree-toggle.expanded { transform: rotate(90deg); }
+.tree-toggle:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+.tree-toggle-spacer {
+  width: 12px;
+  flex-shrink: 0;
 }
 
-.board-item-column-title {
-  white-space: nowrap;
+/* Tree label + count */
+.tree-label {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  white-space: nowrap;
 }
-
-.board-item-column-count {
+.tree-count {
   font-size: 10px;
   color: var(--text-secondary);
   margin-left: auto;
+  flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* Level-specific styling */
+.tree-row { font-weight: 500; }
+.tree-card { font-size: 11px; padding-left: 8px; cursor: pointer; }
+.tree-card .tree-label { opacity: 0.7; }
+.tree-card:hover .tree-label { opacity: 1; }
+
+/* Tree drag grip */
+.tree-grip {
+  font-size: 10px;
+  width: 10px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  opacity: 0.3;
+  cursor: grab;
+  transition: opacity 0.15s;
+  text-align: center;
+  line-height: 12px;
+}
+.tree-node:hover .tree-grip { opacity: 0.7; }
+.tree-grip:hover { opacity: 1 !important; }
+.tree-node.dragging { opacity: 0.4; }
+.tree-node.dragging .tree-grip { cursor: grabbing; }
+
+/* Tree DnD drop indicators */
+.tree-node.tree-drop-above { box-shadow: 0 -2px 0 0 var(--accent); }
+.tree-node.tree-drop-below { box-shadow: 0 2px 0 0 var(--accent); }
+
+/* Sync highlight */
+.tree-node.sync-highlight {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+/* Drop target on tree columns (card DnD to sidebar) */
+.tree-column.drop-target {
+  background: var(--bg-active);
+  color: var(--text-primary);
+  outline: 1px solid var(--accent);
 }
 
 /* Main content */
@@ -371,15 +443,19 @@ body {
   -webkit-user-select: none;
 }
 
-/* Column group: wrapper for one or more stacked columns (legacy format) */
-.column-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 250px;
-  max-width: 320px;
-  flex: 0 0 var(--board-column-width, 280px);
+
+/* Drag grip handle (main board view) */
+.drag-grip {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.4;
+  cursor: grab;
+  flex-shrink: 0;
+  line-height: 1;
+  padding: 0 2px;
 }
+.drag-grip:hover { opacity: 1; }
+.drag-grip:active { cursor: grabbing; }
 
 /* Board row: horizontal container for stacks (new format) */
 .board-row {
@@ -428,9 +504,11 @@ body {
 .board-row-content {
   display: flex;
   flex-direction: row;
-  gap: 8px;
+  gap: 12px;
   overflow-x: auto;
   align-items: flex-start;
+  padding-right: 40px;
+  min-height: 60px;
 }
 
 .board-row.folded .board-row-content {
@@ -499,6 +577,18 @@ body {
   align-items: stretch;
 }
 
+/* Fill available vertical space with rows to avoid dead space under the board. */
+.columns-container.new-format .board-row {
+  flex: 1 0 auto;
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+/* Folded rows should collapse back to header-only height. */
+.columns-container.new-format .board-row.folded {
+  flex: 0 0 auto;
+}
+
 /* Board setting: row max height */
 .board-row-content {
   max-height: var(--board-max-row-height, none);
@@ -540,10 +630,10 @@ body {
   font-size: 12px;
   color: var(--text-bright);
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
   user-select: none;
 }
 
@@ -1298,9 +1388,7 @@ select.dialog-input option {
 }
 
 /* Drag-and-drop feedback */
-.column-group.dragging, .board-item.dragging { opacity: 0.4; }
-.column-group.drag-over-left { box-shadow: -3px 0 0 0 var(--accent); }
-.column-group.drag-over-right { box-shadow: 3px 0 0 0 var(--accent); }
+.board-item.dragging { opacity: 0.4; }
 .board-item.drag-over-top { box-shadow: 0 -2px 0 0 var(--accent); }
 .board-item.drag-over-bottom { box-shadow: 0 2px 0 0 var(--accent); }
 .card-drop-indicator { height: 2px; background: var(--accent); margin: 2px 0; border-radius: 1px; }
@@ -1312,6 +1400,41 @@ select.dialog-input option {
 .board-row.drag-over-bottom { box-shadow: 0 3px 0 0 var(--accent); }
 .board-stack.drag-over-left { box-shadow: -3px 0 0 0 var(--accent); }
 .board-stack.drag-over-right { box-shadow: 3px 0 0 0 var(--accent); }
+.column.dragging { opacity: 0.4; cursor: grabbing; }
+.column.drag-over-top { box-shadow: 0 -3px 0 0 var(--accent); }
+.column.drag-over-bottom { box-shadow: 0 3px 0 0 var(--accent); }
+.board-stack.column-drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.stack-drop-zone {
+  width: 24px;
+  min-height: 80px;
+  border: 2px dashed var(--border);
+  border-radius: 6px;
+  opacity: 0.4;
+  transition: width 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stack-drop-zone::after {
+  content: '+';
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+.stack-drop-zone.active {
+  width: 60px;
+  border-color: var(--accent);
+  background: rgba(0, 122, 204, 0.08);
+  opacity: 1;
+}
+.stack-drop-zone.active::after {
+  color: var(--accent);
+  font-weight: bold;
+}
 
 /* Notification toast */
 .notification {
@@ -1485,6 +1608,73 @@ select.dialog-input option {
   font-size: 11px;
   color: var(--text-secondary);
   flex-shrink: 0;
+}
+
+/* HTML Context Menu (fallback when Tauri unavailable) */
+.html-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  font-size: 13px;
+}
+
+.html-menu-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-primary);
+  position: relative;
+}
+
+.html-menu-item:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.html-menu-item.disabled {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.html-menu-item.disabled:hover {
+  background: none;
+  color: var(--text-secondary);
+}
+
+.html-menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.html-menu-item.has-submenu::after {
+  content: '\25B6';
+  position: absolute;
+  right: 10px;
+  font-size: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.html-menu-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: -4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+
+.html-menu-item.has-submenu:hover > .html-menu-submenu {
+  display: block;
 }
 
 /* Status Bar */

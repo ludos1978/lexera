@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
@@ -62,5 +64,87 @@ pub fn load_config(path: &PathBuf) -> SyncConfig {
             log::info!("No config at {}, using defaults", path.display());
             SyncConfig::default()
         }
+    }
+}
+
+/// Load local identity from ~/.config/lexera/identity.json.
+/// Creates the file with a new UUID on first run.
+pub fn load_or_create_identity() -> crate::auth::User {
+    let path = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lexera")
+        .join("identity.json");
+
+    match fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<crate::auth::User>(&content) {
+            Ok(user) => {
+                log::info!("[identity] Loaded identity: {} ({})", user.name, user.id);
+                user
+            }
+            Err(e) => {
+                log::warn!("[identity] Corrupt identity file at {}: {}", path.display(), e);
+                backup_corrupt_identity(&path);
+                create_and_persist_identity(&path)
+            }
+        },
+        Err(e) => {
+            log::info!(
+                "[identity] No readable identity at {} ({}), creating one",
+                path.display(),
+                e
+            );
+            create_and_persist_identity(&path)
+        }
+    }
+}
+
+fn create_and_persist_identity(path: &PathBuf) -> crate::auth::User {
+    let user = crate::auth::User {
+        id: Uuid::new_v4().to_string(),
+        name: "Local User".to_string(),
+        email: None,
+    };
+    persist_identity(path, &user);
+    log::info!("[identity] Created new identity: {} ({})", user.name, user.id);
+    user
+}
+
+fn persist_identity(path: &PathBuf, user: &crate::auth::User) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            log::warn!("[identity] Failed to create directory {}: {}", parent.display(), e);
+            return;
+        }
+    }
+    match serde_json::to_string_pretty(user) {
+        Ok(json) => {
+            if let Err(e) = fs::write(path, &json) {
+                log::warn!("[identity] Failed to write {}: {}", path.display(), e);
+            }
+        }
+        Err(e) => {
+            log::warn!("[identity] Failed to serialize identity for {}: {}", path.display(), e);
+        }
+    }
+}
+
+fn backup_corrupt_identity(path: &PathBuf) {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup = path.with_extension(format!("corrupt-{}.json", ts));
+    if let Err(e) = fs::rename(path, &backup) {
+        log::warn!(
+            "[identity] Failed to backup corrupt identity {} -> {}: {}",
+            path.display(),
+            backup.display(),
+            e
+        );
+    } else {
+        log::warn!(
+            "[identity] Backed up corrupt identity to {}",
+            backup.display()
+        );
     }
 }

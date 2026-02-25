@@ -27,7 +27,7 @@ use crate::state::{AppState, ResolvedIncoming};
 pub fn run() {
     env_logger::init();
 
-    tauri::Builder::default()
+    let run_result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             capture::read_clipboard,
             capture::read_clipboard_image,
@@ -54,6 +54,7 @@ pub fn run() {
             let config_path = config::default_config_path();
             let config = config::load_config(&config_path);
             let port = config.port;
+            let local_user = config::load_or_create_identity();
 
             // Initialize storage and load boards
             let storage = Arc::new(LocalStorage::new());
@@ -171,15 +172,42 @@ pub fn run() {
             let public_service = Arc::new(std::sync::Mutex::new(crate::public::PublicRoomService::new()));
             let auth_service = Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new()));
 
+            // Bootstrap local user as owner of all boards
+            {
+                match auth_service.lock() {
+                    Ok(mut auth) => {
+                        auth.register_user(local_user.clone()).unwrap_or_else(|e| {
+                            log::info!("[identity] User already registered: {}", e);
+                        });
+                        for (board_id, _) in &board_paths {
+                            auth.add_to_room(board_id, &local_user.id, crate::auth::RoomRole::Owner, "local")
+                                .unwrap_or_else(|e| {
+                                    log::warn!("[identity] Failed to add owner to board {}: {}", board_id, e);
+                                });
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("[identity] Auth service unavailable during bootstrap: {}", e);
+                    }
+                }
+            }
+
             // Start periodic cleanup for expired invites
             let invite_cleanup = invite_service.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Every hour
                 loop {
                     interval.tick().await;
-                    let count = invite_cleanup.lock().unwrap().cleanup_expired();
-                    if count > 0 {
-                        log::info!("[collab] Cleaned up {} expired invites", count);
+                    match invite_cleanup.lock() {
+                        Ok(mut service) => {
+                            let count = service.cleanup_expired();
+                            if count > 0 {
+                                log::info!("[collab] Cleaned up {} expired invites", count);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("[collab] Invite cleanup skipped; service unavailable: {}", e);
+                        }
                     }
                 }
             });
@@ -189,6 +217,7 @@ pub fn run() {
                 event_tx: event_tx.clone(),
                 port,
                 incoming,
+                local_user_id: local_user.id.clone(),
                 // Collaboration services
                 invite_service,
                 public_service,
@@ -214,11 +243,17 @@ pub fn run() {
             app.manage(clipboard_history.clone());
 
             let app_handle_for_watcher = app.handle().clone();
-            let _watcher_shutdown = clipboard_watcher::start_clipboard_watcher(&app_handle_for_watcher, clipboard_history);
-            app.manage(std::sync::Mutex::new(Some(_watcher_shutdown)));
+            let watcher_shutdown = clipboard_watcher::start_clipboard_watcher(&app_handle_for_watcher, clipboard_history);
+            if watcher_shutdown.is_none() {
+                log::warn!("[lexera.clipboard_watcher] Clipboard watcher disabled");
+            }
+            app.manage(std::sync::Mutex::new(watcher_shutdown));
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running lexera-backend");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = run_result {
+        log::error!("error while running lexera-backend: {}", e);
+    }
 }
