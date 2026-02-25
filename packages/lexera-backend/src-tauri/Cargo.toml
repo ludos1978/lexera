@@ -19,6 +19,8 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
 clipboard-rs = "0.2"
 base64 = "0.22"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

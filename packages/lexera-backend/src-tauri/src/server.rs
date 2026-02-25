@@ -3,6 +3,7 @@
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
 use crate::api::api_router;
+use crate::collab_api::collab_router;
 use crate::state::AppState;
 
 pub async fn spawn_server(
@@ -16,6 +17,7 @@ pub async fn spawn_server(
         .allow_headers(Any);
 
     let app: Router = api_router()
+        .merge(collab_router())
         .layer(cors)
         .with_state(state);
 

@@ -8,6 +8,12 @@ mod tray;
 mod capture;
 mod clipboard_watcher;
 
+// New collaboration modules
+pub mod invite;
+pub mod public;
+pub mod auth;
+pub mod collab_api;
+
 use std::sync::Arc;
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -160,11 +166,33 @@ pub fn run() {
                 log::warn!("[lexera.watcher] Failed to create file watcher: {}", e);
             }
 
+            // Initialize collaboration services
+            let invite_service = Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new()));
+            let public_service = Arc::new(std::sync::Mutex::new(crate::public::PublicRoomService::new()));
+            let auth_service = Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new()));
+
+            // Start periodic cleanup for expired invites
+            let invite_cleanup = invite_service.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Every hour
+                loop {
+                    interval.tick().await;
+                    let count = invite_cleanup.lock().unwrap().cleanup_expired();
+                    if count > 0 {
+                        log::info!("[collab] Cleaned up {} expired invites", count);
+                    }
+                }
+            });
+
             let app_state = AppState {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
                 port,
                 incoming,
+                // Collaboration services
+                invite_service,
+                public_service,
+                auth_service,
             };
 
             let app_handle = app.handle().clone();
