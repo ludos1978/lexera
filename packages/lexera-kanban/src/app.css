@@ -305,8 +305,8 @@ body {
 
 /* Tree drag grip */
 .tree-grip {
-  font-size: 10px;
-  width: 10px;
+  font-size: 12px;
+  width: 14px;
   flex-shrink: 0;
   color: var(--text-secondary);
   opacity: 0.3;
@@ -314,6 +314,7 @@ body {
   transition: opacity 0.15s;
   text-align: center;
   line-height: 12px;
+  letter-spacing: -2px;
 }
 .tree-node:hover .tree-grip { opacity: 0.7; }
 .tree-grip:hover { opacity: 1 !important; }
@@ -446,13 +447,14 @@ body {
 
 /* Drag grip handle (main board view) */
 .drag-grip {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-secondary);
   opacity: 0.4;
   cursor: grab;
   flex-shrink: 0;
   line-height: 1;
   padding: 0 2px;
+  letter-spacing: -2px;
 }
 .drag-grip:hover { opacity: 1; }
 .drag-grip:active { cursor: grabbing; }
@@ -561,6 +563,21 @@ body {
 .board-stack-title:hover {
   text-decoration: underline dotted;
 }
+.stack-delete-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+.stack-delete-btn:hover {
+  color: var(--text-error, #e55);
+  opacity: 1;
+}
 
 .board-stack-content {
   display: flex;
@@ -578,17 +595,19 @@ body {
 .board-stack.folded .board-stack-header {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  height: 100%;
+  height: auto;
   border-bottom: none;
   border-radius: 4px;
   padding: 8px 3px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.board-stack.folded .board-stack-header .drag-grip,
+.board-stack.folded .board-stack-header::before {
+  flex-shrink: 0;
 }
 .board-stack.folded .board-stack-title {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  max-width: 40ch;
+  flex-shrink: 0;
 }
 .board-stack.folded .board-stack-content {
   display: none;

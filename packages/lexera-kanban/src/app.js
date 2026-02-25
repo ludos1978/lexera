@@ -646,7 +646,7 @@ const LexeraDashboard = (function () {
       var hasContent = (board.columns && board.columns.length > 0) ||
         (isActive && activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0);
       el.innerHTML =
-        '<span class="tree-grip" title="Drag to reorder">\u2847</span>' +
+        '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
         (hasContent ? '<span class="board-item-toggle' + (isExpanded ? ' expanded' : '') + '">\u25B6</span>' : '<span class="board-item-toggle-spacer"></span>') +
         '<span class="board-item-title">' + escapeHtml(boardName) + '</span>' +
         '<span class="board-item-count">' + totalCards + '</span>';
@@ -673,7 +673,7 @@ const LexeraDashboard = (function () {
             rowNode.setAttribute('data-tree-id', rowId);
             rowNode.setAttribute('data-tree-drag', 'tree-row');
             rowNode.innerHTML =
-              '<span class="tree-grip" title="Drag to reorder">\u2847</span>' +
+              '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
               '<span class="tree-toggle' + (rowExpanded ? ' expanded' : '') + '">\u25B6</span>' +
               '<span class="tree-label">' + escapeHtml(row.title || 'Row ' + (ri + 1)) + '</span>' +
               '<span class="tree-count">' + rowCardCount + '</span>';
@@ -697,7 +697,7 @@ const LexeraDashboard = (function () {
               stackNode.setAttribute('data-tree-id', stackId);
               stackNode.setAttribute('data-tree-drag', 'tree-stack');
               stackNode.innerHTML =
-                '<span class="tree-grip" title="Drag to reorder">\u2847</span>' +
+                '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
                 '<span class="tree-toggle' + (stackExpanded ? ' expanded' : '') + '">\u25B6</span>' +
                 '<span class="tree-label">' + escapeHtml(stack.title || 'Stack ' + (si + 1)) + '</span>' +
                 '<span class="tree-count">' + stackCardCount + '</span>';
@@ -727,7 +727,7 @@ const LexeraDashboard = (function () {
                 colNode.setAttribute('data-col-local-index', ci.toString());
                 colNode.setAttribute('data-tree-drag', 'tree-column');
                 colNode.innerHTML =
-                  '<span class="tree-grip" title="Drag to reorder">\u2847</span>' +
+                  '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
                   (cardCount > 0 ? '<span class="tree-toggle' + (colExpanded ? ' expanded' : '') + '">\u25B6</span>' : '<span class="tree-toggle-spacer"></span>') +
                   '<span class="tree-label">' + escapeHtml(stripStackTag(col.title)) + '</span>' +
                   '<span class="tree-count">' + cardCount + '</span>';
@@ -775,7 +775,7 @@ const LexeraDashboard = (function () {
       wrapper.appendChild(el);
       wrapper.appendChild(tree);
 
-      (function (boardId, boardIndex, wrapperEl) {
+      (function (boardId, boardIndex, wrapperEl, boardFilePath) {
         // Toggle expand on board arrow click
         var toggle = wrapperEl.querySelector('.board-item-toggle');
         if (toggle) {
@@ -871,8 +871,19 @@ const LexeraDashboard = (function () {
           exitSearchMode();
           selectBoard(boardId);
         });
+        boardRow.addEventListener('contextmenu', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          showNativeMenu([
+            { id: 'reveal', label: 'Reveal in Finder' },
+          ], e.clientX, e.clientY).then(function (action) {
+            if (action === 'reveal' && boardFilePath) {
+              showInFinder(boardFilePath);
+            }
+          });
+        });
         // Board DnD is handled by the pointer-based drag system (mousedown on $boardList)
-      })(board.id, i, wrapper);
+      })(board.id, i, wrapper, board.filePath);
 
       $boardList.appendChild(wrapper);
     }
@@ -1634,7 +1645,7 @@ const LexeraDashboard = (function () {
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
-      '<span class="drag-grip">\u2847</span>' +
+      '<span class="drag-grip">\u22EE\u22EE</span>' +
       '<span class="column-title">' + escapeHtml(displayTitle) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + '</span>' +
@@ -1842,7 +1853,7 @@ const LexeraDashboard = (function () {
         }
       }
       rowHeader.innerHTML =
-        '<span class="drag-grip">\u2847</span>' +
+        '<span class="drag-grip">\u22EE\u22EE</span>' +
         '<span class="board-row-title">' + escapeHtml(row.title) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>';
       (function (el, rowIdx) {
@@ -1883,10 +1894,19 @@ const LexeraDashboard = (function () {
         // Stack header
         var stackHeader = document.createElement('div');
         stackHeader.className = 'board-stack-header';
+        var isEmptyStack = !stack.columns || stack.columns.length === 0;
         stackHeader.innerHTML =
-          '<span class="drag-grip">\u2847</span>' +
-          '<span class="board-stack-title">' + escapeHtml(stack.title) + '</span>';
+          '<span class="drag-grip">\u22EE\u22EE</span>' +
+          '<span class="board-stack-title">' + escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) + '</span>' +
+          (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '');
         (function (el, rIdx, sIdx) {
+          var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
+          if (deleteBtn) {
+            deleteBtn.addEventListener('click', function (e) {
+              e.stopPropagation();
+              deleteStack(rIdx, sIdx);
+            });
+          }
           stackHeader.addEventListener('click', function (e) {
             if (e.target.closest('button, .drag-grip, .board-stack-title, .column-rename-input')) return;
             e.stopPropagation();
