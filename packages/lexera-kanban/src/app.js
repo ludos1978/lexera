@@ -132,7 +132,7 @@ const LexeraDashboard = (function () {
   var THEMES = [
     {
       id: 'lexera', name: 'Lexera',
-      font: "'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      font: "'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
       light: {
         '--bg-primary': '#ffffff', '--bg-secondary': '#f3f3f3', '--bg-tertiary': '#e8e8e8',
         '--bg-hover': '#e0e0e0', '--bg-active': '#cce5ff', '--border': '#d4d4d4',
@@ -271,6 +271,16 @@ const LexeraDashboard = (function () {
   const $emptyState = document.getElementById('empty-state');
   const $searchInput = document.getElementById('search-input');
   const $connectionDot = document.getElementById('connection-dot');
+  const $activeBoardTab = document.getElementById('active-board-tab');
+
+  function updateActiveBoardTab(title) {
+    if (!$activeBoardTab) return;
+    var label = title ? ('Kanban: ' + title) : 'No board selected';
+    $activeBoardTab.textContent = label;
+    $activeBoardTab.title = label;
+  }
+
+  updateActiveBoardTab('');
 
   // --- Order Helpers ---
 
@@ -958,31 +968,33 @@ const LexeraDashboard = (function () {
 
         var boardRow = wrapperEl.querySelector('.board-item');
         boardRow.addEventListener('click', function (e) {
-          if (e.target.classList.contains('board-item-remove')) return;
+          // Remove button click — handle inline via delegation
+          if (e.target.closest('.board-item-remove')) {
+            e.preventDefault();
+            e.stopPropagation();
+            var boardName = boardRow.querySelector('.board-item-title').textContent;
+            if (!confirm('Remove "' + boardName + '" from sidebar?\n(The file will not be deleted.)')) return;
+            // Optimistic UI update — remove immediately
+            boards = boards.filter(function (b) { return b.id !== boardId; });
+            if (activeBoardId === boardId) {
+              activeBoardId = null;
+              activeBoardData = null;
+              fullBoardData = null;
+              localStorage.removeItem('lexera-last-board');
+            }
+            renderBoardList();
+            renderMainView();
+            // Then tell backend
+            LexeraApi.removeBoard(boardId).catch(function (err) {
+              lexeraLog('error', '[sidebar.remove] Backend error: ' + err.message);
+              // Re-fetch to restore correct state
+              poll();
+            });
+            return;
+          }
           exitSearchMode();
           selectBoard(boardId);
         });
-
-        // Remove button handler
-        var removeBtn = boardRow.querySelector('.board-item-remove');
-        if (removeBtn) {
-          removeBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            if (!confirm('Remove "' + (boardRow.querySelector('.board-item-title').textContent) + '" from sidebar?\n(The file will not be deleted.)')) return;
-            LexeraApi.removeBoard(boardId).then(function () {
-              boards = boards.filter(function (b) { return b.id !== boardId; });
-              if (activeBoardId === boardId) {
-                activeBoardId = null;
-                activeBoardData = null;
-                fullBoardData = null;
-              }
-              renderBoardList();
-              renderMainView();
-            }).catch(function (err) {
-              lexeraLog('error', 'Failed to remove board: ' + err.message);
-            });
-          });
-        }
 
         boardRow.addEventListener('contextmenu', function (e) {
           e.preventDefault();
@@ -1276,6 +1288,7 @@ const LexeraDashboard = (function () {
     $searchResults.classList.add('hidden');
 
     if (!activeBoardData) {
+      updateActiveBoardTab('');
       $boardHeader.classList.add('hidden');
       $columnsContainer.classList.add('hidden');
       $emptyState.classList.remove('hidden');
@@ -1296,6 +1309,7 @@ const LexeraDashboard = (function () {
 
   function renderBoardHeader() {
     var title = activeBoardData ? (activeBoardData.title || 'Untitled') : '';
+    updateActiveBoardTab(title);
     var parkedCount = getParkedCount();
     var html = '<span class="board-header-title">' + escapeHtml(title) + '</span>';
     html += '<span id="saving-indicator" class="saving-indicator">Saving...</span>';
@@ -1482,13 +1496,7 @@ const LexeraDashboard = (function () {
     if (!card) return;
     pushUndo();
     card.content = card.content.replace(/\s*#hidden-internal-parked/g, '');
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderMainView();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation({ refreshMainView: true });
   }
 
   function showBoardSettingsDialog() {
@@ -1506,6 +1514,8 @@ const LexeraDashboard = (function () {
       { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
       { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
       { key: 'boardColor', label: 'Board Color', placeholder: '#1e1e1e', type: 'text' },
+      { key: 'boardColorLight', label: 'Board Gradient Top', placeholder: 'rgba(255,255,255,0.03)', type: 'text' },
+      { key: 'boardColorDark', label: 'Board Gradient Bottom', placeholder: 'rgba(0,0,0,0.18)', type: 'text' },
       { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
       { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
       { key: 'stickyStackMode', label: 'Sticky Headers', placeholder: '', type: 'select', options: ['', 'column'] },
@@ -1569,13 +1579,9 @@ const LexeraDashboard = (function () {
           fullBoardData.boardSettings[key] = value;
         }
       }
-      saveFullBoard().then(function () {
-        applyBoardSettings();
-        updateDisplayFromFullBoard();
-        renderColumns();
-        overlay.remove();
-      }).catch(function () {
-        loadBoard(activeBoardId);
+      persistBoardMutation({
+        beforeRefresh: applyBoardSettings
+      }).then(function () {
         overlay.remove();
       });
     });
@@ -1613,6 +1619,33 @@ const LexeraDashboard = (function () {
       }
     } finally {
       hideSaving();
+    }
+  }
+
+  async function persistBoardMutation(options) {
+    options = options || {};
+    try {
+      await saveFullBoard();
+      if (typeof options.beforeRefresh === 'function') {
+        options.beforeRefresh();
+      }
+      updateDisplayFromFullBoard();
+      if (options.refreshMainView) {
+        renderMainView();
+      } else if (!options.skipRender) {
+        renderColumns();
+        if (options.refreshSidebar) renderBoardList();
+      }
+      if (typeof options.afterRefresh === 'function') {
+        options.afterRefresh();
+      }
+      return true;
+    } catch (err) {
+      await loadBoard(activeBoardId);
+      if (typeof options.onError === 'function') {
+        options.onError(err);
+      }
+      return false;
     }
   }
 
@@ -1672,26 +1705,14 @@ const LexeraDashboard = (function () {
     if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
     redoStack.push(JSON.stringify(fullBoardData));
     fullBoardData = JSON.parse(undoStack.pop());
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function redo() {
     if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
     undoStack.push(JSON.stringify(fullBoardData));
     fullBoardData = JSON.parse(redoStack.pop());
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   // Keyboard shortcuts
@@ -2112,14 +2133,7 @@ const LexeraDashboard = (function () {
 
     removeEmptyStacksAndRows();
 
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-      renderBoardList();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   async function moveColumnToExistingStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, toStackIdx) {
@@ -2141,14 +2155,7 @@ const LexeraDashboard = (function () {
 
     removeEmptyStacksAndRows();
 
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-      renderBoardList();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   async function moveColumnToNewStack(fromRowIdx, fromStackIdx, fromColIdx, toRowIdx, insertAtStackIdx) {
@@ -2179,14 +2186,7 @@ const LexeraDashboard = (function () {
 
     removeEmptyStacksAndRows();
 
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-      renderBoardList();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   // --- New-format DnD mutations ---
@@ -2206,14 +2206,7 @@ const LexeraDashboard = (function () {
     pushUndo();
     var moved = fullBoardData.rows.splice(sourceFullIdx, 1)[0];
     fullBoardData.rows.splice(insertAt, 0, moved);
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-      renderBoardList();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   async function moveStack(fromRowIdx, fromStackIdx, toRowIdx, toStackIdx, insertBefore) {
@@ -2238,14 +2231,7 @@ const LexeraDashboard = (function () {
     toRow.stacks.splice(insertAt, 0, moved);
     removeEmptyStacksAndRows();
 
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-      renderBoardList();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   /**
@@ -2432,12 +2418,7 @@ const LexeraDashboard = (function () {
       if (newTitle && newTitle !== currentTitle) {
         pushUndo();
         target.title = newTitle;
-        saveFullBoard().then(function () {
-          updateDisplayFromFullBoard();
-          renderColumns();
-        }).catch(function () {
-          loadBoard(activeBoardId);
-        });
+        persistBoardMutation();
       } else {
         titleEl.textContent = currentTitle;
       }
@@ -2459,13 +2440,7 @@ const LexeraDashboard = (function () {
       stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }] }]
     };
     fullBoardData.rows.splice(atIndex, 0, newRow);
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function deleteRow(rowIdx) {
@@ -2484,13 +2459,7 @@ const LexeraDashboard = (function () {
     pushUndo();
     var idx = fullBoardData.rows.indexOf(row);
     if (idx !== -1) fullBoardData.rows.splice(idx, 1);
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function addStackToRow(rowIdx) {
@@ -2504,13 +2473,7 @@ const LexeraDashboard = (function () {
       title: 'New Stack',
       columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }]
     });
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function deleteStack(rowIdx, stackIdx) {
@@ -2528,13 +2491,7 @@ const LexeraDashboard = (function () {
     pushUndo();
     var idx = row.stacks.indexOf(stack);
     if (idx !== -1) row.stacks.splice(idx, 1);
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function addColumnToStack(rowIdx, stackIdx) {
@@ -2543,13 +2500,7 @@ const LexeraDashboard = (function () {
     if (!stack) return;
     pushUndo();
     stack.columns.push({ id: 'col-' + Date.now(), title: 'New Column', cards: [] });
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function submitCard(colIndex, content) {
@@ -2569,6 +2520,50 @@ const LexeraDashboard = (function () {
 
   var cardDrag = null; // { el, ghost, colIndex, cardIndex, startX, startY, started }
   var DRAG_THRESHOLD = 5; // px before drag actually starts
+  var dragLayoutLocks = null;
+
+  function lockBoardLayoutForDrag() {
+    if (dragLayoutLocks) return;
+    var nodes = $columnsContainer.querySelectorAll('.board-row, .board-stack, .column');
+    dragLayoutLocks = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      dragLayoutLocks.push({
+        el: el,
+        width: el.style.width,
+        minWidth: el.style.minWidth,
+        maxWidth: el.style.maxWidth,
+        height: el.style.height,
+        minHeight: el.style.minHeight,
+        maxHeight: el.style.maxHeight
+      });
+      el.style.width = rect.width + 'px';
+      el.style.minWidth = rect.width + 'px';
+      el.style.maxWidth = rect.width + 'px';
+      el.style.height = rect.height + 'px';
+      el.style.minHeight = rect.height + 'px';
+      el.style.maxHeight = rect.height + 'px';
+      el.classList.add('layout-locked');
+    }
+    if (dragLayoutLocks.length === 0) dragLayoutLocks = null;
+  }
+
+  function unlockBoardLayoutForDrag() {
+    if (!dragLayoutLocks) return;
+    for (var i = 0; i < dragLayoutLocks.length; i++) {
+      var prev = dragLayoutLocks[i];
+      prev.el.style.width = prev.width;
+      prev.el.style.minWidth = prev.minWidth;
+      prev.el.style.maxWidth = prev.maxWidth;
+      prev.el.style.height = prev.height;
+      prev.el.style.minHeight = prev.minHeight;
+      prev.el.style.maxHeight = prev.maxHeight;
+      prev.el.classList.remove('layout-locked');
+    }
+    dragLayoutLocks = null;
+  }
 
   // Single mousedown listener on the columns container (event delegation)
   $columnsContainer.addEventListener('mousedown', function (e) {
@@ -2898,7 +2893,10 @@ const LexeraDashboard = (function () {
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
       ptrDrag.el.classList.add('dragging');
-      if (ptrDrag.type === 'column') insertStackDropZones();
+      if (ptrDrag.type === 'column') {
+        lockBoardLayoutForDrag();
+        insertStackDropZones();
+      }
 
       // Create ghost
       var ghost = document.createElement('div');
@@ -3168,17 +3166,36 @@ const LexeraDashboard = (function () {
       var rowEl = rowContent.closest('.board-row');
       var rowIdx = rowEl.getAttribute('data-row-index');
       var stacks = rowContent.querySelectorAll(':scope > .board-stack');
-      // Insert a drop zone before each stack and after the last one
+      // Create fixed overlay drop zones: far left, far right, and between stacks.
+      // These zones are absolutely positioned and do not affect layout flow.
+      if (stacks.length === 0) {
+        var emptyZone = document.createElement('div');
+        emptyZone.className = 'stack-drop-zone';
+        emptyZone.setAttribute('data-row-index', rowIdx);
+        emptyZone.setAttribute('data-insert-index', '0');
+        emptyZone.style.left = '12px';
+        emptyZone.style.height = Math.max(72, rowContent.clientHeight - 8) + 'px';
+        rowContent.appendChild(emptyZone);
+        continue;
+      }
+
+      var zoneHeight = Math.max(72, rowContent.clientHeight - 8);
       for (var s = 0; s <= stacks.length; s++) {
+        var anchorX;
+        if (s === 0) {
+          anchorX = stacks[0].offsetLeft;
+        } else if (s === stacks.length) {
+          anchorX = stacks[s - 1].offsetLeft + stacks[s - 1].offsetWidth;
+        } else {
+          anchorX = stacks[s].offsetLeft;
+        }
         var zone = document.createElement('div');
         zone.className = 'stack-drop-zone';
         zone.setAttribute('data-row-index', rowIdx);
         zone.setAttribute('data-insert-index', s.toString());
-        if (s < stacks.length) {
-          rowContent.insertBefore(zone, stacks[s]);
-        } else {
-          rowContent.appendChild(zone);
-        }
+        zone.style.left = anchorX + 'px';
+        zone.style.height = zoneHeight + 'px';
+        rowContent.appendChild(zone);
       }
     }
   }
@@ -3190,6 +3207,7 @@ const LexeraDashboard = (function () {
 
   function cleanupPtrDrag() {
     removeStackDropZones();
+    unlockBoardLayoutForDrag();
     if (ptrDrag) {
       if (ptrDrag.el) ptrDrag.el.classList.remove('dragging');
       if (ptrDrag.ghost) ptrDrag.ghost.remove();
@@ -3216,15 +3234,7 @@ const LexeraDashboard = (function () {
     if (toFullIdx === -1) toFullIdx = toCol.cards.length;
 
     toCol.cards.splice(toFullIdx, 0, card);
-
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      // Reload to restore consistent state
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   function getFullCardIndex(col, visibleIdx) {
@@ -3361,13 +3371,7 @@ const LexeraDashboard = (function () {
     }
 
     col.cards[fullCardIdx].content = newContent;
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
     if (pendingRefresh) {
       pendingRefresh = false;
       loadBoard(activeBoardId);
@@ -3394,14 +3398,7 @@ const LexeraDashboard = (function () {
       lines[lineIndex] = lines[lineIndex].replace(/\[([xX])\]/, '[ ]');
     }
     card.content = lines.join('\n');
-
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   // --- Card Context Menu ---
@@ -3485,14 +3482,7 @@ const LexeraDashboard = (function () {
     clone.id = 'dup-' + Date.now();
     clone.kid = null;
     col.cards.splice(fullIdx + 1, 0, clone);
-
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function tagCard(colIndex, cardIndex, tag) {
@@ -3509,14 +3499,7 @@ const LexeraDashboard = (function () {
     var lines = card.content.split('\n');
     lines[0] = lines[0] + ' ' + tag;
     card.content = lines.join('\n');
-
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function deleteCard(colIndex, cardIndex) {
@@ -3528,14 +3511,7 @@ const LexeraDashboard = (function () {
     pushUndo();
 
     col.cards.splice(fullIdx, 1);
-
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   // --- Column Context Menu & Operations ---
@@ -3604,13 +3580,7 @@ const LexeraDashboard = (function () {
     var removed = container.arr.splice(container.localIdx, 1)[0];
     targetStack.columns.push(removed);
     removeEmptyStacksAndRows();
-    saveFullBoard().then(function () {
-      updateDisplayFromFullBoard();
-      renderColumns();
-      renderBoardList();
-    }).catch(function () {
-      loadBoard(activeBoardId);
-    });
+    persistBoardMutation({ refreshSidebar: true });
   }
 
   function handleColumnAction(action, colIndex) {
@@ -3656,12 +3626,7 @@ const LexeraDashboard = (function () {
       }
       return 0;
     });
-    saveFullBoard().then(function () {
-      updateDisplayFromFullBoard();
-      renderColumns();
-    }).catch(function () {
-      loadBoard(activeBoardId);
-    });
+    persistBoardMutation();
   }
 
   function extractNumericTag(content) {
@@ -3703,12 +3668,7 @@ const LexeraDashboard = (function () {
         pushUndo();
         // Preserve #stack tag if it was there
         col.title = newTitle;
-        saveFullBoard().then(function () {
-          updateDisplayFromFullBoard();
-          renderColumns();
-        }).catch(function () {
-          loadBoard(activeBoardId);
-        });
+        persistBoardMutation();
       } else {
         titleEl.textContent = currentTitle;
       }
@@ -3776,13 +3736,7 @@ const LexeraDashboard = (function () {
       }
       lastRow.stacks[lastRow.stacks.length - 1].columns.push(newCol);
     }
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   async function deleteColumn(colIndex) {
@@ -3797,13 +3751,7 @@ const LexeraDashboard = (function () {
     pushUndo();
     container.arr.splice(container.localIdx, 1);
     removeEmptyStacksAndRows();
-    try {
-      await saveFullBoard();
-      updateDisplayFromFullBoard();
-      renderColumns();
-    } catch (err) {
-      await loadBoard(activeBoardId);
-    }
+    await persistBoardMutation();
   }
 
   function toggleColCards(colIndex, collapse) {
@@ -4260,6 +4208,8 @@ const LexeraDashboard = (function () {
         if (ci !== null) colIndex = parseInt(ci, 10);
       }
     }
+    var hasNewCards = false;
+    var undoPushed = false;
     for (var i = 0; i < files.length; i++) {
       var file = files[i];
       try {
@@ -4268,16 +4218,20 @@ const LexeraDashboard = (function () {
           var embedSyntax = '![' + file.name + '](' + result.filename + ')';
           var col = getFullColumn(colIndex);
           if (col) {
-            pushUndo();
+            if (!undoPushed) {
+              pushUndo();
+              undoPushed = true;
+            }
             col.cards.push({ id: 'card-' + Date.now() + '-' + i, content: embedSyntax, checked: false, kid: null });
-            await saveFullBoard();
-            updateDisplayFromFullBoard();
-            renderColumns();
+            hasNewCards = true;
           }
         }
       } catch (err) {
         console.error('File upload failed:', err);
       }
+    }
+    if (hasNewCards) {
+      await persistBoardMutation();
     }
   }
 

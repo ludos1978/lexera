@@ -80,6 +80,28 @@ fn lock_arc<'a, T>(service: &'a Arc<Mutex<T>>, name: &str) -> Result<MutexGuard<
         .map_err(|e| internal_error(format!("{} service unavailable: {}", name, e)))
 }
 
+fn require_authenticated_user(params: &AuthQuery) -> Result<String> {
+    params
+        .user
+        .clone()
+        .ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))
+}
+
+fn require_room_member(auth_service: &crate::auth::AuthService, room_id: &str, user_id: &str) -> Result<()> {
+    if !auth_service.is_member(room_id, user_id) {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
+    }
+    Ok(())
+}
+
+fn require_invite_permission(auth_service: &crate::auth::AuthService, room_id: &str, user_id: &str) -> Result<()> {
+    require_room_member(auth_service, room_id, user_id)?;
+    if !auth_service.can_invite(room_id, user_id) {
+        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Invite Endpoints
 // ============================================================================
@@ -91,16 +113,11 @@ async fn create_invite(
     Query(params): Query<AuthQuery>,
     Json(body): Json<CreateInviteBody>,
 ) -> Result<Json<InviteLink>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Verify user can invite (owner only)
     let auth_service = lock_arc(&state.auth_service, "auth")?;
-    if !auth_service.is_member(&room_id, &user_id) {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
-    }
-    if !auth_service.can_invite(&room_id, &user_id) {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
-    }
+    require_invite_permission(&auth_service, &room_id, &user_id)?;
     drop(auth_service);
 
     // Get room title
@@ -132,16 +149,11 @@ async fn list_invites(
     Path(room_id): Path<String>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<Vec<InviteLink>>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Verify user can invite (owner only)
     let auth_service = lock_arc(&state.auth_service, "auth")?;
-    if !auth_service.is_member(&room_id, &user_id) {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
-    }
-    if !auth_service.can_invite(&room_id, &user_id) {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
-    }
+    require_invite_permission(&auth_service, &room_id, &user_id)?;
     drop(auth_service);
 
     let invites = lock_arc(&state.invite_service, "invite")?
@@ -156,7 +168,7 @@ async fn accept_invite(
     Path(token): Path<String>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<RoomJoin>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     let join = {
         let mut invite_service = lock_arc(&state.invite_service, "invite")?;
@@ -194,16 +206,11 @@ async fn revoke_invite(
     Path((room_id, token)): Path<(String, String)>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Verify user is owner
     let auth_service = lock_arc(&state.auth_service, "auth")?;
-    if !auth_service.is_member(&room_id, &user_id) {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
-    }
-    if !auth_service.can_invite(&room_id, &user_id) {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
-    }
+    require_invite_permission(&auth_service, &room_id, &user_id)?;
     drop(auth_service);
 
     lock_arc(&state.invite_service, "invite")?
@@ -242,16 +249,11 @@ async fn make_public(
     Query(params): Query<AuthQuery>,
     Json(body): Json<MakePublicBody>,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Verify user can invite (owner only)
     let auth_service = lock_arc(&state.auth_service, "auth")?;
-    if !auth_service.is_member(&room_id, &user_id) {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
-    }
-    if !auth_service.can_invite(&room_id, &user_id) {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
-    }
+    require_invite_permission(&auth_service, &room_id, &user_id)?;
     // Get member count while we still hold the lock
     let member_count = auth_service.list_room_members(&room_id).len();
     drop(auth_service);
@@ -275,16 +277,11 @@ async fn make_private(
     Path(room_id): Path<String>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Verify user can invite (owner only)
     let auth_service = lock_arc(&state.auth_service, "auth")?;
-    if !auth_service.is_member(&room_id, &user_id) {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
-    }
-    if !auth_service.can_invite(&room_id, &user_id) {
-        return Err((StatusCode::FORBIDDEN, Json(ErrorResponse::forbidden())));
-    }
+    require_invite_permission(&auth_service, &room_id, &user_id)?;
     drop(auth_service);
 
     lock_arc(&state.public_service, "public")?
@@ -299,7 +296,7 @@ async fn join_public(
     Path(room_id): Path<String>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<RoomJoin>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Get board title (storage has its own internal RwLock, safe to call outside our mutexes)
     let room_title = state.storage.read_board(&room_id)
@@ -348,7 +345,7 @@ async fn leave_room(
     Path(room_id): Path<String>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<SuccessResponse>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     let mut auth = lock_arc(&state.auth_service, "auth")?;
     auth.remove_from_room(&room_id, &user_id);
@@ -369,13 +366,11 @@ async fn list_room_members(
     Path(room_id): Path<String>,
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<Vec<AuthRoomMember>>> {
-    let user_id = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let user_id = require_authenticated_user(&params)?;
 
     // Verify user is member
     let auth = lock_arc(&state.auth_service, "auth")?;
-    if !auth.is_member(&room_id, &user_id) {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())));
-    }
+    require_room_member(&auth, &room_id, &user_id)?;
 
     let members = auth.list_room_members(&room_id);
     Ok(Json(members))
@@ -422,7 +417,7 @@ async fn get_user(
     Query(params): Query<AuthQuery>,
 ) -> Result<Json<crate::auth::User>> {
     // Require authentication — caller must identify themselves
-    let requester = params.user.ok_or_else(|| (StatusCode::UNAUTHORIZED, Json(ErrorResponse::unauthorized())))?;
+    let requester = require_authenticated_user(&params)?;
 
     let auth = lock_arc(&state.auth_service, "auth")?;
 
