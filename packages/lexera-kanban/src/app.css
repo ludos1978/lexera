@@ -462,8 +462,8 @@ body {
 /* Board row: horizontal container for stacks (new format) */
 .board-row {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  gap: 0;
   margin-bottom: 6px;
   min-width: 0;
   width: 100%;
@@ -471,12 +471,16 @@ body {
 
 .board-row-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 8px 3px;
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  writing-mode: vertical-lr;
+  flex-shrink: 0;
+  width: 24px;
 }
 
 .board-row-header::before {
@@ -484,8 +488,13 @@ body {
   font-size: 8px;
   color: var(--text-secondary);
   display: inline-block;
+  writing-mode: horizontal-tb;
   transform: rotate(90deg);
   transition: transform 0.15s;
+}
+
+.board-row-header .drag-grip {
+  writing-mode: horizontal-tb;
 }
 
 .board-row.folded .board-row-header::before {
@@ -511,6 +520,26 @@ body {
   align-items: flex-start;
   padding-right: 40px;
   min-height: 60px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Folded row: full-width horizontal bar */
+.board-row.folded {
+  flex-direction: column;
+}
+
+.board-row.folded .board-row-header {
+  flex-direction: row;
+  writing-mode: horizontal-tb;
+  width: 100%;
+  padding: 4px 8px;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-row.folded .board-row-header .drag-grip {
+  writing-mode: horizontal-tb;
 }
 
 .board-row.folded .board-row-content {
@@ -593,17 +622,19 @@ body {
   width: 24px;
 }
 .board-stack.folded .board-stack-header {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  writing-mode: vertical-lr;
   height: auto;
   border-bottom: none;
   border-radius: 4px;
-  padding: 8px 3px;
-  justify-content: flex-end;
+  padding: 3px;
   align-items: center;
 }
-.board-stack.folded .board-stack-header .drag-grip,
 .board-stack.folded .board-stack-header::before {
+  writing-mode: horizontal-tb;
+  flex-shrink: 0;
+}
+.board-stack.folded .board-stack-header .drag-grip {
+  writing-mode: horizontal-tb;
   flex-shrink: 0;
 }
 .board-stack.folded .board-stack-title {
