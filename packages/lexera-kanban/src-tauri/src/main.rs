@@ -7,6 +7,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::open_in_system,
             commands::open_url,
+            commands::show_in_folder,
+            commands::show_context_menu,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

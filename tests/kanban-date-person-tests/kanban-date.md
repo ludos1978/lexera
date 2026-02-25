@@ -3,6 +3,7 @@
 kanban-plugin: board
 
 fontSize: 1_0x
+columnWidth: 600px
 ---
 
 ## ?.day<0

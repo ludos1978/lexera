@@ -4,41 +4,23 @@ kanban-plugin: board
 
 fontSize: 1_0x
 whitespace: 24px
-fontFamily: system
+fontFamily: Poppins
 boardColor: #ffadad
 boardColorDark: #000033
 boardColorLight: #f5f5ff
 ---
 
 ## Column Title #footer #header
-- [ ] Task Title #header #footer
-  more of the text
-  
-  [[#0]]
-  
-  [[#1]]
-- [ ] [[#1]] #blocked
-  
-- [ ] #idea
-  
-- [ ] asdf
-- [ ] - a
-  - b
-  
-  - c
-- [ ] tself the list only shows it's own columns. the columns should accept drops from other boards, external drops etc. when dropped on columns it adds them at the end, when dropped over a kanban board it create a column named "Incoming" which is another category of the kin
-  
-  
-  - [ ] If an column is in the "Park" (or Trash or Archive) on hover it shows the columns within it, wh
-- [ ] ![clipboard-1771930244977.png](kanban-presentation-Media/clipboard-1771930244977.png)
 - [ ] ![clipboard-1771932416797.png](kanban-presentation-Media/clipboard-1771932416797.png)
+- [ ] ![](Media/Proteus-Nodeland_preview-%5Bh2OqQ6-ESp4%5D-480p.mp4 "Proteus-Nodeland_preview-[h2OqQ6-ESp4]-480p")
+- [ ] Connecting to Lexera Backend...
 
 ## # Heading 1 in Columntitle #footer #header #stack
-- [ ] ## Heading 2 in Tasktitle #exclude
+- [ ] ## Heading 2 in Tasktitle #hidden
   some long text
   
   Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
-- [ ] ## Heading 2 in Tasktitle #hidden
+- [ ] ## Heading 2 in Tasktitle #exclude
   some long text
   
   Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
