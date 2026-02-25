@@ -1888,10 +1888,14 @@ const LexeraDashboard = (function () {
           '<span class="board-stack-title">' + escapeHtml(stack.title) + '</span>';
         (function (el, rIdx, sIdx) {
           stackHeader.addEventListener('click', function (e) {
-            if (e.target.closest('button, .drag-grip')) return;
+            if (e.target.closest('button, .drag-grip, .board-stack-title, .column-rename-input')) return;
             e.stopPropagation();
             el.classList.toggle('folded');
             saveFoldState(activeBoardId);
+          });
+          stackHeader.querySelector('.board-stack-title').addEventListener('click', function (e) {
+            e.stopPropagation();
+            renameRowOrStack('stack', rIdx, sIdx);
           });
           stackHeader.addEventListener('contextmenu', function (e) {
             e.preventDefault();
@@ -2287,8 +2291,7 @@ const LexeraDashboard = (function () {
     }
     input.addEventListener('blur', save);
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); save(); }
-      if (e.key === 'Escape') { done = true; titleEl.textContent = currentTitle; }
+      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); save(); }
     });
   }
 
@@ -3528,8 +3531,7 @@ const LexeraDashboard = (function () {
     }
     input.addEventListener('blur', save);
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); save(); }
-      if (e.key === 'Escape') { done = true; titleEl.textContent = currentTitle; }
+      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); save(); }
     });
   }
 

@@ -518,23 +518,23 @@ body {
 /* Board stack: vertical container for columns (new format) */
 .board-stack {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   gap: 0;
   min-width: 250px;
   flex: 0 0 var(--board-column-width, 280px);
+  transition: min-width 0.15s, width 0.15s, flex 0.15s;
 }
 
 .board-stack-header {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 3px;
+  gap: 6px;
+  padding: 4px 8px;
   cursor: pointer;
   user-select: none;
   background: var(--bg-tertiary);
-  border-radius: 4px 0 0 4px;
+  border-radius: 4px 4px 0 0;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -558,6 +558,9 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
+.board-stack-title:hover {
+  text-decoration: underline dotted;
+}
 
 .board-stack-content {
   display: flex;
@@ -567,6 +570,19 @@ body {
   min-width: 0;
 }
 
+.board-stack.folded {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 24px;
+}
+.board-stack.folded .board-stack-header {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  height: 100%;
+  border-bottom: none;
+  border-radius: 4px;
+  padding: 8px 3px;
+}
 .board-stack.folded .board-stack-content {
   display: none;
 }
