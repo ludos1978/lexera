@@ -2177,12 +2177,7 @@ const LexeraDashboard = (function () {
     for (var r = fullBoardData.rows.length - 1; r >= 0; r--) {
       var row = fullBoardData.rows[r];
       if (!row.stacks) row.stacks = [];
-      for (var s = row.stacks.length - 1; s >= 0; s--) {
-        var stack = row.stacks[s];
-        if (!stack.columns || stack.columns.length === 0) {
-          row.stacks.splice(s, 1);
-        }
-      }
+      // Keep empty stacks — they persist with their title
       if (row.stacks.length === 0) {
         fullBoardData.rows.splice(r, 1);
       }

@@ -583,6 +583,13 @@ body {
   border-radius: 4px;
   padding: 8px 3px;
 }
+.board-stack.folded .board-stack-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 40ch;
+}
 .board-stack.folded .board-stack-content {
   display: none;
 }
