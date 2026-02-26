@@ -97,6 +97,14 @@ body {
   height: 100vh;
 }
 
+/* Keep native controls aligned with the active theme font. */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
@@ -435,6 +443,9 @@ body.split-mode .layout > .main {
 
 /* Sidebar */
 .sidebar {
+  --sidebar-divider-size: 8px;
+  --sidebar-hierarchy-min: 140px;
+  --sidebar-dashboard-min: 180px;
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   background: var(--bg-secondary);
@@ -473,20 +484,49 @@ body.split-mode .layout > .main {
 .sidebar-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(0, 122, 204, 0.14); }
 
 .board-list {
-  flex: 1 1 auto;
-  min-height: 180px;
+  flex: 0 0 auto;
+  min-height: var(--sidebar-hierarchy-min);
   overflow-y: auto;
+  min-width: 0;
+}
+
+.sidebar-dashboard-divider {
+  height: var(--sidebar-divider-size);
+  min-height: var(--sidebar-divider-size);
+  flex: 0 0 var(--sidebar-divider-size);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: row-resize;
+  user-select: none;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-dashboard-divider:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.sidebar.resizing-sections .sidebar-dashboard-divider {
+  background: var(--bg-hover);
+  border-color: var(--accent);
 }
 
 .sidebar-dashboard {
-  flex: 0 0 42%;
-  min-height: 220px;
-  max-height: 54%;
-  border-top: 1px solid var(--border);
+  flex: 0 0 auto;
+  min-height: var(--sidebar-dashboard-min);
+  max-height: none;
+  border-top: none;
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.sidebar-dashboard-divider.hidden,
+.sidebar .sidebar-dashboard.hidden {
+  display: none !important;
 }
 
 .sidebar-dashboard-header {
@@ -1226,7 +1266,7 @@ body.embedded-mode .columns-container {
   display: flex;
   flex-direction: row;
   gap: var(--board-stack-gap);
-  overflow-x: auto;
+  overflow-x: visible;
   position: relative;
   align-items: flex-start;
   padding: calc(var(--board-inner-padding) - 1px);
@@ -1434,7 +1474,7 @@ body.embedded-mode .columns-container {
   align-items: stretch;
   gap: var(--board-row-gap);
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   min-height: 0;
 }
 
@@ -1444,6 +1484,13 @@ body.embedded-mode .columns-container {
   min-height: min(120px, 100%);
   max-height: 100%;
   height: var(--board-row-height, auto);
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+}
+
+.columns-container.new-format .board-row-content {
+  min-width: max-content;
 }
 
 /* Keep total row summary at least viewport height.
@@ -1481,11 +1528,35 @@ body.embedded-mode .columns-container {
 .columns-container.tag-visibility-dim .tag { opacity: 0.3; }
 
 /* Board setting: sticky column headers */
-.columns-container.sticky-headers .column-header {
+.columns-container.sticky-headers .column-header,
+.columns-container.sticky-headers-top .column-header {
   position: sticky;
   top: 0;
-  z-index: 5;
-  background: var(--bg-secondary);
+  bottom: auto;
+  z-index: 6;
+  background: var(--surface-header-bg);
+}
+
+.columns-container.sticky-headers-bottom .column-header {
+  position: sticky;
+  top: auto;
+  bottom: 0;
+  z-index: 6;
+  background: var(--surface-header-bg);
+  border-bottom: none;
+  border-top: 1px solid var(--surface-header-border);
+}
+
+.columns-container.sticky-headers-bottom .column-cards {
+  order: 1;
+}
+
+.columns-container.sticky-headers-bottom .column-footer {
+  order: 2;
+}
+
+.columns-container.sticky-headers-bottom .column-header {
+  order: 3;
 }
 
 /* Board setting: HTML comment rendering */
@@ -2630,7 +2701,7 @@ select.dialog-input option {
   padding: 0 10px;
   z-index: 9001;
   cursor: pointer;
-  font-family: 'Segoe UI', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: var(--theme-font, inherit);
   font-size: 11px;
   color: #ffffff;
 }
@@ -2661,7 +2732,7 @@ select.dialog-input option {
   display: flex;
   flex-direction: column;
   z-index: 9000;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: var(--theme-font, inherit);
   font-size: 11px;
 }
 
