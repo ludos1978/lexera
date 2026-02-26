@@ -243,10 +243,14 @@ async fn write_board(
     Json(board): Json<lexera_core::types::KanbanBoard>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     match state.storage.write_board(&board_id, &board) {
-        Ok(None) => Ok(Json(
-            serde_json::json!({ "success": true, "merged": false }),
-        )),
+        Ok(None) => {
+            broadcast_crdt_to_sync_hub(&state, &board_id).await;
+            Ok(Json(
+                serde_json::json!({ "success": true, "merged": false }),
+            ))
+        }
         Ok(Some(merge_result)) => {
+            broadcast_crdt_to_sync_hub(&state, &board_id).await;
             let has_conflicts = !merge_result.conflicts.is_empty();
             Ok(Json(serde_json::json!({
                 "success": true,
@@ -268,6 +272,22 @@ async fn write_board(
                 }),
             ))
         }
+    }
+}
+
+/// After a REST write, broadcast CRDT updates to sync-connected WebSocket clients.
+async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
+    let hub = state.sync_hub.lock().await;
+    if !hub.has_clients(board_id) {
+        return;
+    }
+    // Export full updates (from empty VV) so all connected peers get the latest state
+    if let Some(updates) = state.storage.export_crdt_updates_since(board_id, &[]) {
+        let msg = serde_json::json!({
+            "type": "ServerUpdate",
+            "updates": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &updates),
+        });
+        hub.broadcast(board_id, 0, &msg.to_string());
     }
 }
 

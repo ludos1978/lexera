@@ -2,6 +2,7 @@ use crate::auth::AuthService;
 use crate::config::SyncConfig;
 use crate::invite::InviteService;
 use crate::public::PublicRoomService;
+use crate::sync_ws::BoardSyncHub;
 use lexera_core::storage::local::LocalStorage;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
@@ -31,4 +32,6 @@ pub struct AppState {
     pub invite_service: Arc<std::sync::Mutex<InviteService>>,
     pub public_service: Arc<std::sync::Mutex<PublicRoomService>>,
     pub auth_service: Arc<std::sync::Mutex<AuthService>>,
+    // WebSocket CRDT sync hub
+    pub sync_hub: Arc<tokio::sync::Mutex<BoardSyncHub>>,
 }

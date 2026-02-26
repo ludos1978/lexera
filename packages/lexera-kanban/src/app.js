@@ -177,6 +177,7 @@ const LexeraDashboard = (function () {
     vertical: parseFloat(localStorage.getItem('lexera-split-ratio-vertical') || '0.5'),
     horizontal: parseFloat(localStorage.getItem('lexera-split-ratio-horizontal') || '0.5')
   };
+  var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
   var headerSearchExpanded = localStorage.getItem('lexera-header-search-expanded') === 'true';
   var splitRootEl = null;
   var splitToggleBtn = null;
@@ -367,6 +368,8 @@ const LexeraDashboard = (function () {
   const $connectionDot = document.getElementById('connection-dot');
   const $mainContent = document.getElementById('main-content');
   const $layout = document.querySelector('.layout');
+  const $sidebar = document.querySelector('.sidebar');
+  const $sidebarDashboardDivider = document.getElementById('sidebar-dashboard-divider');
   const $dashboardRoot = document.getElementById('sidebar-dashboard');
   const $dashboardSearchInput = document.getElementById('dashboard-search-input');
   const $dashboardSearchBtn = document.getElementById('btn-dashboard-search');
@@ -641,13 +644,30 @@ const LexeraDashboard = (function () {
     return rawPane === 'b' ? 'b' : 'a';
   }
 
-  function normalizeSplitRatio(rawRatio) {
+  function normalizeRatio(rawRatio, options) {
+    options = options || {};
     var ratio = Number(rawRatio);
-    if (!isFinite(ratio)) ratio = 0.5;
-    if (ratio < 0.2) ratio = 0.2;
-    if (ratio > 0.8) ratio = 0.8;
-    if (Math.abs(ratio - 0.5) <= 0.04) ratio = 0.5;
+    var fallback = isFinite(options.fallback) ? options.fallback : 0.5;
+    var min = isFinite(options.min) ? options.min : 0.2;
+    var max = isFinite(options.max) ? options.max : 0.8;
+    var snap = isFinite(options.snap) ? options.snap : 0.5;
+    var snapThreshold = isFinite(options.snapThreshold) ? options.snapThreshold : 0.04;
+
+    if (!isFinite(ratio)) ratio = fallback;
+    if (ratio < min) ratio = min;
+    if (ratio > max) ratio = max;
+    if (Math.abs(ratio - snap) <= snapThreshold) ratio = snap;
     return ratio;
+  }
+
+  function normalizeSplitRatio(rawRatio) {
+    return normalizeRatio(rawRatio, {
+      fallback: 0.5,
+      min: 0.2,
+      max: 0.8,
+      snap: 0.5,
+      snapThreshold: 0.04
+    });
   }
 
   function getSplitRatioForMode(mode) {
@@ -671,6 +691,258 @@ const LexeraDashboard = (function () {
       splitRootEl.style.gridTemplateRows = (ratio * 100).toFixed(2) + '% var(--splitter-size) ' + ((1 - ratio) * 100).toFixed(2) + '%';
       splitRootEl.style.gridTemplateColumns = '1fr';
     }
+  }
+
+  function normalizeSidebarSplitRatio(rawRatio) {
+    return normalizeRatio(rawRatio, {
+      fallback: 0.58,
+      min: 0.2,
+      max: 0.8,
+      snap: 0.5,
+      snapThreshold: 0.03
+    });
+  }
+
+  function bindPointerDividerDrag(divider, handlers) {
+    if (!divider || !handlers) return;
+    divider.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      if (handlers.canStart && !handlers.canStart(e)) return;
+      e.preventDefault();
+
+      var pointerId = e.pointerId;
+      var finished = false;
+      var ctx = {};
+      if (handlers.onStart) {
+        var startCtx = handlers.onStart(e);
+        if (startCtx && typeof startCtx === 'object') ctx = startCtx;
+      }
+
+      function onMove(ev) {
+        if (ev.pointerId !== pointerId) return;
+        if (handlers.onMove) handlers.onMove(ev, ctx);
+      }
+
+      function finish(ev) {
+        if (finished) return;
+        if (ev && ev.pointerId != null && ev.pointerId !== pointerId) return;
+        finished = true;
+        divider.removeEventListener('pointermove', onMove, true);
+        divider.removeEventListener('pointerup', finish, true);
+        divider.removeEventListener('pointercancel', finish, true);
+        divider.removeEventListener('lostpointercapture', finish, true);
+        try {
+          if (divider.hasPointerCapture && divider.hasPointerCapture(pointerId)) {
+            divider.releasePointerCapture(pointerId);
+          }
+        } catch (err) {
+          // no-op
+        }
+        if (handlers.onEnd) handlers.onEnd(ev, ctx);
+      }
+
+      try {
+        divider.setPointerCapture(pointerId);
+      } catch (err) {
+        // no-op
+      }
+
+      onMove(e);
+      divider.addEventListener('pointermove', onMove, true);
+      divider.addEventListener('pointerup', finish, true);
+      divider.addEventListener('pointercancel', finish, true);
+      divider.addEventListener('lostpointercapture', finish, true);
+    });
+
+    if (handlers.onDoubleClick) {
+      divider.addEventListener('dblclick', handlers.onDoubleClick);
+    }
+  }
+
+  function applySidebarSectionLayout() {
+    if (!$sidebar || !$boardList) return;
+    var dashboardHidden = !$dashboardRoot || $dashboardRoot.classList.contains('hidden');
+
+    if (dashboardHidden) {
+      if ($sidebarDashboardDivider) $sidebarDashboardDivider.classList.add('hidden');
+      $boardList.style.flex = '1 1 auto';
+      $boardList.style.height = '';
+      if ($dashboardRoot) {
+        $dashboardRoot.style.flex = '';
+        $dashboardRoot.style.height = '';
+      }
+      return;
+    }
+
+    if ($sidebarDashboardDivider) $sidebarDashboardDivider.classList.remove('hidden');
+    sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
+
+    var sidebarHeight = $sidebar.clientHeight || 0;
+    var sidebarHeader = $sidebar.querySelector('.sidebar-header');
+    var headerHeight = sidebarHeader ? sidebarHeader.offsetHeight : 0;
+    var dividerHeight = $sidebarDashboardDivider ? ($sidebarDashboardDivider.offsetHeight || 8) : 0;
+    var available = sidebarHeight - headerHeight - dividerHeight;
+    if (available <= 0) return;
+
+    var styles = window.getComputedStyle($sidebar);
+    var hierarchyMin = parseFloat(styles.getPropertyValue('--sidebar-hierarchy-min')) || 140;
+    var dashboardMin = parseFloat(styles.getPropertyValue('--sidebar-dashboard-min')) || 180;
+    var minSum = hierarchyMin + dashboardMin;
+    if (available < minSum) {
+      var scaledHierarchyMin = Math.max(80, Math.floor((hierarchyMin / minSum) * available));
+      hierarchyMin = scaledHierarchyMin;
+      dashboardMin = Math.max(100, available - scaledHierarchyMin);
+    }
+
+    var boardHeight = Math.round(available * sidebarSplitRatio);
+    var minBoard = Math.min(hierarchyMin, Math.max(0, available - dashboardMin));
+    var maxBoard = Math.max(minBoard, available - dashboardMin);
+    boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
+    var dashboardHeight = Math.max(0, available - boardHeight);
+
+    $boardList.style.flex = '0 0 ' + boardHeight + 'px';
+    $boardList.style.height = boardHeight + 'px';
+    if ($dashboardRoot) {
+      $dashboardRoot.style.flex = '0 0 ' + dashboardHeight + 'px';
+      $dashboardRoot.style.height = dashboardHeight + 'px';
+    }
+  }
+
+  function setupSidebarSectionResize() {
+    if (!$sidebar || !$sidebarDashboardDivider) return;
+    sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
+    applySidebarSectionLayout();
+    window.addEventListener('resize', applySidebarSectionLayout);
+
+    bindPointerDividerDrag($sidebarDashboardDivider, {
+      canStart: function () {
+        return !!$dashboardRoot && !$dashboardRoot.classList.contains('hidden');
+      },
+      onStart: function () {
+        var sidebarRect = $sidebar.getBoundingClientRect();
+        var sidebarHeader = $sidebar.querySelector('.sidebar-header');
+        var headerBottom = sidebarHeader ? sidebarHeader.getBoundingClientRect().bottom : sidebarRect.top;
+        var dividerHeight = $sidebarDashboardDivider.offsetHeight || 8;
+        var trackStart = headerBottom;
+        var trackSize = sidebarRect.height - (headerBottom - sidebarRect.top) - dividerHeight;
+        $sidebar.classList.add('resizing-sections');
+        return {
+          trackStart: trackStart,
+          trackSize: Math.max(1, trackSize)
+        };
+      },
+      onMove: function (ev, ctx) {
+        var next = (ev.clientY - ctx.trackStart) / ctx.trackSize;
+        sidebarSplitRatio = normalizeSidebarSplitRatio(next);
+        applySidebarSectionLayout();
+      },
+      onEnd: function () {
+        $sidebar.classList.remove('resizing-sections');
+        localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(sidebarSplitRatio)));
+        applySidebarSectionLayout();
+      },
+      onDoubleClick: function () {
+        sidebarSplitRatio = 0.5;
+        localStorage.setItem('lexera-sidebar-split-ratio', '0.5');
+        applySidebarSectionLayout();
+      }
+    });
+  }
+
+  function handleTextareaTabIndent(e, textarea) {
+    if (!e || !textarea || e.key !== 'Tab') return false;
+    e.preventDefault();
+
+    var text = textarea.value || '';
+    var start = textarea.selectionStart || 0;
+    var end = textarea.selectionEnd || 0;
+    var hasSelection = end > start;
+
+    if (!e.shiftKey && !hasSelection) {
+      textarea.value = text.slice(0, start) + '\t' + text.slice(end);
+      textarea.setSelectionRange(start + 1, start + 1);
+      textarea.dispatchEvent(new Event('input'));
+      return true;
+    }
+
+    var blockStart = text.lastIndexOf('\n', Math.max(0, start - 1));
+    blockStart = blockStart === -1 ? 0 : blockStart + 1;
+    var endLookupPos = hasSelection && end > 0 ? end - 1 : end;
+    var blockEnd = text.indexOf('\n', endLookupPos);
+    if (blockEnd === -1) blockEnd = text.length;
+
+    var blockText = text.slice(blockStart, blockEnd);
+    var lines = blockText.split('\n');
+    var rebuilt = [];
+    var adjustStart = 0;
+    var adjustEnd = 0;
+    var linePos = blockStart;
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var removed = 0;
+      if (e.shiftKey) {
+        if (line.indexOf('\t') === 0) removed = 1;
+        else if (line.indexOf('    ') === 0) removed = 4;
+        else if (line.indexOf('  ') === 0) removed = 2;
+        rebuilt.push(removed > 0 ? line.slice(removed) : line);
+      } else {
+        rebuilt.push('\t' + line);
+      }
+
+      if (!e.shiftKey) {
+        if (linePos < start) adjustStart += 1;
+        if (linePos < end || (!hasSelection && linePos === start)) adjustEnd += 1;
+      } else if (removed > 0) {
+        if (linePos < start) adjustStart += Math.min(removed, start - linePos);
+        if (linePos < end || (!hasSelection && linePos === start)) adjustEnd += Math.min(removed, end - linePos);
+      }
+
+      linePos += line.length + 1;
+    }
+
+    textarea.value = text.slice(0, blockStart) + rebuilt.join('\n') + text.slice(blockEnd);
+
+    var newStart = e.shiftKey ? start - adjustStart : start + adjustStart;
+    var newEnd = e.shiftKey ? end - adjustEnd : end + adjustEnd;
+    if (!hasSelection) newEnd = newStart;
+    if (newStart < 0) newStart = 0;
+    if (newEnd < newStart) newEnd = newStart;
+    textarea.setSelectionRange(newStart, newEnd);
+    textarea.dispatchEvent(new Event('input'));
+    return true;
+  }
+
+  function closeTransientUiViaHotkey() {
+    var didClose = false;
+    if (activeColMenu || activeCardMenu || activeRowStackMenu || activeEmbedMenu || activeHtmlMenu) {
+      didClose = true;
+    }
+    closeColumnContextMenu();
+    closeCardContextMenu();
+    closeRowStackMenu();
+    closeEmbedMenu();
+    closeHtmlMenu();
+
+    if (addCardColumn != null) {
+      addCardColumn = null;
+      renderColumns();
+      didClose = true;
+    }
+
+    var editingTextarea = document.querySelector('.card.editing .card-edit-input');
+    if (editingTextarea) {
+      editingTextarea.blur();
+      didClose = true;
+    }
+
+    var overlays = document.querySelectorAll('.dialog-overlay');
+    if (overlays.length > 0) {
+      overlays[overlays.length - 1].remove();
+      didClose = true;
+    }
+
+    return didClose;
   }
 
   function setHeaderSearchExpanded(expanded, options) {
@@ -817,70 +1089,41 @@ const LexeraDashboard = (function () {
     }
     var divider = splitRootEl.querySelector('.split-divider');
     if (divider) {
-      divider.addEventListener('pointerdown', function (e) {
-        if (e.button !== 0 || splitViewMode === 'single') return;
-        e.preventDefault();
-        var mode = splitViewMode;
-        var pointerId = e.pointerId;
-        var finished = false;
-
-        function onMove(ev) {
-          if (ev.pointerId !== pointerId) return;
+      bindPointerDividerDrag(divider, {
+        canStart: function () {
+          return splitViewMode !== 'single';
+        },
+        onStart: function () {
+          var mode = splitViewMode;
+          if (splitRootEl) {
+            splitRootEl.classList.add('resizing');
+            splitRootEl.setAttribute('data-resize-mode', mode);
+          }
+          return { mode: mode };
+        },
+        onMove: function (ev, ctx) {
           if (!splitRootEl) return;
           var rect = splitRootEl.getBoundingClientRect();
-          if (mode === 'vertical') {
-            var nextX = (ev.clientX - rect.left) / Math.max(1, rect.width);
-            setSplitRatioForMode(mode, nextX, false);
+          if (ctx.mode === 'vertical') {
+            setSplitRatioForMode(ctx.mode, (ev.clientX - rect.left) / Math.max(1, rect.width), false);
           } else {
-            var nextY = (ev.clientY - rect.top) / Math.max(1, rect.height);
-            setSplitRatioForMode(mode, nextY, false);
+            setSplitRatioForMode(ctx.mode, (ev.clientY - rect.top) / Math.max(1, rect.height), false);
           }
           applySplitRatioLayout();
-        }
-
-        function finish(ev) {
-          if (finished) return;
-          if (ev && ev.pointerId != null && ev.pointerId !== pointerId) return;
-          finished = true;
-          divider.removeEventListener('pointermove', onMove, true);
-          divider.removeEventListener('pointerup', finish, true);
-          divider.removeEventListener('pointercancel', finish, true);
-          divider.removeEventListener('lostpointercapture', finish, true);
-          try {
-            if (divider.hasPointerCapture && divider.hasPointerCapture(pointerId)) {
-              divider.releasePointerCapture(pointerId);
-            }
-          } catch (err) {
-            // no-op
-          }
+        },
+        onEnd: function (ev, ctx) {
           if (splitRootEl) {
             splitRootEl.classList.remove('resizing');
             splitRootEl.removeAttribute('data-resize-mode');
           }
-          setSplitRatioForMode(mode, getSplitRatioForMode(mode), true);
+          setSplitRatioForMode(ctx.mode, getSplitRatioForMode(ctx.mode), true);
+          applySplitRatioLayout();
+        },
+        onDoubleClick: function () {
+          if (splitViewMode === 'single') return;
+          setSplitRatioForMode(splitViewMode, 0.5, true);
           applySplitRatioLayout();
         }
-
-        if (splitRootEl) {
-          splitRootEl.classList.add('resizing');
-          splitRootEl.setAttribute('data-resize-mode', mode);
-        }
-        try {
-          divider.setPointerCapture(pointerId);
-        } catch (err) {
-          // no-op
-        }
-
-        onMove(e);
-        divider.addEventListener('pointermove', onMove, true);
-        divider.addEventListener('pointerup', finish, true);
-        divider.addEventListener('pointercancel', finish, true);
-        divider.addEventListener('lostpointercapture', finish, true);
-      });
-      divider.addEventListener('dblclick', function () {
-        if (splitViewMode === 'single') return;
-        setSplitRatioForMode(splitViewMode, 0.5, true);
-        applySplitRatioLayout();
       });
     }
     $layout.appendChild(splitRootEl);
@@ -1498,6 +1741,7 @@ const LexeraDashboard = (function () {
     if (!$dashboardRoot) return;
     if (embeddedMode) {
       $dashboardRoot.classList.add('hidden');
+      applySidebarSectionLayout();
       return;
     }
 
@@ -1579,6 +1823,7 @@ const LexeraDashboard = (function () {
     persistDashboardPrefs();
     renderDashboard();
     scheduleDashboardRefresh(0);
+    applySidebarSectionLayout();
   }
 
   function init() {
@@ -1587,6 +1832,7 @@ const LexeraDashboard = (function () {
     ensureSidebarTreeDefaultState();
     setupSearchControls();
     setupDashboardControls();
+    setupSidebarSectionResize();
 
     $searchInput.addEventListener('input', onSearchInput);
     $searchInput.addEventListener('keydown', function (e) {
@@ -1787,11 +2033,45 @@ const LexeraDashboard = (function () {
     }
   }
 
+  // ── WebSocket CRDT Sync ─────────────────────────────────────────────
+
+  var syncUserId = null;
+
+  /** Fetch the local user ID for sync, caching it for the session. */
+  async function ensureSyncUserId() {
+    if (syncUserId) return syncUserId;
+    try {
+      var data = await LexeraApi.request('/collab/me');
+      if (data && data.id) syncUserId = data.id;
+    } catch (e) {
+      // collab/me not available — use a fallback
+    }
+    if (!syncUserId) syncUserId = 'anon-' + Math.random().toString(36).slice(2, 8);
+    return syncUserId;
+  }
+
+  /** Connect sync for the active board. Disconnects previous if different. */
+  async function connectSyncForBoard(boardId) {
+    if (!boardId) { LexeraApi.disconnectSync(); return; }
+    if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === boardId) return;
+    var userId = await ensureSyncUserId();
+    LexeraApi.connectSync(boardId, userId, function () {
+      // On ServerUpdate: reload the board from REST
+      if (activeBoardId === boardId && !isEditing) {
+        loadBoard(boardId);
+      } else if (activeBoardId === boardId && isEditing) {
+        pendingRefresh = true;
+      }
+    });
+  }
+
   function handleSSEEvent(event) {
     if (!activeBoardId || searchMode) return;
     var kind = event.kind || event.type || '';
     var boardId = event.board_id || event.boardId || '';
     if (boardId && boardId !== activeBoardId) return;
+    // When sync-connected, the WS ServerUpdate handles reloads for this board
+    if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === activeBoardId) return;
     if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
       // Skip reloads caused by our own saves
       if (Date.now() - lastSaveTime < SAVE_DEBOUNCE_MS) return;
@@ -2588,6 +2868,8 @@ const LexeraDashboard = (function () {
       renderBoardList();
       renderMainView();
       scheduleDashboardRefresh(80);
+      // Connect WS sync for this board (no-op if already connected)
+      connectSyncForBoard(boardId);
     } catch {
       if (seq !== boardLoadSeq) return; // stale error, ignore
       activeBoardData = null;
@@ -3023,7 +3305,7 @@ const LexeraDashboard = (function () {
       { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
       { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
       { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
-      { key: 'stickyStackMode', label: 'Sticky Headers', placeholder: '', type: 'select', options: ['', 'column'] },
+      { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'top', 'bottom'] },
       { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
       { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'enabled', 'disabled'] },
       { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] }
@@ -3038,6 +3320,7 @@ const LexeraDashboard = (function () {
     for (var i = 0; i < fields.length; i++) {
       var f = fields[i];
       var val = s[f.key] != null ? s[f.key] : '';
+      if (f.key === 'stickyStackMode') val = normalizeStickyHeaderMode(val);
       html += '<div class="dialog-field">';
       html += '<label class="dialog-label">' + escapeHtml(f.label) + '</label>';
       if (f.type === 'select') {
@@ -3356,7 +3639,20 @@ const LexeraDashboard = (function () {
       }
       return;
     }
+
+    if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === 'Enter') {
+      if (closeTransientUiViaHotkey()) e.preventDefault();
+      return;
+    }
   });
+
+  function normalizeStickyHeaderMode(rawMode) {
+    var mode = String(rawMode || '').trim().toLowerCase();
+    if (!mode) return '';
+    if (mode === 'column' || mode === 'enabled' || mode === 'true') return 'top';
+    if (mode === 'top' || mode === 'bottom') return mode;
+    return '';
+  }
 
   function applyBoardSettings() {
     var cssProps = [
@@ -3370,7 +3666,7 @@ const LexeraDashboard = (function () {
     }
     // Reset class-based settings
     $columnsContainer.classList.remove('tag-visibility-hide', 'tag-visibility-dim');
-    $columnsContainer.classList.remove('sticky-headers');
+    $columnsContainer.classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
     $columnsContainer.classList.remove('focus-scroll-mode');
     $columnsContainer.classList.remove('layout-spacious');
@@ -3386,7 +3682,9 @@ const LexeraDashboard = (function () {
     if (s.whitespace) $columnsContainer.style.setProperty('--board-whitespace', s.whitespace);
     if (s.tagVisibility === 'hide') $columnsContainer.classList.add('tag-visibility-hide');
     if (s.tagVisibility === 'dim') $columnsContainer.classList.add('tag-visibility-dim');
-    if (s.stickyStackMode) $columnsContainer.classList.add('sticky-headers');
+    var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
+    if (stickyMode) $columnsContainer.classList.add('sticky-headers-' + stickyMode);
+    if (stickyMode === 'top') $columnsContainer.classList.add('sticky-headers'); // legacy alias
     if (s.htmlCommentRenderMode === 'hide') $columnsContainer.classList.add('html-comments-hide');
     if (s.htmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
     if (s.arrowKeyFocusScroll === 'enabled') $columnsContainer.classList.add('focus-scroll-mode');
@@ -3574,6 +3872,14 @@ const LexeraDashboard = (function () {
             renderColumns();
           });
           textarea.addEventListener('keydown', function (e) {
+            if (handleTextareaTabIndent(e, textarea)) return;
+            if (e.key === 'Enter' && e.altKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              addCardColumn = null;
+              renderColumns();
+              return;
+            }
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               submitCard(colIndex, textarea.value);
             }
@@ -6475,6 +6781,13 @@ const LexeraDashboard = (function () {
     });
 
     textarea.addEventListener('keydown', function (e) {
+      if (handleTextareaTabIndent(e, textarea)) return;
+      if (e.key === 'Enter' && e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        textarea.blur();
+        return;
+      }
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         textarea.blur();

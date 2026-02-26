@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 lexera-core = { path = "../../lexera-core" }
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
-axum = { version = "0.8", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors"] }
 serde = { version = "1", features = ["derive"] }
@@ -20,6 +20,7 @@ tauri-plugin-clipboard-manager = "2"
 clipboard-rs = "0.2"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 thiserror = "2"
 
 [build-dependencies]

@@ -637,6 +637,29 @@ impl CrdtStore {
     pub fn can_redo(&self) -> bool {
         self.undo_mgr.can_redo()
     }
+
+    // ── Sync Primitives ─────────────────────────────────────────────────
+
+    /// Return the current operation-log version vector.
+    pub fn oplog_vv(&self) -> loro::VersionVector {
+        self.doc.oplog_vv()
+    }
+
+    /// Export CRDT updates since a given version vector.
+    pub fn export_updates_since(&self, vv: &loro::VersionVector) -> Result<Vec<u8>, io::Error> {
+        self.doc
+            .export(ExportMode::updates(vv))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+    }
+
+    /// Import remote CRDT updates into the local document.
+    pub fn import_updates(&mut self, bytes: &[u8]) -> Result<loro::ImportStatus, io::Error> {
+        let status = self
+            .doc
+            .import(bytes)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        Ok(status)
+    }
 }
 
 #[cfg(test)]
@@ -917,6 +940,72 @@ mod tests {
         assert!(restored_board.columns[1].cards[0]
             .content
             .contains("Task 2"));
+    }
+
+    #[test]
+    fn test_oplog_vv_and_export_updates() {
+        let board = make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task 1", false)])]);
+        let mut store = CrdtStore::from_board(&board);
+
+        // Capture VV before change
+        let vv_before = store.oplog_vv();
+
+        // Apply a change
+        let updated = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("aaaa0001", "Task 1", false),
+                make_card("aaaa0002", "Task 2", false),
+            ],
+        )]);
+        store.apply_board(&updated, &board);
+
+        // Export delta since the old VV
+        let delta = store.export_updates_since(&vv_before).unwrap();
+        assert!(!delta.is_empty());
+
+        // Import into a fresh doc that has the same base state
+        let mut store2 = CrdtStore::from_board(&board);
+        let _status = store2.import_updates(&delta).unwrap();
+        // After import, store2 should have the same board as store
+        let result = store2.to_board();
+        assert_eq!(result.columns[0].cards.len(), 2);
+        assert!(result.columns[0].cards[1].content.contains("Task 2"));
+    }
+
+    #[test]
+    fn test_import_updates_server_client_flow() {
+        // Simulate the actual sync flow: server creates CRDT, client gets initial
+        // state via save/load (shared history), client makes changes, server imports.
+        let base = make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task 1", false)])]);
+        let mut server_store = CrdtStore::from_board(&base);
+
+        // Client gets the initial state (shared history via snapshot)
+        let snapshot = server_store.save();
+        let mut client_store = CrdtStore::load(&snapshot).unwrap();
+        client_store.set_metadata(base.yaml_header.clone(), None, None);
+
+        let server_vv = server_store.oplog_vv();
+
+        // Client adds a card
+        let client_board = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("aaaa0001", "Task 1", false),
+                make_card("aaaa0002", "Client card", false),
+            ],
+        )]);
+        client_store.apply_board(&client_board, &base);
+
+        // Client exports delta since server's VV
+        let delta = client_store.export_updates_since(&server_vv).unwrap();
+        assert!(!delta.is_empty());
+
+        // Server imports client changes
+        server_store.import_updates(&delta).unwrap();
+        let result = server_store.to_board();
+        assert_eq!(result.columns[0].cards.len(), 2);
+        assert!(result.columns[0].cards[1].content.contains("Client card"));
     }
 
     #[test]

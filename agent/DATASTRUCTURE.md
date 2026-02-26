@@ -2,7 +2,23 @@
 
 This document provides a comprehensive overview of all interfaces, types, classes, and enums that define data structures in the Markdown Kanban codebase.
 
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-02-26
+
+---
+
+## WebSocket CRDT Sync Structures (2026-02-26)
+
+### `lexera-core/src/crdt/bridge.rs`
+- `CrdtStore` — Wraps LoroDoc + UndoManager. Fields: doc, undo_mgr, yaml_header, kanban_footer, board_settings. Sync methods: oplog_vv(), export_updates_since(vv), import_updates(bytes).
+
+### `lexera-backend/src-tauri/src/sync_ws.rs`
+- `ClientMessage` (enum, serde-tagged) — `ClientHello { user_id, vv }`, `ClientUpdate { updates }` (vv and updates are base64 strings).
+- `ServerMessage` (enum, serde-tagged) — `ServerHello { peer_id, vv, updates }`, `ServerUpdate { updates }`, `ServerError { message }`.
+- `BoardRoom` — Per-board room: `clients: HashMap<u64, mpsc::UnboundedSender<String>>`, `next_peer_id: u64`.
+- `BoardSyncHub` — `rooms: HashMap<String, BoardRoom>`. Manages per-board connected WebSocket clients.
+
+### `lexera-backend/src-tauri/src/state.rs`
+- `AppState.sync_hub` — `Arc<tokio::sync::Mutex<BoardSyncHub>>`.
 
 ---
 

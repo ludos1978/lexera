@@ -2,7 +2,20 @@
 
 This document catalogs ALL singleton instances, global state, and data instances (actual runtime instances, not just type definitions) in the Markdown Kanban Obsidian extension.
 
-**Last Updated:** 2026-02-14
+**Last Updated:** 2026-02-26
+
+---
+
+## WebSocket CRDT Sync Instances (2026-02-26)
+
+### Backend (lexera-backend)
+- `AppState.sync_hub` — `Arc<tokio::sync::Mutex<BoardSyncHub>>`, created in lib.rs setup. Manages all active WS sync sessions per board.
+- Per-connection instances in `handle_sync_session()`: `hub_rx` (mpsc receiver from BoardRoom), `ws_tx`/`ws_rx` (split WebSocket halves).
+
+### Frontend (lexera-kanban)
+- `LexeraApi.syncWs` — Module-private WebSocket instance for the active sync connection.
+- `LexeraApi.syncBoardId` — Board ID of the active sync connection.
+- `syncUserId` (in app.js closure) — Cached local user ID for sync handshake.
 
 ---
 

@@ -455,6 +455,96 @@ impl LocalStorage {
         refs
     }
 
+    // ── CRDT Sync Methods ────────────────────────────────────────────────
+
+    /// Get the encoded version vector for a board's CRDT (for sync handshake).
+    pub fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
+        let boards = self.boards.read().unwrap();
+        let state = boards.get(board_id)?;
+        let crdt = state.crdt.as_ref()?;
+        Some(crdt.oplog_vv().encode())
+    }
+
+    /// Export CRDT updates since a given version vector (for sync delta).
+    /// `vv_bytes` is the encoded VersionVector from the remote peer.
+    pub fn export_crdt_updates_since(
+        &self,
+        board_id: &str,
+        vv_bytes: &[u8],
+    ) -> Option<Vec<u8>> {
+        let boards = self.boards.read().unwrap();
+        let state = boards.get(board_id)?;
+        let crdt = state.crdt.as_ref()?;
+        let vv = loro::VersionVector::decode(vv_bytes).ok()?;
+        crdt.export_updates_since(&vv).ok()
+    }
+
+    /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
+    pub fn import_crdt_updates(
+        &self,
+        board_id: &str,
+        bytes: &[u8],
+    ) -> Result<(), StorageError> {
+        let lock = self.get_write_lock(board_id);
+        let _guard = lock.lock().unwrap();
+
+        let file_path = self
+            .get_board_path(board_id)
+            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+
+        // Take CRDT from state for mutation
+        let mut crdt = {
+            let mut boards = self.boards.write().unwrap();
+            boards
+                .get_mut(board_id)
+                .and_then(|s| s.crdt.take())
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+        };
+
+        if let Err(e) = crdt.import_updates(bytes) {
+            // Put CRDT back on failure
+            if let Some(state) = self.boards.write().unwrap().get_mut(board_id) {
+                state.crdt = Some(crdt);
+            }
+            return Err(StorageError::Io(e));
+        }
+
+        // Rebuild board from CRDT state
+        let board = crdt.to_board();
+        let markdown = parser::generate_markdown(&board);
+
+        // Register fingerprint for self-write detection
+        self.self_write_tracker
+            .lock()
+            .unwrap()
+            .register(&file_path, &markdown);
+
+        Self::atomic_write(&file_path, &markdown)?;
+
+        // Save CRDT snapshot
+        let crdt_path = file_path.with_extension("md.crdt");
+        let _ = crdt.save_to_file(&crdt_path);
+
+        let metadata = fs::metadata(&file_path)?;
+        let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
+
+        let state = BoardState {
+            file_path,
+            board,
+            last_modified,
+            content_hash: Self::content_hash(&markdown),
+            version: self.next_version(),
+            crdt: Some(crdt),
+        };
+
+        self.boards
+            .write()
+            .unwrap()
+            .insert(board_id.to_string(), state);
+
+        Ok(())
+    }
+
     pub fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
         let engine = SearchEngine::compile(query, options);
         if engine.is_empty() {

@@ -123,5 +123,76 @@ const LexeraApi = (function () {
     return request('/boards/' + boardId, { method: 'DELETE' });
   }
 
-  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard };
+  // ── WebSocket CRDT Sync ─────────────────────────────────────────────
+
+  var syncWs = null;
+  var syncBoardId = null;
+  var syncOnUpdate = null;
+
+  /**
+   * Connect to the WebSocket sync endpoint for a board.
+   * @param {string} boardId - The board ID to sync.
+   * @param {string} userId - The local user ID.
+   * @param {function} onUpdate - Called with no args when a ServerUpdate arrives.
+   */
+  function connectSync(boardId, userId, onUpdate) {
+    disconnectSync();
+    if (!baseUrl) return;
+    var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + boardId + '?user=' + encodeURIComponent(userId);
+    syncWs = new WebSocket(wsUrl);
+    syncBoardId = boardId;
+    syncOnUpdate = onUpdate;
+
+    syncWs.onopen = function () {
+      // Send ClientHello with empty VV (we don't run a local Loro doc in the frontend)
+      var hello = JSON.stringify({ type: 'ClientHello', user_id: userId, vv: '' });
+      syncWs.send(hello);
+      console.log('[sync] WebSocket connected to board ' + boardId);
+    };
+
+    syncWs.onmessage = function (evt) {
+      try {
+        var msg = JSON.parse(evt.data);
+        if (msg.type === 'ServerHello') {
+          console.log('[sync] Received ServerHello, peer_id=' + msg.peer_id);
+        } else if (msg.type === 'ServerUpdate') {
+          if (syncOnUpdate) syncOnUpdate();
+        } else if (msg.type === 'ServerError') {
+          console.warn('[sync] Server error: ' + msg.message);
+          disconnectSync();
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    };
+
+    syncWs.onerror = function () {
+      console.warn('[sync] WebSocket error');
+    };
+
+    syncWs.onclose = function () {
+      console.log('[sync] WebSocket closed');
+      syncWs = null;
+      syncBoardId = null;
+    };
+  }
+
+  function disconnectSync() {
+    if (syncWs) {
+      syncWs.close();
+      syncWs = null;
+      syncBoardId = null;
+      syncOnUpdate = null;
+    }
+  }
+
+  function isSyncConnected() {
+    return syncWs !== null && syncWs.readyState === WebSocket.OPEN;
+  }
+
+  function getSyncBoardId() {
+    return syncBoardId;
+  }
+
+  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard, connectSync, disconnectSync, isSyncConnected, getSyncBoardId };
 })();

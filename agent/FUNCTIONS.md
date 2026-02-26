@@ -2,10 +2,53 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-26
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-02-26) - WebSocket CRDT Sync (Phase 2)
+
+### Modified: `lexera-core/src/crdt/bridge.rs`
+- `CrdtStore-oplog_vv()` — Returns the current operation-log VersionVector for sync handshake.
+- `CrdtStore-export_updates_since(vv)` — Exports CRDT delta bytes since a given VersionVector.
+- `CrdtStore-import_updates(bytes)` — Imports remote CRDT updates into the local document.
+
+### Modified: `lexera-core/src/storage/local.rs`
+- `LocalStorage-get_crdt_vv(board_id)` — Returns encoded VersionVector bytes for a board's CRDT (read-lock).
+- `LocalStorage-export_crdt_updates_since(board_id, vv_bytes)` — Exports CRDT delta since a remote VV (read-lock).
+- `LocalStorage-import_crdt_updates(board_id, bytes)` — Imports remote updates, rebuilds board from CRDT, persists .md + .crdt (write-lock).
+
+### New: `lexera-backend/src-tauri/src/sync_ws.rs`
+- `BoardSyncHub-new()` — Creates empty sync hub.
+- `BoardSyncHub-register(board_id)` — Registers a client, returns (peer_id, rx channel).
+- `BoardSyncHub-unregister(board_id, peer_id)` — Removes a client from a board room.
+- `BoardSyncHub-broadcast(board_id, exclude_peer, msg)` — Broadcasts JSON message to all peers except sender.
+- `BoardSyncHub-has_clients(board_id)` — Checks if any sync clients are connected for a board.
+- `sync_router()` — Returns axum Router with `/sync/{board_id}` WebSocket route.
+- `ws_handler()` — WebSocket upgrade handler, extracts path/query/state.
+- `handle_sync_session()` — Per-connection async handler: ClientHello → auth → ServerHello → bidirectional updates.
+
+### Modified: `lexera-backend/src-tauri/src/state.rs`
+- `AppState.sync_hub` — (NEW field) `Arc<tokio::sync::Mutex<BoardSyncHub>>` for WebSocket sync.
+
+### Modified: `lexera-backend/src-tauri/src/api.rs`
+- `broadcast_crdt_to_sync_hub(state, board_id)` — (NEW) After REST write_board, broadcasts CRDT updates to sync-connected WS clients.
+- `write_board()` — (MODIFIED) Calls `broadcast_crdt_to_sync_hub` after successful writes.
+
+### Modified: `lexera-kanban/src/api.js`
+- `LexeraApi.connectSync(boardId, userId, onUpdate)` — (NEW) Opens WS to `/sync/{board_id}`, sends ClientHello, calls onUpdate on ServerUpdate.
+- `LexeraApi.disconnectSync()` — (NEW) Closes WS sync connection.
+- `LexeraApi.isSyncConnected()` — (NEW) Returns true if WS is open.
+- `LexeraApi.getSyncBoardId()` — (NEW) Returns the board ID of the active sync connection.
+
+### Modified: `lexera-kanban/src/app.js`
+- `ensureSyncUserId()` — (NEW) Fetches local user ID from /collab/me, caches it.
+- `connectSyncForBoard(boardId)` — (NEW) Connects WS sync for a board, triggers loadBoard on ServerUpdate.
+- `handleSSEEvent()` — (MODIFIED) Skips SSE-triggered reloads when WS sync is connected for the active board.
+- `loadBoard()` — (MODIFIED) Calls connectSyncForBoard after successful load.
 
 ---
 

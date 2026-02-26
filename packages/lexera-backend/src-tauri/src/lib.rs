@@ -12,6 +12,7 @@ pub mod auth;
 pub mod collab_api;
 pub mod invite;
 pub mod public;
+pub mod sync_ws;
 
 use crate::state::{AppState, ResolvedIncoming};
 use lexera_core::include::resolver::IncludeMap;
@@ -215,6 +216,8 @@ pub fn run() {
                 }
             });
 
+            let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
+
             let app_state = AppState {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
@@ -228,6 +231,7 @@ pub fn run() {
                 invite_service,
                 public_service,
                 auth_service,
+                sync_hub,
             };
 
             let app_handle = app.handle().clone();
