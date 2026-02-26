@@ -135,12 +135,20 @@ pub fn rename_path(from: String, to: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn toggle_devtools(window: tauri::WebviewWindow) -> Result<bool, String> {
-    if window.is_devtools_open() {
-        window.close_devtools();
+    #[cfg(any(debug_assertions, target_os = "macos"))]
+    {
+        if window.is_devtools_open() {
+            window.close_devtools();
+            return Ok(false);
+        } else {
+            window.open_devtools();
+            return Ok(true);
+        }
+    }
+    #[cfg(not(any(debug_assertions, target_os = "macos")))]
+    {
+        let _ = window;
         Ok(false)
-    } else {
-        window.open_devtools();
-        Ok(true)
     }
 }
 
