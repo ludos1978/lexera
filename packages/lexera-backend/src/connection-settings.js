@@ -23,6 +23,7 @@
     serverRestartNote: document.getElementById('server-restart-note'),
     myBoardsList: document.getElementById('my-boards-list'),
     connectionsList: document.getElementById('connections-list'),
+    peersList: document.getElementById('peers-list'),
     inputJoinUrl: document.getElementById('input-join-url'),
     inputJoinToken: document.getElementById('input-join-token'),
     btnJoin: document.getElementById('btn-join'),
@@ -43,14 +44,31 @@
     await loadNetworkInterfaces();
     await loadMyBoards();
     await loadConnections();
+    await loadDiscoveredPeers();
 
     setupEventListeners();
 
-    // Poll for connection status updates
+    // Poll for connection status and peer discovery
     setInterval(loadConnections, 10000);
+    setInterval(loadDiscoveredPeers, 5000);
   }
 
   async function discoverBackend() {
+    // Try Tauri command first (reads shared config)
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        var url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
+        if (url) {
+          var res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            var data = await res.json();
+            if (data.status === 'running') return url;
+          }
+        }
+      }
+    } catch (e) { /* fall through */ }
+
+    // Fallback: port scanning
     var ports = [8083, 8080, 8081, 8082, 9080];
     for (var i = 0; i < ports.length; i++) {
       try {
@@ -384,6 +402,37 @@
     els.connectionsList.innerHTML = html;
   }
 
+  // --- Discovered Peers ---
+
+  async function loadDiscoveredPeers() {
+    try {
+      var peers = await apiGet('/collab/discovered-peers');
+      renderPeers(peers);
+    } catch (e) {
+      els.peersList.innerHTML = '<div class="list-empty">Discovery unavailable</div>';
+    }
+  }
+
+  function renderPeers(peers) {
+    if (peers.length === 0) {
+      els.peersList.innerHTML = '<div class="list-empty">No peers found on LAN</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < peers.length; i++) {
+      var p = peers[i];
+      html += '<div class="peer-row">';
+      html += '<div class="peer-info">';
+      html += '<div class="peer-name">' + esc(p.user_name) + '</div>';
+      html += '<div class="peer-url">' + esc(p.url) + '</div>';
+      html += '</div>';
+      html += '<button class="btn btn-small btn-primary" data-action="use-peer" data-peer-url="' + esc(p.url) + '">Use</button>';
+      html += '</div>';
+    }
+    els.peersList.innerHTML = html;
+  }
+
   // --- Join Remote Board ---
 
   async function joinRemote() {
@@ -481,6 +530,12 @@
         }
       } else if (action === 'disconnect') {
         disconnectRemote(localBoardId);
+      } else if (action === 'use-peer') {
+        var peerUrl = btn.getAttribute('data-peer-url');
+        if (peerUrl) {
+          els.inputJoinUrl.value = peerUrl;
+          els.inputJoinToken.focus();
+        }
       }
     });
   }

@@ -733,6 +733,34 @@ async fn update_server_config(
 }
 
 // ============================================================================
+// LAN Discovery
+// ============================================================================
+
+/// GET /collab/discovered-peers — list peers found via UDP broadcast
+async fn discovered_peers(
+    State(state): State<AppState>,
+) -> Json<Vec<serde_json::Value>> {
+    let peers = lock_arc(&state.discovery, "discovery")
+        .map(|d| d.list_peers())
+        .unwrap_or_default();
+
+    let result: Vec<serde_json::Value> = peers
+        .into_iter()
+        .map(|p| {
+            serde_json::json!({
+                "address": p.address,
+                "port": p.port,
+                "user_id": p.user_id,
+                "user_name": p.user_name,
+                "url": format!("http://{}:{}", p.address, p.port),
+            })
+        })
+        .collect();
+
+    Json(result)
+}
+
+// ============================================================================
 // Router
 // ============================================================================
 
@@ -765,6 +793,8 @@ pub fn collab_router() -> Router<AppState> {
         .route("/collab/server-info", get(server_info))
         .route("/collab/network-interfaces", get(list_network_interfaces))
         .route("/collab/server-config", axum::routing::put(update_server_config))
+        // LAN discovery
+        .route("/collab/discovered-peers", get(discovered_peers))
         // Sync client (backend-to-backend connections)
         .route("/collab/connect", post(connect_remote))
         .route(

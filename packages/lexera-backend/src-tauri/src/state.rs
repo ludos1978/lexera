@@ -1,5 +1,6 @@
 use crate::auth::AuthService;
 use crate::config::SyncConfig;
+use crate::discovery::DiscoveryService;
 use crate::invite::InviteService;
 use crate::public::PublicRoomService;
 use crate::sync_client::SyncClientManager;
@@ -39,6 +40,8 @@ pub struct AppState {
     pub sync_hub: Arc<tokio::sync::Mutex<BoardSyncHub>>,
     // WebSocket CRDT sync client (client-side, for outgoing connections to remote backends)
     pub sync_client: Arc<tokio::sync::Mutex<SyncClientManager>>,
+    // UDP LAN discovery service
+    pub discovery: Arc<std::sync::Mutex<DiscoveryService>>,
     // Tauri app handle for opening windows from REST handlers
     pub app_handle: tauri::AppHandle,
 }

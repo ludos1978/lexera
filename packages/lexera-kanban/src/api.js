@@ -7,6 +7,28 @@ const LexeraApi = (function () {
 
   async function discover() {
     if (baseUrl) return baseUrl;
+
+    // Try Tauri command first (reads shared config file)
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
+        if (url) {
+          // Verify the backend is actually running at this URL
+          const res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'running') {
+              baseUrl = url;
+              return baseUrl;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Fall through to port scanning
+    }
+
+    // Fallback: port scanning (for browser mode or if config read fails)
     const ports = [8083, 8080, 8081, 8082, 9080];
     for (const port of ports) {
       try {

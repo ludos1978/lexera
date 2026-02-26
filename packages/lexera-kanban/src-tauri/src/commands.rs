@@ -5,6 +5,40 @@ use std::sync::{Arc, Mutex};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, LogicalPosition, Position, Window};
 
+/// Read the backend URL from the shared config file (~/.config/lexera/sync.json).
+#[tauri::command]
+pub fn get_backend_url() -> Result<String, String> {
+    let config_path = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("lexera")
+        .join("sync.json");
+
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Cannot read config: {}", e))?;
+
+    #[derive(serde::Deserialize)]
+    struct MinConfig {
+        #[serde(default = "default_port")]
+        port: u16,
+        #[serde(default = "default_bind")]
+        bind_address: String,
+    }
+    fn default_port() -> u16 { 8080 }
+    fn default_bind() -> String { "127.0.0.1".to_string() }
+
+    let cfg: MinConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("Cannot parse config: {}", e))?;
+
+    // If bound to 0.0.0.0, connect via localhost
+    let host = if cfg.bind_address == "0.0.0.0" {
+        "127.0.0.1".to_string()
+    } else {
+        cfg.bind_address
+    };
+
+    Ok(format!("http://{}:{}", host, cfg.port))
+}
+
 #[tauri::command]
 pub fn open_in_system(path: String) -> Result<(), String> {
     std::process::Command::new("open")

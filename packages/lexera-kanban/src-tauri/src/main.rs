@@ -5,6 +5,7 @@ mod commands;
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            commands::get_backend_url,
             commands::open_in_system,
             commands::open_url,
             commands::show_in_folder,

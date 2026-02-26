@@ -63,6 +63,21 @@
   }
 
   async function discoverBackend() {
+    // Try Tauri command first (reads shared config)
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
+        if (url) {
+          const res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'running') return url;
+          }
+        }
+      }
+    } catch (e) { /* fall through */ }
+
+    // Fallback: port scanning
     const ports = [8083, 8080, 8081, 8082, 9080];
     for (const port of ports) {
       try {

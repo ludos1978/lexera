@@ -51,6 +51,19 @@ impl Default for SyncConfig {
     }
 }
 
+/// Tauri command: return the backend's own URL from the config file.
+/// Used by backend webviews (quick-capture, connection-settings) to find the local server.
+#[tauri::command]
+pub fn get_backend_url() -> Result<String, String> {
+    let config = load_config(&default_config_path());
+    let host = if config.bind_address == "0.0.0.0" {
+        "127.0.0.1".to_string()
+    } else {
+        config.bind_address
+    };
+    Ok(format!("http://{}:{}", host, config.port))
+}
+
 /// Default config path: ~/.config/lexera/sync.json
 pub fn default_config_path() -> PathBuf {
     dirs::config_dir()

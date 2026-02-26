@@ -4,6 +4,7 @@ mod clipboard_watcher;
 /// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
 mod config;
 pub mod connection_window;
+pub mod discovery;
 mod server;
 pub mod state;
 pub mod sync_client;
@@ -38,6 +39,7 @@ pub fn run() {
             capture::snap_capture_window,
             capture::close_capture,
             connection_window::open_connection_window_cmd,
+            config::get_backend_url,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
@@ -226,8 +228,10 @@ pub fn run() {
 
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
             let sync_client = Arc::new(tokio::sync::Mutex::new(crate::sync_client::SyncClientManager::new()));
+            let discovery = Arc::new(std::sync::Mutex::new(crate::discovery::DiscoveryService::new()));
 
             let app_handle = app.handle().clone();
+            let discovery_bind = bind_address.clone();
 
             let app_state = AppState {
                 storage: storage.clone(),
@@ -246,16 +250,30 @@ pub fn run() {
                 auth_service,
                 sync_hub,
                 sync_client,
+                discovery: discovery.clone(),
                 app_handle: app_handle.clone(),
             };
 
             // Spawn HTTP server
+            let discovery_for_start = discovery.clone();
+            let discovery_user_id = local_user.id.clone();
+            let discovery_user_name = local_user.name.clone();
             tauri::async_runtime::spawn(async move {
                 match server::spawn_server(app_state).await {
                     Ok(actual_port) => {
                         log::info!("Server started on port {}", actual_port);
                         // Set up tray with actual port
                         let _ = tray::setup_tray(&app_handle, actual_port);
+
+                        // Start UDP discovery if not localhost-only
+                        if discovery_bind != "127.0.0.1" {
+                            if let Ok(mut disc) = discovery_for_start.lock() {
+                                disc.start(actual_port, discovery_user_id, discovery_user_name);
+                                log::info!("[discovery] Started LAN discovery");
+                            }
+                        } else {
+                            log::info!("[discovery] Skipped (bind_address is localhost)");
+                        }
                     }
                     Err(e) => log::error!("Failed to start server: {}", e),
                 }
