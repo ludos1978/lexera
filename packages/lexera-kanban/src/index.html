@@ -35,6 +35,48 @@
         </div>
       </div>
       <div id="board-list" class="board-list"></div>
+      <div class="sidebar-dashboard" id="sidebar-dashboard">
+        <div class="sidebar-header sidebar-dashboard-header">
+          <span>Kanban Dashboard</span>
+        </div>
+        <div class="sidebar-dashboard-controls">
+          <div class="dashboard-query-row">
+            <input id="dashboard-search-input" class="dashboard-search-input" type="text" placeholder="Search board content...">
+            <button id="btn-dashboard-search" class="sidebar-btn dashboard-search-btn" type="button" title="Run dashboard search">&#128269;</button>
+          </div>
+          <div class="dashboard-filter-row">
+            <select id="dashboard-scope-select" class="dashboard-select" title="Search scope">
+              <option value="active">Active Board</option>
+              <option value="all">All Boards</option>
+            </select>
+            <button id="btn-dashboard-pin" class="board-action-btn" type="button" title="Pin current dashboard query">Pin</button>
+          </div>
+          <div class="dashboard-quick-row">
+            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:overdue" type="button">Overdue</button>
+            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:today" type="button">Today</button>
+            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open due:week" type="button">Week</button>
+            <button class="board-action-btn dashboard-chip" data-dashboard-query="is:open #hidden-internal-parked" type="button">Parked</button>
+          </div>
+        </div>
+        <div class="sidebar-dashboard-body">
+          <div class="dashboard-group">
+            <div class="dashboard-group-header">Pinned Searches</div>
+            <div id="dashboard-pinned-list" class="dashboard-list"></div>
+          </div>
+          <div class="dashboard-group">
+            <div class="dashboard-group-header">Results</div>
+            <div id="dashboard-results-list" class="dashboard-list"></div>
+          </div>
+          <div class="dashboard-group">
+            <div class="dashboard-group-header">Tasks with Deadlines</div>
+            <div id="dashboard-deadline-list" class="dashboard-list"></div>
+          </div>
+          <div class="dashboard-group">
+            <div class="dashboard-group-header">Overdue</div>
+            <div id="dashboard-overdue-list" class="dashboard-list"></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Main -->

@@ -229,7 +229,8 @@
       "WebFetch(domain:loro.dev)",
       "WebFetch(domain:news.ycombinator.com)",
       "WebFetch(domain:www.loro.dev)",
-      "WebFetch(domain:lib.rs)"
+      "WebFetch(domain:lib.rs)",
+      "Bash(gh search:*)"
     ],
     "deny": [],
     "ask": []

@@ -60,16 +60,46 @@ window.addEventListener('unhandledrejection', function (e) {
   lexeraLog('error', 'Unhandled promise: ' + (e.reason || e));
 });
 
+function updateAppBottomInset() {
+  var root = document.documentElement;
+  if (!root) return;
+
+  var body = document.body;
+  if (body && body.classList.contains('embedded-mode')) {
+    root.style.setProperty('--app-bottom-inset', '0px');
+    return;
+  }
+
+  var statusBar = document.getElementById('status-bar');
+  var logPanel = document.getElementById('log-panel');
+  var inset = 0;
+
+  if (statusBar && !statusBar.classList.contains('hidden') && statusBar.offsetParent !== null) {
+    inset += statusBar.offsetHeight || 22;
+  }
+  if (logPanel && !logPanel.classList.contains('hidden') && logPanel.offsetParent !== null) {
+    inset += logPanel.offsetHeight || 0;
+  }
+  if (inset <= 0) inset = 22;
+
+  root.style.setProperty('--app-bottom-inset', inset + 'px');
+}
+
+window.updateAppBottomInset = updateAppBottomInset;
+window.addEventListener('resize', updateAppBottomInset);
+
 // Log panel + status bar UI
 document.addEventListener('DOMContentLoaded', function () {
   var panel = document.getElementById('log-panel');
   var statusBar = document.getElementById('status-bar');
   var clearBtn = document.getElementById('log-clear-btn');
   var closeBtn = document.getElementById('log-close-btn');
+  updateAppBottomInset();
 
   // Click status bar to expand/collapse log panel
   if (statusBar) statusBar.addEventListener('click', function () {
     if (panel) panel.classList.toggle('hidden');
+    updateAppBottomInset();
   });
 
   if (clearBtn) clearBtn.addEventListener('click', function (e) {
@@ -80,12 +110,14 @@ document.addEventListener('DOMContentLoaded', function () {
   if (closeBtn) closeBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     panel.classList.add('hidden');
+    updateAppBottomInset();
   });
 });
 
 function toggleLogPanel() {
   var panel = document.getElementById('log-panel');
   if (panel) panel.classList.toggle('hidden');
+  updateAppBottomInset();
 }
 
 // Ctrl+Shift+L to toggle log
@@ -149,6 +181,19 @@ const LexeraDashboard = (function () {
   var splitRootEl = null;
   var splitToggleBtn = null;
   var splitOrientationBtn = null;
+  var dashboardState = {
+    query: localStorage.getItem('lexera-dashboard-query') || '',
+    scope: localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active',
+    pinnedQueries: [],
+    activePinnedQuery: localStorage.getItem('lexera-dashboard-active-pinned') || '',
+    loading: false,
+    results: [],
+    deadlines: [],
+    overdue: []
+  };
+  var dashboardSearchDebounce = null;
+  var dashboardRefreshTimer = null;
+  var dashboardRefreshSeq = 0;
 
   // --- Themes ---
   var THEMES = [
@@ -322,6 +367,15 @@ const LexeraDashboard = (function () {
   const $connectionDot = document.getElementById('connection-dot');
   const $mainContent = document.getElementById('main-content');
   const $layout = document.querySelector('.layout');
+  const $dashboardRoot = document.getElementById('sidebar-dashboard');
+  const $dashboardSearchInput = document.getElementById('dashboard-search-input');
+  const $dashboardSearchBtn = document.getElementById('btn-dashboard-search');
+  const $dashboardScopeSelect = document.getElementById('dashboard-scope-select');
+  const $dashboardPinBtn = document.getElementById('btn-dashboard-pin');
+  const $dashboardPinnedList = document.getElementById('dashboard-pinned-list');
+  const $dashboardResultsList = document.getElementById('dashboard-results-list');
+  const $dashboardDeadlineList = document.getElementById('dashboard-deadline-list');
+  const $dashboardOverdueList = document.getElementById('dashboard-overdue-list');
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   function normalizePathForCompare(path) {
@@ -1140,10 +1194,399 @@ const LexeraDashboard = (function () {
     localStorage.setItem(versionKey, '1');
   }
 
+  function normalizeDashboardScope(scope) {
+    return scope === 'all' ? 'all' : 'active';
+  }
+
+  function loadDashboardPinnedQueries() {
+    try {
+      var raw = JSON.parse(localStorage.getItem('lexera-dashboard-pinned-queries') || '[]');
+      if (!Array.isArray(raw)) return [];
+      var out = [];
+      for (var i = 0; i < raw.length; i++) {
+        var q = String(raw[i] || '').trim();
+        if (!q || out.indexOf(q) !== -1) continue;
+        out.push(q);
+        if (out.length >= 30) break;
+      }
+      return out;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function persistDashboardPrefs() {
+    localStorage.setItem('lexera-dashboard-query', dashboardState.query || '');
+    localStorage.setItem('lexera-dashboard-scope', normalizeDashboardScope(dashboardState.scope));
+    localStorage.setItem('lexera-dashboard-active-pinned', dashboardState.activePinnedQuery || '');
+    localStorage.setItem('lexera-dashboard-pinned-queries', JSON.stringify(dashboardState.pinnedQueries || []));
+  }
+
+  function setDashboardScope(scope) {
+    dashboardState.scope = normalizeDashboardScope(scope);
+    if ($dashboardScopeSelect) $dashboardScopeSelect.value = dashboardState.scope;
+    persistDashboardPrefs();
+  }
+
+  function setDashboardQuery(query, options) {
+    options = options || {};
+    var next = String(query || '').trim();
+    dashboardState.query = next;
+    if ($dashboardSearchInput && $dashboardSearchInput.value !== next) {
+      $dashboardSearchInput.value = next;
+    }
+    if (dashboardState.pinnedQueries.indexOf(next) !== -1) {
+      dashboardState.activePinnedQuery = next;
+    } else if (!options.keepPinnedSelection) {
+      dashboardState.activePinnedQuery = '';
+    }
+    persistDashboardPrefs();
+    renderDashboardPinnedList();
+  }
+
+  function filterDashboardResultsByScope(results) {
+    if (!Array.isArray(results)) return [];
+    if (dashboardState.scope !== 'active') return results.slice();
+    if (!activeBoardId) return [];
+    return results.filter(function (item) {
+      return item && item.boardId === activeBoardId;
+    });
+  }
+
+  function parseSearchDateValue(dateStr) {
+    if (!dateStr) return Number.POSITIVE_INFINITY;
+    var stamp = Date.parse(dateStr + 'T00:00:00');
+    return isNaN(stamp) ? Number.POSITIVE_INFINITY : stamp;
+  }
+
+  function sortSearchByDueDateAsc(results) {
+    return results.slice().sort(function (a, b) {
+      var ad = parseSearchDateValue(a && a.dueDate);
+      var bd = parseSearchDateValue(b && b.dueDate);
+      if (ad !== bd) return ad - bd;
+      var at = String(a && a.boardTitle || '').toLowerCase();
+      var bt = String(b && b.boardTitle || '').toLowerCase();
+      if (at !== bt) return at < bt ? -1 : 1;
+      var ac = String(a && a.cardContent || '').toLowerCase();
+      var bc = String(b && b.cardContent || '').toLowerCase();
+      return ac < bc ? -1 : (ac > bc ? 1 : 0);
+    });
+  }
+
+  function limitedSearchResults(results, maxCount) {
+    if (!Array.isArray(results)) return [];
+    if (results.length <= maxCount) return results;
+    return results.slice(0, maxCount);
+  }
+
+  function asSearchResultArray(payload) {
+    if (!payload || !Array.isArray(payload.results)) return [];
+    return payload.results;
+  }
+
+  function dashboardCardTitle(content) {
+    var line = String(content || '').split('\n')[0].trim();
+    if (!line) return '(empty card)';
+    return line.length > 62 ? line.slice(0, 59) + '...' : line;
+  }
+
+  function dashboardDueLabel(result) {
+    if (!result) return '';
+    if (result.isOverdue) return 'Overdue';
+    if (result.dueDate) return result.dueDate;
+    return '';
+  }
+
+  function buildDashboardNavResult(result) {
+    return {
+      boardId: result.boardId,
+      cardId: result.cardId,
+      cardContent: result.cardContent,
+      columnIndex: parseOptionalSearchIndex(result.columnIndex),
+      rowIndex: parseOptionalSearchIndex(result.rowIndex),
+      stackIndex: parseOptionalSearchIndex(result.stackIndex),
+      columnTitle: result.columnTitle
+    };
+  }
+
+  function scopeHintForDashboard() {
+    if (dashboardState.scope === 'active' && !activeBoardId) {
+      return 'Select a board to show scoped results';
+    }
+    return '';
+  }
+
+  function renderDashboardPinnedList() {
+    if (!$dashboardPinnedList) return;
+    $dashboardPinnedList.innerHTML = '';
+    if (!dashboardState.pinnedQueries || dashboardState.pinnedQueries.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'dashboard-empty';
+      empty.textContent = 'No pinned searches';
+      $dashboardPinnedList.appendChild(empty);
+      return;
+    }
+
+    for (var i = 0; i < dashboardState.pinnedQueries.length; i++) {
+      (function (query) {
+        var item = document.createElement('div');
+        item.className = 'dashboard-item' + (dashboardState.activePinnedQuery === query ? ' pinned-active' : '');
+
+        var main = document.createElement('div');
+        main.className = 'dashboard-item-main';
+        var title = document.createElement('div');
+        title.className = 'dashboard-item-title';
+        title.textContent = query;
+        var meta = document.createElement('div');
+        meta.className = 'dashboard-item-meta';
+        meta.textContent = 'Pinned query';
+        main.appendChild(title);
+        main.appendChild(meta);
+        item.appendChild(main);
+
+        var right = document.createElement('div');
+        right.className = 'dashboard-item-right';
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'dashboard-item-remove';
+        removeBtn.title = 'Remove pinned query';
+        removeBtn.textContent = '\u00d7';
+        removeBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var idx = dashboardState.pinnedQueries.indexOf(query);
+          if (idx !== -1) dashboardState.pinnedQueries.splice(idx, 1);
+          if (dashboardState.activePinnedQuery === query) dashboardState.activePinnedQuery = '';
+          persistDashboardPrefs();
+          renderDashboardPinnedList();
+        });
+        right.appendChild(removeBtn);
+        item.appendChild(right);
+
+        item.addEventListener('click', function () {
+          dashboardState.activePinnedQuery = query;
+          setDashboardQuery(query, { keepPinnedSelection: true });
+          scheduleDashboardRefresh(0);
+        });
+        $dashboardPinnedList.appendChild(item);
+      })(dashboardState.pinnedQueries[i]);
+    }
+  }
+
+  function renderDashboardResultItems(targetEl, items, emptyText) {
+    if (!targetEl) return;
+    targetEl.innerHTML = '';
+
+    if (!items || items.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'dashboard-empty';
+      empty.textContent = emptyText;
+      targetEl.appendChild(empty);
+      return;
+    }
+
+    for (var i = 0; i < items.length; i++) {
+      (function (item) {
+        var row = document.createElement('div');
+        row.className = 'dashboard-item';
+
+        var main = document.createElement('div');
+        main.className = 'dashboard-item-main';
+        var title = document.createElement('div');
+        title.className = 'dashboard-item-title';
+        title.textContent = dashboardCardTitle(item.cardContent);
+        var meta = document.createElement('div');
+        meta.className = 'dashboard-item-meta';
+        meta.textContent = (item.boardTitle || 'Untitled') + ' / ' + buildSearchResultLocation(item);
+        main.appendChild(title);
+        main.appendChild(meta);
+        row.appendChild(main);
+
+        var due = dashboardDueLabel(item);
+        if (due) {
+          var right = document.createElement('div');
+          right.className = 'dashboard-item-right';
+          right.textContent = due;
+          row.appendChild(right);
+        }
+
+        row.addEventListener('click', function () {
+          navigateToSearchResult(buildDashboardNavResult(item));
+        });
+        targetEl.appendChild(row);
+      })(items[i]);
+    }
+  }
+
+  function renderDashboard() {
+    if (!$dashboardRoot) return;
+    var scopeHint = scopeHintForDashboard();
+    var loadingNote = dashboardState.loading ? 'Loading...' : null;
+
+    renderDashboardPinnedList();
+    renderDashboardResultItems(
+      $dashboardResultsList,
+      dashboardState.results,
+      scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search')
+    );
+    renderDashboardResultItems(
+      $dashboardDeadlineList,
+      dashboardState.deadlines,
+      scopeHint || loadingNote || 'No open tasks with due dates'
+    );
+    renderDashboardResultItems(
+      $dashboardOverdueList,
+      dashboardState.overdue,
+      scopeHint || loadingNote || 'No overdue tasks'
+    );
+  }
+
+  async function refreshDashboardData(options) {
+    options = options || {};
+    if (!$dashboardRoot || embeddedMode) return;
+    if (!connected) {
+      dashboardState.loading = false;
+      dashboardState.results = [];
+      dashboardState.deadlines = [];
+      dashboardState.overdue = [];
+      renderDashboard();
+      return;
+    }
+    var refreshId = ++dashboardRefreshSeq;
+    dashboardState.loading = true;
+    if (!options.deferRender) renderDashboard();
+
+    try {
+      var query = dashboardState.query ? dashboardState.query.trim() : '';
+      var queryPromise = query
+        ? LexeraApi.search(query)
+        : Promise.resolve({ results: [] });
+      var deadlinePromise = LexeraApi.search('is:open due:any');
+      var overduePromise = LexeraApi.search('is:open due:overdue');
+
+      var resolved = await Promise.all([queryPromise, deadlinePromise, overduePromise]);
+      if (refreshId !== dashboardRefreshSeq) return;
+
+      var scopedQuery = filterDashboardResultsByScope(asSearchResultArray(resolved[0]));
+      var scopedDeadlines = filterDashboardResultsByScope(asSearchResultArray(resolved[1]));
+      var scopedOverdue = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
+
+      dashboardState.results = limitedSearchResults(scopedQuery, 80);
+      dashboardState.deadlines = limitedSearchResults(sortSearchByDueDateAsc(scopedDeadlines), 40);
+      dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(scopedOverdue), 40);
+    } catch (err) {
+      if (refreshId !== dashboardRefreshSeq) return;
+      console.error('[dashboard.search] Failed to refresh:', err);
+      dashboardState.results = [];
+      dashboardState.deadlines = [];
+      dashboardState.overdue = [];
+    } finally {
+      if (refreshId !== dashboardRefreshSeq) return;
+      dashboardState.loading = false;
+      renderDashboard();
+    }
+  }
+
+  function scheduleDashboardRefresh(delayMs) {
+    if (!$dashboardRoot || embeddedMode) return;
+    clearTimeout(dashboardRefreshTimer);
+    dashboardRefreshTimer = setTimeout(function () {
+      refreshDashboardData();
+    }, typeof delayMs === 'number' ? delayMs : 120);
+  }
+
+  function setupDashboardControls() {
+    if (!$dashboardRoot) return;
+    if (embeddedMode) {
+      $dashboardRoot.classList.add('hidden');
+      return;
+    }
+
+    dashboardState.pinnedQueries = loadDashboardPinnedQueries();
+    dashboardState.scope = normalizeDashboardScope(dashboardState.scope);
+    if (dashboardState.pinnedQueries.indexOf(dashboardState.activePinnedQuery) === -1) {
+      dashboardState.activePinnedQuery = '';
+    }
+
+    if ($dashboardSearchInput) $dashboardSearchInput.value = dashboardState.query || '';
+    if ($dashboardScopeSelect) $dashboardScopeSelect.value = dashboardState.scope;
+
+    if ($dashboardSearchInput) {
+      $dashboardSearchInput.addEventListener('input', function () {
+        setDashboardQuery($dashboardSearchInput.value);
+        clearTimeout(dashboardSearchDebounce);
+        dashboardSearchDebounce = setTimeout(function () {
+          refreshDashboardData({ deferRender: true });
+        }, 220);
+      });
+      $dashboardSearchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          setDashboardQuery($dashboardSearchInput.value);
+          refreshDashboardData({ deferRender: true });
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setDashboardQuery('');
+          refreshDashboardData({ deferRender: true });
+        }
+      });
+    }
+
+    if ($dashboardSearchBtn) {
+      $dashboardSearchBtn.addEventListener('click', function () {
+        setDashboardQuery($dashboardSearchInput ? $dashboardSearchInput.value : dashboardState.query);
+        refreshDashboardData({ deferRender: true });
+      });
+    }
+
+    if ($dashboardScopeSelect) {
+      $dashboardScopeSelect.addEventListener('change', function () {
+        setDashboardScope($dashboardScopeSelect.value);
+        refreshDashboardData({ deferRender: true });
+      });
+    }
+
+    if ($dashboardPinBtn) {
+      $dashboardPinBtn.addEventListener('click', function () {
+        var query = String(dashboardState.query || '').trim();
+        if (!query) {
+          showNotification('Enter a query to pin');
+          return;
+        }
+        var idx = dashboardState.pinnedQueries.indexOf(query);
+        if (idx === -1) {
+          dashboardState.pinnedQueries.unshift(query);
+          dashboardState.activePinnedQuery = query;
+          showNotification('Pinned dashboard query');
+        } else {
+          dashboardState.pinnedQueries.splice(idx, 1);
+          if (dashboardState.activePinnedQuery === query) dashboardState.activePinnedQuery = '';
+          showNotification('Unpinned dashboard query');
+        }
+        persistDashboardPrefs();
+        renderDashboardPinnedList();
+      });
+    }
+
+    $dashboardRoot.addEventListener('click', function (e) {
+      var chip = e.target.closest('.dashboard-chip[data-dashboard-query]');
+      if (!chip) return;
+      e.preventDefault();
+      var query = chip.getAttribute('data-dashboard-query') || '';
+      setDashboardQuery(query);
+      refreshDashboardData({ deferRender: true });
+    });
+
+    persistDashboardPrefs();
+    renderDashboard();
+    scheduleDashboardRefresh(0);
+  }
+
   function init() {
     if (embeddedMode) document.body.classList.add('embedded-mode');
+    if (typeof window.updateAppBottomInset === 'function') window.updateAppBottomInset();
     ensureSidebarTreeDefaultState();
     setupSearchControls();
+    setupDashboardControls();
 
     $searchInput.addEventListener('input', onSearchInput);
     $searchInput.addEventListener('keydown', function (e) {
@@ -1404,9 +1847,11 @@ const LexeraDashboard = (function () {
         }
       }
       refreshHeaderFileControls();
+      scheduleDashboardRefresh(120);
     } catch {
       // keep previous state
       refreshHeaderFileControls();
+      scheduleDashboardRefresh(250);
     }
   }
 
@@ -1917,6 +2362,7 @@ const LexeraDashboard = (function () {
             }
             renderBoardList();
             renderMainView();
+            scheduleDashboardRefresh(60);
             // Then tell backend
             LexeraApi.removeBoard(boardId).catch(function (err) {
               lexeraLog('error', '[sidebar.remove] Backend error: ' + err.message);
@@ -2084,6 +2530,7 @@ const LexeraDashboard = (function () {
       renderBoardList();
       refreshHeaderFileControls();
       refreshSplitFrames(false);
+      scheduleDashboardRefresh(60);
       if (options.loadInBackground) await loadBoard(boardId);
       return;
     }
@@ -2111,6 +2558,7 @@ const LexeraDashboard = (function () {
     }
     renderBoardList();
     refreshHeaderFileControls();
+    scheduleDashboardRefresh(60);
     if (!options.skipLoad) await loadBoard(boardId);
   }
 
@@ -2139,11 +2587,13 @@ const LexeraDashboard = (function () {
       setBoardHierarchyRows(boardId, fullBoardData, response.title || '');
       renderBoardList();
       renderMainView();
+      scheduleDashboardRefresh(80);
     } catch {
       if (seq !== boardLoadSeq) return; // stale error, ignore
       activeBoardData = null;
       fullBoardData = null;
       renderMainView();
+      scheduleDashboardRefresh(80);
     }
   }
 
@@ -2697,6 +3147,7 @@ const LexeraDashboard = (function () {
       if (typeof options.afterRefresh === 'function') {
         options.afterRefresh();
       }
+      scheduleDashboardRefresh(80);
       return true;
     } catch (err) {
       console.error('[persistBoardMutation] Save failed, reloading board:', err);
@@ -2803,6 +3254,7 @@ const LexeraDashboard = (function () {
       if (boardIds.indexOf(activeBoardId) !== -1) refreshHeaderFileControls();
       if (options.refreshSidebar) renderBoardList();
       if (typeof options.afterRefresh === 'function') options.afterRefresh();
+      scheduleDashboardRefresh(80);
       return true;
     } catch (err) {
       console.error('[commitBoardMutations] Save failed:', err);
@@ -3064,8 +3516,8 @@ const LexeraDashboard = (function () {
       headerRow.appendChild(titleContainer);
 
       var menuBtn = document.createElement('button');
-      menuBtn.className = 'card-menu-btn';
-      menuBtn.textContent = '\u2630';
+      menuBtn.className = 'card-menu-btn burger-menu-btn';
+      menuBtn.innerHTML = BURGER_MENU_ICON_HTML;
       menuBtn.title = 'Card options';
       headerRow.appendChild(menuBtn);
 
