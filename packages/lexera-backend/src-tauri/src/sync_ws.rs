@@ -171,22 +171,21 @@ async fn handle_sync_session(
         }
     };
 
-    // 2. Auth check
-    let is_member = {
+    // 2. Auth check — use ClientHello user_id as the authoritative identity.
+    // Fall back to query param only if ClientHello user_id is empty.
+    let auth_user = if client_user_id.is_empty() {
+        &user_id
+    } else {
+        &client_user_id
+    };
+    let authorized = if auth_user.is_empty() {
+        false
+    } else {
         match state.auth_service.lock() {
-            Ok(auth) => auth.is_member(&board_id, &client_user_id),
+            Ok(auth) => auth.is_member(&board_id, auth_user),
             Err(_) => false,
         }
     };
-
-    // Allow the user passed in the query param as well (backwards compat)
-    let authorized = is_member
-        || (!user_id.is_empty() && {
-            match state.auth_service.lock() {
-                Ok(auth) => auth.is_member(&board_id, &user_id),
-                Err(_) => false,
-            }
-        });
 
     if !authorized {
         let err = serde_json::to_string(&ServerMessage::ServerError {
@@ -301,10 +300,12 @@ async fn handle_sync_session(
         }
     });
 
-    // Wait for either task to finish
+    // Wait for either task to finish, abort the other to prevent leaks
+    let mut write_task = write_task;
+    let mut read_task = read_task;
     tokio::select! {
-        _ = write_task => {}
-        _ = read_task => {}
+        _ = &mut write_task => { read_task.abort(); }
+        _ = &mut read_task => { write_task.abort(); }
     }
 
     // 7. Cleanup

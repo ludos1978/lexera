@@ -458,7 +458,10 @@ impl LocalStorage {
     // ── CRDT Sync Methods ────────────────────────────────────────────────
 
     /// Get the encoded version vector for a board's CRDT (for sync handshake).
+    /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
     pub fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
+        let lock = self.get_write_lock(board_id);
+        let _guard = lock.lock().unwrap();
         let boards = self.boards.read().unwrap();
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
@@ -467,15 +470,23 @@ impl LocalStorage {
 
     /// Export CRDT updates since a given version vector (for sync delta).
     /// `vv_bytes` is the encoded VersionVector from the remote peer.
+    /// An empty `vv_bytes` slice is treated as an empty VersionVector (export all).
+    /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
     pub fn export_crdt_updates_since(
         &self,
         board_id: &str,
         vv_bytes: &[u8],
     ) -> Option<Vec<u8>> {
+        let lock = self.get_write_lock(board_id);
+        let _guard = lock.lock().unwrap();
         let boards = self.boards.read().unwrap();
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
-        let vv = loro::VersionVector::decode(vv_bytes).ok()?;
+        let vv = if vv_bytes.is_empty() {
+            loro::VersionVector::default()
+        } else {
+            loro::VersionVector::decode(vv_bytes).ok()?
+        };
         crdt.export_updates_since(&vv).ok()
     }
 

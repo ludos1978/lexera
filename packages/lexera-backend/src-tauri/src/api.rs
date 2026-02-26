@@ -276,19 +276,27 @@ async fn write_board(
 }
 
 /// After a REST write, broadcast CRDT updates to sync-connected WebSocket clients.
+/// Exports CRDT data BEFORE acquiring the hub lock to avoid lock ordering issues.
 async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
+    // Quick check (racy but fine — worst case we export then find no clients)
+    {
+        let hub = state.sync_hub.lock().await;
+        if !hub.has_clients(board_id) {
+            return;
+        }
+    }
+    // Export outside the hub lock to prevent lock ordering inversion
+    let updates = match state.storage.export_crdt_updates_since(board_id, &[]) {
+        Some(u) => u,
+        None => return,
+    };
+    let msg = serde_json::json!({
+        "type": "ServerUpdate",
+        "updates": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &updates),
+    });
+    let msg_str = msg.to_string();
     let hub = state.sync_hub.lock().await;
-    if !hub.has_clients(board_id) {
-        return;
-    }
-    // Export full updates (from empty VV) so all connected peers get the latest state
-    if let Some(updates) = state.storage.export_crdt_updates_since(board_id, &[]) {
-        let msg = serde_json::json!({
-            "type": "ServerUpdate",
-            "updates": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &updates),
-        });
-        hub.broadcast(board_id, 0, &msg.to_string());
-    }
+    hub.broadcast(board_id, 0, &msg_str);
 }
 
 /// POST /boards — add a new board by file path.

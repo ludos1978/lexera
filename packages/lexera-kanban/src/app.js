@@ -2051,16 +2051,23 @@ const LexeraDashboard = (function () {
   }
 
   /** Connect sync for the active board. Disconnects previous if different. */
+  var syncDebounceTimer = null;
   async function connectSyncForBoard(boardId) {
     if (!boardId) { LexeraApi.disconnectSync(); return; }
     if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === boardId) return;
     var userId = await ensureSyncUserId();
     LexeraApi.connectSync(boardId, userId, function () {
-      // On ServerUpdate: reload the board from REST
-      if (activeBoardId === boardId && !isEditing) {
-        loadBoard(boardId);
-      } else if (activeBoardId === boardId && isEditing) {
+      // On ServerUpdate: debounced reload from REST (coalesce rapid updates)
+      if (activeBoardId === boardId && isEditing) {
         pendingRefresh = true;
+        return;
+      }
+      if (activeBoardId === boardId) {
+        if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = setTimeout(function () {
+          syncDebounceTimer = null;
+          if (activeBoardId === boardId && !isEditing) loadBoard(boardId);
+        }, 80);
       }
     });
   }
@@ -3594,6 +3601,21 @@ const LexeraDashboard = (function () {
     }, 3000);
   }
 
+  function toggleInspector() {
+    if (!hasTauri) {
+      showNotification('Inspector: use browser DevTools (Cmd+Option+I)');
+      return;
+    }
+    tauriInvoke('toggle_devtools', {})
+      .then(function (opened) {
+        showNotification(opened ? 'Inspector opened' : 'Inspector closed');
+      })
+      .catch(function (err) {
+        console.error('[inspector] Failed to toggle devtools:', err);
+        showNotification('Inspector unavailable in this build');
+      });
+  }
+
   function pushUndo() {
     if (!fullBoardData) return;
     undoStack.push(JSON.stringify(fullBoardData));
@@ -3637,6 +3659,12 @@ const LexeraDashboard = (function () {
           loadBoard(activeBoardId);
         });
       }
+      return;
+    }
+
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'i' || e.key === 'I')) {
+      e.preventDefault();
+      toggleInspector();
       return;
     }
 
