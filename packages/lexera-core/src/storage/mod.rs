@@ -1,7 +1,8 @@
 pub mod local;
 
 use crate::merge::merge::MergeResult;
-use crate::types::{KanbanBoard, BoardInfo, SearchResult};
+use crate::search::SearchOptions;
+use crate::types::{BoardInfo, KanbanBoard, SearchResult};
 
 /// Abstract storage trait for board backends.
 /// Implementations: LocalStorage (filesystem), future: iCloud, Dropbox, etc.
@@ -14,18 +15,24 @@ pub trait BoardStorage: Send + Sync {
 
     /// Write a full board back to storage.
     /// Returns Ok(None) for clean writes, Ok(Some(MergeResult)) when merge was needed.
-    fn write_board(&self, board_id: &str, board: &KanbanBoard) -> Result<Option<MergeResult>, StorageError>;
-
-    /// Add a card to a specific column in a board.
-    fn add_card(
+    fn write_board(
         &self,
         board_id: &str,
-        col_index: usize,
-        content: &str,
-    ) -> Result<(), StorageError>;
+        board: &KanbanBoard,
+    ) -> Result<Option<MergeResult>, StorageError>;
+
+    /// Add a card to a specific column in a board.
+    fn add_card(&self, board_id: &str, col_index: usize, content: &str)
+        -> Result<(), StorageError>;
 
     /// Search cards across all boards.
     fn search(&self, query: &str) -> Vec<SearchResult>;
+
+    /// Search cards with explicit options (regex, case sensitivity).
+    fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+        let _ = options;
+        self.search(query)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

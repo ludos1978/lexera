@@ -8,6 +8,7 @@ fn main() {
             commands::open_in_system,
             commands::open_url,
             commands::show_in_folder,
+            commands::rename_path,
             commands::show_context_menu,
         ])
         .on_window_event(|window, event| {

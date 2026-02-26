@@ -68,7 +68,7 @@
 
 **Content Highlights**:
 - ✅ **Architecture Score**: ⭐⭐⭐⭐⭐ (Excellent)
-- ✅ **Card-Level Operations**: WorldCard structure with rich text support
+- ✅ **Card-Level Operations**: Card-level merge with kid identity tracking
 - ✅ **Board-Level Operations**: Snapshot-based comparison, three-way merge
 - ✅ **Atomic File Writes**: Crash-safer with rollback capability
 - ✅ **Change State Machine**: Unified state transitions
@@ -77,7 +77,7 @@
 **Key Findings**:
 - Lexera backend uses Rust (lexera-core) with Tauri IPC
 - No V2-specific store files found in packages/agent/ (in lexera-core instead)
-- WorldCard provides atomic-level data structure for cards
+- Card-level merge provides atomic-level operations for cards
 - Three-way merge algorithm for conflict resolution
 - Atomic write system prevents data corruption
 
@@ -195,7 +195,7 @@
    - Directory structure (lexera-core/src/)
    - Core components (storage, types, parser, merge)
 3. Key Architectural Findings
-   - Card-level operations (WorldCard)
+   - Card-level operations (kid-based merge)
    - Board-level operations (Snapshot-based comparison)
    - Atomic file write system
    - Change state machine
@@ -207,7 +207,7 @@
    - KanbanBoard (Rust)
    - KanbanColumn (Rust)
    - KanbanCard (Rust)
-   - WorldCard (V2 atomic level)
+   - CardSnapshot (V2 comparison level)
    - CardSnapshot (V2 comparison)
    - BoardDiff (V2 comparison)
 6. API Documentation
@@ -219,11 +219,10 @@
    - Conflict resolution: Manual (V1) vs. Automatic (V2)
    - Data integrity: No atomic writes (V1) vs. Atomic (V2)
 8. Recommendations
-   - High Priority: Add WorldCard type to Kanban types
    - High Priority: Add V2 sync commands
-   - Medium Priority: Add WorldCard support to WYSIWYG parser
+   - Medium Priority: Add card-level merge support to WYSIWYG parser
 9. Testing Strategy
-   - Unit tests for WorldCard
+   - Unit tests for card-level merge
    - Unit tests for three-way merge
    - Unit tests for atomic file writes
 10. Success Metrics
@@ -298,7 +297,7 @@ packages/agent/
 | Component | Coverage | Notes |
 |-----------|----------|-------|
 | **Lexera API** | ✅ | Complete API reference (getBoardColumns, saveBoard, etc.) |
-| **Data Structures** | ✅ | Complete Rust type definitions (Board, Column, Card, WorldCard) |
+| **Data Structures** | ✅ | Complete Rust type definitions (Board, Column, Card, CardSnapshot) |
 | **Storage System** | ✅ | Complete local storage implementation details |
 | **Merge Algorithm** | ✅ | Complete three-way merge and diff algorithms |
 | **V2 Sync Architecture** | ✅ | Complete world/atomic level sync analysis |
@@ -326,9 +325,9 @@ packages/agent/
    - Follow TODO list in order of priority (Critical → High → Medium → Low)
 
 3. **For World/Atomic Level Development**
-   - See `V2_DATA_SYNC_ANALYSIS.md` → Section 5 (WorldCard vs. V1 Card)
-   - See V2_DATA_SYNC_ANALYSIS.md` → Section 6 (Atomic operations)
-   - See V2_DATA_SYNC_ANALYSIS.md` → Section 9 (Testing strategy)
+   - See `V2_DATA_SYNC_ANALYSIS.md` → Section 5 (Card-level merge vs. V1 Card)
+   - See `V2_DATA_SYNC_ANALYSIS.md` → Section 6 (Atomic operations)
+   - See `V2_DATA_SYNC_ANALYSIS.md` → Section 9 (Testing strategy)
 
 4. **For Project Management**
    - Track progress by checking off items in `pi-plan.md`
@@ -376,20 +375,15 @@ packages/agent/
 
 ### Based on Analysis
 
-1. **Add WorldCard Type to Kanban Types** (HIGH PRIORITY)
-   - Create `src/types/WorldCard.ts`
-   - Define WorldCard interface with rich text support
-   - Add WorldCard to KanbanCard as `world?: WorldCard;`
-
-2. **Add V2 Sync Commands** (HIGH PRIORITY)
+1. **Add V2 Sync Commands** (HIGH PRIORITY)
    - Create `src/commands/V2SyncCommands.ts`
    - Implement commands for merge, snapshot, conflict resolution
    - Use Tauri IPC to communicate with Lexera backend
 
-3. **Add WorldCard Support to WYSIWYG Parser** (MEDIUM PRIORITY)
-   - Update WYSIWYG parser to recognize WorldCard data
-   - Add rich text editing capabilities
-   - Support formatting marks, links, includes
+2. **Add Card-Level Merge Support** (MEDIUM PRIORITY)
+   - Ensure all cards have kid identifiers
+   - Wire ensure_kid into card creation paths
+   - Support three-way merge via Lexera backend
 
 4. **Add Atomic File Write Integration** (MEDIUM PRIORITY)
    - Integrate Lexera atomic write system with VS Code save operations

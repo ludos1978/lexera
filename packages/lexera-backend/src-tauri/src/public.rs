@@ -1,8 +1,7 @@
 /// Public rooms service: manage boards that anyone can join (server mode).
-
 use serde::Serialize;
-use thiserror::Error;
 use std::collections::HashMap;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PublicRoom {
@@ -61,7 +60,11 @@ impl PublicRoomService {
     }
 
     /// Make a room public (server mode)
-    pub fn make_public(&mut self, req: &MakePublicRequest, member_count: usize) -> Result<(), PublicRoomError> {
+    pub fn make_public(
+        &mut self,
+        req: &MakePublicRequest,
+        member_count: usize,
+    ) -> Result<(), PublicRoomError> {
         DefaultRole::from_str(&req.default_role)
             .ok_or_else(|| PublicRoomError::InvalidRole(req.default_role.clone()))?;
 
@@ -79,7 +82,11 @@ impl PublicRoomService {
         self.public_rooms.insert(req.room_id.clone(), config);
         self.member_counts.insert(req.room_id.clone(), member_count);
 
-        log::info!("[public] Made room {} public (role: {})", req.room_id, req.default_role);
+        log::info!(
+            "[public] Made room {} public (role: {})",
+            req.room_id,
+            req.default_role
+        );
 
         Ok(())
     }

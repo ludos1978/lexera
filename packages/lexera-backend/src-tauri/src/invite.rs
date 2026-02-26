@@ -1,9 +1,8 @@
+use serde::{Deserialize, Serialize};
 /// Invitation service: create, accept, and revoke invite links.
-
 use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
 use thiserror::Error;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InviteLink {
@@ -65,10 +64,13 @@ impl InviteService {
     }
 
     /// Create a new invite link
-    pub fn create_invite(&mut self, req: CreateInviteRequest, room_title: Option<String>) -> Result<InviteLink, InviteError> {
+    pub fn create_invite(
+        &mut self,
+        req: CreateInviteRequest,
+        room_title: Option<String>,
+    ) -> Result<InviteLink, InviteError> {
         // Validate role
-        InviteRole::from_str(&req.role)
-            .ok_or(InviteError::InvalidRole)?;
+        InviteRole::from_str(&req.role).ok_or(InviteError::InvalidRole)?;
 
         let token = Uuid::new_v4().to_string();
 
@@ -93,7 +95,12 @@ impl InviteService {
             uses: 0,
         };
 
-        log::info!("[invite] Created invite {}... for room {} by {}", &token[..8], req.room_id, req.inviter_id);
+        log::info!(
+            "[invite] Created invite {}... for room {} by {}",
+            &token[..8],
+            req.room_id,
+            req.inviter_id
+        );
 
         self.invites.insert(token, invite.clone());
 
@@ -102,8 +109,7 @@ impl InviteService {
 
     /// Accept an invite and return room join info
     pub fn accept_invite(&mut self, token: &str) -> Result<RoomJoin, InviteError> {
-        let invite = self.invites.get(token)
-            .ok_or(InviteError::NotFound)?;
+        let invite = self.invites.get(token).ok_or(InviteError::NotFound)?;
 
         // Check expiration
         let now = SystemTime::now()
@@ -122,14 +128,21 @@ impl InviteService {
 
         let room_id = invite.room_id.clone();
         let role = invite.role.clone();
-        let room_title = invite.room_title.clone().unwrap_or_else(|| "Untitled".to_string());
+        let room_title = invite
+            .room_title
+            .clone()
+            .unwrap_or_else(|| "Untitled".to_string());
 
         // Increment uses
         if let Some(invite_entry) = self.invites.get_mut(token) {
             invite_entry.uses += 1;
         }
 
-        log::info!("[invite] Accepted invite {}... for room {}", &token[..8.min(token.len())], room_id);
+        log::info!(
+            "[invite] Accepted invite {}... for room {}",
+            &token[..8.min(token.len())],
+            room_id
+        );
 
         Ok(RoomJoin {
             room_id,
@@ -149,15 +162,18 @@ impl InviteService {
 
     /// Revoke an invite
     pub fn revoke_invite(&mut self, token: &str, room_id: &str) -> Result<(), InviteError> {
-        let invite = self.invites.get(token)
-            .ok_or(InviteError::NotFound)?;
+        let invite = self.invites.get(token).ok_or(InviteError::NotFound)?;
 
         if invite.room_id != room_id {
             return Err(InviteError::NotFound);
         }
 
         self.invites.remove(token);
-        log::info!("[invite] Revoked invite {}... for room {}", &token[..8.min(token.len())], room_id);
+        log::info!(
+            "[invite] Revoked invite {}... for room {}",
+            &token[..8.min(token.len())],
+            room_id
+        );
         Ok(())
     }
 
@@ -168,7 +184,8 @@ impl InviteService {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        let to_remove: Vec<String> = self.invites
+        let to_remove: Vec<String> = self
+            .invites
             .iter()
             .filter(|(_, invite)| invite.expires_at < now)
             .map(|(token, _)| token.clone())

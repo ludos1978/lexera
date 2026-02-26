@@ -1,13 +1,9 @@
+use crate::capture::ClipboardHistory;
 /// Clipboard watcher: monitors system clipboard for changes.
 /// On change, captures content into the clipboard history and opens Quick Capture.
-
-use clipboard_rs::{
-    ClipboardHandler, ClipboardWatcher,
-    ClipboardWatcherContext, WatcherShutdown,
-};
+use clipboard_rs::{ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext, WatcherShutdown};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::AppHandle;
-use crate::capture::ClipboardHistory;
 
 /// Flag to suppress the watcher when our own Cmd+C simulation fires.
 static SUPPRESS_WATCHER: AtomicBool = AtomicBool::new(false);
@@ -35,7 +31,10 @@ impl ClipboardHandler for ClipboardChangeHandler {
 
 /// Start the clipboard watcher on a dedicated std::thread.
 /// Returns the WatcherShutdown handle for clean termination.
-pub fn start_clipboard_watcher(app: &AppHandle, history: ClipboardHistory) -> Option<WatcherShutdown> {
+pub fn start_clipboard_watcher(
+    app: &AppHandle,
+    history: ClipboardHistory,
+) -> Option<WatcherShutdown> {
     let mut watcher = match ClipboardWatcherContext::new() {
         Ok(watcher) => watcher,
         Err(e) => {
@@ -57,7 +56,10 @@ pub fn start_clipboard_watcher(app: &AppHandle, history: ClipboardHistory) -> Op
             watcher.start_watch();
         })
     {
-        log::error!("[lexera.clipboard_watcher] Failed to spawn watcher thread: {}", e);
+        log::error!(
+            "[lexera.clipboard_watcher] Failed to spawn watcher thread: {}",
+            e
+        );
         return None;
     }
 

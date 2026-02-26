@@ -1,3 +1,5 @@
+use regex::Regex;
+use std::sync::atomic::{AtomicU64, Ordering};
 /// Card identity management using persistent kid markers.
 ///
 /// Cards are identified by `<!-- kid:XXXXXXXX -->` comments embedded at the
@@ -5,13 +7,10 @@
 /// (32-bit), generated once per card and preserved across edits.
 ///
 /// HTML comments are invisible in Obsidian rendering.
-
 use std::sync::LazyLock;
-use regex::Regex;
 
-static KID_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<!-- kid:([0-9a-f]{8}) -->").unwrap()
-});
+static KID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<!-- kid:([0-9a-f]{8}) -->").unwrap());
 
 /// Extract kid from card content (looks in the first line).
 pub fn extract_kid(content: &str) -> Option<String> {
@@ -52,17 +51,26 @@ pub fn inject_kid(content: &str, kid: &str) -> String {
     format!("{} <!-- kid:{} -->", content, kid)
 }
 
-/// Generate a new random kid (8 hex chars).
-pub fn generate_kid() -> String {
-    use std::time::SystemTime;
-    let ts = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
+static KID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    // Mix timestamp with a simple hash for uniqueness
-    let hash = ts.wrapping_mul(2654435761); // Knuth multiplicative hash
-    format!("{:08x}", hash)
+/// Generate a new random kid (8 hex chars).
+/// Uses an atomic counter for intra-process uniqueness combined with a
+/// nanosecond timestamp, hashed via SHA-256 for uniform distribution.
+pub fn generate_kid() -> String {
+    use sha2::{Digest, Sha256};
+    let seq = KID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let mut hasher = Sha256::new();
+    hasher.update(seq.to_le_bytes());
+    hasher.update(ts.to_le_bytes());
+    let hash = hasher.finalize();
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}",
+        hash[0], hash[1], hash[2], hash[3]
+    )
 }
 
 /// Ensure a card has a kid. If it doesn't have one, generate and inject one.

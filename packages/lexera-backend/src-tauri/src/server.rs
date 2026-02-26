@@ -1,14 +1,11 @@
-/// HTTP server: spawns axum on a background tokio task.
-
-use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
 use crate::api::api_router;
 use crate::collab_api::collab_router;
 use crate::state::AppState;
+/// HTTP server: spawns axum on a background tokio task.
+use axum::Router;
+use tower_http::cors::{Any, CorsLayer};
 
-pub async fn spawn_server(
-    state: AppState,
-) -> Result<u16, Box<dyn std::error::Error>> {
+pub async fn spawn_server(state: AppState) -> Result<u16, Box<dyn std::error::Error>> {
     let port = state.port;
 
     let cors = CorsLayer::new()

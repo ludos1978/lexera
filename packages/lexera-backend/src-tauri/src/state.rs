@@ -1,15 +1,14 @@
-/// Shared application state passed to axum handlers.
-
-use std::sync::Arc;
-use std::path::PathBuf;
-use lexera_core::storage::local::LocalStorage;
-use lexera_core::watcher::file_watcher::FileWatcher;
-use lexera_core::watcher::types::BoardChangeEvent;
-use tokio::sync::broadcast;
+use crate::auth::AuthService;
 use crate::config::SyncConfig;
 use crate::invite::InviteService;
 use crate::public::PublicRoomService;
-use crate::auth::AuthService;
+use lexera_core::storage::local::LocalStorage;
+use lexera_core::watcher::file_watcher::FileWatcher;
+use lexera_core::watcher::types::BoardChangeEvent;
+use std::path::PathBuf;
+/// Shared application state passed to axum handlers.
+use std::sync::Arc;
+use tokio::sync::broadcast;
 
 /// Resolved incoming config with board ID instead of file path.
 #[derive(Clone, Debug, serde::Serialize)]

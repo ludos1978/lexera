@@ -10,16 +10,14 @@
 
   <!-- Header -->
   <div class="header">
-    <div class="workbench-tabs">
-      <div class="workbench-tab workbench-tab-static">KANBAN BOARDS</div>
-      <div id="active-board-tab" class="workbench-tab workbench-tab-active">No board selected</div>
-    </div>
     <div class="header-main">
-      <span class="header-title">Lexera</span>
       <div class="search-container">
         <input id="search-input" class="search-input" type="text" placeholder="Search cards...">
       </div>
       <div class="header-actions">
+        <button id="btn-search-toggle" class="btn-icon" type="button" title="Toggle search">&#128269;</button>
+        <button id="btn-window-settings" class="btn-icon" type="button" title="Board settings">&#9881;</button>
+        <select id="theme-select" class="theme-select header-theme-select" title="Theme"></select>
         <div id="connection-dot" class="connection-dot" title="Connection status"></div>
       </div>
     </div>

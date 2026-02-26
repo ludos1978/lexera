@@ -15,11 +15,10 @@
 /// - In base+ours, not in theirs -> external deleted, keep ours (conservative)
 /// - Only in theirs -> added externally, include
 /// - Only in ours -> added by user, include
-
 use serde::{Deserialize, Serialize};
 
-use crate::types::{KanbanBoard, KanbanCard, KanbanColumn};
 use super::diff::snapshot_board;
+use crate::types::{KanbanBoard, KanbanCard, KanbanColumn};
 
 /// Result of a three-way merge.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,19 +63,21 @@ pub fn three_way_merge(
     let mut auto_merged: usize = 0;
 
     // Build merged columns based on theirs (disk) as the structural base
-    let mut merged_columns: Vec<KanbanColumn> = theirs.columns.iter().map(|col| {
-        KanbanColumn {
+    let mut merged_columns: Vec<KanbanColumn> = theirs
+        .all_columns()
+        .iter()
+        .map(|col| KanbanColumn {
             id: col.id.clone(),
             title: col.title.clone(),
             cards: Vec::new(),
             include_source: col.include_source.clone(),
-        }
-    }).collect();
+        })
+        .collect();
 
     // Add any columns that exist only in ours
-    for our_col in &ours.columns {
+    for our_col in ours.all_columns() {
         if !merged_columns.iter().any(|c| c.title == our_col.title) {
-            if base.columns.iter().any(|c| c.title == our_col.title) {
+            if base.all_columns().iter().any(|c| c.title == our_col.title) {
                 // Column was in base and ours but not theirs -> externally deleted
                 // Conservative: keep it
                 merged_columns.push(KanbanColumn {
@@ -99,9 +100,15 @@ pub fn three_way_merge(
 
     // Collect all known kids
     let mut all_kids = std::collections::HashSet::new();
-    for kid in base_snap.keys() { all_kids.insert(kid.clone()); }
-    for kid in theirs_snap.keys() { all_kids.insert(kid.clone()); }
-    for kid in ours_snap.keys() { all_kids.insert(kid.clone()); }
+    for kid in base_snap.keys() {
+        all_kids.insert(kid.clone());
+    }
+    for kid in theirs_snap.keys() {
+        all_kids.insert(kid.clone());
+    }
+    for kid in ours_snap.keys() {
+        all_kids.insert(kid.clone());
+    }
 
     // Process each card
     for kid in &all_kids {
@@ -134,7 +141,9 @@ pub fn three_way_merge(
                     merged_content = o.content.clone(); // Default to ours for conflict resolution
                 } else if content_changed_theirs {
                     merged_content = t.content.clone();
-                    if content_changed_ours { auto_merged += 1; }
+                    if content_changed_ours {
+                        auto_merged += 1;
+                    }
                 } else {
                     merged_content = o.content.clone();
                 }
@@ -152,7 +161,9 @@ pub fn three_way_merge(
                     merged_checked = o.checked;
                 } else if checked_changed_theirs {
                     merged_checked = t.checked;
-                    if checked_changed_ours { auto_merged += 1; }
+                    if checked_changed_ours {
+                        auto_merged += 1;
+                    }
                 } else {
                     merged_checked = o.checked;
                 }
@@ -244,11 +255,41 @@ pub fn three_way_merge(
     }
 
     // Copy board metadata from ours (the user's intent)
+    // For new-format boards, reconstruct the rows/stacks hierarchy with merged card data
+    let (final_columns, final_rows) = if !ours.rows.is_empty() {
+        let mut rows = ours.rows.clone();
+        for row in &mut rows {
+            for stack in &mut row.stacks {
+                for col in &mut stack.columns {
+                    if let Some(mc) = merged_columns.iter().find(|mc| mc.title == col.title) {
+                        col.cards = mc.cards.clone();
+                    }
+                }
+            }
+        }
+        // Columns added by theirs that don't exist in ours' structure -> add to first stack of first row
+        for mc in &merged_columns {
+            let exists_in_rows = rows.iter().any(|r| {
+                r.stacks
+                    .iter()
+                    .any(|s| s.columns.iter().any(|c| c.title == mc.title))
+            });
+            if !exists_in_rows && !mc.cards.is_empty() {
+                if let Some(first_stack) = rows.first_mut().and_then(|r| r.stacks.first_mut()) {
+                    first_stack.columns.push(mc.clone());
+                }
+            }
+        }
+        (Vec::new(), rows)
+    } else {
+        (merged_columns, Vec::new())
+    };
+
     let merged_board = KanbanBoard {
         valid: ours.valid,
         title: ours.title.clone(),
-        columns: merged_columns,
-        rows: ours.rows.clone(),
+        columns: final_columns,
+        rows: final_rows,
         yaml_header: ours.yaml_header.clone(),
         kanban_footer: ours.kanban_footer.clone(),
         board_settings: ours.board_settings.clone(),
@@ -274,6 +315,7 @@ fn add_card_to_column(columns: &mut [KanbanColumn], column_title: &str, card: Ka
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{KanbanRow, KanbanStack};
 
     fn make_card(kid: &str, content: &str, checked: bool) -> KanbanCard {
         KanbanCard {
@@ -306,17 +348,14 @@ mod tests {
 
     #[test]
     fn test_merge_no_conflicts() {
-        let base = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
-        ]);
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])]);
         // Theirs: changed content
-        let theirs = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1 edited", false)]),
-        ]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Task 1 edited", false)],
+        )]);
         // Ours: changed checked
-        let ours = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", true)]),
-        ]);
+        let ours = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", true)])]);
 
         let result = three_way_merge(&base, &theirs, &ours);
         assert!(result.conflicts.is_empty());
@@ -329,15 +368,15 @@ mod tests {
 
     #[test]
     fn test_merge_content_conflict() {
-        let base = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
-        ]);
-        let theirs = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1 by Alice", false)]),
-        ]);
-        let ours = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1 by Bob", false)]),
-        ]);
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Task 1 by Alice", false)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Task 1 by Bob", false)],
+        )]);
 
         let result = three_way_merge(&base, &theirs, &ours);
         assert_eq!(result.conflicts.len(), 1);
@@ -347,9 +386,10 @@ mod tests {
     #[test]
     fn test_merge_card_added_by_theirs() {
         let base = make_board(vec![("Todo", vec![])]);
-        let theirs = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "New from Alice", false)]),
-        ]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "New from Alice", false)],
+        )]);
         let ours = make_board(vec![("Todo", vec![])]);
 
         let result = three_way_merge(&base, &theirs, &ours);
@@ -361,9 +401,10 @@ mod tests {
     fn test_merge_card_added_by_ours() {
         let base = make_board(vec![("Todo", vec![])]);
         let theirs = make_board(vec![("Todo", vec![])]);
-        let ours = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "New from Bob", false)]),
-        ]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "New from Bob", false)],
+        )]);
 
         let result = three_way_merge(&base, &theirs, &ours);
         assert!(result.conflicts.is_empty());
@@ -372,12 +413,8 @@ mod tests {
 
     #[test]
     fn test_merge_card_deleted_by_ours() {
-        let base = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
-        ]);
-        let theirs = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
-        ]);
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])]);
+        let theirs = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])]);
         let ours = make_board(vec![("Todo", vec![])]);
 
         let result = three_way_merge(&base, &theirs, &ours);
@@ -387,13 +424,9 @@ mod tests {
 
     #[test]
     fn test_merge_card_deleted_by_theirs_kept_conservative() {
-        let base = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
-        ]);
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])]);
         let theirs = make_board(vec![("Todo", vec![])]);
-        let ours = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
-        ]);
+        let ours = make_board(vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])]);
 
         let result = three_way_merge(&base, &theirs, &ours);
         assert!(result.conflicts.is_empty());
@@ -404,12 +437,14 @@ mod tests {
     #[test]
     fn test_merge_both_add_cards() {
         let base = make_board(vec![("Todo", vec![])]);
-        let theirs = make_board(vec![
-            ("Todo", vec![make_card("aaa00001", "Alice's task", false)]),
-        ]);
-        let ours = make_board(vec![
-            ("Todo", vec![make_card("bbb00001", "Bob's task", false)]),
-        ]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Alice's task", false)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("bbb00001", "Bob's task", false)],
+        )]);
 
         let result = three_way_merge(&base, &theirs, &ours);
         assert!(result.conflicts.is_empty());
@@ -425,5 +460,131 @@ mod tests {
         let result = three_way_merge(&base, &theirs, &ours);
         assert!(result.conflicts.is_empty());
         assert!(result.board.columns[0].cards.is_empty());
+    }
+
+    fn make_new_format_board(
+        rows: Vec<(&str, Vec<(&str, Vec<(&str, Vec<KanbanCard>)>)>)>,
+    ) -> KanbanBoard {
+        KanbanBoard {
+            valid: true,
+            title: "Test".to_string(),
+            columns: Vec::new(),
+            rows: rows
+                .into_iter()
+                .map(|(row_title, stacks)| KanbanRow {
+                    id: format!("row-{}", row_title),
+                    title: row_title.to_string(),
+                    stacks: stacks
+                        .into_iter()
+                        .map(|(stack_title, cols)| KanbanStack {
+                            id: format!("stack-{}", stack_title),
+                            title: stack_title.to_string(),
+                            columns: cols
+                                .into_iter()
+                                .map(|(col_title, cards)| KanbanColumn {
+                                    id: format!("col-{}", col_title),
+                                    title: col_title.to_string(),
+                                    cards,
+                                    include_source: None,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+        }
+    }
+
+    #[test]
+    fn test_merge_new_format_no_conflicts() {
+        let base = make_new_format_board(vec![(
+            "Row 1",
+            vec![(
+                "Stack A",
+                vec![("Todo", vec![make_card("aaa00001", "Task 1", false)])],
+            )],
+        )]);
+        // Theirs: changed content
+        let theirs = make_new_format_board(vec![(
+            "Row 1",
+            vec![(
+                "Stack A",
+                vec![("Todo", vec![make_card("aaa00001", "Task 1 edited", false)])],
+            )],
+        )]);
+        // Ours: changed checked
+        let ours = make_new_format_board(vec![(
+            "Row 1",
+            vec![(
+                "Stack A",
+                vec![("Todo", vec![make_card("aaa00001", "Task 1", true)])],
+            )],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+
+        // Result should be new format (rows, not flat columns)
+        assert!(result.board.columns.is_empty());
+        assert_eq!(result.board.rows.len(), 1);
+        let merged_col = &result.board.rows[0].stacks[0].columns[0];
+        assert_eq!(merged_col.cards.len(), 1);
+        assert_eq!(merged_col.cards[0].content, "Task 1 edited");
+        assert!(merged_col.cards[0].checked);
+    }
+
+    #[test]
+    fn test_merge_new_format_preserves_structure() {
+        let base = make_new_format_board(vec![(
+            "Row 1",
+            vec![
+                (
+                    "Stack A",
+                    vec![
+                        ("Todo", vec![make_card("aaa00001", "Task 1", false)]),
+                        ("Done", vec![]),
+                    ],
+                ),
+                (
+                    "Stack B",
+                    vec![("Review", vec![make_card("bbb00001", "Task 2", false)])],
+                ),
+            ],
+        )]);
+        let theirs = base.clone();
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+
+        // Structure should be preserved: 1 row, 2 stacks, 3 columns total
+        assert_eq!(result.board.rows.len(), 1);
+        assert_eq!(result.board.rows[0].stacks.len(), 2);
+        assert_eq!(result.board.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.board.rows[0].stacks[1].columns.len(), 1);
+        assert_eq!(result.board.rows[0].stacks[0].columns[0].title, "Todo");
+        assert_eq!(result.board.rows[0].stacks[0].columns[1].title, "Done");
+        assert_eq!(result.board.rows[0].stacks[1].columns[0].title, "Review");
+    }
+
+    #[test]
+    fn test_merge_new_format_card_added_by_theirs() {
+        let base =
+            make_new_format_board(vec![("Row 1", vec![("Stack A", vec![("Todo", vec![])])])]);
+        let theirs = make_new_format_board(vec![(
+            "Row 1",
+            vec![(
+                "Stack A",
+                vec![("Todo", vec![make_card("aaa00001", "New from Alice", false)])],
+            )],
+        )]);
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        assert_eq!(result.board.rows[0].stacks[0].columns[0].cards.len(), 1);
     }
 }

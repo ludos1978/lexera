@@ -1,3 +1,14 @@
+use axum::{
+    extract::{Multipart, Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    response::{sse::Event, Json, Sse},
+    routing::get,
+    Router,
+};
+use lexera_core::search::SearchOptions;
+use lexera_core::storage::BoardStorage;
+use lexera_core::types::is_archived_or_deleted;
+use serde::{Deserialize, Serialize};
 /// Axum REST API routes.
 ///
 ///   GET  /boards                              -> list all boards
@@ -14,21 +25,10 @@
 ///   GET  /search?q=term                       -> search cards
 ///   GET  /events                              -> SSE stream of board changes
 ///   GET  /status                              -> health check (+ incoming config)
-
 use std::convert::Infallible;
 use std::path::PathBuf;
-use axum::{
-    Router,
-    extract::{Path, Query, State, Multipart},
-    http::{HeaderMap, StatusCode},
-    response::{Json, Sse, sse::Event},
-    routing::get,
-};
-use serde::{Deserialize, Serialize};
-use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
-use lexera_core::storage::BoardStorage;
-use lexera_core::types::is_archived_or_deleted;
+use tokio_stream::StreamExt;
 
 use crate::state::AppState;
 
@@ -46,6 +46,10 @@ fn insert_header_safe(headers: &mut HeaderMap, name: &'static str, value: &str) 
 #[derive(Deserialize)]
 pub struct SearchQuery {
     q: Option<String>,
+    #[serde(default, alias = "caseSensitive")]
+    case_sensitive: Option<bool>,
+    #[serde(default, alias = "useRegex")]
+    regex: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -90,19 +94,25 @@ pub fn api_router() -> Router<AppState> {
             "/boards/{board_id}/columns/{col_index}/cards",
             axum::routing::post(add_card),
         )
-        .route("/boards/{board_id}", axum::routing::put(write_board).delete(remove_board_endpoint))
+        .route(
+            "/boards/{board_id}",
+            axum::routing::put(write_board).delete(remove_board_endpoint),
+        )
         .route(
             "/boards/{board_id}/media",
             axum::routing::post(upload_media),
         )
-        .route(
-            "/boards/{board_id}/media/{filename}",
-            get(serve_media),
-        )
+        .route("/boards/{board_id}/media/{filename}", get(serve_media))
         .route("/boards/{board_id}/file", get(serve_file))
         .route("/boards/{board_id}/file-info", get(file_info))
-        .route("/boards/{board_id}/find-file", axum::routing::post(find_file))
-        .route("/boards/{board_id}/convert-path", axum::routing::post(convert_path))
+        .route(
+            "/boards/{board_id}/find-file",
+            axum::routing::post(find_file),
+        )
+        .route(
+            "/boards/{board_id}/convert-path",
+            axum::routing::post(convert_path),
+        )
         .route("/search", get(search))
         .route("/events", get(sse_events))
         .route("/status", get(status))
@@ -136,7 +146,11 @@ async fn get_board_columns(
             if value == etag {
                 let mut resp_headers = HeaderMap::new();
                 insert_header_safe(&mut resp_headers, "etag", &etag);
-                return Ok((StatusCode::NOT_MODIFIED, resp_headers, Json(serde_json::json!({}))));
+                return Ok((
+                    StatusCode::NOT_MODIFIED,
+                    resp_headers,
+                    Json(serde_json::json!({})),
+                ));
             }
         }
     }
@@ -197,19 +211,24 @@ async fn add_card(
         ));
     }
 
-    state.storage.add_card(&board_id, col_index, &body.content).map_err(|e| {
-        let status = match &e {
-            lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-            lexera_core::storage::StorageError::ColumnOutOfRange { .. } => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (
-            status,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    state
+        .storage
+        .add_card(&board_id, col_index, &body.content)
+        .map_err(|e| {
+            let status = match &e {
+                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                lexera_core::storage::StorageError::ColumnOutOfRange { .. } => {
+                    StatusCode::BAD_REQUEST
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (
+                status,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok((
         StatusCode::CREATED,
@@ -224,9 +243,9 @@ async fn write_board(
     Json(board): Json<lexera_core::types::KanbanBoard>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     match state.storage.write_board(&board_id, &board) {
-        Ok(None) => {
-            Ok(Json(serde_json::json!({ "success": true, "merged": false })))
-        }
+        Ok(None) => Ok(Json(
+            serde_json::json!({ "success": true, "merged": false }),
+        )),
         Ok(Some(merge_result)) => {
             let has_conflicts = !merge_result.conflicts.is_empty();
             Ok(Json(serde_json::json!({
@@ -242,7 +261,12 @@ async fn write_board(
                 lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            Err((status, Json(ErrorResponse { error: e.to_string() })))
+            Err((
+                status,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            ))
         }
     }
 }
@@ -256,18 +280,27 @@ async fn add_board_endpoint(
     if !path.exists() {
         return Err((
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: format!("File not found: {}", body.file) }),
+            Json(ErrorResponse {
+                error: format!("File not found: {}", body.file),
+            }),
         ));
     }
     if path.extension().and_then(|e| e.to_str()) != Some("md") {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Only .md files are supported".to_string() }),
+            Json(ErrorResponse {
+                error: "Only .md files are supported".to_string(),
+            }),
         ));
     }
 
     let board_id = state.storage.add_board(&path).map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() }))
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
     })?;
 
     // Watch the new board file
@@ -275,7 +308,11 @@ async fn add_board_endpoint(
     if let Ok(mut watcher_guard) = state.watcher.lock() {
         if let Some(ref mut watcher) = *watcher_guard {
             if let Err(e) = watcher.watch_board(&board_id, &canonical) {
-                log::warn!("[lexera.api.add_board] Failed to watch board {}: {}", board_id, e);
+                log::warn!(
+                    "[lexera.api.add_board] Failed to watch board {}: {}",
+                    board_id,
+                    e
+                );
             }
         }
     }
@@ -284,7 +321,10 @@ async fn add_board_endpoint(
     if let Ok(mut cfg) = state.config.lock() {
         let file_str = path.to_string_lossy().to_string();
         if !cfg.boards.iter().any(|b| b.file == file_str) {
-            cfg.boards.push(crate::config::BoardEntry { file: file_str, name: None });
+            cfg.boards.push(crate::config::BoardEntry {
+                file: file_str,
+                name: None,
+            });
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.add_board] Failed to save config: {}", e);
             }
@@ -292,11 +332,16 @@ async fn add_board_endpoint(
     }
 
     // Broadcast board list change via SSE
-    let _ = state.event_tx.send(lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
-        board_id: board_id.clone(),
-    });
+    let _ = state.event_tx.send(
+        lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
+            board_id: board_id.clone(),
+        },
+    );
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "boardId": board_id }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "boardId": board_id })),
+    ))
 }
 
 /// DELETE /boards/{board_id} — remove a board from tracking (does not delete file).
@@ -312,7 +357,12 @@ async fn remove_board_endpoint(
             lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, Json(ErrorResponse { error: e.to_string() }))
+        (
+            status,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
     })?;
 
     // Unwatch the board file
@@ -320,7 +370,11 @@ async fn remove_board_endpoint(
         if let Ok(mut watcher_guard) = state.watcher.lock() {
             if let Some(ref mut watcher) = *watcher_guard {
                 if let Err(e) = watcher.unwatch(path) {
-                    log::warn!("[lexera.api.remove_board] Failed to unwatch board {}: {}", board_id, e);
+                    log::warn!(
+                        "[lexera.api.remove_board] Failed to unwatch board {}: {}",
+                        board_id,
+                        e
+                    );
                 }
             }
         }
@@ -331,9 +385,9 @@ async fn remove_board_endpoint(
         let path_str = path.to_string_lossy().to_string();
         if let Ok(mut cfg) = state.config.lock() {
             cfg.boards.retain(|b| {
-                let entry_canonical = std::fs::canonicalize(&b.file).unwrap_or_else(|_| PathBuf::from(&b.file));
-                entry_canonical != *path
-                    && b.file != path_str
+                let entry_canonical =
+                    std::fs::canonicalize(&b.file).unwrap_or_else(|_| PathBuf::from(&b.file));
+                entry_canonical != *path && b.file != path_str
             });
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.remove_board] Failed to save config: {}", e);
@@ -349,7 +403,11 @@ async fn search(
     Query(params): Query<SearchQuery>,
 ) -> Json<serde_json::Value> {
     let query = params.q.unwrap_or_default();
-    let results = state.storage.search(&query);
+    let options = SearchOptions {
+        case_sensitive: params.case_sensitive.unwrap_or(false),
+        use_regex: params.regex.unwrap_or(false),
+    };
+    let results = state.storage.search_with_options(&query, options);
     Json(serde_json::json!({ "query": query, "results": results }))
 }
 
@@ -358,14 +416,12 @@ async fn sse_events(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.event_tx.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(|result| {
-        match result {
-            Ok(event) => {
-                let json = serde_json::to_string(&event).unwrap_or_default();
-                Some(Ok(Event::default().data(json)))
-            }
-            Err(_) => None,
+    let stream = BroadcastStream::new(rx).filter_map(|result| match result {
+        Ok(event) => {
+            let json = serde_json::to_string(&event).unwrap_or_default();
+            Some(Ok(Event::default().data(json)))
         }
+        Err(_) => None,
     });
 
     // Keep-alive every 30 seconds
@@ -406,7 +462,9 @@ async fn upload_media(
     })?;
 
     // Compute media folder: {basename}-Media/ next to the board file
-    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let board_dir = board_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let board_stem = board_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -432,10 +490,7 @@ async fn upload_media(
         )
     })?;
 
-    let filename = field
-        .file_name()
-        .unwrap_or("capture")
-        .to_string();
+    let filename = field.file_name().unwrap_or("capture").to_string();
     let data = field.bytes().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -501,21 +556,41 @@ async fn serve_media(
     Path((board_id, filename)): Path<(String, String)>,
 ) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
     let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
     })?;
 
-    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let board_stem = board_path.file_stem().and_then(|s| s.to_str()).unwrap_or("board");
+    let board_dir = board_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let board_stem = board_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("board");
     let media_dir = board_dir.join(format!("{}-Media", board_stem));
     let file_path = media_dir.join(&filename);
 
     // Prevent path traversal
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
-        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error: "Invalid filename".to_string() })));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid filename".to_string(),
+            }),
+        ));
     }
 
     let data = std::fs::read(&file_path).map_err(|_| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "File not found".to_string(),
+            }),
+        )
     })?;
 
     let ext = file_path
@@ -532,21 +607,42 @@ async fn serve_media(
 }
 
 /// Resolve a file path relative to the board's directory, or as absolute if starts with /.
-fn resolve_board_file(state: &AppState, board_id: &str, file_path: &str) -> Result<PathBuf, (StatusCode, Json<ErrorResponse>)> {
+fn resolve_board_file(
+    state: &AppState,
+    board_id: &str,
+    file_path: &str,
+) -> Result<PathBuf, (StatusCode, Json<ErrorResponse>)> {
     let path = std::path::Path::new(file_path);
     if path.is_absolute() {
         let canonical = path.canonicalize().map_err(|_| {
-            (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "File not found".to_string(),
+                }),
+            )
         })?;
         return Ok(canonical);
     }
     let board_path = state.storage.get_board_path(board_id).ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
     })?;
-    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let board_dir = board_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let resolved = board_dir.join(file_path);
     resolved.canonicalize().map_err(|_| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "File not found".to_string(),
+            }),
+        )
     })
 }
 
@@ -573,10 +669,14 @@ fn content_type_for_ext(ext: Option<&str>) -> &'static str {
 
 fn media_category(ext: Option<&str>) -> &'static str {
     match ext {
-        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp") | Some("svg") | Some("bmp") | Some("ico") | Some("tiff") | Some("tif") => "image",
+        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp") | Some("svg")
+        | Some("bmp") | Some("ico") | Some("tiff") | Some("tif") => "image",
         Some("mp4") | Some("webm") | Some("mov") | Some("avi") | Some("mkv") => "video",
-        Some("mp3") | Some("wav") | Some("ogg") | Some("flac") | Some("aac") | Some("m4a") => "audio",
-        Some("pdf") | Some("doc") | Some("docx") | Some("xls") | Some("xlsx") | Some("ppt") | Some("pptx") | Some("txt") | Some("md") | Some("csv") | Some("json") => "document",
+        Some("mp3") | Some("wav") | Some("ogg") | Some("flac") | Some("aac") | Some("m4a") => {
+            "audio"
+        }
+        Some("pdf") | Some("doc") | Some("docx") | Some("xls") | Some("xlsx") | Some("ppt")
+        | Some("pptx") | Some("txt") | Some("md") | Some("csv") | Some("json") => "document",
         _ => "unknown",
     }
 }
@@ -584,10 +684,20 @@ fn media_category(ext: Option<&str>) -> &'static str {
 fn is_previewable(ext: Option<&str>) -> bool {
     matches!(
         ext,
-        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp") | Some("svg") | Some("bmp")
-        | Some("mp4") | Some("webm") | Some("mov")
-        | Some("mp3") | Some("wav") | Some("ogg")
-        | Some("pdf")
+        Some("png")
+            | Some("jpg")
+            | Some("jpeg")
+            | Some("gif")
+            | Some("webp")
+            | Some("svg")
+            | Some("bmp")
+            | Some("mp4")
+            | Some("webm")
+            | Some("mov")
+            | Some("mp3")
+            | Some("wav")
+            | Some("ogg")
+            | Some("pdf")
     )
 }
 
@@ -599,7 +709,12 @@ async fn serve_file(
 ) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
     let file_path = resolve_board_file(&state, &board_id, &params.path)?;
     let data = std::fs::read(&file_path).map_err(|_| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "File not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "File not found".to_string(),
+            }),
+        )
     })?;
     let ext = file_path.extension().and_then(|e| e.to_str());
     let ct = content_type_for_ext(ext);
@@ -658,7 +773,10 @@ async fn file_info(
             "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
         }));
     };
-    let ext = fp.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase());
+    let ext = fp
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_lowercase());
     let ext_ref = ext.as_deref();
     let meta = std::fs::metadata(&fp).ok();
     let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -688,14 +806,23 @@ async fn find_file(
     Json(body): Json<FindFileBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
     })?;
-    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let board_dir = board_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let target = body.filename.to_lowercase();
     let mut matches = Vec::new();
 
     fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize) {
-        if depth > 5 { return; }
+        if depth > 5 {
+            return;
+        }
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => return,
@@ -707,7 +834,9 @@ async fn find_file(
             } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                 if name.to_lowercase().contains(target) {
                     matches.push(path.to_string_lossy().to_string());
-                    if matches.len() >= 20 { return; }
+                    if matches.len() >= 20 {
+                        return;
+                    }
                 }
             }
         }
@@ -728,35 +857,61 @@ async fn convert_path(
     Json(body): Json<ConvertPathBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Board not found".to_string() }))
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
     })?;
-    let board_dir = board_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let board_dir = board_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
 
     let new_path = if body.to == "absolute" {
         let p = std::path::Path::new(&body.path);
         if p.is_absolute() {
-            return Ok(Json(serde_json::json!({ "path": body.path, "changed": false })));
+            return Ok(Json(
+                serde_json::json!({ "path": body.path, "changed": false }),
+            ));
         }
         let abs = board_dir.join(&body.path).canonicalize().map_err(|_| {
-            (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Cannot resolve path".to_string() }))
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Cannot resolve path".to_string(),
+                }),
+            )
         })?;
         abs.to_string_lossy().to_string()
     } else {
         // to relative
         let p = std::path::Path::new(&body.path);
         if !p.is_absolute() {
-            return Ok(Json(serde_json::json!({ "path": body.path, "changed": false })));
+            return Ok(Json(
+                serde_json::json!({ "path": body.path, "changed": false }),
+            ));
         }
-        let canonical_board_dir = board_dir.canonicalize().unwrap_or_else(|_| board_dir.to_path_buf());
+        let canonical_board_dir = board_dir
+            .canonicalize()
+            .unwrap_or_else(|_| board_dir.to_path_buf());
         let canonical_file = p.canonicalize().map_err(|_| {
-            (StatusCode::NOT_FOUND, Json(ErrorResponse { error: "Cannot resolve path".to_string() }))
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Cannot resolve path".to_string(),
+                }),
+            )
         })?;
         match canonical_file.strip_prefix(&canonical_board_dir) {
             Ok(rel) => rel.to_string_lossy().to_string(),
             Err(_) => {
-                return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse {
-                    error: "File is outside board directory".to_string(),
-                })));
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "File is outside board directory".to_string(),
+                    }),
+                ));
             }
         }
     };

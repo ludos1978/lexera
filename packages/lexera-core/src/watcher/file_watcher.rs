@@ -2,7 +2,6 @@
 ///
 /// Watches board files and include files, emits BoardChangeEvent via broadcast channel.
 /// 500ms debounce window for macOS FSEvents and cloud sync stability.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -49,22 +48,20 @@ impl FileWatcher {
         let debouncer = new_debouncer(
             DEBOUNCE_DURATION,
             None,
-            move |result: Result<Vec<DebouncedEvent>, Vec<notify::Error>>| {
-                match result {
-                    Ok(events) => {
-                        for event in events {
-                            handle_debounced_event(
-                                &event,
-                                &mapping_clone,
-                                &include_map_clone,
-                                &tx_clone,
-                            );
-                        }
+            move |result: Result<Vec<DebouncedEvent>, Vec<notify::Error>>| match result {
+                Ok(events) => {
+                    for event in events {
+                        handle_debounced_event(
+                            &event,
+                            &mapping_clone,
+                            &include_map_clone,
+                            &tx_clone,
+                        );
                     }
-                    Err(errors) => {
-                        for e in errors {
-                            log::error!("[lexera.watcher.error] Watch error: {}", e);
-                        }
+                }
+                Err(errors) => {
+                    for e in errors {
+                        log::error!("[lexera.watcher.error] Watch error: {}", e);
                     }
                 }
             },
@@ -209,7 +206,9 @@ mod tests {
     fn test_path_mapping_insert_and_lookup() {
         let mut mapping = PathMapping::default();
         let path = PathBuf::from("/tmp/board.md");
-        mapping.main_files.insert(path.clone(), "abc123".to_string());
+        mapping
+            .main_files
+            .insert(path.clone(), "abc123".to_string());
 
         assert_eq!(mapping.main_files.get(&path), Some(&"abc123".to_string()));
     }

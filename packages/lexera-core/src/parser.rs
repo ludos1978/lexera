@@ -8,13 +8,12 @@
 ///   %% footer %%
 ///
 /// Line-by-line port of packages/shared/src/markdownParser.ts.
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::include::resolver::resolve_include_path;
 use crate::include::slide_parser;
 use crate::include::syntax;
-use crate::include::resolver::resolve_include_path;
 use crate::merge::card_identity;
 use crate::types::{
     BoardSettings, IncludeSource, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack,
@@ -90,9 +89,16 @@ fn detect_new_format(lines: &[&str]) -> bool {
                 continue;
             }
         }
-        if in_yaml { continue; }
-        if line.starts_with("%%") { in_footer = true; continue; }
-        if in_footer { continue; }
+        if in_yaml {
+            continue;
+        }
+        if line.starts_with("%%") {
+            in_footer = true;
+            continue;
+        }
+        if in_footer {
+            continue;
+        }
 
         // h1 heading: starts with "# " but NOT "## " or "### "
         if line.starts_with("# ") && !line.starts_with("## ") {
@@ -119,7 +125,9 @@ fn finalize_task(
 
 /// Parse a task line (- [ ] or - [x]) and return the card and whether we're collecting description.
 fn parse_task_line(line: &str) -> Option<KanbanCard> {
-    if !line.starts_with("- ") { return None; }
+    if !line.starts_with("- ") {
+        return None;
+    }
     let checked = line.starts_with("- [x] ") || line.starts_with("- [X] ");
     let task_summary = if line.len() >= 6 { &line[6..] } else { "" };
     let kid = card_identity::extract_kid(task_summary);
@@ -198,7 +206,11 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Handle Kanban footer
         if line.starts_with("%%") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
             in_kanban_footer = true;
             footer_lines.push(line);
             i += 1;
@@ -213,7 +225,11 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Parse column header
         if line.starts_with("## ") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
             if let Some(col) = current_column.take() {
                 board.columns.push(col);
             }
@@ -231,7 +247,11 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Parse task
         if line.starts_with("- ") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
 
             if current_column.is_some() {
                 current_task = parse_task_line(line);
@@ -249,7 +269,11 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
                     continue;
                 }
             }
-            let desc_line = if line.starts_with("  ") { &line[2..] } else { line };
+            let desc_line = if line.starts_with("  ") {
+                &line[2..]
+            } else {
+                line
+            };
             if let Some(task) = current_task.as_mut() {
                 task.content.push('\n');
                 task.content.push_str(desc_line);
@@ -267,7 +291,11 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
     }
 
     // Finalize last task and column
-    finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+    finalize_task(
+        &mut current_task,
+        &mut current_column,
+        &mut collecting_description,
+    );
     if let Some(col) = current_column.take() {
         board.columns.push(col);
     }
@@ -320,10 +348,7 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
     }
 
     /// Push current stack into current row (creating implicit row if needed).
-    fn push_stack(
-        current_stack: &mut Option<KanbanStack>,
-        current_row: &mut Option<KanbanRow>,
-    ) {
+    fn push_stack(current_stack: &mut Option<KanbanStack>, current_row: &mut Option<KanbanRow>) {
         if let Some(stack) = current_stack.take() {
             if current_row.is_none() {
                 *current_row = Some(KanbanRow {
@@ -373,7 +398,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Handle Kanban footer
         if line.starts_with("%%") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
             in_kanban_footer = true;
             footer_lines.push(line);
             i += 1;
@@ -388,7 +417,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // h1 heading: row (# Title, but not ## or ###)
         if line.starts_with("# ") && !line.starts_with("## ") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
             push_column(&mut current_column, &mut current_stack, &mut current_row);
             push_stack(&mut current_stack, &mut current_row);
             // Push current row
@@ -408,7 +441,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // h2 heading: stack (## Title, but not ###)
         if line.starts_with("## ") && !line.starts_with("### ") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
             push_column(&mut current_column, &mut current_stack, &mut current_row);
             push_stack(&mut current_stack, &mut current_row);
 
@@ -424,7 +461,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // h3 heading: column
         if line.starts_with("### ") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
             push_column(&mut current_column, &mut current_stack, &mut current_row);
 
             let column_title = &line[4..];
@@ -440,7 +481,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Parse task
         if line.starts_with("- ") {
-            finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+            finalize_task(
+                &mut current_task,
+                &mut current_column,
+                &mut collecting_description,
+            );
 
             if current_column.is_some() {
                 current_task = parse_task_line(line);
@@ -458,7 +503,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
                     continue;
                 }
             }
-            let desc_line = if line.starts_with("  ") { &line[2..] } else { line };
+            let desc_line = if line.starts_with("  ") {
+                &line[2..]
+            } else {
+                line
+            };
             if let Some(task) = current_task.as_mut() {
                 task.content.push('\n');
                 task.content.push_str(desc_line);
@@ -476,7 +525,11 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
     }
 
     // Finalize last task, column, stack, row
-    finalize_task(&mut current_task, &mut current_column, &mut collecting_description);
+    finalize_task(
+        &mut current_task,
+        &mut current_column,
+        &mut collecting_description,
+    );
     push_column(&mut current_column, &mut current_stack, &mut current_row);
     push_stack(&mut current_stack, &mut current_row);
     if let Some(row) = current_row.take() {
@@ -508,7 +561,10 @@ pub fn parse_markdown_with_includes(content: &str, ctx: &ParseContext) -> Kanban
             if let Some(include_content) = ctx.include_contents.get(&raw_path) {
                 col.cards = slide_parser::parse_slides(include_content);
             } else {
-                log::warn!("[lexera.parser.include] Include file not found in context: {}", raw_path);
+                log::warn!(
+                    "[lexera.parser.include] Include file not found in context: {}",
+                    raw_path
+                );
                 col.cards = Vec::new();
             }
 
@@ -747,7 +803,10 @@ columnWidth: 450px
         assert!(!board.columns[0].cards[0].checked);
         assert_eq!(board.columns[0].cards[0].content, "First task");
         assert!(board.columns[0].cards[1].checked);
-        assert_eq!(board.columns[0].cards[1].content, "Completed task\nwith description");
+        assert_eq!(
+            board.columns[0].cards[1].content,
+            "Completed task\nwith description"
+        );
         assert_eq!(board.columns[1].title, "Done");
         assert_eq!(board.columns[1].cards.len(), 1);
         assert!(board.kanban_footer.is_some());
@@ -761,7 +820,9 @@ columnWidth: 450px
 
     #[test]
     fn test_parse_board_settings() {
-        let settings = parse_board_settings("---\nkanban-plugin: board\ncolumnWidth: 450px\nlayoutRows: 3\n---");
+        let settings = parse_board_settings(
+            "---\nkanban-plugin: board\ncolumnWidth: 450px\nlayoutRows: 3\n---",
+        );
         assert_eq!(settings.column_width.as_deref(), Some("450px"));
         assert_eq!(settings.layout_rows, Some(3));
     }
@@ -813,7 +874,8 @@ columnWidth: 450px
 
     #[test]
     fn test_description_with_blank_lines() {
-        let md = "---\nkanban-plugin: board\n---\n\n## Col\n- [ ] Task\n  line1\n  line2\n\n## Next\n";
+        let md =
+            "---\nkanban-plugin: board\n---\n\n## Col\n- [ ] Task\n  line1\n  line2\n\n## Next\n";
         let board = parse_markdown(md);
         assert_eq!(board.columns[0].cards[0].content, "Task\nline1\nline2");
     }
@@ -854,7 +916,10 @@ kanban-plugin: board
     fn test_parse_new_format() {
         let board = parse_markdown(NEW_FORMAT_BOARD);
         assert!(board.valid);
-        assert!(board.columns.is_empty(), "legacy columns should be empty for new format");
+        assert!(
+            board.columns.is_empty(),
+            "legacy columns should be empty for new format"
+        );
         assert_eq!(board.rows.len(), 2);
 
         // Row 0: Work
@@ -867,9 +932,15 @@ kanban-plugin: board
         assert_eq!(board.rows[0].stacks[0].columns[0].title, "Todo");
         assert_eq!(board.rows[0].stacks[0].columns[0].cards.len(), 2);
         assert!(!board.rows[0].stacks[0].columns[0].cards[0].checked);
-        assert_eq!(board.rows[0].stacks[0].columns[0].cards[0].content, "Build UI");
+        assert_eq!(
+            board.rows[0].stacks[0].columns[0].cards[0].content,
+            "Build UI"
+        );
         assert!(board.rows[0].stacks[0].columns[0].cards[1].checked);
-        assert_eq!(board.rows[0].stacks[0].columns[0].cards[1].content, "Design mockup\nwith notes");
+        assert_eq!(
+            board.rows[0].stacks[0].columns[0].cards[1].content,
+            "Design mockup\nwith notes"
+        );
         assert_eq!(board.rows[0].stacks[0].columns[1].title, "In Progress");
         assert_eq!(board.rows[0].stacks[0].columns[1].cards.len(), 1);
 
@@ -950,7 +1021,10 @@ kanban-plugin: board
         let md = "---\nkanban-plugin: board\n# not a heading\n---\n\n## Col\n- [ ] Task\n";
         let board = parse_markdown(md);
         assert!(board.valid);
-        assert!(board.rows.is_empty(), "# inside YAML should not trigger new format");
+        assert!(
+            board.rows.is_empty(),
+            "# inside YAML should not trigger new format"
+        );
         assert_eq!(board.columns.len(), 1);
     }
 }

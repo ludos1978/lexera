@@ -1,8 +1,7 @@
 /// Auth service: user management, room membership, and permissions.
-
-use serde::{Serialize, Deserialize};
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
@@ -26,7 +25,7 @@ impl RoomRole {
             RoomRole::Viewer => "viewer",
         }
     }
-    
+
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "owner" => Some(RoomRole::Owner),
@@ -63,7 +62,7 @@ impl AuthService {
             room_members: HashMap::new(),
         }
     }
-    
+
     /// Register a new user. Returns error if user ID already exists.
     pub fn register_user(&mut self, user: User) -> Result<(), AuthError> {
         if self.users.contains_key(&user.id) {
@@ -75,18 +74,25 @@ impl AuthService {
         log::info!("[auth] Registered user: {} ({})", name, id);
         Ok(())
     }
-    
+
     /// Get user by ID
     pub fn get_user(&self, user_id: &str) -> Option<&User> {
         self.users.get(user_id)
     }
-    
+
     /// Add user to room. Updates role if already a member instead of duplicating.
-    pub fn add_to_room(&mut self, room_id: &str, user_id: &str, role: RoomRole, joined_via: &str) -> Result<(), AuthError> {
+    pub fn add_to_room(
+        &mut self,
+        room_id: &str,
+        user_id: &str,
+        role: RoomRole,
+        joined_via: &str,
+    ) -> Result<(), AuthError> {
         let key = (room_id.to_string(), user_id.to_string());
         self.memberships.insert(key, role);
 
-        let members = self.room_members
+        let members = self
+            .room_members
             .entry(room_id.to_string())
             .or_insert_with(Vec::new);
         if !members.iter().any(|id| id == user_id) {
@@ -103,19 +109,19 @@ impl AuthService {
 
         Ok(())
     }
-    
+
     /// Get user's role in a room
     pub fn get_role(&self, room_id: &str, user_id: &str) -> Option<RoomRole> {
         let key = (room_id.to_string(), user_id.to_string());
         self.memberships.get(&key).copied()
     }
-    
+
     /// Check if user is member of a room
     pub fn is_member(&self, room_id: &str, user_id: &str) -> bool {
         let key = (room_id.to_string(), user_id.to_string());
         self.memberships.contains_key(&key)
     }
-    
+
     /// Check if user can write (edit) a room
     pub fn can_write(&self, room_id: &str, user_id: &str) -> bool {
         match self.get_role(room_id, user_id) {
@@ -123,7 +129,7 @@ impl AuthService {
             _ => false,
         }
     }
-    
+
     /// Check if user can invite others to a room
     pub fn can_invite(&self, room_id: &str, user_id: &str) -> bool {
         match self.get_role(room_id, user_id) {
@@ -131,7 +137,7 @@ impl AuthService {
             _ => false,
         }
     }
-    
+
     /// Check if user can delete a room
     pub fn can_delete(&self, room_id: &str, user_id: &str) -> bool {
         match self.get_role(room_id, user_id) {
@@ -139,14 +145,16 @@ impl AuthService {
             _ => false,
         }
     }
-    
+
     /// List all members of a room
     pub fn list_room_members(&self, room_id: &str) -> Vec<RoomMember> {
         let room_id_str = room_id.to_string();
-        let user_ids = self.room_members.get(&room_id_str)
+        let user_ids = self
+            .room_members
+            .get(&room_id_str)
             .cloned()
             .unwrap_or_default();
-        
+
         user_ids
             .iter()
             .filter_map(|uid| {
@@ -160,7 +168,7 @@ impl AuthService {
             })
             .collect()
     }
-    
+
     /// Remove user from room
     pub fn remove_from_room(&mut self, room_id: &str, user_id: &str) {
         let key = (room_id.to_string(), user_id.to_string());

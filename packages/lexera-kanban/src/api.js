@@ -52,8 +52,12 @@ const LexeraApi = (function () {
     });
   }
 
-  async function search(query) {
-    return request('/search?q=' + encodeURIComponent(query));
+  async function search(query, options) {
+    const params = new URLSearchParams();
+    params.set('q', query || '');
+    if (options && options.regex) params.set('regex', 'true');
+    if (options && options.caseSensitive) params.set('caseSensitive', 'true');
+    return request('/search?' + params.toString());
   }
 
   async function checkStatus() {

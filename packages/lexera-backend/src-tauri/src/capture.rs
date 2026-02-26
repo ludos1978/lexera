@@ -1,7 +1,6 @@
 /// Quick Capture: opens a small floating window for clipboard/drop capture.
 /// Also manages the in-memory clipboard history.
-
-use clipboard_rs::{Clipboard, ClipboardContext as CrsContext, ContentFormat, common::RustImage};
+use clipboard_rs::{common::RustImage, Clipboard, ClipboardContext as CrsContext, ContentFormat};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -134,15 +133,19 @@ pub fn open_capture_popup(app: &AppHandle) {
     }
 
     // Create new popup window
-    match WebviewWindowBuilder::new(app, "quick-capture", WebviewUrl::App("quick-capture.html".into()))
-        .title("Quick Capture")
-        .inner_size(420.0, 460.0)
-        .center()
-        .resizable(true)
-        .always_on_top(true)
-        .decorations(false)
-        .shadow(true)
-        .build()
+    match WebviewWindowBuilder::new(
+        app,
+        "quick-capture",
+        WebviewUrl::App("quick-capture.html".into()),
+    )
+    .title("Quick Capture")
+    .inner_size(420.0, 460.0)
+    .center()
+    .resizable(true)
+    .always_on_top(true)
+    .decorations(false)
+    .shadow(true)
+    .build()
     {
         Ok(_) => log::info!("[lexera.capture] Quick capture window opened"),
         Err(e) => log::error!("[lexera.capture] Failed to open capture window: {}", e),
@@ -160,8 +163,8 @@ pub fn read_clipboard(app: AppHandle) -> Result<String, String> {
 /// Tauri command: read clipboard image as base64-encoded PNG.
 #[tauri::command]
 pub fn read_clipboard_image() -> Result<serde_json::Value, String> {
-    let ctx = CrsContext::new()
-        .map_err(|e| format!("Failed to create clipboard context: {}", e))?;
+    let ctx =
+        CrsContext::new().map_err(|e| format!("Failed to create clipboard context: {}", e))?;
 
     if !ctx.has(ContentFormat::Image) {
         return Err("No image in clipboard".to_string());
@@ -192,10 +195,12 @@ pub fn remove_clipboard_entry(history: tauri::State<'_, ClipboardHistory>, id: u
 /// `side` must be "left" or "right".
 #[tauri::command]
 pub fn snap_capture_window(app: AppHandle, side: String) -> Result<(), String> {
-    let window = app.get_webview_window("quick-capture")
+    let window = app
+        .get_webview_window("quick-capture")
         .ok_or("Window not found")?;
 
-    let monitor = window.current_monitor()
+    let monitor = window
+        .current_monitor()
         .map_err(|e| e.to_string())?
         .ok_or("No monitor")?;
 
@@ -211,7 +216,8 @@ pub fn snap_capture_window(app: AppHandle, side: String) -> Result<(), String> {
 
     let y = monitor_pos.y + (monitor_size.height as i32 - window_size.height as i32) / 2;
 
-    window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
+    window
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
         .map_err(|e| e.to_string())?;
 
     Ok(())

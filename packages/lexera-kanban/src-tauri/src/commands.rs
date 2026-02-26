@@ -52,6 +52,53 @@ pub fn show_in_folder(path: String) -> Result<String, String> {
     Ok(resolved_str)
 }
 
+#[tauri::command]
+pub fn rename_path(from: String, to: String) -> Result<String, String> {
+    let from_path = std::path::PathBuf::from(&from);
+    let to_path = std::path::PathBuf::from(&to);
+
+    let from_resolved = if from_path.is_absolute() {
+        from_path
+    } else {
+        std::env::current_dir()
+            .map_err(|e| format!("Cannot resolve source path: {}", e))?
+            .join(from_path)
+    };
+    let to_resolved = if to_path.is_absolute() {
+        to_path
+    } else {
+        std::env::current_dir()
+            .map_err(|e| format!("Cannot resolve destination path: {}", e))?
+            .join(to_path)
+    };
+
+    if !from_resolved.exists() {
+        return Err(format!("Source file not found: {}", from_resolved.to_string_lossy()));
+    }
+    if to_resolved.exists() {
+        return Err(format!(
+            "Destination already exists: {}",
+            to_resolved.to_string_lossy()
+        ));
+    }
+
+    if let Some(parent) = to_resolved.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create destination directory '{}': {}", parent.to_string_lossy(), e))?;
+    }
+
+    std::fs::rename(&from_resolved, &to_resolved).map_err(|e| {
+        format!(
+            "Failed to rename '{}' to '{}': {}",
+            from_resolved.to_string_lossy(),
+            to_resolved.to_string_lossy(),
+            e
+        )
+    })?;
+
+    Ok(to_resolved.to_string_lossy().to_string())
+}
+
 #[derive(Deserialize, Clone)]
 pub struct NativeMenuItem {
     pub id: Option<String>,

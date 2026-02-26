@@ -54,7 +54,7 @@ Both V1 (VS Code extension) and V2 (Lexera backend) are in excellent shape with 
 | `V2_DATA_SYNC_ANALYSIS.md` | 39KB | V2 world/atomic level data sync architecture |
 
 **Key Findings**:
-- World-class level data structure (WorldCard) for rich text preservation
+- World-class level data structure (card-level merge) for rich text preservation
 - Atomic-level card operations with crash-safer guarantees
 - Board-level snapshot system for conflict resolution
 - Three-way merge algorithm (base, theirs, ours)
@@ -82,7 +82,7 @@ Both V1 (VS Code extension) and V2 (Lexera backend) are in excellent shape with 
 | **V1 High Priority** | 30-40h | Dual pane investigation, task includes, etc. |
 | **V1 Medium Priority** | 120-170h | Code consolidation, unit tests, error handling |
 | **V1 Low Priority** | 60-100h | Documentation, performance monitoring, etc. |
-| **V2 Integration** | 80-120h | Add WorldCard types, V2 commands, etc. |
+| **V2 Integration** | 80-120h | Add card-level merge types, V2 commands, etc. |
 | **V2 Testing** | 40-60h | E2E tests, unit tests for V2 features |
 | **V2 UI** | 20-30h | Conflict resolution, sync indicators |
 | **V2 Migration** | 200-300h | Gradual migration strategy |
@@ -131,15 +131,15 @@ Both V1 (VS Code extension) and V2 (Lexera backend) are in excellent shape with 
 
 ### V2 High Priority
 
-5. **Add WorldCard Type to Kanban Types** (8-12h)
-   - Create `src/types/WorldCard.ts`
+5. **Add card-level merge Type to Kanban Types** (8-12h)
+   - Create `src/types/card-level merge.ts`
    - Add to `MessageTypes.ts`
 
 6. **Add V2 Sync Commands** (20-30h)
    - Create `src/commands/V2SyncCommands.ts`
    - Implement merge, snapshot, conflict resolution
 
-7. **Add WorldCard Support to WYSIWYG Parser** (24-32h)
+7. **Add card-level merge Support to WYSIWYG Parser** (24-32h)
    - Add worldCardNode to WYSIWYG schema
    - Update parser
 
@@ -153,7 +153,7 @@ Both V1 (VS Code extension) and V2 (Lexera backend) are in excellent shape with 
 |--------|----------------|---------------|--------------|
 | **Language** | TypeScript | Rust | Strong type system, memory safety |
 | **Storage** | Markdown files | Local SQLite | Faster, structured queries |
-| **Data Model** | Flat text | WorldCard (rich) | Preserves formatting, links |
+| **Data Model** | Flat text | card-level merge (rich) | Preserves formatting, links |
 | **Sync Granularity** | File-level | Card-level | Better collaboration, fewer conflicts |
 | **Conflict Resolution** | Manual | Automatic (3-way merge) | Less user friction |
 | **Undo/Redo** | File snapshot | Card snapshot | More precise |
@@ -163,7 +163,7 @@ Both V1 (VS Code extension) and V2 (Lexera backend) are in excellent shape with 
 
 **Hybrid Approach** (Recommended):
 1. **Phase 1**: V2 as Enhancement Layer (Short-term)
-   - Add WorldCard support to existing cards
+   - Add card-level merge support to existing cards
    - Keep V1 as source of truth (markdown files)
    - V2 sync operates as enhancement
 
@@ -231,13 +231,13 @@ packages/agent/
 ### For V2 (Lexera Backend)
 
 1. **Create Hybrid Integration** (HIGH)
-   - Add WorldCard types to V1
+   - Add card-level merge types to V1
    - V2 sync as enhancement layer
    - Maintain V1 compatibility
 
 2. **Add Card-Level Undo/Redo** (MEDIUM)
    - Implement board snapshot store
-   - Use WorldCard for rich text preservation
+   - Use card-level merge for rich text preservation
    - Finer-grained time travel
 
 3. **Add Conflict Resolution UI** (MEDIUM)
@@ -253,7 +253,7 @@ packages/agent/
    - Backward compatibility maintained
 
 2. **Create Type Definitions** (HIGH)
-   - WorldCard, TextMark, TextLink, TextInclude
+   - card-level merge, TextMark, TextLink, TextInclude
    - Add to MessageTypes.ts for Tauri communication
 
 3. **Testing Strategy** (MEDIUM)
@@ -312,7 +312,7 @@ packages/agent/
 1. **Investigate Dual Pane WYSIWYG**
 2. **Implement Task Includes**
 3. **Add V2 Sync Commands**
-4. **Add WorldCard Types**
+4. **Add card-level merge Types**
 
 ---
 
@@ -346,7 +346,7 @@ Both V1 (VS Code extension) and V2 (Lexera backend) have been comprehensively an
 - 28 `as any` casts eliminated
 
 **V2 Highlights**:
-- World-class level data structure (WorldCard)
+- World-class level data structure (card-level merge)
 - Atomic-level card operations
 - Three-way merge algorithm
 - Excellent architecture (⭐⭐⭐⭐⭐)

@@ -126,7 +126,7 @@ packages/agent/v1-analysis/
 
 | Aspect | V1 (Current) | V2 (Lexera) | V2 Advantage |
 |--------|------------|------------|--------------|
-| **Data Model** | Flat text in file | WorldCard (rich text) | Preserves formatting, links |
+| **Data Model** | Flat text in file | card-level merge (rich text) | Preserves formatting, links |
 | **Sync Granularity** | File-level | Card-level | Better collaboration, less conflicts |
 | **Conflict Resolution** | Manual | Automatic (3-way merge) | Less user friction |
 | **Atomic Operations** | No support | Atomic writes | Crash recovery |
@@ -152,7 +152,7 @@ packages/agent/v1-analysis/
 
 **Goal**: Add V2 features as enhancement to V1
 
-1. Add WorldCard type to Kanban types
+1. Add card-level merge type to Kanban types
 2. Add card-level snapshot system
 3. Implement atomic file writes
 4. Add V2 sync commands

@@ -5,7 +5,6 @@
 /// Match found → consume fingerprint, suppress event (our own write).
 /// No match → external change, propagate event.
 /// TTL (10s) is cleanup only — fingerprints consumed on match regardless.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};

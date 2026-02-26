@@ -2,13 +2,11 @@
 ///
 /// Handles the `!!!include(path)!!!` pattern used in column headers.
 /// Supports URL-encoded paths (%20), literal spaces, and tags after the closing `!!!`.
-
 use regex::Regex;
 use std::sync::LazyLock;
 
-static INCLUDE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"!!!include\(([^)]+)\)!!!").unwrap()
-});
+static INCLUDE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!!!include\(([^)]+)\)!!!").unwrap());
 
 /// Check if a column title contains an include directive.
 pub fn is_include(title: &str) -> bool {
@@ -69,10 +67,7 @@ mod tests {
 
     #[test]
     fn test_strip_include() {
-        assert_eq!(
-            strip_include("!!!include(path.md)!!! #stack"),
-            " #stack"
-        );
+        assert_eq!(strip_include("!!!include(path.md)!!! #stack"), " #stack");
         assert_eq!(strip_include("!!!include(path.md)!!!"), "");
     }
 
@@ -82,10 +77,7 @@ mod tests {
             decode_include_path("folder%20with%20space%202/file.md"),
             "folder with space 2/file.md"
         );
-        assert_eq!(
-            decode_include_path("./root/file.md"),
-            "./root/file.md"
-        );
+        assert_eq!(decode_include_path("./root/file.md"), "./root/file.md");
         assert_eq!(
             decode_include_path("folder with space/file.md"),
             "folder with space/file.md"

@@ -6,7 +6,6 @@
 ///
 /// Path resolution: raw include paths (may be URL-encoded, relative) are
 /// resolved against the main board file's parent directory.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -51,7 +50,8 @@ impl IncludeMap {
         }
 
         if !includes.is_empty() {
-            self.board_to_includes.insert(board_id.to_string(), includes);
+            self.board_to_includes
+                .insert(board_id.to_string(), includes);
         }
     }
 
@@ -117,9 +117,7 @@ pub fn detect_includes(column_titles: &[&str]) -> Vec<(usize, String)> {
         .iter()
         .enumerate()
         .filter(|(_, title)| is_include(title))
-        .filter_map(|(idx, title)| {
-            extract_include_path(title).map(|path| (idx, path))
-        })
+        .filter_map(|(idx, title)| extract_include_path(title).map(|path| (idx, path)))
         .collect()
 }
 
@@ -190,7 +188,9 @@ mod tests {
         map.remove_board("board1");
 
         assert!(map.get_includes_for_board("board1").is_empty());
-        assert!(map.get_boards_for_include(&PathBuf::from("/boards/file.md")).is_empty());
+        assert!(map
+            .get_boards_for_include(&PathBuf::from("/boards/file.md"))
+            .is_empty());
     }
 
     #[test]

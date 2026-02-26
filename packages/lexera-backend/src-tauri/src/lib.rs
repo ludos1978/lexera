@@ -1,28 +1,27 @@
-/// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
-
-mod config;
-pub mod state;
 pub mod api;
-mod server;
-mod tray;
 mod capture;
 mod clipboard_watcher;
+/// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
+mod config;
+mod server;
+pub mod state;
+mod tray;
 
 // New collaboration modules
-pub mod invite;
-pub mod public;
 pub mod auth;
 pub mod collab_api;
+pub mod invite;
+pub mod public;
 
-use std::sync::Arc;
-use std::path::PathBuf;
-use std::sync::RwLock;
-use lexera_core::storage::local::LocalStorage;
+use crate::state::{AppState, ResolvedIncoming};
 use lexera_core::include::resolver::IncludeMap;
+use lexera_core::storage::local::LocalStorage;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::RwLock;
 use tauri::Manager;
-use crate::state::{AppState, ResolvedIncoming};
 
 pub fn run() {
     env_logger::init();

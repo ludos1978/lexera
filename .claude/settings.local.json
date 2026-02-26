@@ -224,7 +224,12 @@
       "Bash(cargo check:*)",
       "WebFetch(domain:docs.rs)",
       "Bash(git remote:*)",
-      "WebFetch(domain:crates.io)"
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:automerge.org)",
+      "WebFetch(domain:loro.dev)",
+      "WebFetch(domain:news.ycombinator.com)",
+      "WebFetch(domain:www.loro.dev)",
+      "WebFetch(domain:lib.rs)"
     ],
     "deny": [],
     "ask": []

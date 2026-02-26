@@ -1,6 +1,5 @@
 /// Configuration for the Lexera Backend.
 /// Reads sync.json from ~/.config/lexera/sync.json (or platform equivalent).
-
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -92,7 +91,11 @@ pub fn load_or_create_identity() -> crate::auth::User {
                 user
             }
             Err(e) => {
-                log::warn!("[identity] Corrupt identity file at {}: {}", path.display(), e);
+                log::warn!(
+                    "[identity] Corrupt identity file at {}: {}",
+                    path.display(),
+                    e
+                );
                 backup_corrupt_identity(&path);
                 create_and_persist_identity(&path)
             }
@@ -115,14 +118,22 @@ fn create_and_persist_identity(path: &PathBuf) -> crate::auth::User {
         email: None,
     };
     persist_identity(path, &user);
-    log::info!("[identity] Created new identity: {} ({})", user.name, user.id);
+    log::info!(
+        "[identity] Created new identity: {} ({})",
+        user.name,
+        user.id
+    );
     user
 }
 
 fn persist_identity(path: &PathBuf, user: &crate::auth::User) {
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
-            log::warn!("[identity] Failed to create directory {}: {}", parent.display(), e);
+            log::warn!(
+                "[identity] Failed to create directory {}: {}",
+                parent.display(),
+                e
+            );
             return;
         }
     }
@@ -133,7 +144,11 @@ fn persist_identity(path: &PathBuf, user: &crate::auth::User) {
             }
         }
         Err(e) => {
-            log::warn!("[identity] Failed to serialize identity for {}: {}", path.display(), e);
+            log::warn!(
+                "[identity] Failed to serialize identity for {}: {}",
+                path.display(),
+                e
+            );
         }
     }
 }

@@ -15,7 +15,6 @@
 ///
 /// slide 2 content
 /// ```
-
 use crate::parser::generate_id;
 use crate::types::KanbanCard;
 
@@ -133,7 +132,8 @@ mod tests {
 
     #[test]
     fn test_parse_two_slides() {
-        let content = "# slide 1 title\n\nslide 1 content\n\n---\n\n# slide 2 title\n\nslide 2 content\n";
+        let content =
+            "# slide 1 title\n\nslide 1 content\n\n---\n\n# slide 2 title\n\nslide 2 content\n";
         let cards = parse_slides(content);
         assert_eq!(cards.len(), 2);
         assert_eq!(cards[0].content, "# slide 1 title\n\nslide 1 content");

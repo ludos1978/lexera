@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Internal tags applied by the kanban board to mark hidden items.
 pub const HIDDEN_TAG_PARKED: &str = "#hidden-internal-parked";
@@ -115,7 +115,8 @@ impl KanbanBoard {
     /// For legacy format: returns columns directly.
     pub fn all_columns(&self) -> Vec<&KanbanColumn> {
         if !self.rows.is_empty() {
-            self.rows.iter()
+            self.rows
+                .iter()
                 .flat_map(|row| row.stacks.iter())
                 .flat_map(|stack| stack.columns.iter())
                 .collect()
@@ -127,7 +128,8 @@ impl KanbanBoard {
     /// Get a mutable reference to all columns, regardless of format.
     pub fn all_columns_mut(&mut self) -> Vec<&mut KanbanColumn> {
         if !self.rows.is_empty() {
-            self.rows.iter_mut()
+            self.rows
+                .iter_mut()
                 .flat_map(|row| row.stacks.iter_mut())
                 .flat_map(|stack| stack.columns.iter_mut())
                 .collect()
@@ -164,8 +166,23 @@ pub struct SearchResult {
     pub board_title: String,
     pub column_title: String,
     pub column_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub row_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stack_index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub col_local_index: Option<usize>,
+    pub card_id: String,
     pub card_content: String,
     pub checked: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hash_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub temporal_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_overdue: bool,
 }
 
 /// The YAML setting keys recognized by the board format.

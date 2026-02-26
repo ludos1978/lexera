@@ -5,7 +5,6 @@
 /// - Atomic writes (write to .tmp, rename)
 /// - Self-write suppression for file watcher
 /// - Mutex-guarded writes to prevent concurrent modification
-
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -15,17 +14,20 @@ use std::time::SystemTime;
 
 use sha2::{Digest, Sha256};
 
+use super::{BoardStorage, StorageError};
+use crate::crdt::bridge::CrdtStore;
 use crate::include::resolver::IncludeMap;
 use crate::include::slide_parser;
 use crate::include::syntax;
+use crate::merge::card_identity;
 use crate::merge::merge as card_merge;
 use crate::parser;
+use crate::search::{SearchCardMeta, SearchDocument, SearchEngine, SearchOptions};
 use crate::types::*;
 use crate::watcher::self_write::SelfWriteTracker;
-use super::{BoardStorage, StorageError};
 
 /// State for a single tracked board.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BoardState {
     pub file_path: PathBuf,
     pub board: KanbanBoard,
@@ -34,6 +36,30 @@ pub struct BoardState {
     pub content_hash: String,
     /// Monotonic version counter, incremented on every change
     pub version: u64,
+    /// CRDT document for collaborative merge (Phase 1: initialized on load)
+    pub crdt: Option<CrdtStore>,
+}
+
+impl Clone for BoardState {
+    fn clone(&self) -> Self {
+        Self {
+            file_path: self.file_path.clone(),
+            board: self.board.clone(),
+            last_modified: self.last_modified,
+            content_hash: self.content_hash.clone(),
+            version: self.version,
+            crdt: None, // CRDT is not cloned — reconstructed when needed
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SearchColumnRef<'a> {
+    column: &'a KanbanColumn,
+    flat_index: usize,
+    row_index: Option<usize>,
+    stack_index: Option<usize>,
+    col_local_index: Option<usize>,
 }
 
 /// Local filesystem board storage.
@@ -63,7 +89,8 @@ impl LocalStorage {
 
     /// Get the next version number.
     fn next_version(&self) -> u64 {
-        self.next_version.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        self.next_version
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Compute SHA-256 hash of content (for change detection).
@@ -104,12 +131,38 @@ impl LocalStorage {
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
+        // Initialize CRDT: load from .crdt file or create from board
+        let crdt_path = file_path.with_extension("md.crdt");
+        let crdt = if crdt_path.exists() {
+            match CrdtStore::load_from_file(&crdt_path) {
+                Ok(mut c) => {
+                    c.set_metadata(
+                        board.yaml_header.clone(),
+                        board.kanban_footer.clone(),
+                        board.board_settings.clone(),
+                    );
+                    Some(c)
+                }
+                Err(e) => {
+                    log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
+                    let c = CrdtStore::from_board(&board);
+                    let _ = c.save_to_file(&crdt_path);
+                    Some(c)
+                }
+            }
+        } else {
+            let c = CrdtStore::from_board(&board);
+            let _ = c.save_to_file(&crdt_path);
+            Some(c)
+        };
+
         let state = BoardState {
             file_path,
             board,
             last_modified,
             content_hash: Self::content_hash(&content),
             version: self.next_version(),
+            crdt,
         };
 
         self.boards.write().unwrap().insert(board_id.clone(), state);
@@ -119,12 +172,14 @@ impl LocalStorage {
     /// Reload a board from disk (e.g. after file watcher event).
     /// Re-resolves includes and reloads include file contents.
     pub fn reload_board(&self, board_id: &str) -> Result<(), StorageError> {
-        let boards = self.boards.read().unwrap();
-        let state = boards
-            .get(board_id)
-            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
-        let file_path = state.file_path.clone();
-        drop(boards);
+        // Take the file_path and CRDT out of the existing state
+        let (file_path, old_crdt) = {
+            let mut boards = self.boards.write().unwrap();
+            let state = boards
+                .get_mut(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            (state.file_path.clone(), state.crdt.take())
+        };
 
         let content = fs::read_to_string(&file_path)?;
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
@@ -133,12 +188,31 @@ impl LocalStorage {
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
+        // Update CRDT with changes from disk
+        let crdt_path = file_path.with_extension("md.crdt");
+        let crdt = if let Some(mut c) = old_crdt {
+            let old_board = c.to_board();
+            c.apply_board(&board, &old_board);
+            c.set_metadata(
+                board.yaml_header.clone(),
+                board.kanban_footer.clone(),
+                board.board_settings.clone(),
+            );
+            let _ = c.save_to_file(&crdt_path);
+            Some(c)
+        } else {
+            let c = CrdtStore::from_board(&board);
+            let _ = c.save_to_file(&crdt_path);
+            Some(c)
+        };
+
         let new_state = BoardState {
             file_path,
             board,
             last_modified,
             content_hash: Self::content_hash(&content),
             version: self.next_version(),
+            crdt,
         };
 
         self.boards
@@ -195,11 +269,7 @@ impl LocalStorage {
 
     /// Get the version number for a board (for ETag support).
     pub fn get_board_version(&self, board_id: &str) -> Option<u64> {
-        self.boards
-            .read()
-            .unwrap()
-            .get(board_id)
-            .map(|s| s.version)
+        self.boards.read().unwrap().get(board_id).map(|s| s.version)
     }
 
     /// Get the content hash for a board (for conflict detection).
@@ -279,11 +349,7 @@ impl LocalStorage {
 
     /// Write cards to an include file in slide format.
     /// Used when cards in an include column are modified.
-    pub fn write_include_file(
-        &self,
-        board_id: &str,
-        col_index: usize,
-    ) -> Result<(), StorageError> {
+    pub fn write_include_file(&self, board_id: &str, col_index: usize) -> Result<(), StorageError> {
         let boards = self.boards.read().unwrap();
         let state = boards
             .get(board_id)
@@ -297,12 +363,9 @@ impl LocalStorage {
                 max: all_cols.len().saturating_sub(1),
             })?;
 
-        let include_source = column
-            .include_source
-            .as_ref()
-            .ok_or_else(|| StorageError::InvalidBoard(
-                format!("Column {} is not an include column", col_index),
-            ))?;
+        let include_source = column.include_source.as_ref().ok_or_else(|| {
+            StorageError::InvalidBoard(format!("Column {} is not an include column", col_index))
+        })?;
 
         let resolved_path = include_source.resolved_path.clone();
         let slide_content = slide_parser::generate_slides(&column.cards);
@@ -356,6 +419,109 @@ impl LocalStorage {
         }
         Ok(())
     }
+
+    fn collect_search_columns(board: &KanbanBoard) -> Vec<SearchColumnRef<'_>> {
+        if board.rows.is_empty() {
+            return board
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(index, column)| SearchColumnRef {
+                    column,
+                    flat_index: index,
+                    row_index: None,
+                    stack_index: None,
+                    col_local_index: None,
+                })
+                .collect();
+        }
+
+        let mut refs = Vec::new();
+        let mut flat_index = 0usize;
+        for (row_index, row) in board.rows.iter().enumerate() {
+            for (stack_index, stack) in row.stacks.iter().enumerate() {
+                for (col_local_index, column) in stack.columns.iter().enumerate() {
+                    refs.push(SearchColumnRef {
+                        column,
+                        flat_index,
+                        row_index: Some(row_index),
+                        stack_index: Some(stack_index),
+                        col_local_index: Some(col_local_index),
+                    });
+                    flat_index += 1;
+                }
+            }
+        }
+        refs
+    }
+
+    pub fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+        let engine = SearchEngine::compile(query, options);
+        if engine.is_empty() {
+            return Vec::new();
+        }
+
+        let boards = self.boards.read().unwrap();
+        let mut results = Vec::new();
+
+        for (board_id, state) in boards.iter() {
+            let col_refs = Self::collect_search_columns(&state.board);
+            for col_ref in col_refs {
+                if is_archived_or_deleted(&col_ref.column.title) {
+                    continue;
+                }
+                for card in &col_ref.column.cards {
+                    if is_archived_or_deleted(&card.content) {
+                        continue;
+                    }
+
+                    let meta = SearchCardMeta::from_card(&card.content, card.checked);
+                    let doc = SearchDocument {
+                        board_title: &state.board.title,
+                        column_title: &col_ref.column.title,
+                        card_content: &card.content,
+                        checked: card.checked,
+                        meta: &meta,
+                    };
+                    if !engine.matches(&doc) {
+                        continue;
+                    }
+
+                    results.push(SearchResult {
+                        board_id: board_id.clone(),
+                        board_title: state.board.title.clone(),
+                        column_title: col_ref.column.title.clone(),
+                        column_index: col_ref.flat_index,
+                        row_index: col_ref.row_index,
+                        stack_index: col_ref.stack_index,
+                        col_local_index: col_ref.col_local_index,
+                        card_id: card.id.clone(),
+                        card_content: card.content.clone(),
+                        checked: card.checked,
+                        hash_tags: meta.hash_tags.clone(),
+                        temporal_tags: meta.temporal_tags.clone(),
+                        due_date: meta.due_date.map(|d| d.to_string()),
+                        is_overdue: meta.is_overdue,
+                    });
+                }
+            }
+        }
+
+        results.sort_by(|a, b| {
+            a.board_title
+                .to_ascii_lowercase()
+                .cmp(&b.board_title.to_ascii_lowercase())
+                .then_with(|| a.board_id.cmp(&b.board_id))
+                .then_with(|| a.column_index.cmp(&b.column_index))
+                .then_with(|| {
+                    a.card_content
+                        .to_ascii_lowercase()
+                        .cmp(&b.card_content.to_ascii_lowercase())
+                })
+        });
+
+        results
+    }
 }
 
 impl BoardStorage for LocalStorage {
@@ -406,7 +572,11 @@ impl BoardStorage for LocalStorage {
             .map(|s| s.board.clone())
     }
 
-    fn write_board(&self, board_id: &str, board: &KanbanBoard) -> Result<Option<card_merge::MergeResult>, StorageError> {
+    fn write_board(
+        &self,
+        board_id: &str,
+        board: &KanbanBoard,
+    ) -> Result<Option<card_merge::MergeResult>, StorageError> {
         let lock = self.get_write_lock(board_id);
         let _guard = lock.lock().unwrap();
 
@@ -414,16 +584,34 @@ impl BoardStorage for LocalStorage {
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
 
+        // Take the CRDT out for mutation
+        let mut crdt = {
+            let mut boards = self.boards.write().unwrap();
+            boards.get_mut(board_id).and_then(|s| s.crdt.take())
+        };
+
         // Read current disk content to check for conflicts
         let stored_hash = self.get_board_content_hash(board_id).unwrap_or_default();
         let disk_content = fs::read_to_string(&file_path)?;
         let disk_hash = Self::content_hash(&disk_content);
 
-        let (board_to_write, merge_result) = if disk_hash != stored_hash && !stored_hash.is_empty() {
-            // Disk content changed since we last read — need merge
-            log::info!("[lexera.storage.merge] Conflict detected on board {}, attempting merge", board_id);
+        let (board_to_write, merge_result) = if let Some(ref mut c) = crdt {
+            // CRDT path: apply incoming board as CRDT operations
+            let current = c.to_board();
+            c.apply_board(board, &current);
+            let merged = c.to_board();
+            (merged, None) // CRDT = no conflicts
+        } else if disk_hash != stored_hash && !stored_hash.is_empty() {
+            // Legacy fallback: three-way merge (no CRDT available)
+            log::info!(
+                "[lexera.storage.merge] Conflict detected on board {}, attempting merge",
+                board_id
+            );
 
-            let base_board = self.boards.read().unwrap()
+            let base_board = self
+                .boards
+                .read()
+                .unwrap()
                 .get(board_id)
                 .map(|s| s.board.clone())
                 .unwrap_or_else(|| parser::parse_markdown(""));
@@ -437,9 +625,7 @@ impl BoardStorage for LocalStorage {
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                let backup_path = file_path.with_extension(
-                    format!("conflict-{}.md", timestamp)
-                );
+                let backup_path = file_path.with_extension(format!("conflict-{}.md", timestamp));
                 let user_markdown = parser::generate_markdown(board);
                 let _ = Self::atomic_write(&backup_path, &user_markdown);
                 log::warn!(
@@ -465,6 +651,12 @@ impl BoardStorage for LocalStorage {
 
         Self::atomic_write(&file_path, &markdown)?;
 
+        // Save CRDT state alongside the markdown file
+        if let Some(ref c) = crdt {
+            let crdt_path = file_path.with_extension("md.crdt");
+            let _ = c.save_to_file(&crdt_path);
+        }
+
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
@@ -474,6 +666,7 @@ impl BoardStorage for LocalStorage {
             last_modified,
             content_hash: Self::content_hash(&markdown),
             version: self.next_version(),
+            crdt,
         };
 
         self.boards
@@ -497,20 +690,39 @@ impl BoardStorage for LocalStorage {
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
 
+        // Take CRDT from state for mutation
+        let mut crdt = {
+            let mut boards = self.boards.write().unwrap();
+            boards.get_mut(board_id).and_then(|s| s.crdt.take())
+        };
+
         // Read fresh from disk
         let file_content = fs::read_to_string(&file_path)?;
         let mut board = parser::parse_markdown(&file_content);
 
         if !board.valid {
+            // Put CRDT back before returning error
+            if let Some(c) = crdt {
+                if let Some(state) = self.boards.write().unwrap().get_mut(board_id) {
+                    state.crdt = Some(c);
+                }
+            }
             return Err(StorageError::InvalidBoard(
                 file_path.to_string_lossy().to_string(),
             ));
         }
 
-        if col_index >= board.columns.len() {
+        let mut all_cols = board.all_columns_mut();
+        if col_index >= all_cols.len() {
+            // Put CRDT back before returning error
+            if let Some(c) = crdt {
+                if let Some(state) = self.boards.write().unwrap().get_mut(board_id) {
+                    state.crdt = Some(c);
+                }
+            }
             return Err(StorageError::ColumnOutOfRange {
                 index: col_index,
-                max: board.columns.len().saturating_sub(1),
+                max: all_cols.len().saturating_sub(1),
             });
         }
 
@@ -518,14 +730,21 @@ impl BoardStorage for LocalStorage {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis();
+        let (content_with_kid, kid) = card_identity::ensure_kid(content);
         let new_card = KanbanCard {
             id: format!("task-{:x}-{:06x}", ts, rand_u24()),
-            content: content.to_string(),
+            content: content_with_kid,
             checked: false,
-            kid: None,
+            kid: Some(kid),
         };
 
-        board.columns[col_index].cards.push(new_card);
+        all_cols[col_index].cards.push(new_card);
+
+        // Update CRDT with the new card
+        if let Some(ref mut c) = crdt {
+            let old_board = c.to_board();
+            c.apply_board(&board, &old_board);
+        }
 
         let markdown = parser::generate_markdown(&board);
 
@@ -536,6 +755,12 @@ impl BoardStorage for LocalStorage {
             .register(&file_path, &markdown);
 
         Self::atomic_write(&file_path, &markdown)?;
+
+        // Save CRDT state
+        if let Some(ref c) = crdt {
+            let crdt_path = file_path.with_extension("md.crdt");
+            let _ = c.save_to_file(&crdt_path);
+        }
 
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
@@ -548,6 +773,7 @@ impl BoardStorage for LocalStorage {
                 last_modified,
                 content_hash: Self::content_hash(&markdown),
                 version: self.next_version(),
+                crdt,
             },
         );
 
@@ -555,42 +781,11 @@ impl BoardStorage for LocalStorage {
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
-        let query_lower = query.trim().to_lowercase();
-        if query_lower.is_empty() {
-            return Vec::new();
-        }
+        LocalStorage::search_with_options(self, query, SearchOptions::default())
+    }
 
-        let boards = self.boards.read().unwrap();
-        let mut results = Vec::new();
-
-        for (board_id, state) in boards.iter() {
-            let all_cols = state.board.all_columns();
-            let visible_columns: Vec<_> = all_cols
-                .iter()
-                .enumerate()
-                .filter(|(_, col)| !is_archived_or_deleted(&col.title))
-                .collect();
-
-            for (col_idx, col) in &visible_columns {
-                for card in &col.cards {
-                    if is_archived_or_deleted(&card.content) {
-                        continue;
-                    }
-                    if card.content.to_lowercase().contains(&query_lower) {
-                        results.push(SearchResult {
-                            board_id: board_id.clone(),
-                            board_title: state.board.title.clone(),
-                            column_title: col.title.clone(),
-                            column_index: *col_idx,
-                            card_content: card.content.clone(),
-                            checked: card.checked,
-                        });
-                    }
-                }
-            }
-        }
-
-        results
+    fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
+        LocalStorage::search_with_options(self, query, options)
     }
 }
 
@@ -620,6 +815,37 @@ kanban-plugin: board
 
 ## Done
 - [x] Laundry
+";
+
+    const TEST_BOARD_ADVANCED: &str = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] File taxes #finance @2000-01-01
+- [ ] Sprint planning #team @2026w09
+
+## Done
+- [x] Archive receipts #finance @2000-01-01
+";
+
+    const TEST_BOARD_NESTED: &str = "\
+---
+kanban-plugin: board
+---
+
+# Work
+
+## Frontend
+
+### Todo
+- [ ] Build UI #ux @2000-01-01
+
+## Backend
+
+### Done
+- [x] Setup DB #infra @2000-01-01
 ";
 
     #[test]
@@ -670,7 +896,8 @@ kanban-plugin: board
 
         let board = storage.read_board(&id).unwrap();
         assert_eq!(board.columns[0].cards.len(), 3);
-        assert_eq!(board.columns[0].cards[2].content, "New task");
+        assert!(board.columns[0].cards[2].content.starts_with("New task"));
+        assert!(board.columns[0].cards[2].kid.is_some());
 
         // Verify it was written to disk
         let on_disk = fs::read_to_string(tmp.path()).unwrap();
@@ -696,6 +923,59 @@ kanban-plugin: board
 
         let results = storage.search("nonexistent");
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_advanced_filters() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD_ADVANCED).unwrap();
+
+        let storage = LocalStorage::new();
+        storage.add_board(tmp.path()).unwrap();
+
+        let results =
+            storage.search_with_options("#finance is:open due:overdue", SearchOptions::default());
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].card_content, "File taxes #finance @2000-01-01");
+        assert!(!results[0].checked);
+        assert!(results[0].hash_tags.contains(&"#finance".to_string()));
+        assert_eq!(results[0].due_date.as_deref(), Some("2000-01-01"));
+        assert!(results[0].is_overdue);
+
+        let results = storage.search_with_options("is:done #finance", SearchOptions::default());
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].card_content,
+            "Archive receipts #finance @2000-01-01"
+        );
+        assert!(results[0].checked);
+
+        let results = storage.search_with_options("col:todo #team", SearchOptions::default());
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].card_content, "Sprint planning #team @2026w09");
+    }
+
+    #[test]
+    fn test_search_nested_indices() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD_NESTED).unwrap();
+
+        let storage = LocalStorage::new();
+        storage.add_board(tmp.path()).unwrap();
+
+        let ux = storage.search_with_options("#ux", SearchOptions::default());
+        assert_eq!(ux.len(), 1);
+        assert_eq!(ux[0].row_index, Some(0));
+        assert_eq!(ux[0].stack_index, Some(0));
+        assert_eq!(ux[0].col_local_index, Some(0));
+        assert_eq!(ux[0].column_index, 0);
+
+        let infra = storage.search_with_options("#infra", SearchOptions::default());
+        assert_eq!(infra.len(), 1);
+        assert_eq!(infra[0].row_index, Some(0));
+        assert_eq!(infra[0].stack_index, Some(1));
+        assert_eq!(infra[0].col_local_index, Some(0));
+        assert_eq!(infra[0].column_index, 1);
     }
 
     #[test]

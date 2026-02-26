@@ -1,7 +1,6 @@
-/// Event types emitted by the file watcher.
-
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+/// Event types emitted by the file watcher.
+use std::path::PathBuf;
 
 /// SHA-256 fingerprint of file content, used for self-write detection.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,17 +26,26 @@ pub enum BoardChangeEvent {
     },
     IncludeFileChanged {
         board_ids: Vec<String>,
-        #[serde(serialize_with = "serialize_path", deserialize_with = "deserialize_path")]
+        #[serde(
+            serialize_with = "serialize_path",
+            deserialize_with = "deserialize_path"
+        )]
         include_path: PathBuf,
     },
     FileDeleted {
         board_id: String,
-        #[serde(serialize_with = "serialize_path", deserialize_with = "deserialize_path")]
+        #[serde(
+            serialize_with = "serialize_path",
+            deserialize_with = "deserialize_path"
+        )]
         path: PathBuf,
     },
     FileCreated {
         board_id: String,
-        #[serde(serialize_with = "serialize_path", deserialize_with = "deserialize_path")]
+        #[serde(
+            serialize_with = "serialize_path",
+            deserialize_with = "deserialize_path"
+        )]
         path: PathBuf,
     },
 }
