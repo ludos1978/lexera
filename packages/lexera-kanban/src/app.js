@@ -122,11 +122,24 @@ const LexeraDashboard = (function () {
   var redoStack = [];
   var MAX_UNDO = 30;
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
-  var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') !== 'false'; // default true
+  var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
   var mermaidIdCounter = 0;
   var mermaidReady = false;
   var mermaidLoading = false;
   var pendingMermaidRenders = [];
+  var urlParams = new URLSearchParams(window.location.search || '');
+  var embeddedMode = urlParams.get('embedded') === '1';
+  var embeddedPaneId = urlParams.get('pane') || '';
+  var embeddedInitialBoardId = urlParams.get('board') || '';
+  var embeddedPreferredBoardId = embeddedInitialBoardId;
+  var splitViewMode = embeddedMode ? 'single' : (localStorage.getItem('lexera-split-mode') || 'single'); // single | vertical | horizontal
+  var splitPaneBoards = {
+    a: embeddedMode ? '' : (localStorage.getItem('lexera-split-pane-a') || ''),
+    b: embeddedMode ? '' : (localStorage.getItem('lexera-split-pane-b') || '')
+  };
+  var splitRootEl = null;
+  var splitToggleBtn = null;
+  var splitOrientationBtn = null;
 
   // --- Themes ---
   var THEMES = [
@@ -272,6 +285,8 @@ const LexeraDashboard = (function () {
   const $searchInput = document.getElementById('search-input');
   const $connectionDot = document.getElementById('connection-dot');
   const $activeBoardTab = document.getElementById('active-board-tab');
+  const $mainContent = document.getElementById('main-content');
+  const $layout = document.querySelector('.layout');
 
   function updateActiveBoardTab(title) {
     if (!$activeBoardTab) return;
@@ -349,6 +364,30 @@ const LexeraDashboard = (function () {
     localStorage.setItem('lexera-stack-fold:' + boardId, JSON.stringify(stackFolded));
   }
 
+  function setDirectChildFoldState(parentEl, childClassName, folded) {
+    if (!parentEl) return;
+    for (var i = 0; i < parentEl.children.length; i++) {
+      var child = parentEl.children[i];
+      if (!child || !child.classList || !child.classList.contains(childClassName)) continue;
+      if (folded) child.classList.add('folded');
+      else child.classList.remove('folded');
+    }
+  }
+
+  function setRowChildrenFoldState(rowEl, folded) {
+    if (!rowEl) return;
+    var rowContent = rowEl.querySelector('.board-row-content');
+    if (!rowContent) return;
+    setDirectChildFoldState(rowContent, 'board-stack', folded);
+  }
+
+  function setStackChildrenFoldState(stackEl, folded) {
+    if (!stackEl) return;
+    var stackContent = stackEl.querySelector('.board-stack-content');
+    if (!stackContent) return;
+    setDirectChildFoldState(stackContent, 'column', folded);
+  }
+
   function reorderItems(items, sourceIdx, targetIdx, insertBefore) {
     var moved = items[sourceIdx];
     var result = [];
@@ -368,7 +407,273 @@ const LexeraDashboard = (function () {
     renderBoardList();
   }
 
+  function targetClosest(target, selector) {
+    if (!target) return null;
+    if (typeof target.closest === 'function') return target.closest(selector);
+    var el = target.nodeType === 1 ? target : target.parentElement;
+    if (!el || typeof el.closest !== 'function') return null;
+    return el.closest(selector);
+  }
+
+  function normalizeDroppedPath(path) {
+    if (!path) return '';
+    var p = String(path).trim();
+    if (!p) return '';
+    if (p.indexOf('file://') === 0) {
+      try {
+        var u = new URL(p);
+        p = decodeURIComponent(u.pathname || '');
+        // Windows drive path like /C:/...
+        if (/^\/[A-Za-z]:\//.test(p)) p = p.slice(1);
+      } catch (e) {
+        // keep original string
+      }
+    }
+    return p;
+  }
+
+  function isMarkdownPath(path) {
+    return /\.md$/i.test(path || '');
+  }
+
+  function isAbsoluteLikePath(path) {
+    return path.indexOf('/') === 0 || /^[A-Za-z]:[\\/]/.test(path) || path.indexOf('\\\\') === 0;
+  }
+
+  function isPositionInsideElement(pos, el) {
+    if (!pos || !el) return false;
+    var rect = el.getBoundingClientRect();
+    var x = pos.x;
+    var y = pos.y;
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return true;
+    var dpr = window.devicePixelRatio || 1;
+    if (dpr > 1) {
+      var lx = x / dpr;
+      var ly = y / dpr;
+      if (lx >= rect.left && lx <= rect.right && ly >= rect.top && ly <= rect.bottom) return true;
+    }
+    return false;
+  }
+
+  function parseDroppedUriList(text) {
+    if (!text) return [];
+    var lines = text.split(/\r?\n/);
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line || line.indexOf('#') === 0) continue;
+      out.push(line);
+    }
+    return out;
+  }
+
+  function collectDroppedPathsFromDataTransfer(dt) {
+    if (!dt) return [];
+    var out = [];
+    var files = dt.files || [];
+    for (var i = 0; i < files.length; i++) {
+      // Tauri/WebKit may expose absolute path on `path`.
+      var p = files[i].path || '';
+      if (p) out.push(p);
+    }
+    if (typeof dt.getData === 'function') {
+      var uriList = dt.getData('text/uri-list');
+      if (uriList) {
+        var parsed = parseDroppedUriList(uriList);
+        for (var j = 0; j < parsed.length; j++) out.push(parsed[j]);
+      }
+      var plain = dt.getData('text/plain');
+      if (plain && (plain.indexOf('file://') === 0 || isAbsoluteLikePath(plain))) out.push(plain);
+    }
+    return out;
+  }
+
+  function addBoardsByPath(paths) {
+    if (hierarchyLocked || !paths || paths.length === 0) return;
+    var seen = {};
+    var mdFiles = [];
+    for (var i = 0; i < paths.length; i++) {
+      var normalized = normalizeDroppedPath(paths[i]);
+      if (!normalized) continue;
+      if (!isAbsoluteLikePath(normalized)) continue;
+      if (!isMarkdownPath(normalized)) continue;
+      if (seen[normalized]) continue;
+      seen[normalized] = true;
+      mdFiles.push(normalized);
+    }
+    if (mdFiles.length === 0) return;
+
+    var addPromises = mdFiles.map(function (filePath) {
+      return LexeraApi.addBoard(filePath).catch(function (err) {
+        lexeraLog('error', 'Failed to add board: ' + err.message);
+      });
+    });
+    Promise.all(addPromises).then(function () {
+      poll();
+    });
+  }
+
+  function saveSplitState() {
+    if (embeddedMode) return;
+    localStorage.setItem('lexera-split-mode', splitViewMode);
+    localStorage.setItem('lexera-split-pane-a', splitPaneBoards.a || '');
+    localStorage.setItem('lexera-split-pane-b', splitPaneBoards.b || '');
+  }
+
+  function buildEmbeddedPaneUrl(boardId, paneId) {
+    var u = new URL(window.location.href);
+    u.search = '';
+    u.hash = '';
+    u.searchParams.set('embedded', '1');
+    u.searchParams.set('pane', paneId);
+    if (boardId) u.searchParams.set('board', boardId);
+    return u.toString();
+  }
+
+  function ensureSplitPaneBoards() {
+    if (!boards || boards.length === 0) return;
+    var boardExists = function (id) {
+      if (!id) return false;
+      for (var i = 0; i < boards.length; i++) if (boards[i].id === id) return true;
+      return false;
+    };
+    if (!boardExists(splitPaneBoards.a)) {
+      splitPaneBoards.a = boardExists(activeBoardId) ? activeBoardId : boards[0].id;
+    }
+    if (!boardExists(splitPaneBoards.b)) {
+      var alt = null;
+      for (var i = 0; i < boards.length; i++) {
+        if (boards[i].id !== splitPaneBoards.a) { alt = boards[i].id; break; }
+      }
+      splitPaneBoards.b = alt || splitPaneBoards.a;
+    }
+  }
+
+  function ensureSplitRoot() {
+    if (splitRootEl || !$layout) return splitRootEl;
+    splitRootEl = document.createElement('div');
+    splitRootEl.id = 'split-root';
+    splitRootEl.className = 'split-root';
+    splitRootEl.innerHTML =
+      '<iframe class="split-pane-frame" data-pane="a" title="Split Pane A"></iframe>' +
+      '<iframe class="split-pane-frame" data-pane="b" title="Split Pane B"></iframe>';
+    $layout.appendChild(splitRootEl);
+    return splitRootEl;
+  }
+
+  function refreshSplitFrames(forceReload) {
+    if (embeddedMode || splitViewMode === 'single') return;
+    var root = ensureSplitRoot();
+    if (!root) return;
+    ensureSplitPaneBoards();
+    var frames = root.querySelectorAll('.split-pane-frame[data-pane]');
+    for (var i = 0; i < frames.length; i++) {
+      var frame = frames[i];
+      var pane = frame.getAttribute('data-pane');
+      if (pane !== 'a' && pane !== 'b') continue;
+      var src = buildEmbeddedPaneUrl(splitPaneBoards[pane], pane);
+      if (forceReload || frame.getAttribute('data-src') !== src) {
+        frame.setAttribute('data-src', src);
+        frame.src = src;
+      }
+    }
+    saveSplitState();
+  }
+
+  function updateSplitButtons() {
+    if (embeddedMode) return;
+    if (splitToggleBtn) splitToggleBtn.classList.toggle('active', splitViewMode !== 'single');
+    if (splitOrientationBtn) {
+      splitOrientationBtn.classList.toggle('hidden', splitViewMode === 'single');
+      splitOrientationBtn.textContent = (splitViewMode === 'horizontal') ? '\u2195' : '\u2194';
+      splitOrientationBtn.title = (splitViewMode === 'horizontal')
+        ? 'Switch split orientation (horizontal \u2192 vertical)'
+        : 'Switch split orientation (vertical \u2192 horizontal)';
+    }
+  }
+
+  function applySplitMode(forceReload) {
+    if (embeddedMode) return;
+    updateSplitButtons();
+    if (splitViewMode === 'single') {
+      document.body.classList.remove('split-mode');
+      if (splitRootEl) {
+        splitRootEl.classList.remove('active', 'vertical', 'horizontal');
+      }
+      if ($mainContent) $mainContent.classList.remove('hidden');
+      saveSplitState();
+      return;
+    }
+
+    var root = ensureSplitRoot();
+    if (!root) return;
+    document.body.classList.add('split-mode');
+    root.classList.add('active');
+    root.classList.toggle('vertical', splitViewMode === 'vertical');
+    root.classList.toggle('horizontal', splitViewMode === 'horizontal');
+    if ($mainContent) $mainContent.classList.add('hidden');
+    refreshSplitFrames(!!forceReload);
+  }
+
+  function handleSplitPaneMessage(event) {
+    if (embeddedMode) return;
+    var data = event && event.data;
+    if (!data || data.type !== 'lexera-pane-board-change') return;
+    var pane = data.pane;
+    var boardId = data.boardId;
+    if ((pane !== 'a' && pane !== 'b') || !boardId) return;
+    splitPaneBoards[pane] = boardId;
+    if (splitRootEl) {
+      var frame = splitRootEl.querySelector('.split-pane-frame[data-pane="' + pane + '"]');
+      if (frame) frame.setAttribute('data-src', buildEmbeddedPaneUrl(boardId, pane));
+    }
+    saveSplitState();
+  }
+
+  function setupSplitControls() {
+    if (embeddedMode) return;
+    var headerActions = document.querySelector('.header-actions');
+    if (!headerActions) return;
+    splitToggleBtn = document.getElementById('btn-split-toggle');
+    splitOrientationBtn = document.getElementById('btn-split-orientation');
+    if (!splitToggleBtn) {
+      splitToggleBtn = document.createElement('button');
+      splitToggleBtn.id = 'btn-split-toggle';
+      splitToggleBtn.className = 'btn-icon';
+      splitToggleBtn.title = 'Toggle split view';
+      splitToggleBtn.textContent = '\u29C9';
+      headerActions.insertBefore(splitToggleBtn, $connectionDot || null);
+    }
+    if (!splitOrientationBtn) {
+      splitOrientationBtn = document.createElement('button');
+      splitOrientationBtn.id = 'btn-split-orientation';
+      splitOrientationBtn.className = 'btn-icon';
+      splitOrientationBtn.title = 'Switch split orientation';
+      splitOrientationBtn.textContent = '\u2194';
+      headerActions.insertBefore(splitOrientationBtn, $connectionDot || null);
+    }
+
+    splitToggleBtn.addEventListener('click', function () {
+      var wasSingle = splitViewMode === 'single';
+      splitViewMode = wasSingle ? 'vertical' : 'single';
+      applySplitMode(false);
+      if (!wasSingle && splitPaneBoards.a && splitPaneBoards.a !== activeBoardId) {
+        selectBoard(splitPaneBoards.a);
+      }
+    });
+    splitOrientationBtn.addEventListener('click', function () {
+      if (splitViewMode === 'single') return;
+      splitViewMode = (splitViewMode === 'vertical') ? 'horizontal' : 'vertical';
+      applySplitMode(true);
+    });
+
+    window.addEventListener('message', handleSplitPaneMessage);
+    applySplitMode(false);
+  }
+
   function init() {
+    if (embeddedMode) document.body.classList.add('embedded-mode');
+
     $searchInput.addEventListener('input', onSearchInput);
     $searchInput.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
@@ -406,15 +711,41 @@ const LexeraDashboard = (function () {
       handleFileDrop(e.clipboardData.files, null);
     });
 
-    // Tauri drag-drop: add .md files to sidebar when unlocked
+    // Sidebar drop: add .md files from OS drag-and-drop when unlocked.
     var sidebarEl = document.querySelector('.sidebar');
+    if (sidebarEl) {
+      sidebarEl.addEventListener('dragover', function (e) {
+        if (hierarchyLocked) return;
+        if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+          sidebarEl.classList.add('drop-zone-active');
+        }
+      });
+      sidebarEl.addEventListener('dragleave', function (e) {
+        if (!e.relatedTarget || !sidebarEl.contains(e.relatedTarget)) {
+          sidebarEl.classList.remove('drop-zone-active');
+        }
+      });
+      sidebarEl.addEventListener('drop', function (e) {
+        sidebarEl.classList.remove('drop-zone-active');
+        if (hierarchyLocked) return;
+        var dt = e.dataTransfer;
+        if (!dt) return;
+        var paths = collectDroppedPathsFromDataTransfer(dt);
+        if (paths.length === 0) return;
+        e.preventDefault();
+        addBoardsByPath(paths);
+      });
+    }
+
+    // Tauri drag-drop payload fallback (paths + pointer position).
     if (window.__TAURI__) {
       window.__TAURI__.event.listen('tauri://drag-over', function (event) {
         if (hierarchyLocked) return;
         var pos = event.payload.position;
         if (sidebarEl && pos) {
-          var rect = sidebarEl.getBoundingClientRect();
-          if (pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom) {
+          if (isPositionInsideElement(pos, sidebarEl)) {
             sidebarEl.classList.add('drop-zone-active');
           } else {
             sidebarEl.classList.remove('drop-zone-active');
@@ -430,22 +761,14 @@ const LexeraDashboard = (function () {
         var paths = event.payload.paths || [];
         var pos = event.payload.position;
         // Check if drop is on sidebar
-        if (sidebarEl && pos) {
-          var rect = sidebarEl.getBoundingClientRect();
-          if (pos.x < rect.left || pos.x > rect.right || pos.y < rect.top || pos.y > rect.bottom) return;
+        if (sidebarEl && pos && !isPositionInsideElement(pos, sidebarEl)) {
+          return;
         }
-        var mdFiles = paths.filter(function (p) { return p.endsWith('.md'); });
-        if (mdFiles.length === 0) return;
-        var addPromises = mdFiles.map(function (filePath) {
-          return LexeraApi.addBoard(filePath).catch(function (err) {
-            lexeraLog('error', 'Failed to add board: ' + err.message);
-          });
-        });
-        Promise.all(addPromises).then(function () {
-          poll();
-        });
+        addBoardsByPath(paths);
       });
     }
+
+    setupSplitControls();
 
     poll();
     pollInterval = setInterval(poll, 5000);
@@ -581,6 +904,9 @@ const LexeraDashboard = (function () {
       const data = await LexeraApi.getBoards();
       boards = data.boards || [];
       renderBoardList();
+      if (!embeddedMode && splitViewMode !== 'single') {
+        refreshSplitFrames(false);
+      }
 
       if (activeBoardId && !searchMode) {
         const stillExists = boards.find(b => b.id === activeBoardId);
@@ -590,11 +916,11 @@ const LexeraDashboard = (function () {
           activeBoardId = null;
           activeBoardData = null;
           fullBoardData = null;
-          localStorage.removeItem('lexera-last-board');
+          if (!embeddedMode) localStorage.removeItem('lexera-last-board');
           renderMainView();
         }
       } else if (!activeBoardId && !searchMode) {
-        var lastBoard = localStorage.getItem('lexera-last-board');
+        var lastBoard = embeddedMode ? embeddedPreferredBoardId : localStorage.getItem('lexera-last-board');
         if (lastBoard) {
           var found = boards.find(b => b.id === lastBoard);
           if (found) {
@@ -798,6 +1124,12 @@ const LexeraDashboard = (function () {
               // Stack children
               var stackChildren = document.createElement('div');
               stackChildren.className = 'tree-children' + (stackExpanded ? ' expanded' : '');
+              stackChildren.classList.add('tree-stack-drop-zone');
+              stackChildren.setAttribute('data-row-index', ri.toString());
+              stackChildren.setAttribute('data-stack-index', si.toString());
+              if (!stack.columns || stack.columns.length === 0) {
+                stackChildren.classList.add('tree-stack-drop-zone-empty');
+              }
 
               for (var ci = 0; ci < stack.columns.length; ci++) {
                 var col = stack.columns[ci];
@@ -835,7 +1167,9 @@ const LexeraDashboard = (function () {
                     cardNode.className = 'tree-node tree-card';
                     cardNode.setAttribute('data-col-index', colIdx.toString());
                     cardNode.setAttribute('data-card-index', cdi.toString());
+                    cardNode.setAttribute('data-tree-drag', 'tree-card');
                     cardNode.innerHTML =
+                      '<span class="tree-grip" title="Drag to move">\u22EE\u22EE</span>' +
                       '<span class="tree-toggle-spacer"></span>' +
                       '<span class="tree-label">' + escapeHtml(cardPreviewText(card.content)) + '</span>';
                     colChildren.appendChild(cardNode);
@@ -969,7 +1303,7 @@ const LexeraDashboard = (function () {
         var boardRow = wrapperEl.querySelector('.board-item');
         boardRow.addEventListener('click', function (e) {
           // Remove button click — handle inline via delegation
-          if (e.target.closest('.board-item-remove')) {
+          if (targetClosest(e.target, '.board-item-remove')) {
             e.preventDefault();
             e.stopPropagation();
             var boardName = boardRow.querySelector('.board-item-title').textContent;
@@ -987,6 +1321,7 @@ const LexeraDashboard = (function () {
             // Then tell backend
             LexeraApi.removeBoard(boardId).catch(function (err) {
               lexeraLog('error', '[sidebar.remove] Backend error: ' + err.message);
+              showNotification('Failed to remove board');
               // Re-fetch to restore correct state
               poll();
             });
@@ -1133,7 +1468,22 @@ const LexeraDashboard = (function () {
     activeBoardData = null;
     fullBoardData = null;
     addCardColumn = null;
-    localStorage.setItem('lexera-last-board', boardId);
+    if (!embeddedMode) {
+      localStorage.setItem('lexera-last-board', boardId);
+    } else {
+      embeddedPreferredBoardId = boardId;
+      if (window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage({
+            type: 'lexera-pane-board-change',
+            pane: embeddedPaneId || '',
+            boardId: boardId
+          }, '*');
+        } catch (e) {
+          // ignore cross-frame messaging issues
+        }
+      }
+    }
     renderBoardList();
     await loadBoard(boardId);
   }
@@ -1641,6 +1991,7 @@ const LexeraDashboard = (function () {
       }
       return true;
     } catch (err) {
+      console.error('[persistBoardMutation] Save failed, reloading board:', err);
       await loadBoard(activeBoardId);
       if (typeof options.onError === 'function') {
         options.onError(err);
@@ -1806,12 +2157,15 @@ const LexeraDashboard = (function () {
       '<span class="column-title">' + escapeHtml(displayTitle) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + '</span>' +
+      '<button class="column-edit-btn" title="Edit column title">&#9998;</button>' +
       '<button class="column-menu-btn" title="Column options">&#8942;</button>';
     (function (columnEl, colIdx) {
       header.addEventListener('click', function (e) {
-        if (e.target.closest('.column-menu-btn, .drag-grip')) return;
+        if (e.target.closest('button, .drag-grip, .column-rename-input')) return;
+        if (!e.altKey) return;
         e.stopPropagation();
-        columnEl.classList.toggle('folded');
+        var nowFolded = !columnEl.classList.contains('folded');
+        columnEl.classList.toggle('folded', nowFolded);
         saveFoldState(activeBoardId);
       });
       header.addEventListener('contextmenu', function (e) {
@@ -1819,14 +2173,14 @@ const LexeraDashboard = (function () {
         e.stopPropagation();
         showColumnContextMenu(e.clientX, e.clientY, colIdx);
       });
+      header.querySelector('.column-edit-btn').addEventListener('click', function (e) {
+        e.stopPropagation();
+        enterColumnRename(columnEl, colIdx);
+      });
       header.querySelector('.column-menu-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         var rect = this.getBoundingClientRect();
         showColumnContextMenu(rect.right, rect.bottom, colIdx);
-      });
-      header.querySelector('.column-title').addEventListener('dblclick', function (e) {
-        e.stopPropagation();
-        enterColumnRename(columnEl, colIdx);
       });
     })(colEl, col.index);
     colEl.appendChild(header);
@@ -2012,13 +2366,23 @@ const LexeraDashboard = (function () {
       rowHeader.innerHTML =
         '<span class="drag-grip">\u22EE\u22EE</span>' +
         '<span class="board-row-title">' + escapeHtml(row.title.length > 40 ? row.title.slice(0, 40) + '\u2026' : row.title) + '</span>' +
+        '<button class="row-edit-btn" title="Edit row title">&#9998;</button>' +
         '<span class="board-row-count">' + totalCards + '</span>';
       (function (el, rowIdx) {
         rowHeader.addEventListener('click', function (e) {
           if (e.target.closest('button, .drag-grip')) return;
+          if (!e.altKey) return;
           e.stopPropagation();
-          el.classList.toggle('folded');
+          var nowFolded = !el.classList.contains('folded');
+          el.classList.toggle('folded', nowFolded);
+          if (e.altKey) {
+            setRowChildrenFoldState(el, nowFolded);
+          }
           saveFoldState(activeBoardId);
+        });
+        rowHeader.querySelector('.row-edit-btn').addEventListener('click', function (e) {
+          e.stopPropagation();
+          renameRowOrStack('row', rowIdx);
         });
         rowHeader.addEventListener('contextmenu', function (e) {
           e.preventDefault();
@@ -2057,6 +2421,7 @@ const LexeraDashboard = (function () {
           '<span class="drag-grip">\u22EE\u22EE</span>' +
           '<span class="board-stack-title">' + (stack.title ? escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
+          '<button class="stack-edit-btn" title="Edit stack title">&#9998;</button>' +
           (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '');
         (function (el, rIdx, sIdx) {
           var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
@@ -2067,12 +2432,17 @@ const LexeraDashboard = (function () {
             });
           }
           stackHeader.addEventListener('click', function (e) {
-            if (e.target.closest('button, .drag-grip, .board-stack-title, .column-rename-input')) return;
+            if (e.target.closest('button, .drag-grip, .column-rename-input')) return;
+            if (!e.altKey) return;
             e.stopPropagation();
-            el.classList.toggle('folded');
+            var nowFolded = !el.classList.contains('folded');
+            el.classList.toggle('folded', nowFolded);
+            if (e.altKey) {
+              setStackChildrenFoldState(el, nowFolded);
+            }
             saveFoldState(activeBoardId);
           });
-          stackHeader.querySelector('.board-stack-title').addEventListener('click', function (e) {
+          stackHeader.querySelector('.stack-edit-btn').addEventListener('click', function (e) {
             e.stopPropagation();
             renameRowOrStack('stack', rIdx, sIdx);
           });
@@ -2392,40 +2762,63 @@ const LexeraDashboard = (function () {
   }
 
   function renameRowOrStack(type, rowIdx, stackIdx) {
+    var rootSelector = type === 'row'
+      ? '.board-row[data-row-index="' + rowIdx + '"]'
+      : '.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"]';
+    var rootEl = $columnsContainer.querySelector(rootSelector);
+    if (!rootEl) return;
 
-    var selector = type === 'row'
-      ? '.board-row[data-row-index="' + rowIdx + '"] .board-row-title'
-      : '.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"] .board-stack-title';
-    var titleEl = $columnsContainer.querySelector(selector);
+    var titleSelector = type === 'row' ? '.board-row-title' : '.board-stack-title';
+    var titleEl = rootEl.querySelector(titleSelector);
     if (!titleEl) return;
     var target = type === 'row' ? findFullDataRow(rowIdx) : findFullDataStack(rowIdx, stackIdx);
     if (!target) return;
+
+    var headerSelector = type === 'row' ? '.board-row-header' : '.board-stack-header';
+    var headerEl = rootEl.querySelector(headerSelector);
     var currentTitle = target.title;
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'column-rename-input';
+    if (type === 'row') input.classList.add('row-rename-input');
     input.value = currentTitle;
+    if (headerEl) headerEl.classList.add('title-editing');
     titleEl.textContent = '';
     titleEl.appendChild(input);
     input.focus();
     input.select();
 
     var done = false;
+    function cleanup() {
+      if (headerEl) headerEl.classList.remove('title-editing');
+    }
+    function getDisplayTitle(title) {
+      return title.length > 40 ? title.slice(0, 40) + '\u2026' : title;
+    }
     function save() {
       if (done) return;
       done = true;
       var newTitle = input.value.trim();
+      cleanup();
       if (newTitle && newTitle !== currentTitle) {
+        titleEl.textContent = getDisplayTitle(newTitle);
         pushUndo();
         target.title = newTitle;
         persistBoardMutation();
       } else {
-        titleEl.textContent = currentTitle;
+        titleEl.textContent = getDisplayTitle(currentTitle);
       }
     }
     input.addEventListener('blur', save);
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); save(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        save();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = currentTitle;
+        save();
+      }
     });
   }
 
@@ -2634,6 +3027,7 @@ const LexeraDashboard = (function () {
 
   function startCardDrag(e) {
     var el = cardDrag.el;
+    lockBoardLayoutForDrag();
     el.classList.add('dragging');
 
     // Create ghost element
@@ -2706,62 +3100,75 @@ const LexeraDashboard = (function () {
     return findNodeAtPoint($boardList.querySelectorAll('.tree-column[data-col-index]'), mx, my);
   }
 
+  function resolveCardDropTarget(mx, my) {
+    // Prefer sidebar hierarchy columns.
+    var sidebarCol = findSidebarColumnAt(mx, my);
+    if (sidebarCol) {
+      var sidebarColIndex = parseInt(sidebarCol.getAttribute('data-col-index'), 10);
+      if (!isNaN(sidebarColIndex)) {
+        var targetCol = getFullColumn(sidebarColIndex);
+        var sidebarInsertIdx = targetCol
+          ? targetCol.cards.filter(function (c) { return !is_archived_or_deleted(c.content); }).length
+          : 0;
+        return {
+          kind: 'sidebar',
+          colIndex: sidebarColIndex,
+          insertIdx: sidebarInsertIdx,
+          sidebarNode: sidebarCol,
+          container: null
+        };
+      }
+    }
+
+    // Then main board columns.
+    var targetContainer = findColumnCardsContainerAt(mx, my);
+    if (targetContainer) {
+      var targetColIndex = parseInt(targetContainer.getAttribute('data-col-index'), 10);
+      if (!isNaN(targetColIndex)) {
+        return {
+          kind: 'main',
+          colIndex: targetColIndex,
+          insertIdx: findCardInsertIndex(my, targetContainer),
+          sidebarNode: null,
+          container: targetContainer
+        };
+      }
+    }
+
+    return null;
+  }
+
   function updateCardDropTarget(mx, my) {
     clearCardDropIndicators();
     clearSidebarDropHighlights();
+    clearCardDragOverHighlights();
 
-    // Check sidebar columns first
-    var sidebarCol = findSidebarColumnAt(mx, my);
-    if (sidebarCol) {
-      sidebarCol.classList.add('drop-target');
-      // Remove main area highlights
-      clearCardDragOverHighlights();
+    var target = resolveCardDropTarget(mx, my);
+    if (!target) return;
+
+    if (target.kind === 'sidebar') {
+      if (target.sidebarNode) target.sidebarNode.classList.add('drop-target');
       return;
     }
 
-    // Find which .column-cards container the mouse is over
-    var targetContainer = findColumnCardsContainerAt(mx, my);
+    if (target.container) {
+      target.container.classList.add('card-drag-over');
+      showCardDropIndicator(target.container, target.insertIdx);
+    }
+  }
 
-    // Remove highlight from all
-    clearCardDragOverHighlights();
-
-    if (!targetContainer) return;
-    targetContainer.classList.add('card-drag-over');
-
-    // Find insert position within this container
-    var insertIdx = findCardInsertIndex(my, targetContainer);
-    showCardDropIndicator(targetContainer, insertIdx);
+  function applyCardDropByPoint(fromColIndex, fromCardIndex, mx, my) {
+    var target = resolveCardDropTarget(mx, my);
+    if (!target) return false;
+    moveCard(fromColIndex, fromCardIndex, target.colIndex, target.insertIdx);
+    return true;
   }
 
   function finishCardDrag(mx, my) {
     clearCardDropIndicators();
     clearSidebarDropHighlights();
-
-    // Check sidebar column drop
-    var sidebarCol = findSidebarColumnAt(mx, my);
-    if (sidebarCol) {
-      var targetColIndex = parseInt(sidebarCol.getAttribute('data-col-index'), 10);
-      if (!isNaN(targetColIndex)) {
-        // Append to end of target column
-        var targetCol = getFullColumn(targetColIndex);
-        var insertIdx = targetCol ? targetCol.cards.filter(function (c) { return !is_archived_or_deleted(c.content); }).length : 0;
-        moveCard(cardDrag.colIndex, cardDrag.cardIndex, targetColIndex, insertIdx);
-      }
-      cleanupCardDrag();
-      return;
-    }
-
-    // Find target container in main area
-    var targetContainer = findColumnCardsContainerAt(mx, my);
     clearCardDragOverHighlights();
-
-    if (targetContainer) {
-      targetContainer.classList.remove('card-drag-over');
-      var targetColIndex = parseInt(targetContainer.getAttribute('data-col-index'), 10);
-      var insertIdx = findCardInsertIndex(my, targetContainer);
-      moveCard(cardDrag.colIndex, cardDrag.cardIndex, targetColIndex, insertIdx);
-    }
-
+    applyCardDropByPoint(cardDrag.colIndex, cardDrag.cardIndex, mx, my);
     cleanupCardDrag();
   }
 
@@ -2778,6 +3185,7 @@ const LexeraDashboard = (function () {
       if (cardDrag.ghost) cardDrag.ghost.remove();
       cardDrag = null;
     }
+    unlockBoardLayoutForDrag();
   }
 
   function findCardInsertIndex(mouseY, cardsEl) {
@@ -2792,14 +3200,26 @@ const LexeraDashboard = (function () {
   }
 
   function showCardDropIndicator(cardsEl, insertIdx) {
-    var indicator = document.createElement('div');
-    indicator.className = 'card-drop-indicator';
-    var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
-    if (insertIdx < cards.length) {
-      cardsEl.insertBefore(indicator, cards[insertIdx]);
-    } else {
-      cardsEl.appendChild(indicator);
+    if (!cardsEl) return;
+    var indicator = document.querySelector('.card-drop-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'card-drop-indicator';
+      document.body.appendChild(indicator);
     }
+    var cards = cardsEl.querySelectorAll('.card:not(.dragging)');
+    var containerRect = cardsEl.getBoundingClientRect();
+    var y;
+    if (insertIdx < cards.length && cards[insertIdx]) {
+      y = cards[insertIdx].getBoundingClientRect().top;
+    } else if (cards.length > 0) {
+      y = cards[cards.length - 1].getBoundingClientRect().bottom;
+    } else {
+      y = containerRect.top + 8;
+    }
+    indicator.style.top = Math.round(y) + 'px';
+    indicator.style.left = Math.round(containerRect.left + 6) + 'px';
+    indicator.style.width = Math.max(24, Math.round(containerRect.width - 12)) + 'px';
   }
 
   function clearCardDropIndicators() {
@@ -2833,6 +3253,9 @@ const LexeraDashboard = (function () {
         source.rowIndex = parseInt(treeNode.getAttribute('data-row-index'), 10);
         source.stackIndex = parseInt(treeNode.getAttribute('data-stack-index'), 10);
         source.colIndex = parseInt(treeNode.getAttribute('data-col-local-index'), 10);
+      } else if (dragType === 'tree-card') {
+        source.colIndex = parseInt(treeNode.getAttribute('data-col-index'), 10);
+        source.cardIndex = parseInt(treeNode.getAttribute('data-card-index'), 10);
       }
       ptrDrag = { type: dragType, source: source, startX: e.clientX, startY: e.clientY, started: false, ghost: null, el: treeNode };
       e.preventDefault();
@@ -2852,27 +3275,25 @@ const LexeraDashboard = (function () {
     }
   });
 
-  // Main board: row/stack/column grips
+  // Main board: row/stack/column drag starts from header area (not just grip)
   $columnsContainer.addEventListener('mousedown', function (e) {
     if (e.button !== 0) return;
     if (ptrDrag || cardDrag) return;
-
-    var grip = e.target.closest('.drag-grip');
-    if (!grip) return;
+    if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) return;
 
     // Row grip
-    var rowHeader = grip.closest('.board-row-header');
+    var rowHeader = e.target.closest('.board-row-header');
     if (rowHeader) {
       var rowEl = rowHeader.closest('.board-row');
       var rowIdx = parseInt(rowEl.getAttribute('data-row-index'), 10);
-      ptrDrag = { type: 'board-row', source: { type: 'board-row', index: rowIdx }, startX: e.clientX, startY: e.clientY, started: false, ghost: null, el: rowEl };
+      ptrDrag = { type: 'board-row', source: { type: 'board-row', rowIndex: rowIdx }, startX: e.clientX, startY: e.clientY, started: false, ghost: null, el: rowEl };
       e.preventDefault();
       e.stopPropagation();
       return;
     }
 
     // Stack grip
-    var stackHeader = grip.closest('.board-stack-header');
+    var stackHeader = e.target.closest('.board-stack-header');
     if (stackHeader) {
       var stackEl = stackHeader.closest('.board-stack');
       var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
@@ -2884,7 +3305,7 @@ const LexeraDashboard = (function () {
     }
 
     // Column grip
-    var columnHeader = grip.closest('.column-header');
+    var columnHeader = e.target.closest('.column-header');
     if (columnHeader) {
       var colEl = columnHeader.closest('.column');
       var stackEl = colEl.closest('.board-stack');
@@ -2909,8 +3330,18 @@ const LexeraDashboard = (function () {
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
       ptrDrag.el.classList.add('dragging');
-      if (ptrDrag.type === 'column') {
+      var lockableDragType =
+        ptrDrag.type === 'board-row' ||
+        ptrDrag.type === 'tree-row' ||
+        ptrDrag.type === 'board-stack' ||
+        ptrDrag.type === 'tree-stack' ||
+        ptrDrag.type === 'column' ||
+        ptrDrag.type === 'tree-column' ||
+        ptrDrag.type === 'tree-card';
+      if (lockableDragType) {
         lockBoardLayoutForDrag();
+      }
+      if (ptrDrag.type === 'column' || ptrDrag.type === 'tree-column') {
         insertStackDropZones();
       }
 
@@ -2957,6 +3388,8 @@ const LexeraDashboard = (function () {
       labelEl = ptrDrag.el.querySelector('.board-stack-title, .tree-label');
     } else if (type === 'column' || type === 'tree-column') {
       labelEl = ptrDrag.el.querySelector('.column-title, .tree-label');
+    } else if (type === 'tree-card') {
+      labelEl = ptrDrag.el.querySelector('.tree-label');
     }
     return labelEl ? labelEl.textContent : 'Drag';
   }
@@ -2964,17 +3397,95 @@ const LexeraDashboard = (function () {
   function updatePtrDropTarget(mx, my) {
     clearPtrDropIndicators();
     var type = ptrDrag.type;
-    if (type === 'tree-row' || type === 'tree-stack' || type === 'tree-column') {
-      ptrFindHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="' + type + '"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+    if (type === 'tree-row' || type === 'board-row') {
+      ptrFindHitNode($columnsContainer.querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
+      ptrFindHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+    } else if (type === 'tree-stack' || type === 'board-stack') {
+      ptrFindHitNode($columnsContainer.querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
+      ptrFindHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+    } else if (type === 'tree-column' || type === 'column') {
+      updateColumnPtrDropTarget(mx, my);
+      var treeColHit = ptrFindStrictHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+      if (!treeColHit) {
+        var treeStackHit = ptrFindStrictHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+        if (!treeStackHit) {
+          var stackZone = findNodeAtPoint($boardList.querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
+          if (stackZone) stackZone.classList.add('tree-drop-stack-target');
+        }
+      }
+    } else if (type === 'tree-card') {
+      updateCardDropTarget(mx, my);
     } else if (type === 'board') {
       ptrFindHitNode($boardList.querySelectorAll('.board-item'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-    } else if (type === 'board-row') {
-      ptrFindHitNode($columnsContainer.querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-    } else if (type === 'board-stack') {
-      ptrFindHitNode($columnsContainer.querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
-    } else if (type === 'column') {
-      updateColumnPtrDropTarget(mx, my);
     }
+  }
+
+  function getSourceRowIndex(source) {
+    if (!source) return -1;
+    if (typeof source.rowIndex === 'number') return source.rowIndex;
+    if (typeof source.index === 'number') return source.index;
+    return -1;
+  }
+
+  function getRowDropTarget(mx, my) {
+    var boardTarget = ptrFindDropTarget($columnsContainer.querySelectorAll('.board-row'), mx, my, true);
+    if (boardTarget) {
+      var boardRowIdx = parseInt(boardTarget.node.getAttribute('data-row-index'), 10);
+      if (!isNaN(boardRowIdx)) return { rowIndex: boardRowIdx, before: boardTarget.before };
+    }
+    var treeTarget = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, true);
+    if (treeTarget) {
+      var treeRowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
+      if (!isNaN(treeRowIdx)) return { rowIndex: treeRowIdx, before: treeTarget.before };
+    }
+    return null;
+  }
+
+  function getStackDropTarget(mx, my) {
+    var boardTarget = ptrFindDropTarget($columnsContainer.querySelectorAll('.board-stack'), mx, my, false);
+    if (boardTarget) {
+      var boardRowIdx = parseInt(boardTarget.node.getAttribute('data-row-index'), 10);
+      var boardStackIdx = parseInt(boardTarget.node.getAttribute('data-stack-index'), 10);
+      if (!isNaN(boardRowIdx) && !isNaN(boardStackIdx)) {
+        return { rowIndex: boardRowIdx, stackIndex: boardStackIdx, before: boardTarget.before };
+      }
+    }
+    var treeTarget = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
+    if (treeTarget) {
+      var treeRowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
+      var treeStackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
+      if (!isNaN(treeRowIdx) && !isNaN(treeStackIdx)) {
+        return { rowIndex: treeRowIdx, stackIndex: treeStackIdx, before: treeTarget.before };
+      }
+    }
+    return null;
+  }
+
+  function getTreeColumnDropTarget(mx, my) {
+    var treeTarget = resolveDropTargetStrict($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, true);
+    if (!treeTarget) return null;
+    var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
+    var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
+    var colIdx = parseInt(treeTarget.node.getAttribute('data-col-local-index'), 10);
+    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx)) return null;
+    return { rowIndex: rowIdx, stackIndex: stackIdx, colIndex: colIdx, before: treeTarget.before };
+  }
+
+  function getTreeStackDropTarget(mx, my) {
+    var treeTarget = resolveDropTargetStrict($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
+    if (treeTarget) {
+      var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
+      var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
+      if (!isNaN(rowIdx) && !isNaN(stackIdx)) {
+        return { rowIndex: rowIdx, stackIndex: stackIdx, before: treeTarget.before };
+      }
+    }
+    var zone = findNodeAtPoint($boardList.querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
+    if (!zone) return null;
+    var zoneRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
+    var zoneStackIdx = parseInt(zone.getAttribute('data-stack-index'), 10);
+    if (isNaN(zoneRowIdx) || isNaN(zoneStackIdx)) return null;
+    return { rowIndex: zoneRowIdx, stackIndex: zoneStackIdx, before: false };
   }
 
   // Generic target resolver: returns { node, before } with edge snapping.
@@ -3004,11 +3515,31 @@ const LexeraDashboard = (function () {
     return null;
   }
 
+  // Strict target resolver: only if pointer is directly inside a node.
+  function resolveDropTargetStrict(nodeList, mx, my, vertical) {
+    for (var i = 0; i < nodeList.length; i++) {
+      var rect = nodeList[i].getBoundingClientRect();
+      if (isPointInsideRect(mx, my, rect)) {
+        var before = vertical ? (my < rect.top + rect.height / 2) : (mx < rect.left + rect.width / 2);
+        return { node: nodeList[i], before: before };
+      }
+    }
+    return null;
+  }
+
   // Generic hit-test: find which element in nodeList the mouse is over, add before/after indicator.
   function ptrFindHitNode(nodeList, mx, my, classBefore, classAfter, vertical) {
     var target = resolveDropTarget(nodeList, mx, my, vertical);
-    if (!target) return;
+    if (!target) return null;
     target.node.classList.add(target.before ? classBefore : classAfter);
+    return target;
+  }
+
+  function ptrFindStrictHitNode(nodeList, mx, my, classBefore, classAfter, vertical) {
+    var target = resolveDropTargetStrict(nodeList, mx, my, vertical);
+    if (!target) return null;
+    target.node.classList.add(target.before ? classBefore : classAfter);
+    return target;
   }
 
   function updateColumnPtrDropTarget(mx, my) {
@@ -3044,34 +3575,26 @@ const LexeraDashboard = (function () {
     removeClassesFromNodeList($columnsContainer.querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
     removeClassesFromNodeList($columnsContainer.querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom']);
     removeClassFromNodeList($columnsContainer.querySelectorAll('.stack-drop-zone'), 'active');
+    removeClassFromNodeList($boardList.querySelectorAll('.tree-children.tree-stack-drop-zone.tree-drop-stack-target'), 'tree-drop-stack-target');
+    clearCardDropIndicators();
+    clearCardDragOverHighlights();
+    clearSidebarDropHighlights();
   }
 
   function executePtrDrop(mx, my) {
     var type = ptrDrag.type;
     var src = ptrDrag.source;
 
-    if (type === 'tree-row') {
-      var t = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, true);
-      if (t) {
-        var targetRowIdx = parseInt(t.node.getAttribute('data-row-index'), 10);
-        if (src.rowIndex !== targetRowIdx) reorderRows(src.rowIndex, targetRowIdx, t.before);
+    if (type === 'tree-row' || type === 'board-row') {
+      var srcRowIdx = getSourceRowIndex(src);
+      var rowTarget = getRowDropTarget(mx, my);
+      if (srcRowIdx !== -1 && rowTarget && srcRowIdx !== rowTarget.rowIndex) {
+        reorderRows(srcRowIdx, rowTarget.rowIndex, rowTarget.before);
       }
-    } else if (type === 'tree-stack') {
-      var t = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
-      if (t) {
-        var targetRowIdx = parseInt(t.node.getAttribute('data-row-index'), 10);
-        var targetStackIdx = parseInt(t.node.getAttribute('data-stack-index'), 10);
-        if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx) moveStack(src.rowIndex, src.stackIndex, targetRowIdx, targetStackIdx, t.before);
-      }
-    } else if (type === 'tree-column') {
-      var t = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, true);
-      if (t) {
-        var targetRowIdx = parseInt(t.node.getAttribute('data-row-index'), 10);
-        var targetStackIdx = parseInt(t.node.getAttribute('data-stack-index'), 10);
-        var targetColIdx = parseInt(t.node.getAttribute('data-col-local-index'), 10);
-        if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx || src.colIndex !== targetColIdx) {
-          moveColumnWithinBoard(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx, targetColIdx, t.before);
-        }
+    } else if (type === 'tree-stack' || type === 'board-stack') {
+      var stackTarget = getStackDropTarget(mx, my);
+      if (stackTarget && (src.rowIndex !== stackTarget.rowIndex || src.stackIndex !== stackTarget.stackIndex)) {
+        moveStack(src.rowIndex, src.stackIndex, stackTarget.rowIndex, stackTarget.stackIndex, stackTarget.before);
       }
     } else if (type === 'board') {
       var t = ptrFindDropTarget($boardList.querySelectorAll('.board-item'), mx, my, true);
@@ -3079,21 +3602,12 @@ const LexeraDashboard = (function () {
         var targetIdx = parseInt(t.node.getAttribute('data-board-index'), 10);
         if (src.index !== targetIdx) reorderBoards(src.index, targetIdx, t.before);
       }
-    } else if (type === 'board-row') {
-      var t = ptrFindDropTarget($columnsContainer.querySelectorAll('.board-row'), mx, my, true);
-      if (t) {
-        var targetIdx = parseInt(t.node.getAttribute('data-row-index'), 10);
-        if (src.index !== targetIdx) reorderRows(src.index, targetIdx, t.before);
-      }
-    } else if (type === 'board-stack') {
-      var t = ptrFindDropTarget($columnsContainer.querySelectorAll('.board-stack'), mx, my, false);
-      if (t) {
-        var targetRowIdx = parseInt(t.node.getAttribute('data-row-index'), 10);
-        var targetStackIdx = parseInt(t.node.getAttribute('data-stack-index'), 10);
-        if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx) moveStack(src.rowIndex, src.stackIndex, targetRowIdx, targetStackIdx, t.before);
-      }
-    } else if (type === 'column') {
+    } else if (type === 'column' || type === 'tree-column') {
       executeColumnPtrDrop(mx, my, src);
+    } else if (type === 'tree-card') {
+      if (!isNaN(src.colIndex) && !isNaN(src.cardIndex)) {
+        applyCardDropByPoint(src.colIndex, src.cardIndex, mx, my);
+      }
     }
   }
 
@@ -3131,6 +3645,32 @@ const LexeraDashboard = (function () {
       var targetStackIdx = parseInt(stack.getAttribute('data-stack-index'), 10);
       if (src.rowIndex !== targetRowIdx || src.stackIndex !== targetStackIdx) {
         moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, targetRowIdx, targetStackIdx);
+      }
+      return;
+    }
+
+    // Check hierarchy columns (reorder via sidebar tree)
+    var treeColTarget = getTreeColumnDropTarget(mx, my);
+    if (treeColTarget) {
+      if (src.rowIndex !== treeColTarget.rowIndex || src.stackIndex !== treeColTarget.stackIndex || src.colIndex !== treeColTarget.colIndex) {
+        moveColumnWithinBoard(
+          src.rowIndex,
+          src.stackIndex,
+          src.colIndex,
+          treeColTarget.rowIndex,
+          treeColTarget.stackIndex,
+          treeColTarget.colIndex,
+          treeColTarget.before
+        );
+      }
+      return;
+    }
+
+    // Check hierarchy stacks (append into target stack)
+    var treeStackTarget = getTreeStackDropTarget(mx, my);
+    if (treeStackTarget) {
+      if (src.rowIndex !== treeStackTarget.rowIndex || src.stackIndex !== treeStackTarget.stackIndex) {
+        moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, treeStackTarget.rowIndex, treeStackTarget.stackIndex);
       }
       return;
     }
