@@ -29,6 +29,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/packages/lexera-backend"
 KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
+BUILDS_DIR="$SCRIPT_DIR/builds"
 TARGET="x86_64-pc-windows-msvc"
 
 ONLY=""
@@ -132,26 +133,62 @@ if should_build "kanban"; then
   echo ""
 fi
 
+# ── Collect artifacts into builds/ ───────────────────────────────
+WIN_OUT="$BUILDS_DIR/windows"
+mkdir -p "$WIN_OUT"
+
+echo "── Collecting build artifacts ──"
+
+# Locate the target directory (shared workspace target)
+# Tauri uses the workspace-level target/ when packages share a workspace,
+# otherwise it's inside src-tauri/target/
+if $IS_WINDOWS; then
+  TARGET_SUBDIR="$MODE_LABEL"
+else
+  TARGET_SUBDIR="$TARGET/$MODE_LABEL"
+fi
+
+# Try workspace-level target first, then per-package
+for candidate in "$SCRIPT_DIR/packages/target" "$BACKEND_DIR/src-tauri/target" "$KANBAN_DIR/src-tauri/target"; do
+  if [[ -d "$candidate/$TARGET_SUBDIR" ]]; then
+    TARGET_BASE="$candidate/$TARGET_SUBDIR"
+    break
+  fi
+done
+
+if should_build "backend"; then
+  if [[ -f "$TARGET_BASE/lexera-backend.exe" ]]; then
+    cp "$TARGET_BASE/lexera-backend.exe" "$WIN_OUT/"
+    echo "  Copied lexera-backend.exe"
+  fi
+  # Copy NSIS installer if it was generated
+  for installer in "$TARGET_BASE/bundle/nsis/"*.exe; do
+    [[ -f "$installer" ]] && cp "$installer" "$WIN_OUT/" && echo "  Copied $(basename "$installer")"
+  done
+  for installer in "$TARGET_BASE/bundle/msi/"*.msi; do
+    [[ -f "$installer" ]] && cp "$installer" "$WIN_OUT/" && echo "  Copied $(basename "$installer")"
+  done
+fi
+
+if should_build "kanban"; then
+  if [[ -f "$TARGET_BASE/lexera-kanban.exe" ]]; then
+    cp "$TARGET_BASE/lexera-kanban.exe" "$WIN_OUT/"
+    echo "  Copied lexera-kanban.exe"
+  fi
+  for installer in "$TARGET_BASE/bundle/nsis/"*.exe; do
+    [[ -f "$installer" ]] && cp "$installer" "$WIN_OUT/" && echo "  Copied $(basename "$installer")"
+  done
+  for installer in "$TARGET_BASE/bundle/msi/"*.msi; do
+    [[ -f "$installer" ]] && cp "$installer" "$WIN_OUT/" && echo "  Copied $(basename "$installer")"
+  done
+fi
+
 # ── Summary ─────────────────────────────────────────────────────
+echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo "  Build complete!"
 echo ""
-echo "  Output locations:"
-if should_build "backend"; then
-  if $IS_WINDOWS; then
-    echo "    Backend: packages/lexera-backend/src-tauri/target/$MODE_LABEL/"
-  else
-    echo "    Backend: packages/lexera-backend/src-tauri/target/$TARGET/$MODE_LABEL/"
-  fi
-fi
-if should_build "kanban"; then
-  if $IS_WINDOWS; then
-    echo "    Kanban:  packages/lexera-kanban/src-tauri/target/$MODE_LABEL/"
-  else
-    echo "    Kanban:  packages/lexera-kanban/src-tauri/target/$TARGET/$MODE_LABEL/"
-  fi
-fi
+echo "  Output: builds/windows/"
+ls -lh "$WIN_OUT/" 2>/dev/null | tail -n +2
 echo ""
-echo "  Look for .exe binaries and NSIS installer (.msi/.exe)"
-echo "  in the bundle/ subdirectory of each target path."
 echo "═══════════════════════════════════════════════════════════"
