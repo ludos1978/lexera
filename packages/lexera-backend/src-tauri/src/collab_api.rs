@@ -498,6 +498,240 @@ async fn get_me(State(state): State<AppState>) -> Result<Json<crate::auth::User>
     Ok(Json(user.clone()))
 }
 
+#[derive(Deserialize)]
+struct UpdateMeBody {
+    name: String,
+}
+
+/// PUT /collab/me - Update the local user's display name
+async fn update_me(
+    State(state): State<AppState>,
+    Json(body): Json<UpdateMeBody>,
+) -> Result<Json<crate::auth::User>> {
+    let name = body.name.trim().to_string();
+    if name.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request("Name cannot be empty")),
+        ));
+    }
+
+    let updated_user = {
+        let mut auth = lock_arc(&state.auth_service, "auth")?;
+        let user = auth.get_user(&state.local_user_id).ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new("Local user not found")),
+            )
+        })?;
+        let updated = crate::auth::User {
+            id: user.id.clone(),
+            name: name.clone(),
+            email: user.email.clone(),
+        };
+        auth.update_user(updated.clone());
+        updated
+    };
+
+    // Persist to identity.json
+    crate::config::persist_identity(&state.identity_path, &updated_user);
+
+    Ok(Json(updated_user))
+}
+
+/// GET /collab/server-info - Get server connection info for sharing
+async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let user_name = lock_arc(&state.auth_service, "auth")
+        .ok()
+        .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    // Determine the address to share: if bound to 0.0.0.0, try to detect a LAN IP
+    let address = if state.bind_address == "0.0.0.0" {
+        local_ip().unwrap_or_else(|| state.bind_address.clone())
+    } else {
+        state.bind_address.clone()
+    };
+
+    Json(serde_json::json!({
+        "address": address,
+        "bind_address": state.bind_address,
+        "port": state.port,
+        "user_id": state.local_user_id,
+        "user_name": user_name,
+    }))
+}
+
+/// Best-effort detection of a LAN IPv4 address.
+fn local_ip() -> Option<String> {
+    use std::net::UdpSocket;
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    let addr = socket.local_addr().ok()?;
+    Some(addr.ip().to_string())
+}
+
+// ============================================================================
+// Sync Client Endpoints (backend-to-backend connections)
+// ============================================================================
+
+#[derive(Deserialize)]
+struct ConnectBody {
+    server_url: String,
+    token: String,
+}
+
+/// POST /collab/connect — connect to a remote backend using an invite token
+async fn connect_remote(
+    State(state): State<AppState>,
+    Json(body): Json<ConnectBody>,
+) -> Result<Json<serde_json::Value>> {
+    let user_name = lock_arc(&state.auth_service, "auth")
+        .ok()
+        .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    let mut client = state.sync_client.lock().await;
+    let local_board_id = client
+        .connect(
+            body.server_url.clone(),
+            body.token.clone(),
+            state.local_user_id.clone(),
+            user_name,
+            state.storage.clone(),
+            state.event_tx.clone(),
+        )
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::bad_request(&e)),
+            )
+        })?;
+
+    Ok(Json(
+        serde_json::json!({ "success": true, "local_board_id": local_board_id }),
+    ))
+}
+
+/// DELETE /collab/connect/{local_board_id} — disconnect from a remote board
+async fn disconnect_remote(
+    State(state): State<AppState>,
+    Path(local_board_id): Path<String>,
+) -> Result<Json<SuccessResponse>> {
+    let mut client = state.sync_client.lock().await;
+    client.disconnect(&local_board_id, &state.storage);
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+/// GET /collab/connections — list active remote connections
+async fn list_connections(
+    State(state): State<AppState>,
+) -> Json<Vec<crate::sync_client::RemoteConnectionInfo>> {
+    let client = state.sync_client.lock().await;
+    Json(client.list_connections())
+}
+
+// ============================================================================
+// Network Interfaces + Server Config
+// ============================================================================
+
+fn classify_interface(name: &str, is_loopback: bool) -> &'static str {
+    if is_loopback {
+        return "Loopback";
+    }
+    let lower = name.to_lowercase();
+    // macOS: en0 is typically Wi-Fi; Linux: wlan*, wlp* are wireless
+    if lower == "en0" || lower.starts_with("wlan") || lower.starts_with("wlp") {
+        "WLAN"
+    } else if lower.starts_with("en") || lower.starts_with("eth") || lower.starts_with("enp") {
+        "LAN"
+    } else {
+        "Other"
+    }
+}
+
+/// GET /collab/network-interfaces — list available network interfaces for bind address selection
+async fn list_network_interfaces(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let mut interfaces = Vec::new();
+
+    // Always offer "All interfaces"
+    interfaces.push(serde_json::json!({
+        "address": "0.0.0.0",
+        "name": "all",
+        "label": "All interfaces",
+    }));
+
+    if let Ok(addrs) = if_addrs::get_if_addrs() {
+        for iface in &addrs {
+            // IPv4 only
+            if let std::net::IpAddr::V4(ipv4) = iface.addr.ip() {
+                let label = classify_interface(&iface.name, iface.addr.is_loopback());
+                interfaces.push(serde_json::json!({
+                    "address": ipv4.to_string(),
+                    "name": iface.name,
+                    "label": format!("{} ({})", label, iface.name),
+                }));
+            }
+        }
+    }
+
+    let cfg = lock_arc(&state.config, "config").ok();
+    let current_bind = cfg.as_ref().map(|c| c.bind_address.clone()).unwrap_or_else(|| state.bind_address.clone());
+    let current_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
+
+    Json(serde_json::json!({
+        "interfaces": interfaces,
+        "current_bind_address": current_bind,
+        "current_port": current_port,
+        "default_port": 8080,
+    }))
+}
+
+#[derive(Deserialize)]
+struct UpdateServerConfigBody {
+    bind_address: String,
+    port: u16,
+}
+
+/// PUT /collab/server-config — update bind address and port (requires restart)
+async fn update_server_config(
+    State(state): State<AppState>,
+    Json(body): Json<UpdateServerConfigBody>,
+) -> Result<Json<serde_json::Value>> {
+    // Validate bind_address
+    if body.bind_address != "0.0.0.0" {
+        body.bind_address.parse::<std::net::Ipv4Addr>().map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::bad_request("Invalid IP address")),
+            )
+        })?;
+    }
+
+    // Validate port
+    if body.port < 1024 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::bad_request("Port must be >= 1024")),
+        ));
+    }
+
+    let mut cfg = lock_arc(&state.config, "config")?;
+    cfg.bind_address = body.bind_address;
+    cfg.port = body.port;
+    crate::config::save_config(&state.config_path, &cfg).map_err(|e| {
+        internal_error(format!("Failed to save config: {}", e))
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "restart_required": true,
+    })))
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -524,7 +758,18 @@ pub fn collab_router() -> Router<AppState> {
         .route("/collab/rooms/{room_id}/leave", post(leave_room))
         .route("/collab/rooms/{room_id}/members", get(list_room_members))
         // Users
-        .route("/collab/me", get(get_me))
+        .route("/collab/me", get(get_me).put(update_me))
         .route("/collab/users/register", post(register_user))
         .route("/collab/users/{user_id}", get(get_user))
+        // Server info + config
+        .route("/collab/server-info", get(server_info))
+        .route("/collab/network-interfaces", get(list_network_interfaces))
+        .route("/collab/server-config", axum::routing::put(update_server_config))
+        // Sync client (backend-to-backend connections)
+        .route("/collab/connect", post(connect_remote))
+        .route(
+            "/collab/connect/{local_board_id}",
+            delete(disconnect_remote),
+        )
+        .route("/collab/connections", get(list_connections))
 }

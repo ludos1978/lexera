@@ -3,8 +3,10 @@ mod capture;
 mod clipboard_watcher;
 /// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
 mod config;
+pub mod connection_window;
 mod server;
 pub mod state;
+pub mod sync_client;
 mod tray;
 
 // New collaboration modules
@@ -35,6 +37,7 @@ pub fn run() {
             capture::remove_clipboard_entry,
             capture::snap_capture_window,
             capture::close_capture,
+            connection_window::open_connection_window_cmd,
         ])
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
@@ -54,7 +57,12 @@ pub fn run() {
             let config_path = config::default_config_path();
             let config = config::load_config(&config_path);
             let port = config.port;
+            let bind_address = config.bind_address.clone();
             let local_user = config::load_or_create_identity();
+            let identity_path = dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("lexera")
+                .join("identity.json");
 
             // Initialize storage and load boards
             let storage = Arc::new(LocalStorage::new());
@@ -217,14 +225,19 @@ pub fn run() {
             });
 
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
+            let sync_client = Arc::new(tokio::sync::Mutex::new(crate::sync_client::SyncClientManager::new()));
+
+            let app_handle = app.handle().clone();
 
             let app_state = AppState {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
                 port,
+                bind_address,
                 incoming,
                 local_user_id: local_user.id.clone(),
                 config_path: config_path.clone(),
+                identity_path,
                 config: Arc::new(std::sync::Mutex::new(config)),
                 watcher: watcher_arc,
                 // Collaboration services
@@ -232,9 +245,9 @@ pub fn run() {
                 public_service,
                 auth_service,
                 sync_hub,
+                sync_client,
+                app_handle: app_handle.clone(),
             };
-
-            let app_handle = app.handle().clone();
 
             // Spawn HTTP server
             tauri::async_runtime::spawn(async move {

@@ -11,13 +11,9 @@
   <!-- Header -->
   <div class="header">
     <div class="header-main">
-      <div class="search-container">
-        <input id="search-input" class="search-input" type="text" placeholder="Search cards...">
-      </div>
       <div class="header-actions">
-        <button id="btn-window-settings" class="btn-icon" type="button" title="Board settings">&#9881;</button>
-        <select id="theme-select" class="theme-select header-theme-select" title="Theme"></select>
-        <div id="connection-dot" class="connection-dot" title="Connection status"></div>
+        <button id="btn-inspector" class="btn-icon" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>
+        <div id="connection-dot" class="connection-dot"></div>
       </div>
     </div>
   </div>
@@ -29,8 +25,8 @@
       <div class="sidebar-header">
         <span>Hierarchy</span>
         <div class="sidebar-header-actions">
+          <button id="btn-sidebar-sync" class="sidebar-btn" title="Sync hierarchy with view">&#8982;</button>
           <button id="btn-sidebar-lock" class="sidebar-btn" title="Lock hierarchy (prevent add/remove)">&#128274;</button>
-          <button id="btn-sidebar-sync" class="sidebar-btn" title="Sync with view">&#8982;</button>
         </div>
       </div>
       <div id="board-list" class="board-list"></div>

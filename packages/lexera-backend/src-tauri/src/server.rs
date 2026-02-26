@@ -8,6 +8,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 pub async fn spawn_server(state: AppState) -> Result<u16, Box<dyn std::error::Error>> {
     let port = state.port;
+    let bind_addr = state.bind_address.clone();
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -20,10 +21,15 @@ pub async fn spawn_server(state: AppState) -> Result<u16, Box<dyn std::error::Er
         .layer(cors)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    let listener =
+        tokio::net::TcpListener::bind(format!("{}:{}", bind_addr, port)).await?;
     let actual_port = listener.local_addr()?.port();
 
-    log::info!("HTTP server listening on http://127.0.0.1:{}", actual_port);
+    log::info!(
+        "HTTP server listening on http://{}:{}",
+        bind_addr,
+        actual_port
+    );
 
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {

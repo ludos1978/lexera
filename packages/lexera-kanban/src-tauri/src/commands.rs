@@ -99,6 +99,17 @@ pub fn rename_path(from: String, to: String) -> Result<String, String> {
     Ok(to_resolved.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub fn toggle_devtools(window: tauri::WebviewWindow) -> Result<bool, String> {
+    if window.is_devtools_open() {
+        window.close_devtools();
+        Ok(false)
+    } else {
+        window.open_devtools();
+        Ok(true)
+    }
+}
+
 #[derive(Deserialize, Clone)]
 pub struct NativeMenuItem {
     pub id: Option<String>,

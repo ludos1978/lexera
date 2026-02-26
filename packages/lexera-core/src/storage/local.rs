@@ -5,7 +5,7 @@
 /// - Atomic writes (write to .tmp, rename)
 /// - Self-write suppression for file watcher
 /// - Mutex-guarded writes to prevent concurrent modification
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -74,6 +74,8 @@ pub struct LocalStorage {
     include_map: RwLock<IncludeMap>,
     /// Global version counter (monotonic, shared across all boards)
     next_version: std::sync::atomic::AtomicU64,
+    /// Board IDs that are synced from remote servers (not backed by a local file)
+    remote_boards: RwLock<HashSet<String>>,
 }
 
 impl LocalStorage {
@@ -84,6 +86,7 @@ impl LocalStorage {
             self_write_tracker: Mutex::new(SelfWriteTracker::new()),
             include_map: RwLock::new(IncludeMap::new()),
             next_version: std::sync::atomic::AtomicU64::new(1),
+            remote_boards: RwLock::new(HashSet::new()),
         }
     }
 
@@ -256,6 +259,48 @@ impl LocalStorage {
         self.include_map.write().unwrap().remove_board(board_id);
 
         Ok(())
+    }
+
+    /// Add a remote board (synced from another server, not backed by a local file).
+    pub fn add_remote_board(&self, board_id: &str, board: KanbanBoard) {
+        let version = self.next_version();
+        let state = BoardState {
+            file_path: PathBuf::from(format!("<remote>/{}", board_id)),
+            board,
+            last_modified: SystemTime::now(),
+            content_hash: String::new(),
+            version,
+            crdt: None,
+        };
+        self.boards.write().unwrap().insert(board_id.to_string(), state);
+        self.remote_boards.write().unwrap().insert(board_id.to_string());
+    }
+
+    /// Check if a board is a remote board.
+    pub fn is_remote_board(&self, board_id: &str) -> bool {
+        self.remote_boards.read().unwrap().contains(board_id)
+    }
+
+    /// List all remote board IDs with their titles.
+    pub fn list_remote_boards(&self) -> Vec<(String, String, usize)> {
+        let remote_ids = self.remote_boards.read().unwrap();
+        let boards = self.boards.read().unwrap();
+        remote_ids
+            .iter()
+            .filter_map(|id| {
+                boards.get(id).map(|state| {
+                    let card_count: usize = state.board.all_columns().iter().map(|c| c.cards.len()).sum();
+                    (id.clone(), state.board.title.clone(), card_count)
+                })
+            })
+            .collect()
+    }
+
+    /// Remove a remote board from tracking.
+    pub fn remove_remote_board(&self, board_id: &str) {
+        self.remote_boards.write().unwrap().remove(board_id);
+        let mut boards = self.boards.write().unwrap();
+        boards.remove(board_id);
     }
 
     /// Get the file path for a board ID.
@@ -628,8 +673,10 @@ impl LocalStorage {
 impl BoardStorage for LocalStorage {
     fn list_boards(&self) -> Vec<BoardInfo> {
         let boards = self.boards.read().unwrap();
+        let remote_ids = self.remote_boards.read().unwrap();
         boards
             .iter()
+            .filter(|(id, _)| !remote_ids.contains(*id))
             .map(|(id, state)| {
                 let columns = state
                     .board

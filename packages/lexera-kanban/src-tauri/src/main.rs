@@ -10,6 +10,7 @@ fn main() {
             commands::show_in_folder,
             commands::rename_path,
             commands::show_context_menu,
+            commands::toggle_devtools,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

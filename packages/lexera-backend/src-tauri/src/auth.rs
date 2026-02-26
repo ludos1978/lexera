@@ -39,6 +39,7 @@ impl RoomRole {
 #[derive(Debug, Clone, Serialize)]
 pub struct RoomMember {
     pub user_id: String,
+    pub user_name: String,
     pub room_id: String,
     pub role: String,
     pub joined_via: String,
@@ -78,6 +79,11 @@ impl AuthService {
     /// Get user by ID
     pub fn get_user(&self, user_id: &str) -> Option<&User> {
         self.users.get(user_id)
+    }
+
+    /// Update an existing user's name/email in place.
+    pub fn update_user(&mut self, user: User) {
+        self.users.insert(user.id.clone(), user);
     }
 
     /// Add user to room. Updates role if already a member instead of duplicating.
@@ -159,11 +165,19 @@ impl AuthService {
             .iter()
             .filter_map(|uid| {
                 let key = (room_id_str.clone(), uid.clone());
-                self.memberships.get(&key).map(|role| RoomMember {
-                    user_id: uid.clone(),
-                    room_id: room_id_str.clone(),
-                    role: role.as_str().to_string(),
-                    joined_via: "unknown".to_string(),
+                self.memberships.get(&key).map(|role| {
+                    let user_name = self
+                        .users
+                        .get(uid)
+                        .map(|u| u.name.clone())
+                        .unwrap_or_else(|| uid.clone());
+                    RoomMember {
+                        user_id: uid.clone(),
+                        user_name,
+                        room_id: room_id_str.clone(),
+                        role: role.as_str().to_string(),
+                        joined_via: "unknown".to_string(),
+                    }
                 })
             })
             .collect()

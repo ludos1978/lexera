@@ -10,6 +10,8 @@ use uuid::Uuid;
 pub struct SyncConfig {
     #[serde(default = "default_port")]
     pub port: u16,
+    #[serde(default = "default_bind_address")]
+    pub bind_address: String,
     #[serde(default)]
     pub boards: Vec<BoardEntry>,
     #[serde(default)]
@@ -34,10 +36,15 @@ fn default_port() -> u16 {
     8080
 }
 
+fn default_bind_address() -> String {
+    "127.0.0.1".to_string()
+}
+
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
             port: default_port(),
+            bind_address: default_bind_address(),
             boards: Vec::new(),
             incoming: None,
         }
@@ -111,10 +118,16 @@ pub fn load_or_create_identity() -> crate::auth::User {
     }
 }
 
+fn os_username() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "Local User".into())
+}
+
 fn create_and_persist_identity(path: &PathBuf) -> crate::auth::User {
     let user = crate::auth::User {
         id: Uuid::new_v4().to_string(),
-        name: "Local User".to_string(),
+        name: os_username(),
         email: None,
     };
     persist_identity(path, &user);
@@ -126,7 +139,7 @@ fn create_and_persist_identity(path: &PathBuf) -> crate::auth::User {
     user
 }
 
-fn persist_identity(path: &PathBuf, user: &crate::auth::User) {
+pub fn persist_identity(path: &PathBuf, user: &crate::auth::User) {
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             log::warn!(

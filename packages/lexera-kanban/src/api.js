@@ -1,6 +1,6 @@
 /**
  * HTTP client for Lexera Backend REST API.
- * Auto-discovers the backend by trying common ports.
+ * Auto-discovers the backend by trying common ports, or uses a manually set URL.
  */
 const LexeraApi = (function () {
   let baseUrl = null;
@@ -194,5 +194,96 @@ const LexeraApi = (function () {
     return syncBoardId;
   }
 
-  return { discover, request, getBoards, getBoardColumns, addCard, saveBoard, search, checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard, connectSync, disconnectSync, isSyncConnected, getSyncBoardId };
+  // ── Collaboration API helpers ───────────────────────────────────────
+
+  async function getMe() {
+    return request('/collab/me');
+  }
+
+  async function updateMe(name) {
+    return request('/collab/me', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name }),
+    });
+  }
+
+  async function getServerInfo() {
+    return request('/collab/server-info');
+  }
+
+  async function createInvite(boardId, userId, role, maxUses) {
+    var body = { role: role };
+    if (maxUses && maxUses > 0) body.max_uses = maxUses;
+    return request('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(userId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function listInvites(boardId, userId) {
+    return request('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(userId));
+  }
+
+  async function revokeInvite(boardId, token, userId) {
+    return request('/collab/rooms/' + boardId + '/invites/' + token + '?user=' + encodeURIComponent(userId), {
+      method: 'DELETE',
+    });
+  }
+
+  async function acceptInvite(token, userId) {
+    return request('/collab/invites/' + token + '/accept?user=' + encodeURIComponent(userId), { method: 'POST' });
+  }
+
+  async function registerUser(user) {
+    return request('/collab/users/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    });
+  }
+
+  async function listMembers(boardId, userId) {
+    return request('/collab/rooms/' + boardId + '/members?user=' + encodeURIComponent(userId));
+  }
+
+  async function leaveRoom(boardId, userId) {
+    return request('/collab/rooms/' + boardId + '/leave?user=' + encodeURIComponent(userId), { method: 'POST' });
+  }
+
+  async function makePublic(boardId, userId, defaultRole, maxUsers) {
+    return request('/collab/rooms/' + boardId + '/make-public?user=' + encodeURIComponent(userId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_role: defaultRole, max_users: maxUsers || null }),
+    });
+  }
+
+  async function makePrivate(boardId, userId) {
+    return request('/collab/rooms/' + boardId + '/make-public?user=' + encodeURIComponent(userId), { method: 'DELETE' });
+  }
+
+  async function listPublicRooms() {
+    return request('/collab/public-rooms');
+  }
+
+  async function joinPublicRoom(boardId, userId) {
+    return request('/collab/rooms/' + boardId + '/join-public?user=' + encodeURIComponent(userId), { method: 'POST' });
+  }
+
+  async function getRemoteBoards() {
+    return request('/remote-boards');
+  }
+
+  return {
+    discover, request, getBoards, getBoardColumns, addCard, saveBoard, search,
+    checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
+    connectSync, disconnectSync, isSyncConnected, getSyncBoardId,
+    getMe, updateMe, getServerInfo,
+    createInvite, listInvites, revokeInvite, acceptInvite,
+    registerUser, listMembers, leaveRoom,
+    makePublic, makePrivate, listPublicRooms, joinPublicRoom,
+    getRemoteBoards,
+  };
 })();

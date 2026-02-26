@@ -89,6 +89,7 @@ pub struct ConvertPathBody {
 pub fn api_router() -> Router<AppState> {
     Router::new()
         .route("/boards", get(list_boards).post(add_board_endpoint))
+        .route("/remote-boards", get(list_remote_boards))
         .route("/boards/{board_id}/columns", get(get_board_columns))
         .route(
             "/boards/{board_id}/columns/{col_index}/cards",
@@ -116,10 +117,29 @@ pub fn api_router() -> Router<AppState> {
         .route("/search", get(search))
         .route("/events", get(sse_events))
         .route("/status", get(status))
+        .route(
+            "/open-connection-window",
+            axum::routing::post(open_connection_window),
+        )
 }
 
 async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boards = state.storage.list_boards();
+    Json(serde_json::json!({ "boards": boards }))
+}
+
+async fn list_remote_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let remote = state.storage.list_remote_boards();
+    let boards: Vec<serde_json::Value> = remote
+        .into_iter()
+        .map(|(id, title, card_count)| {
+            serde_json::json!({
+                "id": id,
+                "title": title,
+                "card_count": card_count,
+            })
+        })
+        .collect();
     Json(serde_json::json!({ "boards": boards }))
 }
 
@@ -467,8 +487,14 @@ async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "running",
         "port": state.port,
+        "bind_address": state.bind_address,
         "incoming": state.incoming,
     }))
+}
+
+async fn open_connection_window(State(state): State<AppState>) -> Json<serde_json::Value> {
+    crate::connection_window::open_connection_window(&state.app_handle);
+    Json(serde_json::json!({ "success": true }))
 }
 
 /// POST /boards/{board_id}/media — upload a file to the board's media folder.

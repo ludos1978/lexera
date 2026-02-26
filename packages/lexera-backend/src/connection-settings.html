@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connection Settings</title>
+  <link rel="stylesheet" href="connection-settings.css">
+</head>
+<body>
+  <div class="window-container">
+    <div class="window-header" data-tauri-drag-region>
+      <h2 class="window-title" data-tauri-drag-region>Connection Settings</h2>
+    </div>
+
+    <!-- Identity -->
+    <section class="section">
+      <div class="section-title">Identity</div>
+      <div class="field-row">
+        <input id="input-name" class="field-input" type="text" placeholder="Your display name...">
+        <button id="btn-save-name" class="btn btn-primary">Save</button>
+      </div>
+    </section>
+
+    <!-- Server -->
+    <section class="section">
+      <div class="section-title">Server</div>
+      <div class="field-row">
+        <label class="field-label">Bind Address</label>
+        <select id="select-bind" class="field-select"></select>
+      </div>
+      <div id="custom-bind-row" class="field-row" style="display:none;">
+        <label class="field-label"></label>
+        <input id="input-bind-custom" class="field-input" type="text" placeholder="e.g. 192.168.1.100">
+      </div>
+      <div class="field-row">
+        <label class="field-label">Port</label>
+        <select id="select-port" class="field-select"></select>
+      </div>
+      <div id="custom-port-row" class="field-row" style="display:none;">
+        <label class="field-label"></label>
+        <input id="input-port-custom" class="field-input" type="number" min="1024" max="65535" placeholder="e.g. 8080">
+      </div>
+      <div class="field-row">
+        <button id="btn-save-server" class="btn btn-primary">Save</button>
+      </div>
+      <div id="server-address" class="info-text"></div>
+      <div id="server-restart-note" class="restart-note" style="display:none;">
+        Changes will take effect after restarting the application.
+      </div>
+    </section>
+
+    <!-- My Boards -->
+    <section class="section">
+      <div class="section-title">My Boards</div>
+      <div id="my-boards-list" class="list-container">
+        <div class="list-empty">Loading...</div>
+      </div>
+    </section>
+
+    <!-- Remote Connections -->
+    <section class="section">
+      <div class="section-title">Remote Connections</div>
+      <div id="connections-list" class="list-container">
+        <div class="list-empty">No remote connections</div>
+      </div>
+    </section>
+
+    <!-- Join Remote Board -->
+    <section class="section">
+      <div class="section-title">Join Remote Board</div>
+      <div class="field-row">
+        <input id="input-join-url" class="field-input" type="text" placeholder="http://192.168.1.5:8080">
+      </div>
+      <div class="field-row">
+        <input id="input-join-token" class="field-input" type="text" placeholder="Invite token">
+        <button id="btn-join" class="btn btn-primary">Join</button>
+      </div>
+      <div id="join-status" class="status-text"></div>
+    </section>
+  </div>
+
+  <script src="connection-settings.js"></script>
+</body>
+</html>
