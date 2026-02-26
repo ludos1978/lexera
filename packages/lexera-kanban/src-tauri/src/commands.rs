@@ -23,7 +23,7 @@ pub fn get_backend_url() -> Result<String, String> {
         #[serde(default = "default_bind")]
         bind_address: String,
     }
-    fn default_port() -> u16 { 8080 }
+    fn default_port() -> u16 { 13080 }
     fn default_bind() -> String { "127.0.0.1".to_string() }
 
     let cfg: MinConfig = serde_json::from_str(&content)

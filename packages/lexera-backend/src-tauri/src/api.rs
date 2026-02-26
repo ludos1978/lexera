@@ -484,9 +484,10 @@ async fn sse_events(
 }
 
 async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
     Json(serde_json::json!({
         "status": "running",
-        "port": state.port,
+        "port": actual_port,
         "bind_address": state.bind_address,
         "incoming": state.incoming,
     }))

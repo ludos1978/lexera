@@ -226,10 +226,25 @@ body {
 
 .detail-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 2px 0;
+  gap: 8px;
+  padding: 4px 0;
   font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-item:last-child { border-bottom: none; }
+
+.invite-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-select-small {
+  flex: none;
+  width: auto;
+  padding: 3px 6px;
+  font-size: 11px;
 }
 
 .token-field {

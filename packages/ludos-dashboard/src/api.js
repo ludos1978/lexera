@@ -3,7 +3,7 @@
  * IIFE module pattern — exposes window.LudosApi.
  */
 const LudosApi = (function () {
-  let baseUrl = localStorage.getItem('ludos-dashboard-url') || 'http://localhost:8080';
+  let baseUrl = localStorage.getItem('ludos-dashboard-url') || 'http://localhost:13080';
 
   function setBaseUrl(url) {
     baseUrl = url.replace(/\/+$/, '');

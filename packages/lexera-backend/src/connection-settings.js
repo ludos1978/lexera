@@ -69,7 +69,7 @@
     } catch (e) { /* fall through */ }
 
     // Fallback: port scanning
-    var ports = [8083, 8080, 8081, 8082, 9080];
+    var ports = [13080, 12080, 14080, 11080, 15080];
     for (var i = 0; i < ports.length; i++) {
       try {
         var res = await fetch('http://localhost:' + ports[i] + '/status', { signal: AbortSignal.timeout(1000) });
@@ -237,13 +237,54 @@
       port = parseInt(portVal, 10);
     }
 
+    els.serverRestartNote.textContent = 'Applying...';
+    els.serverRestartNote.style.display = '';
     try {
       var result = await apiPut('/collab/server-config', { bind_address: bindAddr, port: port });
-      if (result.restart_required) {
-        els.serverRestartNote.style.display = '';
-      }
+      // Server returned the new port after live restart
+      var newPort = result.port || port;
+      var host = (bindAddr === '0.0.0.0') ? '127.0.0.1' : bindAddr;
+      BASE_URL = 'http://' + host + ':' + newPort;
+      await loadServerInfo();
+      await loadNetworkInterfaces();
+      els.serverRestartNote.textContent = 'Server restarted on port ' + newPort;
+      setTimeout(function() { els.serverRestartNote.style.display = 'none'; }, 5000);
     } catch (e) {
-      console.warn('Failed to save server config:', e);
+      // Connection may have been lost during restart — try to reconnect
+      console.warn('Config save response lost, reconnecting...', e);
+      els.serverRestartNote.textContent = 'Reconnecting...';
+      var host = (bindAddr === '0.0.0.0') ? '127.0.0.1' : bindAddr;
+      var reconnected = false;
+      // Try the target port first, then fallback to discovery
+      for (var attempt = 0; attempt < 10; attempt++) {
+        await new Promise(function(r) { setTimeout(r, 500); });
+        try {
+          var res = await fetch('http://' + host + ':' + port + '/status', { signal: AbortSignal.timeout(1000) });
+          if (res.ok) {
+            var data = await res.json();
+            if (data.status === 'running') {
+              BASE_URL = 'http://' + host + ':' + data.port;
+              reconnected = true;
+              break;
+            }
+          }
+        } catch (_) { /* still restarting */ }
+      }
+      if (!reconnected) {
+        var newBase = await discoverBackend();
+        if (newBase) {
+          BASE_URL = newBase;
+          reconnected = true;
+        }
+      }
+      if (reconnected) {
+        await loadServerInfo();
+        await loadNetworkInterfaces();
+        els.serverRestartNote.textContent = 'Reconnected to ' + BASE_URL;
+      } else {
+        els.serverRestartNote.textContent = 'Could not reconnect after restart';
+      }
+      setTimeout(function() { els.serverRestartNote.style.display = 'none'; }, 5000);
     }
   }
 
@@ -273,6 +314,10 @@
       html += '<span class="board-row-name">' + esc(boardName) + '</span>';
       html += '<div class="board-row-actions">';
       html += '<button class="btn btn-small" data-action="toggle-details" data-board-id="' + esc(b.id) + '">Details</button>';
+      html += '<select class="field-select field-select-small" id="role-' + esc(b.id) + '">';
+      html += '<option value="editor">Editor</option>';
+      html += '<option value="viewer">Viewer</option>';
+      html += '</select>';
       html += '<button class="btn btn-small btn-primary" data-action="create-invite" data-board-id="' + esc(b.id) + '">Invite</button>';
       html += '</div>';
       html += '</div>';
@@ -293,23 +338,17 @@
   async function createInvite(boardId) {
     if (!me) return;
     try {
+      var roleSelect = document.getElementById('role-' + boardId);
+      var role = roleSelect ? roleSelect.value : 'editor';
+
       var invite = await apiPost('/collab/rooms/' + boardId + '/invites?user=' + encodeURIComponent(me.id), {
-        role: 'editor',
+        role: role,
       });
 
-      // Show token in the details area
+      // Expand details and reload invites (which now show tokens)
       var detailsEl = document.getElementById('details-' + boardId);
       if (detailsEl) {
         detailsEl.classList.add('expanded');
-      }
-
-      var invitesEl = document.getElementById('invites-' + boardId);
-      if (invitesEl) {
-        var tokenHtml = '<div class="token-field">';
-        tokenHtml += '<input type="text" readonly value="' + esc(invite.token) + '" id="token-' + esc(invite.token) + '">';
-        tokenHtml += '<button class="btn btn-small" data-action="copy-token" data-token="' + esc(invite.token) + '">Copy</button>';
-        tokenHtml += '</div>';
-        invitesEl.innerHTML = tokenHtml + (invitesEl.innerHTML.indexOf('list-empty') !== -1 ? '' : invitesEl.innerHTML);
       }
 
       await loadInvites(boardId);
@@ -334,7 +373,13 @@
       for (var i = 0; i < invites.length; i++) {
         var inv = invites[i];
         html += '<div class="detail-item">';
+        html += '<div class="invite-info">';
         html += '<span>' + esc(inv.role) + ' &middot; ' + inv.uses + '/' + (inv.max_uses || '&infin;') + ' uses</span>';
+        html += '<div class="token-field">';
+        html += '<input type="text" readonly value="' + esc(inv.token) + '" id="token-' + esc(inv.token) + '">';
+        html += '<button class="btn btn-small" data-action="copy-token" data-token="' + esc(inv.token) + '">Copy</button>';
+        html += '</div>';
+        html += '</div>';
         html += '<button class="btn btn-small btn-danger" data-action="revoke-invite" data-board-id="' + esc(boardId) + '" data-token="' + esc(inv.token) + '">Revoke</button>';
         html += '</div>';
       }

@@ -26,6 +26,10 @@ pub struct AppState {
     pub event_tx: broadcast::Sender<BoardChangeEvent>,
     pub port: u16,
     pub bind_address: String,
+    /// The actual port the server is listening on (may differ from config if fallback was used).
+    pub live_port: Arc<std::sync::Mutex<u16>>,
+    /// Shutdown handle for the running HTTP server (send `true` to stop it).
+    pub server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>>,
     pub incoming: Option<ResolvedIncoming>,
     pub local_user_id: String,
     pub config_path: PathBuf,

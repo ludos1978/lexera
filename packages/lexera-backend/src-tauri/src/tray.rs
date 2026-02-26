@@ -24,11 +24,12 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
         true,
         None::<&str>,
     )?;
+    let open_browser = MenuItem::with_id(app, "open_browser", "Open in Browser", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
         app,
-        &[&status_item, &quick_capture, &connection_settings, &quit],
+        &[&status_item, &quick_capture, &connection_settings, &open_browser, &quit],
     )?;
 
     let mut builder = TrayIconBuilder::new().menu(&menu).tooltip("Lexera Backend");
@@ -46,13 +47,7 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
             "connection_settings" => {
                 open_connection_window(app);
             }
-            "quit" => {
-                app.exit(0);
-            }
-            _ => {}
-        })
-        .on_tray_icon_event(move |_tray, event| {
-            if let tauri::tray::TrayIconEvent::Click { .. } = event {
+            "open_browser" => {
                 let url = format!("http://localhost:{}", tray_port);
                 #[cfg(target_os = "macos")]
                 let _ = std::process::Command::new("open").arg(&url).spawn();
@@ -61,6 +56,10 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
                 #[cfg(target_os = "windows")]
                 let _ = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn();
             }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
         })
         .build(app)?;
 

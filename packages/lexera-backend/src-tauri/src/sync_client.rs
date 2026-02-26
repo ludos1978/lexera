@@ -6,8 +6,8 @@
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use lexera_core::storage::local::LocalStorage;
+use lexera_core::sync::{ClientMessage, RemoteConnectionInfo, ServerMessage};
 use lexera_core::watcher::types::BoardChangeEvent;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -15,14 +15,6 @@ use tokio::task::JoinHandle;
 
 fn b64() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
-}
-
-#[derive(Debug, Serialize)]
-pub struct RemoteConnectionInfo {
-    pub server_url: String,
-    pub remote_board_id: String,
-    pub local_board_id: String,
-    pub status: String,
 }
 
 struct RemoteConnection {
@@ -34,32 +26,6 @@ struct RemoteConnection {
 
 pub struct SyncClientManager {
     connections: HashMap<String, RemoteConnection>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-enum ServerMessage {
-    ServerHello {
-        #[allow(dead_code)]
-        peer_id: u64,
-        #[allow(dead_code)]
-        vv: String,
-        updates: String,
-    },
-    ServerUpdate {
-        updates: String,
-    },
-    ServerError {
-        message: String,
-    },
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "type")]
-#[allow(dead_code)]
-enum ClientMessage {
-    ClientHello { user_id: String, vv: String },
-    ClientUpdate { updates: String },
 }
 
 impl SyncClientManager {

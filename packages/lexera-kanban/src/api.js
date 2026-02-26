@@ -29,7 +29,7 @@ const LexeraApi = (function () {
     }
 
     // Fallback: port scanning (for browser mode or if config read fails)
-    const ports = [8083, 8080, 8081, 8082, 9080];
+    const ports = [13080, 12080, 14080, 11080, 15080];
     for (const port of ports) {
       try {
         const res = await fetch(`http://localhost:${port}/status`, { signal: AbortSignal.timeout(1000) });

@@ -5,15 +5,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-/// A single clipboard history entry.
-#[derive(Clone, Debug, serde::Serialize)]
-pub struct ClipboardEntry {
-    pub id: u64,
-    pub text: Option<String>,
-    pub image_data: Option<String>,
-    pub image_filename: Option<String>,
-    pub timestamp: u64,
-}
+/// Re-export from lexera-core for backward compatibility.
+pub type ClipboardEntry = lexera_core::capture::CaptureEntry;
 
 /// Shared clipboard history, newest first.
 pub type ClipboardHistory = Arc<Mutex<Vec<ClipboardEntry>>>;
@@ -42,10 +35,7 @@ pub fn capture_clipboard_to_history(history: &ClipboardHistory) {
         return;
     }
 
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    let ts = lexera_core::capture::timestamp_millis();
 
     let entry = ClipboardEntry {
         id: NEXT_ENTRY_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst),

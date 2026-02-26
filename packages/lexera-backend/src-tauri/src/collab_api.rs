@@ -546,6 +546,8 @@ async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
         .unwrap_or_else(|| "Unknown".to_string());
 
+    let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
+
     // Determine the address to share: if bound to 0.0.0.0, try to detect a LAN IP
     let address = if state.bind_address == "0.0.0.0" {
         local_ip().unwrap_or_else(|| state.bind_address.clone())
@@ -556,7 +558,7 @@ async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "address": address,
         "bind_address": state.bind_address,
-        "port": state.port,
+        "port": actual_port,
         "user_id": state.local_user_id,
         "user_name": user_name,
     }))
@@ -680,13 +682,15 @@ async fn list_network_interfaces(
 
     let cfg = lock_arc(&state.config, "config").ok();
     let current_bind = cfg.as_ref().map(|c| c.bind_address.clone()).unwrap_or_else(|| state.bind_address.clone());
-    let current_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
+    let configured_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
+    let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
 
     Json(serde_json::json!({
         "interfaces": interfaces,
         "current_bind_address": current_bind,
-        "current_port": current_port,
-        "default_port": 8080,
+        "current_port": actual_port,
+        "configured_port": configured_port,
+        "default_port": 13080,
     }))
 }
 
@@ -696,7 +700,7 @@ struct UpdateServerConfigBody {
     port: u16,
 }
 
-/// PUT /collab/server-config — update bind address and port (requires restart)
+/// PUT /collab/server-config — update bind address and port, live-restart the HTTP server.
 async fn update_server_config(
     State(state): State<AppState>,
     Json(body): Json<UpdateServerConfigBody>,
@@ -719,17 +723,52 @@ async fn update_server_config(
         ));
     }
 
-    let mut cfg = lock_arc(&state.config, "config")?;
-    cfg.bind_address = body.bind_address;
-    cfg.port = body.port;
-    crate::config::save_config(&state.config_path, &cfg).map_err(|e| {
-        internal_error(format!("Failed to save config: {}", e))
-    })?;
+    // All mutex work in a block that drops guards before any await
+    let (new_bind, new_port, user_id, user_name) = {
+        let mut cfg = lock_arc(&state.config, "config")?;
+        cfg.bind_address = body.bind_address.clone();
+        cfg.port = body.port;
+        crate::config::save_config(&state.config_path, &cfg)
+            .map_err(|e| internal_error(format!("Failed to save config: {}", e)))?;
+        drop(cfg);
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "restart_required": true,
-    })))
+        let uid = state.local_user_id.clone();
+        let uname = state.auth_service.lock()
+            .ok()
+            .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        (body.bind_address.clone(), body.port, uid, uname)
+    };
+    // All MutexGuards dropped here ^^^
+
+    // restart_server is async but does not hold any MutexGuard across its awaits
+    match crate::server::restart_server(state.clone(), new_bind.clone(), new_port).await {
+        Ok(actual_port) => {
+            // Update tray to reflect new port
+            let _ = crate::tray::setup_tray(&state.app_handle, actual_port);
+
+            // Restart discovery if needed
+            if let Ok(mut disc) = state.discovery.lock() {
+                disc.stop();
+                if new_bind != "127.0.0.1" {
+                    disc.start(actual_port, user_id, user_name);
+                    log::info!("[discovery] Restarted on port {}", actual_port);
+                }
+            }
+
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "port": actual_port,
+                "bind_address": new_bind,
+                "restarted": true,
+            })))
+        }
+        Err(e) => {
+            log::error!("[server] Live restart failed: {}", e);
+            Err(internal_error(format!("Server restart failed: {}", e)))
+        }
+    }
 }
 
 // ============================================================================

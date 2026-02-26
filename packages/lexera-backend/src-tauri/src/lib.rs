@@ -233,11 +233,17 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let discovery_bind = bind_address.clone();
 
+            let live_port = Arc::new(std::sync::Mutex::new(port));
+            let server_shutdown: Arc<std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>>> =
+                Arc::new(std::sync::Mutex::new(None));
+
             let app_state = AppState {
                 storage: storage.clone(),
                 event_tx: event_tx.clone(),
                 port,
                 bind_address,
+                live_port: live_port.clone(),
+                server_shutdown: server_shutdown.clone(),
                 incoming,
                 local_user_id: local_user.id.clone(),
                 config_path: config_path.clone(),
@@ -260,8 +266,17 @@ pub fn run() {
             let discovery_user_name = local_user.name.clone();
             tauri::async_runtime::spawn(async move {
                 match server::spawn_server(app_state).await {
-                    Ok(actual_port) => {
+                    Ok((actual_port, shutdown_tx)) => {
                         log::info!("Server started on port {}", actual_port);
+
+                        // Store the shutdown handle and actual port
+                        if let Ok(mut sh) = server_shutdown.lock() {
+                            *sh = Some(shutdown_tx);
+                        }
+                        if let Ok(mut lp) = live_port.lock() {
+                            *lp = actual_port;
+                        }
+
                         // Set up tray with actual port
                         let _ = tray::setup_tray(&app_handle, actual_port);
 

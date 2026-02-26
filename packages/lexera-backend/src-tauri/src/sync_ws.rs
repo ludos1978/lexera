@@ -15,36 +15,11 @@ use axum::{
 };
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
+use lexera_core::sync::{ClientMessage, ServerMessage};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
 use crate::state::AppState;
-
-// ── Sync Protocol Messages ──────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-enum ClientMessage {
-    ClientHello { user_id: String, vv: String },
-    ClientUpdate { updates: String },
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "type")]
-enum ServerMessage {
-    ServerHello {
-        peer_id: u64,
-        vv: String,
-        updates: String,
-    },
-    ServerUpdate {
-        updates: String,
-    },
-    ServerError {
-        message: String,
-    },
-}
 
 fn b64() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD

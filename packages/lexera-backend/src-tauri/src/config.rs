@@ -33,7 +33,7 @@ pub struct BoardEntry {
 }
 
 fn default_port() -> u16 {
-    8080
+    13080
 }
 
 fn default_bind_address() -> String {
