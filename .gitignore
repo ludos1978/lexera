@@ -51,3 +51,4 @@ packages/lexera-backend/src-tauri/icons/
 packages/lexera-kanban/src-tauri/gen/
 packages/lexera-kanban/src-tauri/icons/
 .fingerprint/
+*.crdt
