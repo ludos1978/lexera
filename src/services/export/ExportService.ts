@@ -184,6 +184,9 @@ export class ExportService {
 
     // Track MD5 hashes to detect duplicates
     private static exportedFiles = new Map<string, string>(); // MD5 -> exported path
+    // Track resolvedPath -> exportedRelativePath for include path rewriting
+    // Used when the same include file is referenced multiple times
+    private static exportedIncludePaths = new Map<string, string>(); // resolvedPath -> exportedRelativePath
 
     /**
      * Apply tag filtering to content based on export options
@@ -743,6 +746,8 @@ export class ExportService {
         let processedContent = content;
         let includeCount = 0;
 
+        logger.debug(`[ExportService.processIncludedFiles] sourceDir=${sourceDir}, exportFolder=${exportFolder}, mergeIncludes=${mergeIncludes}`);
+
         // Define include patterns and their replacement formats
         // If mergeIncludes is true, don't write separate files for ANY includes
         // Otherwise, write separate files for all include types
@@ -814,9 +819,25 @@ export class ExportService {
                 // PathResolver.resolve() handles URL decoding
                 const resolvedPath = PathResolver.resolve(sourceDir, includePath);
 
-                // Avoid circular references
+                // Avoid circular references - but still rewrite the path
                 if (processedIncludes.has(resolvedPath)) {
+                    // File already processed, but we still need to rewrite the path
+                    // in the current content to point to the export folder location
+                    if (shouldWriteSeparateFile && this.exportedIncludePaths.has(resolvedPath)) {
+                        const exportedRelativePath = this.exportedIncludePaths.get(resolvedPath)!;
+                        processedContent = processedContent.replace(
+                            match[0],
+                            replacement(exportedRelativePath, prefixTitle, suffix)
+                        );
+                        logger.debug(`[ExportService.processIncludedFiles] Rewrote duplicate include reference: ${includePath} → ${exportedRelativePath}`);
+                    }
                     continue;
+                }
+
+                if (!fs.existsSync(resolvedPath)) {
+                    logger.warn(`[ExportService.processIncludedFiles] Include file not found: ${resolvedPath} (from ${includePath})`);
+                } else if (path.extname(resolvedPath) !== '.md') {
+                    logger.warn(`[ExportService.processIncludedFiles] Include is not .md: ${resolvedPath}`);
                 }
 
                 if (fs.existsSync(resolvedPath) && path.extname(resolvedPath) === '.md') {
@@ -925,11 +946,15 @@ export class ExportService {
                             exportedRelativePath = exportedFileName;
                         }
 
+                        // Track the mapping for duplicate reference rewriting
+                        this.exportedIncludePaths.set(resolvedPath, exportedRelativePath);
+
                         // Update the marker to reference the exported file
                         processedContent = processedContent.replace(
                             match[0],
                             replacement(exportedRelativePath, prefixTitle, suffix)
                         );
+                        logger.debug(`[ExportService.processIncludedFiles] Rewrote include: ${includePath} → ${exportedRelativePath}`);
                     } else {
                         // Mode: Merge includes into main file
                         // Replace the marker with the actual content
@@ -957,6 +982,12 @@ export class ExportService {
                     }
                 }
             }
+        }
+
+        // Log remaining include patterns for diagnostics
+        const remainingIncludes = processedContent.match(INCLUDE_SYNTAX.REGEX);
+        if (remainingIncludes && remainingIncludes.length > 0) {
+            logger.debug(`[ExportService.processIncludedFiles] Remaining includes after processing: ${remainingIncludes.join(', ')}`);
         }
 
         return { processedContent, includeStats: includeCount };
@@ -1095,6 +1126,13 @@ export class ExportService {
         // Copy included assets and modify paths
         for (const asset of assetsToInclude) {
             try {
+                // Skip directories - only copy files
+                if (fs.existsSync(asset.resolvedPath) && fs.statSync(asset.resolvedPath).isDirectory()) {
+                    logger.warn(`[ExportService.processAssets] Skipping directory: ${asset.resolvedPath}`);
+                    notIncludedAssets.push(asset);
+                    continue;
+                }
+
                 // Calculate MD5 for duplicate detection
                 const md5 = await this.calculateMD5(asset.resolvedPath);
 
@@ -2401,8 +2439,9 @@ export class ExportService {
         cancellationToken?: vscode.CancellationToken
     ): Promise<ExportResult> {
         try {
-            // Clear tracking map for new export
+            // Clear tracking maps for new export
             this.exportedFiles.clear();
+            this.exportedIncludePaths.clear();
 
             // Always exclude #hidden tagged content from export
             if (!options.excludeTags) {

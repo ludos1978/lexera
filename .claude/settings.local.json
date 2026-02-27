@@ -215,7 +215,10 @@
       "WebFetch(domain:v2.tauri.app)",
       "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/packages/ludos-dashboard/build-dashboard.sh:*)",
       "Bash(cargo --version:*)",
-      "Bash(rustc:*)"
+      "Bash(rustc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep ExportService:*)"
     ],
     "deny": [],
     "ask": []
