@@ -66,8 +66,6 @@ pub struct DocumentBody {
     strip_includes: bool,
     #[serde(default = "default_page_breaks")]
     page_breaks: PageBreaks,
-    #[serde(default)]
-    column_indexes: Vec<usize>,
 }
 
 fn default_page_breaks() -> PageBreaks {
@@ -81,8 +79,6 @@ pub struct FilterBody {
     tag_visibility: TagVisibility,
     #[serde(default)]
     exclude_tags: Vec<String>,
-    #[serde(default)]
-    column_indexes: Vec<usize>,
 }
 
 #[derive(Deserialize)]

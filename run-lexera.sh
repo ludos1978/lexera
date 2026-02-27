@@ -11,6 +11,26 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/packages/lexera-backend"
 KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
+TARGET_DIR="$SCRIPT_DIR/packages/target"
+PATH_MARKER="$TARGET_DIR/.project-path"
+
+# ── Clean stale build cache if project folder was renamed ────────
+if [[ -d "$TARGET_DIR" ]]; then
+  if [[ -f "$PATH_MARKER" ]]; then
+    CACHED_PATH="$(cat "$PATH_MARKER")"
+    if [[ "$CACHED_PATH" != "$SCRIPT_DIR" ]]; then
+      echo "Project path changed ($CACHED_PATH -> $SCRIPT_DIR), cleaning build cache..."
+      (cd "$SCRIPT_DIR/packages" && cargo clean)
+    fi
+  else
+    # No marker exists but target dir does — could be stale from before
+    # the marker was introduced. Write the marker now; if paths are wrong
+    # cargo will error and the user can re-run after a manual cargo clean.
+    echo "$SCRIPT_DIR" > "$PATH_MARKER"
+  fi
+fi
+mkdir -p "$TARGET_DIR"
+echo "$SCRIPT_DIR" > "$PATH_MARKER"
 
 # ── Kill existing instances ──────────────────────────────────────
 echo "Killing existing instances..."

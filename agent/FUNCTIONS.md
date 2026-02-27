@@ -2,10 +2,56 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-02-27
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-02-27) - Template & Creation Source System
+
+### Modified: `lexera-backend/src-tauri/src/config.rs`
+- `resolve_templates_path(config_value)` — (NEW) Resolves templates directory: uses config value if set, else defaults to `~/.config/lexera/templates/`.
+- `SyncConfig.templates_path` — (NEW field) Optional custom templates directory path.
+
+### Modified: `lexera-backend/src-tauri/src/api.rs`
+- `list_templates(state)` — (NEW) `GET /templates` — Scans templates folder, returns metadata list (id, name, type, description, icon, hasVariables).
+- `get_template(state, template_id)` — (NEW) `GET /templates/{id}` — Returns full template.md content + list of extra files.
+- `copy_template_files(state, template_id, body)` — (NEW) `POST /templates/{id}/copy` — Copies template files to board folder with {var} substitution in text content and filenames.
+- `parse_template_frontmatter(content)` — (NEW) Line-by-line YAML frontmatter parser for template.md (name, type, description, icon, variables detection).
+- `substitute_variables(content, variables)` — (NEW) Applies {varname} substitution to a string using a HashMap of values.
+- `sanitize_filename(name)` — (NEW) Replaces filesystem-invalid characters with underscores.
+- `is_text_file(path)` — (NEW) Checks file extension against TEXT_EXTENSIONS list for variable substitution eligibility.
+- `get_templates_dir(state)` — (NEW) Resolves templates directory from current config.
+
+### New: `lexera-kanban/src/templates.js`
+- `LexeraTemplates.loadTemplates()` — (async) Fetches template list from backend, caches it.
+- `LexeraTemplates.getTemplatesForType(type)` — Returns cached templates filtered by entity type (card/column/stack/row).
+- `LexeraTemplates.getFullTemplate(id)` — (async) Fetches full template content from backend, parses it.
+- `LexeraTemplates.showVariableDialog(templateName, variables)` — (async) Shows modal dialog for collecting variable values. Returns Promise resolving to values object or null.
+- `LexeraTemplates.substitute(content, values, variables)` — Substitutes {var} and {var:format} patterns, processes {#if}/{#else}/{/if} conditionals.
+- `LexeraTemplates.substituteFilename(filename, values, variables)` — Same as substitute + filesystem sanitization.
+- `LexeraTemplates.applyDefaults(variables, values)` — Applies default values for missing variables.
+- `LexeraTemplates.buildCardFromTemplate(parsed, values)` — Builds card {id, content, checked} from parsed template.
+- `LexeraTemplates.buildColumnFromTemplate(parsed, values)` — Builds column array [{id, title, cards}] from parsed template.
+- `LexeraTemplates.buildStackFromTemplate(parsed, values)` — Builds stack {id, title, columns} from parsed template.
+- `LexeraTemplates.buildRowFromTemplate(parsed, values)` — Builds row {id, title, stacks} from parsed template.
+- Internal: `parseTemplate`, `splitFrontmatter`, `parseFrontmatter`, `parseBody`, `parseColumns`, `parseRowBody` — Template content parsing (ported from v1 TemplateParser.ts).
+- Internal: `substituteVariables`, `formatValue`, `processConditionals`, `checkTruthy`, `validateVariables` — Variable processing (ported from v1 VariableProcessor.ts).
+
+### Modified: `lexera-kanban/src/app.js`
+- `renderCreationSource(entityType, context, options)` — (NEW) Builds creation-source dropdown wrapper around add buttons with Empty/Clipboard/Template items. Returns DOM element.
+- `handleCreationAction(entityType, action, context)` — (NEW) Dispatches creation: 'empty' calls existing add functions, 'clipboard' reads clipboard text, 'template:id' loads template + shows variable dialog + builds entity.
+- `loadTemplatesOnce()` — (NEW) One-shot template loading trigger, called on first backend connection.
+- `addRowFromContent(text)` — (NEW) Creates a row with one card pre-filled from clipboard text.
+- `addStackFromContent(rowIdx, text)` — (NEW) Creates a stack with one card pre-filled from clipboard text.
+- `addColumnFromContent(rowIdx, stackIdx, text)` — (NEW) Creates a column with one card pre-filled from clipboard text.
+- `insertTemplateColumns(rowIdx, stackIdx, cols)` — (NEW) Inserts template-built columns into a stack.
+- `insertTemplateStack(rowIdx, stack)` — (NEW) Inserts template-built stack into a row.
+- `insertTemplateRow(atIndex, row)` — (NEW) Inserts template-built row into the board.
+- `setConnected()` — (MODIFIED) Triggers `loadTemplatesOnce()` on first connection.
+- 5 add-button render locations — (MODIFIED) Replaced direct button creation with `renderCreationSource()` calls for card, row, stack, column, and board header add buttons.
 
 ---
 
@@ -45,6 +91,8 @@ Each entry follows: `path_to_filename-classname_functionname` or `path_to_filena
 - `LexeraApi.getSyncBoardId()` — (NEW) Returns the board ID of the active sync connection.
 
 ### Modified: `lexera-kanban/src/app.js`
+- `applySidebarWidth()` — (NEW) Applies persisted sidebar width from `sidebarWidth` variable to `--sidebar-width` CSS custom property.
+- `setupSidebarWidthResize()` — (NEW) Wires up horizontal drag on `#sidebar-width-divider` to resize sidebar width (180–600px range, snap to 300px default, double-click reset). Persists to `localStorage` as `lexera-sidebar-width`.
 - `ensureSyncUserId()` — (NEW) Fetches local user ID from /collab/me, caches it.
 - `connectSyncForBoard(boardId)` — (NEW) Connects WS sync for a board, triggers loadBoard on ServerUpdate.
 - `handleSSEEvent()` — (MODIFIED) Skips SSE-triggered reloads when WS sync is connected for the active board.

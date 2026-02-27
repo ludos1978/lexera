@@ -2,7 +2,30 @@
 
 This document provides a comprehensive overview of all interfaces, types, classes, and enums that define data structures in the Markdown Kanban codebase.
 
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-02-27
+
+---
+
+## Template & Creation Source Structures (2026-02-27)
+
+### `lexera-backend/src-tauri/src/config.rs`
+- `SyncConfig.templates_path` — `Option<String>`, custom templates directory path.
+
+### `lexera-backend/src-tauri/src/api.rs`
+- `TemplateSummary` — `{ id, name, template_type, description, icon, has_variables }` — Returned by `GET /templates`.
+- `CopyTemplateBody` — `{ board_id: String, variables: HashMap<String, serde_json::Value> }` — Request body for `POST /templates/{id}/copy`.
+
+### `lexera-kanban/src/templates.js` (LexeraTemplates IIFE)
+- Template cache: `templateCache` — Array of TemplateSummary objects from backend.
+- Parsed template: `{ name, type, description, icon, variables[], body }` — body varies by type:
+  - card: `{ cardContent: string }`
+  - column/stack: `{ columns: [{ title, cards: [{ content, checked }] }] }`
+  - row: `{ stacks: [{ title, columns: [{ title, cards }] }] }`
+- Variable definition: `{ name, label, type, format, default, required }`
+
+### Template file format (`~/.config/lexera/templates/{id}/template.md`)
+- YAML frontmatter: name, type (card|column|stack|row), description, icon, variables[]
+- Body format per type: card=text, column=## + tasks, stack=multiple ##, row=# stacks + ## columns + tasks
 
 ---
 

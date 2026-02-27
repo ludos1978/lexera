@@ -233,7 +233,11 @@
       "Bash(gh search:*)",
       "Bash(magick:*)",
       "Bash(source:*)",
-      "Bash(/Users/rspoerri/.cargo/bin/cargo build:*)"
+      "Bash(/Users/rspoerri/.cargo/bin/cargo build:*)",
+      "Bash(cd /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages && cargo clean 2>&1)",
+      "Bash(./run-lexera.sh:*)",
+      "Bash(tee:*)",
+      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/run-lexera.sh:*)"
     ],
     "deny": [],
     "ask": []

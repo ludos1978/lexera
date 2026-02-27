@@ -2,7 +2,19 @@
 
 This document catalogs ALL singleton instances, global state, and data instances (actual runtime instances, not just type definitions) in the Markdown Kanban Obsidian extension.
 
-**Last Updated:** 2026-02-26
+**Last Updated:** 2026-02-27
+
+---
+
+## Template System Instances (2026-02-27)
+
+### Backend (lexera-backend)
+- Templates directory resolved per-request from `SyncConfig.templates_path` or default `~/.config/lexera/templates/`.
+- No persistent state — template endpoints are stateless file-system reads.
+
+### Frontend (lexera-kanban)
+- `LexeraTemplates.templateCache` — Module-private array of TemplateSummary, loaded once on first backend connection.
+- `templatesLoaded` (in app.js closure) — Boolean flag, prevents duplicate template loading.
 
 ---
 
