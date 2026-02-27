@@ -3057,6 +3057,35 @@ select.dialog-input option,
   font-size: 11px;
 }
 
+/* ── Presence indicators ──────────────────────────────────────────── */
+
+.presence-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  margin-right: 6px;
+  vertical-align: middle;
+  opacity: 0.3;
+}
+.presence-dot.online {
+  background: #4caf50;
+  opacity: 1;
+}
+.board-presence-badge {
+  font-size: 10px;
+  background: #4caf50;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0 5px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 16px;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
 .collab-status {
   display: flex;
   align-items: center;

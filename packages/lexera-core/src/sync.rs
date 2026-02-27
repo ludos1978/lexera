@@ -31,6 +31,9 @@ pub enum ServerMessage {
     ServerError {
         message: String,
     },
+    ServerPresence {
+        online_users: Vec<String>,
+    },
 }
 
 /// Info about a remote sync connection.

@@ -30,6 +30,7 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 
 struct BoardRoom {
     clients: HashMap<u64, mpsc::UnboundedSender<String>>,
+    peer_users: HashMap<u64, String>,
     next_peer_id: u64,
 }
 
@@ -37,6 +38,7 @@ impl BoardRoom {
     fn new() -> Self {
         Self {
             clients: HashMap::new(),
+            peer_users: HashMap::new(),
             next_peer_id: 1,
         }
     }
@@ -54,7 +56,11 @@ impl BoardSyncHub {
     }
 
     /// Register a new client for a board room. Returns (peer_id, receiver).
-    fn register(&mut self, board_id: &str) -> (u64, mpsc::UnboundedReceiver<String>) {
+    fn register(
+        &mut self,
+        board_id: &str,
+        user_id: &str,
+    ) -> (u64, mpsc::UnboundedReceiver<String>) {
         let room = self
             .rooms
             .entry(board_id.to_string())
@@ -63,6 +69,7 @@ impl BoardSyncHub {
         room.next_peer_id += 1;
         let (tx, rx) = mpsc::unbounded_channel();
         room.clients.insert(peer_id, tx);
+        room.peer_users.insert(peer_id, user_id.to_string());
         (peer_id, rx)
     }
 
@@ -70,6 +77,7 @@ impl BoardSyncHub {
     fn unregister(&mut self, board_id: &str, peer_id: u64) {
         if let Some(room) = self.rooms.get_mut(board_id) {
             room.clients.remove(&peer_id);
+            room.peer_users.remove(&peer_id);
             if room.clients.is_empty() {
                 self.rooms.remove(board_id);
             }
@@ -85,6 +93,28 @@ impl BoardSyncHub {
                 }
             }
         }
+    }
+
+    /// Broadcast a JSON message to ALL clients in a board room (no exclusion).
+    pub fn broadcast_all(&self, board_id: &str, msg: &str) {
+        if let Some(room) = self.rooms.get(board_id) {
+            for tx in room.clients.values() {
+                let _ = tx.send(msg.to_string());
+            }
+        }
+    }
+
+    /// Return the set of distinct user_ids currently connected to a board.
+    pub fn online_users(&self, board_id: &str) -> Vec<String> {
+        self.rooms
+            .get(board_id)
+            .map(|room| {
+                let mut users: Vec<String> = room.peer_users.values().cloned().collect();
+                users.sort();
+                users.dedup();
+                users
+            })
+            .unwrap_or_default()
     }
 
     /// Check if a board has any connected sync clients.
@@ -172,10 +202,16 @@ async fn handle_sync_session(
         return;
     }
 
-    // 3. Register in hub
+    // 3. Register in hub and broadcast presence
     let (peer_id, mut hub_rx) = {
         let mut hub = state.sync_hub.lock().await;
-        hub.register(&board_id)
+        let result = hub.register(&board_id, auth_user);
+        let presence_msg = serde_json::to_string(&ServerMessage::ServerPresence {
+            online_users: hub.online_users(&board_id),
+        })
+        .unwrap_or_default();
+        hub.broadcast_all(&board_id, &presence_msg);
+        result
     };
 
     log::info!(
@@ -284,9 +320,16 @@ async fn handle_sync_session(
         _ = &mut read_task => { write_task.abort(); }
     }
 
-    // 7. Cleanup
-    let mut hub = state.sync_hub.lock().await;
-    hub.unregister(&board_id, peer_id);
+    // 7. Cleanup and broadcast updated presence
+    {
+        let mut hub = state.sync_hub.lock().await;
+        hub.unregister(&board_id, peer_id);
+        let presence_msg = serde_json::to_string(&ServerMessage::ServerPresence {
+            online_users: hub.online_users(&board_id),
+        })
+        .unwrap_or_default();
+        hub.broadcast_all(&board_id, &presence_msg);
+    }
     log::info!(
         "[sync_ws] Peer {} disconnected from board {}",
         peer_id,

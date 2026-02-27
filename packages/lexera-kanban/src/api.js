@@ -150,20 +150,23 @@ const LexeraApi = (function () {
   var syncWs = null;
   var syncBoardId = null;
   var syncOnUpdate = null;
+  var syncOnPresence = null;
 
   /**
    * Connect to the WebSocket sync endpoint for a board.
    * @param {string} boardId - The board ID to sync.
    * @param {string} userId - The local user ID.
    * @param {function} onUpdate - Called with no args when a ServerUpdate arrives.
+   * @param {function} [onPresence] - Called with array of online user_ids on presence change.
    */
-  function connectSync(boardId, userId, onUpdate) {
+  function connectSync(boardId, userId, onUpdate, onPresence) {
     disconnectSync();
     if (!baseUrl) return;
     var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + boardId + '?user=' + encodeURIComponent(userId);
     syncWs = new WebSocket(wsUrl);
     syncBoardId = boardId;
     syncOnUpdate = onUpdate;
+    syncOnPresence = onPresence || null;
 
     syncWs.onopen = function () {
       // Send ClientHello with empty VV (we don't run a local Loro doc in the frontend)
@@ -179,6 +182,8 @@ const LexeraApi = (function () {
           console.log('[sync] Received ServerHello, peer_id=' + msg.peer_id);
         } else if (msg.type === 'ServerUpdate') {
           if (syncOnUpdate) syncOnUpdate();
+        } else if (msg.type === 'ServerPresence') {
+          if (syncOnPresence) syncOnPresence(msg.online_users || []);
         } else if (msg.type === 'ServerError') {
           console.warn('[sync] Server error: ' + msg.message);
           disconnectSync();
@@ -205,6 +210,7 @@ const LexeraApi = (function () {
       syncWs = null;
       syncBoardId = null;
       syncOnUpdate = null;
+      syncOnPresence = null;
     }
   }
 
@@ -270,6 +276,10 @@ const LexeraApi = (function () {
     return request('/collab/rooms/' + boardId + '/members?user=' + encodeURIComponent(userId));
   }
 
+  async function getPresence(boardId, userId) {
+    return request('/collab/rooms/' + boardId + '/presence?user=' + encodeURIComponent(userId));
+  }
+
   async function leaveRoom(boardId, userId) {
     return request('/collab/rooms/' + boardId + '/leave?user=' + encodeURIComponent(userId), { method: 'POST' });
   }
@@ -304,7 +314,7 @@ const LexeraApi = (function () {
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId,
     getMe, updateMe, getServerInfo,
     createInvite, listInvites, revokeInvite, acceptInvite,
-    registerUser, listMembers, leaveRoom,
+    registerUser, listMembers, getPresence, leaveRoom,
     makePublic, makePrivate, listPublicRooms, joinPublicRoom,
     getRemoteBoards,
   };

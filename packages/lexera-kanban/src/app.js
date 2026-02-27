@@ -1375,6 +1375,177 @@ const LexeraDashboard = (function () {
     return html;
   }
 
+  // ── Share & Members Dialog ────────────────────────────────────────
+
+  async function showShareDialog(boardId) {
+    var userId = await ensureSyncUserId();
+
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    dialog.style.minWidth = '420px';
+
+    var html = '<div class="dialog-title">Share & Members</div>';
+
+    // Section 1: Create Invite
+    html += '<div class="dialog-section">';
+    html += '<div class="dialog-section-title">Create Invite</div>';
+    html += '<div class="dialog-field" style="display:flex;gap:8px;align-items:flex-end">';
+    html += '<div style="flex:1">';
+    html += '<label class="dialog-label">Role</label>';
+    html += '<select class="dialog-input" id="share-role-select">';
+    html += '<option value="editor">Editor</option>';
+    html += '<option value="viewer">Viewer</option>';
+    html += '</select>';
+    html += '</div>';
+    html += '<div style="width:80px">';
+    html += '<label class="dialog-label">Max uses</label>';
+    html += '<input class="dialog-input" type="number" id="share-max-uses" value="1" min="1" style="width:100%">';
+    html += '</div>';
+    html += '<button class="btn-small btn-primary" id="share-create-invite" style="margin-bottom:0">Create</button>';
+    html += '</div>';
+    html += '<div id="share-invite-result"></div>';
+    html += '</div>';
+
+    // Section 2: Active Invites
+    html += '<div class="dialog-section">';
+    html += '<div class="dialog-section-title">Active Invites</div>';
+    html += '<div id="share-invites-list" class="invite-list"></div>';
+    html += '</div>';
+
+    // Section 3: Members
+    html += '<div class="dialog-section" style="border-bottom:none">';
+    html += '<div class="dialog-section-title">Members</div>';
+    html += '<div id="share-members-list" class="member-list"></div>';
+    html += '</div>';
+
+    // Actions
+    html += '<div class="dialog-actions">';
+    html += '<button class="btn-small btn-cancel" id="share-close">Close</button>';
+    html += '</div>';
+
+    dialog.innerHTML = html;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    // Close handlers
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+    document.getElementById('share-close').addEventListener('click', function () {
+      overlay.remove();
+    });
+
+    // Load data
+    await refreshShareDialog(boardId, userId, dialog);
+
+    // Create invite
+    document.getElementById('share-create-invite').addEventListener('click', async function () {
+      var role = document.getElementById('share-role-select').value;
+      var maxUses = parseInt(document.getElementById('share-max-uses').value, 10) || 1;
+      try {
+        var invite = await LexeraApi.createInvite(boardId, userId, role, maxUses);
+        var resultEl = document.getElementById('share-invite-result');
+        resultEl.innerHTML =
+          '<div class="invite-token-field">' +
+          '<input type="text" value="' + escapeAttr(invite.token) + '" readonly id="share-token-input">' +
+          '<button class="btn-small" id="share-copy-token">Copy</button>' +
+          '</div>';
+        document.getElementById('share-copy-token').addEventListener('click', function () {
+          var input = document.getElementById('share-token-input');
+          input.select();
+          navigator.clipboard.writeText(input.value).then(function () {
+            showNotification('Token copied to clipboard');
+          });
+        });
+        await refreshShareDialog(boardId, userId, dialog);
+      } catch (err) {
+        showNotification('Failed to create invite: ' + err.message);
+      }
+    });
+
+    // Revoke invite (delegated)
+    dialog.addEventListener('click', async function (e) {
+      var revokeBtn = e.target.closest('[data-revoke-token]');
+      if (!revokeBtn) return;
+      var token = revokeBtn.getAttribute('data-revoke-token');
+      try {
+        await LexeraApi.revokeInvite(boardId, token, userId);
+        showNotification('Invite revoked');
+        await refreshShareDialog(boardId, userId, dialog);
+      } catch (err) {
+        showNotification('Failed to revoke invite');
+      }
+    });
+  }
+
+  async function refreshShareDialog(boardId, userId, dialog) {
+    var results = await Promise.allSettled([
+      LexeraApi.listMembers(boardId, userId),
+      LexeraApi.getPresence(boardId, userId),
+      LexeraApi.listInvites(boardId, userId),
+    ]);
+
+    var members = results[0].status === 'fulfilled' ? results[0].value : [];
+    var onlineUsers = results[1].status === 'fulfilled' ? results[1].value : [];
+    var invites = results[2].status === 'fulfilled' ? results[2].value : [];
+
+    // Render members
+    var membersEl = dialog.querySelector('#share-members-list');
+    if (members.length === 0) {
+      membersEl.innerHTML = '<div class="dialog-note">No members yet</div>';
+    } else {
+      var mhtml = '';
+      for (var i = 0; i < members.length; i++) {
+        var m = members[i];
+        var isOnline = onlineUsers.indexOf(m.user_id) !== -1;
+        mhtml += '<div class="member-item">';
+        mhtml += '<span class="member-item-name">';
+        mhtml += '<span class="presence-dot' + (isOnline ? ' online' : '') + '"></span>';
+        mhtml += escapeHtml(m.user_name || m.user_id);
+        mhtml += '</span>';
+        mhtml += '<span class="member-item-role">' + escapeHtml(m.role) + '</span>';
+        mhtml += '</div>';
+      }
+      membersEl.innerHTML = mhtml;
+    }
+
+    // Render invites
+    var invitesEl = dialog.querySelector('#share-invites-list');
+    if (invites.length === 0) {
+      invitesEl.innerHTML = '<div class="dialog-note">No active invites</div>';
+    } else {
+      var ihtml = '';
+      for (var j = 0; j < invites.length; j++) {
+        var inv = invites[j];
+        ihtml += '<div class="invite-item">';
+        ihtml += '<div>';
+        ihtml += '<span>' + escapeHtml(inv.role) + '</span>';
+        ihtml += ' <span class="invite-item-info">' + inv.uses + '/' + inv.max_uses + ' uses</span>';
+        ihtml += '<div class="invite-token-field">';
+        ihtml += '<input type="text" value="' + escapeAttr(inv.token) + '" readonly>';
+        ihtml += '<button class="btn-small" data-copy-token="' + escapeAttr(inv.token) + '">Copy</button>';
+        ihtml += '</div>';
+        ihtml += '</div>';
+        ihtml += '<button class="btn-small btn-cancel" data-revoke-token="' + escapeAttr(inv.token) + '">Revoke</button>';
+        ihtml += '</div>';
+      }
+      invitesEl.innerHTML = ihtml;
+
+      // Bind copy buttons
+      var copyBtns = invitesEl.querySelectorAll('[data-copy-token]');
+      for (var k = 0; k < copyBtns.length; k++) {
+        copyBtns[k].addEventListener('click', function () {
+          var tokenVal = this.getAttribute('data-copy-token');
+          navigator.clipboard.writeText(tokenVal).then(function () {
+            showNotification('Token copied to clipboard');
+          });
+        });
+      }
+    }
+  }
+
   async function openSettingsDialogForBoard(boardId) {
     var targetBoardId = boardId || activeBoardId || '';
     if (targetBoardId && targetBoardId !== activeBoardId) {
@@ -2022,6 +2193,7 @@ const LexeraDashboard = (function () {
   // ── WebSocket CRDT Sync ─────────────────────────────────────────────
 
   var syncUserId = null;
+  var boardPresenceCache = {}; // boardId -> [user_id, ...]
 
   /** Fetch the local user ID for sync, caching it for the session. */
   async function ensureSyncUserId() {
@@ -2055,7 +2227,27 @@ const LexeraDashboard = (function () {
           if (activeBoardId === boardId && !isEditing) loadBoard(boardId);
         }, 80);
       }
+    }, function (onlineUsers) {
+      // On ServerPresence: update cache and sidebar badge
+      boardPresenceCache[boardId] = onlineUsers;
+      updateBoardPresenceIndicator(boardId);
     });
+  }
+
+  function updateBoardPresenceIndicator(boardId) {
+    var wrapper = document.querySelector('.board-item-wrapper[data-board-id="' + boardId + '"]');
+    if (!wrapper) return;
+    var badge = wrapper.querySelector('.board-presence-badge');
+    var count = (boardPresenceCache[boardId] || []).length;
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count;
+        badge.title = count + ' user(s) online';
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
   }
 
   function handleSSEEvent(event) {
@@ -2386,11 +2578,16 @@ const LexeraDashboard = (function () {
       var boardName = board.title || board.filePath.split('/').pop().replace('.md', '') || 'Untitled';
 
       var hasContent = rows.length > 0;
+      var presenceCount = (boardPresenceCache[board.id] || []).length;
+      var presenceBadge = presenceCount > 0
+        ? '<span class="board-presence-badge" title="' + presenceCount + ' user(s) online">' + presenceCount + '</span>'
+        : '<span class="board-presence-badge" style="display:none"></span>';
       el.innerHTML =
         '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
         (hasContent ? '<span class="board-item-toggle' + (isExpanded ? ' expanded' : '') + '">\u25B6</span>' : '<span class="board-item-toggle-spacer"></span>') +
         '<span class="board-item-title">' + escapeHtml(boardName) + '</span>' +
         '<span class="board-item-count">' + totalCards + '</span>' +
+        presenceBadge +
         (!hierarchyLocked ? '<span class="board-item-remove" title="Remove board">\u00D7</span>' : '');
 
       // Tree sub-list
@@ -2662,6 +2859,7 @@ const LexeraDashboard = (function () {
             { id: 'split-left', label: 'Open in Split Left' },
             { id: 'split-right', label: 'Open in Split Right' },
             { separator: true },
+            { id: 'share', label: 'Share & Members' },
             { id: 'settings', label: 'Settings' },
             { separator: true },
             { id: 'reveal', label: 'Reveal in Finder' },
@@ -2670,6 +2868,8 @@ const LexeraDashboard = (function () {
               openBoardInPane(boardId, 'a');
             } else if (action === 'split-right') {
               openBoardInPane(boardId, 'b');
+            } else if (action === 'share') {
+              await showShareDialog(boardId);
             } else if (action === 'settings') {
               await openSettingsDialogForBoard(boardId);
             } else if (action === 'reveal' && boardFilePath) {

@@ -25,6 +25,30 @@ struct RemoteConnection {
     ws_task: JoinHandle<()>,
 }
 
+fn friendly_error(context: &str, err: reqwest::Error) -> String {
+    if err.is_connect() {
+        format!(
+            "{}: Could not connect to server (is it running and accessible on the network?)",
+            context
+        )
+    } else if err.is_timeout() {
+        format!("{}: Connection timed out (check network)", context)
+    } else if let Some(status) = err.status() {
+        match status.as_u16() {
+            401 => format!("{}: Not authorized", context),
+            403 => format!("{}: Permission denied", context),
+            404 => format!("{}: Not found on remote server", context),
+            409 => format!("{}: Already exists (conflict)", context),
+            500..=599 => format!("{}: Remote server error ({})", context, status),
+            _ => format!("{}: HTTP {}", context, status),
+        }
+    } else if err.is_decode() {
+        format!("{}: Invalid response from server", context)
+    } else {
+        format!("{}: {}", context, err)
+    }
+}
+
 pub struct SyncClientManager {
     connections: HashMap<String, RemoteConnection>,
 }
@@ -65,7 +89,7 @@ impl SyncClientManager {
             .json(&register_body)
             .send()
             .await
-            .map_err(|e| format!("Register failed: {}", e))?;
+            .map_err(|e| friendly_error("User registration", e))?;
 
         // 2. Accept invite token
         let accept_resp = client
@@ -75,11 +99,21 @@ impl SyncClientManager {
             ))
             .send()
             .await
-            .map_err(|e| format!("Accept invite failed: {}", e))?;
+            .map_err(|e| friendly_error("Accept invite", e))?;
 
         if !accept_resp.status().is_success() {
+            let status = accept_resp.status();
             let text = accept_resp.text().await.unwrap_or_default();
-            return Err(format!("Accept invite failed: {}", text));
+            let detail = serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|v| v["error"].as_str().map(String::from))
+                .unwrap_or(text);
+            let msg = match status.as_u16() {
+                404 => format!("Invite not found or already used: {}", detail),
+                400 => format!("Invite invalid: {}", detail),
+                _ => format!("Accept invite failed (HTTP {}): {}", status, detail),
+            };
+            return Err(msg);
         }
 
         let join: serde_json::Value = accept_resp
@@ -198,7 +232,12 @@ async fn run_sync_client(
 
     let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
-        .map_err(|e| format!("WS connect failed: {}", e))?;
+        .map_err(|e| {
+            format!(
+                "WebSocket connection failed: {} (check that the remote server is running and accessible)",
+                e
+            )
+        })?;
 
     log::info!("[sync_client] Connected to {}", ws_url);
 
@@ -275,6 +314,9 @@ async fn run_sync_client(
                     message
                 );
                 break;
+            }
+            ServerMessage::ServerPresence { .. } => {
+                // Presence updates are handled by the frontend, not the backend sync client
             }
         }
     }

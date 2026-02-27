@@ -264,6 +264,23 @@ async fn revoke_invite(
     Ok(Json(SuccessResponse { success: true }))
 }
 
+/// GET /collab/rooms/{room_id}/presence - Get online users for a room
+async fn get_presence(
+    State(state): State<AppState>,
+    Path(room_id): Path<String>,
+    Query(params): Query<AuthQuery>,
+) -> Result<Json<Vec<String>>> {
+    let user_id = require_authenticated_user(&params)?;
+    {
+        let auth = lock_arc(&state.auth_service, "auth")?;
+        require_room_member(&auth, &room_id, &user_id)?;
+    }
+
+    let hub = state.sync_hub.lock().await;
+    let users = hub.online_users(&room_id);
+    Ok(Json(users))
+}
+
 // ============================================================================
 // Public Room Endpoints
 // ============================================================================
@@ -824,6 +841,7 @@ pub fn collab_router() -> Router<AppState> {
         .route("/collab/rooms/{room_id}/join-public", post(join_public))
         .route("/collab/rooms/{room_id}/leave", post(leave_room))
         .route("/collab/rooms/{room_id}/members", get(list_room_members))
+        .route("/collab/rooms/{room_id}/presence", get(get_presence))
         // Users
         .route("/collab/me", get(get_me).put(update_me))
         .route("/collab/users/register", post(register_user))
