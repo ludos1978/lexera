@@ -835,6 +835,15 @@ export class ExportService {
                 }
 
                 if (!fs.existsSync(resolvedPath)) {
+                    // Check if the file already exists in the export folder
+                    // (rewritten by a previous pattern, e.g., column pattern rewrote
+                    // "subdir/file.md" to "file.md" — generic pattern re-matches it
+                    // but can't resolve relative to sourceDir)
+                    const exportPath = path.join(exportFolder, includePath);
+                    if (fs.existsSync(exportPath)) {
+                        logger.debug(`[ExportService.processIncludedFiles] Skipping already-exported include: ${includePath} (exists in export folder)`);
+                        continue;
+                    }
                     logger.warn(`[ExportService.processIncludedFiles] Include file not found: ${resolvedPath} (from ${includePath})`);
                 } else if (path.extname(resolvedPath) !== '.md') {
                     logger.warn(`[ExportService.processIncludedFiles] Include is not .md: ${resolvedPath}`);
@@ -2134,6 +2143,8 @@ export class ExportService {
         const baseName = path.basename(markdownPath, '.md');
 
         try {
+            logger.warn(`[ExportService.preprocessDiagrams] START for ${baseName}`);
+
             // Resolve webview panel for Mermaid rendering
             const panel = webviewPanel ? ('getPanel' in webviewPanel ? webviewPanel.getPanel() : webviewPanel) : undefined;
 
@@ -2149,6 +2160,8 @@ export class ExportService {
                 !f.endsWith('.preprocessed.md')
             );
 
+            logger.warn(`[ExportService.preprocessDiagrams] STEP 1: Processing ${includeFiles.length} include files`);
+
             for (const includeFile of includeFiles) {
                 const includeFilePath = path.join(dir, includeFile);
                 const includeBaseName = path.basename(includeFile, '.md');
@@ -2163,13 +2176,15 @@ export class ExportService {
                     // If diagrams were processed, overwrite the include file
                     if (includeResult.diagramFiles.length > 0) {
                         await fs.promises.writeFile(includeFilePath, includeResult.processedMarkdown, 'utf8');
-                        logger.debug(`[ExportService] Preprocessed diagrams in include file: ${includeFile}`);
+                        logger.warn(`[ExportService.preprocessDiagrams] Preprocessed ${includeResult.diagramFiles.length} diagrams in: ${includeFile}`);
                     }
                 } catch (includeError) {
-                    logger.error(`[ExportService] Failed to preprocess include file ${includeFile}:`, includeError);
-                    // Continue with other files
+                    logger.error(`[ExportService.preprocessDiagrams] Failed to preprocess include file ${includeFile}:`, includeError);
+                    // Continue with other files — don't let one include file break the export
                 }
             }
+
+            logger.warn(`[ExportService.preprocessDiagrams] STEP 2: Processing main file`);
 
             // STEP 2: Preprocess the main file
             const preprocessResult = await preprocessor.preprocess(
@@ -2178,11 +2193,14 @@ export class ExportService {
                 baseName
             );
 
+            logger.warn(`[ExportService.preprocessDiagrams] Main file processed: ${preprocessResult.diagramFiles.length} diagrams rendered`);
+
             // If diagrams were processed, write to temp file
             if (preprocessResult.diagramFiles.length > 0) {
                 const tempFile = path.join(dir, `${baseName}.preprocessed.md`);
                 await fs.promises.writeFile(tempFile, preprocessResult.processedMarkdown, 'utf8');
 
+                logger.warn(`[ExportService.preprocessDiagrams] DONE — using preprocessed file`);
                 return {
                     processedPath: tempFile,
                     cleanup: async () => {
@@ -2194,8 +2212,10 @@ export class ExportService {
                     }
                 };
             }
+
+            logger.warn(`[ExportService.preprocessDiagrams] DONE — no diagrams needed processing`);
         } catch (error) {
-            logger.error('[ExportService] Diagram preprocessing failed:', error);
+            logger.error('[ExportService.preprocessDiagrams] Diagram preprocessing failed:', error);
             showWarning(
                 'Diagram preprocessing failed. Exporting without diagram conversion.'
             );
@@ -2219,7 +2239,7 @@ export class ExportService {
         webviewPanel?: vscode.WebviewPanel | { getPanel(): vscode.WebviewPanel }
     ): Promise<ExportResult> {
         const marpFormat: MarpOutputFormat = (options.marpFormat as MarpOutputFormat) || 'html';
-        logger.debug(`[ExportService] runMarpConversion - marpFormat: ${marpFormat}, options.marpFormat: ${options.marpFormat}`);
+        logger.warn(`[ExportService.runMarpConversion] START - format: ${marpFormat}`);
 
         // Build output path
         const dir = path.dirname(markdownPath);
@@ -2228,6 +2248,7 @@ export class ExportService {
         // Preprocess diagrams (converts code block / file diagrams to SVG/PNG)
         const { processedPath: processedMarkdownPath, cleanup: preprocessCleanup } =
             await this.preprocessDiagrams(markdownPath, webviewPanel);
+        logger.warn(`[ExportService.runMarpConversion] Diagram preprocessing done, using: ${path.basename(processedMarkdownPath)}`);
 
         let ext = '.html';
         switch (marpFormat) {
@@ -2254,6 +2275,7 @@ export class ExportService {
             // Check if Marp is already watching this file (check PREPROCESSED path, not original)
             const isAlreadyWatching = marpPlugin.isWatching(processedMarkdownPath);
             if (isAlreadyWatching) {
+                logger.warn(`[ExportService.runMarpConversion] Marp already watching, updating content`);
                 // DON'T cleanup - Marp is still watching the preprocessed file
                 return {
                     success: true,
@@ -2265,6 +2287,7 @@ export class ExportService {
             }
 
             try {
+                logger.warn(`[ExportService.runMarpConversion] Starting Marp watch mode...`);
                 await marpPlugin.marpExport({
                     inputFilePath: processedMarkdownPath, // Use preprocessed markdown
                     format: marpFormat,
@@ -2283,6 +2306,7 @@ export class ExportService {
                 // DON'T cleanup in watch mode - Marp needs the preprocessed file to continue watching
                 // The file will be cleaned up when watch mode is stopped
 
+                logger.warn(`[ExportService.runMarpConversion] Marp watch started successfully`);
                 return {
                     success: true,
                     message: 'Marp preview started',
@@ -2291,7 +2315,7 @@ export class ExportService {
                     marpWatchPath: processedMarkdownPath
                 };
             } catch (error) {
-                logger.error(`[kanban.exportService.runMarpConversionNew] Realtime export failed:`, error);
+                logger.error(`[ExportService.runMarpConversion] Watch mode failed:`, error);
 
                 // Cleanup on error since Marp didn't start
                 if (preprocessCleanup) {
@@ -2307,6 +2331,7 @@ export class ExportService {
         else {
             // MODE: SAVE (single conversion)
             try {
+                logger.warn(`[ExportService.runMarpConversion] Starting Marp save conversion to ${ext}...`);
                 await marpPlugin.marpExport({
                     inputFilePath: processedMarkdownPath, // Use preprocessed markdown
                     format: marpFormat,
@@ -2320,13 +2345,14 @@ export class ExportService {
                     handoutDirection: options.marpHandoutDirection,
                     handoutPdf: options.marpHandoutPdf
                 });
+                logger.warn(`[ExportService.runMarpConversion] Marp conversion SUCCEEDED: ${outputPath}`);
                 return {
                     success: true,
                     message: `Exported to ${outputPath}`,
                     exportedPath: outputPath
                 };
             } catch (error) {
-                logger.error(`[kanban.exportService.runMarpConversion] Conversion failed:`, error);
+                logger.error(`[ExportService.runMarpConversion] Conversion FAILED:`, error);
                 return {
                     success: false,
                     message: `Marp conversion failed: ${getErrorMessage(error)}`
@@ -2439,6 +2465,8 @@ export class ExportService {
         cancellationToken?: vscode.CancellationToken
     ): Promise<ExportResult> {
         try {
+            logger.warn(`[ExportService.export] START - mode: ${options.mode}, format: ${options.format}, marp: ${options.runMarp}, pandoc: ${options.runPandoc}`);
+
             // Clear tracking maps for new export
             this.exportedFiles.clear();
             this.exportedIncludePaths.clear();
@@ -2452,11 +2480,12 @@ export class ExportService {
 
             // Check for cancellation
             if (cancellationToken?.isCancellationRequested) {
+                logger.warn(`[ExportService.export] Cancelled before extraction`);
                 return { success: false, message: 'Export cancelled.' };
             }
 
             // PHASE 1: EXTRACTION
-            // Extract content from file
+            logger.warn(`[ExportService.export] PHASE 1: Extracting content...`);
             const extracted = await this.extractContent(
                 sourceDocument,
                 options.columnIndexes
@@ -2464,10 +2493,12 @@ export class ExportService {
 
             // Check for cancellation
             if (cancellationToken?.isCancellationRequested) {
+                logger.warn(`[ExportService.export] Cancelled after extraction`);
                 return { success: false, message: 'Export cancelled.' };
             }
 
             // PHASE 2: TRANSFORMATION
+            logger.warn(`[ExportService.export] PHASE 2: Transforming content...`);
             const transformed = await this.transformContent(
                 extracted,
                 sourceDocument,
@@ -2477,10 +2508,12 @@ export class ExportService {
 
             // Check for cancellation
             if (cancellationToken?.isCancellationRequested) {
+                logger.warn(`[ExportService.export] Cancelled after transformation`);
                 return { success: false, message: 'Export cancelled.' };
             }
 
             // PHASE 3: OUTPUT
+            logger.warn(`[ExportService.export] PHASE 3: Writing output...`);
             const result = await this.outputContent(
                 transformed,
                 sourceDocument,
@@ -2488,10 +2521,11 @@ export class ExportService {
                 webviewPanel
             );
 
+            logger.warn(`[ExportService.export] DONE - success: ${result.success}, message: ${result.message}`);
             return result;
 
         } catch (error) {
-            logger.error('[kanban.exportService.export] Export failed:', error);
+            logger.error('[ExportService.export] Export FAILED with exception:', error);
             return {
                 success: false,
                 message: `Export failed: ${getErrorMessage(error)}`

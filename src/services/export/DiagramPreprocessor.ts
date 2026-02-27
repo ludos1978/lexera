@@ -209,59 +209,70 @@ export class DiagramPreprocessor {
         const mermaidDiagrams = diagrams.filter(d => d.type === 'mermaid');
         const drawioDiagrams = diagrams.filter(d => d.type === 'drawio');
         const excalidrawDiagrams = diagrams.filter(d => d.type === 'excalidraw');
+        const xlsxDiagrams = diagrams.filter(d => d.type === 'xlsx');
+
+        // Each batch renderer has internal per-diagram try-catch,
+        // but we add defense-in-depth here so one batch type failing
+        // never prevents other types from rendering.
 
         // Render PlantUML in parallel (backend can handle concurrent requests)
         if (plantUMLDiagrams.length > 0) {
-            const plantUMLResults = await this.renderPlantUMLBatch(
-                plantUMLDiagrams,
-                outputFolder,
-                baseFileName
-            );
-            rendered.push(...plantUMLResults);
+            try {
+                const plantUMLResults = await this.renderPlantUMLBatch(
+                    plantUMLDiagrams, outputFolder, baseFileName
+                );
+                rendered.push(...plantUMLResults);
+            } catch (error) {
+                logger.error('[DiagramPreprocessor] PlantUML batch failed:', error);
+            }
         }
 
         // Render Mermaid via service (sequential, handled by service)
         if (mermaidDiagrams.length > 0) {
-            const mermaidResults = await this.renderMermaidBatch(
-                mermaidDiagrams,
-                outputFolder,
-                baseFileName
-            );
-            rendered.push(...mermaidResults);
+            try {
+                const mermaidResults = await this.renderMermaidBatch(
+                    mermaidDiagrams, outputFolder, baseFileName
+                );
+                rendered.push(...mermaidResults);
+            } catch (error) {
+                logger.error('[DiagramPreprocessor] Mermaid batch failed:', error);
+            }
         }
 
         // Render draw.io diagrams in parallel (CLI-based like PlantUML)
         if (drawioDiagrams.length > 0) {
-            const drawioResults = await this.renderDrawIOBatch(
-                drawioDiagrams,
-                outputFolder,
-                baseFileName,
-                sourceDir
-            );
-            rendered.push(...drawioResults);
+            try {
+                const drawioResults = await this.renderDrawIOBatch(
+                    drawioDiagrams, outputFolder, baseFileName, sourceDir
+                );
+                rendered.push(...drawioResults);
+            } catch (error) {
+                logger.error('[DiagramPreprocessor] Draw.io batch failed:', error);
+            }
         }
 
         // Render excalidraw diagrams in parallel (library-based)
         if (excalidrawDiagrams.length > 0) {
-            const excalidrawResults = await this.renderExcalidrawBatch(
-                excalidrawDiagrams,
-                outputFolder,
-                baseFileName,
-                sourceDir
-            );
-            rendered.push(...excalidrawResults);
+            try {
+                const excalidrawResults = await this.renderExcalidrawBatch(
+                    excalidrawDiagrams, outputFolder, baseFileName, sourceDir
+                );
+                rendered.push(...excalidrawResults);
+            } catch (error) {
+                logger.error('[DiagramPreprocessor] Excalidraw batch failed:', error);
+            }
         }
 
         // Render xlsx spreadsheets in parallel (LibreOffice CLI-based)
-        const xlsxDiagrams = diagrams.filter(d => d.type === 'xlsx');
         if (xlsxDiagrams.length > 0) {
-            const xlsxResults = await this.renderXlsxBatch(
-                xlsxDiagrams,
-                outputFolder,
-                baseFileName,
-                sourceDir
-            );
-            rendered.push(...xlsxResults);
+            try {
+                const xlsxResults = await this.renderXlsxBatch(
+                    xlsxDiagrams, outputFolder, baseFileName, sourceDir
+                );
+                rendered.push(...xlsxResults);
+            } catch (error) {
+                logger.error('[DiagramPreprocessor] XLSX batch failed:', error);
+            }
         }
 
         return rendered;
