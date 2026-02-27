@@ -1,0 +1,23 @@
+{
+  "productName": "Lexera Capture",
+  "version": "0.1.0",
+  "identifier": "com.lexera.capture",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "bundle": {
+    "icon": ["icons/icon.png"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Lexera Capture",
+        "fullscreen": false,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost ws://* wss://*"
+    }
+  }
+}

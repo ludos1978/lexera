@@ -6,6 +6,9 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+/// Re-export shared config types from lexera-core.
+pub use lexera_core::config::{BoardEntry, IncomingConfig};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
     #[serde(default = "default_port")]
@@ -16,20 +19,6 @@ pub struct SyncConfig {
     pub boards: Vec<BoardEntry>,
     #[serde(default)]
     pub incoming: Option<IncomingConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IncomingConfig {
-    pub board: String,
-    #[serde(default)]
-    pub column: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BoardEntry {
-    pub file: String,
-    #[serde(default)]
-    pub name: Option<String>,
 }
 
 fn default_port() -> u16 {

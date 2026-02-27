@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>Lexera Capture</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .tab-bar {
+            display: flex;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #16213e;
+            border-top: 1px solid #333;
+            padding-bottom: env(safe-area-inset-bottom);
+            z-index: 100;
+        }
+        .tab-bar button {
+            flex: 1;
+            padding: 12px 0;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .tab-bar button.active { color: #4cc9f0; }
+        .page { display: none; padding: 16px; padding-bottom: 80px; }
+        .page.active { display: block; }
+        h1 { font-size: 24px; margin-bottom: 16px; }
+        .placeholder { color: #666; text-align: center; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div id="page-capture" class="page active">
+        <h1>Capture</h1>
+        <p class="placeholder">Quick capture UI — coming soon</p>
+    </div>
+    <div id="page-search" class="page">
+        <h1>Search</h1>
+        <p class="placeholder">Search UI — coming soon</p>
+    </div>
+    <div id="page-boards" class="page">
+        <h1>Boards</h1>
+        <p class="placeholder">Boards list — coming soon</p>
+    </div>
+    <div id="page-settings" class="page">
+        <h1>Settings</h1>
+        <p class="placeholder">Settings — coming soon</p>
+    </div>
+
+    <nav class="tab-bar">
+        <button class="active" data-page="capture">Capture</button>
+        <button data-page="search">Search</button>
+        <button data-page="boards">Boards</button>
+        <button data-page="settings">Settings</button>
+    </nav>
+
+    <script>
+        document.querySelectorAll('.tab-bar button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('page-' + btn.dataset.page).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

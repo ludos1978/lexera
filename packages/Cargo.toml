@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["lexera-core", "lexera-backend/src-tauri", "lexera-kanban/src-tauri"]
+members = ["lexera-core", "lexera-backend/src-tauri", "lexera-kanban/src-tauri", "lexera-capture-ios/src-tauri"]

@@ -6,7 +6,8 @@
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use lexera_core::storage::local::LocalStorage;
-use lexera_core::sync::{ClientMessage, RemoteConnectionInfo, ServerMessage};
+pub use lexera_core::sync::RemoteConnectionInfo;
+use lexera_core::sync::{ClientMessage, ServerMessage};
 use lexera_core::watcher::types::BoardChangeEvent;
 use std::collections::HashMap;
 use std::sync::Arc;

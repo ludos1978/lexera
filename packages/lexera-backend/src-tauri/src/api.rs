@@ -5,6 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
+use lexera_core::media::{content_type_for_ext, dedup_filename, is_previewable, media_category};
 use lexera_core::search::SearchOptions;
 use lexera_core::storage::BoardStorage;
 use lexera_core::types::is_archived_or_deleted;
@@ -701,61 +702,6 @@ fn resolve_board_file(
     })
 }
 
-fn content_type_for_ext(ext: Option<&str>) -> &'static str {
-    match ext {
-        Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("svg") => "image/svg+xml",
-        Some("mp4") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("mov") => "video/quicktime",
-        Some("mp3") => "audio/mpeg",
-        Some("wav") => "audio/wav",
-        Some("ogg") => "audio/ogg",
-        Some("pdf") => "application/pdf",
-        Some("json") => "application/json",
-        Some("csv") => "text/csv",
-        Some("txt") | Some("md") | Some("log") => "text/plain",
-        _ => "application/octet-stream",
-    }
-}
-
-fn media_category(ext: Option<&str>) -> &'static str {
-    match ext {
-        Some("png") | Some("jpg") | Some("jpeg") | Some("gif") | Some("webp") | Some("svg")
-        | Some("bmp") | Some("ico") | Some("tiff") | Some("tif") => "image",
-        Some("mp4") | Some("webm") | Some("mov") | Some("avi") | Some("mkv") => "video",
-        Some("mp3") | Some("wav") | Some("ogg") | Some("flac") | Some("aac") | Some("m4a") => {
-            "audio"
-        }
-        Some("pdf") | Some("doc") | Some("docx") | Some("xls") | Some("xlsx") | Some("ppt")
-        | Some("pptx") | Some("txt") | Some("md") | Some("csv") | Some("json") => "document",
-        _ => "unknown",
-    }
-}
-
-fn is_previewable(ext: Option<&str>) -> bool {
-    matches!(
-        ext,
-        Some("png")
-            | Some("jpg")
-            | Some("jpeg")
-            | Some("gif")
-            | Some("webp")
-            | Some("svg")
-            | Some("bmp")
-            | Some("mp4")
-            | Some("webm")
-            | Some("mov")
-            | Some("mp3")
-            | Some("wav")
-            | Some("ogg")
-            | Some("pdf")
-    )
-}
-
 /// GET /boards/{board_id}/file?path=... — serve any file relative to the board directory.
 async fn serve_file(
     State(state): State<AppState>,
@@ -975,42 +921,4 @@ async fn convert_path(
         "path": new_path,
         "changed": true,
     })))
-}
-
-/// Generate a unique filename by appending a counter if the file already exists.
-fn dedup_filename(dir: &PathBuf, filename: &str) -> PathBuf {
-    let path = dir.join(filename);
-    if !path.exists() {
-        return path;
-    }
-
-    let stem = std::path::Path::new(filename)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(filename);
-    let ext = std::path::Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str());
-
-    for i in 1..1000 {
-        let new_name = match ext {
-            Some(e) => format!("{}-{}.{}", stem, i, e),
-            None => format!("{}-{}", stem, i),
-        };
-        let new_path = dir.join(&new_name);
-        if !new_path.exists() {
-            return new_path;
-        }
-    }
-
-    // Fallback: timestamp-based
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let new_name = match ext {
-        Some(e) => format!("{}-{}.{}", stem, ts, e),
-        None => format!("{}-{}", stem, ts),
-    };
-    dir.join(&new_name)
 }

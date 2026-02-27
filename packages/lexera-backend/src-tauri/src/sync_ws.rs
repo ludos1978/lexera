@@ -16,6 +16,7 @@ use axum::{
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use lexera_core::sync::{ClientMessage, ServerMessage};
+use serde::Deserialize;
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 
