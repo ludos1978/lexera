@@ -5,6 +5,7 @@ mod clipboard_watcher;
 mod config;
 pub mod connection_window;
 pub mod discovery;
+pub mod export_api;
 mod server;
 pub mod state;
 pub mod sync_client;

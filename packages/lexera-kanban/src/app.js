@@ -161,6 +161,7 @@ const LexeraDashboard = (function () {
     horizontal: parseFloat(localStorage.getItem('lexera-split-ratio-horizontal') || '0.5')
   };
   var sidebarSplitRatio = parseFloat(localStorage.getItem('lexera-sidebar-split-ratio') || '0.58');
+  var sidebarWidth = parseInt(localStorage.getItem('lexera-sidebar-width'), 10) || 0;
   var headerSearchExpanded = localStorage.getItem('lexera-header-search-expanded') === 'true';
   var splitRootEl = null;
   var splitToggleBtn = null;
@@ -351,6 +352,7 @@ const LexeraDashboard = (function () {
   const $layout = document.querySelector('.layout');
   const $sidebar = document.querySelector('.sidebar');
   const $sidebarDashboardDivider = document.getElementById('sidebar-dashboard-divider');
+  const $sidebarWidthDivider = document.getElementById('sidebar-width-divider');
   const $dashboardRoot = document.getElementById('sidebar-dashboard');
   const $dashboardSearchInput = document.getElementById('dashboard-search-input');
   const $dashboardSearchBtn = document.getElementById('btn-dashboard-search');
@@ -826,6 +828,50 @@ const LexeraDashboard = (function () {
       onDoubleClick: function () {
         sidebarSplitRatio = 0.5;
         localStorage.setItem('lexera-sidebar-split-ratio', '0.5');
+        applySidebarSectionLayout();
+      }
+    });
+  }
+
+  function applySidebarWidth() {
+    if (!$sidebar) return;
+    if (sidebarWidth > 0) {
+      document.documentElement.style.setProperty('--sidebar-width', sidebarWidth + 'px');
+    }
+  }
+
+  function setupSidebarWidthResize() {
+    if (!$sidebar || !$sidebarWidthDivider || !$layout) return;
+    var SIDEBAR_MIN = 180;
+    var SIDEBAR_MAX = 600;
+    var SIDEBAR_DEFAULT = 300;
+    var SNAP_THRESHOLD = 15;
+
+    applySidebarWidth();
+
+    bindPointerDividerDrag($sidebarWidthDivider, {
+      onStart: function () {
+        var sidebarRect = $sidebar.getBoundingClientRect();
+        $layout.classList.add('resizing-sidebar-width');
+        return { left: sidebarRect.left };
+      },
+      onMove: function (ev, ctx) {
+        var newWidth = ev.clientX - ctx.left;
+        if (Math.abs(newWidth - SIDEBAR_DEFAULT) < SNAP_THRESHOLD) newWidth = SIDEBAR_DEFAULT;
+        newWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, newWidth));
+        sidebarWidth = newWidth;
+        document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+        applySidebarSectionLayout();
+      },
+      onEnd: function () {
+        $layout.classList.remove('resizing-sidebar-width');
+        localStorage.setItem('lexera-sidebar-width', String(sidebarWidth));
+        applySidebarSectionLayout();
+      },
+      onDoubleClick: function () {
+        sidebarWidth = SIDEBAR_DEFAULT;
+        document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_DEFAULT + 'px');
+        localStorage.setItem('lexera-sidebar-width', String(SIDEBAR_DEFAULT));
         applySidebarSectionLayout();
       }
     });
@@ -1988,6 +2034,7 @@ const LexeraDashboard = (function () {
     setupSearchControls();
     setupDashboardControls();
     setupSidebarSectionResize();
+    setupSidebarWidthResize();
 
     if ($searchInput) {
       $searchInput.addEventListener('input', onSearchInput);
@@ -2327,6 +2374,7 @@ const LexeraDashboard = (function () {
   }
 
   function setConnected(state) {
+    if (state && !connected) loadTemplatesOnce();
     connected = state;
     $connectionDot.classList.toggle('connected', state);
   }
@@ -3272,8 +3320,9 @@ const LexeraDashboard = (function () {
     if (parkedCount > 0) {
       html += '<button class="board-action-btn has-items" id="btn-parked" title="Show parked items">Parked (' + parkedCount + ')</button>';
     }
-    html += '<button class="board-action-btn" id="btn-add-row" title="Add row">Add Row</button>';
+    html += '<span id="btn-add-row-wrap" class="creation-source creation-source-header"></span>';
     html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold All</button>';
+    html += '<button class="board-action-btn" id="btn-export" title="Export board">Export</button>';
     html += '<button class="board-action-btn" id="btn-collab" title="Open collaboration settings">Collab</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Board options">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
@@ -3328,6 +3377,15 @@ const LexeraDashboard = (function () {
         toggleFoldAll();
       });
     }
+    var exportBtn = document.getElementById('btn-export');
+    if (exportBtn) {
+      exportBtn.addEventListener('click', async function () {
+        if (!window.ExportUI) return;
+        if (!window._exportUI) window._exportUI = new ExportUI();
+        await window._exportUI.init(activeBoardId, fullBoardData);
+        window._exportUI.show();
+      });
+    }
     var collabBtn = document.getElementById('btn-collab');
     if (collabBtn) {
       collabBtn.addEventListener('click', function () {
@@ -3340,12 +3398,16 @@ const LexeraDashboard = (function () {
         showParkedItems();
       });
     }
-    var addRowBtn = document.getElementById('btn-add-row');
-    if (addRowBtn) {
-      addRowBtn.addEventListener('click', function () {
-        var nextIndex = (fullBoardData && fullBoardData.rows) ? fullBoardData.rows.length : 0;
-        addRow(nextIndex);
+    var addRowWrap = document.getElementById('btn-add-row-wrap');
+    if (addRowWrap) {
+      var nextIndex = (fullBoardData && fullBoardData.rows) ? fullBoardData.rows.length : 0;
+      var rowSource = renderCreationSource('row', { atIndex: nextIndex }, {
+        btnClass: 'board-action-btn',
+        btnText: 'Add Row',
+        wrapperClass: 'creation-source-header'
       });
+      // Move children into the placeholder span
+      while (rowSource.firstChild) addRowWrap.appendChild(rowSource.firstChild);
     }
     var boardMenuBtn = document.getElementById('btn-board-menu');
     if (boardMenuBtn) {
@@ -4283,16 +4345,12 @@ const LexeraDashboard = (function () {
           requestAnimationFrame(function () { textarea.focus(); });
         })(col.index);
       } else {
-        var btn = document.createElement('button');
-        btn.className = 'add-card-btn';
-        btn.textContent = '+ Add card';
-        (function (colIndex) {
-          btn.addEventListener('click', function () {
-            addCardColumn = colIndex;
-            renderColumns();
-          });
-        })(col.index);
-        footer.appendChild(btn);
+        var cardSource = renderCreationSource('card', { colIndex: col.index }, {
+          btnClass: 'add-card-btn',
+          btnText: '+ Add card',
+          wrapperClass: 'creation-source-card'
+        });
+        footer.appendChild(cardSource);
       }
 
       colEl.appendChild(footer);
@@ -4338,13 +4396,7 @@ const LexeraDashboard = (function () {
     if (!rows || rows.length === 0) {
       var emptyRows = document.createElement('div');
       emptyRows.className = 'board-level-empty board-level-empty-rows';
-      emptyRows.innerHTML = '<button class="add-entity-btn">+ Add row</button>';
-      var addRowBtn = emptyRows.querySelector('.add-entity-btn');
-      if (addRowBtn) {
-        addRowBtn.addEventListener('click', function () {
-          addRow();
-        });
-      }
+      emptyRows.appendChild(renderCreationSource('row', {}, { btnText: '+ Add row' }));
       $columnsContainer.appendChild(emptyRows);
       return;
     }
@@ -4430,14 +4482,8 @@ const LexeraDashboard = (function () {
       if (rowStacks.length === 0) {
         var emptyStacks = document.createElement('div');
         emptyStacks.className = 'board-level-empty board-level-empty-stacks';
-        emptyStacks.innerHTML = '<button class="add-entity-btn">+ Add stack</button>';
         (function (rowIdx) {
-          var btn = emptyStacks.querySelector('.add-entity-btn');
-          if (btn) {
-            btn.addEventListener('click', function () {
-              addStackToRow(rowIdx);
-            });
-          }
+          emptyStacks.appendChild(renderCreationSource('stack', { rowIdx: rowIdx }, { btnText: '+ Add stack' }));
         })(r);
         rowContent.appendChild(emptyStacks);
       }
@@ -4523,14 +4569,8 @@ const LexeraDashboard = (function () {
         if (stackColumns.length === 0) {
           var emptyColumns = document.createElement('div');
           emptyColumns.className = 'board-level-empty board-level-empty-columns';
-          emptyColumns.innerHTML = '<button class="add-entity-btn">+ Add column</button>';
           (function (rowIdx, stackIdx) {
-            var btn = emptyColumns.querySelector('.add-entity-btn');
-            if (btn) {
-              btn.addEventListener('click', function () {
-                addColumnToStack(rowIdx, stackIdx);
-              });
-            }
+            emptyColumns.appendChild(renderCreationSource('column', { rowIdx: rowIdx, stackIdx: stackIdx }, { btnText: '+ Add column' }));
           })(r, s);
           stackContent.appendChild(emptyColumns);
         }
@@ -4905,6 +4945,243 @@ const LexeraDashboard = (function () {
         save();
       }
     });
+  }
+
+  // ── Creation Source (template-aware add buttons) ───────────────────────
+
+  var templatesLoaded = false;
+
+  function loadTemplatesOnce() {
+    if (templatesLoaded) return;
+    templatesLoaded = true;
+    LexeraTemplates.loadTemplates().catch(function () { /* silent */ });
+  }
+
+  /**
+   * Build a creation-source dropdown wrapper around an add button.
+   * @param {string} entityType - "card"|"column"|"stack"|"row"
+   * @param {object} context - { colIndex, rowIdx, stackIdx } as needed
+   * @param {object} options - { btnClass, btnText, wrapperClass }
+   * @returns {HTMLElement} .creation-source element
+   */
+  function renderCreationSource(entityType, context, options) {
+    options = options || {};
+    var wrapper = document.createElement('div');
+    wrapper.className = 'creation-source' + (options.wrapperClass ? ' ' + options.wrapperClass : '');
+
+    var btn = document.createElement('button');
+    btn.className = options.btnClass || 'add-entity-btn';
+    btn.textContent = options.btnText || ('+ Add ' + entityType);
+    wrapper.appendChild(btn);
+
+    var dropdown = document.createElement('div');
+    dropdown.className = 'creation-dropdown';
+
+    // "Empty" item — always present
+    var emptyItem = document.createElement('div');
+    emptyItem.className = 'creation-item';
+    emptyItem.textContent = 'Empty ' + entityType.charAt(0).toUpperCase() + entityType.slice(1);
+    emptyItem.addEventListener('click', function (e) {
+      e.stopPropagation();
+      handleCreationAction(entityType, 'empty', context);
+    });
+    dropdown.appendChild(emptyItem);
+
+    // "From Clipboard" item
+    var clipItem = document.createElement('div');
+    clipItem.className = 'creation-item';
+    clipItem.textContent = 'From Clipboard';
+    clipItem.addEventListener('click', function (e) {
+      e.stopPropagation();
+      handleCreationAction(entityType, 'clipboard', context);
+    });
+    dropdown.appendChild(clipItem);
+
+    // Template items
+    var templates = LexeraTemplates.getTemplatesForType(entityType);
+    if (templates.length > 0) {
+      var sep = document.createElement('div');
+      sep.className = 'creation-sep';
+      dropdown.appendChild(sep);
+
+      for (var i = 0; i < templates.length; i++) {
+        (function (tpl) {
+          var tplItem = document.createElement('div');
+          tplItem.className = 'creation-item';
+          tplItem.textContent = tpl.name;
+          tplItem.addEventListener('click', function (e) {
+            e.stopPropagation();
+            handleCreationAction(entityType, 'template:' + tpl.id, context);
+          });
+          dropdown.appendChild(tplItem);
+        })(templates[i]);
+      }
+    }
+
+    wrapper.appendChild(dropdown);
+
+    // Direct click on button = empty creation (original behavior)
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      handleCreationAction(entityType, 'empty', context);
+    });
+
+    return wrapper;
+  }
+
+  /**
+   * Dispatch creation action for a given entity type.
+   */
+  async function handleCreationAction(entityType, action, context) {
+    if (action === 'empty') {
+      if (entityType === 'card') {
+        addCardColumn = context.colIndex;
+        renderColumns();
+      } else if (entityType === 'row') {
+        addRow(context.atIndex);
+      } else if (entityType === 'stack') {
+        addStackToRow(context.rowIdx);
+      } else if (entityType === 'column') {
+        addColumnToStack(context.rowIdx, context.stackIdx);
+      }
+      return;
+    }
+
+    if (action === 'clipboard') {
+      try {
+        var text = await navigator.clipboard.readText();
+        if (!text || !text.trim()) {
+          lexeraLog('warn', 'Clipboard is empty');
+          return;
+        }
+        if (entityType === 'card' && context.colIndex !== undefined && activeBoardId) {
+          await LexeraApi.addCard(activeBoardId, context.colIndex, text.trim());
+          await loadBoard(activeBoardId);
+        } else if (entityType === 'row') {
+          await addRowFromContent(text.trim());
+        } else if (entityType === 'stack') {
+          await addStackFromContent(context.rowIdx, text.trim());
+        } else if (entityType === 'column') {
+          await addColumnFromContent(context.rowIdx, context.stackIdx, text.trim());
+        }
+      } catch (err) {
+        lexeraLog('warn', 'Clipboard read failed: ' + err.message);
+      }
+      return;
+    }
+
+    // template:id
+    if (action.indexOf('template:') === 0) {
+      var templateId = action.substring(9);
+      try {
+        var tplData = await LexeraTemplates.getFullTemplate(templateId);
+        var parsed = tplData.parsed;
+        var values = {};
+
+        if (parsed.variables && parsed.variables.length > 0) {
+          values = await LexeraTemplates.showVariableDialog(parsed.name, parsed.variables);
+          if (values === null) return; // cancelled
+        }
+        values = LexeraTemplates.applyDefaults(parsed.variables, values);
+
+        // Copy extra template files if any
+        if (tplData.files.length > 0 && activeBoardId) {
+          LexeraApi.request('/templates/' + encodeURIComponent(templateId) + '/copy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ board_id: activeBoardId, variables: values })
+          }).catch(function (err) {
+            lexeraLog('warn', 'Template file copy failed: ' + err.message);
+          });
+        }
+
+        // Build entity and insert
+        if (entityType === 'card') {
+          var card = LexeraTemplates.buildCardFromTemplate(parsed, values);
+          if (activeBoardId && context.colIndex !== undefined) {
+            await LexeraApi.addCard(activeBoardId, context.colIndex, card.content);
+            await loadBoard(activeBoardId);
+          }
+        } else if (entityType === 'column') {
+          var cols = LexeraTemplates.buildColumnFromTemplate(parsed, values);
+          insertTemplateColumns(context.rowIdx, context.stackIdx, cols);
+        } else if (entityType === 'stack') {
+          var stack = LexeraTemplates.buildStackFromTemplate(parsed, values);
+          insertTemplateStack(context.rowIdx, stack);
+        } else if (entityType === 'row') {
+          var row = LexeraTemplates.buildRowFromTemplate(parsed, values);
+          insertTemplateRow(context.atIndex, row);
+        }
+      } catch (err) {
+        lexeraLog('error', 'Template apply failed: ' + err.message);
+      }
+    }
+  }
+
+  // ── Template insertion helpers ────────────────────────────────────────
+
+  async function addRowFromContent(text) {
+    if (!fullBoardData) return;
+    if (!Array.isArray(fullBoardData.rows)) fullBoardData.rows = [];
+    pushUndo();
+    var ts = Date.now();
+    var card = { id: 'card-' + ts, content: text, checked: false };
+    var newRow = {
+      id: 'row-' + ts,
+      title: 'New Row',
+      stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [card] }] }]
+    };
+    fullBoardData.rows.push(newRow);
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
+  async function addStackFromContent(rowIdx, text) {
+    var row = findFullDataRow(rowIdx);
+    if (!row) return;
+    pushUndo();
+    var ts = Date.now();
+    var card = { id: 'card-' + ts, content: text, checked: false };
+    row.stacks.push({ id: 'stack-' + ts, title: 'New Stack', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [card] }] });
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
+  async function addColumnFromContent(rowIdx, stackIdx, text) {
+    var stack = findFullDataStack(rowIdx, stackIdx);
+    if (!stack) return;
+    pushUndo();
+    var ts = Date.now();
+    var card = { id: 'card-' + ts, content: text, checked: false };
+    stack.columns.push({ id: 'col-' + ts, title: 'New Column', cards: [card] });
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
+  async function insertTemplateColumns(rowIdx, stackIdx, cols) {
+    var stack = findFullDataStack(rowIdx, stackIdx);
+    if (!stack) return;
+    pushUndo();
+    for (var i = 0; i < cols.length; i++) {
+      stack.columns.push(cols[i]);
+    }
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
+  async function insertTemplateStack(rowIdx, stack) {
+    var row = findFullDataRow(rowIdx);
+    if (!row) return;
+    pushUndo();
+    row.stacks.push(stack);
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
+  async function insertTemplateRow(atIndex, row) {
+    if (!fullBoardData) return;
+    if (!Array.isArray(fullBoardData.rows)) fullBoardData.rows = [];
+    pushUndo();
+    if (typeof atIndex !== 'number' || isNaN(atIndex)) atIndex = fullBoardData.rows.length;
+    if (atIndex < 0) atIndex = 0;
+    if (atIndex > fullBoardData.rows.length) atIndex = fullBoardData.rows.length;
+    fullBoardData.rows.splice(atIndex, 0, row);
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   async function addRow(atIndex) {

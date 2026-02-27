@@ -19,6 +19,8 @@ pub struct SyncConfig {
     pub boards: Vec<BoardEntry>,
     #[serde(default)]
     pub incoming: Option<IncomingConfig>,
+    #[serde(default)]
+    pub templates_path: Option<String>,
 }
 
 fn default_port() -> u16 {
@@ -36,7 +38,21 @@ impl Default for SyncConfig {
             bind_address: default_bind_address(),
             boards: Vec::new(),
             incoming: None,
+            templates_path: None,
         }
+    }
+}
+
+/// Resolve the templates directory path.
+/// Uses config value if set, otherwise defaults to ~/.config/lexera/templates/
+pub fn resolve_templates_path(config_value: &Option<String>) -> PathBuf {
+    if let Some(ref p) = config_value {
+        PathBuf::from(p)
+    } else {
+        dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("lexera")
+            .join("templates")
     }
 }
 

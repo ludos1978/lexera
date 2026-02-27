@@ -74,6 +74,7 @@
         </div>
       </div>
     </div>
+    <div id="sidebar-width-divider" class="sidebar-width-divider" role="separator" aria-label="Resize sidebar width"></div>
 
     <!-- Main -->
     <div id="main-content" class="main">
@@ -104,7 +105,198 @@
     <div id="log-entries" class="log-entries"></div>
   </div>
 
+  <!-- Export Modal -->
+  <div id="export-modal" class="dialog-overlay" style="display: none;">
+    <div class="export-dialog">
+      <div class="export-dialog-header">
+        <span class="export-dialog-title">Export</span>
+        <button id="export-btn-close" class="btn-icon" title="Close">&times;</button>
+      </div>
+      <div class="export-dialog-body">
+
+        <!-- Selection -->
+        <div class="export-section">
+          <div class="export-section-title">Column Selection</div>
+          <div id="export-tree-container" class="export-tree-container"></div>
+          <div class="export-tree-actions">
+            <button class="export-btn-select-all export-action-btn" type="button">Select All</button>
+            <button class="export-btn-clear export-action-btn" type="button">Clear</button>
+          </div>
+        </div>
+
+        <!-- Format -->
+        <div class="export-section">
+          <div class="export-section-title">Format</div>
+          <div class="export-field">
+            <label class="export-label" for="export-format">Export format</label>
+            <select id="export-format" class="export-input">
+              <option value="keep">Keep (original markdown)</option>
+              <option value="kanban">Kanban (filtered markdown)</option>
+              <option value="presentation" selected>Presentation (Marp slides)</option>
+              <option value="document">Document (Pandoc)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Tag Filtering -->
+        <div class="export-section">
+          <div class="export-section-title">Tag Filtering</div>
+          <div class="export-field">
+            <label class="export-label" for="export-tag-visibility">Tag visibility</label>
+            <select id="export-tag-visibility" class="export-input">
+              <option value="all">All tags</option>
+              <option value="allexcludinglayout">All except layout tags</option>
+              <option value="customonly">Custom tags only</option>
+              <option value="mentionsonly">@mentions only</option>
+              <option value="none">Remove all tags</option>
+            </select>
+          </div>
+          <div class="export-field">
+            <label class="export-label" for="export-exclude-tags">Exclude tags (comma-separated)</label>
+            <input id="export-exclude-tags" class="export-input" type="text" placeholder="#draft, #wip">
+          </div>
+        </div>
+
+        <!-- Marp Options -->
+        <div id="export-marp-section" class="export-section" style="display: none;">
+          <div class="export-section-title">Marp Options</div>
+          <div id="export-marp-status" class="export-tool-status"></div>
+          <div class="export-field">
+            <label class="export-checkbox"><input type="checkbox" id="export-marp-enabled" checked> Run Marp CLI</label>
+          </div>
+          <div class="export-field-row">
+            <div class="export-field-half">
+              <label class="export-label" for="export-marp-format">Output format</label>
+              <select id="export-marp-format" class="export-input">
+                <option value="pdf">PDF</option>
+                <option value="pptx">PPTX</option>
+                <option value="html" selected>HTML</option>
+              </select>
+            </div>
+            <div class="export-field-half">
+              <label class="export-label" for="export-marp-theme">Theme</label>
+              <select id="export-marp-theme" class="export-input">
+                <option value="">(default)</option>
+              </select>
+            </div>
+          </div>
+          <div class="export-checkboxes">
+            <label class="export-checkbox"><input type="checkbox" id="export-marp-watch"> Watch / Preview</label>
+            <label class="export-checkbox"><input type="checkbox" id="export-marp-pptx-editable" style="display: none;"> PPTX Editable</label>
+            <label class="export-checkbox"><input type="checkbox" id="export-marp-handout" style="display: none;"> Handout</label>
+          </div>
+          <div class="export-field-row" style="display: none;">
+            <div class="export-field-half">
+              <label class="export-label" for="export-marp-handout-preset">Handout layout</label>
+              <select id="export-marp-handout-preset" class="export-input">
+                <option value="2x2">2x2</option>
+                <option value="3x2">3x2</option>
+                <option value="2x3">2x3</option>
+                <option value="3x3">3x3</option>
+              </select>
+            </div>
+            <div class="export-field-half">
+              <label class="export-label" for="export-marp-handout-direction">Direction</label>
+              <select id="export-marp-handout-direction" class="export-input">
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Content Transforms (presentation only) -->
+        <div id="export-transform-section" class="export-section" style="display: none;">
+          <div class="export-section-title">Content Transforms</div>
+          <div class="export-field-row">
+            <div class="export-field-third">
+              <label class="export-label" for="export-speaker-notes">Speaker notes (;;)</label>
+              <select id="export-speaker-notes" class="export-input">
+                <option value="comment" selected>Convert to comments</option>
+                <option value="keep">Keep as-is</option>
+                <option value="remove">Remove</option>
+              </select>
+            </div>
+            <div class="export-field-third">
+              <label class="export-label" for="export-html-comments">HTML comments</label>
+              <select id="export-html-comments" class="export-input">
+                <option value="keep" selected>Keep</option>
+                <option value="remove">Remove</option>
+              </select>
+            </div>
+            <div class="export-field-third">
+              <label class="export-label" for="export-html-content">HTML content</label>
+              <select id="export-html-content" class="export-input">
+                <option value="keep" selected>Keep</option>
+                <option value="remove">Remove</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pandoc Options -->
+        <div id="export-pandoc-section" class="export-section" style="display: none;">
+          <div class="export-section-title">Pandoc Options</div>
+          <div id="export-pandoc-status" class="export-tool-status"></div>
+          <div class="export-field">
+            <label class="export-checkbox"><input type="checkbox" id="export-pandoc-enabled" checked> Run Pandoc</label>
+          </div>
+          <div class="export-field-row">
+            <div class="export-field-half">
+              <label class="export-label" for="export-pandoc-format">Output format</label>
+              <select id="export-pandoc-format" class="export-input">
+                <option value="docx">DOCX</option>
+                <option value="odt">ODT</option>
+                <option value="epub">EPUB</option>
+              </select>
+            </div>
+            <div class="export-field-half">
+              <label class="export-label" for="export-pandoc-page-breaks">Page breaks</label>
+              <select id="export-pandoc-page-breaks" class="export-input">
+                <option value="continuous">Continuous</option>
+                <option value="perTask">Per task</option>
+                <option value="perColumn">Per column</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output -->
+        <div class="export-section">
+          <div class="export-section-title">Output</div>
+          <div class="export-field">
+            <label class="export-label" for="export-folder-name">Export folder name</label>
+            <input id="export-folder-name" class="export-input" type="text" placeholder="auto-generated">
+          </div>
+          <div class="export-field">
+            <label class="export-label" for="export-target-folder">Target folder</label>
+            <div class="export-folder-input">
+              <input id="export-target-folder" class="export-input" type="text" placeholder="Select a folder...">
+              <button id="export-btn-browse" class="export-action-btn" type="button">Browse</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="export-dialog-footer">
+        <div id="export-status" class="export-status-msg"></div>
+        <div class="export-dialog-actions">
+          <button id="export-btn-copy" class="export-action-btn" type="button">Copy</button>
+          <button id="export-btn-save" class="export-action-btn export-action-primary" type="button">Save</button>
+          <button id="export-btn-preview" class="export-action-btn export-action-primary" type="button">Preview</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="api.js"></script>
+  <script src="templates.js"></script>
+  <script src="export/exportTreeBuilder.js"></script>
+  <script src="export/exportTreeUI.js"></script>
+  <script src="export/exportService.js"></script>
+  <script src="export/exportUI.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

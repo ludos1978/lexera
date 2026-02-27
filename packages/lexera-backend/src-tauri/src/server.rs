@@ -1,5 +1,6 @@
 use crate::api::api_router;
 use crate::collab_api::collab_router;
+use crate::export_api::export_router;
 use crate::state::AppState;
 use crate::sync_ws::sync_router;
 /// HTTP server: spawns axum on a background tokio task.
@@ -18,6 +19,7 @@ fn build_app(state: AppState) -> Router {
     api_router()
         .merge(collab_router())
         .merge(sync_router())
+        .merge(export_router())
         .layer(cors)
         .with_state(state)
 }

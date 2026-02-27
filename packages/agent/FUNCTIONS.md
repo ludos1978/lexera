@@ -418,3 +418,25 @@ Format: `path-module_functionname` — Description
 ### Card Edit Formatting
 
 - app-insertFormatting(textarea, fmt) — Insert markdown formatting (bold/italic/code/link) around selection in textarea
+
+## Frontend: lexera-kanban/src/export/exportService.js — ExportService
+
+### Public Static Methods
+
+- export_svc-ExportService-export(options) — Run full 3-phase export pipeline (extract, transform, output)
+- export_svc-ExportService-checkMarpStatus() — Check if Marp CLI is installed, return available + version
+- export_svc-ExportService-checkPandocStatus() — Check if Pandoc is installed, return available + version
+- export_svc-ExportService-getMarpThemes(dirs) — Discover Marp themes from directories via Tauri command
+- export_svc-ExportService-stopAllWatches() — Stop all running Marp watch processes via Tauri command
+- export_svc-ExportService-openExportFolder(path) — Open folder in system file manager via Tauri command
+
+### Private Static Methods
+
+- export_svc-ExportService-_extract(options) — Phase 1: POST to backend REST API to get formatted markdown
+- export_svc-ExportService-_transform(content, options) — Phase 2: POST to /export/transform for content transforms (presentation only)
+- export_svc-ExportService-_output(content, options) — Phase 3: copy/save/preview — write file and optionally run Marp or Pandoc
+
+### Static Helpers
+
+- export_svc-ExportService-generateExportPath(targetFolder, folderName, ext) — Build full file path for export output
+- export_svc-ExportService-getExtensionForFormat(format, marpFormat, pandocFormat) — Map format combo to file extension
