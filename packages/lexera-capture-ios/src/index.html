@@ -1,79 +1,880 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
-    <title>Lexera Capture</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
-            min-height: 100vh;
-            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        }
-        .tab-bar {
-            display: flex;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #16213e;
-            border-top: 1px solid #333;
-            padding-bottom: env(safe-area-inset-bottom);
-            z-index: 100;
-        }
-        .tab-bar button {
-            flex: 1;
-            padding: 12px 0;
-            background: none;
-            border: none;
-            color: #888;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .tab-bar button.active { color: #4cc9f0; }
-        .page { display: none; padding: 16px; padding-bottom: 80px; }
-        .page.active { display: block; }
-        h1 { font-size: 24px; margin-bottom: 16px; }
-        .placeholder { color: #666; text-align: center; margin-top: 40px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>Lexera Capture</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --bg-card: #16213e;
+      --bg-input: #0f1729;
+      --border: #2a2a4a;
+      --text: #e0e0e0;
+      --text-dim: #888;
+      --accent: #4cc9f0;
+      --accent-dim: #2a7a90;
+      --success: #4ade80;
+      --danger: #f87171;
+      --tag: #6366f1;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding-top: env(safe-area-inset-top);
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Tab bar */
+    .tab-bar {
+      display: flex;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 100;
+    }
+    .tab-bar button {
+      flex: 1;
+      padding: 10px 0 6px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 10px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .tab-bar button .tab-icon { font-size: 20px; line-height: 1; }
+    .tab-bar button.active { color: var(--accent); }
+    .tab-bar .badge {
+      position: absolute;
+      top: 4px;
+      right: calc(50% - 16px);
+      background: var(--danger);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      min-width: 16px;
+      height: 16px;
+      line-height: 16px;
+      text-align: center;
+      border-radius: 8px;
+      padding: 0 4px;
+    }
+
+    /* Pages */
+    .page {
+      display: none;
+      padding: 16px;
+      padding-bottom: 90px;
+      min-height: 100vh;
+    }
+    .page.active { display: block; }
+    .page-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-top: 8px;
+    }
+
+    /* Shared form elements */
+    textarea, input[type="text"], input[type="url"], select {
+      width: 100%;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 16px;
+      font-family: inherit;
+      outline: none;
+      -webkit-appearance: none;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    textarea:focus, input:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 120px; }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' fill='none' stroke-width='2'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    .field-label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .field-group { margin-bottom: 16px; }
+    .field-row { display: flex; gap: 12px; }
+    .field-row > .field-group { flex: 1; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-primary { background: var(--accent); color: #000; width: 100%; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-small {
+      padding: 6px 14px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+
+    .toast {
+      position: fixed;
+      top: calc(env(safe-area-inset-top) + 12px);
+      left: 16px; right: 16px;
+      background: var(--success);
+      color: #000;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 14px;
+      text-align: center;
+      z-index: 200;
+      transform: translateY(-120%);
+      transition: transform 0.3s ease;
+    }
+    .toast.show { transform: translateY(0); }
+    .toast.error { background: var(--danger); color: #fff; }
+
+    /* Capture page */
+    .capture-type-toggle {
+      display: flex;
+      background: var(--bg-input);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .capture-type-toggle button {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .capture-type-toggle button.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    /* Search page */
+    .search-bar {
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .search-bar input {
+      padding-left: 40px;
+      padding-right: 40px;
+    }
+    .search-bar .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 16px;
+      pointer-events: none;
+    }
+    .search-bar .clear-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 18px;
+      padding: 4px 8px;
+      cursor: pointer;
+      display: none;
+    }
+    .search-result {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .search-result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .search-result-board {
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .search-result-column {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    .search-result-content {
+      font-size: 14px;
+      line-height: 1.4;
+      word-break: break-word;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .search-result-tags {
+      margin-top: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .tag {
+      display: inline-block;
+      background: var(--tag);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .tag.temporal { background: #d97706; }
+    .tag.overdue { background: var(--danger); }
+    .search-empty {
+      text-align: center;
+      color: var(--text-dim);
+      margin-top: 60px;
+      font-size: 14px;
+    }
+    .search-count {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    /* Boards page */
+    .board-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .board-card:active { border-color: var(--accent); }
+    .board-card-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .board-card-columns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .board-col-chip {
+      font-size: 11px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      color: var(--text-dim);
+    }
+    .board-col-chip .count {
+      color: var(--accent);
+      font-weight: 700;
+      margin-left: 4px;
+    }
+
+    /* Board detail view */
+    .board-detail { display: none; }
+    .board-detail.active { display: block; }
+    .board-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .board-detail-header .back-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 4px;
+    }
+    .board-detail-title { font-size: 22px; font-weight: 700; }
+    .board-column {
+      margin-bottom: 20px;
+    }
+    .board-column-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .board-card-item {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-break: break-word;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    .board-card-item.checked {
+      text-decoration: line-through;
+      opacity: 0.5;
+    }
+    .board-empty {
+      color: var(--text-dim);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* Create board dialog */
+    .dialog-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 150;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .dialog-overlay.show { display: flex; }
+    .dialog {
+      background: var(--bg-card);
+      border-radius: 16px 16px 0 0;
+      padding: 24px 16px;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom));
+      width: 100%;
+      max-width: 500px;
+    }
+    .dialog h3 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    .dialog-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .dialog-actions .btn { flex: 1; }
+
+    /* Settings page */
+    .setting-row {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .setting-row label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+    .setting-value {
+      font-size: 14px;
+      color: var(--text);
+    }
+    .version-info {
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 12px;
+      margin-top: 32px;
+    }
+  </style>
 </head>
 <body>
-    <div id="page-capture" class="page active">
-        <h1>Capture</h1>
-        <p class="placeholder">Quick capture UI — coming soon</p>
-    </div>
-    <div id="page-search" class="page">
-        <h1>Search</h1>
-        <p class="placeholder">Search UI — coming soon</p>
-    </div>
-    <div id="page-boards" class="page">
-        <h1>Boards</h1>
-        <p class="placeholder">Boards list — coming soon</p>
-    </div>
-    <div id="page-settings" class="page">
-        <h1>Settings</h1>
-        <p class="placeholder">Settings — coming soon</p>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast"></div>
+
+  <!-- ─── Capture Page ─── -->
+  <div id="page-capture" class="page active">
+    <div class="page-title">Capture</div>
+
+    <div class="capture-type-toggle">
+      <button class="active" data-type="text">Text</button>
+      <button data-type="url">URL</button>
     </div>
 
-    <nav class="tab-bar">
-        <button class="active" data-page="capture">Capture</button>
-        <button data-page="search">Search</button>
-        <button data-page="boards">Boards</button>
-        <button data-page="settings">Settings</button>
-    </nav>
+    <div id="capture-text-fields">
+      <div class="field-group">
+        <label class="field-label" for="capture-content">Content</label>
+        <textarea id="capture-content" placeholder="Type or paste anything..."></textarea>
+      </div>
+    </div>
 
-    <script>
-        document.querySelectorAll('.tab-bar button').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById('page-' + btn.dataset.page).classList.add('active');
-            });
+    <div id="capture-url-fields" style="display:none;">
+      <div class="field-group">
+        <label class="field-label" for="capture-url">URL</label>
+        <input type="url" id="capture-url" placeholder="https://...">
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="capture-url-title">Title (optional)</label>
+        <input type="text" id="capture-url-title" placeholder="Page title">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-group">
+        <label class="field-label" for="capture-board">Board</label>
+        <select id="capture-board"></select>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="capture-column">Column</label>
+        <select id="capture-column"></select>
+      </div>
+    </div>
+
+    <button id="btn-capture" class="btn btn-primary" disabled>Capture</button>
+  </div>
+
+  <!-- ─── Search Page ─── -->
+  <div id="page-search" class="page">
+    <div class="page-title">Search</div>
+
+    <div class="search-bar">
+      <span class="search-icon">&#x1F50D;</span>
+      <input type="text" id="search-input" placeholder="Search cards...">
+      <button class="clear-btn" id="search-clear">&times;</button>
+    </div>
+
+    <div id="search-count" class="search-count" style="display:none;"></div>
+    <div id="search-results"></div>
+    <div id="search-empty" class="search-empty">
+      Type to search across all boards
+    </div>
+  </div>
+
+  <!-- ─── Boards Page ─── -->
+  <div id="page-boards" class="page">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+      <div class="page-title" style="margin-bottom:0;">Boards</div>
+      <button id="btn-new-board" class="btn btn-secondary btn-small">+ New</button>
+    </div>
+
+    <div id="boards-list"></div>
+
+    <!-- Board detail (replaces list) -->
+    <div id="board-detail" class="board-detail">
+      <div class="board-detail-header">
+        <button class="back-btn" id="board-back">&larr;</button>
+        <div class="board-detail-title" id="board-detail-title"></div>
+      </div>
+      <div id="board-detail-columns"></div>
+    </div>
+  </div>
+
+  <!-- ─── Settings Page ─── -->
+  <div id="page-settings" class="page">
+    <div class="page-title">Settings</div>
+
+    <div class="setting-row">
+      <label>Pending Shares</label>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="setting-value" id="pending-count">0 items</span>
+        <button id="btn-process-pending" class="btn btn-secondary btn-small">Process</button>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <label>Storage</label>
+      <div class="setting-value" id="settings-storage">Local (iOS sandbox)</div>
+    </div>
+
+    <div class="version-info">Lexera Capture v0.1.0</div>
+  </div>
+
+  <!-- ─── Create Board Dialog ─── -->
+  <div id="dialog-new-board" class="dialog-overlay">
+    <div class="dialog">
+      <h3>New Board</h3>
+      <div class="field-group">
+        <label class="field-label" for="new-board-title">Board name</label>
+        <input type="text" id="new-board-title" placeholder="e.g. Work, Ideas, Reading...">
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" id="dialog-cancel">Cancel</button>
+        <button class="btn btn-primary" id="dialog-create">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Tab Bar ─── -->
+  <nav class="tab-bar">
+    <button class="active" data-page="capture">
+      <span class="tab-icon">&#x270F;</span>
+      Capture
+    </button>
+    <button data-page="search">
+      <span class="tab-icon">&#x1F50D;</span>
+      Search
+    </button>
+    <button data-page="boards" style="position:relative;">
+      <span class="tab-icon">&#x1F4CB;</span>
+      Boards
+    </button>
+    <button data-page="settings" style="position:relative;">
+      <span class="tab-icon">&#x2699;</span>
+      Settings
+    </button>
+  </nav>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+
+    // ─── State ───
+    let boards = [];
+    let currentCaptureType = 'text';
+    let searchDebounce = null;
+
+    // ─── Toast ───
+    function showToast(msg, isError) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast' + (isError ? ' error' : '');
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    // ─── Tab navigation ───
+    document.querySelectorAll('.tab-bar button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('page-' + page).classList.add('active');
+
+        // Close board detail when navigating away
+        if (page !== 'boards') closeBoardDetail();
+
+        // Refresh data on tab switch
+        if (page === 'capture') loadBoards();
+        if (page === 'boards') { closeBoardDetail(); loadBoardsList(); }
+      });
+    });
+
+    // ─── Capture type toggle ───
+    document.querySelectorAll('.capture-type-toggle button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.capture-type-toggle button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentCaptureType = btn.dataset.type;
+        document.getElementById('capture-text-fields').style.display = currentCaptureType === 'text' ? 'block' : 'none';
+        document.getElementById('capture-url-fields').style.display = currentCaptureType === 'url' ? 'block' : 'none';
+        updateCaptureButton();
+      });
+    });
+
+    // ─── Load boards into dropdowns ───
+    async function loadBoards() {
+      try {
+        boards = await invoke('list_boards');
+        const sel = document.getElementById('capture-board');
+        const prev = sel.value;
+        sel.innerHTML = '';
+        boards.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.id;
+          opt.textContent = b.title || b.id;
+          sel.appendChild(opt);
         });
-    </script>
+        // Restore previous selection or pick inbox
+        if (prev && boards.some(b => b.id === prev)) {
+          sel.value = prev;
+        }
+        updateColumns();
+      } catch (e) {
+        console.error('loadBoards:', e);
+      }
+    }
+
+    function updateColumns() {
+      const boardId = document.getElementById('capture-board').value;
+      const board = boards.find(b => b.id === boardId);
+      const sel = document.getElementById('capture-column');
+      sel.innerHTML = '';
+      if (board && board.columns) {
+        board.columns.forEach(col => {
+          const opt = document.createElement('option');
+          opt.value = col.index;
+          opt.textContent = col.title + ' (' + col.cardCount + ')';
+          sel.appendChild(opt);
+        });
+      }
+    }
+
+    document.getElementById('capture-board').addEventListener('change', updateColumns);
+
+    // ─── Capture button state ───
+    function updateCaptureButton() {
+      const btn = document.getElementById('btn-capture');
+      if (currentCaptureType === 'text') {
+        btn.disabled = !document.getElementById('capture-content').value.trim();
+      } else {
+        btn.disabled = !document.getElementById('capture-url').value.trim();
+      }
+    }
+    document.getElementById('capture-content').addEventListener('input', updateCaptureButton);
+    document.getElementById('capture-url').addEventListener('input', updateCaptureButton);
+
+    // ─── Capture submit ───
+    document.getElementById('btn-capture').addEventListener('click', async () => {
+      const boardId = document.getElementById('capture-board').value;
+      const colIndex = parseInt(document.getElementById('capture-column').value) || 0;
+
+      try {
+        if (currentCaptureType === 'text') {
+          const content = document.getElementById('capture-content').value.trim();
+          if (!content) return;
+          await invoke('capture_text', { content, boardId, colIndex });
+          document.getElementById('capture-content').value = '';
+        } else {
+          const url = document.getElementById('capture-url').value.trim();
+          if (!url) return;
+          const title = document.getElementById('capture-url-title').value.trim() || null;
+          await invoke('capture_url', { url, title, boardId });
+          document.getElementById('capture-url').value = '';
+          document.getElementById('capture-url-title').value = '';
+        }
+        updateCaptureButton();
+        showToast('Captured!');
+        loadBoards();
+      } catch (e) {
+        showToast('Error: ' + e, true);
+      }
+    });
+
+    // ─── Search ───
+    const searchInput = document.getElementById('search-input');
+    const searchClear = document.getElementById('search-clear');
+
+    searchInput.addEventListener('input', () => {
+      searchClear.style.display = searchInput.value ? 'block' : 'none';
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(doSearch, 300);
+    });
+
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      searchClear.style.display = 'none';
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('search-count').style.display = 'none';
+      document.getElementById('search-empty').style.display = 'block';
+    });
+
+    async function doSearch() {
+      const query = searchInput.value.trim();
+      const resultsEl = document.getElementById('search-results');
+      const countEl = document.getElementById('search-count');
+      const emptyEl = document.getElementById('search-empty');
+
+      if (!query) {
+        resultsEl.innerHTML = '';
+        countEl.style.display = 'none';
+        emptyEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const results = await invoke('search', { query });
+        emptyEl.style.display = results.length ? 'none' : 'block';
+        emptyEl.textContent = results.length ? '' : 'No results found';
+        countEl.textContent = results.length + ' result' + (results.length === 1 ? '' : 's');
+        countEl.style.display = results.length ? 'block' : 'none';
+
+        resultsEl.innerHTML = results.map(r => {
+          // Strip kid comments for display
+          const content = r.cardContent.replace(/<!--\s*kid:[a-f0-9]+\s*-->/g, '').trim();
+          let tags = '';
+          if (r.hashTags && r.hashTags.length) {
+            tags += r.hashTags.map(t => '<span class="tag">' + escHtml(t) + '</span>').join('');
+          }
+          if (r.temporalTags && r.temporalTags.length) {
+            tags += r.temporalTags.map(t => '<span class="tag temporal">' + escHtml(t) + '</span>').join('');
+          }
+          if (r.isOverdue) {
+            tags += '<span class="tag overdue">overdue</span>';
+          }
+          if (r.dueDate) {
+            tags += '<span class="tag temporal">due: ' + escHtml(r.dueDate) + '</span>';
+          }
+          return '<div class="search-result">' +
+            '<div class="search-result-header">' +
+              '<span class="search-result-board">' + escHtml(r.boardTitle) + '</span>' +
+              '<span class="search-result-column">' + escHtml(r.columnTitle) + '</span>' +
+            '</div>' +
+            '<div class="search-result-content">' + escHtml(content) + '</div>' +
+            (tags ? '<div class="search-result-tags">' + tags + '</div>' : '') +
+          '</div>';
+        }).join('');
+      } catch (e) {
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = 'Search error: ' + e;
+      }
+    }
+
+    // ─── Boards list ───
+    async function loadBoardsList() {
+      try {
+        boards = await invoke('list_boards');
+        const list = document.getElementById('boards-list');
+        if (!boards.length) {
+          list.innerHTML = '<div class="search-empty">No boards yet</div>';
+          return;
+        }
+        list.innerHTML = boards.map(b => {
+          const cols = (b.columns || []).map(c =>
+            '<span class="board-col-chip">' + escHtml(c.title) + '<span class="count">' + c.cardCount + '</span></span>'
+          ).join('');
+          return '<div class="board-card" data-id="' + b.id + '">' +
+            '<div class="board-card-title">' + escHtml(b.title || b.id) + '</div>' +
+            '<div class="board-card-columns">' + cols + '</div>' +
+          '</div>';
+        }).join('');
+
+        list.querySelectorAll('.board-card').forEach(card => {
+          card.addEventListener('click', () => openBoardDetail(card.dataset.id));
+        });
+      } catch (e) {
+        console.error('loadBoardsList:', e);
+      }
+    }
+
+    // ─── Board detail ───
+    async function openBoardDetail(boardId) {
+      try {
+        const board = await invoke('get_board', { boardId });
+        if (!board) { showToast('Board not found', true); return; }
+
+        document.getElementById('boards-list').style.display = 'none';
+        document.querySelector('#page-boards > div:first-child').style.display = 'none';
+        const detail = document.getElementById('board-detail');
+        detail.classList.add('active');
+
+        document.getElementById('board-detail-title').textContent = board.title || boardId;
+        const colsEl = document.getElementById('board-detail-columns');
+
+        // Combine columns from flat and row-based formats
+        const columns = board.columns || [];
+        colsEl.innerHTML = columns.map(col => {
+          const cards = (col.cards || []).map(card => {
+            const content = card.content.replace(/<!--\s*kid:[a-f0-9]+\s*-->/g, '').trim();
+            return '<div class="board-card-item' + (card.checked ? ' checked' : '') + '">' +
+              escHtml(content) + '</div>';
+          }).join('');
+          return '<div class="board-column">' +
+            '<div class="board-column-title">' + escHtml(col.title) + ' (' + (col.cards || []).length + ')</div>' +
+            (cards || '<div class="board-empty">No cards</div>') +
+          '</div>';
+        }).join('');
+      } catch (e) {
+        showToast('Error loading board: ' + e, true);
+      }
+    }
+
+    function closeBoardDetail() {
+      document.getElementById('board-detail').classList.remove('active');
+      document.getElementById('boards-list').style.display = 'block';
+      const header = document.querySelector('#page-boards > div:first-child');
+      if (header) header.style.display = 'flex';
+    }
+
+    document.getElementById('board-back').addEventListener('click', closeBoardDetail);
+
+    // ─── New board dialog ───
+    document.getElementById('btn-new-board').addEventListener('click', () => {
+      document.getElementById('dialog-new-board').classList.add('show');
+      document.getElementById('new-board-title').value = '';
+      setTimeout(() => document.getElementById('new-board-title').focus(), 100);
+    });
+
+    document.getElementById('dialog-cancel').addEventListener('click', () => {
+      document.getElementById('dialog-new-board').classList.remove('show');
+    });
+
+    document.getElementById('dialog-create').addEventListener('click', async () => {
+      const title = document.getElementById('new-board-title').value.trim();
+      if (!title) return;
+      try {
+        await invoke('create_board', { title });
+        document.getElementById('dialog-new-board').classList.remove('show');
+        showToast('Board created!');
+        loadBoardsList();
+        loadBoards();
+      } catch (e) {
+        showToast('Error: ' + e, true);
+      }
+    });
+
+    // Close dialog on overlay click
+    document.getElementById('dialog-new-board').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        document.getElementById('dialog-new-board').classList.remove('show');
+      }
+    });
+
+    // ─── Process pending shares ───
+    document.getElementById('btn-process-pending').addEventListener('click', async () => {
+      try {
+        const count = await invoke('process_pending_shares');
+        document.getElementById('pending-count').textContent = '0 items';
+        if (count > 0) {
+          showToast('Processed ' + count + ' shared item' + (count === 1 ? '' : 's'));
+          loadBoards();
+        } else {
+          showToast('No pending items');
+        }
+      } catch (e) {
+        showToast('Error: ' + e, true);
+      }
+    });
+
+    // ─── Utilities ───
+    function escHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // ─── Init ───
+    loadBoards();
+  </script>
 </body>
 </html>
