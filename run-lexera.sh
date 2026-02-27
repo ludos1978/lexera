@@ -18,15 +18,7 @@ pkill -f "target/debug/lexera-kanban" 2>/dev/null && echo "  Killed lexera-kanba
 pkill -f "target/debug/lexera-backend" 2>/dev/null && echo "  Killed lexera-backend" || true
 pkill -f "cargo-tauri.*lexera-kanban" 2>/dev/null || true
 pkill -f "cargo-tauri.*lexera-backend" 2>/dev/null || true
-sleep 2
-
-# Wait for the backend port to be released
-BACKEND_PORT=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.config/lexera/sync.json'))); print(d.get('port',13080))" 2>/dev/null || echo 13080)
-for i in $(seq 1 10); do
-  if ! lsof -ti :"$BACKEND_PORT" >/dev/null 2>&1; then break; fi
-  echo "  Waiting for port $BACKEND_PORT to be released..."
-  sleep 1
-done
+sleep 1
 
 if [[ "${1:-}" == "--kill" ]]; then
   echo "Done."
