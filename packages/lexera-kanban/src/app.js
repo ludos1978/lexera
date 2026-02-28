@@ -3362,6 +3362,7 @@ const LexeraDashboard = (function () {
   async function loadBoard(boardId) {
     var seq = ++boardLoadSeq;
     try {
+      clearBoardPreviewCaches(boardId);
       var response = await LexeraApi.getBoardColumns(boardId);
       if (seq !== boardLoadSeq) return; // stale response, a newer load was started
       var boardMeta = findBoardMeta(boardId);
@@ -9563,6 +9564,20 @@ const LexeraDashboard = (function () {
     delete embedPreviewCache[cacheKey];
     delete fileInfoCache[infoKey];
     delete pendingFileInfoCache[infoKey];
+  }
+
+  function clearBoardPreviewCaches(boardId) {
+    var prefix = String(boardId || '') + '::';
+    if (!prefix || prefix === '::') return;
+    Object.keys(embedPreviewCache).forEach(function (key) {
+      if (key.indexOf(prefix) === 0) delete embedPreviewCache[key];
+    });
+    Object.keys(fileInfoCache).forEach(function (key) {
+      if (key.indexOf(prefix) === 0) delete fileInfoCache[key];
+    });
+    Object.keys(pendingFileInfoCache).forEach(function (key) {
+      if (key.indexOf(prefix) === 0) delete pendingFileInfoCache[key];
+    });
   }
 
   function encodeUtf8Base64(value) {
