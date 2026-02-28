@@ -190,6 +190,7 @@ const LexeraApi = (function () {
         var msg = JSON.parse(evt.data);
         if (msg.type === 'ServerHello') {
           console.log('[sync] Received ServerHello, peer_id=' + msg.peer_id);
+          if (syncOnUpdate && msg.updates) syncOnUpdate();
         } else if (msg.type === 'ServerUpdate') {
           if (syncOnUpdate) syncOnUpdate();
         } else if (msg.type === 'ServerPresence') {
