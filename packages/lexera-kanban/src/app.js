@@ -4879,6 +4879,7 @@ const LexeraDashboard = (function () {
     enhanceEmbeddedContent($columnsContainer);
     enhanceFileLinks($columnsContainer);
     enhanceIncludeDirectives($columnsContainer);
+    enhanceColumnIncludeBadges($columnsContainer);
 
     syncSidebarToView();
   }
@@ -9588,6 +9589,32 @@ const LexeraDashboard = (function () {
     var containers = root.querySelectorAll('.include-inline-container[data-file-path]');
     for (var i = 0; i < containers.length; i++) {
       enhanceSingleIncludeDirective(containers[i]);
+    }
+  }
+
+  async function enhanceColumnIncludeBadges(root) {
+    if (!root || !root.querySelectorAll) return;
+    var badges = root.querySelectorAll('.column-include-badge[data-include-path]');
+    for (var i = 0; i < badges.length; i++) {
+      enhanceSingleColumnIncludeBadge(badges[i]);
+    }
+  }
+
+  async function enhanceSingleColumnIncludeBadge(badge) {
+    if (!badge || badge.getAttribute('data-include-enhanced') === '1') return;
+    var boardId = activeBoardId || '';
+    var includePath = badge.getAttribute('data-include-path') || '';
+    if (!boardId || !includePath) return;
+    badge.setAttribute('data-include-enhanced', '1');
+    var resolvedPath = includePath;
+    if (isBoardRelativePath(includePath)) {
+      resolvedPath = await resolveBoardPath(boardId, includePath, 'absolute');
+    }
+    var info = await requestFileInfo(boardId, resolvedPath || includePath);
+    var isMissing = !info || info.exists === false;
+    badge.classList.toggle('include-broken', isMissing);
+    if (isMissing) {
+      badge.setAttribute('title', 'Missing include: ' + includePath);
     }
   }
 

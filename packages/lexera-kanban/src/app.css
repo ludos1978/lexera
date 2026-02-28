@@ -1976,6 +1976,11 @@ u {
   opacity: 1;
 }
 
+.column-include-badge.include-broken {
+  color: var(--danger);
+  opacity: 0.95;
+}
+
 .column-title {
   flex: 1;
   min-width: 0;
