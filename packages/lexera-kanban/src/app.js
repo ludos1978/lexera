@@ -9826,6 +9826,17 @@ const LexeraDashboard = (function () {
       return;
     }
 
+    var anchorLink = e.target.closest('a[href]');
+    if (anchorLink) {
+      var hrefValue = anchorLink.getAttribute('data-original-href') || anchorLink.getAttribute('href') || '';
+      if (hrefValue.charAt(0) === '#' && hrefValue.length > 1 && hrefValue.indexOf('#footnote-') !== 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        openWikiSearch(hrefValue);
+        return;
+      }
+    }
+
     var fileLink = e.target.closest('.markdown-file-link');
     if (fileLink) {
       e.preventDefault();
