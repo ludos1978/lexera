@@ -911,10 +911,10 @@ body.split-mode .layout > .main {
   cursor: pointer;
   border-radius: var(--radius-sm);
   font-size: calc(12px * var(--ui-scale));
-  color: var(--text-secondary);
+  color: var(--tree-fg);
   gap: var(--space-1);
 }
-.tree-node:hover { color: var(--text-primary); }
+.tree-node:hover { color: var(--tree-fg-hover); }
 
 /* Indent guides: vertical lines at each depth + branch/corner connector */
 .tree-indent {
@@ -938,7 +938,7 @@ body.split-mode .layout > .main {
   left: 5px;
   top: 0;
   bottom: 0;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--tree-guide);
 }
 /* (blank) Ancestor was last child: no continuing line */
 .indent-guide.last::before { display: none; }
@@ -949,7 +949,7 @@ body.split-mode .layout > .main {
   left: 5px;
   top: 50%;
   right: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--tree-guide);
 }
 /* └─ Corner: vertical from top to center + horizontal right */
 .indent-guide.corner::before { bottom: 50%; }
@@ -959,7 +959,7 @@ body.split-mode .layout > .main {
   left: 5px;
   top: 50%;
   right: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--tree-guide);
 }
 
 /* Indentation via nested .tree-children */
@@ -971,7 +971,7 @@ body.split-mode .layout > .main {
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--tree-guide);
   pointer-events: none;
 }
 
@@ -981,9 +981,8 @@ body.split-mode .layout > .main {
 .tree-children.tree-stack-drop-zone-empty {
   min-height: 14px;
   margin: 2px 0 4px;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--tree-guide);
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.02);
 }
 .tree-children.tree-stack-drop-zone.tree-drop-stack-target {
   border-color: var(--accent);
@@ -1000,10 +999,10 @@ body.split-mode .layout > .main {
   font-weight: 700;
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--tree-toggle-fg);
 }
 .tree-toggle:hover,
-.board-item-toggle:hover { color: var(--text-primary); }
+.board-item-toggle:hover { color: var(--tree-toggle-fg-hover); }
 .tree-toggle::before,
 .board-item-toggle::before { content: '+'; }
 .tree-toggle.expanded::before,
@@ -1958,10 +1957,23 @@ u {
 }
 
 .column-include-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
   font-size: 11px;
   color: var(--text-secondary);
   opacity: 0.7;
-  cursor: help;
+  cursor: pointer;
+}
+
+.column-include-badge:hover {
+  color: var(--accent);
+  opacity: 1;
 }
 
 .column-title {

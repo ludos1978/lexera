@@ -4655,7 +4655,9 @@ const LexeraDashboard = (function () {
     var fullCol = getFullColumn(col.index);
     var includeIndicator = '';
     if (fullCol && fullCol.includeSource) {
-      includeIndicator = '<span class="column-include-badge" title="Include: ' + escapeAttr(fullCol.includeSource.rawPath || '') + '">&#128279;</span>';
+      includeIndicator =
+        '<button class="column-include-badge" type="button" data-include-path="' + escapeAttr(fullCol.includeSource.rawPath || '') + '"' +
+        ' title="Open include: ' + escapeAttr(fullCol.includeSource.rawPath || '') + '">&#128279;</button>';
     }
 
     var header = document.createElement('div');
@@ -4672,6 +4674,16 @@ const LexeraDashboard = (function () {
       '</span>';
     (function (columnEl, colIdx, rIdx, sIdx, cIdx) {
       header.addEventListener('click', function (e) {
+        var includeBadge = e.target.closest('.column-include-badge[data-include-path]');
+        if (includeBadge) {
+          e.preventDefault();
+          e.stopPropagation();
+          var includePath = includeBadge.getAttribute('data-include-path') || '';
+          if (!includePath) return;
+          if (e.altKey) openBoardFileInSystem(activeBoardId, includePath);
+          else showBoardFilePreview(activeBoardId, includePath);
+          return;
+        }
         if (e.target.closest('.column-title')) return;
         if (e.target.closest('button, .drag-grip, .column-rename-input')) return;
         if (!e.altKey) return;
