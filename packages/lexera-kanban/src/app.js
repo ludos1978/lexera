@@ -2552,6 +2552,12 @@ const LexeraDashboard = (function () {
     return liveSyncState;
   }
 
+  async function reopenLiveSyncSession(boardId) {
+    if (!boardId) return null;
+    await closeLiveSyncSession(boardId);
+    return ensureLiveSyncSession(boardId);
+  }
+
   function getLiveSyncHelloVv(boardId) {
     var session = getLiveSyncSession(boardId);
     return session && session.vv ? session.vv : '';
@@ -4742,6 +4748,11 @@ const LexeraDashboard = (function () {
         if (typeof fullBoardData.title === 'string') activeBoardData.title = fullBoardData.title;
         if (typeof result.version === 'number') activeBoardData.version = result.version;
       }
+      try {
+        await reopenLiveSyncSession(activeBoardId);
+      } catch (e) {
+        // Leave REST save successful even if the local live session cannot be refreshed.
+      }
       if (result && result.hasConflicts) {
         showConflictDialog(result.conflicts, result.autoMerged);
       } else if (result && result.merged && result.autoMerged > 0) {
@@ -4874,6 +4885,13 @@ const LexeraDashboard = (function () {
             if (typeof savedBoardData.title === 'string') activeBoardData.title = savedBoardData.title;
             if (result && typeof result.version === 'number') activeBoardData.version = result.version;
             else delete activeBoardData.version;
+          }
+          if (result) {
+            try {
+              await reopenLiveSyncSession(boardId);
+            } catch (e) {
+              // Keep the REST save result even if the local live session refresh fails.
+            }
           }
           updateDisplayFromFullBoard();
           if (result && result.hasConflicts) {
