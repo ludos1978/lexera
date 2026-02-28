@@ -131,6 +131,7 @@ const LexeraDashboard = (function () {
   var ptrDrag = null; // Pointer-based DnD state: { type, source, startX, startY, started, ghost, el }
   var isEditing = false;
   var currentCardEditor = null;
+  var currentInlineCardEditor = null;
   var cardEditorMode = null;
   var pendingRefresh = false;
   var eventSource = null;
@@ -1171,6 +1172,11 @@ const LexeraDashboard = (function () {
     var editingTextarea = document.querySelector('.card.editing .card-edit-input');
     if (editingTextarea) {
       editingTextarea.blur();
+      didClose = true;
+    }
+
+    if (currentInlineCardEditor) {
+      closeInlineCardEditor({ save: false });
       didClose = true;
     }
 
@@ -2373,7 +2379,7 @@ const LexeraDashboard = (function () {
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
-      enterCardEditMode(focusedCardEl, ci, cj);
+      openCardEditor(focusedCardEl, ci, cj, 'inline');
     } else if (key === 'Escape' && focusedCardEl) {
       unfocusCard();
     }
@@ -6219,7 +6225,7 @@ const LexeraDashboard = (function () {
       var cardIndex = cardDrag.cardIndex;
       cardDrag = null;
       stopCrossViewBridge();
-      enterCardEditMode(clickedCard, colIndex, cardIndex);
+      openCardEditor(clickedCard, colIndex, cardIndex, e.altKey ? 'overlay' : 'inline');
       return;
     }
     finishCardDrag(e.clientX, e.clientY);
@@ -6228,6 +6234,10 @@ const LexeraDashboard = (function () {
   // Also cancel on Escape
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      if (currentInlineCardEditor) {
+        closeInlineCardEditor({ save: false });
+        return;
+      }
       if (currentCardEditor) {
         closeCardEditorOverlay({ save: false });
         return;
@@ -8413,6 +8423,192 @@ const LexeraDashboard = (function () {
     return lines.join('\n');
   }
 
+  function renderCardDisplayState(cardEl, content) {
+    if (!cardEl) return;
+    var titleEl = cardEl.querySelector('.card-title-display');
+    if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(content));
+    var contentEl = cardEl.querySelector('.card-content');
+    if (contentEl) {
+      contentEl.innerHTML = renderCardContent(content, activeBoardId);
+      flushPendingDiagramQueues();
+      enhanceEmbeddedContent(contentEl);
+      enhanceFileLinks(contentEl);
+      enhanceIncludeDirectives(contentEl);
+      applyRenderedHtmlCommentVisibility(contentEl, currentHtmlCommentRenderMode);
+      applyRenderedTagVisibility(contentEl, currentTagVisibilityMode);
+    }
+  }
+
+  function autoResizeInlineCardTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.max(120, textarea.scrollHeight) + 'px';
+  }
+
+  function findVisibleCardElement(colIndex, cardIndex) {
+    return $columnsContainer.querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+  }
+
+  function openCardEditor(cardEl, colIndex, cardIndex, mode) {
+    cardEl = findVisibleCardElement(colIndex, cardIndex) || cardEl;
+    var targetCol = getFullColumn(colIndex);
+    var targetFullIdx = targetCol ? getFullCardIndex(targetCol, cardIndex) : -1;
+    if (currentInlineCardEditor) {
+      var sameInlineCard = currentInlineCardEditor.cardEl === cardEl &&
+        currentInlineCardEditor.colIndex === colIndex &&
+        currentInlineCardEditor.fullCardIdx === targetFullIdx;
+      if (sameInlineCard && mode !== 'overlay') {
+        if (currentInlineCardEditor.textarea) currentInlineCardEditor.textarea.focus();
+        return;
+      }
+      closeInlineCardEditor({ save: true }).then(function () {
+        openCardEditor(cardEl, colIndex, cardIndex, mode);
+      });
+      return;
+    }
+    if (currentCardEditor) {
+      var sameOverlayCard = currentCardEditor.cardEl === cardEl &&
+        currentCardEditor.colIndex === colIndex &&
+        currentCardEditor.fullCardIdx === targetFullIdx;
+      if (sameOverlayCard && mode === 'overlay') {
+        if (currentCardEditor.textarea) currentCardEditor.textarea.focus();
+        return;
+      }
+      closeCardEditorOverlay({ save: true }).then(function () {
+        openCardEditor(cardEl, colIndex, cardIndex, mode);
+      });
+      return;
+    }
+    if (mode === 'overlay') {
+      enterCardEditMode(cardEl, colIndex, cardIndex);
+      return;
+    }
+    enterInlineCardEditMode(cardEl, colIndex, cardIndex);
+  }
+
+  function enterInlineCardEditMode(cardEl, colIndex, cardIndex) {
+    if (currentCardEditor || currentInlineCardEditor) return;
+    if (!fullBoardData) return;
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var fullIdx = getFullCardIndex(col, cardIndex);
+    var card = col.cards[fullIdx];
+    if (!card) return;
+
+    var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
+    if (!contentEl) return;
+
+    isEditing = true;
+    cardEl.classList.add('editing');
+    cardEl.classList.remove('collapsed');
+    contentEl.innerHTML =
+      '<textarea class="card-edit-input card-inline-textarea" spellcheck="false" style="' +
+        escapeAttr('display:block;width:100%;min-height:120px;resize:vertical;overflow:auto;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px') +
+      '"></textarea>' +
+      '<div class="add-card-actions card-inline-actions">' +
+        '<button class="btn-small btn-cancel" type="button" data-inline-editor-action="cancel">Cancel</button>' +
+        '<button class="btn-small" type="button" data-inline-editor-action="overlay">Overlay</button>' +
+        '<button class="btn-small btn-primary" type="button" data-inline-editor-action="save">Save</button>' +
+      '</div>';
+
+    var textarea = contentEl.querySelector('.card-inline-textarea');
+    var cancelBtn = contentEl.querySelector('[data-inline-editor-action="cancel"]');
+    var overlayBtn = contentEl.querySelector('[data-inline-editor-action="overlay"]');
+    var saveBtn = contentEl.querySelector('[data-inline-editor-action="save"]');
+    if (!textarea) return;
+    textarea.value = card.content || '';
+    autoResizeInlineCardTextarea(textarea);
+
+    currentInlineCardEditor = {
+      cardEl: cardEl,
+      colIndex: colIndex,
+      fullCardIdx: fullIdx,
+      contentEl: contentEl,
+      textarea: textarea,
+      originalContent: card.content || ''
+    };
+
+    function maybeSaveOnBlur() {
+      var editor = currentInlineCardEditor;
+      if (!editor || editor.textarea !== textarea) return;
+      setTimeout(function () {
+        if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
+        var activeEl = document.activeElement;
+        if (activeEl && contentEl.contains(activeEl)) return;
+        closeInlineCardEditor({ save: true });
+      }, 0);
+    }
+
+    textarea.addEventListener('input', function () {
+      autoResizeInlineCardTextarea(textarea);
+    });
+    textarea.addEventListener('blur', maybeSaveOnBlur);
+    textarea.addEventListener('keydown', function (e) {
+      if (handleTextareaTabIndent(e, textarea)) return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 's')) {
+        e.preventDefault();
+        closeInlineCardEditor({ save: true });
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeInlineCardEditor({ save: false });
+      }
+    });
+
+    function bindAction(button, action) {
+      if (!button) return;
+      button.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+      });
+      button.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (action === 'save') {
+          closeInlineCardEditor({ save: true });
+        } else if (action === 'cancel') {
+          closeInlineCardEditor({ save: false });
+        } else if (action === 'overlay') {
+          var draft = textarea.value;
+          closeInlineCardEditor({ save: true }).then(function () {
+            openCardEditor(cardEl, colIndex, cardIndex, 'overlay');
+            if (currentCardEditor && currentCardEditor.textarea && currentCardEditor.textarea.value !== draft) {
+              currentCardEditor.textarea.value = draft;
+              refreshCardEditorPreview();
+            }
+          });
+        }
+      });
+    }
+
+    bindAction(cancelBtn, 'cancel');
+    bindAction(overlayBtn, 'overlay');
+    bindAction(saveBtn, 'save');
+
+    requestAnimationFrame(function () {
+      if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  }
+
+  function closeInlineCardEditor(options) {
+    options = options || {};
+    if (!currentInlineCardEditor) return Promise.resolve();
+    var editor = currentInlineCardEditor;
+    currentInlineCardEditor = null;
+    isEditing = false;
+    if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
+    if (options.save) {
+      return saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
+    }
+    renderCardDisplayState(editor.cardEl, editor.originalContent);
+    if (pendingRefresh) {
+      pendingRefresh = false;
+      loadBoard(activeBoardId);
+    }
+    return Promise.resolve();
+  }
+
   function applyCardEditorMode(mode) {
     if (!currentCardEditor || !currentCardEditor.dialog) return;
     mode = normalizeCardEditorMode(mode);
@@ -8432,7 +8628,7 @@ const LexeraDashboard = (function () {
   }
 
   function enterCardEditMode(cardEl, colIndex, cardIndex) {
-    if (currentCardEditor) return;
+    if (currentCardEditor || currentInlineCardEditor) return;
     if (!fullBoardData) return;
     var col = getFullColumn(colIndex);
     if (!col) return;
@@ -8811,7 +9007,8 @@ const LexeraDashboard = (function () {
     var nativeItems = [
       { id: 'add-card', label: 'Add Card' },
       { separator: true },
-      { id: 'edit', label: 'Edit' },
+      { id: 'edit', label: 'Edit Inline' },
+      { id: 'edit-overlay', label: 'Open Overlay Editor' },
       { id: 'duplicate', label: 'Duplicate' },
       { id: 'move-up', label: 'Move Up' },
       { id: 'move-down', label: 'Move Down' },
@@ -8846,7 +9043,12 @@ const LexeraDashboard = (function () {
     } else if (action === 'edit') {
       var cardsEls = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
       if (cardsEls.length > 0) {
-        enterCardEditMode(cardsEls[0], colIndex, cardIndex);
+        openCardEditor(cardsEls[0], colIndex, cardIndex, 'inline');
+      }
+    } else if (action === 'edit-overlay') {
+      var overlayCardsEls = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+      if (overlayCardsEls.length > 0) {
+        openCardEditor(overlayCardsEls[0], colIndex, cardIndex, 'overlay');
       }
     } else if (action === 'duplicate') {
       duplicateCard(colIndex, cardIndex);
