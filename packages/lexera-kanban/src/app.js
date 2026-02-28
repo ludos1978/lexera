@@ -9155,16 +9155,66 @@ const LexeraDashboard = (function () {
     return isMarkdownPreviewExtension(ext) || ext === 'txt' || ext === 'log' || ext === 'json' || ext === 'csv';
   }
 
-  function isDiagramFileExtension(ext) {
-    return ext === 'drawio' || ext === 'dio' || ext === 'excalidraw';
+  function normalizeFilePathForDetection(path) {
+    var value = String(path || '').trim();
+    if (!value) return '';
+    try {
+      if (isExternalHttpUrl(value)) value = new URL(value).pathname || '';
+    } catch (e) {
+      // Fall back to simple path parsing below.
+    }
+    return value.split('#')[0].split('?')[0].toLowerCase();
+  }
+
+  function getSpecialPreviewType(filePath) {
+    var normalized = normalizeFilePathForDetection(filePath);
+    if (!normalized) return '';
+    if (normalized.slice(-17) === '.excalidraw.json') return 'diagram-excalidraw';
+    if (normalized.slice(-12) === '.excalidraw') return 'diagram-excalidraw';
+    if (normalized.slice(-7) === '.drawio' || normalized.slice(-4) === '.dio') return 'diagram-drawio';
+    if (/\.(xlsx|xls|ods)$/.test(normalized)) return 'spreadsheet';
+    if (normalized.slice(-5) === '.epub') return 'epub';
+    if (normalized.slice(-4) === '.pdf') return 'pdf';
+    return '';
+  }
+
+  function getPreviewKindMeta(kind, filePath) {
+    if (kind === 'diagram') {
+      if (getSpecialPreviewType(filePath) === 'diagram-excalidraw') {
+        return { label: 'Excalidraw file', emoji: '&#127912;' };
+      }
+      return { label: 'Draw.io file', emoji: '&#128202;' };
+    }
+    if (kind === 'spreadsheet') return { label: 'Spreadsheet file', emoji: '&#128200;' };
+    if (kind === 'epub') return { label: 'EPUB file', emoji: '&#128218;' };
+    return { label: 'File', emoji: '&#128196;' };
+  }
+
+  function buildFilePreviewPlaceholderHtml(kind, filePath, description) {
+    var meta = getPreviewKindMeta(kind, filePath);
+    var filename = getDisplayFileNameFromPath(filePath) || filePath;
+    return '<div class="embed-diagram-file">' +
+      '<div class="embed-diagram-label">' + meta.emoji + ' ' + escapeHtml(meta.label) + '</div>' +
+      '<div class="embed-diagram-path">' + escapeHtml(filename) + '</div>' +
+      '<div class="embed-preview-loading" style="padding:8px 0 0;">' + escapeHtml(description || 'Preview is not available in this view yet.') + '</div>' +
+    '</div>';
+  }
+
+  function getFileEmbedChipHtml(kind, filePath, extraStyleAttr) {
+    var meta = getPreviewKindMeta(kind, filePath);
+    var filename = getDisplayFileNameFromPath(filePath) || filePath;
+    return '<span class="embed-file-link"' + (extraStyleAttr || '') + '>' + meta.emoji + ' ' + escapeHtml(filename) + '</span>';
   }
 
   function getEmbedPreviewKind(filePath) {
     var ext = getFileExtension(filePath);
+    var special = getSpecialPreviewType(filePath);
     if (isMarkdownPreviewExtension(ext)) return 'markdown';
     if (isTextPreviewExtension(ext)) return 'text';
-    if (ext === 'pdf') return 'pdf';
-    if (isDiagramFileExtension(ext)) return 'diagram';
+    if (special === 'pdf') return 'pdf';
+    if (special === 'diagram-drawio' || special === 'diagram-excalidraw') return 'diagram';
+    if (special === 'spreadsheet') return 'spreadsheet';
+    if (special === 'epub') return 'epub';
     return '';
   }
 
@@ -9721,13 +9771,16 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    if (previewKind === 'diagram') {
-      var diagramLabel = getFileExtension(filePath) === 'excalidraw' ? 'Excalidraw file' : 'Draw.io file';
-      previewEl.innerHTML =
-        '<div class="embed-diagram-file">' +
-          '<div class="embed-diagram-label">' + escapeHtml(diagramLabel) + '</div>' +
-          '<div class="embed-diagram-path">' + escapeHtml(getDisplayFileNameFromPath(filePath) || filePath) + '</div>' +
-        '</div>';
+    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub') {
+      previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
+        previewKind,
+        filePath,
+        previewKind === 'diagram'
+          ? 'Open the source file in a dedicated app for full diagram editing.'
+          : previewKind === 'spreadsheet'
+            ? 'Spreadsheet rendering is not available in this view yet.'
+            : 'EPUB rendering is not available in this view yet.'
+      );
       container.appendChild(previewEl);
       return;
     }
@@ -9783,8 +9836,9 @@ const LexeraDashboard = (function () {
   async function showBoardFilePreview(boardId, filePath) {
     var ext = getFileExtension(filePath);
     var mediaCategory = getMediaCategory(ext);
+    var previewKind = getEmbedPreviewKind(filePath);
     if (!filePath || !boardId) return;
-    if (!(ext === 'pdf' || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
+    if (!(previewKind === 'pdf' || previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
       openBoardFileInSystem(boardId, filePath);
       return;
     }
@@ -9818,8 +9872,21 @@ const LexeraDashboard = (function () {
       }
     });
 
-    if (ext === 'pdf') {
+    if (previewKind === 'pdf') {
       body.innerHTML = '<iframe class="file-preview-frame" src="' + LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0"></iframe>';
+      return;
+    }
+
+    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub') {
+      body.innerHTML = buildFilePreviewPlaceholderHtml(
+        previewKind,
+        filePath,
+        previewKind === 'diagram'
+          ? 'Open the source file in a dedicated app for full diagram editing.'
+          : previewKind === 'spreadsheet'
+            ? 'Spreadsheet rendering is not available in this view yet.'
+            : 'EPUB rendering is not available in this view yet.'
+      );
       return;
     }
 
@@ -10414,7 +10481,7 @@ const LexeraDashboard = (function () {
       image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif'],
       video: ['mp4', 'webm', 'mov', 'avi', 'mkv'],
       audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'],
-      document: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'json'],
+      document: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ods', 'ppt', 'pptx', 'txt', 'md', 'csv', 'json', 'epub'],
     };
     for (var cat in cats) {
       if (cats[cat].indexOf(ext) !== -1) return cat;
@@ -10423,14 +10490,8 @@ const LexeraDashboard = (function () {
   }
 
   function getFileExtension(path) {
-    var value = String(path || '').trim();
+    var value = normalizeFilePathForDetection(path);
     if (!value) return '';
-    try {
-      if (isExternalHttpUrl(value)) value = new URL(value).pathname || '';
-    } catch (e) {
-      // Fall back to simple path parsing below.
-    }
-    value = value.split('#')[0].split('?')[0];
     var fileName = getFileNameFromPath(value);
     var dot = fileName.lastIndexOf('.');
     if (dot <= 0 || dot === fileName.length - 1) return '';
@@ -11027,6 +11088,7 @@ const LexeraDashboard = (function () {
       }
 
       var mediaStyleAttr = getMarkdownMediaStyleAttr(imageAttrs, { allowHeightOnImages: true });
+      var previewKind = getEmbedPreviewKind(filePath);
       var inner = '';
       if (category === 'image') {
         var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
@@ -11035,6 +11097,8 @@ const LexeraDashboard = (function () {
         inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
       } else if (category === 'audio') {
         inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
+      } else if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub') {
+        inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
       } else if (category === 'document') {
         var documentFilename = getDisplayFileNameFromPath(filePath);
         inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128196; ' + escapeHtml(documentFilename) + '</span>';
