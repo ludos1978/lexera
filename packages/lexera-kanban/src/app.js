@@ -140,6 +140,8 @@ const LexeraDashboard = (function () {
   var SAVE_DEBOUNCE_MS = 2000;
   var liveSyncState = null;
   var liveSyncLastLocalBroadcastAt = 0;
+  var liveDraftSyncTimer = null;
+  var liveDraftSyncRequest = null;
   var undoStack = [];
   var redoStack = [];
   var MAX_UNDO = 30;
@@ -2583,6 +2585,7 @@ const LexeraDashboard = (function () {
 
     if (activeBoardId === boardId && isEditing && !options.force) {
       session.pendingRemoteUpdates.push(updates);
+      pendingRefresh = true;
       return true;
     }
 
@@ -2607,15 +2610,19 @@ const LexeraDashboard = (function () {
     var pending = session.pendingRemoteUpdates.slice();
     session.pendingRemoteUpdates.length = 0;
     var changed = false;
+    var lastBoard = null;
     for (var i = 0; i < pending.length; i++) {
       var response = await LexeraApi.importLiveSyncUpdates(session.sessionId, pending[i]);
       if (response && response.vv) session.vv = response.vv;
       if (response && response.changed) {
         changed = true;
-        if (i === pending.length - 1 && response.board && session.boardId === activeBoardId) {
-          applyLiveSyncBoardSnapshot(session.boardId, response.board, options);
-        }
       }
+      if (response && response.board) {
+        lastBoard = response.board;
+      }
+    }
+    if (changed && lastBoard && session.boardId === activeBoardId) {
+      applyLiveSyncBoardSnapshot(session.boardId, lastBoard, options);
     }
     return changed;
   }
@@ -2632,6 +2639,56 @@ const LexeraDashboard = (function () {
       return true;
     }
     return false;
+  }
+
+  function clearPendingCardDraftSync() {
+    if (liveDraftSyncTimer) {
+      clearTimeout(liveDraftSyncTimer);
+      liveDraftSyncTimer = null;
+    }
+    liveDraftSyncRequest = null;
+  }
+
+  function cloneBoardWithDraftCardContent(boardData, colIndex, fullCardIdx, content) {
+    var draftBoard = cloneBoardData(boardData);
+    var columns = getAllColumnsFromBoardData(draftBoard);
+    var column = columns[colIndex];
+    if (!column || !column.cards || !column.cards[fullCardIdx]) return null;
+    column.cards[fullCardIdx].content = content;
+    return draftBoard;
+  }
+
+  async function syncCardDraftToLiveSession(colIndex, fullCardIdx, content) {
+    if (!canUseLiveSync(activeBoardId) || !fullBoardData) return false;
+    var draftBoard = cloneBoardWithDraftCardContent(fullBoardData, colIndex, fullCardIdx, content);
+    if (!draftBoard) return false;
+    return applyBoardToLiveSyncSession(activeBoardId, draftBoard, { skipBoardReplace: true });
+  }
+
+  function queueCardDraftLiveSync(colIndex, fullCardIdx, content) {
+    if (!canUseLiveSync(activeBoardId)) return;
+    liveDraftSyncRequest = {
+      boardId: activeBoardId,
+      colIndex: colIndex,
+      fullCardIdx: fullCardIdx,
+      content: content
+    };
+    if (liveDraftSyncTimer) clearTimeout(liveDraftSyncTimer);
+    liveDraftSyncTimer = setTimeout(function () {
+      liveDraftSyncTimer = null;
+      var request = liveDraftSyncRequest;
+      liveDraftSyncRequest = null;
+      if (!request || request.boardId !== activeBoardId) return;
+      syncCardDraftToLiveSession(request.colIndex, request.fullCardIdx, request.content).catch(function (err) {
+        console.error('[live-sync] Failed to sync card draft:', err);
+      });
+    }, 250);
+  }
+
+  async function revertCardDraftLiveSync(colIndex, fullCardIdx, originalContent) {
+    clearPendingCardDraftSync();
+    if (!canUseLiveSync(activeBoardId)) return false;
+    return syncCardDraftToLiveSession(colIndex, fullCardIdx, originalContent);
   }
 
   /** Fetch the local user ID for sync, caching it for the session. */
@@ -2760,6 +2817,8 @@ const LexeraDashboard = (function () {
         if (stillExists) {
           await loadBoard(activeBoardId);
         } else {
+          await closeLiveSyncSession(activeBoardId);
+          LexeraApi.disconnectSync();
           activeBoardId = null;
           activeBoardData = null;
           fullBoardData = null;
@@ -3641,6 +3700,7 @@ const LexeraDashboard = (function () {
       activeBoardData = response;
       if (fullBoardData) {
         try {
+          await closeLiveSyncSession(boardId);
           await ensureLiveSyncSession(boardId);
         } catch (e) {
           // Live sync stays best-effort; loading still succeeds without it.
@@ -8832,6 +8892,7 @@ const LexeraDashboard = (function () {
           if (!currentCardEditor || currentCardEditor.suppressWysiwygChange) return;
           if (currentCardEditor.textarea) currentCardEditor.textarea.value = markdown || '';
           refreshCardEditorPreview();
+          queueCardDraftLiveSync(currentCardEditor.colIndex, currentCardEditor.fullCardIdx, markdown || '');
         },
         onSelectionChange: function (selectionState) {
           updateCardEditorWysiwygToolbar(selectionState);
@@ -9161,6 +9222,7 @@ const LexeraDashboard = (function () {
 
     textarea.addEventListener('input', function () {
       autoResizeInlineCardTextarea(textarea);
+      queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
     });
     textarea.addEventListener('blur', maybeSaveOnBlur);
     textarea.addEventListener('keydown', function (e) {
@@ -9219,10 +9281,15 @@ const LexeraDashboard = (function () {
     isEditing = false;
     if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
     if (options.save) {
+      clearPendingCardDraftSync();
       return saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
     }
     renderCardDisplayState(editor.cardEl, editor.originalContent);
-    return flushDeferredBoardRefresh({ refreshSidebar: true });
+    return revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent)
+      .catch(function () { return false; })
+      .then(function () {
+        return flushDeferredBoardRefresh({ refreshSidebar: true });
+      });
   }
 
   function applyCardEditorMode(mode) {
@@ -9352,6 +9419,7 @@ const LexeraDashboard = (function () {
       cardEl: cardEl,
       colIndex: colIndex,
       fullCardIdx: fullIdx,
+      originalContent: card.content || '',
       boardId: activeBoardId || '',
       fontScale: normalizeCardEditorFontScale(cardEditorFontScale),
       mode: normalizeCardEditorMode(cardEditorMode || localStorage.getItem('lexera-card-editor-mode') || 'dual')
@@ -9392,7 +9460,10 @@ const LexeraDashboard = (function () {
       applyCardEditorFormatting(textarea, snippet);
     });
 
-    textarea.addEventListener('input', refreshCardEditorPreview);
+    textarea.addEventListener('input', function () {
+      refreshCardEditorPreview();
+      queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
+    });
     preview.addEventListener('change', function (e) {
       if (!e.target.classList.contains('card-checkbox')) return;
       e.preventDefault();
@@ -9401,6 +9472,7 @@ const LexeraDashboard = (function () {
       if (!isFinite(lineIndex)) return;
       textarea.value = updateCheckboxLineInText(textarea.value, lineIndex, e.target.checked);
       refreshCardEditorPreview();
+      queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
     });
     dialog.addEventListener('dragover', function (e) {
       if (!e.dataTransfer) return;
@@ -9566,9 +9638,13 @@ const LexeraDashboard = (function () {
     if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
     if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
     if (options.save) {
+      clearPendingCardDraftSync();
       await saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
       return;
     }
+    await revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent).catch(function () {
+      return false;
+    });
     await flushDeferredBoardRefresh({ refreshSidebar: true });
   }
 
