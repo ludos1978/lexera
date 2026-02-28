@@ -763,7 +763,14 @@ async fn update_server_config(
     match crate::server::restart_server(state.clone(), new_bind.clone(), new_port).await {
         Ok(actual_port) => {
             // Update tray to reflect new port
-            let _ = crate::tray::setup_tray(&state.app_handle, actual_port);
+            if let Err(e) = crate::tray::setup_tray(&state.app_handle, actual_port) {
+                log::error!(
+                    target: "lexera.tray",
+                    "Failed to update tray icon after restart on port {}: {}",
+                    actual_port,
+                    e
+                );
+            }
 
             // Restart discovery if needed
             if let Ok(mut disc) = state.discovery.lock() {

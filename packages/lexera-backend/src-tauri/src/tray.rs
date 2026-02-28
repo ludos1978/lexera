@@ -7,7 +7,13 @@ use tauri::{
     AppHandle,
 };
 
+const BACKEND_TRAY_ID: &str = "lexera-backend-tray";
+
 pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> {
+    if app.tray_by_id(BACKEND_TRAY_ID).is_some() {
+        let _ = app.remove_tray_by_id(BACKEND_TRAY_ID);
+    }
+
     let status_item = MenuItem::with_id(
         app,
         "status",
@@ -38,10 +44,21 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
         &[&status_item, &quick_capture, &connection_settings, &open_browser, &quit],
     )?;
 
-    let mut builder = TrayIconBuilder::new().menu(&menu).tooltip("Lexera Backend");
+    let mut builder = TrayIconBuilder::with_id(BACKEND_TRAY_ID)
+        .menu(&menu)
+        .tooltip("Lexera Backend");
 
     if let Some(icon) = app.default_window_icon().cloned() {
         builder = builder.icon(icon);
+    } else {
+        log::warn!(
+            target: "lexera.tray",
+            "No default tray icon found, using text title fallback"
+        );
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.title("Lexera");
+        }
     }
 
     let tray_port = port;
@@ -75,6 +92,12 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
             _ => {}
         })
         .build(app)?;
+
+    log::info!(
+        target: "lexera.tray",
+        "Tray icon ready on port {}",
+        port
+    );
 
     Ok(tray)
 }

@@ -76,6 +76,15 @@ pub fn run() {
                 .join("lexera")
                 .join("identity.json");
 
+            if let Err(e) = tray::setup_tray(&app.handle().clone(), port) {
+                log::error!(
+                    target: "lexera.tray",
+                    "Failed to create initial tray icon for configured port {}: {}",
+                    port,
+                    e
+                );
+            }
+
             // Initialize storage and load boards
             let storage = Arc::new(LocalStorage::new());
             let mut board_paths: Vec<(String, PathBuf)> = Vec::new();
@@ -289,7 +298,14 @@ pub fn run() {
                         }
 
                         // Set up tray with actual port
-                        let _ = tray::setup_tray(&app_handle, actual_port);
+                        if let Err(e) = tray::setup_tray(&app_handle, actual_port) {
+                            log::error!(
+                                target: "lexera.tray",
+                                "Failed to update tray icon for live port {}: {}",
+                                actual_port,
+                                e
+                            );
+                        }
 
                         // Start UDP discovery if not localhost-only
                         if discovery_bind != "127.0.0.1" {
