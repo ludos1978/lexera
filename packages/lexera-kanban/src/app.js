@@ -5344,7 +5344,7 @@ const LexeraDashboard = (function () {
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
-      '<button class="column-fold-btn fold-btn" title="Fold column"></button>' +
+      '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
       '<span class="drag-grip">\u22EE\u22EE</span>' +
       '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
@@ -5425,7 +5425,7 @@ const LexeraDashboard = (function () {
       var toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
-      toggle.textContent = '';
+      toggle.textContent = '\u25B6';
       (function (toggleEl, el) {
         toggleEl.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -5602,7 +5602,7 @@ const LexeraDashboard = (function () {
         }
       }
       rowHeader.innerHTML =
-        '<button class="row-fold-btn fold-btn" title="Fold row"></button>' +
+        '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         '<span class="drag-grip">\u22EE\u22EE</span>' +
         '<span class="board-row-title">' + escapeHtml(rowTitle.length > 40 ? rowTitle.slice(0, 40) + '\u2026' : rowTitle) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
@@ -5683,7 +5683,7 @@ const LexeraDashboard = (function () {
         stackHeader.className = 'board-stack-header';
         var stackColCount = stackColumns.length;
         stackHeader.innerHTML =
-          '<button class="stack-fold-btn fold-btn" title="Fold stack"></button>' +
+          '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           '<span class="drag-grip">\u22EE\u22EE</span>' +
           '<span class="board-stack-title">' + (stack.title ? escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
