@@ -13994,6 +13994,7 @@ const LexeraDashboard = (function () {
   function renderInline(text, boardId, renderState) {
     renderState = renderState || {};
     if (typeof renderState.embedCounter !== 'number') renderState.embedCounter = 0;
+    if (typeof renderState.includeCounter !== 'number') renderState.includeCounter = 0;
     var source = text || '';
     var htmlTokens = [];
     if (getHtmlContentRenderMode() === 'html') {
@@ -14095,8 +14096,8 @@ const LexeraDashboard = (function () {
 
     // Include directives: !!!include(path)!!!
     safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
-      var includeIndex = ctx.includeCounter || 0;
-      ctx.includeCounter = includeIndex + 1;
+      var includeIndex = renderState.includeCounter || 0;
+      renderState.includeCounter = includeIndex + 1;
       return renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', {
         expandPreview: true,
         depth: 0,
