@@ -181,7 +181,13 @@ const LexeraApi = (function () {
       if (!url) return false;
       const res = await fetch(url + '/status');
       return res.ok;
-    } catch { return false; }
+    } catch (error) {
+      logApiIssue('warn', 'api.status', 'Status check failed', error, {
+        dedupeKey: 'api.status',
+        dedupeWindowMs: 30000
+      });
+      return false;
+    }
   }
 
   function mediaUrl(boardId, filename) {

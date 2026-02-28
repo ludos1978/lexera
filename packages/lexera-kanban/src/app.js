@@ -220,7 +220,8 @@ function connectBackendLogStreamIfReady() {
     ready.finally(function () {
       openBackendLogStream();
     });
-  }).catch(function () {
+  }).catch(function (err) {
+    logFrontendIssue('warn', 'backend.log.stream', 'Failed to connect backend log stream', err);
     backendLogConnectPending = false;
   });
 }
@@ -3043,7 +3044,8 @@ const LexeraDashboard = (function () {
       // Fetch remote boards (non-blocking)
       LexeraApi.getRemoteBoards().then(function (rb) {
         remoteBoards = rb.boards || [];
-      }).catch(function () {
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'boards.remote', 'Failed to load remote boards', err);
         remoteBoards = [];
       });
       await refreshBoardHierarchyCache(boards);
@@ -3093,7 +3095,10 @@ const LexeraDashboard = (function () {
   // --- Board List ---
 
   function getSidebarExpandedBoards() {
-    try { return JSON.parse(localStorage.getItem('lexera-sidebar-expanded') || '[]'); } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem('lexera-sidebar-expanded') || '[]'); } catch (e) {
+      logFrontendIssue('warn', 'sidebar.state', 'Failed to read expanded sidebar boards', e);
+      return [];
+    }
   }
   function saveSidebarExpandedBoards(ids) {
     localStorage.setItem('lexera-sidebar-expanded', JSON.stringify(ids));
@@ -3103,14 +3108,20 @@ const LexeraDashboard = (function () {
     try {
       var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
       return all[boardId] || { rows: [], stacks: [], columns: [] };
-    } catch (e) { return { rows: [], stacks: [], columns: [] }; }
+    } catch (e) {
+      logFrontendIssue('warn', 'sidebar.tree', 'Failed to read sidebar tree state for board ' + boardId, e);
+      return { rows: [], stacks: [], columns: [] };
+    }
   }
 
   function hasSidebarTreeState(boardId) {
     try {
       var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
       return Object.prototype.hasOwnProperty.call(all, boardId);
-    } catch (e) { return false; }
+    } catch (e) {
+      logFrontendIssue('warn', 'sidebar.tree', 'Failed to check sidebar tree state for board ' + boardId, e);
+      return false;
+    }
   }
 
   function saveSidebarTreeState(boardId, state) {
@@ -3118,7 +3129,9 @@ const LexeraDashboard = (function () {
       var all = JSON.parse(localStorage.getItem('lexera-sidebar-tree-state') || '{}');
       all[boardId] = state;
       localStorage.setItem('lexera-sidebar-tree-state', JSON.stringify(all));
-    } catch (e) {}
+    } catch (e) {
+      logFrontendIssue('warn', 'sidebar.tree', 'Failed to persist sidebar tree state for board ' + boardId, e);
+    }
   }
 
   function toggleSidebarTreeNode(boardId, kind, id) {
@@ -5310,7 +5323,8 @@ const LexeraDashboard = (function () {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (fullBoardData && activeBoardId) {
-        saveFullBoard().catch(function () {
+        saveFullBoard().catch(function (err) {
+          logFrontendIssue('warn', 'keyboard.save', 'Failed to save board from keyboard shortcut, reloading board ' + activeBoardId, err);
           loadBoard(activeBoardId);
         });
       }
@@ -6386,7 +6400,9 @@ const LexeraDashboard = (function () {
   function loadTemplatesOnce() {
     if (templatesLoaded) return;
     templatesLoaded = true;
-    LexeraTemplates.loadTemplates().catch(function () { /* silent */ });
+    LexeraTemplates.loadTemplates().catch(function (err) {
+      logFrontendIssue('warn', 'templates.load', 'Failed to load templates', err);
+    });
   }
 
   /**
@@ -7276,7 +7292,9 @@ const LexeraDashboard = (function () {
   function getTopWindowSafe() {
     try {
       if (window.top && window.top.document) return window.top;
-    } catch (e) {}
+    } catch (e) {
+      logFrontendIssue('warn', 'cross-frame', 'Failed to access top window', e);
+    }
     return window;
   }
 
@@ -7299,7 +7317,9 @@ const LexeraDashboard = (function () {
           return iframes[i].getBoundingClientRect();
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      logFrontendIssue('warn', 'cross-frame', 'Failed to resolve iframe bounds in top window', e);
+    }
     return null;
   }
 
@@ -9573,7 +9593,10 @@ const LexeraDashboard = (function () {
     }
     renderCardDisplayState(editor.cardEl, editor.originalContent);
     return revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent)
-      .catch(function () { return false; })
+      .catch(function (err) {
+        logFrontendIssue('warn', 'live-sync.revert', 'Failed to revert inline editor live-sync draft', err);
+        return false;
+      })
       .then(function () {
         return flushDeferredBoardRefresh({ refreshSidebar: true });
       });
@@ -9929,7 +9952,8 @@ const LexeraDashboard = (function () {
       await saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
       return;
     }
-    await revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent).catch(function () {
+    await revertCardDraftLiveSync(editor.colIndex, editor.fullCardIdx, editor.originalContent).catch(function (err) {
+      logFrontendIssue('warn', 'live-sync.revert', 'Failed to revert overlay editor live-sync draft', err);
       return false;
     });
     await flushDeferredBoardRefresh({ refreshSidebar: true });
@@ -12430,7 +12454,8 @@ const LexeraDashboard = (function () {
     if (action === 'copy' && navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(documentName).then(function () {
         showNotification('Wiki target copied to clipboard');
-      }).catch(function () {
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'clipboard.copy', 'Failed to copy wiki target to clipboard', err);
         showNotification('Failed to copy wiki target');
       });
     }
@@ -12592,7 +12617,9 @@ const LexeraDashboard = (function () {
         body: JSON.stringify({ filename: getDisplayFileNameFromPath(fileRef.path) }),
       }).then(function (res) {
         showPathFixResults(container, res && res.matches ? res.matches : []);
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for file link ' + filePath, err);
+      });
 
     } else if (action === 'path-manual') {
       closeEmbedMenu();
@@ -12610,7 +12637,9 @@ const LexeraDashboard = (function () {
         var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
         if (!nextTarget || nextTarget === filePath) return;
         updateBoardFileLinkTarget(container, nextTarget);
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'path.convert', 'Path conversion failed for file link ' + filePath, err);
+      });
 
     } else if (action && action.indexOf('pick-path:') === 0) {
       closeEmbedMenu();
@@ -12681,7 +12710,9 @@ const LexeraDashboard = (function () {
         body: JSON.stringify({ filename: filename }),
       }).then(function (res) {
         showPathFixResults(container, res && res.matches ? res.matches : []);
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for include ' + filePath, err);
+      });
 
     } else if (action === 'path-manual') {
       closeEmbedMenu();
@@ -12700,7 +12731,9 @@ const LexeraDashboard = (function () {
         var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
         if (!nextTarget || nextTarget === filePath) return;
         updateIncludeTarget(container, nextTarget);
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'path.convert', 'Path conversion failed for include ' + filePath, err);
+      });
 
     } else if (action === 'delete') {
       closeEmbedMenu();
@@ -12828,7 +12861,9 @@ const LexeraDashboard = (function () {
         infoMenu.style.left = ix + 'px';
         infoMenu.style.top = iy + 'px';
         activeEmbedMenu = infoMenu;
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'embed.info', 'Failed to load embed file info for ' + filePath, err);
+      });
 
     } else if (action === 'close-info') {
       closeEmbedMenu();
@@ -12867,7 +12902,9 @@ const LexeraDashboard = (function () {
           return;
         }
         showPathFixResults(container, res.matches);
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'path.fix', 'Automatic path fix failed for embed ' + filePath, err);
+      });
 
     } else if (action === 'path-manual') {
       closeEmbedMenu();
@@ -12888,7 +12925,9 @@ const LexeraDashboard = (function () {
         var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
         if (!nextTarget || nextTarget === filePath) return;
         updateEmbedTarget(container, nextTarget);
-      }).catch(function () { /* silently fail */ });
+      }).catch(function (err) {
+        logFrontendIssue('warn', 'path.convert', 'Path conversion failed for embed ' + filePath, err);
+      });
 
     } else if (action === 'delete') {
       closeEmbedMenu();
@@ -12962,17 +13001,18 @@ const LexeraDashboard = (function () {
     var boardId = getCurrentEditorBoardId() || activeBoardId || '';
     var resolvedPath = resolveCurrentEditorResourcePath(filePath, includeDir);
     if (!host || !boardId || !resolvedPath) return;
-    renderCachedSpecialPreview(host, boardId, resolvedPath, 'diagram')
-      .then(function (rendered) {
-        if (!rendered && host) {
-          host.innerHTML = buildFilePreviewPlaceholderHtml(
-            'diagram',
+      renderCachedSpecialPreview(host, boardId, resolvedPath, 'diagram')
+        .then(function (rendered) {
+          if (!rendered && host) {
+            host.innerHTML = buildFilePreviewPlaceholderHtml(
+              'diagram',
             resolvedPath,
             getSpecialPreviewPlaceholderText('diagram')
-          );
-        }
-      })
-      .catch(function () {
+            );
+          }
+        })
+      .catch(function (err) {
+        logFrontendIssue('warn', 'diagram.preview', 'Failed to render queued diagram preview for ' + resolvedPath, err);
         if (host) {
           host.innerHTML = buildFilePreviewPlaceholderHtml(
             'diagram',
@@ -13063,7 +13103,8 @@ const LexeraDashboard = (function () {
   function openUrlInSystem(url) {
     if (!url) return;
     if (hasTauri) {
-      tauriInvoke('open_url', { url: url }).catch(function () {
+      tauriInvoke('open_url', { url: url }).catch(function (err) {
+        logFrontendIssue('warn', 'open.url', 'Tauri URL open failed, falling back to browser open for ' + url, err);
         window.open(url, '_blank', 'noopener,noreferrer');
       });
       return;
@@ -13090,7 +13131,8 @@ const LexeraDashboard = (function () {
     return navigator.clipboard.writeText(text).then(function () {
       if (successMessage) showNotification(successMessage);
       return true;
-    }).catch(function () {
+    }).catch(function (err) {
+      logFrontendIssue('warn', 'clipboard.copy', 'Clipboard write failed', err);
       if (failureMessage) showNotification(failureMessage);
       return false;
     });
@@ -13319,7 +13361,9 @@ const LexeraDashboard = (function () {
       try {
         var parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed.map(function (id) { return String(id); });
-      } catch (e) {}
+      } catch (e) {
+        logFrontendIssue('warn', 'cards.collapse', 'Failed to parse collapsed card state for board ' + boardId, e);
+      }
     }
 
     // Legacy migration: old state stored expanded IDs. Convert to collapsed IDs.
@@ -13341,7 +13385,9 @@ const LexeraDashboard = (function () {
           localStorage.removeItem(legacyExpandedKey);
           return migratedCollapsed;
         }
-      } catch (e) {}
+      } catch (e) {
+        logFrontendIssue('warn', 'cards.collapse', 'Failed to migrate legacy expanded card state for board ' + boardId, e);
+      }
       localStorage.removeItem(legacyExpandedKey);
     }
 
