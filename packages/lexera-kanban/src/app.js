@@ -10677,9 +10677,27 @@ const LexeraDashboard = (function () {
     if (!link) return;
     var isMissing = !!(info && info.exists === false);
     link.classList.toggle('link-broken', isMissing);
+    var container = link.closest('.link-path-overlay-container');
+    if (container) container.classList.toggle('link-broken', isMissing);
     if (isMissing) {
       link.setAttribute('title', 'Missing file: ' + String(filePath || ''));
     }
+  }
+
+  function buildBoardFileLinkWrapper(filePath, boardId, linkHtml, options) {
+    options = options || {};
+    var indexAttr = options.linkIndex != null
+      ? ' data-link-index="' + escapeAttr(String(options.linkIndex)) + '"'
+      : '';
+    var wrapperStyle = 'display:inline-flex;align-items:center;gap:2px;vertical-align:baseline;max-width:100%';
+    var buttonStyle = 'position:static;top:auto;right:auto;min-width:16px;width:16px;height:16px;font-size:10px;opacity:1;margin:0 0 0 2px';
+    return '<span class="link-path-overlay-container" data-board-id="' + escapeAttr(boardId || '') + '"' +
+      ' data-file-path="' + escapeAttr(filePath || '') + '"' +
+      ' style="' + escapeAttr(wrapperStyle) + '"' +
+      indexAttr + '>' +
+      linkHtml +
+      '<button class="embed-menu-btn link-menu-btn" data-action="link-menu" title="Path options" style="' + escapeAttr(buttonStyle) + '">&#8942;</button>' +
+      '</span>';
   }
 
   function buildIncludeDirectiveWrapper(filePath, boardId, linkHtml, options) {
@@ -10856,17 +10874,20 @@ const LexeraDashboard = (function () {
     return embedValue != null && embedValue !== '' && embedValue !== 'false' && embedValue !== '0';
   }
 
-  function renderBoardFileLinkHtml(filePath, boardId, labelHtml, titleText, extraClass) {
+  function renderBoardFileLinkHtml(filePath, boardId, labelHtml, titleText, extraClass, options) {
+    options = options || {};
     var normalizedPath = decodeHtmlEntities(String(filePath || '').trim());
     if (!normalizedPath) return labelHtml || '';
     var className = 'markdown-file-link';
     if (extraClass) className += ' ' + extraClass;
     var boardAttr = boardId ? ' data-board-id="' + escapeAttr(boardId) + '"' : '';
     var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
-    return '<a href="#" class="' + className + '"' + boardAttr +
+    var linkHtml = '<a href="#" class="' + className + '"' + boardAttr +
       ' data-file-path="' + escapeAttr(normalizedPath) + '"' +
       ' data-original-href="' + escapeAttr(normalizedPath) + '"' +
       titleAttr + '>' + labelHtml + '</a>';
+    if (!options.withMenu) return linkHtml;
+    return buildBoardFileLinkWrapper(normalizedPath, boardId, linkHtml, options);
   }
 
   function renderIncludeDirectiveHtml(rawPath, boardId, extraClass, options) {
@@ -10947,6 +10968,22 @@ const LexeraDashboard = (function () {
         rawTarget: rawTarget,
         rawAttrs: rawAttrs || '',
         imageAttrs: parseMarkdownImageAttributes(rawAttrs),
+        path: parsed.path,
+        title: parsed.title
+      });
+    });
+  }
+
+  function replaceNthMarkdownLink(content, targetIndex, replacer) {
+    var matchIndex = 0;
+    return String(content || '').replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (match, label, rawTarget) {
+      var currentIndex = matchIndex++;
+      if (currentIndex !== targetIndex) return match;
+      var parsed = parseMarkdownTarget(rawTarget);
+      return replacer({
+        match: match,
+        label: label,
+        rawTarget: rawTarget,
         path: parsed.path,
         title: parsed.title
       });
@@ -11405,6 +11442,16 @@ const LexeraDashboard = (function () {
       }
     }
 
+    var linkMenuBtn = e.target.closest('.link-menu-btn');
+    if (linkMenuBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var linkContainer = linkMenuBtn.closest('.link-path-overlay-container[data-file-path]');
+      if (!linkContainer) return;
+      showBoardFileLinkMenu(linkContainer, linkMenuBtn);
+      return;
+    }
+
     // Handle burger menu button clicks for embeds/includes
     if (e.target.classList.contains('embed-menu-btn') || e.target.classList.contains('include-menu-btn')) {
       e.stopPropagation();
@@ -11424,7 +11471,11 @@ const LexeraDashboard = (function () {
       e.stopPropagation();
       var action = actionEl.getAttribute('data-action');
       var embedContainer = activeEmbedMenu._embedContainer;
-      handleEmbedAction(action, embedContainer);
+      if (embedContainer && embedContainer.classList && embedContainer.classList.contains('link-path-overlay-container')) {
+        handleBoardFileLinkAction(action, embedContainer);
+      } else {
+        handleEmbedAction(action, embedContainer);
+      }
       return;
     }
 
@@ -11443,6 +11494,14 @@ const LexeraDashboard = (function () {
       e.preventDefault();
       e.stopPropagation();
       showWikiMenu(wikiContainer, wikiLink);
+      return;
+    }
+
+    var linkContainer = e.target.closest('.link-path-overlay-container[data-file-path]');
+    if (linkContainer) {
+      e.preventDefault();
+      e.stopPropagation();
+      showBoardFileLinkMenu(linkContainer, e);
       return;
     }
 
@@ -11704,6 +11763,112 @@ const LexeraDashboard = (function () {
         return '';
       });
     });
+  }
+
+  function showBoardFileLinkMenu(container, trigger) {
+    if (!container) return;
+    var filePath = container.getAttribute('data-file-path') || '';
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    if (!filePath || !boardId) return;
+    var fileRef = parseLocalFileReference(filePath);
+    var isAbsolute = isAbsoluteFilePath(fileRef.path);
+    var x = 0;
+    var y = 0;
+    if (trigger && typeof trigger.clientX === 'number' && typeof trigger.clientY === 'number') {
+      x = trigger.clientX;
+      y = trigger.clientY;
+    } else if (trigger && typeof trigger.getBoundingClientRect === 'function') {
+      var rect = trigger.getBoundingClientRect();
+      x = rect.right;
+      y = rect.bottom;
+    } else {
+      var containerRect = container.getBoundingClientRect();
+      x = containerRect.right;
+      y = containerRect.bottom;
+    }
+
+    showNativeMenu([
+      { id: 'preview', label: 'Preview File' },
+      { separator: true },
+      { id: 'open-system', label: 'Open in System App' },
+      { id: 'show-finder', label: 'Show in Finder' },
+      { id: 'copy-path', label: 'Copy Path' },
+      { id: 'path-fix', label: 'Automatic Path Fix' },
+      { id: 'path-manual', label: 'Manual Path Fix' },
+      { id: 'path-web-search', label: 'Web-Search File' },
+      { id: 'convert-path', label: isAbsolute ? 'Convert to Relative' : 'Convert to Absolute' },
+    ], x, y).then(function (action) {
+      if (action) handleBoardFileLinkAction(action, container);
+    });
+  }
+
+  function handleBoardFileLinkAction(action, container) {
+    if (!container) {
+      closeEmbedMenu();
+      return;
+    }
+    var filePath = container.getAttribute('data-file-path') || '';
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    if (!filePath || !boardId) return;
+    var fileRef = parseLocalFileReference(filePath);
+
+    if (action === 'preview') {
+      closeEmbedMenu();
+      showBoardFilePreview(boardId, filePath);
+
+    } else if (action === 'open-system') {
+      closeEmbedMenu();
+      openBoardFileInSystem(boardId, filePath);
+
+    } else if (action === 'show-finder') {
+      closeEmbedMenu();
+      if (isAbsoluteFilePath(fileRef.path)) {
+        showInFinder(fileRef.path);
+      } else {
+        resolveBoardPath(boardId, fileRef.path, 'absolute').then(function (absPath) {
+          showInFinder(absPath);
+        });
+      }
+
+    } else if (action === 'copy-path') {
+      closeEmbedMenu();
+      copyTextToClipboard(filePath, 'File path copied to clipboard', 'Failed to copy file path');
+
+    } else if (action === 'path-fix') {
+      closeEmbedMenu();
+      LexeraApi.request('/boards/' + boardId + '/find-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: getDisplayFileNameFromPath(fileRef.path) }),
+      }).then(function (res) {
+        showPathFixResults(container, res && res.matches ? res.matches : []);
+      }).catch(function () { /* silently fail */ });
+
+    } else if (action === 'path-manual') {
+      closeEmbedMenu();
+      var nextPath = promptForEmbedTarget(filePath, 'Manual path fix');
+      if (!nextPath || nextPath === filePath) return;
+      updateBoardFileLinkTarget(container, nextPath);
+
+    } else if (action === 'path-web-search') {
+      closeEmbedMenu();
+      openEmbedWebSearch(container, filePath);
+
+    } else if (action === 'convert-path') {
+      closeEmbedMenu();
+      resolveBoardPath(boardId, fileRef.path, isAbsoluteFilePath(fileRef.path) ? 'relative' : 'absolute').then(function (nextPath) {
+        var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
+        if (!nextTarget || nextTarget === filePath) return;
+        updateBoardFileLinkTarget(container, nextTarget);
+      }).catch(function () { /* silently fail */ });
+
+    } else if (action && action.indexOf('pick-path:') === 0) {
+      closeEmbedMenu();
+      updateBoardFileLinkTarget(container, action.substring(10) + (fileRef.suffix || ''));
+
+    } else if (action === 'close-info') {
+      closeEmbedMenu();
+    }
   }
 
   function showIncludeMenu(container, btn) {
@@ -12199,6 +12364,39 @@ const LexeraDashboard = (function () {
     return label || getDisplayNameFromPath(fallbackPath || '') || getDisplayFileNameFromPath(fallbackPath || '') || String(fallbackPath || '');
   }
 
+  function mutateBoardTitleSource(node, titleMutator) {
+    if (!node || typeof titleMutator !== 'function') return Promise.resolve(false);
+    var columnEl = node.closest('.column[data-row-index][data-stack-index][data-col-local-index]');
+    if (!columnEl) return Promise.resolve(false);
+    var rowIndex = parseInt(columnEl.getAttribute('data-row-index') || '', 10);
+    var stackIndex = parseInt(columnEl.getAttribute('data-stack-index') || '', 10);
+    var colIndex = parseInt(columnEl.getAttribute('data-col-local-index') || '', 10);
+    if (!isFinite(rowIndex) || !isFinite(stackIndex) || !isFinite(colIndex)) return Promise.resolve(false);
+    var column = getColumnByLocation(rowIndex, stackIndex, colIndex);
+    if (!column) return Promise.resolve(false);
+    var nextTitle = titleMutator(column.title || '');
+    if (typeof nextTitle !== 'string' || nextTitle === column.title) return Promise.resolve(false);
+    pushUndo();
+    column.title = normalizeCardContentAfterInlineMutation(nextTitle);
+    return persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+  }
+
+  function updateBoardFileLinkTarget(container, nextTarget) {
+    if (!container) return Promise.resolve(false);
+    var linkIndex = parseInt(container.getAttribute('data-link-index'), 10);
+    var nextValue = String(nextTarget || '').trim();
+    if (!nextValue) return Promise.resolve(false);
+    var linkMutator = function (content) {
+      return replaceNthMarkdownLink(content, isFinite(linkIndex) ? linkIndex : 0, function (link) {
+        return '[' + link.label + '](' + nextValue + (link.title ? ' ' + link.title : '') + ')';
+      });
+    };
+    return Promise.resolve(mutateEmbedSource(container, linkMutator)).then(function (changed) {
+      if (changed) return true;
+      return mutateBoardTitleSource(container, linkMutator);
+    });
+  }
+
   function updateEmbedTarget(container, nextTarget) {
     if (!container) return Promise.resolve(false);
     var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
@@ -12491,6 +12689,7 @@ const LexeraDashboard = (function () {
     boardId = boardId || activeBoardId || '';
     var safe = escapeHtml(text);
     var titleIncludeIndex = 0;
+    var titleLinkIndex = 0;
     // Strip image/embed markdown
     safe = safe.replace(/!\[[^\]]*\]\([^)]+\)(\{[^}]+\})?/g, '');
     // Include directives: !!!include(path)!!!
@@ -12510,7 +12709,10 @@ const LexeraDashboard = (function () {
       var isAnchor = href.indexOf('#') === 0;
       var isMailto = href.indexOf('mailto:') === 0;
       if (!isExternal && !isAnchor && !isMailto && href) {
-        return renderBoardFileLinkHtml(href, boardId, label, titleText, '');
+        return renderBoardFileLinkHtml(href, boardId, label, titleText, '', {
+          withMenu: true,
+          linkIndex: titleLinkIndex++
+        });
       }
       var safeHref = escapeAttr(href);
       var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
@@ -13069,7 +13271,12 @@ const LexeraDashboard = (function () {
       var isAnchor = href.indexOf('#') === 0;
       var isMailto = href.indexOf('mailto:') === 0;
       if (!isExternal && !isAnchor && !isMailto && href && boardId) {
-        return renderBoardFileLinkHtml(href, boardId, label, parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '', '');
+        var linkIndex = renderState.linkCounter || 0;
+        renderState.linkCounter = linkIndex + 1;
+        return renderBoardFileLinkHtml(href, boardId, label, parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '', '', {
+          withMenu: true,
+          linkIndex: linkIndex
+        });
       }
       var safeHref = escapeAttr(href);
       var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
