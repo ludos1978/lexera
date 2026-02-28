@@ -11527,6 +11527,16 @@ const LexeraDashboard = (function () {
       }
     }
 
+    var diagramMenuBtn = e.target.closest('.diagram-menu-btn');
+    if (diagramMenuBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var diagramContainer = diagramMenuBtn.closest('.diagram-overlay-container[data-diagram-type]');
+      if (!diagramContainer) return;
+      showDiagramMenu(diagramContainer, diagramMenuBtn);
+      return;
+    }
+
     var linkMenuBtn = e.target.closest('.link-menu-btn');
     if (linkMenuBtn) {
       e.preventDefault();
@@ -11587,6 +11597,14 @@ const LexeraDashboard = (function () {
       e.preventDefault();
       e.stopPropagation();
       showBoardFileLinkMenu(linkContainer, e);
+      return;
+    }
+
+    var diagramContainer = e.target.closest('.diagram-overlay-container[data-diagram-type]');
+    if (diagramContainer) {
+      e.preventDefault();
+      e.stopPropagation();
+      showDiagramMenu(diagramContainer, e);
       return;
     }
 
@@ -11885,6 +11903,56 @@ const LexeraDashboard = (function () {
     ], x, y).then(function (action) {
       if (action) handleBoardFileLinkAction(action, container);
     });
+  }
+
+  function showDiagramMenu(container, trigger) {
+    if (!container) return;
+    var x = 0;
+    var y = 0;
+    if (trigger && typeof trigger.clientX === 'number' && typeof trigger.clientY === 'number') {
+      x = trigger.clientX;
+      y = trigger.clientY;
+    } else if (trigger && typeof trigger.getBoundingClientRect === 'function') {
+      var rect = trigger.getBoundingClientRect();
+      x = rect.right;
+      y = rect.bottom;
+    } else {
+      var containerRect = container.getBoundingClientRect();
+      x = containerRect.right;
+      y = containerRect.top;
+    }
+    var diagramType = container.getAttribute('data-diagram-type') || 'diagram';
+    var typeLabel = diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML';
+    showNativeMenu([
+      { id: 'copy-svg', label: 'Copy SVG' },
+      { id: 'copy-code', label: 'Copy ' + typeLabel + ' Code' },
+    ], x, y).then(function (action) {
+      if (action) handleDiagramAction(action, container);
+    });
+  }
+
+  function handleDiagramAction(action, container) {
+    if (!container) return;
+    if (action === 'copy-code') {
+      copyTextToClipboard(
+        container.getAttribute('data-diagram-code') || '',
+        'Diagram code copied to clipboard',
+        'Failed to copy diagram code'
+      );
+      return;
+    }
+    if (action === 'copy-svg') {
+      var svg = container.querySelector('svg');
+      if (!svg) {
+        showNotification('SVG not available yet');
+        return;
+      }
+      copyTextToClipboard(
+        svg.outerHTML || '',
+        'Diagram SVG copied to clipboard',
+        'Failed to copy diagram SVG'
+      );
+    }
   }
 
   function handleBoardFileLinkAction(action, container) {
@@ -13157,12 +13225,18 @@ const LexeraDashboard = (function () {
         if (lang.toLowerCase() === 'mermaid') {
           var mermaidId = 'mermaid-' + (++mermaidIdCounter);
           var code = codeLines.join('\n');
-          html += '<div class="mermaid-placeholder" id="' + mermaidId + '">Loading diagram...</div>';
+          html += '<div class="diagram-overlay-container" data-diagram-type="mermaid" data-diagram-code="' + escapeAttr(code) + '" style="position:relative;display:block">' +
+            '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1">&#8942;</button>' +
+            '<div class="mermaid-placeholder" id="' + mermaidId + '">Loading diagram...</div>' +
+            '</div>';
           pendingMermaidRenders.push({ id: mermaidId, code: code });
         } else if (lang.toLowerCase() === 'plantuml' || lang.toLowerCase() === 'puml') {
           var plantumlId = 'plantuml-' + (++plantumlIdCounter);
           var plantumlCode = codeLines.join('\n');
-          html += '<div class="plantuml-placeholder" id="' + plantumlId + '"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(plantumlCode) + '</code></pre></div>';
+          html += '<div class="diagram-overlay-container" data-diagram-type="plantuml" data-diagram-code="' + escapeAttr(plantumlCode) + '" style="position:relative;display:block">' +
+            '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1">&#8942;</button>' +
+            '<div class="plantuml-placeholder" id="' + plantumlId + '"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(plantumlCode) + '</code></pre></div>' +
+            '</div>';
           pendingPlantUmlRenders.push({ id: plantumlId, code: plantumlCode, boardId: boardId || activeBoardId || '' });
         } else {
           var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
