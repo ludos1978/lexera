@@ -113,12 +113,24 @@ pub fn capture_selection_and_open(app: &AppHandle) {
     });
 }
 
-/// Open (or focus) the quick-capture popup window.
-pub fn open_capture_popup(app: &AppHandle) {
-    // If the window already exists, focus it
+/// Focus the quick-capture popup window (opening it first if needed).
+pub fn focus_capture_popup(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("quick-capture") {
         let _ = window.show();
         let _ = window.set_focus();
+        return;
+    }
+    open_capture_popup(app);
+    // Focus the newly created window
+    if let Some(window) = app.get_webview_window("quick-capture") {
+        let _ = window.set_focus();
+    }
+}
+
+/// Open (or show) the quick-capture popup window without stealing focus.
+pub fn open_capture_popup(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("quick-capture") {
+        let _ = window.show();
         return;
     }
 

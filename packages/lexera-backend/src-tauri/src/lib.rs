@@ -45,9 +45,15 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if let tauri_plugin_global_shortcut::ShortcutState::Pressed = event.state {
-                        capture::capture_selection_and_open(app);
+                        let focus: tauri_plugin_global_shortcut::Shortcut =
+                            "CmdOrCtrl+B".parse().unwrap();
+                        if *shortcut == focus {
+                            capture::focus_capture_popup(app);
+                        } else {
+                            capture::capture_selection_and_open(app);
+                        }
                     }
                 })
                 .build(),
@@ -95,9 +101,10 @@ pub fn run() {
                 })
             });
 
-            // Register global shortcut
+            // Register global shortcuts
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             let _ = app.global_shortcut().register("CmdOrCtrl+Shift+C");
+            let _ = app.global_shortcut().register("CmdOrCtrl+B");
 
             // Create file watcher
             let include_map = Arc::new(RwLock::new(IncludeMap::new()));
