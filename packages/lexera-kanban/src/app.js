@@ -2547,6 +2547,7 @@ const LexeraDashboard = (function () {
       boardId: boardId,
       sessionId: response.sessionId,
       vv: response.vv || '',
+      board: response.board || null,
       pendingRemoteUpdates: []
     };
     return liveSyncState;
@@ -2571,6 +2572,7 @@ const LexeraDashboard = (function () {
 
     var response = await LexeraApi.applyLiveSyncBoard(session.sessionId, boardData);
     if (response && response.vv) session.vv = response.vv;
+    if (response && response.board) session.board = response.board;
     if (response && response.changed && response.updates) {
       if (!LexeraApi.sendSyncUpdate(response.updates)) {
         return false;
@@ -2597,6 +2599,7 @@ const LexeraDashboard = (function () {
 
     var response = await LexeraApi.importLiveSyncUpdates(session.sessionId, updates);
     if (response && response.vv) session.vv = response.vv;
+    if (response && response.board) session.board = response.board;
     if (response && response.changed && response.board && boardId === activeBoardId) {
       applyLiveSyncBoardSnapshot(boardId, response.board, options);
     }
@@ -2620,6 +2623,7 @@ const LexeraDashboard = (function () {
     for (var i = 0; i < pending.length; i++) {
       var response = await LexeraApi.importLiveSyncUpdates(session.sessionId, pending[i]);
       if (response && response.vv) session.vv = response.vv;
+      if (response && response.board) session.board = response.board;
       if (response && response.changed) {
         changed = true;
       }
@@ -2775,7 +2779,15 @@ const LexeraDashboard = (function () {
         if (isEditing) {
           pendingRefresh = true;
         } else {
-          loadBoard(activeBoardId);
+          reopenLiveSyncSession(activeBoardId).then(function (session) {
+            if (session && session.board) {
+              applyLiveSyncBoardSnapshot(activeBoardId, cloneBoardData(session.board), { refreshSidebar: true });
+            } else {
+              loadBoard(activeBoardId);
+            }
+          }).catch(function () {
+            loadBoard(activeBoardId);
+          });
         }
         return;
       }
@@ -3104,6 +3116,9 @@ const LexeraDashboard = (function () {
   function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
     options = options || {};
     if (!boardData || boardId !== activeBoardId) return;
+    if (liveSyncState && liveSyncState.boardId === boardId) {
+      liveSyncState.board = boardData;
+    }
     fullBoardData = resolveLiveSyncBoardData(boardData, boardId);
     if (!activeBoardData) {
       activeBoardData = {
