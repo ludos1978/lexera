@@ -31,7 +31,7 @@ use tauri::Manager;
 
 pub fn run() {
     if let Err(e) = log_bridge::init() {
-        eprintln!("failed to initialize backend logger: {}", e);
+        log_bridge::write_fallback_line(&format!("failed to initialize backend logger: {}", e));
     }
 
     let run_result = tauri::Builder::default()

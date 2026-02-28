@@ -200,6 +200,7 @@ async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
 async fn list_logs() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "entries": crate::log_bridge::recent_entries(),
+        "filePath": crate::log_bridge::log_file_path(),
     }))
 }
 

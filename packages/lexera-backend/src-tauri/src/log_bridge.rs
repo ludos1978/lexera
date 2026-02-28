@@ -1,7 +1,10 @@
-use env_logger::Logger;
+use env_logger::{Logger, Target};
 use log::{Log, Metadata, Record, SetLoggerError};
 use serde::Serialize;
 use std::collections::VecDeque;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use tokio::sync::broadcast;
 
@@ -48,6 +51,65 @@ static LOG_HUB: LazyLock<BackendLogHub> = LazyLock::new(|| {
     }
 });
 
+struct BackendLogFile {
+    path: PathBuf,
+    file: Mutex<Option<File>>,
+}
+
+impl BackendLogFile {
+    fn new() -> Self {
+        let path = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("lexera")
+            .join("logs")
+            .join("backend.log");
+        let file = Self::open(&path).ok();
+        Self {
+            path,
+            file: Mutex::new(file),
+        }
+    }
+
+    fn open(path: &Path) -> io::Result<File> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        OpenOptions::new().create(true).append(true).open(path)
+    }
+
+    fn append_entry(&self, entry: &BackendLogEntry) {
+        let mut guard = match self.file.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        if guard.is_none() {
+            if let Ok(file) = Self::open(&self.path) {
+                *guard = Some(file);
+            } else {
+                return;
+            }
+        }
+        if let Some(file) = guard.as_mut() {
+            let line = format_log_line(entry);
+            let _ = file.write_all(line.as_bytes());
+            let _ = file.write_all(b"\n");
+            let _ = file.flush();
+        }
+    }
+}
+
+static LOG_FILE: LazyLock<BackendLogFile> = LazyLock::new(BackendLogFile::new);
+
+fn format_log_line(entry: &BackendLogEntry) -> String {
+    format!(
+        "{} [{}] [{}] {}",
+        entry.timestamp_ms,
+        entry.level.to_uppercase(),
+        entry.target,
+        entry.message.replace('\n', "\\n")
+    )
+}
+
 struct BroadcastLogger {
     inner: Logger,
 }
@@ -62,19 +124,20 @@ impl Log for BroadcastLogger {
             return;
         }
 
-        self.inner.log(record);
-
         let timestamp_ms = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
 
-        LOG_HUB.push(BackendLogEntry {
+        let entry = BackendLogEntry {
             timestamp_ms,
             level: record.level().to_string().to_lowercase(),
             target: record.target().to_string(),
             message: record.args().to_string(),
-        });
+        };
+
+        LOG_HUB.push(entry.clone());
+        LOG_FILE.append_entry(&entry);
     }
 
     fn flush(&self) {
@@ -83,11 +146,12 @@ impl Log for BroadcastLogger {
 }
 
 pub fn init() -> Result<(), SetLoggerError> {
+    let _ = &*LOG_FILE;
+    let mut builder =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
+    builder.target(Target::Pipe(Box::new(io::sink())));
     let logger = Box::leak(Box::new(BroadcastLogger {
-        inner: env_logger::Builder::from_env(
-            env_logger::Env::default().default_filter_or("warn"),
-        )
-        .build(),
+        inner: builder.build(),
     }));
     log::set_logger(logger)?;
     log::set_max_level(log::LevelFilter::Trace);
@@ -100,4 +164,22 @@ pub fn recent_entries() -> Vec<BackendLogEntry> {
 
 pub fn subscribe() -> broadcast::Receiver<BackendLogEntry> {
     LOG_HUB.tx.subscribe()
+}
+
+pub fn log_file_path() -> String {
+    LOG_FILE.path.display().to_string()
+}
+
+pub fn write_fallback_line(message: &str) {
+    let entry = BackendLogEntry {
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+        level: "error".to_string(),
+        target: "lexera.log_bridge".to_string(),
+        message: message.to_string(),
+    };
+    LOG_HUB.push(entry.clone());
+    LOG_FILE.append_entry(&entry);
 }
