@@ -398,6 +398,20 @@ const LexeraDashboard = (function () {
     return idx >= 0 ? normalized.slice(idx + 1) : normalized;
   }
 
+  function decodePathDisplayValue(value) {
+    var raw = String(value || '');
+    if (!raw) return '';
+    try {
+      return decodeURIComponent(raw);
+    } catch (e) {
+      return raw;
+    }
+  }
+
+  function getDisplayFileNameFromPath(path) {
+    return decodePathDisplayValue(getFileNameFromPath(path));
+  }
+
   function getDirNameFromPath(path) {
     var normalized = normalizePathForCompare(path);
     if (!normalized) return '';
@@ -406,7 +420,7 @@ const LexeraDashboard = (function () {
   }
 
   function getDisplayNameFromPath(path) {
-    var fileName = getFileNameFromPath(path);
+    var fileName = getDisplayFileNameFromPath(path);
     return fileName ? fileName.replace(/\.[^.]+$/, '') : '';
   }
 
@@ -431,7 +445,7 @@ const LexeraDashboard = (function () {
 
   function getBoardDisplayName(board) {
     if (!board) return '';
-    return String(board.title || stripMarkdownExtension(getFileNameFromPath(board.filePath || '')) || '').trim();
+    return String(board.title || stripMarkdownExtension(getDisplayFileNameFromPath(board.filePath || '')) || '').trim();
   }
 
   function getKnownBoards() {
@@ -2832,7 +2846,7 @@ const LexeraDashboard = (function () {
       el.className = 'board-item' + (isActive ? ' active' : '');
       el.setAttribute('data-board-index', i.toString());
       el.setAttribute('data-board-id', board.id);
-      var boardName = board.title || board.filePath.split('/').pop().replace('.md', '') || 'Untitled';
+      var boardName = board.title || getDisplayNameFromPath(board.filePath || '') || 'Untitled';
 
       var hasContent = rows.length > 0;
       var singleRow = rows.length === 1;
@@ -3688,7 +3702,7 @@ const LexeraDashboard = (function () {
     var deletedCount = getDeletedCount();
     var boardFilePath = getActiveBoardFilePath();
     var boardFileName = boardFilePath
-      ? getFileNameFromPath(boardFilePath)
+      ? getDisplayFileNameFromPath(boardFilePath)
       : ((activeBoardData && activeBoardData.title) ? activeBoardData.title : 'Untitled');
     var hasBoardFile = !!(activeBoardId && boardFilePath);
     var html = '';
@@ -9701,7 +9715,7 @@ const LexeraDashboard = (function () {
 
     if (previewKind === 'pdf') {
       previewEl.setAttribute('loading', 'lazy');
-      previewEl.setAttribute('title', filePath.split('/').pop() || 'PDF preview');
+      previewEl.setAttribute('title', getDisplayFileNameFromPath(filePath) || 'PDF preview');
       previewEl.setAttribute('src', LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0');
       container.appendChild(previewEl);
       return;
@@ -9712,7 +9726,7 @@ const LexeraDashboard = (function () {
       previewEl.innerHTML =
         '<div class="embed-diagram-file">' +
           '<div class="embed-diagram-label">' + escapeHtml(diagramLabel) + '</div>' +
-          '<div class="embed-diagram-path">' + escapeHtml(filePath.split('/').pop() || filePath) + '</div>' +
+          '<div class="embed-diagram-path">' + escapeHtml(getDisplayFileNameFromPath(filePath) || filePath) + '</div>' +
         '</div>';
       container.appendChild(previewEl);
       return;
@@ -9779,7 +9793,7 @@ const LexeraDashboard = (function () {
     var dialog = document.createElement('div');
     dialog.className = 'modal-dialog file-preview-dialog';
     dialog.innerHTML =
-      '<div class="modal-title">' + escapeHtml(filePath.split('/').pop() || filePath) + '</div>' +
+      '<div class="modal-title">' + escapeHtml(getDisplayFileNameFromPath(filePath) || filePath) + '</div>' +
       '<div class="file-preview-body"><div class="embed-preview-loading">Loading preview...</div></div>' +
       '<div class="hidden-items-footer">' +
         '<button class="board-action-btn" data-file-preview-action="open-system">Open in System App</button>' +
@@ -10228,7 +10242,7 @@ const LexeraDashboard = (function () {
     } else if (action === 'path-fix') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
-      var filename = filePath.split('/').pop();
+      var filename = getDisplayFileNameFromPath(filePath);
       LexeraApi.request('/boards/' + boardId + '/find-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -11006,10 +11020,10 @@ const LexeraDashboard = (function () {
       } else if (category === 'audio') {
         inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
       } else if (category === 'document') {
-        var documentFilename = filePath.split('/').pop();
+        var documentFilename = getDisplayFileNameFromPath(filePath);
         inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128196; ' + escapeHtml(documentFilename) + '</span>';
       } else {
-        var filename = filePath.split('/').pop();
+        var filename = getDisplayFileNameFromPath(filePath);
         inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128206; ' + escapeHtml(filename) + '</span>';
       }
 
