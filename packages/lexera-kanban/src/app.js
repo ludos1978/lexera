@@ -133,6 +133,7 @@ const LexeraDashboard = (function () {
   var currentCardEditor = null;
   var currentInlineCardEditor = null;
   var cardEditorMode = null;
+  var cardEditorFontScale = 1;
   var pendingRefresh = false;
   var eventSource = null;
   var lastSaveTime = 0;
@@ -378,6 +379,7 @@ const LexeraDashboard = (function () {
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
   applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
   cardEditorMode = normalizeCardEditorMode(localStorage.getItem('lexera-card-editor-mode') || 'dual');
+  cardEditorFontScale = normalizeCardEditorFontScale(localStorage.getItem('lexera-card-editor-font-scale') || '1');
 
   function normalizePathForCompare(path) {
     return String(path || '').replace(/\\/g, '/');
@@ -8460,6 +8462,36 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function applyCardEditorFontScale(scale, persist) {
+    var normalizedScale = normalizeCardEditorFontScale(scale);
+    cardEditorFontScale = normalizedScale;
+    if (!currentCardEditor || !currentCardEditor.dialog) {
+      if (persist !== false) localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale));
+      return;
+    }
+    currentCardEditor.fontScale = normalizedScale;
+    currentCardEditor.dialog.style.setProperty('--task-overlay-font-scale', String(normalizedScale));
+    if (currentCardEditor.textarea) currentCardEditor.textarea.style.fontSize = 'calc(14px * ' + normalizedScale + ')';
+    if (currentCardEditor.preview) currentCardEditor.preview.style.fontSize = 'calc(14px * ' + normalizedScale + ')';
+    if (currentCardEditor.wysiwygWrap) currentCardEditor.wysiwygWrap.style.fontSize = 'calc(1em * ' + normalizedScale + ')';
+    if (persist !== false) localStorage.setItem('lexera-card-editor-font-scale', String(normalizedScale));
+  }
+
+  function openCardEditorFontScaleMenu(anchorEl) {
+    if (!anchorEl || !currentCardEditor) return;
+    var rect = anchorEl.getBoundingClientRect();
+    var items = [
+      { id: 'font-1.0', label: 'Text 100%' },
+      { id: 'font-1.2', label: 'Text 120%' },
+      { id: 'font-1.4', label: 'Text 140%' }
+    ];
+    showNativeMenu(items, rect.right, rect.bottom).then(function (action) {
+      if (!action) return;
+      var nextScale = action === 'font-1.4' ? 1.4 : (action === 'font-1.2' ? 1.2 : 1);
+      applyCardEditorFontScale(nextScale, true);
+    });
+  }
+
   function syncCardEditorTextareaFromWysiwyg() {
     if (
       !currentCardEditor ||
@@ -8612,6 +8644,13 @@ const LexeraDashboard = (function () {
     if (mode === 'markdown' || mode === 'preview') return mode;
     if (mode === 'wysiwyg' && typeof window.WysiwygEditor === 'function') return mode;
     return 'dual';
+  }
+
+  function normalizeCardEditorFontScale(value) {
+    var parsed = parseFloat(value);
+    if (Math.abs(parsed - 1.4) < 0.01) return 1.4;
+    if (Math.abs(parsed - 1.2) < 0.01) return 1.2;
+    return 1;
   }
 
   function getCardEditorFormatSpec(fmt) {
@@ -8935,6 +8974,7 @@ const LexeraDashboard = (function () {
             '<button class="board-action-btn" type="button" data-card-editor-mode="preview" aria-pressed="false">Preview</button>' +
             '<button class="board-action-btn" type="button" data-card-editor-mode="wysiwyg" aria-pressed="false">WYSIWYG</button>' +
           '</div>' +
+          '<button class="board-action-btn" type="button" data-card-editor-action="font-scale">Aa</button>' +
           '<button class="btn-small btn-cancel" data-card-editor-action="cancel">Cancel</button>' +
           '<button class="btn-small btn-primary" data-card-editor-action="save">Save</button>' +
         '</div>' +
@@ -9007,9 +9047,11 @@ const LexeraDashboard = (function () {
       colIndex: colIndex,
       fullCardIdx: fullIdx,
       boardId: activeBoardId || '',
+      fontScale: normalizeCardEditorFontScale(cardEditorFontScale),
       mode: normalizeCardEditorMode(cardEditorMode || localStorage.getItem('lexera-card-editor-mode') || 'dual')
     };
     syncCardEditorWysiwygContext(currentCardEditor);
+    applyCardEditorFontScale(currentCardEditor.fontScale, false);
 
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) closeCardEditorOverlay({ save: false });
@@ -9028,6 +9070,7 @@ const LexeraDashboard = (function () {
         var action = actionBtn.getAttribute('data-card-editor-action');
         if (action === 'save') closeCardEditorOverlay({ save: true });
         else if (action === 'cancel') closeCardEditorOverlay({ save: false });
+        else if (action === 'font-scale') openCardEditorFontScaleMenu(actionBtn);
         return;
       }
       var fmtBtn = e.target.closest('[data-card-editor-fmt]');
