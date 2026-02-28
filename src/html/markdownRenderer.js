@@ -1262,6 +1262,83 @@ function createMarkdownItInstance(htmlCommentRenderMode, htmlContentRenderMode, 
         // (see marp-engine/engine/markdown-it-media/plugin.js)
     }
 
+    // Include badge plugin: renders !!!include(path)!!! as visible badges
+    // Uses the same columninclude-link CSS class as cardEditor._renderIncludeBadges
+    (function includeBadgePlugin(md) {
+        const includeRe = /!!!include\(([^)]+)\)!!!/;
+
+        function escapeHtml(text) {
+            return text.replace(/[&<>"']/g, function(ch) {
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+            });
+        }
+
+        function extractFilename(filepath) {
+            const parts = filepath.replace(/\\/g, '/').split('/');
+            return parts[parts.length - 1];
+        }
+
+        // Block rule: detect lines that are exactly !!!include(path)!!!
+        md.block.ruler.before('paragraph', 'include_block', function(state, startLine, endLine, silent) {
+            const pos = state.bMarks[startLine] + state.tShift[startLine];
+            const max = state.eMarks[startLine];
+            const lineText = state.src.slice(pos, max).trim();
+
+            const match = lineText.match(includeRe);
+            if (!match || match.index !== 0 || match[0] !== lineText) {
+                return false;
+            }
+            if (silent) { return true; }
+
+            const filePath = match[1].trim();
+            const token = state.push('include_block', 'div', 0);
+            token.content = '';
+            token.filePath = filePath;
+            token.map = [startLine, startLine + 1];
+            state.line = startLine + 1;
+            return true;
+        });
+
+        // Inline rule: detect !!!include(path)!!! within text
+        md.inline.ruler.before('text', 'include_inline', function(state, silent) {
+            const start = state.pos;
+            const srcSlice = state.src.slice(start);
+            const match = srcSlice.match(includeRe);
+            if (!match || match.index !== 0) {
+                return false;
+            }
+            if (silent) { return true; }
+
+            const filePath = match[1].trim();
+            const token = state.push('include_content', 'span', 0);
+            token.content = '';
+            token.filePath = filePath;
+            state.pos = start + match[0].length;
+            return true;
+        });
+
+        // Block renderer
+        md.renderer.rules.include_block = function(tokens, idx) {
+            const filePath = tokens[idx].filePath;
+            const filename = extractFilename(filePath);
+            const escapedPath = escapeHtml(filePath);
+            const escapedFilename = escapeHtml(filename);
+            return '<div class="include-badge-block" data-include-file="' + escapedPath + '" title="Nested include: ' + escapedPath + '">'
+                + '<span class="columninclude-link">!(' + escapedFilename + ')!</span>'
+                + '</div>\n';
+        };
+
+        // Inline renderer
+        md.renderer.rules.include_content = function(tokens, idx) {
+            const filePath = tokens[idx].filePath;
+            const filename = extractFilename(filePath);
+            const escapedPath = escapeHtml(filePath);
+            const escapedFilename = escapeHtml(filename);
+            return '<span class="columninclude-link" data-include-file="' + escapedPath + '" title="Nested include: ' + escapedPath + '">'
+                + '!(' + escapedFilename + ')!</span>';
+        };
+    })(md);
+
     return md;
 }
 

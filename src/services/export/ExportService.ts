@@ -1327,13 +1327,14 @@ export class ExportService {
         let linkEnd = '';
 
         // Extract path from different link types
+        let attrBlock = '';
         if (link.startsWith('![')) {
             // Markdown image: ![alt](path) optionally followed by {attrs}
             const match = link.match(/^!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/);
             if (match) {
                 const altText = match[1];
                 filePath = match[2];
-                const attrBlock = match[3] || '';
+                attrBlock = match[3] || '';
 
                 // Convert {width=X height=Y} to Marp directives (w:X h:Y in alt text)
                 let marpDirectives = '';
@@ -1414,12 +1415,12 @@ export class ExportService {
         const exportedFileDir = path.dirname(exportedFilePath);
         const relativePath = toForwardSlashes(path.relative(exportedFileDir, absoluteTargetPath));
 
-        // Rebuild the link with the new path, preserving anchor fragment and title attribute
+        // Rebuild the link with the new path, preserving anchor fragment, title attribute, and attribute block
         if (link.match(/^<(?:img|video|audio)/i)) {
             // Already handled above
             return link;
         } else {
-            return `${linkStart}${relativePath}${anchorPart}${titleAttr}${linkEnd}`;
+            return `${linkStart}${relativePath}${anchorPart}${titleAttr}${linkEnd}${attrBlock}`;
         }
     }
 
@@ -2185,6 +2186,13 @@ export class ExportService {
             }
 
             logger.warn(`[ExportService.preprocessDiagrams] STEP 2: Processing main file`);
+
+            // Check if main file contains xlsx references before preprocessing
+            const mainContent = await fs.promises.readFile(markdownPath, 'utf8');
+            const xlsxMatches = mainContent.match(/!\[[^\]]*\]\([^\s"]+\.(?:xlsx|xls|ods)/g);
+            if (xlsxMatches) {
+                logger.warn(`[ExportService.preprocessDiagrams] Main file contains ${xlsxMatches.length} xlsx reference(s): ${xlsxMatches.map(m => m.substring(0, 60)).join(', ')}`);
+            }
 
             // STEP 2: Preprocess the main file
             const preprocessResult = await preprocessor.preprocess(

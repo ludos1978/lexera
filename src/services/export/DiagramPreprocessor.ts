@@ -69,6 +69,12 @@ export class DiagramPreprocessor {
         // Extract all diagrams
         const diagrams = this.extractAllDiagrams(markdown);
 
+        // Log diagram extraction results by type
+        const xlsxDiagrams = diagrams.filter(d => d.type === 'xlsx');
+        if (xlsxDiagrams.length > 0) {
+            logger.warn(`[DiagramPreprocessor.preprocess] Found ${xlsxDiagrams.length} xlsx diagram(s) in ${path.basename(sourceFilePath)}: ${xlsxDiagrams.map(d => d.filePath || 'no-path').join(', ')}`);
+        }
+
         if (diagrams.length === 0) {
             return { processedMarkdown: markdown, diagramFiles: [] };
         }
@@ -553,9 +559,11 @@ export class DiagramPreprocessor {
                     ? diagram.filePath
                     : path.resolve(sourceDir, diagram.filePath);
 
+                logger.warn(`[DiagramPreprocessor.renderXlsx] ${diagram.id}: filePath="${diagram.filePath}", sourceDir="${sourceDir}", resolved="${absolutePath}"`);
+
                 // Check if file exists
                 if (!fs.existsSync(absolutePath)) {
-                    logger.error(`[DiagramPreprocessor] ❌ File not found: ${absolutePath}`);
+                    logger.error(`[DiagramPreprocessor.renderXlsx] ❌ File not found: ${absolutePath} (from filePath="${diagram.filePath}", sourceDir="${sourceDir}")`);
                     return null;
                 }
 
@@ -595,6 +603,7 @@ export class DiagramPreprocessor {
 
                 // Save PNG file
                 await fs.promises.writeFile(outputPath, pngBuffer);
+                logger.warn(`[DiagramPreprocessor.renderXlsx] ✓ ${diagram.id}: rendered ${pngBuffer.length} bytes → ${fileName}`);
 
                 const result: RenderedDiagram = {
                     id: diagram.id,
@@ -604,7 +613,7 @@ export class DiagramPreprocessor {
                 if (diagram.title) result.title = diagram.title;
                 return result;
             } catch (error) {
-                logger.error(`[DiagramPreprocessor] Failed to render ${diagram.id}:`, error);
+                logger.error(`[DiagramPreprocessor.renderXlsx] Failed to render ${diagram.id}:`, error);
                 return null;
             }
         });
@@ -629,6 +638,10 @@ export class DiagramPreprocessor {
         for (const diagram of rendered) {
             const titlePart = diagram.title ? ` "${diagram.title}"` : '';
             const imageRef = `![${diagram.id}](${diagram.fileName}${titlePart})`;
+            const found = result.includes(diagram.originalBlock);
+            if (!found) {
+                logger.warn(`[DiagramPreprocessor.replace] ⚠️ Original block NOT found for ${diagram.id}: "${diagram.originalBlock.substring(0, 80)}"`);
+            }
             result = result.replace(diagram.originalBlock, imageRef);
         }
 
