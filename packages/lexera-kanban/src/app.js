@@ -3119,7 +3119,7 @@ const LexeraDashboard = (function () {
       renderMainView();
     } else {
       renderColumns();
-      if (options.refreshSidebar) renderBoardList();
+      renderBoardList();
     }
     refreshHeaderFileControls();
     scheduleDashboardRefresh(80);
