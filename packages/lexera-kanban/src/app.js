@@ -6211,8 +6211,7 @@ const LexeraDashboard = (function () {
           return;
         }
         if (entityType === 'card' && context.colIndex !== undefined && activeBoardId) {
-          await LexeraApi.addCard(activeBoardId, context.colIndex, text.trim());
-          await loadBoard(activeBoardId);
+          await addCardToActiveBoard(context.colIndex, text.trim());
         } else if (entityType === 'row') {
           await addRowFromContent(text.trim());
         } else if (entityType === 'stack') {
@@ -6255,8 +6254,7 @@ const LexeraDashboard = (function () {
         if (entityType === 'card') {
           var card = LexeraTemplates.buildCardFromTemplate(parsed, values);
           if (activeBoardId && context.colIndex !== undefined) {
-            await LexeraApi.addCard(activeBoardId, context.colIndex, card.content);
-            await loadBoard(activeBoardId);
+            await addCardToActiveBoard(context.colIndex, card.content);
           }
         } else if (entityType === 'column') {
           var cols = LexeraTemplates.buildColumnFromTemplate(parsed, values);
@@ -6445,14 +6443,27 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshSidebar: true });
   }
 
-  async function submitCard(colIndex, content) {
-    content = content.trim();
-    if (!content || !activeBoardId) return;
+  async function addCardToActiveBoard(colIndex, content) {
+    content = String(content || '').trim();
+    if (!content || !activeBoardId || !fullBoardData) return false;
+    var column = getFullColumn(colIndex);
+    if (!column || !Array.isArray(column.cards)) return false;
+    pushUndo();
+    column.cards.push({
+      id: 'card-' + Date.now(),
+      content: content,
+      checked: false
+    });
+    addCardColumn = null;
+    await persistBoardMutation();
+    return true;
+  }
 
+  async function submitCard(colIndex, content) {
     try {
-      await LexeraApi.addCard(activeBoardId, colIndex, content);
-      addCardColumn = null;
-      await loadBoard(activeBoardId);
+      if (!await addCardToActiveBoard(colIndex, content)) {
+        throw new Error('Column not available for card creation');
+      }
     } catch (err) {
       alert('Failed to add card: ' + err.message);
     }
