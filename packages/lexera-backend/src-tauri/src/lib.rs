@@ -297,15 +297,18 @@ pub fn run() {
                             *lp = actual_port;
                         }
 
-                        // Set up tray with actual port
-                        if let Err(e) = tray::setup_tray(&app_handle, actual_port) {
-                            log::error!(
-                                target: "lexera.tray",
-                                "Failed to update tray icon for live port {}: {}",
-                                actual_port,
-                                e
-                            );
-                        }
+                        // Set up tray with actual port (must run on main thread on macOS)
+                        let tray_handle = app_handle.clone();
+                        let _ = app_handle.run_on_main_thread(move || {
+                            if let Err(e) = tray::setup_tray(&tray_handle, actual_port) {
+                                log::error!(
+                                    target: "lexera.tray",
+                                    "Failed to update tray icon for live port {}: {}",
+                                    actual_port,
+                                    e
+                                );
+                            }
+                        });
 
                         // Start UDP discovery if not localhost-only
                         if discovery_bind != "127.0.0.1" {
