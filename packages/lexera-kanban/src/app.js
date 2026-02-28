@@ -10858,7 +10858,13 @@ const LexeraDashboard = (function () {
         delete pendingFileInfoCache[cacheKey];
         return fileInfoCache[cacheKey];
       })
-      .catch(function () {
+      .catch(function (err) {
+        logFrontendIssue(
+          'warn',
+          'file.info',
+          'Failed to fetch file info for board ' + boardId + ' path ' + filePath,
+          err
+        );
         delete pendingFileInfoCache[cacheKey];
         return null;
       });
@@ -11688,6 +11694,12 @@ const LexeraDashboard = (function () {
       enhanceFileLinks(body);
       enhanceIncludeDirectives(body);
     } catch (err) {
+      logFrontendIssue(
+        'warn',
+        'embed.inline-file',
+        'Failed to render inline file preview for board ' + boardId + ' path ' + filePath,
+        err
+      );
       container.classList.add('embed-broken');
       body.innerHTML = '<div class="broken-include-placeholder">Inline file unavailable</div>';
     }
@@ -11789,6 +11801,12 @@ const LexeraDashboard = (function () {
       enhanceFileLinks(body);
       enhanceIncludeDirectives(body);
     } catch (err) {
+      logFrontendIssue(
+        'warn',
+        'embed.include',
+        'Failed to render include preview for board ' + boardId + ' path ' + rawPath,
+        err
+      );
       container.classList.add('include-broken');
       body.innerHTML = '<div class="broken-include-placeholder">Included content unavailable</div>';
     }
@@ -11855,6 +11873,12 @@ const LexeraDashboard = (function () {
       applyRenderedTagVisibility(previewEl, currentTagVisibilityMode);
       flushPendingDiagramQueues();
     } catch (err) {
+      logFrontendIssue(
+        'warn',
+        'embed.preview',
+        'Failed to render embed preview for board ' + boardId + ' path ' + filePath,
+        err
+      );
       previewEl.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
     }
   }
@@ -11866,7 +11890,13 @@ const LexeraDashboard = (function () {
       body: JSON.stringify({ cardId: '', path: filePath, to: toMode }),
     }).then(function (res) {
       return res && res.path ? res.path : filePath;
-    }).catch(function () {
+    }).catch(function (err) {
+      logFrontendIssue(
+        'warn',
+        'path.resolve',
+        'Failed to resolve ' + toMode + ' path for board ' + boardId + ' path ' + filePath,
+        err
+      );
       return filePath;
     });
   }
@@ -11991,6 +12021,12 @@ const LexeraDashboard = (function () {
       }
       flushPendingDiagramQueues();
     } catch (err) {
+      logFrontendIssue(
+        'warn',
+        'file.preview',
+        'Failed to render file preview for board ' + boardId + ' path ' + filePath,
+        err
+      );
       body.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
     }
   }
