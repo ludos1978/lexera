@@ -11187,6 +11187,39 @@ const LexeraDashboard = (function () {
     '#7ed47e', '#d45c8c', '#4ec9b0', '#d4644e',
   ];
 
+  var EMOJI_SHORTCODES = {
+    smile: '\u{1F604}',
+    grin: '\u{1F601}',
+    joy: '\u{1F602}',
+    wink: '\u{1F609}',
+    blush: '\u{1F60A}',
+    thinking: '\u{1F914}',
+    sunglasses: '\u{1F60E}',
+    cry: '\u{1F622}',
+    heart: '\u{2764}\u{FE0F}',
+    broken_heart: '\u{1F494}',
+    thumbs_up: '\u{1F44D}',
+    thumbs_down: '\u{1F44E}',
+    clap: '\u{1F44F}',
+    tada: '\u{1F389}',
+    fire: '\u{1F525}',
+    rocket: '\u{1F680}',
+    sparkles: '\u{2728}',
+    star: '\u{2B50}',
+    warning: '\u{26A0}\u{FE0F}',
+    bulb: '\u{1F4A1}',
+    bug: '\u{1F41B}',
+    eyes: '\u{1F440}',
+    pushpin: '\u{1F4CC}',
+    memo: '\u{1F4DD}',
+    calendar: '\u{1F4C5}',
+    question: '\u{2753}',
+    x: '\u{274C}',
+    white_check_mark: '\u{2705}',
+    heavy_check_mark: '\u{2714}\u{FE0F}',
+    hourglass: '\u{23F3}'
+  };
+
   function getTagColor(tagName) {
     var lower = tagName.toLowerCase();
     if (TAG_COLORS[lower]) return TAG_COLORS[lower];
@@ -11196,6 +11229,14 @@ const LexeraDashboard = (function () {
       hash = hash & hash;
     }
     return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
+  }
+
+  function renderEmojiShortcodes(text) {
+    return String(text || '').replace(/(^|[^\w&]):([a-z][a-z0-9_+-]*):(?=$|[^\w;])/gi, function (_, prefix, code) {
+      var emoji = EMOJI_SHORTCODES[String(code || '').toLowerCase()];
+      if (!emoji) return _;
+      return prefix + '<span class="emoji-shortcode" aria-label="' + escapeAttr(code) + '">' + emoji + '</span>';
+    });
   }
 
   function getFirstTag(content) {
@@ -11289,6 +11330,7 @@ const LexeraDashboard = (function () {
     });
     // Inline code
     safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+    safe = renderEmojiShortcodes(safe);
     return safe;
   }
 
@@ -11852,6 +11894,8 @@ const LexeraDashboard = (function () {
     safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
       return pre + renderTemporalTagHtml(tag);
     });
+
+    safe = renderEmojiShortcodes(safe);
 
     for (var i = 0; i < htmlTokens.length; i++) {
       safe = safe.replace('@@HTMLTOKEN' + i + '@@', htmlTokens[i]);
