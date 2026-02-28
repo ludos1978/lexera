@@ -4866,6 +4866,7 @@ const LexeraDashboard = (function () {
 
     enhanceEmbeddedContent($columnsContainer);
     enhanceFileLinks($columnsContainer);
+    enhanceIncludeDirectives($columnsContainer);
 
     syncSidebarToView();
   }
@@ -8351,6 +8352,7 @@ const LexeraDashboard = (function () {
       }
       enhanceEmbeddedContent(currentCardEditor.preview);
       enhanceFileLinks(currentCardEditor.preview);
+      enhanceIncludeDirectives(currentCardEditor.preview);
     }
     var titleEl = currentCardEditor.dialog
       ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
@@ -9116,6 +9118,7 @@ const LexeraDashboard = (function () {
   var embedPreviewCache = {};
   var fileInfoCache = {};
   var pendingFileInfoCache = {};
+  var MAX_INCLUDE_PREVIEW_DEPTH = 2;
 
   function isMarkdownPreviewExtension(ext) {
     return ext === 'md' || ext === 'markdown';
@@ -9165,6 +9168,88 @@ const LexeraDashboard = (function () {
     return pendingFileInfoCache[cacheKey];
   }
 
+  function isAbsoluteFilePath(value) {
+    var normalized = normalizePathForCompare(String(value || ''));
+    return normalized.charAt(0) === '/' || /^[a-zA-Z]:\//.test(normalized);
+  }
+
+  function isBoardRelativePath(value) {
+    var normalized = decodeHtmlEntities(String(value || '').trim());
+    if (!normalized) return false;
+    if (normalized.charAt(0) === '#') return false;
+    if (/^(https?:\/\/|mailto:|data:)/i.test(normalized)) return false;
+    return !isAbsoluteFilePath(normalized);
+  }
+
+  function joinBoardRelativePath(baseDir, relativePath) {
+    var rel = normalizePathForCompare(decodeHtmlEntities(String(relativePath || '').trim()));
+    if (!rel) return rel;
+    if (!isBoardRelativePath(rel)) return rel;
+
+    var base = normalizePathForCompare(String(baseDir || ''));
+    var prefix = '';
+    var parts = [];
+
+    if (/^[a-zA-Z]:\//.test(base)) {
+      prefix = base.slice(0, 2);
+      base = base.slice(2);
+    }
+
+    parts = base.split('/');
+    if (parts.length && parts[parts.length - 1] === '') parts.pop();
+    if (parts.length && parts[0] === '') {
+      prefix = prefix || '/';
+      parts.shift();
+    }
+
+    var relParts = rel.split('/');
+    for (var i = 0; i < relParts.length; i++) {
+      var part = relParts[i];
+      if (!part || part === '.') continue;
+      if (part === '..') {
+        if (parts.length > 0) parts.pop();
+        continue;
+      }
+      parts.push(part);
+    }
+
+    if (prefix === '/') return '/' + parts.join('/');
+    if (prefix) return prefix + '/' + parts.join('/');
+    return parts.join('/');
+  }
+
+  function resolveMarkdownRelativeTargets(content, includeFilePath) {
+    var baseDir = getDirNameFromPath(includeFilePath);
+    if (!baseDir) return String(content || '');
+
+    var rewritten = String(content || '');
+
+    rewritten = rewritten.replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (match, alt, rawTarget, rawAttrs) {
+      var parsed = parseMarkdownTarget(rawTarget);
+      if (!isBoardRelativePath(parsed.path)) return match;
+      return buildMarkdownEmbed(
+        alt,
+        joinBoardRelativePath(baseDir, parsed.path),
+        parsed.title,
+        rawAttrs || ''
+      );
+    });
+
+    rewritten = rewritten.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (match, label, rawTarget) {
+      var parsed = parseMarkdownTarget(rawTarget);
+      if (!isBoardRelativePath(parsed.path)) return match;
+      var nextPath = joinBoardRelativePath(baseDir, parsed.path);
+      return '[' + label + '](' + nextPath + (parsed.title ? ' ' + parsed.title : '') + ')';
+    });
+
+    rewritten = rewritten.replace(/!!!include\(([^)]+)\)!!!/g, function (match, rawPath) {
+      if (!isBoardRelativePath(rawPath)) return match;
+      return '!!!include(' + joinBoardRelativePath(baseDir, rawPath) + ')!!!';
+    });
+
+    return rewritten;
+  }
+
   function applyFileLinkInfo(link, info, filePath) {
     if (!link) return;
     var isMissing = !!(info && info.exists === false);
@@ -9172,6 +9257,22 @@ const LexeraDashboard = (function () {
     if (isMissing) {
       link.setAttribute('title', 'Missing file: ' + String(filePath || ''));
     }
+  }
+
+  function getIncludePreviewMarkup(filePath, boardId, depth) {
+    var linkHtml = renderBoardFileLinkHtml(
+      filePath,
+      boardId,
+      '!(' + escapeHtml(getDisplayNameFromPath(filePath) || filePath) + ')!',
+      'Include: ' + filePath,
+      'include-filename-link'
+    );
+    return '<span class="include-inline-container" data-board-id="' + escapeAttr(boardId || '') + '"' +
+      ' data-file-path="' + escapeAttr(filePath || '') + '"' +
+      ' data-include-depth="' + escapeAttr(String(depth || 0)) + '">' +
+      linkHtml +
+      '<span class="include-inline-body"></span>' +
+      '</span>';
   }
 
   function findCardRefById(cardId) {
@@ -9321,9 +9422,13 @@ const LexeraDashboard = (function () {
       titleAttr + '>' + labelHtml + '</a>';
   }
 
-  function renderIncludeDirectiveHtml(rawPath, boardId, extraClass) {
+  function renderIncludeDirectiveHtml(rawPath, boardId, extraClass, options) {
+    options = options || {};
     var includePath = decodeHtmlEntities(String(rawPath || '').trim());
     if (!includePath) return '<span class="broken-include-placeholder">!()!</span>';
+    if (options.expandPreview) {
+      return getIncludePreviewMarkup(includePath, boardId, options.depth || 0);
+    }
     var displayName = getDisplayNameFromPath(includePath) || includePath;
     return renderBoardFileLinkHtml(
       includePath,
@@ -9427,6 +9532,7 @@ const LexeraDashboard = (function () {
       safeContent = safeContent.slice(0, 12000) + '\n\n[Preview truncated]';
     }
     if (kind === 'markdown') {
+      safeContent = resolveMarkdownRelativeTargets(safeContent, filePath);
       return '<div class="embed-inline-markdown">' +
         renderCardContent(safeContent, boardId, {
           footnoteDefs: {},
@@ -9463,6 +9569,82 @@ const LexeraDashboard = (function () {
     link.setAttribute('data-link-enhanced', '1');
     var info = await requestFileInfo(boardId, filePath);
     applyFileLinkInfo(link, info, filePath);
+  }
+
+  async function enhanceIncludeDirectives(root) {
+    if (!root || !root.querySelectorAll) return;
+    var containers = root.querySelectorAll('.include-inline-container[data-file-path]');
+    for (var i = 0; i < containers.length; i++) {
+      enhanceSingleIncludeDirective(containers[i]);
+    }
+  }
+
+  async function enhanceSingleIncludeDirective(container) {
+    if (!container || container.getAttribute('data-include-enhanced') === '1') return;
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    var rawPath = container.getAttribute('data-file-path') || '';
+    var depth = parseInt(container.getAttribute('data-include-depth') || '0', 10);
+    var link = container.querySelector('.markdown-file-link[data-file-path]');
+    var body = container.querySelector('.include-inline-body');
+    if (!boardId || !rawPath || !body) return;
+
+    container.setAttribute('data-include-enhanced', '1');
+    if (!isFinite(depth)) depth = 0;
+    if (depth >= MAX_INCLUDE_PREVIEW_DEPTH) {
+      body.innerHTML = '';
+      return;
+    }
+
+    body.innerHTML = '<div class="embed-preview-loading">Loading include...</div>';
+
+    var resolvedPath = rawPath;
+    if (isBoardRelativePath(rawPath)) {
+      resolvedPath = await resolveBoardPath(boardId, rawPath, 'absolute');
+    }
+    if (resolvedPath && link) {
+      link.setAttribute('data-file-path', resolvedPath);
+      link.setAttribute('data-original-href', resolvedPath);
+    }
+
+    var info = await requestFileInfo(boardId, resolvedPath || rawPath);
+    applyFileLinkInfo(link, info, resolvedPath || rawPath);
+    var isMissing = !info || info.exists === false;
+    if (isMissing) {
+      container.classList.add('include-broken');
+      body.innerHTML = '<div class="broken-include-placeholder">Included content unavailable</div>';
+      return;
+    }
+
+    try {
+      var response = await fetch(LexeraApi.fileUrl(boardId, resolvedPath || rawPath));
+      if (!response.ok) throw new Error('Failed to load include');
+      var text = await response.text();
+      var rewritten = resolveMarkdownRelativeTargets(text, resolvedPath || rawPath);
+      body.innerHTML = '<div class="included-content-block">' +
+        renderCardContent(rewritten, boardId, {
+          footnoteDefs: {},
+          footnoteOrder: [],
+          abbrDefs: {},
+          embedCounter: 0
+        }, { nested: true }) +
+        '</div>';
+
+      var nested = body.querySelectorAll('.include-inline-container[data-file-path]');
+      for (var i = 0; i < nested.length; i++) {
+        nested[i].setAttribute('data-include-depth', String(depth + 1));
+      }
+
+      if (pendingMermaidRenders.length > 0) {
+        if (!mermaidReady) loadMermaidLibrary();
+        else processMermaidQueue();
+      }
+      enhanceEmbeddedContent(body);
+      enhanceFileLinks(body);
+      enhanceIncludeDirectives(body);
+    } catch (err) {
+      container.classList.add('include-broken');
+      body.innerHTML = '<div class="broken-include-placeholder">Included content unavailable</div>';
+    }
   }
 
   async function enhanceSingleEmbedContainer(container) {
@@ -9505,7 +9687,11 @@ const LexeraDashboard = (function () {
         var response = await fetch(LexeraApi.fileUrl(boardId, filePath));
         if (!response.ok) throw new Error('Failed to load file preview');
         var text = await response.text();
-        cached = renderEmbedPreviewContent(previewKind, boardId, filePath, text);
+        var previewPath = filePath;
+        if (previewKind === 'markdown' && isBoardRelativePath(filePath)) {
+          previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
+        }
+        cached = renderEmbedPreviewContent(previewKind, boardId, previewPath, text);
         embedPreviewCache[cacheKey] = cached;
       }
       previewEl.innerHTML = cached;
@@ -9588,8 +9774,12 @@ const LexeraDashboard = (function () {
       if (!response.ok) throw new Error('Failed to load preview');
       var text = await response.text();
       if (isMarkdownPreviewExtension(ext)) {
+        var previewPath = filePath;
+        if (isBoardRelativePath(filePath)) {
+          previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
+        }
         body.innerHTML = '<div class="file-preview-markdown">' +
-          renderCardContent(text, boardId, {
+          renderCardContent(resolveMarkdownRelativeTargets(text, previewPath), boardId, {
             footnoteDefs: {},
             footnoteOrder: [],
             abbrDefs: {},
@@ -9598,6 +9788,7 @@ const LexeraDashboard = (function () {
           '</div>';
         enhanceEmbeddedContent(body);
         enhanceFileLinks(body);
+        enhanceIncludeDirectives(body);
       } else {
         body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
       }
@@ -10788,7 +10979,7 @@ const LexeraDashboard = (function () {
 
     // Include directives: !!!include(path)!!!
     safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
-      return renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link');
+      return renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', { expandPreview: true, depth: 0 });
     });
 
     // Links: [text](url)

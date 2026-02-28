@@ -95,6 +95,12 @@
   --menu-item-fg: var(--text-primary);
   --menu-item-fg-hover: var(--text-bright);
   --menu-item-bg-hover: var(--bg-hover);
+  /* Sidebar tree */
+  --tree-fg: var(--text-secondary);
+  --tree-fg-hover: var(--text-primary);
+  --tree-guide: var(--border);
+  --tree-toggle-fg: var(--text-secondary);
+  --tree-toggle-fg-hover: var(--text-primary);
 }
 
 /* Dark theme vars are applied by JS via applyTheme() */
@@ -894,7 +900,6 @@ body.split-mode .layout > .main {
 .board-item-tree {
   display: none;
   padding-left: 4px;
-  background: rgba(0, 0, 0, 0.02);
 }
 .board-item-tree.expanded { display: block; }
 
@@ -909,7 +914,7 @@ body.split-mode .layout > .main {
   color: var(--text-secondary);
   gap: var(--space-1);
 }
-.tree-node:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
+.tree-node:hover { color: var(--text-primary); }
 
 /* Indent guides: vertical lines at each depth + branch/corner connector */
 .tree-indent {
@@ -2567,6 +2572,28 @@ u {
 .include-filename-link {
   color: var(--accent);
   cursor: pointer;
+}
+
+.include-inline-container {
+  display: block;
+  margin: 8px 0;
+}
+
+.include-inline-body {
+  display: block;
+  margin-top: 6px;
+}
+
+.included-content-block {
+  display: block;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.include-inline-container.include-broken .included-content-block {
+  border-color: rgba(180, 60, 60, 0.4);
 }
 
 .markdown-file-link.link-broken,
