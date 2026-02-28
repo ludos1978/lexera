@@ -376,8 +376,9 @@ async fn open_live_sync_session(
         .get_board_path(&board_id)
         .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
+    let snapshot = state.storage.export_crdt_snapshot(&board_id);
 
-    let snapshot = live_sync::open_session(&board_id, board, board_dir).map_err(|error| {
+    let snapshot = live_sync::open_session(&board_id, board, board_dir, snapshot).map_err(|error| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error }),

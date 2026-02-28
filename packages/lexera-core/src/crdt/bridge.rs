@@ -639,6 +639,12 @@ impl CrdtStore {
         self.board_settings = board_settings;
     }
 
+    pub fn set_peer_id(&self, peer_id: u64) -> io::Result<()> {
+        self.doc
+            .set_peer_id(peer_id)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+    }
+
     // ── Undo / Redo ──────────────────────────────────────────────────────────
 
     pub fn undo(&mut self) -> bool {

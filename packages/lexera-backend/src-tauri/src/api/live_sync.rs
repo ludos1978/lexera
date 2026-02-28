@@ -88,14 +88,34 @@ fn encode_vv(store: &CrdtStore) -> Vec<u8> {
     store.oplog_vv().encode()
 }
 
+fn session_peer_id(session_id: &Uuid) -> u64 {
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&session_id.as_bytes()[..8]);
+    let raw = u64::from_le_bytes(bytes);
+    if raw <= 1 { raw + 2 } else { raw }
+}
+
 pub fn open_session(
     _board_id: &str,
     board: KanbanBoard,
     board_dir: PathBuf,
+    snapshot: Option<Vec<u8>>,
 ) -> Result<LiveSessionSnapshot, String> {
     let normalized = normalize_board(board, &board_dir);
-    let session_id = Uuid::new_v4().to_string();
-    let crdt = CrdtStore::from_board(&normalized);
+    let session_uuid = Uuid::new_v4();
+    let session_id = session_uuid.to_string();
+    let mut crdt = if let Some(bytes) = snapshot {
+        CrdtStore::load(&bytes).map_err(|e| e.to_string())?
+    } else {
+        CrdtStore::from_board(&normalized)
+    };
+    crdt.set_peer_id(session_peer_id(&session_uuid))
+        .map_err(|e| e.to_string())?;
+    crdt.set_metadata(
+        normalized.yaml_header.clone(),
+        normalized.kanban_footer.clone(),
+        normalized.board_settings.clone(),
+    );
     let vv = encode_vv(&crdt);
     let current_board = normalized.clone();
 

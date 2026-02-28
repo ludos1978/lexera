@@ -903,6 +903,15 @@ impl LocalStorage {
         crdt.export_updates_since(&vv).ok()
     }
 
+    pub fn export_crdt_snapshot(&self, board_id: &str) -> Option<Vec<u8>> {
+        let lock = self.get_write_lock(board_id);
+        let _guard = lock.lock().unwrap();
+        let boards = self.boards.read().unwrap();
+        let state = boards.get(board_id)?;
+        let crdt = state.crdt.as_ref()?;
+        Some(crdt.save())
+    }
+
     /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
     pub fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id);
