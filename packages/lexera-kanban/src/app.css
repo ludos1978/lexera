@@ -2569,6 +2569,12 @@ u {
   cursor: pointer;
 }
 
+.markdown-file-link.link-broken,
+.include-filename-link.link-broken {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
 .broken-include-placeholder {
   color: var(--text-secondary);
   text-decoration: line-through;

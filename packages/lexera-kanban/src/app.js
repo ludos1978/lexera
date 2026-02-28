@@ -4865,6 +4865,7 @@ const LexeraDashboard = (function () {
     }
 
     enhanceEmbeddedContent($columnsContainer);
+    enhanceFileLinks($columnsContainer);
 
     syncSidebarToView();
   }
@@ -8349,6 +8350,7 @@ const LexeraDashboard = (function () {
         else processMermaidQueue();
       }
       enhanceEmbeddedContent(currentCardEditor.preview);
+      enhanceFileLinks(currentCardEditor.preview);
     }
     var titleEl = currentCardEditor.dialog
       ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
@@ -9112,6 +9114,8 @@ const LexeraDashboard = (function () {
 
   var activeEmbedMenu = null;
   var embedPreviewCache = {};
+  var fileInfoCache = {};
+  var pendingFileInfoCache = {};
 
   function isMarkdownPreviewExtension(ext) {
     return ext === 'md' || ext === 'markdown';
@@ -9136,6 +9140,38 @@ const LexeraDashboard = (function () {
 
   function getEmbedPreviewCacheKey(boardId, filePath) {
     return String(boardId || '') + '::' + String(filePath || '');
+  }
+
+  function getFileInfoCacheKey(boardId, filePath) {
+    return String(boardId || '') + '::' + String(filePath || '');
+  }
+
+  function requestFileInfo(boardId, filePath) {
+    var cacheKey = getFileInfoCacheKey(boardId, filePath);
+    if (Object.prototype.hasOwnProperty.call(fileInfoCache, cacheKey)) {
+      return Promise.resolve(fileInfoCache[cacheKey]);
+    }
+    if (pendingFileInfoCache[cacheKey]) return pendingFileInfoCache[cacheKey];
+    pendingFileInfoCache[cacheKey] = LexeraApi.fileInfo(boardId, filePath)
+      .then(function (info) {
+        fileInfoCache[cacheKey] = info || null;
+        delete pendingFileInfoCache[cacheKey];
+        return fileInfoCache[cacheKey];
+      })
+      .catch(function () {
+        delete pendingFileInfoCache[cacheKey];
+        return null;
+      });
+    return pendingFileInfoCache[cacheKey];
+  }
+
+  function applyFileLinkInfo(link, info, filePath) {
+    if (!link) return;
+    var isMissing = !!(info && info.exists === false);
+    link.classList.toggle('link-broken', isMissing);
+    if (isMissing) {
+      link.setAttribute('title', 'Missing file: ' + String(filePath || ''));
+    }
   }
 
   function findCardRefById(cardId) {
@@ -9411,6 +9447,24 @@ const LexeraDashboard = (function () {
     }
   }
 
+  async function enhanceFileLinks(root) {
+    if (!root || !root.querySelectorAll) return;
+    var links = root.querySelectorAll('.markdown-file-link[data-file-path]');
+    for (var i = 0; i < links.length; i++) {
+      enhanceSingleFileLink(links[i]);
+    }
+  }
+
+  async function enhanceSingleFileLink(link) {
+    if (!link || link.getAttribute('data-link-enhanced') === '1') return;
+    var boardId = link.getAttribute('data-board-id') || activeBoardId || '';
+    var filePath = link.getAttribute('data-file-path') || link.getAttribute('data-original-href') || '';
+    if (!boardId || !filePath || /^(https?:\/\/|mailto:|#)/.test(filePath)) return;
+    link.setAttribute('data-link-enhanced', '1');
+    var info = await requestFileInfo(boardId, filePath);
+    applyFileLinkInfo(link, info, filePath);
+  }
+
   async function enhanceSingleEmbedContainer(container) {
     if (!container || container.getAttribute('data-embed-enhanced') === '1') return;
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
@@ -9543,6 +9597,7 @@ const LexeraDashboard = (function () {
           }, { nested: true }) +
           '</div>';
         enhanceEmbeddedContent(body);
+        enhanceFileLinks(body);
       } else {
         body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
       }
@@ -10291,6 +10346,8 @@ const LexeraDashboard = (function () {
     safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
     // Mark
     safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+    // Inserted text
+    safe = safe.replace(/\+\+([^+]+)\+\+/g, '<ins>$1</ins>');
     // Underline
     safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {
       return pre + '<u>' + value + '</u>';
