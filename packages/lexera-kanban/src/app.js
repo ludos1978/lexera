@@ -8338,8 +8338,245 @@ const LexeraDashboard = (function () {
 
   // --- Card Editing ---
 
+  function getCurrentEditorBoardId() {
+    if (currentCardEditor && currentCardEditor.boardId) return currentCardEditor.boardId;
+    return activeBoardId || '';
+  }
+
+  function getCurrentEditorFilePath() {
+    var boardId = getCurrentEditorBoardId();
+    return getBoardFilePathForId(boardId) || getActiveBoardFilePath() || '';
+  }
+
+  function safeDecodePath(value) {
+    var text = String(value || '');
+    try {
+      return decodeURIComponent(text);
+    } catch (e) {
+      return text;
+    }
+  }
+
+  function isWindowsAbsolutePath(value) {
+    return /^[a-zA-Z]:[\\/]/.test(String(value || ''));
+  }
+
+  function normalizeWindowsAbsolutePath(value) {
+    return normalizePathForCompare(String(value || ''));
+  }
+
+  function isRelativeResourcePath(value) {
+    var normalized = String(value || '').trim();
+    if (!normalized) return false;
+    return normalized.charAt(0) !== '/' &&
+      !isWindowsAbsolutePath(normalized) &&
+      !/^(https?:\/\/|mailto:|data:|blob:|vscode-webview:\/\/)/i.test(normalized);
+  }
+
+  function resolveRelativePath(baseDir, relativePath) {
+    return joinBoardRelativePath(baseDir, relativePath);
+  }
+
+  function buildWebviewResourceUrl(pathValue) {
+    var resolvedPath = normalizeWindowsAbsolutePath(safeDecodePath(pathValue));
+    if (!resolvedPath || /^(https?:\/\/|mailto:|data:|blob:|vscode-webview:\/\/)/i.test(resolvedPath)) {
+      return resolvedPath;
+    }
+    var boardId = getCurrentEditorBoardId();
+    if (!boardId) return resolvedPath;
+    return LexeraApi.fileUrl(boardId, resolvedPath);
+  }
+
+  function resolveCurrentEditorResourcePath(pathValue, includeDir) {
+    var decodedPath = safeDecodePath(pathValue);
+    if (!decodedPath) return '';
+    if (!isRelativeResourcePath(decodedPath)) {
+      return normalizeWindowsAbsolutePath(decodedPath);
+    }
+    if (includeDir) {
+      return resolveRelativePath(safeDecodePath(includeDir), decodedPath);
+    }
+    var boardDir = getDirNameFromPath(getCurrentEditorFilePath());
+    if (!boardDir) return decodedPath;
+    return resolveRelativePath(boardDir, decodedPath);
+  }
+
+  function syncCardEditorWysiwygContext(editor) {
+    var boardId = editor && editor.boardId ? editor.boardId : (activeBoardId || '');
+    var boardFilePath = getBoardFilePathForId(boardId) || getActiveBoardFilePath() || '';
+    var includeDir = getDirNameFromPath(boardFilePath);
+    window.currentTaskIncludeContext = includeDir ? { includeDir: includeDir } : null;
+    window.currentFilePath = boardFilePath || '';
+  }
+
+  function setCurrentCardEditorMarkdown(nextValue, options) {
+    options = options || {};
+    if (!currentCardEditor) return;
+    var normalizedValue = String(nextValue || '');
+    if (currentCardEditor.textarea) currentCardEditor.textarea.value = normalizedValue;
+    if (
+      currentCardEditor.wysiwyg &&
+      !options.skipWysiwygSync &&
+      typeof currentCardEditor.wysiwyg.setMarkdown === 'function'
+    ) {
+      currentCardEditor.suppressWysiwygChange = true;
+      try {
+        currentCardEditor.wysiwyg.setMarkdown(normalizedValue);
+      } finally {
+        currentCardEditor.suppressWysiwygChange = false;
+      }
+    }
+    if (!options.skipPreviewRefresh) refreshCardEditorPreview();
+  }
+
+  function syncCardEditorTextareaFromWysiwyg() {
+    if (
+      !currentCardEditor ||
+      !currentCardEditor.wysiwyg ||
+      typeof currentCardEditor.wysiwyg.getMarkdown !== 'function'
+    ) {
+      return;
+    }
+    if (currentCardEditor.textarea) {
+      currentCardEditor.textarea.value = currentCardEditor.wysiwyg.getMarkdown() || '';
+    }
+  }
+
+  function destroyCardEditorWysiwyg(editor) {
+    if (!editor || !editor.wysiwyg) return;
+    try {
+      if (typeof editor.wysiwyg.destroy === 'function') editor.wysiwyg.destroy();
+    } catch (err) {
+      console.warn('[card-editor] Failed to destroy WYSIWYG editor:', err);
+    }
+    editor.wysiwyg = null;
+    if (editor.wysiwygWrap) editor.wysiwygWrap.innerHTML = '';
+  }
+
+  function ensureCardEditorWysiwyg() {
+    if (
+      !currentCardEditor ||
+      !currentCardEditor.wysiwygWrap ||
+      typeof window.WysiwygEditor !== 'function'
+    ) {
+      return null;
+    }
+    syncCardEditorWysiwygContext(currentCardEditor);
+    if (!currentCardEditor.wysiwyg) {
+      currentCardEditor.wysiwygWrap.innerHTML = '';
+      currentCardEditor.wysiwyg = new window.WysiwygEditor(currentCardEditor.wysiwygWrap, {
+        markdown: currentCardEditor.textarea ? currentCardEditor.textarea.value : '',
+        temporalPrefix: '!',
+        onChange: function (markdown) {
+          if (!currentCardEditor || currentCardEditor.suppressWysiwygChange) return;
+          if (currentCardEditor.textarea) currentCardEditor.textarea.value = markdown || '';
+          refreshCardEditorPreview();
+        },
+        onSubmit: function () {
+          closeCardEditorOverlay({ save: true });
+        }
+      });
+      return currentCardEditor.wysiwyg;
+    }
+    if (
+      currentCardEditor.textarea &&
+      typeof currentCardEditor.wysiwyg.getMarkdown === 'function' &&
+      currentCardEditor.wysiwyg.getMarkdown() !== currentCardEditor.textarea.value
+    ) {
+      currentCardEditor.suppressWysiwygChange = true;
+      try {
+        currentCardEditor.wysiwyg.setMarkdown(currentCardEditor.textarea.value);
+      } finally {
+        currentCardEditor.suppressWysiwygChange = false;
+      }
+    }
+    return currentCardEditor.wysiwyg;
+  }
+
+  function applyCardEditorFormatting(textarea, fmt) {
+    if (!currentCardEditor || !fmt) return;
+    if (currentCardEditor.mode === 'wysiwyg') {
+      var editor = ensureCardEditorWysiwyg();
+      if (editor) {
+        var command = fmt;
+        if (fmt === 'columns') command = 'multicolumn';
+        if (fmt === 'code-block' || fmt === 'link' || fmt === 'bold' || fmt === 'italic' ||
+          fmt === 'underline' || fmt === 'strike' || fmt === 'mark' || fmt === 'sub' ||
+          fmt === 'sup' || fmt === 'code' || fmt === 'ins') {
+          if (editor.applyCommand(command)) {
+            return;
+          }
+        }
+        var wysiwygFormatSpec = getCardEditorFormatSpec(fmt);
+        if (wysiwygFormatSpec) {
+          var snippet = '';
+          if (wysiwygFormatSpec.snippet != null) snippet = wysiwygFormatSpec.snippet;
+          else if (wysiwygFormatSpec.wrap) snippet = wysiwygFormatSpec.wrap + 'text' + wysiwygFormatSpec.wrap;
+          else snippet = wysiwygFormatSpec.prefix + 'text' + wysiwygFormatSpec.suffix;
+          editor.insertText(snippet);
+        }
+        return;
+      }
+    }
+    var formatSpec = getCardEditorFormatSpec(fmt);
+    if (formatSpec) {
+      insertFormatting(textarea, formatSpec);
+      textarea.focus();
+    }
+  }
+
+  function getWysiwygEmbedOccurrenceIndex(container) {
+    if (
+      !container ||
+      !currentCardEditor ||
+      !currentCardEditor.wysiwygWrap ||
+      !currentCardEditor.wysiwygWrap.contains(container)
+    ) {
+      return 0;
+    }
+    var targetPath = getEmbedActionTarget(container);
+    if (!targetPath) return 0;
+    var selector = [
+      '.image-path-overlay-container[data-file-path]',
+      '.video-path-overlay-container[data-file-path]',
+      '.wysiwyg-media[data-file-path]',
+      '.wysiwyg-media-block[data-file-path]'
+    ].join(', ');
+    var nodes = currentCardEditor.wysiwygWrap.querySelectorAll(selector);
+    var seen = 0;
+    for (var i = 0; i < nodes.length; i++) {
+      if ((nodes[i].getAttribute('data-file-path') || '') !== targetPath) continue;
+      if (nodes[i] === container) return seen;
+      seen++;
+    }
+    return 0;
+  }
+
+  function replaceCurrentEmbedOccurrence(content, container, replacer) {
+    var targetPath = getEmbedActionTarget(container);
+    if (!targetPath) return String(content || '');
+    var targetIndex = getWysiwygEmbedOccurrenceIndex(container);
+    var matchIndex = 0;
+    return String(content || '').replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (match, alt, rawTarget, rawAttrs) {
+      var parsed = parseMarkdownTarget(rawTarget);
+      if (parsed.path !== targetPath) return match;
+      var currentIndex = matchIndex++;
+      if (currentIndex !== targetIndex) return match;
+      return replacer({
+        match: match,
+        alt: alt,
+        rawTarget: rawTarget,
+        rawAttrs: rawAttrs || '',
+        imageAttrs: parseMarkdownImageAttributes(rawAttrs),
+        path: parsed.path,
+        title: parsed.title
+      });
+    });
+  }
+
   function normalizeCardEditorMode(mode) {
     if (mode === 'markdown' || mode === 'preview') return mode;
+    if (mode === 'wysiwyg' && typeof window.WysiwygEditor === 'function') return mode;
     return 'dual';
   }
 
@@ -8612,6 +8849,9 @@ const LexeraDashboard = (function () {
   function applyCardEditorMode(mode) {
     if (!currentCardEditor || !currentCardEditor.dialog) return;
     mode = normalizeCardEditorMode(mode);
+    if (currentCardEditor.mode === 'wysiwyg' && mode !== 'wysiwyg') {
+      syncCardEditorTextareaFromWysiwyg();
+    }
     currentCardEditor.mode = mode;
     currentCardEditor.dialog.setAttribute('data-editor-mode', mode);
     var buttons = currentCardEditor.dialog.querySelectorAll('[data-card-editor-mode]');
@@ -8619,6 +8859,9 @@ const LexeraDashboard = (function () {
       var isActive = buttons[i].getAttribute('data-card-editor-mode') === mode;
       buttons[i].classList.toggle('active', isActive);
       buttons[i].setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
+    if (mode === 'wysiwyg') {
+      ensureCardEditorWysiwyg();
     }
     if (mode === 'preview') {
       refreshCardEditorPreview();
@@ -8654,6 +8897,7 @@ const LexeraDashboard = (function () {
             '<button class="board-action-btn" type="button" data-card-editor-mode="markdown" aria-pressed="false">Markdown</button>' +
             '<button class="board-action-btn" type="button" data-card-editor-mode="dual" aria-pressed="false">Dual</button>' +
             '<button class="board-action-btn" type="button" data-card-editor-mode="preview" aria-pressed="false">Preview</button>' +
+            '<button class="board-action-btn" type="button" data-card-editor-mode="wysiwyg" aria-pressed="false">WYSIWYG</button>' +
           '</div>' +
           '<button class="btn-small btn-cancel" data-card-editor-action="cancel">Cancel</button>' +
           '<button class="btn-small btn-primary" data-card-editor-action="save">Save</button>' +
@@ -8693,12 +8937,18 @@ const LexeraDashboard = (function () {
           '<div class="card-editor-pane-title">Preview</div>' +
           '<div class="card-editor-preview" tabindex="0"></div>' +
         '</div>' +
+        '<div class="card-editor-pane card-editor-wysiwyg-pane">' +
+          '<div class="card-editor-pane-title">WYSIWYG</div>' +
+          '<div class="card-overlay-wysiwyg"></div>' +
+        '</div>' +
       '</div>';
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
+    dialog.style.setProperty('--card-overlay-wysiwyg-height', Math.max(360, Math.min(window.innerHeight - 320, 720)) + 'px');
 
     var textarea = dialog.querySelector('.card-editor-textarea');
     var preview = dialog.querySelector('.card-editor-preview');
+    var wysiwygWrap = dialog.querySelector('.card-overlay-wysiwyg');
     textarea.value = card.content;
 
     currentCardEditor = {
@@ -8706,11 +8956,15 @@ const LexeraDashboard = (function () {
       dialog: dialog,
       textarea: textarea,
       preview: preview,
+      wysiwygWrap: wysiwygWrap,
+      wysiwyg: null,
       cardEl: cardEl,
       colIndex: colIndex,
       fullCardIdx: fullIdx,
+      boardId: activeBoardId || '',
       mode: normalizeCardEditorMode(cardEditorMode || localStorage.getItem('lexera-card-editor-mode') || 'dual')
     };
+    syncCardEditorWysiwygContext(currentCardEditor);
 
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) closeCardEditorOverlay({ save: false });
@@ -8733,24 +8987,15 @@ const LexeraDashboard = (function () {
       }
       var fmtBtn = e.target.closest('[data-card-editor-fmt]');
       if (!fmtBtn) return;
-      var fmt = fmtBtn.getAttribute('data-card-editor-fmt');
-      var formatSpec = getCardEditorFormatSpec(fmt);
-      if (formatSpec) {
-        insertFormatting(textarea, formatSpec);
-        textarea.focus();
-      }
+      applyCardEditorFormatting(textarea, fmtBtn.getAttribute('data-card-editor-fmt'));
     });
     dialog.addEventListener('change', function (e) {
       var snippetSelect = e.target.closest('[data-card-editor-snippet]');
       if (!snippetSelect) return;
       var snippet = snippetSelect.value;
       if (!snippet) return;
-      var snippetSpec = getCardEditorFormatSpec(snippet);
       snippetSelect.value = '';
-      if (snippetSpec) {
-        insertFormatting(textarea, snippetSpec);
-        textarea.focus();
-      }
+      applyCardEditorFormatting(textarea, snippet);
     });
 
     textarea.addEventListener('input', refreshCardEditorPreview);
@@ -8775,6 +9020,13 @@ const LexeraDashboard = (function () {
         ? await resolveDropContent(e.dataTransfer)
         : '';
       if (!markdown) return;
+      if (currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
+        var editor = ensureCardEditorWysiwyg();
+        if (editor) {
+          editor.insertText(markdown);
+          return;
+        }
+      }
       insertFormatting(textarea, { snippet: markdown });
       textarea.focus();
     });
@@ -8805,6 +9057,9 @@ const LexeraDashboard = (function () {
         } else if (e.key === '3') {
           e.preventDefault();
           applyCardEditorMode('preview');
+        } else if (e.key === '4') {
+          e.preventDefault();
+          applyCardEditorMode('wysiwyg');
         }
       }
     });
@@ -8841,6 +9096,11 @@ const LexeraDashboard = (function () {
           applyCardEditorMode('preview');
           return;
         }
+        if (e.key === '4') {
+          e.preventDefault();
+          applyCardEditorMode('wysiwyg');
+          return;
+        }
       }
       if (e.ctrlKey || e.metaKey) {
         var fmt = null;
@@ -8860,7 +9120,12 @@ const LexeraDashboard = (function () {
     refreshCardEditorPreview();
     applyCardEditorMode(currentCardEditor.mode);
     requestAnimationFrame(function () {
-      if (currentCardEditor && currentCardEditor.mode !== 'preview') {
+      if (currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
+        var wysiwyg = ensureCardEditorWysiwyg();
+        if (wysiwyg && typeof wysiwyg.focus === 'function') {
+          wysiwyg.focus();
+        }
+      } else if (currentCardEditor && currentCardEditor.mode !== 'preview') {
         textarea.focus();
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       } else if (preview) {
@@ -8895,6 +9160,12 @@ const LexeraDashboard = (function () {
     var editor = currentCardEditor;
     currentCardEditor = null;
     isEditing = false;
+    if (editor.wysiwyg && typeof editor.wysiwyg.getMarkdown === 'function' && editor.textarea) {
+      editor.textarea.value = editor.wysiwyg.getMarkdown() || editor.textarea.value;
+    }
+    destroyCardEditorWysiwyg(editor);
+    window.currentTaskIncludeContext = null;
+    window.currentFilePath = '';
     if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
     if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
     if (options.save) {
@@ -10375,12 +10646,25 @@ const LexeraDashboard = (function () {
 
   async function mutateEmbedSource(container, contentMutator) {
     if (!container || typeof contentMutator !== 'function') return false;
+    if (currentCardEditor && currentCardEditor.wysiwygWrap && currentCardEditor.wysiwygWrap.contains(container)) {
+      var currentWysiwygValue = currentCardEditor.wysiwyg &&
+        typeof currentCardEditor.wysiwyg.getMarkdown === 'function'
+        ? (currentCardEditor.wysiwyg.getMarkdown() || '')
+        : (currentCardEditor.textarea ? currentCardEditor.textarea.value : '');
+      var nextWysiwygValue = contentMutator(currentWysiwygValue);
+      if (typeof nextWysiwygValue !== 'string' || nextWysiwygValue === currentWysiwygValue) return false;
+      setCurrentCardEditorMarkdown(normalizeCardContentAfterInlineMutation(nextWysiwygValue));
+      if (currentCardEditor && currentCardEditor.mode === 'wysiwyg') {
+        var editor = ensureCardEditorWysiwyg();
+        if (editor && typeof editor.focus === 'function') editor.focus();
+      }
+      return true;
+    }
     if (currentCardEditor && currentCardEditor.preview && currentCardEditor.preview.contains(container)) {
       var currentValue = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
       var nextEditorValue = contentMutator(currentValue);
       if (typeof nextEditorValue !== 'string' || nextEditorValue === currentValue) return false;
-      currentCardEditor.textarea.value = normalizeCardContentAfterInlineMutation(nextEditorValue);
-      refreshCardEditorPreview();
+      setCurrentCardEditorMarkdown(normalizeCardContentAfterInlineMutation(nextEditorValue));
       return true;
     }
 
@@ -10842,7 +11126,11 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    var container = e.target.closest('.embed-container, .external-embed-container');
+    var container = e.target.closest(
+      '.embed-container, .external-embed-container, ' +
+      '.image-path-overlay-container[data-file-path], .video-path-overlay-container[data-file-path], ' +
+      '.wysiwyg-media[data-file-path], .wysiwyg-media-block[data-file-path]'
+    );
     var link = !container ? e.target.closest('.markdown-file-link, a[href]') : null;
     if (!container && !link) return;
 
@@ -11229,6 +11517,113 @@ const LexeraDashboard = (function () {
     }
   }
 
+  window.togglePathMenu = function (container, filePath, mediaType) {
+    if (!container) return;
+    if (filePath) container.setAttribute('data-file-path', filePath);
+    container.setAttribute('data-board-id', getCurrentEditorBoardId() || activeBoardId || '');
+    if (mediaType) container.setAttribute('data-media-type', mediaType);
+    var button = container.querySelector('.image-menu-btn, .video-menu-btn, .embed-menu-btn');
+    showEmbedMenu(container, button || container);
+  };
+
+  window.handleMediaNotFound = function (element, originalSrc, mediaType) {
+    var host = element && element.closest
+      ? element.closest('.image-path-overlay-container, .video-path-overlay-container, .wysiwyg-media, .wysiwyg-media-block')
+      : null;
+    if (!host) host = element && element.parentElement ? element.parentElement : null;
+    if (!host) return;
+    var resolvedPath = originalSrc || host.getAttribute('data-file-path') || host.getAttribute('data-src') || '';
+    var isVideoLike = mediaType === 'video' || mediaType === 'audio';
+    var menuClass = isVideoLike ? 'video-menu-btn' : 'image-menu-btn';
+    var icon = isVideoLike ? '&#127909;' : '&#128247;';
+    host.classList.add('image-broken');
+    host.setAttribute('data-file-path', resolvedPath);
+    host.setAttribute('data-board-id', getCurrentEditorBoardId() || activeBoardId || '');
+    host.setAttribute('data-media-type', mediaType || 'image');
+    host.innerHTML =
+      '<span class="image-not-found" data-original-src="' + escapeAttr(resolvedPath) + '" title="' + escapeAttr('Failed to load: ' + resolvedPath) + '">' +
+        '<span class="image-not-found-text">' + icon + ' ' + escapeHtml(getDisplayFileNameFromPath(resolvedPath) || resolvedPath || 'Missing media') + '</span>' +
+        '<button class="' + menuClass + '" type="button" title="Path options" data-action="toggle-menu">&#9776;</button>' +
+      '</span>';
+    var btn = host.querySelector('.' + menuClass);
+    if (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.togglePathMenu(host, resolvedPath, mediaType || 'image');
+      });
+    }
+  };
+
+  window.queueMermaidRender = function (id, code) {
+    pendingMermaidRenders.push({ id: id, code: code });
+    flushPendingDiagramQueues();
+  };
+
+  window.queuePlantUMLRender = function (id, code) {
+    pendingPlantUmlRenders.push({ id: id, code: code, boardId: getCurrentEditorBoardId() || activeBoardId || '' });
+    flushPendingDiagramQueues();
+  };
+
+  window.processDiagramQueue = flushPendingDiagramQueues;
+  window.safeDecodePath = safeDecodePath;
+  window.resolveRelativePath = resolveRelativePath;
+  window.isRelativeResourcePath = isRelativeResourcePath;
+  window.isWindowsAbsolutePath = isWindowsAbsolutePath;
+  window.normalizeWindowsAbsolutePath = normalizeWindowsAbsolutePath;
+  window.buildWebviewResourceUrl = buildWebviewResourceUrl;
+
+  window.queueDiagramRender = function (id, filePath, diagramType, includeDir) {
+    var host = document.getElementById(id);
+    var boardId = getCurrentEditorBoardId() || activeBoardId || '';
+    var resolvedPath = resolveCurrentEditorResourcePath(filePath, includeDir);
+    if (!host || !boardId || !resolvedPath) return;
+    renderCachedSpecialPreview(host, boardId, resolvedPath, 'diagram')
+      .then(function (rendered) {
+        if (!rendered && host) {
+          host.innerHTML = buildFilePreviewPlaceholderHtml(
+            'diagram',
+            resolvedPath,
+            getSpecialPreviewPlaceholderText('diagram')
+          );
+        }
+      })
+      .catch(function () {
+        if (host) {
+          host.innerHTML = buildFilePreviewPlaceholderHtml(
+            'diagram',
+            resolvedPath,
+            getSpecialPreviewPlaceholderText('diagram')
+          );
+        }
+      });
+  };
+
+  window.queuePDFPageRender = function (id, filePath, pageNumber, includeDir) {
+    var host = document.getElementById(id);
+    var boardId = getCurrentEditorBoardId() || activeBoardId || '';
+    var resolvedPath = resolveCurrentEditorResourcePath(filePath, includeDir);
+    if (!host || !boardId || !resolvedPath) return;
+    var fileRef = parseLocalFileReference(String(resolvedPath || '') + '#' + String(pageNumber || '1'));
+    host.innerHTML = '<iframe class="file-preview-frame" src="' +
+      escapeAttr(
+        LexeraApi.fileUrl(boardId, fileRef.path) +
+        '#toolbar=0&navpanes=0&page=' + String(fileRef.pageNumber || 1)
+      ) +
+      '" style="width:100%;min-height:320px;border:0;border-radius:6px;"></iframe>';
+  };
+
+  window.queuePDFSlideshow = function (id, filePath, includeDir) {
+    var host = document.getElementById(id);
+    var boardId = getCurrentEditorBoardId() || activeBoardId || '';
+    var resolvedPath = resolveCurrentEditorResourcePath(filePath, includeDir);
+    if (!host || !boardId || !resolvedPath) return;
+    var fileRef = parseLocalFileReference(resolvedPath);
+    host.innerHTML = '<iframe class="file-preview-frame" src="' +
+      escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path) + '#toolbar=0&navpanes=0') +
+      '" style="width:100%;min-height:320px;border:0;border-radius:6px;"></iframe>';
+  };
+
   async function handleFileDrop(files, targetEl) {
     if (!activeBoardId) return;
     // Find which column the drop target is in
@@ -11346,6 +11741,11 @@ const LexeraDashboard = (function () {
     var nextValue = String(nextTarget || '').trim();
     if (!nextValue) return Promise.resolve(false);
     return mutateEmbedSource(container, function (content) {
+      if (!isFinite(embedIndex)) {
+        return replaceCurrentEmbedOccurrence(content, container, function (embed) {
+          return buildMarkdownEmbed(embed.alt, nextValue, embed.title, embed.rawAttrs);
+        });
+      }
       return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
         return buildMarkdownEmbed(embed.alt, nextValue, embed.title, embed.rawAttrs);
       });
@@ -11356,6 +11756,11 @@ const LexeraDashboard = (function () {
     if (!container) return Promise.resolve(false);
     var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
     return mutateEmbedSource(container, function (content) {
+      if (!isFinite(embedIndex)) {
+        return replaceCurrentEmbedOccurrence(content, container, function () {
+          return '';
+        });
+      }
       return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function () {
         return '';
       });
