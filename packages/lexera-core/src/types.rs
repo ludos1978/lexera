@@ -19,7 +19,9 @@ pub struct KanbanCard {
     pub content: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub checked: bool,
-    /// Persistent card identity for merge support (8 hex chars, embedded as `<!-- kid:xxxx -->`)
+    /// Persistent card identity for merge and sync support (8 hex chars).
+    /// Legacy markdown may still contain a `<!-- kid:xxxx -->` marker, but the
+    /// identifier is kept internal and no longer written into card content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kid: Option<String>,
 }

@@ -72,10 +72,7 @@ fn get_map_at(list: &LoroMovableList, index: usize) -> Option<LoroMap> {
 
 fn insert_card(cards_list: &LoroMovableList, card: &KanbanCard) {
     let card_map: LoroMap = cards_list.push_container(LoroMap::new()).unwrap();
-    let kid = card
-        .kid
-        .clone()
-        .unwrap_or_else(|| card_identity::extract_kid(&card.content).unwrap_or_default());
+    let kid = card_identity::resolve_kid(&card.content, card.kid.as_deref());
     let content = card_identity::strip_kid(&card.content);
     card_map.insert("kid", kid.as_str()).unwrap();
     card_map.insert("content", content.as_str()).unwrap();
@@ -102,18 +99,13 @@ fn read_card(card_map: &LoroMap) -> KanbanCard {
     let kid = get_string(card_map, "kid");
     let content = get_string(card_map, "content");
     let checked = get_bool(card_map, "checked");
-    let full_content = if kid.is_empty() {
-        content
-    } else {
-        card_identity::inject_kid(&content, &kid)
-    };
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
     KanbanCard {
         id: format!("crdt-{:x}", ts),
-        content: full_content,
+        content,
         checked,
         kid: if kid.is_empty() { None } else { Some(kid) },
     }
@@ -449,10 +441,13 @@ impl CrdtStore {
                                                         LoroMovableList::new(),
                                                     )
                                                     .unwrap();
-                                            } else if let Some(col_map) = get_map_at(&cols_list, ci) {
+                                            } else if let Some(col_map) = get_map_at(&cols_list, ci)
+                                            {
                                                 // Update column title/id if changed
                                                 col_map.insert("id", col.id.as_str()).unwrap();
-                                                col_map.insert("title", col.title.as_str()).unwrap();
+                                                col_map
+                                                    .insert("title", col.title.as_str())
+                                                    .unwrap();
                                             }
                                         }
                                         // Remove extra columns (deleted from end to avoid index shift)
@@ -693,7 +688,7 @@ mod tests {
     fn make_card(kid: &str, content: &str, checked: bool) -> KanbanCard {
         KanbanCard {
             id: "test".to_string(),
-            content: format!("{} <!-- kid:{} -->", content, kid),
+            content: content.to_string(),
             checked,
             kid: Some(kid.to_string()),
         }
@@ -778,13 +773,7 @@ mod tests {
         assert_eq!(restored.columns[1].title, "Done");
         assert_eq!(restored.columns[1].cards.len(), 1);
 
-        // Check card content with kid re-injected
-        assert!(restored.columns[0].cards[0]
-            .content
-            .contains("Buy groceries"));
-        assert!(restored.columns[0].cards[0]
-            .content
-            .contains("<!-- kid:aaaa0001 -->"));
+        assert_eq!(restored.columns[0].cards[0].content, "Buy groceries");
         assert_eq!(
             restored.columns[0].cards[0].kid,
             Some("aaaa0001".to_string())

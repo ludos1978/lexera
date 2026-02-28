@@ -1,12 +1,10 @@
 use regex::Regex;
 use std::sync::atomic::{AtomicU64, Ordering};
-/// Card identity management using persistent kid markers.
+/// Card identity helpers.
 ///
-/// Cards are identified by `<!-- kid:XXXXXXXX -->` comments embedded at the
-/// end of the first line (task summary) in markdown. The kid is 8 hex chars
-/// (32-bit), generated once per card and preserved across edits.
-///
-/// HTML comments are invisible in Obsidian rendering.
+/// Older markdown may contain `<!-- kid:XXXXXXXX -->` comments at the end of
+/// the first line. Those markers are accepted as migration input, but the kid
+/// is now kept as internal metadata instead of being serialized into content.
 use std::sync::LazyLock;
 
 static KID_RE: LazyLock<Regex> =
@@ -25,13 +23,28 @@ pub fn strip_kid(content: &str) -> String {
         let stripped = KID_RE.replace(first, "");
         let trimmed = stripped.trim_end().to_string();
         let rest = if lines.len() > 1 {
-            format!("\n{}", lines[1..].join("\n"))
+            lines[1..].join("\n")
         } else {
             String::new()
         };
-        return format!("{}{}", trimmed, rest);
+        return if trimmed.is_empty() {
+            rest
+        } else if rest.is_empty() {
+            trimmed
+        } else {
+            format!("{}\n{}", trimmed, rest)
+        };
     }
     content.to_string()
+}
+
+/// Resolve a card's kid from existing metadata or a legacy content marker.
+/// Generates a new kid when neither source is available.
+pub fn resolve_kid(content: &str, existing: Option<&str>) -> String {
+    existing
+        .map(ToOwned::to_owned)
+        .or_else(|| extract_kid(content))
+        .unwrap_or_else(generate_kid)
 }
 
 /// Inject kid marker into content (appends to the first line).
@@ -73,15 +86,10 @@ pub fn generate_kid() -> String {
     )
 }
 
-/// Ensure a card has a kid. If it doesn't have one, generate and inject one.
-/// Returns (content_with_kid, kid).
+/// Ensure a card has an internal kid while stripping any legacy marker from
+/// the content. Returns (clean_content, kid).
 pub fn ensure_kid(content: &str) -> (String, String) {
-    if let Some(kid) = extract_kid(content) {
-        (content.to_string(), kid)
-    } else {
-        let kid = generate_kid();
-        (inject_kid(content, &kid), kid)
-    }
+    (strip_kid(content), resolve_kid(content, None))
 }
 
 #[cfg(test)]
@@ -113,6 +121,7 @@ mod tests {
             "Buy groceries\nmore text"
         );
         assert_eq!(strip_kid("No kid here"), "No kid here");
+        assert_eq!(strip_kid("<!-- kid:a1b2c3d4 -->\nmore text"), "more text");
     }
 
     #[test]
@@ -147,7 +156,7 @@ mod tests {
         let content = "Task <!-- kid:a1b2c3d4 -->";
         let (result, kid) = ensure_kid(content);
         assert_eq!(kid, "a1b2c3d4");
-        assert_eq!(result, content);
+        assert_eq!(result, "Task");
     }
 
     #[test]
@@ -155,6 +164,14 @@ mod tests {
         let content = "Task without kid";
         let (result, kid) = ensure_kid(content);
         assert_eq!(kid.len(), 8);
-        assert!(result.contains(&format!("<!-- kid:{} -->", kid)));
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn test_resolve_kid_prefers_existing_metadata() {
+        assert_eq!(
+            resolve_kid("Task <!-- kid:a1b2c3d4 -->", Some("deadbeef")),
+            "deadbeef"
+        );
     }
 }

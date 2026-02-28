@@ -1,3 +1,4 @@
+use crate::merge::card_identity;
 /// Slide-format parser for include files.
 ///
 /// Include files use a slide format where entries are separated by `\n---\n`
@@ -38,9 +39,9 @@ pub fn parse_slides(content: &str) -> Vec<KanbanCard> {
             let trimmed = slide_content.trim().to_string();
             KanbanCard {
                 id: generate_id("slide"),
-                content: trimmed,
+                content: card_identity::strip_kid(&trimmed),
                 checked: false,
-                kid: None,
+                kid: card_identity::extract_kid(&trimmed),
             }
         })
         .collect()
@@ -109,7 +110,7 @@ pub fn generate_slides(cards: &[KanbanCard]) -> String {
 
     let mut output = String::new();
     for (i, card) in cards.iter().enumerate() {
-        output.push_str(&card.content);
+        output.push_str(&card_identity::strip_kid(&card.content));
         if i < cards.len() - 1 {
             output.push_str("\n\n---\n\n");
         }
@@ -197,5 +198,24 @@ mod tests {
     #[test]
     fn test_generate_empty() {
         assert_eq!(generate_slides(&[]), "");
+    }
+
+    #[test]
+    fn test_parse_strips_legacy_kid_marker() {
+        let cards = parse_slides("<!-- kid:a1b2c3d4 -->\n# Slide 1\n");
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].content, "# Slide 1");
+        assert_eq!(cards[0].kid, Some("a1b2c3d4".to_string()));
+    }
+
+    #[test]
+    fn test_generate_strips_legacy_kid_marker() {
+        let cards = vec![KanbanCard {
+            id: "1".to_string(),
+            content: "<!-- kid:a1b2c3d4 -->\n# Slide 1".to_string(),
+            checked: false,
+            kid: Some("a1b2c3d4".to_string()),
+        }];
+        assert_eq!(generate_slides(&cards), "# Slide 1\n");
     }
 }

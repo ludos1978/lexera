@@ -133,7 +133,7 @@ fn parse_task_line(line: &str) -> Option<KanbanCard> {
     let kid = card_identity::extract_kid(task_summary);
     Some(KanbanCard {
         id: generate_id("task"),
-        content: task_summary.to_string(),
+        content: card_identity::strip_kid(task_summary),
         checked,
         kid,
     })
@@ -587,7 +587,9 @@ fn write_column_cards(markdown: &mut String, column: &KanbanColumn) {
     }
 
     for task in &column.cards {
-        let normalized = task.content.replace("\r\n", "\n").replace('\r', "\n");
+        let normalized = card_identity::strip_kid(&task.content)
+            .replace("\r\n", "\n")
+            .replace('\r', "\n");
         let content_lines: Vec<&str> = normalized.split('\n').collect();
         let summary = content_lines.first().copied().unwrap_or("");
 
@@ -819,6 +821,15 @@ columnWidth: 450px
     }
 
     #[test]
+    fn test_parse_strips_legacy_kid_marker() {
+        let board = parse_markdown(
+            "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Task <!-- kid:a1b2c3d4 -->\n",
+        );
+        assert_eq!(board.columns[0].cards[0].content, "Task");
+        assert_eq!(board.columns[0].cards[0].kid, Some("a1b2c3d4".to_string()));
+    }
+
+    #[test]
     fn test_parse_board_settings() {
         let settings = parse_board_settings(
             "---\nkanban-plugin: board\ncolumnWidth: 450px\nlayoutRows: 3\n---",
@@ -844,6 +855,16 @@ columnWidth: 450px
             }
         }
         assert_eq!(board.kanban_footer, reparsed.kanban_footer);
+    }
+
+    #[test]
+    fn test_generate_markdown_does_not_write_kid_marker() {
+        let board = parse_markdown(
+            "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Task <!-- kid:a1b2c3d4 -->\n",
+        );
+        let regenerated = generate_markdown(&board);
+        assert!(regenerated.contains("- [ ] Task\n"));
+        assert!(!regenerated.contains("<!-- kid:"));
     }
 
     #[test]

@@ -124,16 +124,11 @@ impl LocalStorage {
         let mut normalized = board.clone();
         for column in normalized.all_columns_mut() {
             for card in &mut column.cards {
-                if card.kid.is_some() || card_identity::extract_kid(&card.content).is_some() {
-                    if card.kid.is_none() {
-                        card.kid = card_identity::extract_kid(&card.content);
-                    }
-                    continue;
+                let original_content = card.content.clone();
+                card.content = card_identity::strip_kid(&original_content);
+                if card.kid.is_none() {
+                    card.kid = Some(card_identity::resolve_kid(&original_content, None));
                 }
-
-                let (content_with_kid, kid) = card_identity::ensure_kid(&card.content);
-                card.content = content_with_kid;
-                card.kid = Some(kid);
             }
         }
         normalized
@@ -1032,10 +1027,10 @@ impl BoardStorage for LocalStorage {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis();
-        let (content_with_kid, kid) = card_identity::ensure_kid(content);
+        let kid = card_identity::resolve_kid(content, None);
         let new_card = KanbanCard {
             id: format!("task-{:x}-{:06x}", ts, rand_u24()),
-            content: content_with_kid,
+            content: card_identity::strip_kid(content),
             checked: false,
             kid: Some(kid),
         };
@@ -1196,6 +1191,30 @@ kanban-plugin: board
         // Verify it was written to disk
         let on_disk = fs::read_to_string(tmp.path()).unwrap();
         assert!(on_disk.contains("New task"));
+        assert!(!on_disk.contains("<!-- kid:"));
+    }
+
+    #[test]
+    fn test_write_board_strips_legacy_kid_marker_from_disk() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(
+            tmp,
+            "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Existing <!-- kid:a1b2c3d4 -->\n"
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(tmp.path()).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert_eq!(board.columns[0].cards[0].content, "Existing");
+        assert_eq!(board.columns[0].cards[0].kid, Some("a1b2c3d4".to_string()));
+
+        storage.write_board(&id, &board).unwrap();
+
+        let on_disk = fs::read_to_string(tmp.path()).unwrap();
+        assert!(on_disk.contains("- [ ] Existing\n"));
+        assert!(!on_disk.contains("<!-- kid:"));
     }
 
     #[test]

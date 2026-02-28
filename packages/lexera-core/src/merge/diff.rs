@@ -135,7 +135,7 @@ mod tests {
     fn make_card(kid: &str, content: &str, checked: bool) -> KanbanCard {
         KanbanCard {
             id: "test".to_string(),
-            content: format!("{} <!-- kid:{} -->", content, kid),
+            content: content.to_string(),
             checked,
             kid: Some(kid.to_string()),
         }
