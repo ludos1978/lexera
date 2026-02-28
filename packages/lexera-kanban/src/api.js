@@ -154,6 +154,7 @@ const LexeraApi = (function () {
   var syncOnPresence = null;
   var syncReconnectTimer = null;
   var syncShouldReconnect = false;
+  var syncHasConnectedOnce = false;
 
   function clearSyncReconnectTimer() {
     if (syncReconnectTimer) {
@@ -189,8 +190,10 @@ const LexeraApi = (function () {
       try {
         var msg = JSON.parse(evt.data);
         if (msg.type === 'ServerHello') {
+          var reconnectHello = syncHasConnectedOnce;
+          syncHasConnectedOnce = true;
           console.log('[sync] Received ServerHello, peer_id=' + msg.peer_id);
-          if (syncOnUpdate && msg.updates) syncOnUpdate();
+          if (reconnectHello && syncOnUpdate && msg.updates) syncOnUpdate();
         } else if (msg.type === 'ServerUpdate') {
           if (syncOnUpdate) syncOnUpdate();
         } else if (msg.type === 'ServerPresence') {
@@ -236,6 +239,7 @@ const LexeraApi = (function () {
     syncOnUpdate = onUpdate;
     syncOnPresence = onPresence || null;
     syncShouldReconnect = true;
+    syncHasConnectedOnce = false;
     openSyncSocket();
   }
 
@@ -250,6 +254,7 @@ const LexeraApi = (function () {
     syncUserId = null;
     syncOnUpdate = null;
     syncOnPresence = null;
+    syncHasConnectedOnce = false;
   }
 
   function isSyncConnected() {
