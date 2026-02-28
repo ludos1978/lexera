@@ -3920,28 +3920,35 @@ const LexeraDashboard = (function () {
 
   async function loadBoard(boardId) {
     var seq = ++boardLoadSeq;
+    var loadStage = 'start';
     try {
+      loadStage = 'clear-caches';
       clearBoardPreviewCaches(boardId);
       var cachedVersion = (boardId === activeBoardId && activeBoardData && typeof activeBoardData.version === 'number')
         ? activeBoardData.version
         : null;
+      loadStage = cachedVersion != null ? 'fetch-cached' : 'fetch';
       var response = cachedVersion != null
         ? await LexeraApi.getBoardColumnsCached(boardId, cachedVersion)
         : await LexeraApi.getBoardColumns(boardId);
       if (seq !== boardLoadSeq) return; // stale response, a newer load was started
       if (response && response.notModified) {
+        loadStage = 'connect-sync-not-modified';
         connectSyncForBoard(boardId);
         return;
       }
+      loadStage = 'prepare-board-meta';
       var boardMeta = findBoardMeta(boardId);
       if (boardMeta && boardMeta.filePath) {
         response.filePath = boardMeta.filePath;
       }
+      loadStage = 'assign-board-data';
       fullBoardData = response.fullBoard || null;
       if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
       activeBoardData = response;
       if (fullBoardData) {
         try {
+          loadStage = 'prepare-live-sync';
           await closeLiveSyncSession(boardId);
           await ensureLiveSyncSession(boardId);
         } catch (e) {
@@ -3950,24 +3957,32 @@ const LexeraDashboard = (function () {
       }
       // Auto-convert legacy boards and save immediately
       if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
+        loadStage = 'migrate-legacy-board';
         migrateLegacyBoard();
         try {
+          loadStage = 'save-migrated-board';
           await saveFullBoard();
         } catch (err) {
           logFrontendIssue('warn', 'board.load.migrate', 'Failed to persist migrated board ' + boardId, err);
         }
         if (seq !== boardLoadSeq) return; // check again after second await
       }
+      loadStage = 'update-display';
       updateDisplayFromFullBoard(); // populate activeBoardData.rows before sidebar render
+      loadStage = 'set-board-hierarchy';
       setBoardHierarchyRows(boardId, fullBoardData, response.title || '');
+      loadStage = 'render-board-list';
       renderBoardList();
+      loadStage = 'render-main-view';
       renderMainView();
+      loadStage = 'schedule-dashboard-refresh';
       scheduleDashboardRefresh(80);
       // Connect WS sync for this board (no-op if already connected)
+      loadStage = 'connect-sync';
       connectSyncForBoard(boardId);
     } catch (err) {
       if (seq !== boardLoadSeq) return; // stale error, ignore
-      logFrontendIssue('error', 'board.load', 'Failed to load board ' + boardId, err);
+      logFrontendIssue('error', 'board.load', 'Failed to load board ' + boardId + ' during ' + loadStage, err);
       try {
         await closeLiveSyncSession(boardId);
       } catch (closeErr) {

@@ -1568,4 +1568,22 @@ kanban-plugin: board
         assert!(contents.contains(&"Remote addition".to_string()));
         assert_eq!(merged.columns[0].cards.len(), 3);
     }
+
+    #[test]
+    fn test_add_board_accepts_presentation_fixture() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/kanban-presentation-tests/kanban-presentation.md");
+        assert!(fixture.exists(), "missing fixture: {}", fixture.display());
+
+        let storage = LocalStorage::new();
+        let board_id = storage.add_board(&fixture).unwrap();
+        let board = storage.read_board(&board_id).unwrap();
+
+        assert!(board.valid);
+        assert!(!board.rows.is_empty());
+        assert!(
+            board.all_columns().len() >= 4,
+            "expected multiple columns in fixture board"
+        );
+    }
 }
