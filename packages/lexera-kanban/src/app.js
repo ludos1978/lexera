@@ -11107,9 +11107,10 @@ const LexeraDashboard = (function () {
     safe = safe.replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (_, alt, rawSrc, rawAttrs) {
       var parsedTarget = parseMarkdownTarget(rawSrc);
       var filePath = parsedTarget.path;
+      var fileRef = parseLocalFileReference(filePath);
       var titleText = decodeHtmlEntities(normalizeMarkdownAttrValue(parsedTarget.title));
       var imageAttrs = parseMarkdownImageAttributes(rawAttrs);
-      var ext = getFileExtension(filePath);
+      var ext = getFileExtension(fileRef.path);
       var category = getMediaCategory(ext);
       var isExternalHttp = isExternalHttpUrl(filePath);
       var isExternal = isExternalHttp || filePath.indexOf('data:') === 0;
@@ -11129,7 +11130,7 @@ const LexeraDashboard = (function () {
 
       var src = filePath;
       if (!isExternal && boardId) {
-        src = LexeraApi.fileUrl(boardId, filePath);
+        src = LexeraApi.fileUrl(boardId, fileRef.path);
       }
 
       var mediaStyleAttr = getMarkdownMediaStyleAttr(imageAttrs, { allowHeightOnImages: true });
