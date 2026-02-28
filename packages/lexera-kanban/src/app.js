@@ -13746,6 +13746,9 @@ const LexeraDashboard = (function () {
   function renderCardContent(content, boardId, renderState, options) {
     renderState = renderState || {};
     options = options || {};
+    var previousNestedDepth = typeof renderState.nestedDepth === 'number' ? renderState.nestedDepth : 0;
+    renderState.nestedDepth = options.nested ? previousNestedDepth + 1 : previousNestedDepth;
+    try {
     var lines = content.split('\n');
     var html = '';
     var listTag = null; // 'ul' or 'ol'
@@ -13989,6 +13992,9 @@ const LexeraDashboard = (function () {
       html += '</ol></div>';
     }
     return html;
+    } finally {
+      renderState.nestedDepth = previousNestedDepth;
+    }
   }
 
   function renderInline(text, boardId, renderState) {
@@ -14102,7 +14108,7 @@ const LexeraDashboard = (function () {
         expandPreview: true,
         depth: 0,
         includeIndex: includeIndex,
-        allowActions: !options.nested
+        allowActions: !(renderState.nestedDepth > 0)
       });
     });
 
