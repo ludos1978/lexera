@@ -112,6 +112,46 @@ fn has_structural_mismatch(a: &KanbanBoard, b: &KanbanBoard) -> bool {
 }
 
 impl LocalStorage {
+    fn board_has_missing_kids(board: &KanbanBoard) -> bool {
+        board.all_columns().iter().any(|column| {
+            column.cards.iter().any(|card| {
+                card.kid.is_none() && card_identity::extract_kid(&card.content).is_none()
+            })
+        })
+    }
+
+    fn ensure_board_card_kids(board: &KanbanBoard) -> KanbanBoard {
+        let mut normalized = board.clone();
+        for column in normalized.all_columns_mut() {
+            for card in &mut column.cards {
+                if card.kid.is_some() || card_identity::extract_kid(&card.content).is_some() {
+                    if card.kid.is_none() {
+                        card.kid = card_identity::extract_kid(&card.content);
+                    }
+                    continue;
+                }
+
+                let (content_with_kid, kid) = card_identity::ensure_kid(&card.content);
+                card.content = content_with_kid;
+                card.kid = Some(kid);
+            }
+        }
+        normalized
+    }
+
+    fn restore_include_sources(target: &mut KanbanBoard, source: &KanbanBoard) {
+        let source_cols = source.all_columns();
+        let mut target_cols = target.all_columns_mut();
+
+        if target_cols.len() != source_cols.len() {
+            return;
+        }
+
+        for (target_col, source_col) in target_cols.iter_mut().zip(source_cols.iter()) {
+            target_col.include_source = source_col.include_source.clone();
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             boards: RwLock::new(HashMap::new()),
@@ -305,8 +345,14 @@ impl LocalStorage {
             version,
             crdt: None,
         };
-        self.boards.write().unwrap().insert(board_id.to_string(), state);
-        self.remote_boards.write().unwrap().insert(board_id.to_string());
+        self.boards
+            .write()
+            .unwrap()
+            .insert(board_id.to_string(), state);
+        self.remote_boards
+            .write()
+            .unwrap()
+            .insert(board_id.to_string());
     }
 
     /// Check if a board is a remote board.
@@ -322,7 +368,12 @@ impl LocalStorage {
             .iter()
             .filter_map(|id| {
                 boards.get(id).map(|state| {
-                    let card_count: usize = state.board.all_columns().iter().map(|c| c.cards.len()).sum();
+                    let card_count: usize = state
+                        .board
+                        .all_columns()
+                        .iter()
+                        .map(|c| c.cards.len())
+                        .sum();
                     (id.clone(), state.board.title.clone(), card_count)
                 })
             })
@@ -425,6 +476,71 @@ impl LocalStorage {
         Ok(parser::parse_markdown_with_includes(content, &ctx))
     }
 
+    fn sync_include_map_for_board(&self, board_id: &str, board: &KanbanBoard, board_dir: &Path) {
+        let all_cols = board.all_columns();
+        let column_titles: Vec<(usize, &str)> = all_cols
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (i, c.title.as_str()))
+            .collect();
+
+        if column_titles
+            .iter()
+            .any(|(_, title)| syntax::is_include(title))
+        {
+            self.include_map
+                .write()
+                .unwrap()
+                .register_board(board_id, board_dir, &column_titles);
+        } else {
+            self.include_map.write().unwrap().remove_board(board_id);
+        }
+    }
+
+    fn write_include_column(&self, column: &KanbanColumn) -> Result<(), StorageError> {
+        let include_source = column.include_source.as_ref().ok_or_else(|| {
+            StorageError::InvalidBoard("Column is not an include column".to_string())
+        })?;
+
+        let resolved_path = include_source.resolved_path.clone();
+        let slide_content = slide_parser::generate_slides(&column.cards);
+
+        self.self_write_tracker
+            .lock()
+            .unwrap()
+            .register(&resolved_path, &slide_content);
+
+        Self::atomic_write(&resolved_path, &slide_content)?;
+        Ok(())
+    }
+
+    fn persist_board_files(
+        &self,
+        board_id: &str,
+        file_path: &Path,
+        board: &KanbanBoard,
+    ) -> Result<String, StorageError> {
+        let markdown = parser::generate_markdown(board);
+
+        self.self_write_tracker
+            .lock()
+            .unwrap()
+            .register(file_path, &markdown);
+
+        Self::atomic_write(file_path, &markdown)?;
+
+        for column in board.all_columns() {
+            if column.include_source.is_some() {
+                self.write_include_column(column)?;
+            }
+        }
+
+        let board_dir = file_path.parent().unwrap_or(Path::new("."));
+        self.sync_include_map_for_board(board_id, board, board_dir);
+
+        Ok(markdown)
+    }
+
     /// Write cards to an include file in slide format.
     /// Used when cards in an include column are modified.
     pub fn write_include_file(&self, board_id: &str, col_index: usize) -> Result<(), StorageError> {
@@ -436,27 +552,23 @@ impl LocalStorage {
         let all_cols = state.board.all_columns();
         let column = all_cols
             .get(col_index)
+            .copied()
             .ok_or(StorageError::ColumnOutOfRange {
                 index: col_index,
                 max: all_cols.len().saturating_sub(1),
-            })?;
+            })?
+            .clone();
 
-        let include_source = column.include_source.as_ref().ok_or_else(|| {
-            StorageError::InvalidBoard(format!("Column {} is not an include column", col_index))
-        })?;
-
-        let resolved_path = include_source.resolved_path.clone();
-        let slide_content = slide_parser::generate_slides(&column.cards);
         drop(boards);
 
-        // Register fingerprint for self-write detection
-        self.self_write_tracker
-            .lock()
-            .unwrap()
-            .register(&resolved_path, &slide_content);
+        if column.include_source.is_none() {
+            return Err(StorageError::InvalidBoard(format!(
+                "Column {} is not an include column",
+                col_index
+            )));
+        }
 
-        Self::atomic_write(&resolved_path, &slide_content)?;
-        Ok(())
+        self.write_include_column(&column)
     }
 
     /// Get a write lock for a specific board.
@@ -550,11 +662,7 @@ impl LocalStorage {
     /// `vv_bytes` is the encoded VersionVector from the remote peer.
     /// An empty `vv_bytes` slice is treated as an empty VersionVector (export all).
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
-    pub fn export_crdt_updates_since(
-        &self,
-        board_id: &str,
-        vv_bytes: &[u8],
-    ) -> Option<Vec<u8>> {
+    pub fn export_crdt_updates_since(&self, board_id: &str, vv_bytes: &[u8]) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id);
         let _guard = lock.lock().unwrap();
         let boards = self.boards.read().unwrap();
@@ -569,11 +677,7 @@ impl LocalStorage {
     }
 
     /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
-    pub fn import_crdt_updates(
-        &self,
-        board_id: &str,
-        bytes: &[u8],
-    ) -> Result<(), StorageError> {
+    pub fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id);
         let _guard = lock.lock().unwrap();
 
@@ -581,13 +685,19 @@ impl LocalStorage {
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
 
-        // Take CRDT from state for mutation
-        let mut crdt = {
+        // Take CRDT and current board from state for mutation
+        let (mut crdt, current_board) = {
             let mut boards = self.boards.write().unwrap();
-            boards
+            let state = boards
                 .get_mut(board_id)
-                .and_then(|s| s.crdt.take())
-                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            (
+                state
+                    .crdt
+                    .take()
+                    .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?,
+                state.board.clone(),
+            )
         };
 
         if let Err(e) = crdt.import_updates(bytes) {
@@ -599,16 +709,9 @@ impl LocalStorage {
         }
 
         // Rebuild board from CRDT state
-        let board = crdt.to_board();
-        let markdown = parser::generate_markdown(&board);
-
-        // Register fingerprint for self-write detection
-        self.self_write_tracker
-            .lock()
-            .unwrap()
-            .register(&file_path, &markdown);
-
-        Self::atomic_write(&file_path, &markdown)?;
+        let mut board = crdt.to_board();
+        Self::restore_include_sources(&mut board, &current_board);
+        let markdown = self.persist_board_files(board_id, &file_path, &board)?;
 
         // Save CRDT snapshot
         let crdt_path = file_path.with_extension("md.crdt");
@@ -758,6 +861,7 @@ impl BoardStorage for LocalStorage {
         board_id: &str,
         board: &KanbanBoard,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+        let normalized_board = Self::ensure_board_card_kids(board);
         let lock = self.get_write_lock(board_id);
         let _guard = lock.lock().unwrap();
 
@@ -779,22 +883,32 @@ impl BoardStorage for LocalStorage {
         let (board_to_write, merge_result) = if let Some(ref mut c) = crdt {
             // CRDT path: apply incoming board as CRDT operations
             let current = c.to_board();
-            c.apply_board(board, &current);
-            let merged = c.to_board();
-
-            // If the CRDT's structure diverges from the incoming board (e.g. column
-            // removed from the middle, cross-board move), the truncate-from-end
-            // heuristic in sync_column_structure can produce the wrong layout.
-            // Detect this and rebuild the CRDT from the incoming board.
-            if has_structural_mismatch(&merged, board) {
+            if Self::board_has_missing_kids(&current) {
                 log::info!(
-                    "[lexera.storage.crdt] Structural mismatch after CRDT merge on board {}, rebuilding CRDT",
+                    "[lexera.storage.crdt] Missing card identity on board {}, rebuilding CRDT",
                     board_id
                 );
-                *c = crate::crdt::bridge::CrdtStore::from_board(board);
-                (board.clone(), None)
+                *c = crate::crdt::bridge::CrdtStore::from_board(&normalized_board);
+                (normalized_board.clone(), None)
             } else {
-                (merged, None) // CRDT = no conflicts
+                c.apply_board(&normalized_board, &current);
+                let mut merged = c.to_board();
+                Self::restore_include_sources(&mut merged, &normalized_board);
+
+                // If the CRDT's structure diverges from the incoming board (e.g. column
+                // removed from the middle, cross-board move), the truncate-from-end
+                // heuristic in sync_column_structure can produce the wrong layout.
+                // Detect this and rebuild the CRDT from the incoming board.
+                if has_structural_mismatch(&merged, &normalized_board) {
+                    log::info!(
+                        "[lexera.storage.crdt] Structural mismatch after CRDT merge on board {}, rebuilding CRDT",
+                        board_id
+                    );
+                    *c = crate::crdt::bridge::CrdtStore::from_board(&normalized_board);
+                    (normalized_board.clone(), None)
+                } else {
+                    (merged, None) // CRDT = no conflicts
+                }
             }
         } else if disk_hash != stored_hash && !stored_hash.is_empty() {
             // Legacy fallback: three-way merge (no CRDT available)
@@ -812,7 +926,7 @@ impl BoardStorage for LocalStorage {
                 .unwrap_or_else(|| parser::parse_markdown(""));
 
             let theirs = parser::parse_markdown(&disk_content);
-            let result = card_merge::three_way_merge(&base_board, &theirs, board);
+            let result = card_merge::three_way_merge(&base_board, &theirs, &normalized_board);
 
             if !result.conflicts.is_empty() {
                 // Save user's version as conflict backup
@@ -821,7 +935,7 @@ impl BoardStorage for LocalStorage {
                     .unwrap_or_default()
                     .as_secs();
                 let backup_path = file_path.with_extension(format!("conflict-{}.md", timestamp));
-                let user_markdown = parser::generate_markdown(board);
+                let user_markdown = parser::generate_markdown(&normalized_board);
                 let _ = Self::atomic_write(&backup_path, &user_markdown);
                 log::warn!(
                     "[lexera.storage.merge] {} conflicts, backup saved to {:?}",
@@ -830,21 +944,13 @@ impl BoardStorage for LocalStorage {
                 );
             }
 
-            (result.board.clone(), Some(result))
+            (Self::ensure_board_card_kids(&result.board), Some(result))
         } else {
             // No conflict — direct write
-            (board.clone(), None)
+            (normalized_board.clone(), None)
         };
 
-        let markdown = parser::generate_markdown(&board_to_write);
-
-        // Register fingerprint for self-write detection
-        self.self_write_tracker
-            .lock()
-            .unwrap()
-            .register(&file_path, &markdown);
-
-        Self::atomic_write(&file_path, &markdown)?;
+        let markdown = self.persist_board_files(board_id, &file_path, &board_to_write)?;
 
         // Save CRDT state alongside the markdown file
         if let Some(ref c) = crdt {
@@ -893,7 +999,8 @@ impl BoardStorage for LocalStorage {
 
         // Read fresh from disk
         let file_content = fs::read_to_string(&file_path)?;
-        let mut board = parser::parse_markdown(&file_content);
+        let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let mut board = self.parse_with_includes(&file_content, board_id, &board_dir)?;
 
         if !board.valid {
             // Put CRDT back before returning error
@@ -941,15 +1048,7 @@ impl BoardStorage for LocalStorage {
             c.apply_board(&board, &old_board);
         }
 
-        let markdown = parser::generate_markdown(&board);
-
-        // Register fingerprint for self-write detection
-        self.self_write_tracker
-            .lock()
-            .unwrap()
-            .register(&file_path, &markdown);
-
-        Self::atomic_write(&file_path, &markdown)?;
+        let markdown = self.persist_board_files(board_id, &file_path, &board)?;
 
         // Save CRDT state
         if let Some(ref c) = crdt {
@@ -997,7 +1096,7 @@ fn rand_u24() -> u32 {
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::NamedTempFile;
+    use tempfile::{tempdir, NamedTempFile};
 
     const TEST_BOARD: &str = "\
 ---
@@ -1183,5 +1282,77 @@ kanban-plugin: board
 
         let result = storage.add_card(&id, 99, "Bad card");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_board_persists_include_column_cards() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n",
+        )
+        .unwrap();
+        fs::write(&include_path, "# Slide 1\n\nExisting content\n").unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let mut board = storage.read_board(&id).unwrap();
+        assert_eq!(board.columns.len(), 1);
+        assert_eq!(board.columns[0].cards.len(), 1);
+
+        board.columns[0].cards[0].content = "# Slide 1\n\nUpdated content".to_string();
+        board.columns[0].cards.push(KanbanCard {
+            id: "slide-added".to_string(),
+            content: "# Slide 2\n\nSecond slide".to_string(),
+            checked: false,
+            kid: None,
+        });
+
+        storage.write_board(&id, &board).unwrap();
+
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk_board.contains("## !!!include(./slides.md)!!!"));
+        assert!(!on_disk_board.contains("Updated content"));
+        assert!(!on_disk_board.contains("Second slide"));
+
+        let on_disk_include = fs::read_to_string(&include_path).unwrap();
+        assert!(on_disk_include.contains("Updated content"));
+        assert!(on_disk_include.contains("# Slide 2"));
+        assert!(on_disk_include.contains("Second slide"));
+        assert!(on_disk_include.contains("\n\n---\n\n"));
+    }
+
+    #[test]
+    fn test_add_card_persists_into_include_file() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n",
+        )
+        .unwrap();
+        fs::write(&include_path, "# Slide 1\n\nExisting content\n").unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        storage
+            .add_card(&id, 0, "# Slide 2\n\nAdded from API")
+            .unwrap();
+
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk_board.contains("## !!!include(./slides.md)!!!"));
+        assert!(!on_disk_board.contains("Added from API"));
+
+        let on_disk_include = fs::read_to_string(&include_path).unwrap();
+        assert!(on_disk_include.contains("Existing content"));
+        assert!(on_disk_include.contains("# Slide 2"));
+        assert!(on_disk_include.contains("Added from API"));
     }
 }
