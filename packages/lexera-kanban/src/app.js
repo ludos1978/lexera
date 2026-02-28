@@ -3405,35 +3405,42 @@ const LexeraDashboard = (function () {
     if (!fullBoardData || !activeBoardData) return;
 
     var allCols = getAllFullColumns();
-    var columns = allCols
-      .map(function (col, index) {
-        if (is_archived_or_deleted(col.title)) return null;
-        var cards = col.cards.filter(function (c) { return !is_archived_or_deleted(c.content); });
-        return { index: index, title: col.title, cards: cards };
+    var visibleColumns = [];
+    var visibleRows = (fullBoardData.rows || [])
+      .filter(function (row) {
+        return !is_archived_or_deleted(row && row.title ? row.title : '');
       })
-      .filter(function (c) { return c !== null; });
-    activeBoardData.columns = columns;
-
-    // Build filtered rows hierarchy for rendering
-    activeBoardData.rows = (fullBoardData.rows || [])
       .map(function (row) {
-        var stacks = row.stacks
+        var stacks = (row.stacks || [])
+          .filter(function (stack) {
+            return !is_archived_or_deleted(stack && stack.title ? stack.title : '');
+          })
           .map(function (stack) {
-            var cols = stack.columns
-              .filter(function (col) { return !is_archived_or_deleted(col.title); })
+            var cols = (stack.columns || [])
+              .filter(function (col) { return !is_archived_or_deleted(col && col.title ? col.title : ''); })
               .map(function (col) {
-                var cards = col.cards.filter(function (c) { return !is_archived_or_deleted(c.content); });
+                var cards = (col.cards || []).filter(function (c) {
+                  return !is_archived_or_deleted(c && c.content ? c.content : '');
+                });
                 var flatIdx = allCols.indexOf(col);
-                return { index: flatIdx, title: col.title, cards: cards };
+                var visibleCol = { index: flatIdx, title: col.title, cards: cards };
+                visibleColumns.push(visibleCol);
+                return visibleCol;
               });
             return { id: stack.id, title: stack.title, columns: cols };
           });
         return { id: row.id, title: row.title, stacks: stacks };
       });
+
+    activeBoardData.columns = visibleColumns;
+    activeBoardData.rows = visibleRows;
   }
 
   function is_archived_or_deleted(text) {
-    if (text.indexOf('#hidden-internal-deleted') !== -1 || text.indexOf('#hidden-internal-archived') !== -1) return true;
+    text = text || '';
+    if (text.indexOf('#hidden-internal-deleted') !== -1 ||
+        text.indexOf('#hidden-internal-archived') !== -1 ||
+        text.indexOf('#hidden-internal-parked') !== -1) return true;
     // Plain #hidden tag also hides from display (but not #hidden-internal-*)
     if (/(^|\s)#hidden(\s|$)/.test(text)) return true;
     return false;
@@ -3469,6 +3476,17 @@ const LexeraDashboard = (function () {
     return stack.columns[colIndex] || null;
   }
 
+  function getRowByLocation(rowIndex) {
+    if (!fullBoardData || !fullBoardData.rows) return null;
+    return fullBoardData.rows[rowIndex] || null;
+  }
+
+  function getStackByLocation(rowIndex, stackIndex) {
+    var row = getRowByLocation(rowIndex);
+    if (!row || !row.stacks) return null;
+    return row.stacks[stackIndex] || null;
+  }
+
   function getCardByLocation(rowIndex, stackIndex, colIndex, cardIndex) {
     var col = getColumnByLocation(rowIndex, stackIndex, colIndex);
     if (!col || !col.cards) return null;
@@ -3481,10 +3499,32 @@ const LexeraDashboard = (function () {
     for (var r = 0; r < fullBoardData.rows.length; r++) {
       var row = fullBoardData.rows[r];
       var rowTitle = row.title || ('Row ' + (r + 1));
+      var cleanRowTitle = stripInternalHiddenTags(rowTitle) || ('Row ' + (r + 1));
+      if (hasInternalHiddenTag(rowTitle, tag)) {
+        items.push({
+          kind: 'row',
+          rowIndex: r,
+          rowTitle: cleanRowTitle,
+          title: cleanRowTitle
+        });
+        continue;
+      }
       if (!row.stacks) continue;
       for (var s = 0; s < row.stacks.length; s++) {
         var stack = row.stacks[s];
         var stackTitle = stack.title || ('Stack ' + (s + 1));
+        var cleanStackTitle = stripInternalHiddenTags(stackTitle) || ('Stack ' + (s + 1));
+        if (hasInternalHiddenTag(stackTitle, tag)) {
+          items.push({
+            kind: 'stack',
+            rowIndex: r,
+            stackIndex: s,
+            rowTitle: cleanRowTitle,
+            stackTitle: cleanStackTitle,
+            title: cleanStackTitle
+          });
+          continue;
+        }
         if (!stack.columns) continue;
         for (var c = 0; c < stack.columns.length; c++) {
           var col = stack.columns[c];
@@ -3496,8 +3536,8 @@ const LexeraDashboard = (function () {
               rowIndex: r,
               stackIndex: s,
               colIndex: c,
-              rowTitle: rowTitle,
-              stackTitle: stackTitle,
+              rowTitle: cleanRowTitle,
+              stackTitle: cleanStackTitle,
               colTitle: cleanColTitle,
               title: cleanColTitle
             });
@@ -3514,8 +3554,8 @@ const LexeraDashboard = (function () {
               stackIndex: s,
               colIndex: c,
               cardIndex: i,
-              rowTitle: rowTitle,
-              stackTitle: stackTitle,
+              rowTitle: cleanRowTitle,
+              stackTitle: cleanStackTitle,
               colTitle: cleanColTitle,
               title: getCardTitle(stripInternalHiddenTags(content)) || '(untitled card)'
             });
@@ -3532,15 +3572,29 @@ const LexeraDashboard = (function () {
 
   function buildHiddenItemLocation(item) {
     var parts = [];
-    if (item.rowTitle) parts.push(item.rowTitle);
-    if (item.stackTitle) parts.push(item.stackTitle);
+    if (item.kind !== 'row' && item.rowTitle) parts.push(item.rowTitle);
+    if (item.kind !== 'stack' && item.kind !== 'row' && item.stackTitle) parts.push(item.stackTitle);
     if (item.kind === 'card' && item.colTitle) parts.push(item.colTitle);
     return parts.join(' / ');
   }
 
   async function updateHiddenItemTag(item, tag) {
     if (!item || !fullBoardData || !activeBoardId) return false;
-    if (item.kind === 'column') {
+    if (item.kind === 'row') {
+      var row = getRowByLocation(item.rowIndex);
+      if (!row) return false;
+      var nextRowTitle = applyInternalHiddenTag(row.title || '', tag);
+      if (nextRowTitle === row.title) return false;
+      pushUndo();
+      row.title = nextRowTitle;
+    } else if (item.kind === 'stack') {
+      var stack = getStackByLocation(item.rowIndex, item.stackIndex);
+      if (!stack) return false;
+      var nextStackTitle = applyInternalHiddenTag(stack.title || '', tag);
+      if (nextStackTitle === stack.title) return false;
+      pushUndo();
+      stack.title = nextStackTitle;
+    } else if (item.kind === 'column') {
       var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
       if (!col) return false;
       var nextTitle = applyInternalHiddenTag(col.title || '', tag);
@@ -3564,7 +3618,15 @@ const LexeraDashboard = (function () {
   async function permanentlyDeleteHiddenItem(item) {
     if (!item || !fullBoardData || !activeBoardId) return false;
     pushUndo();
-    if (item.kind === 'column') {
+    if (item.kind === 'row') {
+      if (item.rowIndex < 0 || item.rowIndex >= fullBoardData.rows.length) return false;
+      fullBoardData.rows.splice(item.rowIndex, 1);
+    } else if (item.kind === 'stack') {
+      var row = getRowByLocation(item.rowIndex);
+      if (!row || !row.stacks || item.stackIndex < 0 || item.stackIndex >= row.stacks.length) return false;
+      row.stacks.splice(item.stackIndex, 1);
+      removeEmptyStacksAndRows();
+    } else if (item.kind === 'column') {
       var stack = fullBoardData.rows[item.rowIndex] && fullBoardData.rows[item.rowIndex].stacks
         ? fullBoardData.rows[item.rowIndex].stacks[item.stackIndex]
         : null;
@@ -3597,7 +3659,16 @@ const LexeraDashboard = (function () {
     pushUndo();
     for (var i = 0; i < sorted.length; i++) {
       var item = sorted[i];
-      if (item.kind === 'column') {
+      if (item.kind === 'row') {
+        if (item.rowIndex >= 0 && item.rowIndex < fullBoardData.rows.length) {
+          fullBoardData.rows.splice(item.rowIndex, 1);
+        }
+      } else if (item.kind === 'stack') {
+        var row = getRowByLocation(item.rowIndex);
+        if (row && row.stacks && item.stackIndex >= 0 && item.stackIndex < row.stacks.length) {
+          row.stacks.splice(item.stackIndex, 1);
+        }
+      } else if (item.kind === 'column') {
         var stack = fullBoardData.rows[item.rowIndex] && fullBoardData.rows[item.rowIndex].stacks
           ? fullBoardData.rows[item.rowIndex].stacks[item.stackIndex]
           : null;
@@ -3632,8 +3703,15 @@ const LexeraDashboard = (function () {
     html += '<div class="hidden-items-list">';
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
+      var kindLabel = item.kind === 'row'
+        ? 'Row'
+        : item.kind === 'stack'
+          ? 'Stack'
+          : item.kind === 'column'
+            ? 'Column'
+            : 'Card';
       html += '<div class="parked-item hidden-item" data-idx="' + i + '">';
-      html += '<span class="hidden-item-kind">' + (item.kind === 'column' ? 'Column' : 'Card') + '</span>';
+      html += '<span class="hidden-item-kind">' + kindLabel + '</span>';
       html += '<div class="parked-item-content">' + escapeHtml(item.title) + '</div>';
       html += '<div class="parked-item-col">' + escapeHtml(buildHiddenItemLocation(item)) + '</div>';
       for (var a = 0; a < actions.length; a++) {
@@ -5378,7 +5456,9 @@ const LexeraDashboard = (function () {
       { id: 'add-row-before', label: 'Add Row Above' },
       { id: 'add-row-after', label: 'Add Row Below' },
       { separator: true },
-      { id: 'delete', label: 'Delete Row' },
+      { id: 'archive', label: 'Archive Row' },
+      { id: 'park', label: 'Park Row' },
+      { id: 'delete', label: 'Move Row to Trash' },
     ], x, y).then(function (action) {
       if (action) handleRowAction(action, rowIdx);
     });
@@ -5395,7 +5475,9 @@ const LexeraDashboard = (function () {
       { id: 'add-stack-before', label: 'Add Stack Before' },
       { id: 'add-stack-after', label: 'Add Stack After' },
       { separator: true },
-      { id: 'delete', label: 'Delete Stack' },
+      { id: 'archive', label: 'Archive Stack' },
+      { id: 'park', label: 'Park Stack' },
+      { id: 'delete', label: 'Move Stack to Trash' },
     ], x, y).then(function (action) {
       if (action) handleStackAction(action, rowIdx, stackIdx);
     });
@@ -5410,6 +5492,10 @@ const LexeraDashboard = (function () {
       addRow(rowIdx);
     } else if (action === 'add-row-after') {
       addRow(rowIdx + 1);
+    } else if (action === 'archive') {
+      setRowHiddenTag(rowIdx, '#hidden-internal-archived');
+    } else if (action === 'park') {
+      setRowHiddenTag(rowIdx, '#hidden-internal-parked');
     } else if (action === 'delete') {
       deleteRow(rowIdx);
     }
@@ -5424,6 +5510,10 @@ const LexeraDashboard = (function () {
       addStackToRow(rowIdx, stackIdx);
     } else if (action === 'add-stack-after') {
       addStackToRow(rowIdx, stackIdx + 1);
+    } else if (action === 'archive') {
+      setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-archived');
+    } else if (action === 'park') {
+      setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-parked');
     } else if (action === 'delete') {
       deleteStack(rowIdx, stackIdx);
     }
@@ -5745,6 +5835,17 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshSidebar: true });
   }
 
+  async function setRowHiddenTag(displayRowIdx, tag) {
+    if (!fullBoardData || !activeBoardId) return;
+    var row = findFullDataRow(displayRowIdx);
+    if (!row) return;
+    var nextTitle = applyInternalHiddenTag(row.title || '', tag);
+    if (nextTitle === row.title) return;
+    pushUndo();
+    row.title = nextTitle;
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+  }
+
   async function deleteRow(rowIdx) {
 
     var row = findFullDataRow(rowIdx);
@@ -5756,12 +5857,9 @@ const LexeraDashboard = (function () {
       }
     }
     if (totalCards > 0) {
-      if (!confirm('Delete row "' + row.title + '" and all ' + totalCards + ' cards?')) return;
+      if (!confirm('Move row "' + stripInternalHiddenTags(row.title || '') + '" and all ' + totalCards + ' cards to trash?')) return;
     }
-    pushUndo();
-    var idx = fullBoardData.rows.indexOf(row);
-    if (idx !== -1) fullBoardData.rows.splice(idx, 1);
-    await persistBoardMutation();
+    await setRowHiddenTag(rowIdx, '#hidden-internal-deleted');
   }
 
   async function addStackToRow(rowIdx, atStackIdx) {
@@ -5784,6 +5882,17 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshSidebar: true });
   }
 
+  async function setStackHiddenTag(displayRowIdx, displayStackIdx, tag) {
+    if (!fullBoardData || !activeBoardId) return;
+    var stack = findFullDataStack(displayRowIdx, displayStackIdx);
+    if (!stack) return;
+    var nextTitle = applyInternalHiddenTag(stack.title || '', tag);
+    if (nextTitle === stack.title) return;
+    pushUndo();
+    stack.title = nextTitle;
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+  }
+
   async function deleteStack(rowIdx, stackIdx) {
 
     var row = findFullDataRow(rowIdx);
@@ -5794,12 +5903,9 @@ const LexeraDashboard = (function () {
       totalCards += stack.columns[c].cards.length;
     }
     if (totalCards > 0) {
-      if (!confirm('Delete stack "' + stack.title + '" and all ' + totalCards + ' cards?')) return;
+      if (!confirm('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and all ' + totalCards + ' cards to trash?')) return;
     }
-    pushUndo();
-    var idx = row.stacks.indexOf(stack);
-    if (idx !== -1) row.stacks.splice(idx, 1);
-    await persistBoardMutation();
+    await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-deleted');
   }
 
   async function addColumnToStack(rowIdx, stackIdx, atColIdx) {
@@ -8655,8 +8761,14 @@ const LexeraDashboard = (function () {
       var stackSubItems = [];
       for (var r = 0; r < fullBoardData.rows.length; r++) {
         var row = fullBoardData.rows[r];
+        if (is_archived_or_deleted(row && row.title ? row.title : '')) continue;
         for (var s = 0; s < row.stacks.length; s++) {
-          stackSubItems.push({ id: 'move-to-stack-' + r + '-' + s, label: row.title + ' / ' + row.stacks[s].title });
+          var stack = row.stacks[s];
+          if (is_archived_or_deleted(stack && stack.title ? stack.title : '')) continue;
+          stackSubItems.push({
+            id: 'move-to-stack-' + r + '-' + s,
+            label: stripInternalHiddenTags(row.title || '') + ' / ' + stripInternalHiddenTags(stack.title || '')
+          });
         }
       }
       if (stackSubItems.length > 0) {
