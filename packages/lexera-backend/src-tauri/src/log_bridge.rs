@@ -84,7 +84,10 @@ impl Log for BroadcastLogger {
 
 pub fn init() -> Result<(), SetLoggerError> {
     let logger = Box::leak(Box::new(BroadcastLogger {
-        inner: env_logger::Builder::from_default_env().build(),
+        inner: env_logger::Builder::from_env(
+            env_logger::Env::default().default_filter_or("warn"),
+        )
+        .build(),
     }));
     log::set_logger(logger)?;
     log::set_max_level(log::LevelFilter::Trace);

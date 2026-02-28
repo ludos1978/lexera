@@ -10,7 +10,52 @@ var backendLogEventSource = null;
 var backendLogConnectPending = false;
 
 function normalizeLogMessage(message) {
-  return typeof message === 'string' ? message : JSON.stringify(message);
+  if (message == null) return String(message);
+  if (typeof message === 'string') return message;
+  if (message instanceof Error) return formatErrorDetails(message);
+  if (typeof message === 'object') {
+    if (typeof message.message === 'string' && message.message) {
+      return formatErrorDetails(message);
+    }
+    try {
+      return JSON.stringify(message);
+    } catch (e) {
+      return String(message);
+    }
+  }
+  return String(message);
+}
+
+function formatErrorDetails(error) {
+  if (error == null) return String(error);
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) {
+    if (error.stack) return String(error.stack);
+    return error.name && error.message
+      ? (error.name + ': ' + error.message)
+      : (error.message || String(error));
+  }
+  if (typeof error === 'object') {
+    if (error.reason && error.reason !== error) {
+      return formatErrorDetails(error.reason);
+    }
+    if (typeof error.stack === 'string' && error.stack) return error.stack;
+    if (typeof error.message === 'string' && error.message) return error.message;
+    try {
+      return JSON.stringify(error);
+    } catch (e) {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
+function joinLogArgs(argsLike) {
+  var parts = Array.prototype.slice.call(argsLike || []);
+  if (!parts.length) return '';
+  return parts.map(function (value) {
+    return normalizeLogMessage(value);
+  }).join(' ');
 }
 
 function getLogEntries(source) {
@@ -112,13 +157,23 @@ function setActiveLogSource(source) {
   if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
 }
 
-function lexeraLog(level, message) {
+function lexeraLogWithTarget(level, target, message) {
   appendLogEntry('frontend', {
     timestampMs: Date.now(),
     level: level,
-    target: 'frontend',
+    target: target || 'frontend',
     message: normalizeLogMessage(message)
   });
+}
+
+function lexeraLog(level, message) {
+  lexeraLogWithTarget(level, 'frontend', message);
+}
+
+function logFrontendIssue(level, target, context, error) {
+  var detail = error == null ? '' : formatErrorDetails(error);
+  var message = detail ? (context + ': ' + detail) : context;
+  lexeraLogWithTarget(level, target, message);
 }
 
 function lexeraBackendLog(entry) {
@@ -178,24 +233,31 @@ window.connectBackendLogStreamIfReady = connectBackendLogStreamIfReady;
   var origLog = console.log, origWarn = console.warn, origError = console.error;
   console.log = function () {
     origLog.apply(console, arguments);
-    lexeraLog('info', Array.prototype.slice.call(arguments).join(' '));
+    lexeraLogWithTarget('info', 'console.log', joinLogArgs(arguments));
   };
   console.warn = function () {
     origWarn.apply(console, arguments);
-    lexeraLog('warn', Array.prototype.slice.call(arguments).join(' '));
+    lexeraLogWithTarget('warn', 'console.warn', joinLogArgs(arguments));
   };
   console.error = function () {
     origError.apply(console, arguments);
-    lexeraLog('error', Array.prototype.slice.call(arguments).join(' '));
+    lexeraLogWithTarget('error', 'console.error', joinLogArgs(arguments));
   };
 })();
 
 // Catch unhandled errors
 window.addEventListener('error', function (e) {
-  lexeraLog('error', 'Uncaught: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+  var location = '';
+  if (e && e.filename) {
+    location = ' at ' + e.filename + ':' + (e.lineno || 0);
+    if (e.colno) location += ':' + e.colno;
+  }
+  var detail = e && e.error ? formatErrorDetails(e.error) : (e && e.message ? e.message : 'Unknown error');
+  lexeraLogWithTarget('error', 'window.error', 'Uncaught' + location + ': ' + detail);
 });
 window.addEventListener('unhandledrejection', function (e) {
-  lexeraLog('error', 'Unhandled promise: ' + (e.reason || e));
+  var reason = e && Object.prototype.hasOwnProperty.call(e, 'reason') ? e.reason : e;
+  lexeraLogWithTarget('error', 'window.unhandledrejection', 'Unhandled promise rejection: ' + formatErrorDetails(reason));
 });
 
 function updateAppBottomInset() {
@@ -3883,7 +3945,7 @@ const LexeraDashboard = (function () {
           await closeLiveSyncSession(boardId);
           await ensureLiveSyncSession(boardId);
         } catch (e) {
-          // Live sync stays best-effort; loading still succeeds without it.
+          logFrontendIssue('warn', 'board.load.live-sync', 'Failed to prepare live sync session for board ' + boardId, e);
         }
       }
       // Auto-convert legacy boards and save immediately
@@ -3892,7 +3954,7 @@ const LexeraDashboard = (function () {
         try {
           await saveFullBoard();
         } catch (err) {
-          // Keep showing migrated board in memory even if immediate persistence fails.
+          logFrontendIssue('warn', 'board.load.migrate', 'Failed to persist migrated board ' + boardId, err);
         }
         if (seq !== boardLoadSeq) return; // check again after second await
       }
@@ -3903,9 +3965,14 @@ const LexeraDashboard = (function () {
       scheduleDashboardRefresh(80);
       // Connect WS sync for this board (no-op if already connected)
       connectSyncForBoard(boardId);
-    } catch {
+    } catch (err) {
       if (seq !== boardLoadSeq) return; // stale error, ignore
-      await closeLiveSyncSession(boardId);
+      logFrontendIssue('error', 'board.load', 'Failed to load board ' + boardId, err);
+      try {
+        await closeLiveSyncSession(boardId);
+      } catch (closeErr) {
+        logFrontendIssue('warn', 'board.load.live-sync', 'Failed to close live sync session after load failure for board ' + boardId, closeErr);
+      }
       activeBoardData = null;
       fullBoardData = null;
       renderMainView();
