@@ -5,6 +5,7 @@ use axum::{
     routing::get,
     Router,
 };
+mod live_sync;
 use lexera_core::media::{content_type_for_ext, dedup_filename, is_previewable, media_category};
 use lexera_core::search::SearchOptions;
 use lexera_core::storage::BoardStorage;
@@ -98,6 +99,16 @@ pub struct ConvertPathBody {
     to: String, // "relative" or "absolute"
 }
 
+#[derive(Deserialize)]
+pub struct LiveSyncApplyBody {
+    board: lexera_core::types::KanbanBoard,
+}
+
+#[derive(Deserialize)]
+pub struct LiveSyncImportBody {
+    updates: String,
+}
+
 #[derive(Serialize)]
 struct TemplateSummary {
     id: String,
@@ -132,6 +143,22 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/boards/{board_id}/sync-save",
             axum::routing::post(write_board_with_base),
+        )
+        .route(
+            "/boards/{board_id}/live-sync/open",
+            axum::routing::post(open_live_sync_session),
+        )
+        .route(
+            "/live-sync/{session_id}/apply",
+            axum::routing::post(apply_live_sync_board),
+        )
+        .route(
+            "/live-sync/{session_id}/import",
+            axum::routing::post(import_live_sync_updates),
+        )
+        .route(
+            "/live-sync/{session_id}",
+            axum::routing::delete(close_live_sync_session),
         )
         .route(
             "/boards/{board_id}/media",
@@ -329,6 +356,101 @@ async fn write_board_with_base(
         result,
         &body.board,
     )))
+}
+
+async fn open_live_sync_session(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let board = state.storage.read_board(&board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
+    })?;
+
+    let board_dir = state
+        .storage
+        .get_board_path(&board_id)
+        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let snapshot = live_sync::open_session(&board_id, board, board_dir).map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error }),
+        )
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "sessionId": snapshot.session_id,
+        "board": snapshot.board,
+        "vv": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &snapshot.vv),
+    })))
+}
+
+async fn apply_live_sync_board(
+    Path(session_id): Path<String>,
+    Json(body): Json<LiveSyncApplyBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let result = live_sync::apply_board(&session_id, body.board).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error }),
+        )
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "board": result.board,
+        "vv": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &result.vv),
+        "changed": result.changed,
+        "updates": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &result.updates),
+    })))
+}
+
+async fn import_live_sync_updates(
+    Path(session_id): Path<String>,
+    Json(body): Json<LiveSyncImportBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        body.updates.as_bytes(),
+    )
+    .map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: error.to_string(),
+            }),
+        )
+    })?;
+
+    let result = live_sync::import_updates(&session_id, &bytes).map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error }),
+        )
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "board": result.board,
+        "vv": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &result.vv),
+        "changed": result.changed,
+    })))
+}
+
+async fn close_live_sync_session(
+    Path(session_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let closed = live_sync::close_session(&session_id).map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error }),
+        )
+    })?;
+    Ok(Json(serde_json::json!({ "closed": closed })))
 }
 
 fn map_storage_error(e: lexera_core::storage::StorageError) -> (StatusCode, Json<ErrorResponse>) {

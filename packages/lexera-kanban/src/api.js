@@ -138,6 +138,36 @@ const LexeraApi = (function () {
     });
   }
 
+  async function openLiveSyncSession(boardId) {
+    return request('/boards/' + boardId + '/live-sync/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+  }
+
+  async function applyLiveSyncBoard(sessionId, boardData) {
+    return request('/live-sync/' + encodeURIComponent(sessionId) + '/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ board: boardData }),
+    });
+  }
+
+  async function importLiveSyncUpdates(sessionId, updates) {
+    return request('/live-sync/' + encodeURIComponent(sessionId) + '/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: updates || '' }),
+    });
+  }
+
+  async function closeLiveSyncSession(sessionId) {
+    return request('/live-sync/' + encodeURIComponent(sessionId), {
+      method: 'DELETE',
+    });
+  }
+
   async function uploadMedia(boardId, file) {
     var url = await discover();
     if (!url) throw new Error('Backend not available');
@@ -179,6 +209,7 @@ const LexeraApi = (function () {
   var syncUserId = null;
   var syncOnUpdate = null;
   var syncOnPresence = null;
+  var syncHelloVvProvider = null;
   var syncReconnectTimer = null;
   var syncShouldReconnect = false;
   var syncHasConnectedOnce = false;
@@ -207,8 +238,15 @@ const LexeraApi = (function () {
 
     syncWs.onopen = function () {
       clearSyncReconnectTimer();
-      // Send ClientHello with empty VV (we don't run a local Loro doc in the frontend)
-      var hello = JSON.stringify({ type: 'ClientHello', user_id: syncUserId, vv: '' });
+      var vv = '';
+      if (typeof syncHelloVvProvider === 'function') {
+        try {
+          vv = syncHelloVvProvider() || '';
+        } catch (e) {
+          vv = '';
+        }
+      }
+      var hello = JSON.stringify({ type: 'ClientHello', user_id: syncUserId, vv: vv });
       syncWs.send(hello);
       console.log('[sync] WebSocket connected to board ' + boardId);
     };
@@ -220,9 +258,21 @@ const LexeraApi = (function () {
           var reconnectHello = syncHasConnectedOnce;
           syncHasConnectedOnce = true;
           console.log('[sync] Received ServerHello, peer_id=' + msg.peer_id);
-          if (reconnectHello && syncOnUpdate && msg.updates) syncOnUpdate();
+          if (syncOnUpdate) {
+            syncOnUpdate({
+              type: 'hello',
+              reconnect: reconnectHello,
+              updates: msg.updates || '',
+              vv: msg.vv || ''
+            });
+          }
         } else if (msg.type === 'ServerUpdate') {
-          if (syncOnUpdate) syncOnUpdate();
+          if (syncOnUpdate) {
+            syncOnUpdate({
+              type: 'update',
+              updates: msg.updates || ''
+            });
+          }
         } else if (msg.type === 'ServerPresence') {
           if (syncOnPresence) syncOnPresence(msg.online_users || []);
         } else if (msg.type === 'ServerError') {
@@ -258,16 +308,28 @@ const LexeraApi = (function () {
    * @param {function} onUpdate - Called with no args when a ServerUpdate arrives.
    * @param {function} [onPresence] - Called with array of online user_ids on presence change.
    */
-  function connectSync(boardId, userId, onUpdate, onPresence) {
+  function connectSync(boardId, userId, onUpdate, onPresence, options) {
     disconnectSync();
     if (!baseUrl) return;
     syncBoardId = boardId;
     syncUserId = userId;
     syncOnUpdate = onUpdate;
     syncOnPresence = onPresence || null;
+    syncHelloVvProvider = options && typeof options.getHelloVv === 'function'
+      ? options.getHelloVv
+      : null;
     syncShouldReconnect = true;
     syncHasConnectedOnce = false;
     openSyncSocket();
+  }
+
+  function sendSyncUpdate(updates) {
+    if (!updates || !syncWs || syncWs.readyState !== WebSocket.OPEN) return false;
+    syncWs.send(JSON.stringify({
+      type: 'ClientUpdate',
+      updates: updates,
+    }));
+    return true;
   }
 
   function disconnectSync() {
@@ -281,6 +343,7 @@ const LexeraApi = (function () {
     syncUserId = null;
     syncOnUpdate = null;
     syncOnPresence = null;
+    syncHelloVvProvider = null;
     syncHasConnectedOnce = false;
   }
 
@@ -379,9 +442,10 @@ const LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, search,
+    discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase,
+    openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
     checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
-    connectSync, disconnectSync, isSyncConnected, getSyncBoardId,
+    connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate,
     getMe, updateMe, getServerInfo,
     createInvite, listInvites, revokeInvite, acceptInvite,
     registerUser, listMembers, getPresence, leaveRoom,

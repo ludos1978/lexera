@@ -138,6 +138,8 @@ const LexeraDashboard = (function () {
   var eventSource = null;
   var lastSaveTime = 0;
   var SAVE_DEBOUNCE_MS = 2000;
+  var liveSyncState = null;
+  var liveSyncLastLocalBroadcastAt = 0;
   var undoStack = [];
   var redoStack = [];
   var MAX_UNDO = 30;
@@ -2501,6 +2503,137 @@ const LexeraDashboard = (function () {
   var syncUserId = null;
   var boardPresenceCache = {}; // boardId -> [user_id, ...]
 
+  function getLiveSyncSession(boardId) {
+    if (!liveSyncState) return null;
+    if (!boardId) return liveSyncState;
+    return liveSyncState.boardId === boardId ? liveSyncState : null;
+  }
+
+  function hasLiveSyncSession(boardId) {
+    return !!getLiveSyncSession(boardId);
+  }
+
+  function canUseLiveSync(boardId) {
+    return !!(
+      boardId &&
+      hasLiveSyncSession(boardId) &&
+      LexeraApi.isSyncConnected() &&
+      LexeraApi.getSyncBoardId() === boardId
+    );
+  }
+
+  async function closeLiveSyncSession(boardId) {
+    var session = getLiveSyncSession(boardId);
+    if (!session) return;
+    liveSyncState = null;
+    try {
+      await LexeraApi.closeLiveSyncSession(session.sessionId);
+    } catch (e) {
+      // best-effort cleanup
+    }
+  }
+
+  async function ensureLiveSyncSession(boardId) {
+    if (!boardId) return null;
+    var existing = getLiveSyncSession(boardId);
+    if (existing) return existing;
+    if (liveSyncState && liveSyncState.boardId !== boardId) {
+      await closeLiveSyncSession();
+    }
+    var response = await LexeraApi.openLiveSyncSession(boardId);
+    liveSyncState = {
+      boardId: boardId,
+      sessionId: response.sessionId,
+      vv: response.vv || '',
+      pendingRemoteUpdates: []
+    };
+    return liveSyncState;
+  }
+
+  function getLiveSyncHelloVv(boardId) {
+    var session = getLiveSyncSession(boardId);
+    return session && session.vv ? session.vv : '';
+  }
+
+  async function applyBoardToLiveSyncSession(boardId, boardData, options) {
+    options = options || {};
+    if (!canUseLiveSync(boardId)) return false;
+    var session = getLiveSyncSession(boardId);
+    if (!session) return false;
+
+    var response = await LexeraApi.applyLiveSyncBoard(session.sessionId, boardData);
+    if (response && response.vv) session.vv = response.vv;
+    if (response && response.changed && response.updates) {
+      if (!LexeraApi.sendSyncUpdate(response.updates)) {
+        return false;
+      }
+      liveSyncLastLocalBroadcastAt = Date.now();
+      lastSaveTime = liveSyncLastLocalBroadcastAt;
+    }
+    if (response && response.board && !options.skipBoardReplace && boardId === activeBoardId) {
+      applyLiveSyncBoardSnapshot(boardId, response.board, options);
+    }
+    return true;
+  }
+
+  async function importLiveSyncMessage(boardId, updates, options) {
+    options = options || {};
+    var session = getLiveSyncSession(boardId);
+    if (!session || !updates) return false;
+
+    if (activeBoardId === boardId && isEditing && !options.force) {
+      session.pendingRemoteUpdates.push(updates);
+      return true;
+    }
+
+    var response = await LexeraApi.importLiveSyncUpdates(session.sessionId, updates);
+    if (response && response.vv) session.vv = response.vv;
+    if (response && response.changed && response.board && boardId === activeBoardId) {
+      applyLiveSyncBoardSnapshot(boardId, response.board, options);
+    }
+    return !!(response && response.changed);
+  }
+
+  async function flushPendingLiveSyncUpdates(options) {
+    options = options || {};
+    var session = getLiveSyncSession(activeBoardId);
+    if (!session || !session.pendingRemoteUpdates || session.pendingRemoteUpdates.length === 0) {
+      return false;
+    }
+    if (isEditing && !options.force) {
+      return false;
+    }
+
+    var pending = session.pendingRemoteUpdates.slice();
+    session.pendingRemoteUpdates.length = 0;
+    var changed = false;
+    for (var i = 0; i < pending.length; i++) {
+      var response = await LexeraApi.importLiveSyncUpdates(session.sessionId, pending[i]);
+      if (response && response.vv) session.vv = response.vv;
+      if (response && response.changed) {
+        changed = true;
+        if (i === pending.length - 1 && response.board && session.boardId === activeBoardId) {
+          applyLiveSyncBoardSnapshot(session.boardId, response.board, options);
+        }
+      }
+    }
+    return changed;
+  }
+
+  async function flushDeferredBoardRefresh(options) {
+    options = options || {};
+    if (!pendingRefresh) return false;
+    pendingRefresh = false;
+    if (hasLiveSyncSession(activeBoardId)) {
+      return flushPendingLiveSyncUpdates(options);
+    }
+    if (activeBoardId) {
+      await loadBoard(activeBoardId);
+      return true;
+    }
+    return false;
+  }
+
   /** Fetch the local user ID for sync, caching it for the session. */
   async function ensureSyncUserId() {
     if (syncUserId) return syncUserId;
@@ -2517,26 +2650,36 @@ const LexeraDashboard = (function () {
   /** Connect sync for the active board. Disconnects previous if different. */
   var syncDebounceTimer = null;
   async function connectSyncForBoard(boardId) {
-    if (!boardId) { LexeraApi.disconnectSync(); return; }
+    if (!boardId) {
+      LexeraApi.disconnectSync();
+      await closeLiveSyncSession();
+      return;
+    }
+    try {
+      await ensureLiveSyncSession(boardId);
+    } catch (err) {
+      console.warn('[live-sync] Failed to open session for board ' + boardId, err);
+    }
     if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === boardId) return;
     var userId = await ensureSyncUserId();
-    LexeraApi.connectSync(boardId, userId, function () {
-      // On ServerUpdate: debounced reload from REST (coalesce rapid updates)
-      if (activeBoardId === boardId && isEditing) {
-        pendingRefresh = true;
-        return;
-      }
-      if (activeBoardId === boardId) {
-        if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
-        syncDebounceTimer = setTimeout(function () {
-          syncDebounceTimer = null;
+    LexeraApi.connectSync(boardId, userId, function (message) {
+      if (!message || !message.updates || activeBoardId !== boardId) return;
+      if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+      syncDebounceTimer = setTimeout(function () {
+        syncDebounceTimer = null;
+        importLiveSyncMessage(boardId, message.updates).catch(function (err) {
+          console.error('[live-sync] Failed to import sync update:', err);
           if (activeBoardId === boardId && !isEditing) loadBoard(boardId);
-        }, 80);
-      }
+        });
+      }, message.type === 'hello' ? 0 : 50);
     }, function (onlineUsers) {
       // On ServerPresence: update cache and sidebar badge
       boardPresenceCache[boardId] = onlineUsers;
       updateBoardPresenceIndicator(boardId);
+    }, {
+      getHelloVv: function () {
+        return getLiveSyncHelloVv(boardId);
+      }
     });
   }
 
@@ -2561,11 +2704,20 @@ const LexeraDashboard = (function () {
     var kind = event.kind || event.type || '';
     var boardId = event.board_id || event.boardId || '';
     if (boardId && boardId !== activeBoardId) return;
-    // When sync-connected, the WS ServerUpdate handles reloads for this board
-    if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === activeBoardId) return;
     if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
       // Skip reloads caused by our own saves
       if (Date.now() - lastSaveTime < SAVE_DEBOUNCE_MS) return;
+      if (canUseLiveSync(activeBoardId)) {
+        if (Date.now() - liveSyncLastLocalBroadcastAt < SAVE_DEBOUNCE_MS) return;
+        if (isEditing) {
+          pendingRefresh = true;
+        } else {
+          loadBoard(activeBoardId);
+        }
+        return;
+      }
+      // When sync-connected without a live session, the WS ServerUpdate handles reloads
+      if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === activeBoardId) return;
       if (isEditing) {
         pendingRefresh = true;
       } else {
@@ -2875,6 +3027,43 @@ const LexeraDashboard = (function () {
     ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(boardId, savedBoard));
     if (!savedBoard.columns) savedBoard.columns = [];
     return setBoardSaveBase(savedBoard, savedBoard);
+  }
+
+  function resolveLiveSyncBoardData(boardData, boardId) {
+    if (!boardData) return null;
+    ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
+    if (!boardData.columns) boardData.columns = [];
+    return setBoardSaveBase(boardData, boardData);
+  }
+
+  function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
+    options = options || {};
+    if (!boardData || boardId !== activeBoardId) return;
+    fullBoardData = resolveLiveSyncBoardData(boardData, boardId);
+    if (!activeBoardData) {
+      activeBoardData = {
+        boardId: boardId,
+        title: fullBoardData.title,
+        columns: [],
+        rows: [],
+        fullBoard: fullBoardData,
+      };
+    } else {
+      activeBoardData.fullBoard = fullBoardData;
+      activeBoardData.title = fullBoardData.title;
+    }
+    delete activeBoardData.version;
+    updateDisplayFromFullBoard();
+    setBoardHierarchyRows(boardId, fullBoardData, fullBoardData.title || '');
+    if (options.skipRender) return;
+    if (options.refreshMainView) {
+      renderMainView();
+    } else {
+      renderColumns();
+      if (options.refreshSidebar) renderBoardList();
+    }
+    refreshHeaderFileControls();
+    scheduleDashboardRefresh(80);
   }
 
   function rowsFromLegacyColumns(columns, boardTitle) {
@@ -3450,6 +3639,13 @@ const LexeraDashboard = (function () {
       fullBoardData = response.fullBoard || null;
       if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
       activeBoardData = response;
+      if (fullBoardData) {
+        try {
+          await ensureLiveSyncSession(boardId);
+        } catch (e) {
+          // Live sync stays best-effort; loading still succeeds without it.
+        }
+      }
       // Auto-convert legacy boards and save immediately
       if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
         migrateLegacyBoard();
@@ -3469,6 +3665,7 @@ const LexeraDashboard = (function () {
       connectSyncForBoard(boardId);
     } catch {
       if (seq !== boardLoadSeq) return; // stale error, ignore
+      await closeLiveSyncSession(boardId);
       activeBoardData = null;
       fullBoardData = null;
       renderMainView();
@@ -4468,6 +4665,13 @@ const LexeraDashboard = (function () {
     // Ensure columns field exists (backend requires it)
     if (!fullBoardData.columns) fullBoardData.columns = [];
     try {
+      if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: false })) {
+        if (pendingRefresh) {
+          pendingRefresh = false;
+          await flushPendingLiveSyncUpdates({ refreshSidebar: true });
+        }
+        return;
+      }
       var baseBoardData = getBoardSaveBase(fullBoardData);
       var result = baseBoardData
         ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
@@ -4591,18 +4795,25 @@ const LexeraDashboard = (function () {
         if (!boardData) continue;
         ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
         if (!boardData.columns) boardData.columns = [];
-        var baseBoardData = getBoardSaveBase(boardData);
-        var result = baseBoardData
-          ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
-          : await LexeraApi.saveBoard(boardId, boardData);
-        var savedBoardData = resolveSavedBoardData(boardData, result, boardId);
+        var savedBoardData = null;
+        var result = null;
+        if (boardId === activeBoardId && await applyBoardToLiveSyncSession(boardId, boardData, { skipBoardReplace: true })) {
+          savedBoardData = resolveLiveSyncBoardData(cloneBoardData(boardData), boardId);
+        } else {
+          var baseBoardData = getBoardSaveBase(boardData);
+          result = baseBoardData
+            ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
+            : await LexeraApi.saveBoard(boardId, boardData);
+          savedBoardData = resolveSavedBoardData(boardData, result, boardId);
+        }
         changedBoards[boardId] = savedBoardData;
         if (boardId === activeBoardId) {
           fullBoardData = savedBoardData;
           if (activeBoardData) {
             activeBoardData.fullBoard = savedBoardData;
             if (typeof savedBoardData.title === 'string') activeBoardData.title = savedBoardData.title;
-            if (typeof result.version === 'number') activeBoardData.version = result.version;
+            if (result && typeof result.version === 'number') activeBoardData.version = result.version;
+            else delete activeBoardData.version;
           }
           updateDisplayFromFullBoard();
           if (result && result.hasConflicts) {
@@ -9011,11 +9222,7 @@ const LexeraDashboard = (function () {
       return saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
     }
     renderCardDisplayState(editor.cardEl, editor.originalContent);
-    if (pendingRefresh) {
-      pendingRefresh = false;
-      loadBoard(activeBoardId);
-    }
-    return Promise.resolve();
+    return flushDeferredBoardRefresh({ refreshSidebar: true });
   }
 
   function applyCardEditorMode(mode) {
@@ -9362,10 +9569,7 @@ const LexeraDashboard = (function () {
       await saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
       return;
     }
-    if (pendingRefresh) {
-      pendingRefresh = false;
-      loadBoard(activeBoardId);
-    }
+    await flushDeferredBoardRefresh({ refreshSidebar: true });
   }
 
   function insertFormatting(textarea, fmt) {
@@ -9411,20 +9615,14 @@ const LexeraDashboard = (function () {
       if (contentEl) contentEl.innerHTML = renderCardContent(oldContent, activeBoardId);
       var titleEl = cardEl ? cardEl.querySelector('.card-title-display') : null;
       if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(oldContent));
-      if (pendingRefresh) {
-        pendingRefresh = false;
-        loadBoard(activeBoardId);
-      }
+      await flushDeferredBoardRefresh({ refreshSidebar: true });
       return;
     }
 
     pushUndo();
     col.cards[fullCardIdx].content = newContent;
     await persistBoardMutation();
-    if (pendingRefresh) {
-      pendingRefresh = false;
-      loadBoard(activeBoardId);
-    }
+    await flushDeferredBoardRefresh({ refreshSidebar: true });
   }
 
   // --- Checkbox Toggle ---
