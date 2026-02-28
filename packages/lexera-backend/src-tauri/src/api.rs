@@ -78,6 +78,13 @@ pub struct AddBoardBody {
 }
 
 #[derive(Deserialize)]
+pub struct SyncSaveBoardBody {
+    #[serde(rename = "baseBoard")]
+    base_board: lexera_core::types::KanbanBoard,
+    board: lexera_core::types::KanbanBoard,
+}
+
+#[derive(Deserialize)]
 pub struct FindFileBody {
     filename: String,
 }
@@ -121,6 +128,10 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/boards/{board_id}",
             axum::routing::put(write_board).delete(remove_board_endpoint),
+        )
+        .route(
+            "/boards/{board_id}/sync-save",
+            axum::routing::post(write_board_with_base),
         )
         .route(
             "/boards/{board_id}/media",
@@ -291,36 +302,80 @@ async fn write_board(
     Path(board_id): Path<String>,
     Json(board): Json<lexera_core::types::KanbanBoard>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    match state.storage.write_board(&board_id, &board) {
-        Ok(None) => {
-            broadcast_crdt_to_sync_hub(&state, &board_id).await;
-            Ok(Json(
-                serde_json::json!({ "success": true, "merged": false }),
-            ))
-        }
-        Ok(Some(merge_result)) => {
-            broadcast_crdt_to_sync_hub(&state, &board_id).await;
-            let has_conflicts = !merge_result.conflicts.is_empty();
-            Ok(Json(serde_json::json!({
-                "success": true,
-                "merged": true,
-                "autoMerged": merge_result.auto_merged,
-                "conflicts": merge_result.conflicts.len(),
-                "hasConflicts": has_conflicts,
-            })))
-        }
-        Err(e) => {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            Err((
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            ))
-        }
+    let result = state
+        .storage
+        .write_board(&board_id, &board)
+        .map_err(map_storage_error)?;
+    broadcast_crdt_to_sync_hub(&state, &board_id).await;
+    Ok(Json(build_write_board_response(
+        &state, &board_id, result, &board,
+    )))
+}
+
+/// POST /boards/{board_id}/sync-save — write a board relative to a client base snapshot.
+async fn write_board_with_base(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<SyncSaveBoardBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let result = state
+        .storage
+        .write_board_from_base(&board_id, &body.base_board, &body.board)
+        .map_err(map_storage_error)?;
+    broadcast_crdt_to_sync_hub(&state, &board_id).await;
+    Ok(Json(build_write_board_response(
+        &state,
+        &board_id,
+        result,
+        &body.board,
+    )))
+}
+
+fn map_storage_error(e: lexera_core::storage::StorageError) -> (StatusCode, Json<ErrorResponse>) {
+    let status = match &e {
+        lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (
+        status,
+        Json(ErrorResponse {
+            error: e.to_string(),
+        }),
+    )
+}
+
+fn build_write_board_response(
+    state: &AppState,
+    board_id: &str,
+    result: Option<lexera_core::merge::merge::MergeResult>,
+    fallback_board: &lexera_core::types::KanbanBoard,
+) -> serde_json::Value {
+    let saved_board = state
+        .storage
+        .read_board(board_id)
+        .unwrap_or_else(|| fallback_board.clone());
+    let version = state.storage.get_board_version(board_id).unwrap_or(0);
+    if let Some(merge_result) = result {
+        let has_conflicts = !merge_result.conflicts.is_empty();
+        serde_json::json!({
+            "success": true,
+            "merged": true,
+            "autoMerged": merge_result.auto_merged,
+            "conflicts": merge_result.conflicts.len(),
+            "hasConflicts": has_conflicts,
+            "board": saved_board,
+            "version": version,
+        })
+    } else {
+        serde_json::json!({
+            "success": true,
+            "merged": false,
+            "autoMerged": 0,
+            "conflicts": 0,
+            "hasConflicts": false,
+            "board": saved_board,
+            "version": version,
+        })
     }
 }
 
@@ -1018,9 +1073,7 @@ fn unquote_yaml(s: &str) -> String {
 }
 
 /// GET /templates — list all available templates.
-async fn list_templates(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
+async fn list_templates(State(state): State<AppState>) -> Json<serde_json::Value> {
     let templates_dir = get_templates_dir(&state);
     let mut templates: Vec<TemplateSummary> = Vec::new();
 
@@ -1101,10 +1154,7 @@ async fn get_template(
     let mut files: Vec<String> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&template_dir) {
         for entry in entries.flatten() {
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let name = entry.file_name().to_string_lossy().to_string();
             if name != "template.md" {
                 files.push(name);
             }
@@ -1119,8 +1169,8 @@ async fn get_template(
 
 /// Text file extensions for variable substitution during template file copy.
 const TEXT_EXTENSIONS: &[&str] = &[
-    "md", "txt", "json", "yaml", "yml", "toml", "html", "htm", "css", "js", "ts",
-    "xml", "svg", "sh", "py", "rb", "rs", "go", "java", "c", "h", "cpp", "hpp",
+    "md", "txt", "json", "yaml", "yml", "toml", "html", "htm", "css", "js", "ts", "xml", "svg",
+    "sh", "py", "rb", "rs", "go", "java", "c", "h", "cpp", "hpp",
 ];
 
 fn is_text_file(path: &std::path::Path) -> bool {

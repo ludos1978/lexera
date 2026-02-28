@@ -111,6 +111,17 @@ const LexeraApi = (function () {
     });
   }
 
+  async function saveBoardWithBase(boardId, baseBoardData, boardData) {
+    return request('/boards/' + boardId + '/sync-save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseBoard: baseBoardData,
+        board: boardData,
+      }),
+    });
+  }
+
   async function uploadMedia(boardId, file) {
     var url = await discover();
     if (!url) throw new Error('Backend not available');
@@ -352,7 +363,7 @@ const LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardColumns, addCard, saveBoard, search,
+    discover, request, getBoards, getBoardColumns, addCard, saveBoard, saveBoardWithBase, search,
     checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId,
     getMe, updateMe, getServerInfo,

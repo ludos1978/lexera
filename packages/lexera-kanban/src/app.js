@@ -2850,6 +2850,33 @@ const LexeraDashboard = (function () {
     return JSON.parse(JSON.stringify(rows || []));
   }
 
+  function cloneBoardData(boardData) {
+    if (!boardData) return null;
+    return JSON.parse(JSON.stringify(boardData));
+  }
+
+  function setBoardSaveBase(boardData, baseBoardData) {
+    if (!boardData || typeof boardData !== 'object') return boardData;
+    Object.defineProperty(boardData, '__lexeraSaveBase', {
+      value: cloneBoardData(baseBoardData || boardData),
+      writable: true,
+      configurable: true,
+      enumerable: false
+    });
+    return boardData;
+  }
+
+  function getBoardSaveBase(boardData) {
+    return boardData && boardData.__lexeraSaveBase ? boardData.__lexeraSaveBase : null;
+  }
+
+  function resolveSavedBoardData(boardData, result, boardId) {
+    var savedBoard = result && result.board ? result.board : boardData;
+    ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(boardId, savedBoard));
+    if (!savedBoard.columns) savedBoard.columns = [];
+    return setBoardSaveBase(savedBoard, savedBoard);
+  }
+
   function rowsFromLegacyColumns(columns, boardTitle) {
     var cols = (columns || []).map(function (col) {
       return {
@@ -3412,6 +3439,7 @@ const LexeraDashboard = (function () {
         response.filePath = boardMeta.filePath;
       }
       fullBoardData = response.fullBoard || null;
+      if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
       activeBoardData = response;
       // Auto-convert legacy boards and save immediately
       if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
@@ -4431,12 +4459,19 @@ const LexeraDashboard = (function () {
     // Ensure columns field exists (backend requires it)
     if (!fullBoardData.columns) fullBoardData.columns = [];
     try {
-      var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      var baseBoardData = getBoardSaveBase(fullBoardData);
+      var result = baseBoardData
+        ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
+        : await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      fullBoardData = resolveSavedBoardData(fullBoardData, result, activeBoardId);
+      if (activeBoardData) {
+        activeBoardData.fullBoard = fullBoardData;
+        if (typeof fullBoardData.title === 'string') activeBoardData.title = fullBoardData.title;
+      }
       if (result && result.hasConflicts) {
         showConflictDialog(result.conflicts, result.autoMerged);
       } else if (result && result.merged && result.autoMerged > 0) {
         showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
-        await loadBoard(activeBoardId);
       }
     } finally {
       hideSaving();
@@ -4523,12 +4558,13 @@ const LexeraDashboard = (function () {
     if (!boardId) return null;
     if (boardId === activeBoardId && fullBoardData) {
       ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+      if (!getBoardSaveBase(fullBoardData)) setBoardSaveBase(fullBoardData, fullBoardData);
       return fullBoardData;
     }
     var response = await LexeraApi.getBoardColumns(boardId);
     var boardData = response && response.fullBoard ? response.fullBoard : { rows: [], columns: [] };
     ensureBoardRowsForMutation(boardData, response && response.title ? response.title : getMutationBoardTitle(boardId, boardData));
-    return boardData;
+    return setBoardSaveBase(boardData, boardData);
   }
 
   async function commitBoardMutations(changedBoards, options) {
@@ -4545,12 +4581,17 @@ const LexeraDashboard = (function () {
         if (!boardData) continue;
         ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
         if (!boardData.columns) boardData.columns = [];
-        var result = await LexeraApi.saveBoard(boardId, boardData);
+        var baseBoardData = getBoardSaveBase(boardData);
+        var result = baseBoardData
+          ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
+          : await LexeraApi.saveBoard(boardId, boardData);
+        var savedBoardData = resolveSavedBoardData(boardData, result, boardId);
+        changedBoards[boardId] = savedBoardData;
         if (boardId === activeBoardId) {
-          fullBoardData = boardData;
+          fullBoardData = savedBoardData;
           if (activeBoardData) {
-            activeBoardData.fullBoard = boardData;
-            if (typeof boardData.title === 'string') activeBoardData.title = boardData.title;
+            activeBoardData.fullBoard = savedBoardData;
+            if (typeof savedBoardData.title === 'string') activeBoardData.title = savedBoardData.title;
           }
           updateDisplayFromFullBoard();
           if (result && result.hasConflicts) {
@@ -4559,7 +4600,7 @@ const LexeraDashboard = (function () {
             showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
           }
         }
-        setBoardHierarchyRows(boardId, boardData, getMutationBoardTitle(boardId, boardData));
+        setBoardHierarchyRows(boardId, savedBoardData, getMutationBoardTitle(boardId, savedBoardData));
       }
       if (typeof options.beforeRefresh === 'function') options.beforeRefresh();
       if (options.refreshMainView) {
@@ -4677,15 +4718,19 @@ const LexeraDashboard = (function () {
 
   async function undo() {
     if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
+    var saveBase = getBoardSaveBase(fullBoardData);
     redoStack.push(JSON.stringify(fullBoardData));
     fullBoardData = JSON.parse(undoStack.pop());
+    setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
     await persistBoardMutation();
   }
 
   async function redo() {
     if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
+    var saveBase = getBoardSaveBase(fullBoardData);
     undoStack.push(JSON.stringify(fullBoardData));
     fullBoardData = JSON.parse(redoStack.pop());
+    setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
     await persistBoardMutation();
   }
 
