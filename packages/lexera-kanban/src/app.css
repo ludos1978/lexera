@@ -3826,10 +3826,44 @@ select.dialog-input option,
   flex-shrink: 0;
 }
 
+.log-panel-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
 .log-panel-title {
   font-weight: 600;
   color: var(--text-bright);
   font-size: 12px;
+}
+
+.log-panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.log-panel-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.log-panel-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.log-panel-tab.active {
+  background: var(--bg-primary);
+  border-color: var(--border);
+  color: var(--text-bright);
 }
 
 .log-panel-actions {
@@ -3857,6 +3891,12 @@ select.dialog-input option,
   padding: 4px 0;
 }
 
+.log-panel-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .log-entry {
   display: flex;
   gap: var(--space-4);
@@ -3867,6 +3907,22 @@ select.dialog-input option,
 
 .log-entry:hover {
   background: var(--bg-hover);
+}
+
+.log-entry-source {
+  width: 58px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.log-entry-target {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .log-time {

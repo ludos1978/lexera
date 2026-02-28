@@ -24,7 +24,13 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
         true,
         None::<&str>,
     )?;
-    let open_browser = MenuItem::with_id(app, "open_browser", "Open in Browser", true, None::<&str>)?;
+    let open_browser = MenuItem::with_id(
+        app,
+        "open_browser",
+        "Open Backend Status",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     let menu = Menu::with_items(
@@ -48,13 +54,20 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
                 open_connection_window(app);
             }
             "open_browser" => {
-                let url = format!("http://localhost:{}", tray_port);
+                let url = format!("http://127.0.0.1:{}/status", tray_port);
+                log::info!(target: "lexera.tray", "Opening backend status in browser: {}", url);
                 #[cfg(target_os = "macos")]
-                let _ = std::process::Command::new("open").arg(&url).spawn();
+                if let Err(e) = std::process::Command::new("open").arg(&url).spawn() {
+                    log::error!(target: "lexera.tray", "Failed to open backend status: {}", e);
+                }
                 #[cfg(target_os = "linux")]
-                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                if let Err(e) = std::process::Command::new("xdg-open").arg(&url).spawn() {
+                    log::error!(target: "lexera.tray", "Failed to open backend status: {}", e);
+                }
                 #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn();
+                if let Err(e) = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn() {
+                    log::error!(target: "lexera.tray", "Failed to open backend status: {}", e);
+                }
             }
             "quit" => {
                 app.exit(0);

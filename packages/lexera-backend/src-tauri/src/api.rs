@@ -176,6 +176,8 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::post(convert_path),
         )
         .route("/search", get(search))
+        .route("/logs", get(list_logs))
+        .route("/logs/stream", get(stream_logs))
         .route("/events", get(sse_events))
         .route("/status", get(status))
         .route(
@@ -193,6 +195,28 @@ pub fn api_router() -> Router<AppState> {
 async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boards = state.storage.list_boards();
     Json(serde_json::json!({ "boards": boards }))
+}
+
+async fn list_logs() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "entries": crate::log_bridge::recent_entries(),
+    }))
+}
+
+async fn stream_logs() -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let rx = crate::log_bridge::subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(|item| {
+        let entry = match item {
+            Ok(entry) => entry,
+            Err(_) => return None,
+        };
+        let payload = match serde_json::to_string(&entry) {
+            Ok(payload) => payload,
+            Err(_) => return None,
+        };
+        Some(Ok(Event::default().data(payload)))
+    });
+    Sse::new(stream)
 }
 
 async fn list_remote_boards(State(state): State<AppState>) -> Json<serde_json::Value> {

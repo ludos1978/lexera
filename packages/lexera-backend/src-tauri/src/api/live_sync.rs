@@ -101,6 +101,11 @@ pub fn open_session(
     board_dir: PathBuf,
     snapshot: Option<Vec<u8>>,
 ) -> Result<LiveSessionSnapshot, String> {
+    log::info!(
+        target: "lexera.live_sync",
+        "Opening live sync session (has_snapshot={})",
+        snapshot.is_some()
+    );
     let normalized = normalize_board(board, &board_dir);
     let session_uuid = Uuid::new_v4();
     let session_id = session_uuid.to_string();
@@ -195,7 +200,15 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
     session
         .crdt
         .import_updates(bytes)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::warn!(
+                target: "lexera.live_sync",
+                "Failed to import live sync updates for session {}: {}",
+                session_id,
+                e
+            );
+            e.to_string()
+        })?;
 
     let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
     restore_card_ids(&mut next_board, &[&current_ids]);

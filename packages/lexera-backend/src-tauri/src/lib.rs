@@ -6,6 +6,7 @@ mod config;
 pub mod connection_window;
 pub mod discovery;
 pub mod export_api;
+mod log_bridge;
 mod server;
 pub mod state;
 pub mod sync_client;
@@ -29,7 +30,9 @@ use std::sync::RwLock;
 use tauri::Manager;
 
 pub fn run() {
-    env_logger::init();
+    if let Err(e) = log_bridge::init() {
+        eprintln!("failed to initialize backend logger: {}", e);
+    }
 
     let run_result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![

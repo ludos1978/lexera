@@ -1,39 +1,177 @@
 /**
- * Lexera Log — Status bar + expandable log panel.
+ * Lexera Log — Status bar + dedicated frontend/backend log views.
  */
-var lexeraLogEntries = [];
-var LOG_MAX = 500;
+var frontendLogEntries = [];
+var backendLogEntries = [];
+var LOG_MAX = 1000;
+var activeLogSource = localStorage.getItem('lexera-log-source') === 'frontend' ? 'frontend' : 'backend';
+var backendLogLoaded = false;
+var backendLogEventSource = null;
+var backendLogConnectPending = false;
 
-function lexeraLog(level, message) {
-  var entry = {
-    time: new Date(),
-    level: level,
-    message: typeof message === 'string' ? message : JSON.stringify(message)
-  };
-  lexeraLogEntries.push(entry);
-  if (lexeraLogEntries.length > LOG_MAX) lexeraLogEntries.shift();
+function normalizeLogMessage(message) {
+  return typeof message === 'string' ? message : JSON.stringify(message);
+}
 
-  // Update status bar with last message
+function getLogEntries(source) {
+  return source === 'backend' ? backendLogEntries : frontendLogEntries;
+}
+
+function escapeLogHtml(value) {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getLogContainer(source) {
+  return document.getElementById(source === 'backend' ? 'log-entries-backend' : 'log-entries-frontend');
+}
+
+function formatLogTimestamp(entry) {
+  return new Date(entry.timestampMs || Date.now()).toLocaleTimeString('en-GB', { hour12: false });
+}
+
+function logEntryKey(entry) {
+  return [
+    entry.timestampMs || 0,
+    entry.level || '',
+    entry.target || '',
+    entry.message || ''
+  ].join('|');
+}
+
+function setStatusBarEntry(source, entry) {
   var statusMsg = document.getElementById('status-msg');
   var statusBar = document.getElementById('status-bar');
-  if (statusMsg) {
-    statusMsg.textContent = entry.message;
-    statusBar.className = 'status-bar status-' + level;
+  if (!statusMsg || !statusBar) return;
+  var prefix = source === 'backend' ? '[backend] ' : '';
+  statusMsg.textContent = prefix + entry.message;
+  statusBar.className = 'status-bar status-' + entry.level;
+}
+
+function renderLogEntry(source, entry) {
+  var el = document.createElement('div');
+  el.className = 'log-entry log-' + entry.level;
+  el.innerHTML =
+    '<span class="log-time">' + escapeLogHtml(formatLogTimestamp(entry)) + '</span>' +
+    '<span class="log-level">' + escapeLogHtml(String(entry.level || '').toUpperCase()) + '</span>' +
+    '<span class="log-entry-source">' + escapeLogHtml(source) + '</span>' +
+    '<span class="log-entry-target">' + escapeLogHtml(entry.target || (source === 'backend' ? 'backend' : 'frontend')) + '</span>' +
+    '<span class="log-msg">' + escapeLogHtml(entry.message) + '</span>';
+  return el;
+}
+
+function appendLogEntry(source, entry) {
+  var entries = getLogEntries(source);
+  if (entries.length > 0 && logEntryKey(entries[entries.length - 1]) === logEntryKey(entry)) {
+    return;
   }
 
-  // Append to expanded log panel
-  var panel = document.getElementById('log-entries');
+  entries.push(entry);
+  if (entries.length > LOG_MAX) entries.shift();
+
+  setStatusBarEntry(source, entry);
+
+  var panel = getLogContainer(source);
   if (panel) {
-    var el = document.createElement('div');
-    el.className = 'log-entry log-' + level;
-    var ts = entry.time.toLocaleTimeString('en-GB', { hour12: false });
-    el.innerHTML = '<span class="log-time">' + ts + '</span>' +
-      '<span class="log-level">' + level.toUpperCase() + '</span>' +
-      '<span class="log-msg">' + entry.message.replace(/</g, '&lt;') + '</span>';
-    panel.appendChild(el);
+    while (panel.childNodes.length >= LOG_MAX) {
+      panel.removeChild(panel.firstChild);
+    }
+    panel.appendChild(renderLogEntry(source, entry));
     panel.scrollTop = panel.scrollHeight;
   }
 }
+
+function replaceLogEntries(source, entries) {
+  var nextEntries = (entries || []).slice(-LOG_MAX);
+  var target = getLogEntries(source);
+  target.length = 0;
+  Array.prototype.push.apply(target, nextEntries);
+
+  var panel = getLogContainer(source);
+  if (!panel) return;
+  panel.innerHTML = '';
+  for (var i = 0; i < nextEntries.length; i++) {
+    panel.appendChild(renderLogEntry(source, nextEntries[i]));
+  }
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function setActiveLogSource(source) {
+  activeLogSource = source === 'frontend' ? 'frontend' : 'backend';
+  localStorage.setItem('lexera-log-source', activeLogSource);
+
+  var backendBtn = document.getElementById('log-tab-backend');
+  var frontendBtn = document.getElementById('log-tab-frontend');
+  var backendPanel = getLogContainer('backend');
+  var frontendPanel = getLogContainer('frontend');
+  var refreshBtn = document.getElementById('log-refresh-btn');
+
+  if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
+  if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
+  if (backendPanel) backendPanel.classList.toggle('hidden', activeLogSource !== 'backend');
+  if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
+  if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
+}
+
+function lexeraLog(level, message) {
+  appendLogEntry('frontend', {
+    timestampMs: Date.now(),
+    level: level,
+    target: 'frontend',
+    message: normalizeLogMessage(message)
+  });
+}
+
+function lexeraBackendLog(entry) {
+  appendLogEntry('backend', {
+    timestampMs: entry && entry.timestampMs ? entry.timestampMs : Date.now(),
+    level: entry && entry.level ? entry.level : 'info',
+    target: entry && entry.target ? entry.target : 'backend',
+    message: normalizeLogMessage(entry && entry.message ? entry.message : '')
+  });
+}
+
+function refreshBackendLogs() {
+  if (!window.LexeraApi || typeof LexeraApi.getLogs !== 'function') return Promise.resolve();
+  return LexeraApi.getLogs().then(function (data) {
+    replaceLogEntries('backend', data && data.entries ? data.entries : []);
+    backendLogLoaded = true;
+  }).catch(function (err) {
+    lexeraLog('warn', '[backend.log] Failed to load backend logs: ' + err.message);
+  });
+}
+
+function openBackendLogStream() {
+  if (backendLogEventSource || !window.LexeraApi || typeof LexeraApi.connectLogStream !== 'function') return;
+  backendLogEventSource = LexeraApi.connectLogStream(function (entry) {
+    backendLogLoaded = true;
+    lexeraBackendLog(entry);
+  });
+  if (!backendLogEventSource) return;
+  backendLogEventSource.onerror = function () {
+    if (backendLogEventSource) backendLogEventSource.close();
+    backendLogEventSource = null;
+    setTimeout(connectBackendLogStreamIfReady, 1500);
+  };
+}
+
+function connectBackendLogStreamIfReady() {
+  if (backendLogEventSource || backendLogConnectPending || !window.LexeraApi || typeof LexeraApi.discover !== 'function') {
+    return;
+  }
+  backendLogConnectPending = true;
+  LexeraApi.discover().then(function (url) {
+    backendLogConnectPending = false;
+    if (!url) return;
+    var ready = backendLogLoaded ? Promise.resolve() : refreshBackendLogs();
+    ready.finally(function () {
+      openBackendLogStream();
+    });
+  }).catch(function () {
+    backendLogConnectPending = false;
+  });
+}
+
+window.connectBackendLogStreamIfReady = connectBackendLogStreamIfReady;
 
 // Intercept console.log/warn/error
 (function () {
@@ -74,8 +212,11 @@ window.addEventListener('resize', updateAppBottomInset);
 document.addEventListener('DOMContentLoaded', function () {
   var panel = document.getElementById('log-panel');
   var statusBar = document.getElementById('status-bar');
+  var refreshBtn = document.getElementById('log-refresh-btn');
   var clearBtn = document.getElementById('log-clear-btn');
   var closeBtn = document.getElementById('log-close-btn');
+  var backendTab = document.getElementById('log-tab-backend');
+  var frontendTab = document.getElementById('log-tab-frontend');
   updateAppBottomInset();
 
   // Click status bar to expand/collapse log panel
@@ -84,16 +225,33 @@ document.addEventListener('DOMContentLoaded', function () {
     updateAppBottomInset();
   });
 
+  if (refreshBtn) refreshBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    refreshBackendLogs();
+  });
+
   if (clearBtn) clearBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    document.getElementById('log-entries').innerHTML = '';
-    lexeraLogEntries = [];
+    replaceLogEntries(activeLogSource, []);
   });
   if (closeBtn) closeBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     panel.classList.add('hidden');
     updateAppBottomInset();
   });
+  if (backendTab) backendTab.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setActiveLogSource('backend');
+  });
+  if (frontendTab) frontendTab.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setActiveLogSource('frontend');
+  });
+
+  replaceLogEntries('frontend', frontendLogEntries);
+  replaceLogEntries('backend', backendLogEntries);
+  setActiveLogSource(activeLogSource);
+  connectBackendLogStreamIfReady();
 });
 
 function toggleLogPanel() {
@@ -2814,6 +2972,7 @@ const LexeraDashboard = (function () {
     }
 
     connectSSEIfReady();
+    connectBackendLogStreamIfReady();
 
     try {
       const data = await LexeraApi.getBoards();

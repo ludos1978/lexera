@@ -97,13 +97,23 @@
   <!-- Log Panel (expandable from status bar) -->
   <div id="log-panel" class="log-panel hidden">
     <div class="log-panel-header">
-      <span class="log-panel-title">Log</span>
+      <div class="log-panel-header-main">
+        <span class="log-panel-title">Logs</span>
+        <div class="log-panel-tabs">
+          <button id="log-tab-backend" class="log-panel-tab active" type="button">Backend</button>
+          <button id="log-tab-frontend" class="log-panel-tab" type="button">Frontend</button>
+        </div>
+      </div>
       <div class="log-panel-actions">
+        <button id="log-refresh-btn" class="log-panel-btn" title="Reload backend logs">Reload</button>
         <button id="log-clear-btn" class="log-panel-btn" title="Clear log">Clear</button>
         <button id="log-close-btn" class="log-panel-btn" title="Close log">&#10005;</button>
       </div>
     </div>
-    <div id="log-entries" class="log-entries"></div>
+    <div class="log-panel-body">
+      <div id="log-entries-backend" class="log-entries"></div>
+      <div id="log-entries-frontend" class="log-entries hidden"></div>
+    </div>
   </div>
 
   <!-- Export Modal -->

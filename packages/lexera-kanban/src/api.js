@@ -202,6 +202,19 @@ const LexeraApi = (function () {
     return request('/boards/' + boardId, { method: 'DELETE' });
   }
 
+  async function getLogs() {
+    return request('/logs');
+  }
+
+  function connectLogStream(onEntry) {
+    if (!baseUrl) return null;
+    var es = new EventSource(baseUrl + '/logs/stream');
+    es.onmessage = function (msg) {
+      try { onEntry(JSON.parse(msg.data)); } catch (e) { /* ignore parse errors */ }
+    };
+    return es;
+  }
+
   // ── WebSocket CRDT Sync ─────────────────────────────────────────────
 
   var syncWs = null;
@@ -444,7 +457,7 @@ const LexeraApi = (function () {
   return {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
-    checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
+    checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate,
     getMe, updateMe, getServerInfo,
     createInvite, listInvites, revokeInvite, acceptInvite,
