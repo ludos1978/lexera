@@ -376,6 +376,13 @@ const LexeraDashboard = (function () {
     return String(path || '').replace(/\\/g, '/');
   }
 
+  function decodeHtmlEntities(value) {
+    if (value == null || value === '') return '';
+    var textarea = document.createElement('textarea');
+    textarea.innerHTML = String(value);
+    return textarea.value;
+  }
+
   function findBoardMeta(boardId) {
     if (!boardId) return null;
     for (var i = 0; i < boards.length; i++) {
@@ -398,11 +405,98 @@ const LexeraDashboard = (function () {
     return idx > 0 ? normalized.slice(0, idx) : '';
   }
 
+  function getDisplayNameFromPath(path) {
+    var fileName = getFileNameFromPath(path);
+    return fileName ? fileName.replace(/\.[^.]+$/, '') : '';
+  }
+
   function getActiveBoardFilePath() {
     if (!activeBoardId) return '';
     if (activeBoardData && activeBoardData.filePath) return activeBoardData.filePath;
     var board = findBoardMeta(activeBoardId);
     return board && board.filePath ? board.filePath : '';
+  }
+
+  function stripMarkdownExtension(value) {
+    return String(value || '').replace(/\.md$/i, '');
+  }
+
+  function normalizeWikiLookupKey(value) {
+    return stripMarkdownExtension(normalizePathForCompare(value))
+      .replace(/^\.\/+/, '')
+      .replace(/^\/+/, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function getBoardDisplayName(board) {
+    if (!board) return '';
+    return String(board.title || stripMarkdownExtension(getFileNameFromPath(board.filePath || '')) || '').trim();
+  }
+
+  function getKnownBoards() {
+    var all = [];
+    var seen = {};
+    var groups = [boards, remoteBoards];
+    for (var g = 0; g < groups.length; g++) {
+      var list = groups[g] || [];
+      for (var i = 0; i < list.length; i++) {
+        var board = list[i];
+        if (!board || !board.id || seen[board.id]) continue;
+        seen[board.id] = true;
+        all.push(board);
+      }
+    }
+    return all;
+  }
+
+  function resolveWikiDocument(documentName) {
+    var rawDocument = decodeHtmlEntities(documentName).trim();
+    if (!rawDocument) return { kind: 'missing', document: '' };
+    if (rawDocument.charAt(0) === '#') return { kind: 'tag', document: rawDocument };
+
+    var documentKey = normalizeWikiLookupKey(rawDocument);
+    var documentBaseKey = normalizeWikiLookupKey(getFileNameFromPath(rawDocument));
+    var knownBoards = getKnownBoards();
+    var best = null;
+
+    for (var i = 0; i < knownBoards.length; i++) {
+      var board = knownBoards[i];
+      var filePath = normalizePathForCompare(board.filePath || '');
+      var filePathKey = normalizeWikiLookupKey(filePath);
+      var fileNameKey = normalizeWikiLookupKey(getFileNameFromPath(filePath));
+      var titleKey = normalizeWikiLookupKey(getBoardDisplayName(board));
+      var score = null;
+
+      if (documentKey && (documentKey === titleKey || documentKey === filePathKey)) {
+        score = 0;
+      } else if (documentKey && documentKey === fileNameKey) {
+        score = 1;
+      } else if (documentKey && filePathKey && filePathKey.slice(-documentKey.length - 1) === '/' + documentKey) {
+        score = 2;
+      } else if (documentBaseKey && documentBaseKey === titleKey) {
+        score = 3;
+      } else if (documentBaseKey && documentBaseKey === fileNameKey) {
+        score = 4;
+      }
+
+      if (score == null) continue;
+      if (!best || score < best.score || (score === best.score && filePath.length < best.filePathLength)) {
+        best = {
+          score: score,
+          board: board,
+          filePathLength: filePath.length
+        };
+      }
+    }
+
+    if (!best) return { kind: 'missing', document: rawDocument };
+    return {
+      kind: 'board',
+      document: rawDocument,
+      boardId: best.board.id,
+      board: best.board
+    };
   }
 
   // --- Order Helpers ---
@@ -2434,16 +2528,7 @@ const LexeraDashboard = (function () {
   // Alt+click helper: expand or collapse all descendant tree nodes inside a container.
   // `expand` = true means set children to expanded state; false = collapsed.
   function setDescendantTreeState(container, expand, boardId) {
-    var childContainers = container.querySelectorAll('.tree-children');
-    var childToggles = container.querySelectorAll('.tree-toggle');
-    for (var i = 0; i < childContainers.length; i++) {
-      if (expand) childContainers[i].classList.add('expanded');
-      else childContainers[i].classList.remove('expanded');
-    }
-    for (var i = 0; i < childToggles.length; i++) {
-      if (expand) childToggles[i].classList.add('expanded');
-      else childToggles[i].classList.remove('expanded');
-    }
+    TreeView.setDescendantsExpanded(container, expand);
     // Persist: collect all descendant tree-node IDs and batch-update state
     var state = getSidebarTreeState(boardId);
     var nodes = container.querySelectorAll('.tree-node[data-tree-id]');
@@ -2468,6 +2553,118 @@ const LexeraDashboard = (function () {
       state[kind] = arr;
     }
     saveSidebarTreeState(boardId, state);
+  }
+
+  // Convert kanban rows/stacks/columns/cards into generic TreeView node arrays.
+  function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState, singleRow, singleStack) {
+    var nodes = [];
+    for (var ri = 0; ri < rows.length; ri++) {
+      var row = rows[ri];
+      var rowId = row.id || ('row-' + ri);
+      var rowExpanded = hasTreeState ? treeState.rows.indexOf(rowId) === -1 : (singleRow ? true : false);
+      var rowIsLast = ri === rows.length - 1;
+
+      var stackNodes = [];
+      for (var si = 0; si < row.stacks.length; si++) {
+        var stack = row.stacks[si];
+        var stackId = stack.id || ('stack-' + ri + '-' + si);
+        var stackExpanded = hasTreeState ? treeState.stacks.indexOf(stackId) === -1 : (singleStack ? true : false);
+        var stackIsLast = si === row.stacks.length - 1;
+
+        var colNodes = [];
+        for (var ci = 0; ci < stack.columns.length; ci++) {
+          var col = stack.columns[ci];
+          var colIdx = col.index != null ? col.index : -1;
+          var colId = 'col-' + colIdx;
+          var colExpanded = hasTreeState ? treeState.columns.indexOf(colId) !== -1 : false;
+          var cardCount = col.cards ? col.cards.length : 0;
+
+          var cardNodes = [];
+          if (cardCount > 0) {
+            for (var cdi = 0; cdi < col.cards.length; cdi++) {
+              cardNodes.push({
+                id: null,
+                label: cardPreviewText(col.cards[cdi].content),
+                type: 'card',
+                grip: true,
+                gripTitle: 'Drag to move',
+                hasToggle: false,
+                children: null,
+                expanded: false,
+                attrs: {
+                  'data-board-id': boardId,
+                  'data-row-index': ri.toString(),
+                  'data-stack-index': si.toString(),
+                  'data-col-local-index': ci.toString(),
+                  'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
+                  'data-card-index': cdi.toString(),
+                  'data-tree-drag': 'tree-card'
+                }
+              });
+            }
+          }
+
+          colNodes.push({
+            id: colId,
+            label: stripStackTag(col.title),
+            count: cardCount,
+            type: 'column',
+            expanded: colExpanded,
+            hasToggle: cardCount > 0,
+            grip: true,
+            children: cardNodes.length > 0 ? cardNodes : null,
+            attrs: {
+              'data-board-id': boardId,
+              'data-col-index': colIdx >= 0 ? colIdx.toString() : null,
+              'data-row-index': ri.toString(),
+              'data-stack-index': si.toString(),
+              'data-col-local-index': ci.toString(),
+              'data-tree-drag': 'tree-column'
+            }
+          });
+        }
+
+        if (!singleStack) {
+          stackNodes.push({
+            id: stackId,
+            label: stack.title || 'Stack ' + (si + 1),
+            count: countCardsInStack(stack),
+            type: 'stack',
+            expanded: stackExpanded,
+            grip: true,
+            children: colNodes,
+            attrs: {
+              'data-board-id': boardId,
+              'data-row-index': ri.toString(),
+              'data-stack-index': si.toString(),
+              'data-tree-drag': 'tree-stack'
+            }
+          });
+        } else {
+          stackNodes = stackNodes.concat(colNodes);
+        }
+      }
+
+      if (!singleRow) {
+        nodes.push({
+          id: rowId,
+          label: row.title || 'Row ' + (ri + 1),
+          count: countCardsInRow(row),
+          type: 'row',
+          expanded: rowExpanded,
+          grip: true,
+          children: stackNodes,
+          attrs: {
+            'data-board-id': boardId,
+            'data-row-index': ri.toString(),
+            'data-tree-drag': 'tree-row'
+          }
+        });
+      } else {
+        nodes = nodes.concat(stackNodes);
+      }
+    }
+    return nodes;
   }
 
   function countCardsInRow(row) {
@@ -2669,175 +2866,23 @@ const LexeraDashboard = (function () {
       if (hasContent) {
         var treeState = getSidebarTreeState(board.id);
         var hasTreeState = hasSidebarTreeState(board.id);
-
-        // Compute the padding-left of .tree-node (var(--space-3)) for guide alignment.
-        var nodePadLeft = 6 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1);
-
-        // Build indent guides HTML.
-        // parentLastFlags: array of booleans — true if ancestor at that depth was the last child.
-        // isLast: whether this node is the last child at its own level.
-        function indentHtml(parentLastFlags, isLast) {
-          var h = '<span class="tree-indent">';
-          for (var g = 0; g < parentLastFlags.length; g++) {
-            h += '<span class="indent-guide' + (parentLastFlags[g] ? ' last' : '') + '"></span>';
-          }
-          h += '<span class="indent-guide ' + (isLast ? 'corner' : 'branch') + '"></span>';
-          h += '</span>';
-          return h;
-        }
-
-        // Apply continuation guide lines to a .tree-children container.
-        // parentLastFlags includes the flag for the node that owns this children container.
-        // nodeLeftPad: the padding-left of child nodes (var(--space-3) for normal nodes, 0 for cards).
-        function applyChildrenGuides(container, parentLastFlags, nodeLeftPad) {
-          container.style.position = 'relative';
-          for (var g = 0; g < parentLastFlags.length; g++) {
-            if (!parentLastFlags[g]) {
-              var line = document.createElement('span');
-              line.className = 'tree-children-guide';
-              line.style.left = (nodeLeftPad + g * 12 + 5) + 'px';
-              container.appendChild(line);
-            }
-          }
-        }
-
-        // Default hierarchy state: folded (collapsed) for rows/stacks/columns.
-        for (var ri = 0; ri < rows.length; ri++) {
-          var row = rows[ri];
-          var rowId = row.id || ('row-' + ri);
-          var rowExpanded = hasTreeState ? treeState.rows.indexOf(rowId) === -1 : (singleRow ? true : false);
-          var rowCardCount = countCardsInRow(row);
-          var rowIsLast = ri === rows.length - 1;
-
-          // Row node — skip if single row (flatten into parent)
-          var rowContainer = tree;
-          // Base indent for levels below row; tracks which ancestors are "last"
-          var rowIndent = [];
-          if (!singleRow) {
-            rowIndent = [];
-            var rowNode = document.createElement('div');
-            rowNode.className = 'tree-node tree-row';
-            rowNode.setAttribute('data-board-id', board.id);
-            rowNode.setAttribute('data-row-index', ri.toString());
-            rowNode.setAttribute('data-tree-id', rowId);
-            rowNode.setAttribute('data-tree-drag', 'tree-row');
-            rowNode.innerHTML =
-              indentHtml(rowIndent, rowIsLast) +
-              '<span class="tree-toggle' + (rowExpanded ? ' expanded' : '') + '"></span>' +
-              '<span class="tree-label">' + escapeHtml(row.title || 'Row ' + (ri + 1)) + '</span>' +
-              '<span class="tree-count">' + rowCardCount + '</span>' +
-              '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
-            tree.appendChild(rowNode);
-
-            var rowChildren = document.createElement('div');
-            rowChildren.className = 'tree-children' + (rowExpanded ? ' expanded' : '');
-            rowIndent = [rowIsLast];
-            applyChildrenGuides(rowChildren, rowIndent, nodePadLeft);
-            rowContainer = rowChildren;
-          }
-
-          for (var si = 0; si < row.stacks.length; si++) {
-            var stack = row.stacks[si];
-            var stackId = stack.id || ('stack-' + ri + '-' + si);
-            var stackExpanded = hasTreeState ? treeState.stacks.indexOf(stackId) === -1 : (singleStack ? true : false);
-            var stackCardCount = countCardsInStack(stack);
-            var stackIsLast = si === row.stacks.length - 1;
-
-            // Stack node — skip if single stack in single row (flatten into parent)
-            var stackContainer = rowContainer;
-            var stackIndent = rowIndent;
-            if (!singleStack) {
-              var stackNode = document.createElement('div');
-              stackNode.className = 'tree-node tree-stack';
-              stackNode.setAttribute('data-board-id', board.id);
-              stackNode.setAttribute('data-row-index', ri.toString());
-              stackNode.setAttribute('data-stack-index', si.toString());
-              stackNode.setAttribute('data-tree-id', stackId);
-              stackNode.setAttribute('data-tree-drag', 'tree-stack');
-              stackNode.innerHTML =
-                indentHtml(rowIndent, stackIsLast) +
-                '<span class="tree-toggle' + (stackExpanded ? ' expanded' : '') + '"></span>' +
-                '<span class="tree-label">' + escapeHtml(stack.title || 'Stack ' + (si + 1)) + '</span>' +
-                '<span class="tree-count">' + stackCardCount + '</span>' +
-                '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
-              rowContainer.appendChild(stackNode);
-
-              var stackChildren = document.createElement('div');
-              stackChildren.className = 'tree-children' + (stackExpanded ? ' expanded' : '');
-              stackChildren.classList.add('tree-stack-drop-zone');
-              stackChildren.setAttribute('data-board-id', board.id);
-              stackChildren.setAttribute('data-row-index', ri.toString());
-              stackChildren.setAttribute('data-stack-index', si.toString());
-              if (!stack.columns || stack.columns.length === 0) {
-                stackChildren.classList.add('tree-stack-drop-zone-empty');
+        var treeNodes = buildSidebarTreeNodes(rows, board.id, treeState, hasTreeState, singleRow, singleStack);
+        TreeView.render(tree, treeNodes, {
+          escapeHtml: escapeHtml,
+          onChildrenContainer: function (el, node) {
+            if (node.type === 'stack') {
+              el.classList.add('tree-stack-drop-zone');
+              if (node.attrs) {
+                if (node.attrs['data-board-id']) el.setAttribute('data-board-id', node.attrs['data-board-id']);
+                if (node.attrs['data-row-index']) el.setAttribute('data-row-index', node.attrs['data-row-index']);
+                if (node.attrs['data-stack-index']) el.setAttribute('data-stack-index', node.attrs['data-stack-index']);
               }
-              stackIndent = rowIndent.concat([stackIsLast]);
-              applyChildrenGuides(stackChildren, stackIndent, nodePadLeft);
-              stackContainer = stackChildren;
-            }
-
-            for (var ci = 0; ci < stack.columns.length; ci++) {
-              var col = stack.columns[ci];
-              var colIdx = col.index != null ? col.index : -1;
-              var colId = 'col-' + colIdx;
-              var colExpanded = hasTreeState ? treeState.columns.indexOf(colId) !== -1 : false;
-              var cardCount = col.cards ? col.cards.length : 0;
-              var colIsLast = ci === stack.columns.length - 1;
-
-              // Column node
-              var colNode = document.createElement('div');
-              colNode.className = 'tree-node tree-column';
-              colNode.setAttribute('data-board-id', board.id);
-              if (colIdx >= 0) colNode.setAttribute('data-col-index', colIdx.toString());
-              colNode.setAttribute('data-tree-id', colId);
-              colNode.setAttribute('data-row-index', ri.toString());
-              colNode.setAttribute('data-stack-index', si.toString());
-              colNode.setAttribute('data-col-local-index', ci.toString());
-              colNode.setAttribute('data-tree-drag', 'tree-column');
-              colNode.innerHTML =
-                indentHtml(stackIndent, colIsLast) +
-                (cardCount > 0 ? '<span class="tree-toggle' + (colExpanded ? ' expanded' : '') + '"></span>' : '<span class="tree-toggle-spacer"></span>') +
-                '<span class="tree-label">' + escapeHtml(stripStackTag(col.title)) + '</span>' +
-                '<span class="tree-count">' + cardCount + '</span>' +
-                '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
-              stackContainer.appendChild(colNode);
-
-              // Column children (cards)
-              if (cardCount > 0) {
-                var colChildren = document.createElement('div');
-                colChildren.className = 'tree-children' + (colExpanded ? ' expanded' : '');
-                var cardIndent = stackIndent.concat([colIsLast]);
-                applyChildrenGuides(colChildren, cardIndent, nodePadLeft);
-                for (var cdi = 0; cdi < col.cards.length; cdi++) {
-                  var card = col.cards[cdi];
-                  var cardIsLast = cdi === col.cards.length - 1;
-                  var cardNode = document.createElement('div');
-                  cardNode.className = 'tree-node tree-card';
-                  cardNode.setAttribute('data-board-id', board.id);
-                  cardNode.setAttribute('data-row-index', ri.toString());
-                  cardNode.setAttribute('data-stack-index', si.toString());
-                  cardNode.setAttribute('data-col-local-index', ci.toString());
-                  if (colIdx >= 0) cardNode.setAttribute('data-col-index', colIdx.toString());
-                  cardNode.setAttribute('data-card-index', cdi.toString());
-                  cardNode.setAttribute('data-tree-drag', 'tree-card');
-                  cardNode.innerHTML =
-                    indentHtml(cardIndent, cardIsLast) +
-                    '<span class="tree-toggle-spacer"></span>' +
-                    '<span class="tree-label">' + escapeHtml(cardPreviewText(card.content)) + '</span>' +
-                    '<span class="tree-grip" title="Drag to move">\u22EE\u22EE</span>';
-                  colChildren.appendChild(cardNode);
-                }
-                stackContainer.appendChild(colChildren);
+              if (!node.children || node.children.length === 0) {
+                el.classList.add('tree-stack-drop-zone-empty');
               }
             }
-            if (!singleStack) {
-              rowContainer.appendChild(stackContainer);
-            }
           }
-          if (!singleRow) {
-            tree.appendChild(rowContainer);
-          }
-        }
+        });
       }
 
       wrapper.appendChild(el);
@@ -4618,7 +4663,7 @@ const LexeraDashboard = (function () {
     header.innerHTML =
       '<button class="column-fold-btn fold-btn" title="Fold column">&#9656;</button>' +
       '<span class="drag-grip">\u22EE\u22EE</span>' +
-      '<span class="column-title">' + escapeHtml(displayTitle) + '</span>' +
+      '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + '</span>' +
       '<span class="column-header-actions">' +
@@ -4818,6 +4863,8 @@ const LexeraDashboard = (function () {
         loadMermaidLibrary();
       }
     }
+
+    enhanceEmbeddedContent($columnsContainer);
 
     syncSidebarToView();
   }
@@ -7972,15 +8019,56 @@ const LexeraDashboard = (function () {
     if (fmt === 'underline') return { wrap: '_' };
     if (fmt === 'strike') return { wrap: '~~' };
     if (fmt === 'mark') return { wrap: '==' };
+    if (fmt === 'sub') return { wrap: '~' };
+    if (fmt === 'sup') return { wrap: '^' };
     if (fmt === 'code') return { wrap: '`' };
     if (fmt === 'link') return { prefix: '[', suffix: '](url)' };
+    if (fmt === 'image') return { snippet: '![alt](path)' };
     if (fmt === 'heading') return { prefix: '## ', suffix: '' };
     if (fmt === 'task') return { prefix: '- [ ] ', suffix: '' };
+    if (fmt === 'include') return { snippet: '!!!include(path)!!!' };
+    if (fmt === 'wiki') return { snippet: '[[Page]]' };
     if (fmt === 'footnote') return { snippet: 'Reference[^1]\n\n[^1]: Footnote text' };
     if (fmt === 'code-block') return { snippet: '```\ncode\n```' };
     if (fmt === 'columns') return { snippet: '---:\n\n:--:\n\n:---' };
-    if (fmt === 'note') return { snippet: '::: note\n\n:::' };
+    if (fmt === 'note') return { snippet: '::: note\n\n:::\n' };
+    if (fmt === 'container-comment') return { snippet: '::: comment\n\n:::\n' };
+    if (fmt === 'container-highlight') return { snippet: '::: highlight\n\n:::\n' };
+    if (fmt === 'container-mark-red') return { snippet: '::: mark-red\n\n:::\n' };
+    if (fmt === 'container-mark-green') return { snippet: '::: mark-green\n\n:::\n' };
+    if (fmt === 'container-mark-blue') return { snippet: '::: mark-blue\n\n:::\n' };
+    if (fmt === 'container-mark-cyan') return { snippet: '::: mark-cyan\n\n:::\n' };
+    if (fmt === 'container-mark-magenta') return { snippet: '::: mark-magenta\n\n:::\n' };
+    if (fmt === 'container-mark-yellow') return { snippet: '::: mark-yellow\n\n:::\n' };
+    if (fmt === 'container-center') return { snippet: '::: center\n\n:::\n' };
+    if (fmt === 'container-center100') return { snippet: '::: center100\n\n:::\n' };
+    if (fmt === 'container-right') return { snippet: '::: right\n\n:::\n' };
+    if (fmt === 'container-caption') return { snippet: '::: caption\n\n:::\n' };
+    if (fmt === 'emoji') return { snippet: ':smile:' };
     return null;
+  }
+
+  function buildCardEditorSnippetSelectHtml() {
+    return '' +
+      '<select class="dialog-input card-editor-snippet-select" data-card-editor-snippet="snippet" title="Insert snippet">' +
+        '<option value="">Insert...</option>' +
+        '<option value="columns">Multicolumn ---: :--: :---</option>' +
+        '<option value="note">Container: note</option>' +
+        '<option value="container-comment">Container: comment</option>' +
+        '<option value="container-highlight">Container: highlight</option>' +
+        '<option value="container-mark-red">Container: mark-red</option>' +
+        '<option value="container-mark-green">Container: mark-green</option>' +
+        '<option value="container-mark-blue">Container: mark-blue</option>' +
+        '<option value="container-mark-cyan">Container: mark-cyan</option>' +
+        '<option value="container-mark-magenta">Container: mark-magenta</option>' +
+        '<option value="container-mark-yellow">Container: mark-yellow</option>' +
+        '<option value="container-center">Container: center</option>' +
+        '<option value="container-center100">Container: center100</option>' +
+        '<option value="container-right">Container: right</option>' +
+        '<option value="container-caption">Container: caption</option>' +
+        '<option value="footnote">Footnote</option>' +
+        '<option value="emoji">Emoji</option>' +
+      '</select>';
   }
 
   function updateCheckboxLineInText(text, lineIndex, checked) {
@@ -8050,14 +8138,20 @@ const LexeraDashboard = (function () {
         '<button class="board-action-btn" type="button" data-card-editor-fmt="underline" title="Underline">Underline</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="strike" title="Strikethrough">Strike</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="mark" title="Mark">Mark</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="sub" title="Subscript">Sub</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="sup" title="Superscript">Sup</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="code" title="Inline code">Code</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="link" title="Link">Link</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="image" title="Image">Image</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="heading" title="Heading">H2</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="task" title="Checklist item">Task</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="include" title="Include">Include</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="wiki" title="Wiki link">Wiki</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="footnote" title="Footnote">Footnote</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="code-block" title="Code block">Block</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="columns" title="Multi-column block">Columns</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="note" title="Note container">Note</button>' +
+        buildCardEditorSnippetSelectHtml() +
         '<span class="card-editor-hint">Ctrl/Cmd+Enter to save, Esc to cancel</span>' +
       '</div>' +
       '<div class="card-editor-body">' +
@@ -8113,6 +8207,18 @@ const LexeraDashboard = (function () {
       var formatSpec = getCardEditorFormatSpec(fmt);
       if (formatSpec) {
         insertFormatting(textarea, formatSpec);
+        textarea.focus();
+      }
+    });
+    dialog.addEventListener('change', function (e) {
+      var snippetSelect = e.target.closest('[data-card-editor-snippet]');
+      if (!snippetSelect) return;
+      var snippet = snippetSelect.value;
+      if (!snippet) return;
+      var snippetSpec = getCardEditorFormatSpec(snippet);
+      snippetSelect.value = '';
+      if (snippetSpec) {
+        insertFormatting(textarea, snippetSpec);
         textarea.focus();
       }
     });
@@ -8242,6 +8348,7 @@ const LexeraDashboard = (function () {
         if (!mermaidReady) loadMermaidLibrary();
         else processMermaidQueue();
       }
+      enhanceEmbeddedContent(currentCardEditor.preview);
     }
     var titleEl = currentCardEditor.dialog
       ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
@@ -8637,7 +8744,7 @@ const LexeraDashboard = (function () {
         col.title = newTitle;
         persistBoardMutation();
       } else {
-        titleEl.textContent = currentTitle;
+        titleEl.innerHTML = renderTitleInline(currentTitle, activeBoardId);
       }
     }
     input.addEventListener('blur', save);
@@ -8778,6 +8885,38 @@ const LexeraDashboard = (function () {
     } catch {
       // ignore search errors
     }
+  }
+
+  function openWikiSearch(query) {
+    var value = String(query || '').trim();
+    if (!value) return;
+    if ($searchInput) $searchInput.value = value;
+    if (!headerSearchExpanded) setHeaderSearchExpanded(true);
+    performSearch(value);
+  }
+
+  async function openWikiDocument(documentName, options) {
+    options = options || {};
+    var resolved = resolveWikiDocument(documentName);
+    if (resolved.kind === 'tag') {
+      openWikiSearch(resolved.document);
+      return resolved;
+    }
+    if (resolved.kind !== 'board' || !resolved.boardId) {
+      if (!options.silent) showNotification('Wiki link not found: ' + String(documentName || ''));
+      return resolved;
+    }
+    try {
+      if (options.pane && !embeddedMode) {
+        openBoardInPane(resolved.boardId, options.pane);
+      } else {
+        await selectBoard(resolved.boardId);
+      }
+    } catch (err) {
+      console.error('[wiki] Failed to open document:', resolved.document, err);
+      if (!options.silent) showNotification('Failed to open wiki link');
+    }
+    return resolved;
   }
 
   function exitSearchMode() {
@@ -8972,6 +9111,449 @@ const LexeraDashboard = (function () {
   // --- Embed Menu ---
 
   var activeEmbedMenu = null;
+  var embedPreviewCache = {};
+
+  function isMarkdownPreviewExtension(ext) {
+    return ext === 'md' || ext === 'markdown';
+  }
+
+  function isTextPreviewExtension(ext) {
+    return isMarkdownPreviewExtension(ext) || ext === 'txt' || ext === 'log' || ext === 'json' || ext === 'csv';
+  }
+
+  function isDiagramFileExtension(ext) {
+    return ext === 'drawio' || ext === 'dio' || ext === 'excalidraw';
+  }
+
+  function getEmbedPreviewKind(filePath) {
+    var ext = getFileExtension(filePath);
+    if (isMarkdownPreviewExtension(ext)) return 'markdown';
+    if (isTextPreviewExtension(ext)) return 'text';
+    if (ext === 'pdf') return 'pdf';
+    if (isDiagramFileExtension(ext)) return 'diagram';
+    return '';
+  }
+
+  function getEmbedPreviewCacheKey(boardId, filePath) {
+    return String(boardId || '') + '::' + String(filePath || '');
+  }
+
+  function findCardRefById(cardId) {
+    if (!fullBoardData || !fullBoardData.rows || !cardId) return null;
+    for (var r = 0; r < fullBoardData.rows.length; r++) {
+      var row = fullBoardData.rows[r];
+      if (!row || !row.stacks) continue;
+      for (var s = 0; s < row.stacks.length; s++) {
+        var stack = row.stacks[s];
+        if (!stack || !stack.columns) continue;
+        for (var c = 0; c < stack.columns.length; c++) {
+          var col = stack.columns[c];
+          if (!col || !col.cards) continue;
+          for (var i = 0; i < col.cards.length; i++) {
+            var card = col.cards[i];
+            if (String(card.id) === String(cardId)) {
+              return {
+                rowIndex: r,
+                stackIndex: s,
+                colIndex: c,
+                cardIndex: i,
+                column: col,
+                card: card
+              };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function parseMarkdownTarget(rawTarget) {
+    var trimmed = String(rawTarget || '').trim();
+    var title = '';
+    var titleMatch = trimmed.match(/^(.*?)(\s+(&quot;|")[^"]*(&quot;|"))$/);
+    if (titleMatch) {
+      trimmed = titleMatch[1].trim();
+      title = titleMatch[2].trim();
+    }
+    return {
+      path: trimmed,
+      title: title
+    };
+  }
+
+  function normalizeMarkdownAttrValue(value) {
+    return String(value || '').trim().replace(/^['"]|['"]$/g, '');
+  }
+
+  function sanitizeCssLength(value) {
+    var normalized = normalizeMarkdownAttrValue(value);
+    if (!normalized) return '';
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) return normalized + 'px';
+    if (/^\d+(?:\.\d+)?(?:px|%|vh|vw|rem|em)$/.test(normalized)) return normalized;
+    if (normalized === 'auto') return normalized;
+    return '';
+  }
+
+  function parseMarkdownImageAttributes(attrText) {
+    var raw = String(attrText || '').trim();
+    var parsed = {
+      raw: raw,
+      values: {},
+      classes: []
+    };
+    if (!raw) return parsed;
+
+    var body = raw.replace(/^\{\s*|\s*\}$/g, '');
+    body.replace(/(^|\s)\.([a-zA-Z0-9_-]+)/g, function (_, __, className) {
+      parsed.classes.push(className.toLowerCase());
+      return _;
+    });
+    body.replace(/([a-zA-Z_:][\w:-]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s}]+))/g, function (_, key, __, doubleQuoted, singleQuoted, bareValue) {
+      parsed.values[key.toLowerCase()] = normalizeMarkdownAttrValue(doubleQuoted || singleQuoted || bareValue || '');
+      return _;
+    });
+    return parsed;
+  }
+
+  var KNOWN_EXTERNAL_EMBED_PATTERNS = [
+    'miro.com/app/live-embed',
+    'miro.com/app/embed',
+    'figma.com/embed',
+    'figma.com/file',
+    'figma.com/proto',
+    'youtube.com/embed',
+    'youtube-nocookie.com/embed',
+    'youtu.be',
+    'vimeo.com/video',
+    'player.vimeo.com',
+    'codepen.io/*/embed',
+    'codesandbox.io/embed',
+    'codesandbox.io/s',
+    'stackblitz.com/edit',
+    'jsfiddle.net/*/embedded',
+    'docs.google.com/presentation',
+    'docs.google.com/document',
+    'docs.google.com/spreadsheets',
+    'notion.so',
+    'airtable.com/embed',
+    'loom.com/embed',
+    'loom.com/share',
+    'prezi.com/p/embed',
+    'prezi.com/v/embed',
+    'ars.particify.de/present'
+  ];
+
+  function isExternalHttpUrl(value) {
+    return /^https?:\/\//i.test(String(value || ''));
+  }
+
+  function isKnownExternalEmbedUrl(url) {
+    if (!isExternalHttpUrl(url)) return false;
+    try {
+      var parsed = new URL(url);
+      var hostPath = (parsed.host + parsed.pathname).toLowerCase();
+      for (var i = 0; i < KNOWN_EXTERNAL_EMBED_PATTERNS.length; i++) {
+        var pattern = KNOWN_EXTERNAL_EMBED_PATTERNS[i].toLowerCase();
+        var regex = new RegExp('^' + escapeRegex(pattern).replace(/\\\*/g, '[^/]+'));
+        if (regex.test(hostPath)) return true;
+      }
+    } catch (e) {
+      return false;
+    }
+    return false;
+  }
+
+  function shouldRenderExternalEmbed(url, imageAttrs) {
+    if (isKnownExternalEmbedUrl(url)) return true;
+    if (!imageAttrs) return false;
+    if (imageAttrs.classes.indexOf('embed') !== -1) return true;
+    var embedValue = imageAttrs.values.embed;
+    return embedValue != null && embedValue !== '' && embedValue !== 'false' && embedValue !== '0';
+  }
+
+  function renderBoardFileLinkHtml(filePath, boardId, labelHtml, titleText, extraClass) {
+    var normalizedPath = decodeHtmlEntities(String(filePath || '').trim());
+    if (!normalizedPath) return labelHtml || '';
+    var className = 'markdown-file-link';
+    if (extraClass) className += ' ' + extraClass;
+    var boardAttr = boardId ? ' data-board-id="' + escapeAttr(boardId) + '"' : '';
+    var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
+    return '<a href="#" class="' + className + '"' + boardAttr +
+      ' data-file-path="' + escapeAttr(normalizedPath) + '"' +
+      ' data-original-href="' + escapeAttr(normalizedPath) + '"' +
+      titleAttr + '>' + labelHtml + '</a>';
+  }
+
+  function renderIncludeDirectiveHtml(rawPath, boardId, extraClass) {
+    var includePath = decodeHtmlEntities(String(rawPath || '').trim());
+    if (!includePath) return '<span class="broken-include-placeholder">!()!</span>';
+    var displayName = getDisplayNameFromPath(includePath) || includePath;
+    return renderBoardFileLinkHtml(
+      includePath,
+      boardId,
+      '!(' + escapeHtml(displayName) + ')!',
+      'Include: ' + includePath,
+      extraClass || 'include-filename-link'
+    );
+  }
+
+  function renderWikiLinkHtml(documentName, labelHtml, options) {
+    options = options || {};
+    var resolved = resolveWikiDocument(documentName);
+    var containerClass = 'wiki-link-container';
+    var boardAttr = '';
+    if (resolved.kind === 'missing') containerClass += ' wiki-broken';
+    if (resolved.boardId) boardAttr = ' data-board-id="' + escapeAttr(resolved.boardId) + '"';
+    return '<span class="' + containerClass + '" data-document="' + escapeAttr(documentName) + '"' + boardAttr + '>' +
+      '<a href="#" class="wiki-link" data-document="' + escapeAttr(documentName) + '"' + boardAttr + ' title="Wiki link: ' + escapeAttr(documentName) + '">' + labelHtml + '</a>' +
+      (options.withMenu ? '<button class="wiki-menu-btn" data-action="wiki-menu" title="Wiki link options">☰</button>' : '') +
+      '</span>';
+  }
+
+  function renderTemporalTagHtml(tag) {
+    var temporal = describeTemporalTag(tag);
+    if (!temporal) return escapeHtml(tag);
+    return '<span class="temporal-tag kanban-temporal-tag kanban-temporal-' + temporal.type + '" data-temporal-type="' + temporal.type + '" title="' + escapeAttr(temporal.resolved) + '">' + escapeHtml(tag) + '</span>';
+  }
+
+  function getMarkdownMediaStyleAttr(imageAttrs, options) {
+    options = options || {};
+    if (!imageAttrs) return '';
+    var styles = [];
+    var width = sanitizeCssLength(imageAttrs.values.width);
+    var height = sanitizeCssLength(imageAttrs.values.height);
+    if (width) styles.push('width:' + width);
+    if (height) styles.push('height:' + height);
+    if (!options.allowHeightOnImages && height && styles.length === 1) {
+      return ' style="' + escapeAttr('max-height:' + height) + '"';
+    }
+    if (height && !options.allowHeightOnImages) {
+      styles.push('max-height:' + height);
+    }
+    return styles.length > 0 ? ' style="' + escapeAttr(styles.join(';')) + '"' : '';
+  }
+
+  function buildMarkdownEmbed(alt, path, title, attrsText) {
+    return '![' + (alt || '') + '](' + path + (title ? ' ' + title : '') + ')' + (attrsText || '');
+  }
+
+  function replaceNthMarkdownEmbed(content, targetIndex, replacer) {
+    var matchIndex = 0;
+    return String(content || '').replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (match, alt, rawTarget, rawAttrs) {
+      var currentIndex = matchIndex++;
+      if (currentIndex !== targetIndex) return match;
+      var parsed = parseMarkdownTarget(rawTarget);
+      return replacer({
+        match: match,
+        alt: alt,
+        rawTarget: rawTarget,
+        rawAttrs: rawAttrs || '',
+        imageAttrs: parseMarkdownImageAttributes(rawAttrs),
+        path: parsed.path,
+        title: parsed.title
+      });
+    });
+  }
+
+  function normalizeCardContentAfterInlineMutation(content) {
+    return String(content || '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^\s+$/gm, '');
+  }
+
+  async function mutateEmbedSource(container, contentMutator) {
+    if (!container || typeof contentMutator !== 'function') return false;
+    if (currentCardEditor && currentCardEditor.preview && currentCardEditor.preview.contains(container)) {
+      var currentValue = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
+      var nextEditorValue = contentMutator(currentValue);
+      if (typeof nextEditorValue !== 'string' || nextEditorValue === currentValue) return false;
+      currentCardEditor.textarea.value = normalizeCardContentAfterInlineMutation(nextEditorValue);
+      refreshCardEditorPreview();
+      return true;
+    }
+
+    var cardEl = container.closest('.card[data-card-id]');
+    var cardId = cardEl ? cardEl.getAttribute('data-card-id') : '';
+    var cardRef = findCardRefById(cardId);
+    if (!cardRef || !cardRef.card) return false;
+    var nextValue = contentMutator(cardRef.card.content || '');
+    if (typeof nextValue !== 'string' || nextValue === cardRef.card.content) return false;
+    pushUndo();
+    cardRef.card.content = normalizeCardContentAfterInlineMutation(nextValue);
+    return persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+  }
+
+  function renderEmbedPreviewContent(kind, boardId, filePath, content) {
+    var safeContent = String(content || '');
+    if (safeContent.length > 12000) {
+      safeContent = safeContent.slice(0, 12000) + '\n\n[Preview truncated]';
+    }
+    if (kind === 'markdown') {
+      return '<div class="embed-inline-markdown">' +
+        renderCardContent(safeContent, boardId, {
+          footnoteDefs: {},
+          footnoteOrder: [],
+          abbrDefs: {},
+          embedCounter: 0
+        }, { nested: true }) +
+        '</div>';
+    }
+    return '<pre class="embed-text-preview">' + escapeHtml(safeContent) + '</pre>';
+  }
+
+  async function enhanceEmbeddedContent(root) {
+    if (!root || !root.querySelectorAll) return;
+    var containers = root.querySelectorAll('.embed-container[data-file-path][data-board-id]');
+    for (var i = 0; i < containers.length; i++) {
+      enhanceSingleEmbedContainer(containers[i]);
+    }
+  }
+
+  async function enhanceSingleEmbedContainer(container) {
+    if (!container || container.getAttribute('data-embed-enhanced') === '1') return;
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    var filePath = container.getAttribute('data-file-path') || '';
+    if (!boardId || !filePath) return;
+    var previewKind = getEmbedPreviewKind(filePath);
+    if (!previewKind) return;
+
+    container.setAttribute('data-embed-enhanced', '1');
+    var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
+    var previewEl = document.createElement(previewKind === 'pdf' ? 'iframe' : 'div');
+    previewEl.className = 'embed-preview embed-preview-' + previewKind;
+
+    if (previewKind === 'pdf') {
+      previewEl.setAttribute('loading', 'lazy');
+      previewEl.setAttribute('title', filePath.split('/').pop() || 'PDF preview');
+      previewEl.setAttribute('src', LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0');
+      container.appendChild(previewEl);
+      return;
+    }
+
+    if (previewKind === 'diagram') {
+      var diagramLabel = getFileExtension(filePath) === 'excalidraw' ? 'Excalidraw file' : 'Draw.io file';
+      previewEl.innerHTML =
+        '<div class="embed-diagram-file">' +
+          '<div class="embed-diagram-label">' + escapeHtml(diagramLabel) + '</div>' +
+          '<div class="embed-diagram-path">' + escapeHtml(filePath.split('/').pop() || filePath) + '</div>' +
+        '</div>';
+      container.appendChild(previewEl);
+      return;
+    }
+
+    previewEl.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
+    container.appendChild(previewEl);
+    try {
+      var cached = embedPreviewCache[cacheKey];
+      if (!cached) {
+        var response = await fetch(LexeraApi.fileUrl(boardId, filePath));
+        if (!response.ok) throw new Error('Failed to load file preview');
+        var text = await response.text();
+        cached = renderEmbedPreviewContent(previewKind, boardId, filePath, text);
+        embedPreviewCache[cacheKey] = cached;
+      }
+      previewEl.innerHTML = cached;
+      if (pendingMermaidRenders.length > 0) {
+        if (mermaidReady) processMermaidQueue();
+        else loadMermaidLibrary();
+      }
+    } catch (err) {
+      previewEl.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
+    }
+  }
+
+  function resolveBoardPath(boardId, filePath, toMode) {
+    return LexeraApi.request('/boards/' + boardId + '/convert-path', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cardId: '', path: filePath, to: toMode }),
+    }).then(function (res) {
+      return res && res.path ? res.path : filePath;
+    }).catch(function () {
+      return filePath;
+    });
+  }
+
+  function openBoardFileInSystem(boardId, filePath) {
+    if (!filePath) return;
+    if (filePath.charAt(0) === '/' || !boardId) {
+      openInSystem(filePath);
+      return;
+    }
+    resolveBoardPath(boardId, filePath, 'absolute').then(function (absPath) {
+      openInSystem(absPath);
+    });
+  }
+
+  async function showBoardFilePreview(boardId, filePath) {
+    var ext = getFileExtension(filePath);
+    if (!filePath || !boardId) return;
+    if (!(ext === 'pdf' || isTextPreviewExtension(ext))) {
+      openBoardFileInSystem(boardId, filePath);
+      return;
+    }
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'modal-dialog file-preview-dialog';
+    dialog.innerHTML =
+      '<div class="modal-title">' + escapeHtml(filePath.split('/').pop() || filePath) + '</div>' +
+      '<div class="file-preview-body"><div class="embed-preview-loading">Loading preview...</div></div>' +
+      '<div class="hidden-items-footer">' +
+        '<button class="board-action-btn" data-file-preview-action="open-system">Open in System App</button>' +
+        '<button class="board-action-btn" data-file-preview-action="close">Close</button>' +
+      '</div>';
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    var body = dialog.querySelector('.file-preview-body');
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) overlay.remove();
+    });
+    dialog.addEventListener('click', function (e) {
+      var actionBtn = e.target.closest('[data-file-preview-action]');
+      if (!actionBtn) return;
+      var action = actionBtn.getAttribute('data-file-preview-action');
+      if (action === 'close') {
+        overlay.remove();
+      } else if (action === 'open-system') {
+        openBoardFileInSystem(boardId, filePath);
+      }
+    });
+
+    if (ext === 'pdf') {
+      body.innerHTML = '<iframe class="file-preview-frame" src="' + LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0"></iframe>';
+      return;
+    }
+
+    try {
+      var response = await fetch(LexeraApi.fileUrl(boardId, filePath));
+      if (!response.ok) throw new Error('Failed to load preview');
+      var text = await response.text();
+      if (isMarkdownPreviewExtension(ext)) {
+        body.innerHTML = '<div class="file-preview-markdown">' +
+          renderCardContent(text, boardId, {
+            footnoteDefs: {},
+            footnoteOrder: [],
+            abbrDefs: {},
+            embedCounter: 0
+          }, { nested: true }) +
+          '</div>';
+        enhanceEmbeddedContent(body);
+      } else {
+        body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
+      }
+      if (pendingMermaidRenders.length > 0) {
+        if (mermaidReady) processMermaidQueue();
+        else loadMermaidLibrary();
+      }
+    } catch (err) {
+      body.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
+    }
+  }
 
   function closeEmbedMenu() {
     if (activeEmbedMenu) {
@@ -8981,6 +9563,48 @@ const LexeraDashboard = (function () {
   }
 
   document.addEventListener('click', function (e) {
+    var wikiMenuBtn = e.target.closest('.wiki-menu-btn');
+    if (wikiMenuBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      var wikiMenuContainer = wikiMenuBtn.closest('.wiki-link-container');
+      if (wikiMenuContainer) showWikiMenu(wikiMenuContainer, wikiMenuBtn);
+      return;
+    }
+
+    var wikiLink = e.target.closest('.wiki-link');
+    if (wikiLink) {
+      e.preventDefault();
+      e.stopPropagation();
+      openWikiDocument(wikiLink.getAttribute('data-document') || wikiLink.textContent || '');
+      return;
+    }
+
+    var fileLink = e.target.closest('.markdown-file-link');
+    if (fileLink) {
+      e.preventDefault();
+      e.stopPropagation();
+      showBoardFilePreview(
+        fileLink.getAttribute('data-board-id') || activeBoardId || '',
+        fileLink.getAttribute('data-file-path') || fileLink.getAttribute('data-original-href') || ''
+      );
+      return;
+    }
+
+    var embedFileLink = e.target.closest('.embed-file-link');
+    if (embedFileLink) {
+      var embedContainer = embedFileLink.closest('.embed-container');
+      if (embedContainer) {
+        e.preventDefault();
+        e.stopPropagation();
+        showBoardFilePreview(
+          embedContainer.getAttribute('data-board-id') || activeBoardId || '',
+          embedContainer.getAttribute('data-file-path') || ''
+        );
+        return;
+      }
+    }
+
     // Handle burger menu button clicks for embeds
     if (e.target.classList.contains('embed-menu-btn')) {
       e.stopPropagation();
@@ -9008,17 +9632,27 @@ const LexeraDashboard = (function () {
 
   // Right-click on embeds and file links → native context menu
   document.addEventListener('contextmenu', function (e) {
+    var wikiContainer = e.target.closest('.wiki-link-container');
+    if (wikiContainer) {
+      var wikiLink = wikiContainer.querySelector('.wiki-link');
+      if (!wikiLink) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showWikiMenu(wikiContainer, wikiLink);
+      return;
+    }
+
     var container = e.target.closest('.embed-container');
-    var link = !container ? e.target.closest('a[href]') : null;
+    var link = !container ? e.target.closest('.markdown-file-link, a[href]') : null;
     if (!container && !link) return;
 
     var filePath = container
       ? container.getAttribute('data-file-path')
-      : link.getAttribute('href');
+      : (link.getAttribute('data-file-path') || link.getAttribute('data-original-href') || link.getAttribute('href'));
     if (!filePath) return;
 
     // Skip web URLs — only handle file paths
-    if (/^https?:\/\//.test(filePath)) return;
+    if (/^(https?:\/\/|mailto:|#)/.test(filePath)) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -9034,11 +9668,7 @@ const LexeraDashboard = (function () {
 
       function resolveAndRun(fn) {
         if (filePath.charAt(0) !== '/' && boardId) {
-          LexeraApi.request('/boards/' + boardId + '/convert-path', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cardId: '', path: filePath, to: 'absolute' }),
-          }).then(function (res) { fn(res.path); }).catch(function () { fn(filePath); });
+          resolveBoardPath(boardId, filePath, 'absolute').then(function (resolvedPath) { fn(resolvedPath); });
         } else {
           fn(filePath);
         }
@@ -9148,6 +9778,65 @@ const LexeraDashboard = (function () {
     });
   }
 
+  function showWikiMenu(container, btn) {
+    if (!container || !btn) return;
+    var documentName = container.getAttribute('data-document') || '';
+    var resolved = resolveWikiDocument(documentName);
+    var btnRect = btn.getBoundingClientRect();
+    var otherPane = activeSplitPane === 'a' ? 'b' : 'a';
+    var menuItems = [];
+
+    if (resolved.kind === 'board' && resolved.boardId) {
+      menuItems.push({ label: getBoardDisplayName(resolved.board) || resolved.document, disabled: true });
+      menuItems.push({ id: 'open', label: 'Open Linked Board' });
+      if (!embeddedMode) {
+        menuItems.push({
+          id: 'open-other-pane',
+          label: splitViewMode === 'single' ? 'Open in Split View' : 'Open in Other Pane (' + otherPane.toUpperCase() + ')'
+        });
+      }
+      menuItems.push({ id: 'search', label: 'Search for Reference' });
+    } else if (resolved.kind === 'tag') {
+      menuItems.push({ label: resolved.document, disabled: true });
+      menuItems.push({ id: 'search', label: 'Search Tag' });
+    } else {
+      menuItems.push({ label: 'No matching board', disabled: true });
+      menuItems.push({ id: 'search', label: 'Search for Matching Board' });
+    }
+
+    menuItems.push({ separator: true });
+    menuItems.push({ id: 'copy', label: 'Copy Wiki Target' });
+
+    showNativeMenu(menuItems, btnRect.right, btnRect.bottom).then(function (action) {
+      if (action) handleWikiAction(action, container);
+    });
+  }
+
+  function handleWikiAction(action, container) {
+    if (!container || !action) return;
+    var documentName = container.getAttribute('data-document') || '';
+    if (!documentName) return;
+    if (action === 'open') {
+      openWikiDocument(documentName);
+      return;
+    }
+    if (action === 'open-other-pane') {
+      openWikiDocument(documentName, { pane: activeSplitPane === 'a' ? 'b' : 'a' });
+      return;
+    }
+    if (action === 'search') {
+      openWikiSearch(documentName);
+      return;
+    }
+    if (action === 'copy' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(documentName).then(function () {
+        showNotification('Wiki target copied to clipboard');
+      }).catch(function () {
+        showNotification('Failed to copy wiki target');
+      });
+    }
+  }
+
   function showEmbedMenu(container, btn) {
     var filePath = container.getAttribute('data-file-path');
     var isAbsolute = filePath && filePath.charAt(0) === '/';
@@ -9171,6 +9860,7 @@ const LexeraDashboard = (function () {
     if (!container) { closeEmbedMenu(); return; }
     var filePath = container.getAttribute('data-file-path');
     var boardId = container.getAttribute('data-board-id');
+    var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
 
     if (action === 'refresh') {
       var media = container.querySelector('img, video, audio');
@@ -9179,6 +9869,10 @@ const LexeraDashboard = (function () {
         media.setAttribute('src', src + '?t=' + Date.now());
       }
       container.classList.remove('embed-broken');
+      container.removeAttribute('data-embed-enhanced');
+      var preview = container.querySelector('.embed-preview');
+      if (preview) preview.remove();
+      enhanceSingleEmbedContainer(container);
       closeEmbedMenu();
 
     } else if (action === 'info') {
@@ -9222,33 +9916,14 @@ const LexeraDashboard = (function () {
     } else if (action === 'open-system') {
       closeEmbedMenu();
       if (!filePath) return;
-      // Resolve to absolute path first if relative
-      if (filePath.charAt(0) !== '/' && boardId) {
-        LexeraApi.request('/boards/' + boardId + '/convert-path', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cardId: '', path: filePath, to: 'absolute' }),
-        }).then(function (res) {
-          openInSystem(res.path);
-        }).catch(function () {
-          openInSystem(filePath);
-        });
-      } else {
-        openInSystem(filePath);
-      }
+      openBoardFileInSystem(boardId, filePath);
 
     } else if (action === 'show-finder') {
       closeEmbedMenu();
       if (!filePath) return;
       if (filePath.charAt(0) !== '/' && boardId) {
-        LexeraApi.request('/boards/' + boardId + '/convert-path', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cardId: '', path: filePath, to: 'absolute' }),
-        }).then(function (res) {
-          showInFinder(res.path);
-        }).catch(function () {
-          showInFinder(filePath);
+        resolveBoardPath(boardId, filePath, 'absolute').then(function (absPath) {
+          showInFinder(absPath);
         });
       } else {
         showInFinder(filePath);
@@ -9274,35 +9949,31 @@ const LexeraDashboard = (function () {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
       var isAbsolute = filePath.charAt(0) === '/';
-      LexeraApi.request('/boards/' + boardId + '/convert-path', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId: '', path: filePath, to: isAbsolute ? 'relative' : 'absolute' }),
-      }).then(function (res) {
-        if (res.changed) {
-          container.setAttribute('data-file-path', res.path);
-          var media = container.querySelector('img, video, audio');
-          if (media) {
-            var newSrc = LexeraApi.fileUrl(boardId, res.path);
-            media.setAttribute('src', newSrc);
-          }
-        }
+      resolveBoardPath(boardId, filePath, isAbsolute ? 'relative' : 'absolute').then(function (nextPath) {
+        if (!nextPath || nextPath === filePath) return;
+        mutateEmbedSource(container, function (content) {
+          return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
+            return buildMarkdownEmbed(embed.alt, nextPath, embed.title, embed.rawAttrs);
+          });
+        });
       }).catch(function () { /* silently fail */ });
 
     } else if (action === 'delete') {
       closeEmbedMenu();
-      container.remove();
+      mutateEmbedSource(container, function (content) {
+        return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function () {
+          return '';
+        });
+      });
 
     } else if (action && action.indexOf('pick-path:') === 0) {
       var newPath = action.substring(10);
       closeEmbedMenu();
-      container.setAttribute('data-file-path', newPath);
-      var media = container.querySelector('img, video, audio');
-      if (media && boardId) {
-        var newSrc = LexeraApi.fileUrl(boardId, newPath);
-        media.setAttribute('src', newSrc);
-      }
-      container.classList.remove('embed-broken');
+      mutateEmbedSource(container, function (content) {
+        return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
+          return buildMarkdownEmbed(embed.alt, newPath, embed.title, embed.rawAttrs);
+        });
+      });
     }
   }
 
@@ -9426,9 +10097,18 @@ const LexeraDashboard = (function () {
   }
 
   function getFileExtension(path) {
-    var dot = path.lastIndexOf('.');
-    if (dot === -1 || dot === path.length - 1) return '';
-    return path.substring(dot + 1).toLowerCase();
+    var value = String(path || '').trim();
+    if (!value) return '';
+    try {
+      if (isExternalHttpUrl(value)) value = new URL(value).pathname || '';
+    } catch (e) {
+      // Fall back to simple path parsing below.
+    }
+    value = value.split('#')[0].split('?')[0];
+    var fileName = getFileNameFromPath(value);
+    var dot = fileName.lastIndexOf('.');
+    if (dot <= 0 || dot === fileName.length - 1) return '';
+    return fileName.substring(dot + 1).toLowerCase();
   }
 
   // --- Card Collapse ---
@@ -9563,19 +10243,66 @@ const LexeraDashboard = (function () {
     return '';
   }
 
-  function renderTitleInline(text) {
+  function renderTitleInline(text, boardId) {
+    boardId = boardId || activeBoardId || '';
     var safe = escapeHtml(text);
     // Strip image/embed markdown
-    safe = safe.replace(/!\[[^\]]*\]\([^)]+\)/g, '');
+    safe = safe.replace(/!\[[^\]]*\]\([^)]+\)(\{[^}]+\})?/g, '');
+    // Include directives: !!!include(path)!!!
+    safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
+      return renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link');
+    });
+    // Links: [text](url)
+    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, rawHref) {
+      var parsed = parseMarkdownTarget(rawHref);
+      var href = parsed.path;
+      var titleText = parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '';
+      var titleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
+      var isExternal = /^https?:\/\//.test(href);
+      var isAnchor = href.indexOf('#') === 0;
+      var isMailto = href.indexOf('mailto:') === 0;
+      if (!isExternal && !isAnchor && !isMailto && href) {
+        return renderBoardFileLinkHtml(href, boardId, label, titleText, '');
+      }
+      var safeHref = escapeAttr(href);
+      var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+      return '<a href="' + safeHref + '"' + titleAttr + targetAttr + '>' + label + '</a>';
+    });
+    // Wiki links: [[document]] or [[document|title]]
+    safe = safe.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, function (_, rawDocument, rawTitle) {
+      var documentName = decodeHtmlEntities(rawDocument).trim();
+      var label = rawTitle ? rawTitle.trim() : rawDocument.trim();
+      return renderWikiLinkHtml(documentName, label, { withMenu: false });
+    });
     // Tags with colored badges
     safe = safe.replace(/(^|\s)(#[a-zA-Z][\w-]*)/g, function(_, pre, tag) {
       var color = getTagColor(tag);
       return pre + '<span class="tag" style="background:' + color + ';color:#fff">' + tag + '</span>';
     });
+    // Temporal tags
+    safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
+      return pre + renderTemporalTagHtml(tag);
+    });
     // Bold
     safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     // Italic
     safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Strikethrough
+    safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+    // Mark
+    safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+    // Underline
+    safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {
+      return pre + '<u>' + value + '</u>';
+    });
+    // Subscript
+    safe = safe.replace(/(^|[^~])~([^~]+)~(?=[^~]|$)/g, function (_, pre, value) {
+      return pre + '<sub>' + value + '</sub>';
+    });
+    // Superscript
+    safe = safe.replace(/(^|[^^])\^([^^]+)\^(?=[^^]|$)/g, function (_, pre, value) {
+      return pre + '<sup>' + value + '</sup>';
+    });
     // Inline code
     safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
     return safe;
@@ -9930,6 +10657,7 @@ const LexeraDashboard = (function () {
 
   function renderInline(text, boardId, renderState) {
     renderState = renderState || {};
+    if (typeof renderState.embedCounter !== 'number') renderState.embedCounter = 0;
     var source = text || '';
     var htmlTokens = [];
     if (getHtmlContentRenderMode() === 'html') {
@@ -9941,46 +10669,93 @@ const LexeraDashboard = (function () {
     }
     var safe = escapeHtml(source);
 
-    // Embeds: ![alt](path "optional title") — wrap in embed container with media category detection
-    safe = safe.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (_, alt, rawSrc) {
-      // Strip optional title: path "title" or path &quot;title&quot;
-      var src = rawSrc.replace(/\s+(&quot;|")[^"]*(&quot;|")$/, '').trim();
-      var ext = getFileExtension(src);
+    // Embeds: ![alt](path "optional title"){height=...}
+    safe = safe.replace(/!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/g, function (_, alt, rawSrc, rawAttrs) {
+      var parsedTarget = parseMarkdownTarget(rawSrc);
+      var filePath = parsedTarget.path;
+      var titleText = decodeHtmlEntities(normalizeMarkdownAttrValue(parsedTarget.title));
+      var imageAttrs = parseMarkdownImageAttributes(rawAttrs);
+      var ext = getFileExtension(filePath);
       var category = getMediaCategory(ext);
-      var isExternal = src.indexOf('http') === 0 || src.indexOf('data:') === 0;
-      var filePath = src;
+      var isExternalHttp = isExternalHttpUrl(filePath);
+      var isExternal = isExternalHttp || filePath.indexOf('data:') === 0;
 
-      // Relative paths go through the API file endpoint
-      if (!isExternal && boardId) {
-        src = LexeraApi.fileUrl(boardId, rawSrc);
+      if (isExternalHttp && shouldRenderExternalEmbed(filePath, imageAttrs)) {
+        var embedWidth = sanitizeCssLength(imageAttrs.values.width) || '100%';
+        var embedHeight = sanitizeCssLength(imageAttrs.values.height) || '500px';
+        var externalCaptionHtml = titleText ? '<figcaption class="media-caption external-embed-caption">' + renderInline(titleText, boardId, renderState) + '</figcaption>' : '';
+        var externalEmbedHtml = '<span class="external-embed-container">' +
+          '<iframe class="external-embed-frame" src="' + escapeAttr(filePath) + '" title="' + escapeAttr(decodeHtmlEntities(alt || titleText || filePath)) + '" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0" style="' + escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>' +
+          '</span>';
+        if (externalCaptionHtml) {
+          return '<figure class="media-figure">' + externalEmbedHtml + externalCaptionHtml + '</figure>';
+        }
+        return externalEmbedHtml;
       }
 
+      var src = filePath;
+      if (!isExternal && boardId) {
+        src = LexeraApi.fileUrl(boardId, filePath);
+      }
+
+      var mediaStyleAttr = getMarkdownMediaStyleAttr(imageAttrs, { allowHeightOnImages: true });
       var inner = '';
       if (category === 'image') {
-        inner = '<img src="' + src + '" alt="' + alt + '" loading="lazy" onerror="this.parentElement.classList.add(\'embed-broken\')">';
+        var imageTitleAttr = titleText ? ' title="' + escapeAttr(titleText) + '"' : '';
+        inner = '<img src="' + src + '" alt="' + alt + '"' + imageTitleAttr + ' loading="lazy"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')">';
       } else if (category === 'video') {
-        inner = '<video controls preload="metadata" src="' + src + '" onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
+        inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
       } else if (category === 'audio') {
-        inner = '<audio controls preload="metadata" src="' + src + '" onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
+        inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
       } else if (category === 'document') {
-        var filename = rawSrc.split('/').pop();
-        inner = '<span class="embed-file-link">&#128196; ' + escapeHtml(filename) + '</span>';
+        var documentFilename = filePath.split('/').pop();
+        inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128196; ' + escapeHtml(documentFilename) + '</span>';
       } else {
-        var filename = rawSrc.split('/').pop();
-        inner = '<span class="embed-file-link">&#128206; ' + escapeHtml(filename) + '</span>';
+        var filename = filePath.split('/').pop();
+        inner = '<span class="embed-file-link"' + mediaStyleAttr + '>&#128206; ' + escapeHtml(filename) + '</span>';
       }
 
-      return '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '">' +
+      var embedIndex = renderState.embedCounter++;
+      var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '">' +
         inner +
         '<button class="embed-menu-btn" title="Embed actions">&#8942;</button>' +
         '</span>';
+      if (titleText) {
+        return '<figure class="media-figure">' +
+          embedHtml +
+          '<figcaption class="media-caption">' + renderInline(titleText, boardId, renderState) + '</figcaption>' +
+          '</figure>';
+      }
+      return embedHtml;
+    });
+
+    // Include directives: !!!include(path)!!!
+    safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
+      return renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link');
     });
 
     // Links: [text](url)
-    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, rawHref) {
+      var parsed = parseMarkdownTarget(rawHref);
+      var href = parsed.path;
+      var titleAttr = parsed.title ? ' title="' + escapeAttr(parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '')) + '"' : '';
+      var isExternal = /^https?:\/\//.test(href);
+      var isAnchor = href.indexOf('#') === 0;
+      var isMailto = href.indexOf('mailto:') === 0;
+      if (!isExternal && !isAnchor && !isMailto && href && boardId) {
+        return renderBoardFileLinkHtml(href, boardId, label, parsed.title ? parsed.title.replace(/^(&quot;|")|(&quot;|")$/g, '') : '', '');
+      }
+      var safeHref = escapeAttr(href);
+      var targetAttr = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+      return '<a href="' + safeHref + '"' + titleAttr + targetAttr + '>' + label + '</a>';
+    });
 
-    // Wiki links: [[text]]
-    safe = safe.replace(/\[\[([^\]]+)\]\]/g, '<span class="wiki-link">$1</span>');
+    // Wiki links: [[document]] or [[document|title]]
+    safe = safe.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, function (_, rawDocument, rawTitle) {
+      var documentName = decodeHtmlEntities(rawDocument).trim();
+      var label = rawTitle ? rawTitle.trim() : rawDocument.trim();
+      return renderWikiLinkHtml(documentName, label, { withMenu: true });
+    });
 
     // Footnote references: [^1]
     safe = safe.replace(/\[\^([^\]]+)\]/g, function (_, footnoteId) {
@@ -10029,10 +10804,9 @@ const LexeraDashboard = (function () {
       return pre + '<span class="tag" style="background:' + color + ';color:#fff">' + tag + '</span>';
     });
 
-    // Temporal tags: @today, @tomorrow, @date(YYYY-MM-DD), @days+N, @weekday
-    safe = safe.replace(/(^|\s)(@(?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|monday|tuesday|wednesday|thursday|friday|saturday|sunday))/gi, function (_, pre, tag) {
-      var resolved = resolveTemporalTag(tag);
-      return pre + '<span class="temporal-tag" title="' + resolved + '">' + tag + '</span>';
+    // Temporal tags: legacy `!` prefix and package `@` prefix for dates, weeks, weekdays, times, and slots.
+    safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
+      return pre + renderTemporalTagHtml(tag);
     });
 
     for (var i = 0; i < htmlTokens.length; i++) {
@@ -10043,27 +10817,63 @@ const LexeraDashboard = (function () {
     return safe;
   }
 
+  function getTemporalTagType(tag) {
+    var value = String(tag || '').trim();
+    if (!value) return '';
+    var body = value.charAt(0) === '!' || value.charAt(0) === '@' ? value.slice(1) : value;
+    var lower = body.toLowerCase();
+    if (/^(today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+)$/.test(lower)) return 'date';
+    if (/^(?:\d{4})[-.]?(?:w|kw)\d{1,2}$/i.test(body) || /^(?:w|kw)\d{1,2}$/i.test(body)) return 'week';
+    if (/^(mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday)$/i.test(body)) return 'weekday';
+    if (/^:\d{1,2}-:\d{1,2}$/i.test(body)) return 'minuteSlot';
+    if (/^\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?$/i.test(body)) return 'timeSlot';
+    if (/^\d{1,2}(?::\d{2})?(?:am|pm)?$/i.test(body)) return 'time';
+    if (/^\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?$/i.test(body)) return 'date';
+    return '';
+  }
+
+  function describeTemporalTag(tag) {
+    var type = getTemporalTagType(tag);
+    if (!type) return null;
+    return {
+      type: type,
+      resolved: resolveTemporalTag(tag)
+    };
+  }
+
   function resolveTemporalTag(tag) {
-    var lower = tag.toLowerCase();
+    var raw = String(tag || '').trim();
+    var prefix = raw.charAt(0);
+    var lower = raw.toLowerCase();
+    var body = (prefix === '!' || prefix === '@') ? raw.slice(1) : raw;
+    var lowerBody = body.toLowerCase();
     var now = new Date();
     now.setHours(0, 0, 0, 0);
 
-    if (lower === '@today') return formatDate(now);
-    if (lower === '@tomorrow') { now.setDate(now.getDate() + 1); return formatDate(now); }
-    if (lower === '@yesterday') { now.setDate(now.getDate() - 1); return formatDate(now); }
+    if (lowerBody === 'today') return formatDate(now);
+    if (lowerBody === 'tomorrow') { now.setDate(now.getDate() + 1); return formatDate(now); }
+    if (lowerBody === 'yesterday') { now.setDate(now.getDate() - 1); return formatDate(now); }
 
-    var daysMatch = lower.match(/@days([+-])(\d+)/);
+    var daysMatch = lowerBody.match(/^days([+-])(\d+)$/);
     if (daysMatch) {
       var offset = parseInt(daysMatch[2], 10) * (daysMatch[1] === '+' ? 1 : -1);
       now.setDate(now.getDate() + offset);
       return formatDate(now);
     }
 
-    var dateMatch = tag.match(/@date\((\d{4}-\d{2}-\d{2})\)/i);
+    var dateMatch = body.match(/^date\((\d{4}-\d{2}-\d{2})\)$/i);
     if (dateMatch) return dateMatch[1];
 
-    var weekdays = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
-    var dayName = lower.substring(1); // strip @
+    var weekdays = {
+      sun: 0, sunday: 0,
+      mon: 1, monday: 1,
+      tue: 2, tuesday: 2,
+      wed: 3, wednesday: 3,
+      thu: 4, thursday: 4,
+      fri: 5, friday: 5,
+      sat: 6, saturday: 6
+    };
+    var dayName = lowerBody;
     if (weekdays[dayName] !== undefined) {
       var target = weekdays[dayName];
       var current = now.getDay();
@@ -10071,6 +10881,22 @@ const LexeraDashboard = (function () {
       if (diff <= 0) diff += 7;
       now.setDate(now.getDate() + diff);
       return formatDate(now);
+    }
+
+    if (/^(?:\d{4})[-.]?(?:w|kw)(\d{1,2})$/i.test(body) || /^(?:w|kw)(\d{1,2})$/i.test(body)) {
+      return 'Week ' + body.replace(/^(?:\d{4})[-.]?/i, '').toUpperCase();
+    }
+
+    if (/^:\d{1,2}-:\d{1,2}$/i.test(body) || /^\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?$/i.test(body)) {
+      return body;
+    }
+
+    if (/^\d{1,2}(?::\d{2})?(?:am|pm)?$/i.test(body)) {
+      return body;
+    }
+
+    if (/^\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?$/i.test(body)) {
+      return body;
     }
 
     return tag;

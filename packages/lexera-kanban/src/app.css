@@ -985,25 +985,24 @@ body.split-mode .layout > .main {
   background: rgba(0, 122, 204, 0.15);
 }
 
-/* Tree toggle icon: + when collapsed, · when expanded */
-.tree-toggle {
+/* Tree toggle icon: borderless inline +/− that blends with tree structure */
+.tree-toggle,
+.board-item-toggle {
   min-width: var(--hierarchy-btn-size);
   width: var(--hierarchy-btn-size);
   height: var(--hierarchy-btn-size);
   font-size: calc(12px * var(--ui-scale));
   font-weight: 700;
-  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
 }
-.tree-toggle::before { content: '+'; }
-.tree-toggle.expanded::before { content: '\2212'; }
-.board-item-toggle {
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
-}
-.board-item-toggle::before { content: '+'; font-size: calc(12px * var(--ui-scale)); }
-.board-item-toggle.expanded::before { content: '\2212'; font-size: calc(12px * var(--ui-scale)); }
+.tree-toggle:hover,
+.board-item-toggle:hover { color: var(--text-primary); }
+.tree-toggle::before,
+.board-item-toggle::before { content: '+'; }
+.tree-toggle.expanded::before,
+.board-item-toggle.expanded::before { content: '\2212'; }
 
 .tree-toggle-spacer {
   width: var(--hierarchy-btn-size);
@@ -2312,7 +2311,70 @@ u {
 .card strong { font-weight: 600; color: var(--text-bright); }
 .card em { font-style: italic; }
 .card s { opacity: 0.6; }
-.card .wiki-link { color: var(--accent); cursor: default; }
+.column-title .wiki-link-container,
+.card-title-display .wiki-link-container,
+.card .wiki-link-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: baseline;
+}
+
+.column-title .wiki-link,
+.card-title-display .wiki-link,
+.card .wiki-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.column-title .wiki-link:hover,
+.card-title-display .wiki-link:hover,
+.card .wiki-link:hover {
+  text-decoration: underline;
+}
+
+.card .wiki-menu-btn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card .wiki-link-container:hover .wiki-menu-btn,
+.card .wiki-link-container.wiki-broken .wiki-menu-btn {
+  opacity: 1;
+}
+
+.card .wiki-menu-btn:hover {
+  background: var(--accent-soft);
+  color: var(--text-bright);
+}
+
+.column-title .wiki-link-container.wiki-broken .wiki-link,
+.card-title-display .wiki-link-container.wiki-broken .wiki-link,
+.card .wiki-link-container.wiki-broken .wiki-link {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+.card .wiki-link-container.wiki-broken .wiki-menu-btn {
+  background: rgba(180, 60, 60, 0.22);
+  color: var(--danger);
+}
+
 .card blockquote {
   border-left: 2px solid var(--text-secondary);
   padding-left: 8px;
@@ -2325,12 +2387,66 @@ u {
   margin: 6px 0;
 }
 
-.card .temporal-tag {
+.card .media-figure {
+  display: block;
+  margin: 8px 0;
+}
+
+.card .media-caption {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.column-title .temporal-tag,
+.column-title .kanban-temporal-tag,
+.card-title-display .temporal-tag,
+.card-title-display .kanban-temporal-tag,
+.card .temporal-tag,
+.card .kanban-temporal-tag {
   display: inline;
-  color: #e0a040;
+  padding: 0 4px;
+  border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
   cursor: help;
+  border: 1px solid rgba(0, 122, 204, 0.35);
+  background: rgba(0, 122, 204, 0.08);
+  color: #5ca9df;
+}
+
+.column-title .kanban-temporal-date,
+.column-title .kanban-temporal-week,
+.card-title-display .kanban-temporal-date,
+.card-title-display .kanban-temporal-week,
+.card .kanban-temporal-date,
+.card .kanban-temporal-week {
+  border-color: rgba(0, 122, 204, 0.35);
+  background: rgba(0, 122, 204, 0.08);
+  color: #5ca9df;
+}
+
+.column-title .kanban-temporal-weekday,
+.card-title-display .kanban-temporal-weekday,
+.card .kanban-temporal-weekday {
+  border-color: rgba(155, 126, 212, 0.35);
+  background: rgba(155, 126, 212, 0.1);
+  color: #b89af2;
+}
+
+.column-title .kanban-temporal-time,
+.column-title .kanban-temporal-timeSlot,
+.column-title .kanban-temporal-minuteSlot,
+.card-title-display .kanban-temporal-time,
+.card-title-display .kanban-temporal-timeSlot,
+.card-title-display .kanban-temporal-minuteSlot,
+.card .kanban-temporal-time,
+.card .kanban-temporal-timeSlot,
+.card .kanban-temporal-minuteSlot {
+  border-color: rgba(78, 201, 176, 0.35);
+  background: rgba(78, 201, 176, 0.1);
+  color: #7adcc6;
 }
 
 .card .html-comment {
@@ -2402,6 +2518,27 @@ u {
   opacity: 1;
 }
 
+.external-embed-container {
+  display: block;
+  margin: 8px 0;
+  max-width: 100%;
+}
+
+.external-embed-frame {
+  display: block;
+  width: 100%;
+  min-height: 280px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.external-embed-caption {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* File link (non-previewable embeds) */
 .embed-file-link {
   display: inline-flex;
@@ -2417,6 +2554,90 @@ u {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  cursor: pointer;
+}
+
+.embed-file-link:hover,
+.markdown-file-link:hover,
+.include-filename-link:hover {
+  text-decoration: underline;
+}
+
+.markdown-file-link,
+.include-filename-link {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.broken-include-placeholder {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.embed-preview {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.embed-preview-loading,
+.embed-preview-error {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.embed-preview-markdown,
+.embed-preview-text {
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.embed-inline-markdown > :first-child {
+  margin-top: 0;
+}
+
+.embed-inline-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.embed-text-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.embed-preview-pdf {
+  display: block;
+  width: min(680px, 100%);
+  height: 360px;
+  border: none;
+  background: #fff;
+}
+
+.embed-diagram-file {
+  padding: 12px;
+}
+
+.embed-diagram-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.embed-diagram-path {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-word;
 }
 
 /* Embed floating menu */
@@ -2504,6 +2725,39 @@ u {
 
 .embed-info-row span:first-child {
   color: var(--text-secondary);
+}
+
+.file-preview-dialog {
+  min-width: 720px;
+  max-width: min(960px, 94vw);
+  max-height: 82vh;
+}
+
+.file-preview-body {
+  min-height: 220px;
+  max-height: calc(82vh - 120px);
+  overflow: auto;
+}
+
+.file-preview-frame {
+  width: 100%;
+  height: min(72vh, 760px);
+  border: none;
+  background: #fff;
+}
+
+.file-preview-markdown,
+.file-preview-text {
+  padding: 4px 2px;
+}
+
+.file-preview-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
 }
 
 .column-footer {
@@ -2999,6 +3253,12 @@ select.dialog-input option,
 
 .card-editor-toolbar .board-action-btn {
   min-height: 30px;
+}
+
+.card-editor-snippet-select {
+  width: auto;
+  min-width: 190px;
+  max-width: 280px;
 }
 
 .card-editor-hint {
