@@ -8339,17 +8339,23 @@ const LexeraDashboard = (function () {
     if (fmt === 'underline') return { wrap: '_' };
     if (fmt === 'strike') return { wrap: '~~' };
     if (fmt === 'mark') return { wrap: '==' };
+    if (fmt === 'ins') return { wrap: '++' };
     if (fmt === 'sub') return { wrap: '~' };
     if (fmt === 'sup') return { wrap: '^' };
     if (fmt === 'code') return { wrap: '`' };
     if (fmt === 'link') return { prefix: '[', suffix: '](url)' };
     if (fmt === 'image') return { snippet: '![alt](path)' };
     if (fmt === 'heading') return { prefix: '## ', suffix: '' };
+    if (fmt === 'quote') return { prefix: '> ', suffix: '' };
+    if (fmt === 'bullet-list') return { prefix: '- ', suffix: '' };
+    if (fmt === 'numbered-list') return { prefix: '1. ', suffix: '' };
     if (fmt === 'task') return { prefix: '- [ ] ', suffix: '' };
     if (fmt === 'include') return { snippet: '!!!include(path)!!!' };
     if (fmt === 'wiki') return { snippet: '[[Page]]' };
     if (fmt === 'footnote') return { snippet: 'Reference[^1]\n\n[^1]: Footnote text' };
     if (fmt === 'code-block') return { snippet: '```\ncode\n```' };
+    if (fmt === 'mermaid') return { snippet: '```mermaid\ngraph TD\n  A[Start] --> B[End]\n```' };
+    if (fmt === 'plantuml') return { snippet: '```plantuml\n@startuml\nAlice -> Bob: hello\n@enduml\n```' };
     if (fmt === 'columns') return { snippet: '---:\n\n:--:\n\n:---' };
     if (fmt === 'note') return { snippet: '::: note\n\n:::\n' };
     if (fmt === 'container-comment') return { snippet: '::: comment\n\n:::\n' };
@@ -8372,7 +8378,12 @@ const LexeraDashboard = (function () {
     return '' +
       '<select class="dialog-input card-editor-snippet-select" data-card-editor-snippet="snippet" title="Insert snippet">' +
         '<option value="">Insert...</option>' +
+        '<option value="quote">Quote</option>' +
+        '<option value="bullet-list">Bullet list</option>' +
+        '<option value="numbered-list">Numbered list</option>' +
         '<option value="columns">Multicolumn ---: :--: :---</option>' +
+        '<option value="mermaid">Mermaid diagram</option>' +
+        '<option value="plantuml">PlantUML diagram</option>' +
         '<option value="note">Container: note</option>' +
         '<option value="container-comment">Container: comment</option>' +
         '<option value="container-highlight">Container: highlight</option>' +
@@ -8458,17 +8469,20 @@ const LexeraDashboard = (function () {
         '<button class="board-action-btn" type="button" data-card-editor-fmt="underline" title="Underline">Underline</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="strike" title="Strikethrough">Strike</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="mark" title="Mark">Mark</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="ins" title="Inserted text">Ins</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="sub" title="Subscript">Sub</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="sup" title="Superscript">Sup</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="code" title="Inline code">Code</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="link" title="Link">Link</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="image" title="Image">Image</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="heading" title="Heading">H2</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="quote" title="Quote">Quote</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="task" title="Checklist item">Task</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="include" title="Include">Include</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="wiki" title="Wiki link">Wiki</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="footnote" title="Footnote">Footnote</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="code-block" title="Code block">Block</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="mermaid" title="Mermaid diagram">Mermaid</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="columns" title="Multi-column block">Columns</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="note" title="Note container">Note</button>' +
         buildCardEditorSnippetSelectHtml() +
