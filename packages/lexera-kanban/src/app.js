@@ -10420,7 +10420,7 @@ const LexeraDashboard = (function () {
   function openBoardFileInSystem(boardId, filePath) {
     if (!filePath) return;
     var fileRef = parseLocalFileReference(filePath);
-    if (fileRef.path.charAt(0) === '/' || !boardId) {
+    if (isAbsoluteFilePath(fileRef.path) || !boardId) {
       openInSystem(fileRef.path);
       return;
     }
@@ -10606,7 +10606,7 @@ const LexeraDashboard = (function () {
     // Handle burger menu button clicks for embeds
     if (e.target.classList.contains('embed-menu-btn')) {
       e.stopPropagation();
-      var container = e.target.closest('.embed-container');
+      var container = e.target.closest('.embed-container, .external-embed-container');
       if (!container) return;
       showEmbedMenu(container, e.target);
       return;
@@ -10640,33 +10640,47 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    var container = e.target.closest('.embed-container');
+    var container = e.target.closest('.embed-container, .external-embed-container');
     var link = !container ? e.target.closest('.markdown-file-link, a[href]') : null;
     if (!container && !link) return;
 
     var filePath = container
-      ? container.getAttribute('data-file-path')
+      ? getEmbedActionTarget(container)
       : (link.getAttribute('data-file-path') || link.getAttribute('data-original-href') || link.getAttribute('href'));
     if (!filePath) return;
-
-    // Skip web URLs — only handle file paths
-    if (/^(https?:\/\/|mailto:|#)/.test(filePath)) return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    showNativeMenu([
-      { id: 'file-open', label: 'Open in System App' },
-      { id: 'file-finder', label: 'Show in Finder' },
-    ], e.clientX, e.clientY).then(function (action) {
+    var isExternalEmbed = !!container && isExternalEmbedContainer(container);
+    var menuItems = isExternalEmbed
+      ? [
+          { id: 'open-url', label: 'Open URL in Browser' },
+          { id: 'copy-url', label: 'Copy URL' },
+          { id: 'edit-url', label: 'Edit URL' },
+          { separator: true },
+          { id: 'delete', label: 'Delete Embed' },
+        ]
+      : [
+          { id: container ? 'open-system' : 'file-open', label: 'Open in System App' },
+          { id: container ? 'show-finder' : 'file-finder', label: 'Show in Finder' },
+        ];
+
+    if (!isExternalEmbed && /^(https?:\/\/|mailto:|#)/.test(filePath)) return;
+
+    showNativeMenu(menuItems, e.clientX, e.clientY).then(function (action) {
       if (!action) return;
+      if (container) {
+        handleEmbedAction(action, container);
+        return;
+      }
       var fileRef = parseLocalFileReference(filePath);
       var boardId = container
         ? container.getAttribute('data-board-id')
         : (activeBoardId || '');
 
       function resolveAndRun(fn) {
-        if (fileRef.path.charAt(0) !== '/' && boardId) {
+        if (!isAbsoluteFilePath(fileRef.path) && boardId) {
           resolveBoardPath(boardId, fileRef.path, 'absolute').then(function (resolvedPath) { fn(resolvedPath); });
         } else {
           fn(fileRef.path);
@@ -10837,32 +10851,63 @@ const LexeraDashboard = (function () {
   }
 
   function showEmbedMenu(container, btn) {
-    var filePath = container.getAttribute('data-file-path');
-    var isAbsolute = filePath && filePath.charAt(0) === '/';
+    var filePath = container.getAttribute('data-file-path') || '';
+    var embedUrl = container.getAttribute('data-embed-url') || '';
+    var isExternal = isExternalEmbedContainer(container);
+    var isAbsolute = filePath && isAbsoluteFilePath(parseLocalFileReference(filePath).path);
     var btnRect = btn.getBoundingClientRect();
-    showNativeMenu([
-      { id: 'refresh', label: 'Force Refresh' },
-      { id: 'info', label: 'Info' },
-      { separator: true },
-      { id: 'open-system', label: 'Open in System App' },
-      { id: 'show-finder', label: 'Show in Finder' },
-      { id: 'path-fix', label: 'Path Fix' },
-      { id: 'convert-path', label: isAbsolute ? 'Convert to Relative' : 'Convert to Absolute' },
-      { separator: true },
-      { id: 'delete', label: 'Delete Embed' },
-    ], btnRect.right, btnRect.bottom).then(function (action) {
+    var items = isExternal
+      ? [
+          { id: 'open-url', label: 'Open URL in Browser' },
+          { id: 'copy-url', label: 'Copy URL' },
+          { id: 'edit-url', label: 'Edit URL' },
+          { separator: true },
+          { id: 'delete', label: 'Delete Embed' },
+        ]
+      : [
+          { id: 'refresh', label: 'Force Refresh' },
+          { id: 'info', label: 'Info' },
+          { separator: true },
+          { id: 'open-system', label: 'Open in System App' },
+          { id: 'show-finder', label: 'Show in Finder' },
+          { id: 'copy-path', label: 'Copy Path' },
+          { id: 'path-fix', label: 'Automatic Path Fix' },
+          { id: 'path-manual', label: 'Manual Path Fix' },
+          { id: 'path-web-search', label: 'Web-Search File' },
+          { id: 'convert-path', label: isAbsolute ? 'Convert to Relative' : 'Convert to Absolute' },
+          { separator: true },
+          { id: 'delete', label: 'Delete Embed' },
+        ];
+    if (!isExternal && !filePath) return;
+    if (isExternal && !embedUrl) return;
+    showNativeMenu(items, btnRect.right, btnRect.bottom).then(function (action) {
       if (action) handleEmbedAction(action, container);
     });
   }
 
   function handleEmbedAction(action, container) {
     if (!container) { closeEmbedMenu(); return; }
-    var filePath = container.getAttribute('data-file-path');
-    var boardId = container.getAttribute('data-board-id');
-    var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
+    var filePath = container.getAttribute('data-file-path') || '';
+    var embedUrl = container.getAttribute('data-embed-url') || '';
+    var boardId = container.getAttribute('data-board-id') || '';
+    var isExternal = isExternalEmbedContainer(container);
     var fileRef = parseLocalFileReference(filePath);
 
-    if (action === 'refresh') {
+    if (action === 'open-url') {
+      closeEmbedMenu();
+      openUrlInSystem(embedUrl);
+
+    } else if (action === 'copy-url') {
+      closeEmbedMenu();
+      copyTextToClipboard(embedUrl, 'Embed URL copied to clipboard', 'Failed to copy embed URL');
+
+    } else if (action === 'edit-url') {
+      closeEmbedMenu();
+      var nextUrl = promptForEmbedTarget(embedUrl, 'Edit embed URL');
+      if (!nextUrl || nextUrl === embedUrl) return;
+      updateEmbedTarget(container, nextUrl);
+
+    } else if (action === 'refresh') {
       clearCachedFilePreviewState(boardId || '', filePath || '');
       var media = container.querySelector('img, video, audio');
       if (media) {
@@ -10930,6 +10975,10 @@ const LexeraDashboard = (function () {
         showInFinder(fileRef.path);
       }
 
+    } else if (action === 'copy-path') {
+      closeEmbedMenu();
+      copyTextToClipboard(filePath, 'Embed path copied to clipboard', 'Failed to copy embed path');
+
     } else if (action === 'path-fix') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
@@ -10946,36 +10995,35 @@ const LexeraDashboard = (function () {
         showPathFixResults(container, res.matches);
       }).catch(function () { /* silently fail */ });
 
+    } else if (action === 'path-manual') {
+      closeEmbedMenu();
+      if (!filePath) return;
+      var nextPath = promptForEmbedTarget(filePath, 'Manual path fix');
+      if (!nextPath || nextPath === filePath) return;
+      updateEmbedTarget(container, nextPath);
+
+    } else if (action === 'path-web-search') {
+      closeEmbedMenu();
+      openEmbedWebSearch(container, filePath);
+
     } else if (action === 'convert-path') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
-      var isAbsolute = fileRef.path.charAt(0) === '/';
+      var isAbsolute = isAbsoluteFilePath(fileRef.path);
       resolveBoardPath(boardId, fileRef.path, isAbsolute ? 'relative' : 'absolute').then(function (nextPath) {
         var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
         if (!nextTarget || nextTarget === filePath) return;
-        mutateEmbedSource(container, function (content) {
-          return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
-            return buildMarkdownEmbed(embed.alt, nextTarget, embed.title, embed.rawAttrs);
-          });
-        });
+        updateEmbedTarget(container, nextTarget);
       }).catch(function () { /* silently fail */ });
 
     } else if (action === 'delete') {
       closeEmbedMenu();
-      mutateEmbedSource(container, function (content) {
-        return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function () {
-          return '';
-        });
-      });
+      deleteEmbedFromSource(container);
 
     } else if (action && action.indexOf('pick-path:') === 0) {
       var newPath = action.substring(10);
       closeEmbedMenu();
-      mutateEmbedSource(container, function (content) {
-        return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
-          return buildMarkdownEmbed(embed.alt, newPath + (fileRef.suffix || ''), embed.title, embed.rawAttrs);
-        });
-      });
+      updateEmbedTarget(container, newPath + (fileRef.suffix || ''));
     }
   }
 
@@ -11031,6 +11079,17 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function openUrlInSystem(url) {
+    if (!url) return;
+    if (hasTauri) {
+      tauriInvoke('open_url', { url: url }).catch(function () {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      });
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
   function showInFinder(path) {
     if (hasTauri) {
       tauriInvoke('show_in_folder', { path: path }).then(function (result) {
@@ -11040,6 +11099,83 @@ const LexeraDashboard = (function () {
         showNotification('Failed to reveal in folder');
       });
     }
+  }
+
+  function copyTextToClipboard(text, successMessage, failureMessage) {
+    if (!text || !navigator.clipboard || !navigator.clipboard.writeText) {
+      if (failureMessage) showNotification(failureMessage);
+      return Promise.resolve(false);
+    }
+    return navigator.clipboard.writeText(text).then(function () {
+      if (successMessage) showNotification(successMessage);
+      return true;
+    }).catch(function () {
+      if (failureMessage) showNotification(failureMessage);
+      return false;
+    });
+  }
+
+  function isExternalEmbedContainer(container) {
+    if (!container) return false;
+    var embedUrl = container.getAttribute('data-embed-url') || '';
+    return !!embedUrl || container.classList.contains('external-embed-container');
+  }
+
+  function getEmbedActionTarget(container) {
+    if (!container) return '';
+    if (isExternalEmbedContainer(container)) {
+      return container.getAttribute('data-embed-url') || '';
+    }
+    return container.getAttribute('data-file-path') || '';
+  }
+
+  function getEmbedSearchQuery(container, fallbackPath) {
+    if (!container) return getDisplayNameFromPath(fallbackPath || '') || String(fallbackPath || '');
+    var label = container.getAttribute('data-alt-text') ||
+      container.getAttribute('data-embed-caption') ||
+      '';
+    label = decodeHtmlEntities(String(label || '').trim());
+    return label || getDisplayNameFromPath(fallbackPath || '') || getDisplayFileNameFromPath(fallbackPath || '') || String(fallbackPath || '');
+  }
+
+  function updateEmbedTarget(container, nextTarget) {
+    if (!container) return Promise.resolve(false);
+    var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
+    var nextValue = String(nextTarget || '').trim();
+    if (!nextValue) return Promise.resolve(false);
+    return mutateEmbedSource(container, function (content) {
+      return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
+        return buildMarkdownEmbed(embed.alt, nextValue, embed.title, embed.rawAttrs);
+      });
+    });
+  }
+
+  function deleteEmbedFromSource(container) {
+    if (!container) return Promise.resolve(false);
+    var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
+    return mutateEmbedSource(container, function (content) {
+      return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function () {
+        return '';
+      });
+    });
+  }
+
+  function promptForEmbedTarget(initialValue, titleText) {
+    var currentValue = String(initialValue || '').trim();
+    if (!currentValue) return '';
+    var nextValue = window.prompt(titleText || 'Update embed target', currentValue);
+    if (nextValue == null) return '';
+    return String(nextValue).trim();
+  }
+
+  function openEmbedWebSearch(container, filePath) {
+    var query = getEmbedSearchQuery(container, filePath);
+    if (!query) return;
+    var mediaType = container ? (container.getAttribute('data-media-type') || '') : '';
+    var searchUrl = mediaType === 'image'
+      ? 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(query)
+      : 'https://www.google.com/search?q=' + encodeURIComponent(query);
+    openUrlInSystem(searchUrl);
   }
 
   function showPathFixResults(container, matches) {
@@ -11777,8 +11913,13 @@ const LexeraDashboard = (function () {
         var embedWidth = sanitizeCssLength(imageAttrs.values.width) || '100%';
         var embedHeight = sanitizeCssLength(imageAttrs.values.height) || '500px';
         var externalCaptionHtml = titleText ? '<figcaption class="media-caption external-embed-caption">' + renderInline(titleText, boardId, renderState) + '</figcaption>' : '';
-        var externalEmbedHtml = '<span class="external-embed-container">' +
+        var externalEmbedHtml = '<span class="external-embed-container" data-embed-url="' + escapeAttr(filePath) + '"' +
+          ' data-embed-index="' + escapeAttr(String(renderState.embedCounter++)) + '"' +
+          ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || titleText || '')) + '"' +
+          ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
+          ' style="' + escapeAttr('position:relative;display:block;max-width:100%') + '">' +
           '<iframe class="external-embed-frame" src="' + escapeAttr(filePath) + '" title="' + escapeAttr(decodeHtmlEntities(alt || titleText || filePath)) + '" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0" style="' + escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>' +
+          '<button class="embed-menu-btn" title="Embed actions" style="opacity:1">&#8942;</button>' +
           '</span>';
         if (externalCaptionHtml) {
           return '<figure class="media-figure">' + externalEmbedHtml + externalCaptionHtml + '</figure>';
@@ -11816,7 +11957,10 @@ const LexeraDashboard = (function () {
       var previewPageAttr = /^\d+$/.test(String(previewPageValue || ''))
         ? ' data-preview-page="' + escapeAttr(String(Math.max(1, parseInt(previewPageValue, 10)))) + '"'
         : '';
-      var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' + previewPageAttr + '>' +
+      var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +
+        ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || '')) + '"' +
+        ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
+        previewPageAttr + '>' +
         inner +
         '<button class="embed-menu-btn" title="Embed actions">&#8942;</button>' +
         '</span>';
