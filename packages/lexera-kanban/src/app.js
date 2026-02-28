@@ -142,9 +142,12 @@ const LexeraDashboard = (function () {
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
   var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
   var mermaidIdCounter = 0;
+  var plantumlIdCounter = 0;
   var mermaidReady = false;
   var mermaidLoading = false;
   var pendingMermaidRenders = [];
+  var pendingPlantUmlRenders = [];
+  var plantumlQueueProcessing = false;
   var currentTagVisibilityMode = 'allexcludinglayout';
   var currentArrowKeyFocusScrollMode = 'nearest';
   var currentHtmlCommentRenderMode = 'hidden';
@@ -5146,14 +5149,7 @@ const LexeraDashboard = (function () {
     syncRenderedRowWidths();
     requestAnimationFrame(syncRenderedRowWidths);
 
-    // Process any queued mermaid diagrams after rendering
-    if (pendingMermaidRenders.length > 0) {
-      if (mermaidReady) {
-        processMermaidQueue();
-      } else {
-        loadMermaidLibrary();
-      }
-    }
+    flushPendingDiagramQueues();
 
     enhanceEmbeddedContent($columnsContainer);
     enhanceFileLinks($columnsContainer);
@@ -8668,10 +8664,7 @@ const LexeraDashboard = (function () {
     var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
     if (currentCardEditor.preview) {
       currentCardEditor.preview.innerHTML = renderCardContent(value, activeBoardId);
-      if (pendingMermaidRenders.length > 0) {
-        if (!mermaidReady) loadMermaidLibrary();
-        else processMermaidQueue();
-      }
+      flushPendingDiagramQueues();
       enhanceEmbeddedContent(currentCardEditor.preview);
       enhanceFileLinks(currentCardEditor.preview);
       enhanceIncludeDirectives(currentCardEditor.preview);
@@ -9699,6 +9692,135 @@ const LexeraDashboard = (function () {
     return true;
   }
 
+  function utf8EncodeBytes(value) {
+    var text = String(value || '');
+    if (typeof TextEncoder !== 'undefined') {
+      return new TextEncoder().encode(text);
+    }
+    var encoded = unescape(encodeURIComponent(text));
+    var out = new Uint8Array(encoded.length);
+    for (var i = 0; i < encoded.length; i++) out[i] = encoded.charCodeAt(i);
+    return out;
+  }
+
+  var MD5_SHIFT_VALUES = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
+  ];
+  var md5KValues = null;
+
+  function getMd5KValues() {
+    if (md5KValues) return md5KValues;
+    md5KValues = [];
+    for (var i = 0; i < 64; i++) {
+      md5KValues.push(Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0);
+    }
+    return md5KValues;
+  }
+
+  function leftRotate32(value, bits) {
+    return (value << bits) | (value >>> (32 - bits));
+  }
+
+  function toHexLittleEndian(value) {
+    var out = '';
+    for (var i = 0; i < 4; i++) {
+      out += ('0' + ((value >>> (i * 8)) & 255).toString(16)).slice(-2);
+    }
+    return out;
+  }
+
+  function md5Hex(value) {
+    var bytes = utf8EncodeBytes(value);
+    var originalLength = bytes.length;
+    var totalLength = (((originalLength + 8) >> 6) + 1) * 64;
+    var padded = new Uint8Array(totalLength);
+    padded.set(bytes);
+    padded[originalLength] = 0x80;
+
+    var bitLength = BigInt(originalLength) * 8n;
+    for (var i = 0; i < 8; i++) {
+      padded[totalLength - 8 + i] = Number((bitLength >> BigInt(i * 8)) & 255n);
+    }
+
+    var a0 = 1732584193;
+    var b0 = -271733879;
+    var c0 = -1732584194;
+    var d0 = 271733878;
+    var kValues = getMd5KValues();
+
+    for (var offset = 0; offset < padded.length; offset += 64) {
+      var words = new Int32Array(16);
+      for (var j = 0; j < 16; j++) {
+        var idx = offset + (j * 4);
+        words[j] = padded[idx] |
+          (padded[idx + 1] << 8) |
+          (padded[idx + 2] << 16) |
+          (padded[idx + 3] << 24);
+      }
+
+      var a = a0;
+      var b = b0;
+      var c = c0;
+      var d = d0;
+
+      for (var round = 0; round < 64; round++) {
+        var f = 0;
+        var g = 0;
+        if (round < 16) {
+          f = (b & c) | ((~b) & d);
+          g = round;
+        } else if (round < 32) {
+          f = (d & b) | ((~d) & c);
+          g = (5 * round + 1) % 16;
+        } else if (round < 48) {
+          f = b ^ c ^ d;
+          g = (3 * round + 5) % 16;
+        } else {
+          f = c ^ (b | (~d));
+          g = (7 * round) % 16;
+        }
+
+        var nextD = d;
+        d = c;
+        c = b;
+        var rotated = leftRotate32((a + f + kValues[round] + words[g]) | 0, MD5_SHIFT_VALUES[round]);
+        b = (b + rotated) | 0;
+        a = nextD;
+      }
+
+      a0 = (a0 + a) | 0;
+      b0 = (b0 + b) | 0;
+      c0 = (c0 + c) | 0;
+      d0 = (d0 + d) | 0;
+    }
+
+    return toHexLittleEndian(a0) + toHexLittleEndian(b0) + toHexLittleEndian(c0) + toHexLittleEndian(d0);
+  }
+
+  function buildPlantUmlCachePath(boardFilePath, codeHash) {
+    var boardDir = getDirNameFromPath(boardFilePath);
+    var boardBase = getPathStem(boardFilePath);
+    if (!boardDir || !boardBase || !codeHash) return '';
+    return boardDir + '/' + boardBase + '-Media/plantuml-cache/' + codeHash + '.svg';
+  }
+
+  async function resolveCachedPlantUmlAsset(boardId, code) {
+    if (!boardId || !code) return null;
+    var boardFilePath = getBoardFilePathForId(boardId);
+    if (!boardFilePath) return null;
+    var cachePath = buildPlantUmlCachePath(boardFilePath, md5Hex(code).slice(0, 12));
+    if (!cachePath) return null;
+    var cacheInfo = await requestFileInfo(boardId, cachePath);
+    if (!cacheInfo || !cacheInfo.exists) return null;
+    return {
+      path: cachePath,
+      url: LexeraApi.fileUrl(boardId, cachePath)
+    };
+  }
+
   function isAbsoluteFilePath(value) {
     var normalized = normalizePathForCompare(String(value || ''));
     return normalized.charAt(0) === '/' || /^[a-zA-Z]:\//.test(normalized);
@@ -10194,10 +10316,7 @@ const LexeraDashboard = (function () {
         nested[i].setAttribute('data-include-depth', String(depth + 1));
       }
 
-      if (pendingMermaidRenders.length > 0) {
-        if (!mermaidReady) loadMermaidLibrary();
-        else processMermaidQueue();
-      }
+      flushPendingDiagramQueues();
       enhanceEmbeddedContent(body);
       enhanceFileLinks(body);
       enhanceIncludeDirectives(body);
@@ -10266,10 +10385,7 @@ const LexeraDashboard = (function () {
       previewEl.innerHTML = cached;
       applyRenderedHtmlCommentVisibility(previewEl, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(previewEl, currentTagVisibilityMode);
-      if (pendingMermaidRenders.length > 0) {
-        if (mermaidReady) processMermaidQueue();
-        else loadMermaidLibrary();
-      }
+      flushPendingDiagramQueues();
     } catch (err) {
       previewEl.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
     }
@@ -10405,10 +10521,7 @@ const LexeraDashboard = (function () {
       } else {
         body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
       }
-      if (pendingMermaidRenders.length > 0) {
-        if (mermaidReady) processMermaidQueue();
-        else loadMermaidLibrary();
-      }
+      flushPendingDiagramQueues();
     } catch (err) {
       body.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
     }
@@ -11222,6 +11335,16 @@ const LexeraDashboard = (function () {
     return out;
   }
 
+  function flushPendingDiagramQueues() {
+    if (pendingMermaidRenders.length > 0) {
+      if (mermaidReady) processMermaidQueue();
+      else loadMermaidLibrary();
+    }
+    if (pendingPlantUmlRenders.length > 0) {
+      processPlantUmlQueue();
+    }
+  }
+
   function loadMermaidLibrary() {
     if (mermaidReady || mermaidLoading) return;
     mermaidLoading = true;
@@ -11263,6 +11386,45 @@ const LexeraDashboard = (function () {
         el.innerHTML = '<span class="mermaid-error">Mermaid error: ' + escapeHtml(err.message || String(err)) + '</span>';
       }
     });
+  }
+
+  async function processPlantUmlQueue() {
+    if (plantumlQueueProcessing || pendingPlantUmlRenders.length === 0) return;
+    plantumlQueueProcessing = true;
+    var queue = pendingPlantUmlRenders.slice();
+    pendingPlantUmlRenders = [];
+
+    for (var i = 0; i < queue.length; i++) {
+      var item = queue[i];
+      var el = document.getElementById(item.id);
+      if (!el) continue;
+      try {
+        var asset = await resolveCachedPlantUmlAsset(item.boardId, item.code);
+        if (!asset) {
+          el.classList.add('plantuml-missing');
+          continue;
+        }
+        var response = await fetch(asset.url);
+        if (!response.ok) throw new Error('Failed to load PlantUML cache');
+        el.className = 'plantuml-diagram';
+        el.innerHTML = await response.text();
+        el.style.margin = '8px 0';
+        el.style.overflow = 'auto';
+        var svg = el.querySelector('svg');
+        if (svg) {
+          svg.style.display = 'block';
+          svg.style.maxWidth = '100%';
+          svg.style.height = 'auto';
+        }
+      } catch (err) {
+        el.classList.add('plantuml-missing');
+      }
+    }
+
+    plantumlQueueProcessing = false;
+    if (pendingPlantUmlRenders.length > 0) {
+      processPlantUmlQueue();
+    }
   }
 
   function escapeRegex(str) {
@@ -11415,7 +11577,10 @@ const LexeraDashboard = (function () {
           html += '<div class="mermaid-placeholder" id="' + mermaidId + '">Loading diagram...</div>';
           pendingMermaidRenders.push({ id: mermaidId, code: code });
         } else if (lang.toLowerCase() === 'plantuml' || lang.toLowerCase() === 'puml') {
-          html += '<div class="plantuml-placeholder"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(codeLines.join('\n')) + '</code></pre></div>';
+          var plantumlId = 'plantuml-' + (++plantumlIdCounter);
+          var plantumlCode = codeLines.join('\n');
+          html += '<div class="plantuml-placeholder" id="' + plantumlId + '"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(plantumlCode) + '</code></pre></div>';
+          pendingPlantUmlRenders.push({ id: plantumlId, code: plantumlCode, boardId: boardId || activeBoardId || '' });
         } else {
           var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
           html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
