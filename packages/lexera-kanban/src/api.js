@@ -4,6 +4,42 @@
  */
 const LexeraApi = (function () {
   let baseUrl = null;
+  let recentApiLogAt = Object.create(null);
+
+  function formatApiError(error) {
+    if (error == null) return String(error);
+    if (error instanceof Error) return error.stack || (error.name + ': ' + error.message);
+    if (typeof error === 'object') {
+      if (typeof error.stack === 'string' && error.stack) return error.stack;
+      if (typeof error.message === 'string' && error.message) return error.message;
+      try {
+        return JSON.stringify(error);
+      } catch (e) {
+        return String(error);
+      }
+    }
+    return String(error);
+  }
+
+  function logApiIssue(level, target, message, error, options) {
+    options = options || {};
+    var dedupeKey = options.dedupeKey || (level + '|' + target + '|' + message);
+    var dedupeWindowMs = typeof options.dedupeWindowMs === 'number' ? options.dedupeWindowMs : 5000;
+    var now = Date.now();
+    if (dedupeWindowMs > 0 && recentApiLogAt[dedupeKey] && now - recentApiLogAt[dedupeKey] < dedupeWindowMs) {
+      return;
+    }
+    recentApiLogAt[dedupeKey] = now;
+
+    var fullMessage = '[' + target + '] ' + message;
+    if (typeof error === 'undefined') {
+      if (level === 'error') console.error(fullMessage);
+      else console.warn(fullMessage);
+      return;
+    }
+    if (level === 'error') console.error(fullMessage, error);
+    else console.warn(fullMessage, error);
+  }
 
   async function discover() {
     if (baseUrl) return baseUrl;
@@ -48,14 +84,35 @@ const LexeraApi = (function () {
   }
 
   async function request(path, options) {
+    const method = options && options.method ? String(options.method).toUpperCase() : 'GET';
     const url = await discover();
-    if (!url) throw new Error('Backend not available');
-    const res = await fetch(url + path, options);
+    if (!url) {
+      const error = new Error('Backend not available');
+      logApiIssue('error', 'api.request', method + ' ' + path + ' failed: backend not available', error, {
+        dedupeKey: 'api.request.no-backend|' + method + '|' + path,
+        dedupeWindowMs: 3000
+      });
+      throw error;
+    }
+    let res;
+    try {
+      res = await fetch(url + path, options);
+    } catch (error) {
+      logApiIssue('error', 'api.request', method + ' ' + path + ' transport failed', error);
+      throw error;
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
-      throw new Error(`${res.status}: ${text}`);
+      const error = new Error(`${res.status}: ${text}`);
+      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed', error);
+      throw error;
     }
-    return res.json();
+    try {
+      return await res.json();
+    } catch (error) {
+      logApiIssue('error', 'api.request', method + ' ' + path + ' returned invalid JSON', error);
+      throw error;
+    }
   }
 
   async function getBoards() {
@@ -68,18 +125,38 @@ const LexeraApi = (function () {
 
   async function getBoardColumnsCached(boardId, version) {
     const url = await discover();
-    if (!url) throw new Error('Backend not available');
+    if (!url) {
+      const error = new Error('Backend not available');
+      logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns failed: backend not available', error, {
+        dedupeKey: 'api.getBoardColumnsCached.no-backend|' + boardId,
+        dedupeWindowMs: 3000
+      });
+      throw error;
+    }
     const headers = {};
     if (version != null) headers['If-None-Match'] = '"' + version + '"';
-    const res = await fetch(url + '/boards/' + boardId + '/columns', { headers });
+    let res;
+    try {
+      res = await fetch(url + '/boards/' + boardId + '/columns', { headers });
+    } catch (error) {
+      logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns transport failed', error);
+      throw error;
+    }
     if (res.status === 304) {
       return { notModified: true, version };
     }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
-      throw new Error(`${res.status}: ${text}`);
+      const error = new Error(`${res.status}: ${text}`);
+      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns failed', error);
+      throw error;
     }
-    return res.json();
+    try {
+      return await res.json();
+    } catch (error) {
+      logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns returned invalid JSON', error);
+      throw error;
+    }
   }
 
   async function addCard(boardId, colIndex, content) {
@@ -170,22 +247,55 @@ const LexeraApi = (function () {
 
   async function uploadMedia(boardId, file) {
     var url = await discover();
-    if (!url) throw new Error('Backend not available');
+    if (!url) {
+      var unavailable = new Error('Backend not available');
+      logApiIssue('error', 'api.uploadMedia', 'POST /boards/' + boardId + '/media failed: backend not available', unavailable, {
+        dedupeKey: 'api.uploadMedia.no-backend|' + boardId,
+        dedupeWindowMs: 3000
+      });
+      throw unavailable;
+    }
     var form = new FormData();
     form.append('file', file, file.name);
-    var res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form });
+    var res;
+    try {
+      res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form });
+    } catch (error) {
+      logApiIssue('error', 'api.uploadMedia', 'POST /boards/' + boardId + '/media transport failed', error);
+      throw error;
+    }
     if (!res.ok) {
       var text = await res.text().catch(function () { return res.statusText; });
-      throw new Error(res.status + ': ' + text);
+      var error = new Error(res.status + ': ' + text);
+      logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.uploadMedia', 'POST /boards/' + boardId + '/media failed', error);
+      throw error;
     }
-    return res.json();
+    try {
+      return await res.json();
+    } catch (error) {
+      logApiIssue('error', 'api.uploadMedia', 'POST /boards/' + boardId + '/media returned invalid JSON', error);
+      throw error;
+    }
   }
 
   function connectSSE(onEvent) {
     if (!baseUrl) return null;
     var es = new EventSource(baseUrl + '/events');
     es.onmessage = function (msg) {
-      try { onEvent(JSON.parse(msg.data)); } catch (e) { /* ignore parse errors */ }
+      try {
+        onEvent(JSON.parse(msg.data));
+      } catch (e) {
+        logApiIssue('warn', 'api.sse', 'Failed to parse SSE payload from /events', e, {
+          dedupeKey: 'api.sse.parse',
+          dedupeWindowMs: 3000
+        });
+      }
+    };
+    es.onerror = function (event) {
+      logApiIssue('warn', 'api.sse', 'EventSource /events reported an error', formatApiError(event), {
+        dedupeKey: 'api.sse.error',
+        dedupeWindowMs: 3000
+      });
     };
     return es;
   }
@@ -210,7 +320,20 @@ const LexeraApi = (function () {
     if (!baseUrl) return null;
     var es = new EventSource(baseUrl + '/logs/stream');
     es.onmessage = function (msg) {
-      try { onEntry(JSON.parse(msg.data)); } catch (e) { /* ignore parse errors */ }
+      try {
+        onEntry(JSON.parse(msg.data));
+      } catch (e) {
+        logApiIssue('warn', 'api.logs.stream', 'Failed to parse SSE payload from /logs/stream', e, {
+          dedupeKey: 'api.logs.stream.parse',
+          dedupeWindowMs: 3000
+        });
+      }
+    };
+    es.onerror = function (event) {
+      logApiIssue('warn', 'api.logs.stream', 'EventSource /logs/stream reported an error', formatApiError(event), {
+        dedupeKey: 'api.logs.stream.error',
+        dedupeWindowMs: 3000
+      });
     };
     return es;
   }
@@ -256,11 +379,20 @@ const LexeraApi = (function () {
         try {
           vv = syncHelloVvProvider() || '';
         } catch (e) {
+          logApiIssue('warn', 'sync.hello', 'Failed to compute hello version vector for board ' + boardId, e, {
+            dedupeKey: 'sync.hello|' + boardId,
+            dedupeWindowMs: 3000
+          });
           vv = '';
         }
       }
       var hello = JSON.stringify({ type: 'ClientHello', user_id: syncUserId, vv: vv });
-      syncWs.send(hello);
+      try {
+        syncWs.send(hello);
+      } catch (e) {
+        logApiIssue('error', 'sync.send', 'Failed to send ClientHello for board ' + boardId, e);
+        throw e;
+      }
       console.log('[sync] WebSocket connected to board ' + boardId);
     };
 
@@ -294,15 +426,28 @@ const LexeraApi = (function () {
           disconnectSync();
         }
       } catch (e) {
-        // ignore parse errors
+        logApiIssue('warn', 'sync.message', 'Failed to parse sync message for board ' + boardId, e, {
+          dedupeKey: 'sync.message.parse|' + boardId,
+          dedupeWindowMs: 3000
+        });
       }
     };
 
-    syncWs.onerror = function () {
+    syncWs.onerror = function (event) {
+      logApiIssue('warn', 'sync.socket', 'WebSocket error for board ' + boardId, formatApiError(event), {
+        dedupeKey: 'sync.socket.error|' + boardId,
+        dedupeWindowMs: 3000
+      });
       console.warn('[sync] WebSocket error');
     };
 
-    syncWs.onclose = function () {
+    syncWs.onclose = function (event) {
+      if (event && event.code && event.code !== 1000) {
+        logApiIssue('warn', 'sync.socket', 'WebSocket closed unexpectedly for board ' + boardId + ' code=' + event.code + (event.reason ? ' reason=' + event.reason : ''), undefined, {
+          dedupeKey: 'sync.socket.close|' + boardId + '|' + event.code + '|' + (event.reason || ''),
+          dedupeWindowMs: 3000
+        });
+      }
       console.log('[sync] WebSocket closed');
       syncWs = null;
       if (syncOnPresence && syncShouldReconnect && syncBoardId === boardId) {

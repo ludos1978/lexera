@@ -76,7 +76,6 @@ function formatLogTimestamp(entry) {
 
 function logEntryKey(entry) {
   return [
-    entry.timestampMs || 0,
     entry.level || '',
     entry.target || '',
     entry.message || ''
@@ -3005,7 +3004,8 @@ const LexeraDashboard = (function () {
             } else {
               loadBoard(activeBoardId);
             }
-          }).catch(function () {
+          }).catch(function (err) {
+            logFrontendIssue('warn', 'sse.live-sync', 'Failed to reopen live sync session after SSE change for board ' + activeBoardId, err);
             loadBoard(activeBoardId);
           });
         }
@@ -3028,7 +3028,8 @@ const LexeraDashboard = (function () {
       const ok = await LexeraApi.checkStatus();
       setConnected(ok);
       if (!ok) return;
-    } catch {
+    } catch (err) {
+      logFrontendIssue('warn', 'poll.status', 'Failed to check backend status', err);
       setConnected(false);
       return;
     }
@@ -3075,7 +3076,8 @@ const LexeraDashboard = (function () {
       }
       refreshHeaderFileControls();
       scheduleDashboardRefresh(120);
-    } catch {
+    } catch (err) {
+      logFrontendIssue('warn', 'poll.refresh', 'Failed to refresh board list or active board state', err);
       // keep previous state
       refreshHeaderFileControls();
       scheduleDashboardRefresh(250);
@@ -10537,8 +10539,8 @@ const LexeraDashboard = (function () {
       searchMode = true;
       updateHeaderSearchVisibility();
       renderSearchResults();
-    } catch {
-      // ignore search errors
+    } catch (err) {
+      logFrontendIssue('warn', 'search.perform', 'Search failed for query "' + query + '"', err);
     }
   }
 

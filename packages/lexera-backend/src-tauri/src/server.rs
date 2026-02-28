@@ -4,7 +4,12 @@ use crate::export_api::export_router;
 use crate::state::AppState;
 use crate::sync_ws::sync_router;
 /// HTTP server: spawns axum on a background tokio task.
-use axum::Router;
+use axum::{
+    extract::Request,
+    middleware::{self, Next},
+    response::Response,
+    Router,
+};
 use tower_http::cors::{Any, CorsLayer};
 
 /// Fallback ports to try when the configured port is in use.
@@ -20,8 +25,32 @@ fn build_app(state: AppState) -> Router {
         .merge(collab_router())
         .merge(sync_router())
         .merge(export_router())
+        .layer(middleware::from_fn(log_http_error_responses))
         .layer(cors)
         .with_state(state)
+}
+
+async fn log_http_error_responses(req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let response = next.run(req).await;
+    let status = response.status();
+
+    if status.is_client_error() || status.is_server_error() {
+        let mut path = uri.path().to_string();
+        if let Some(query) = uri.query() {
+            path.push('?');
+            path.push_str(query);
+        }
+        let target = "lexera.http";
+        if status.is_server_error() {
+            log::error!(target: target, "{} {} -> {}", method, path, status);
+        } else {
+            log::warn!(target: target, "{} {} -> {}", method, path, status);
+        }
+    }
+
+    response
 }
 
 /// Try to bind a TCP listener on the given address:port.
