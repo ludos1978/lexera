@@ -130,6 +130,8 @@ const LexeraDashboard = (function () {
   let addCardColumn = null;
   var ptrDrag = null; // Pointer-based DnD state: { type, source, startX, startY, started, ghost, el }
   var isEditing = false;
+  var currentCardEditor = null;
+  var cardEditorMode = null;
   var pendingRefresh = false;
   var eventSource = null;
   var lastSaveTime = 0;
@@ -328,15 +330,16 @@ const LexeraDashboard = (function () {
     // Update theme selector if present
     var sel = document.getElementById('theme-select');
     if (sel && sel.value !== theme.id) sel.value = theme.id;
+
+    if (typeof applyBoardSettings === 'function') {
+      applyBoardSettings();
+    }
   }
 
   // Re-apply on OS light/dark switch
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
     applyTheme(currentThemeId || 'lexera');
   });
-
-  // Apply on load
-  applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
 
   // DOM refs
   const $boardList = document.getElementById('board-list');
@@ -364,6 +367,10 @@ const LexeraDashboard = (function () {
   const $dashboardDeadlineList = document.getElementById('dashboard-deadline-list');
   const $dashboardOverdueList = document.getElementById('dashboard-overdue-list');
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
+
+  // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
+  applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
+  cardEditorMode = normalizeCardEditorMode(localStorage.getItem('lexera-card-editor-mode') || 'dual');
 
   function normalizePathForCompare(path) {
     return String(path || '').replace(/\\/g, '/');
@@ -961,6 +968,11 @@ const LexeraDashboard = (function () {
     var editingTextarea = document.querySelector('.card.editing .card-edit-input');
     if (editingTextarea) {
       editingTextarea.blur();
+      didClose = true;
+    }
+
+    if (currentCardEditor) {
+      closeCardEditorOverlay({ save: false });
       didClose = true;
     }
 
@@ -2626,17 +2638,29 @@ const LexeraDashboard = (function () {
       var boardName = board.title || board.filePath.split('/').pop().replace('.md', '') || 'Untitled';
 
       var hasContent = rows.length > 0;
+      var singleRow = rows.length === 1;
+      var singleStack = singleRow && (rows[0].stacks || []).length === 1;
+      // Build breadcrumb title: "Board / Row / Stack" when levels are compressed
+      var displayTitle = escapeHtml(boardName);
+      if (singleRow) {
+        var rowTitle = rows[0].title || 'Row 1';
+        displayTitle += ' <span class="board-item-separator">/</span> ' + escapeHtml(rowTitle);
+        if (singleStack && rows[0].stacks && rows[0].stacks[0]) {
+          var stackTitle = rows[0].stacks[0].title || 'Stack 1';
+          displayTitle += ' <span class="board-item-separator">/</span> ' + escapeHtml(stackTitle);
+        }
+      }
       var presenceCount = (boardPresenceCache[board.id] || []).length;
       var presenceBadge = presenceCount > 0
         ? '<span class="board-presence-badge" title="' + presenceCount + ' user(s) online">' + presenceCount + '</span>'
         : '<span class="board-presence-badge" style="display:none"></span>';
       el.innerHTML =
-        '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
-        (hasContent ? '<span class="board-item-toggle' + (isExpanded ? ' expanded' : '') + '">\u25B6</span>' : '<span class="board-item-toggle-spacer"></span>') +
-        '<span class="board-item-title">' + escapeHtml(boardName) + '</span>' +
+        (hasContent ? '<span class="board-item-toggle' + (isExpanded ? ' expanded' : '') + '"></span>' : '<span class="board-item-toggle-spacer"></span>') +
+        '<span class="board-item-title">' + displayTitle + '</span>' +
         '<span class="board-item-count">' + totalCards + '</span>' +
         presenceBadge +
-        (!hierarchyLocked ? '<span class="board-item-remove" title="Remove board">\u00D7</span>' : '');
+        (!hierarchyLocked ? '<span class="board-item-remove" title="Remove board">\u00D7</span>' : '') +
+        '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
 
       // Tree sub-list
       var tree = document.createElement('div');
@@ -2645,61 +2669,111 @@ const LexeraDashboard = (function () {
       if (hasContent) {
         var treeState = getSidebarTreeState(board.id);
         var hasTreeState = hasSidebarTreeState(board.id);
+
+        // Compute the padding-left of .tree-node (var(--space-3)) for guide alignment.
+        var nodePadLeft = 6 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1);
+
+        // Build indent guides HTML.
+        // parentLastFlags: array of booleans — true if ancestor at that depth was the last child.
+        // isLast: whether this node is the last child at its own level.
+        function indentHtml(parentLastFlags, isLast) {
+          var h = '<span class="tree-indent">';
+          for (var g = 0; g < parentLastFlags.length; g++) {
+            h += '<span class="indent-guide' + (parentLastFlags[g] ? ' last' : '') + '"></span>';
+          }
+          h += '<span class="indent-guide ' + (isLast ? 'corner' : 'branch') + '"></span>';
+          h += '</span>';
+          return h;
+        }
+
+        // Apply continuation guide lines to a .tree-children container.
+        // parentLastFlags includes the flag for the node that owns this children container.
+        // nodeLeftPad: the padding-left of child nodes (var(--space-3) for normal nodes, 0 for cards).
+        function applyChildrenGuides(container, parentLastFlags, nodeLeftPad) {
+          container.style.position = 'relative';
+          for (var g = 0; g < parentLastFlags.length; g++) {
+            if (!parentLastFlags[g]) {
+              var line = document.createElement('span');
+              line.className = 'tree-children-guide';
+              line.style.left = (nodeLeftPad + g * 12 + 5) + 'px';
+              container.appendChild(line);
+            }
+          }
+        }
+
         // Default hierarchy state: folded (collapsed) for rows/stacks/columns.
         for (var ri = 0; ri < rows.length; ri++) {
           var row = rows[ri];
           var rowId = row.id || ('row-' + ri);
-          var rowExpanded = hasTreeState ? treeState.rows.indexOf(rowId) === -1 : false;
+          var rowExpanded = hasTreeState ? treeState.rows.indexOf(rowId) === -1 : (singleRow ? true : false);
           var rowCardCount = countCardsInRow(row);
+          var rowIsLast = ri === rows.length - 1;
 
-          // Row node
-          var rowNode = document.createElement('div');
-          rowNode.className = 'tree-node tree-row';
-          rowNode.setAttribute('data-board-id', board.id);
-          rowNode.setAttribute('data-row-index', ri.toString());
-          rowNode.setAttribute('data-tree-id', rowId);
-          rowNode.setAttribute('data-tree-drag', 'tree-row');
-          rowNode.innerHTML =
-            '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
-            '<span class="tree-toggle' + (rowExpanded ? ' expanded' : '') + '">\u25B6</span>' +
-            '<span class="tree-label">' + escapeHtml(row.title || 'Row ' + (ri + 1)) + '</span>' +
-            '<span class="tree-count">' + rowCardCount + '</span>';
-          tree.appendChild(rowNode);
+          // Row node — skip if single row (flatten into parent)
+          var rowContainer = tree;
+          // Base indent for levels below row; tracks which ancestors are "last"
+          var rowIndent = [];
+          if (!singleRow) {
+            rowIndent = [];
+            var rowNode = document.createElement('div');
+            rowNode.className = 'tree-node tree-row';
+            rowNode.setAttribute('data-board-id', board.id);
+            rowNode.setAttribute('data-row-index', ri.toString());
+            rowNode.setAttribute('data-tree-id', rowId);
+            rowNode.setAttribute('data-tree-drag', 'tree-row');
+            rowNode.innerHTML =
+              indentHtml(rowIndent, rowIsLast) +
+              '<span class="tree-toggle' + (rowExpanded ? ' expanded' : '') + '"></span>' +
+              '<span class="tree-label">' + escapeHtml(row.title || 'Row ' + (ri + 1)) + '</span>' +
+              '<span class="tree-count">' + rowCardCount + '</span>' +
+              '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
+            tree.appendChild(rowNode);
 
-          // Row children
-          var rowChildren = document.createElement('div');
-          rowChildren.className = 'tree-children' + (rowExpanded ? ' expanded' : '');
+            var rowChildren = document.createElement('div');
+            rowChildren.className = 'tree-children' + (rowExpanded ? ' expanded' : '');
+            rowIndent = [rowIsLast];
+            applyChildrenGuides(rowChildren, rowIndent, nodePadLeft);
+            rowContainer = rowChildren;
+          }
 
           for (var si = 0; si < row.stacks.length; si++) {
             var stack = row.stacks[si];
             var stackId = stack.id || ('stack-' + ri + '-' + si);
-            var stackExpanded = hasTreeState ? treeState.stacks.indexOf(stackId) === -1 : false;
+            var stackExpanded = hasTreeState ? treeState.stacks.indexOf(stackId) === -1 : (singleStack ? true : false);
             var stackCardCount = countCardsInStack(stack);
+            var stackIsLast = si === row.stacks.length - 1;
 
-            // Stack node
-            var stackNode = document.createElement('div');
-            stackNode.className = 'tree-node tree-stack';
-            stackNode.setAttribute('data-board-id', board.id);
-            stackNode.setAttribute('data-row-index', ri.toString());
-            stackNode.setAttribute('data-stack-index', si.toString());
-            stackNode.setAttribute('data-tree-id', stackId);
-            stackNode.setAttribute('data-tree-drag', 'tree-stack');
-            stackNode.innerHTML =
-              '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
-              '<span class="tree-toggle' + (stackExpanded ? ' expanded' : '') + '">\u25B6</span>' +
-              '<span class="tree-label">' + escapeHtml(stack.title || 'Stack ' + (si + 1)) + '</span>' +
-              '<span class="tree-count">' + stackCardCount + '</span>';
-            rowChildren.appendChild(stackNode);
+            // Stack node — skip if single stack in single row (flatten into parent)
+            var stackContainer = rowContainer;
+            var stackIndent = rowIndent;
+            if (!singleStack) {
+              var stackNode = document.createElement('div');
+              stackNode.className = 'tree-node tree-stack';
+              stackNode.setAttribute('data-board-id', board.id);
+              stackNode.setAttribute('data-row-index', ri.toString());
+              stackNode.setAttribute('data-stack-index', si.toString());
+              stackNode.setAttribute('data-tree-id', stackId);
+              stackNode.setAttribute('data-tree-drag', 'tree-stack');
+              stackNode.innerHTML =
+                indentHtml(rowIndent, stackIsLast) +
+                '<span class="tree-toggle' + (stackExpanded ? ' expanded' : '') + '"></span>' +
+                '<span class="tree-label">' + escapeHtml(stack.title || 'Stack ' + (si + 1)) + '</span>' +
+                '<span class="tree-count">' + stackCardCount + '</span>' +
+                '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
+              rowContainer.appendChild(stackNode);
 
-            // Stack children
-            var stackChildren = document.createElement('div');
-            stackChildren.className = 'tree-children' + (stackExpanded ? ' expanded' : '');
-            stackChildren.classList.add('tree-stack-drop-zone');
-            stackChildren.setAttribute('data-board-id', board.id);
-            stackChildren.setAttribute('data-row-index', ri.toString());
-            stackChildren.setAttribute('data-stack-index', si.toString());
-            if (!stack.columns || stack.columns.length === 0) {
-              stackChildren.classList.add('tree-stack-drop-zone-empty');
+              var stackChildren = document.createElement('div');
+              stackChildren.className = 'tree-children' + (stackExpanded ? ' expanded' : '');
+              stackChildren.classList.add('tree-stack-drop-zone');
+              stackChildren.setAttribute('data-board-id', board.id);
+              stackChildren.setAttribute('data-row-index', ri.toString());
+              stackChildren.setAttribute('data-stack-index', si.toString());
+              if (!stack.columns || stack.columns.length === 0) {
+                stackChildren.classList.add('tree-stack-drop-zone-empty');
+              }
+              stackIndent = rowIndent.concat([stackIsLast]);
+              applyChildrenGuides(stackChildren, stackIndent, nodePadLeft);
+              stackContainer = stackChildren;
             }
 
             for (var ci = 0; ci < stack.columns.length; ci++) {
@@ -2708,6 +2782,7 @@ const LexeraDashboard = (function () {
               var colId = 'col-' + colIdx;
               var colExpanded = hasTreeState ? treeState.columns.indexOf(colId) !== -1 : false;
               var cardCount = col.cards ? col.cards.length : 0;
+              var colIsLast = ci === stack.columns.length - 1;
 
               // Column node
               var colNode = document.createElement('div');
@@ -2720,18 +2795,22 @@ const LexeraDashboard = (function () {
               colNode.setAttribute('data-col-local-index', ci.toString());
               colNode.setAttribute('data-tree-drag', 'tree-column');
               colNode.innerHTML =
-                '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>' +
-                (cardCount > 0 ? '<span class="tree-toggle' + (colExpanded ? ' expanded' : '') + '">\u25B6</span>' : '<span class="tree-toggle-spacer"></span>') +
+                indentHtml(stackIndent, colIsLast) +
+                (cardCount > 0 ? '<span class="tree-toggle' + (colExpanded ? ' expanded' : '') + '"></span>' : '<span class="tree-toggle-spacer"></span>') +
                 '<span class="tree-label">' + escapeHtml(stripStackTag(col.title)) + '</span>' +
-                '<span class="tree-count">' + cardCount + '</span>';
-              stackChildren.appendChild(colNode);
+                '<span class="tree-count">' + cardCount + '</span>' +
+                '<span class="tree-grip" title="Drag to reorder">\u22EE\u22EE</span>';
+              stackContainer.appendChild(colNode);
 
               // Column children (cards)
               if (cardCount > 0) {
                 var colChildren = document.createElement('div');
                 colChildren.className = 'tree-children' + (colExpanded ? ' expanded' : '');
+                var cardIndent = stackIndent.concat([colIsLast]);
+                applyChildrenGuides(colChildren, cardIndent, nodePadLeft);
                 for (var cdi = 0; cdi < col.cards.length; cdi++) {
                   var card = col.cards[cdi];
+                  var cardIsLast = cdi === col.cards.length - 1;
                   var cardNode = document.createElement('div');
                   cardNode.className = 'tree-node tree-card';
                   cardNode.setAttribute('data-board-id', board.id);
@@ -2742,17 +2821,22 @@ const LexeraDashboard = (function () {
                   cardNode.setAttribute('data-card-index', cdi.toString());
                   cardNode.setAttribute('data-tree-drag', 'tree-card');
                   cardNode.innerHTML =
-                    '<span class="tree-grip" title="Drag to move">\u22EE\u22EE</span>' +
+                    indentHtml(cardIndent, cardIsLast) +
                     '<span class="tree-toggle-spacer"></span>' +
-                    '<span class="tree-label">' + escapeHtml(cardPreviewText(card.content)) + '</span>';
+                    '<span class="tree-label">' + escapeHtml(cardPreviewText(card.content)) + '</span>' +
+                    '<span class="tree-grip" title="Drag to move">\u22EE\u22EE</span>';
                   colChildren.appendChild(cardNode);
                 }
-                stackChildren.appendChild(colChildren);
+                stackContainer.appendChild(colChildren);
               }
             }
-            rowChildren.appendChild(stackChildren);
+            if (!singleStack) {
+              rowContainer.appendChild(stackContainer);
+            }
           }
-          tree.appendChild(rowChildren);
+          if (!singleRow) {
+            tree.appendChild(rowContainer);
+          }
         }
       }
 
@@ -3268,6 +3352,259 @@ const LexeraDashboard = (function () {
     return false;
   }
 
+  function hasInternalHiddenTag(text, tag) {
+    return !!(text && tag && text.indexOf(tag) !== -1);
+  }
+
+  function stripInternalHiddenTags(text) {
+    return (text || '')
+      .replace(/\s*#hidden-internal-(?:parked|archived|deleted)\b/g, '')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n');
+  }
+
+  function applyInternalHiddenTag(text, tag) {
+    var cleaned = stripInternalHiddenTags(text);
+    if (!tag) return cleaned;
+    if (!cleaned || !cleaned.trim()) return tag;
+    var lines = cleaned.split('\n');
+    var firstLine = lines[0] ? lines[0].trim() : '';
+    lines[0] = firstLine ? (firstLine + ' ' + tag) : tag;
+    return lines.join('\n');
+  }
+
+  function getColumnByLocation(rowIndex, stackIndex, colIndex) {
+    if (!fullBoardData || !fullBoardData.rows) return null;
+    var row = fullBoardData.rows[rowIndex];
+    if (!row || !row.stacks) return null;
+    var stack = row.stacks[stackIndex];
+    if (!stack || !stack.columns) return null;
+    return stack.columns[colIndex] || null;
+  }
+
+  function getCardByLocation(rowIndex, stackIndex, colIndex, cardIndex) {
+    var col = getColumnByLocation(rowIndex, stackIndex, colIndex);
+    if (!col || !col.cards) return null;
+    return col.cards[cardIndex] || null;
+  }
+
+  function collectHiddenItems(tag) {
+    if (!fullBoardData || !fullBoardData.rows) return [];
+    var items = [];
+    for (var r = 0; r < fullBoardData.rows.length; r++) {
+      var row = fullBoardData.rows[r];
+      var rowTitle = row.title || ('Row ' + (r + 1));
+      if (!row.stacks) continue;
+      for (var s = 0; s < row.stacks.length; s++) {
+        var stack = row.stacks[s];
+        var stackTitle = stack.title || ('Stack ' + (s + 1));
+        if (!stack.columns) continue;
+        for (var c = 0; c < stack.columns.length; c++) {
+          var col = stack.columns[c];
+          var cleanColTitle = stripStackTag(stripInternalHiddenTags(col.title || '')) || ('Column ' + (c + 1));
+          var columnMatches = hasInternalHiddenTag(col.title || '', tag);
+          if (columnMatches) {
+            items.push({
+              kind: 'column',
+              rowIndex: r,
+              stackIndex: s,
+              colIndex: c,
+              rowTitle: rowTitle,
+              stackTitle: stackTitle,
+              colTitle: cleanColTitle,
+              title: cleanColTitle
+            });
+            continue;
+          }
+          if (!col.cards) continue;
+          for (var i = 0; i < col.cards.length; i++) {
+            var card = col.cards[i];
+            var content = card && card.content ? card.content : '';
+            if (!hasInternalHiddenTag(content, tag)) continue;
+            items.push({
+              kind: 'card',
+              rowIndex: r,
+              stackIndex: s,
+              colIndex: c,
+              cardIndex: i,
+              rowTitle: rowTitle,
+              stackTitle: stackTitle,
+              colTitle: cleanColTitle,
+              title: getCardTitle(stripInternalHiddenTags(content)) || '(untitled card)'
+            });
+          }
+        }
+      }
+    }
+    return items;
+  }
+
+  function getHiddenItemCount(tag) {
+    return collectHiddenItems(tag).length;
+  }
+
+  function buildHiddenItemLocation(item) {
+    var parts = [];
+    if (item.rowTitle) parts.push(item.rowTitle);
+    if (item.stackTitle) parts.push(item.stackTitle);
+    if (item.kind === 'card' && item.colTitle) parts.push(item.colTitle);
+    return parts.join(' / ');
+  }
+
+  async function updateHiddenItemTag(item, tag) {
+    if (!item || !fullBoardData || !activeBoardId) return false;
+    if (item.kind === 'column') {
+      var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
+      if (!col) return false;
+      var nextTitle = applyInternalHiddenTag(col.title || '', tag);
+      if (nextTitle === col.title) return false;
+      pushUndo();
+      col.title = nextTitle;
+    } else {
+      var card = getCardByLocation(item.rowIndex, item.stackIndex, item.colIndex, item.cardIndex);
+      if (!card) return false;
+      var nextContent = applyInternalHiddenTag(card.content || '', tag);
+      if (nextContent === card.content) return false;
+      pushUndo();
+      card.content = nextContent;
+    }
+    return persistBoardMutation({
+      refreshMainView: true,
+      refreshSidebar: true
+    });
+  }
+
+  async function permanentlyDeleteHiddenItem(item) {
+    if (!item || !fullBoardData || !activeBoardId) return false;
+    pushUndo();
+    if (item.kind === 'column') {
+      var stack = fullBoardData.rows[item.rowIndex] && fullBoardData.rows[item.rowIndex].stacks
+        ? fullBoardData.rows[item.rowIndex].stacks[item.stackIndex]
+        : null;
+      if (!stack || !stack.columns || item.colIndex < 0 || item.colIndex >= stack.columns.length) return false;
+      stack.columns.splice(item.colIndex, 1);
+      removeEmptyStacksAndRows();
+    } else {
+      var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
+      if (!col || !col.cards || item.cardIndex < 0 || item.cardIndex >= col.cards.length) return false;
+      col.cards.splice(item.cardIndex, 1);
+    }
+    return persistBoardMutation({
+      refreshMainView: true,
+      refreshSidebar: true
+    });
+  }
+
+  async function permanentlyDeleteHiddenItems(items) {
+    if (!items || items.length === 0 || !fullBoardData || !activeBoardId) return false;
+    var sorted = items.slice().sort(function (a, b) {
+      if (a.rowIndex !== b.rowIndex) return b.rowIndex - a.rowIndex;
+      if (a.stackIndex !== b.stackIndex) return b.stackIndex - a.stackIndex;
+      if (a.colIndex !== b.colIndex) return b.colIndex - a.colIndex;
+      if (a.kind !== b.kind) return a.kind === 'card' ? 1 : -1;
+      var aCardIndex = typeof a.cardIndex === 'number' ? a.cardIndex : -1;
+      var bCardIndex = typeof b.cardIndex === 'number' ? b.cardIndex : -1;
+      return bCardIndex - aCardIndex;
+    });
+
+    pushUndo();
+    for (var i = 0; i < sorted.length; i++) {
+      var item = sorted[i];
+      if (item.kind === 'column') {
+        var stack = fullBoardData.rows[item.rowIndex] && fullBoardData.rows[item.rowIndex].stacks
+          ? fullBoardData.rows[item.rowIndex].stacks[item.stackIndex]
+          : null;
+        if (stack && stack.columns && item.colIndex >= 0 && item.colIndex < stack.columns.length) {
+          stack.columns.splice(item.colIndex, 1);
+        }
+      } else {
+        var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
+        if (col && col.cards && item.cardIndex >= 0 && item.cardIndex < col.cards.length) {
+          col.cards.splice(item.cardIndex, 1);
+        }
+      }
+    }
+    removeEmptyStacksAndRows();
+    return persistBoardMutation({
+      refreshMainView: true,
+      refreshSidebar: true
+    });
+  }
+
+  function showHiddenItemsDialog(title, emptyMessage, items, actions, footerActions) {
+    if (!items || items.length === 0) {
+      showNotification(emptyMessage);
+      return;
+    }
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'modal-dialog hidden-items-dialog';
+    var html = '<div class="modal-title">' + escapeHtml(title) + ' (' + items.length + ')</div>';
+    html += '<div class="hidden-items-list">';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      html += '<div class="parked-item hidden-item" data-idx="' + i + '">';
+      html += '<span class="hidden-item-kind">' + (item.kind === 'column' ? 'Column' : 'Card') + '</span>';
+      html += '<div class="parked-item-content">' + escapeHtml(item.title) + '</div>';
+      html += '<div class="parked-item-col">' + escapeHtml(buildHiddenItemLocation(item)) + '</div>';
+      for (var a = 0; a < actions.length; a++) {
+        var action = actions[a];
+        html += '<button class="board-action-btn' + (action.danger ? ' danger' : '') + '" data-item-action="' +
+          escapeAttr(action.id) + '" data-item-index="' + i + '">' + escapeHtml(action.label) + '</button>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '<div class="hidden-items-footer">';
+    if (footerActions && footerActions.length > 0) {
+      for (var f = 0; f < footerActions.length; f++) {
+        var footerAction = footerActions[f];
+        html += '<button class="board-action-btn' + (footerAction.danger ? ' danger' : '') + '" data-footer-action="' +
+          escapeAttr(footerAction.id) + '">' + escapeHtml(footerAction.label) + '</button>';
+      }
+    }
+    html += '<button class="board-action-btn" id="close-hidden-items">Close</button>';
+    html += '</div>';
+    dialog.innerHTML = html;
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', async function (e) {
+      if (e.target === overlay || e.target.id === 'close-hidden-items') {
+        overlay.remove();
+        return;
+      }
+      var itemBtn = e.target.closest('[data-item-action]');
+      if (itemBtn) {
+        var itemIdx = parseInt(itemBtn.getAttribute('data-item-index'), 10);
+        var itemAction = itemBtn.getAttribute('data-item-action');
+        var selectedItem = items[itemIdx];
+        if (!selectedItem) return;
+        for (var a = 0; a < actions.length; a++) {
+          if (actions[a].id === itemAction && typeof actions[a].handler === 'function') {
+            await actions[a].handler(selectedItem);
+            overlay.remove();
+            return;
+          }
+        }
+      }
+      var footerBtn = e.target.closest('[data-footer-action]');
+      if (footerBtn) {
+        var footerId = footerBtn.getAttribute('data-footer-action');
+        if (!footerActions) return;
+        for (var f = 0; f < footerActions.length; f++) {
+          if (footerActions[f].id === footerId && typeof footerActions[f].handler === 'function') {
+            var shouldClose = await footerActions[f].handler(items);
+            if (shouldClose !== false) overlay.remove();
+            return;
+          }
+        }
+      }
+    });
+  }
+
   // --- Main View ---
 
   function renderMainView() {
@@ -3302,6 +3639,8 @@ const LexeraDashboard = (function () {
 
   function renderBoardHeader() {
     var parkedCount = getParkedCount();
+    var archivedCount = getArchivedCount();
+    var deletedCount = getDeletedCount();
     var boardFilePath = getActiveBoardFilePath();
     var boardFileName = boardFilePath
       ? getFileNameFromPath(boardFilePath)
@@ -3319,6 +3658,12 @@ const LexeraDashboard = (function () {
     html += '<div class="board-header-actions">';
     if (parkedCount > 0) {
       html += '<button class="board-action-btn has-items" id="btn-parked" title="Show parked items">Parked (' + parkedCount + ')</button>';
+    }
+    if (archivedCount > 0) {
+      html += '<button class="board-action-btn has-items" id="btn-archived" title="Show archived items">Archived (' + archivedCount + ')</button>';
+    }
+    if (deletedCount > 0) {
+      html += '<button class="board-action-btn has-items danger" id="btn-trash" title="Show deleted items">Trash (' + deletedCount + ')</button>';
     }
     html += '<span id="btn-add-row-wrap" class="creation-source creation-source-header"></span>';
     html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold All</button>';
@@ -3398,6 +3743,18 @@ const LexeraDashboard = (function () {
         showParkedItems();
       });
     }
+    var archivedBtn = document.getElementById('btn-archived');
+    if (archivedBtn) {
+      archivedBtn.addEventListener('click', function () {
+        showArchivedItems();
+      });
+    }
+    var trashBtn = document.getElementById('btn-trash');
+    if (trashBtn) {
+      trashBtn.addEventListener('click', function () {
+        showDeletedItems();
+      });
+    }
     var addRowWrap = document.getElementById('btn-add-row-wrap');
     if (addRowWrap) {
       var nextIndex = (fullBoardData && fullBoardData.rows) ? fullBoardData.rows.length : 0;
@@ -3426,16 +3783,15 @@ const LexeraDashboard = (function () {
   }
 
   function getParkedCount() {
-    if (!fullBoardData) return 0;
-    var count = 0;
-    var allCols = getAllFullColumns();
-    for (var i = 0; i < allCols.length; i++) {
-      var col = allCols[i];
-      for (var j = 0; j < col.cards.length; j++) {
-        if (col.cards[j].content.indexOf('#hidden-internal-parked') !== -1) count++;
-      }
-    }
-    return count;
+    return getHiddenItemCount('#hidden-internal-parked');
+  }
+
+  function getArchivedCount() {
+    return getHiddenItemCount('#hidden-internal-archived');
+  }
+
+  function getDeletedCount() {
+    return getHiddenItemCount('#hidden-internal-deleted');
   }
 
   function areAllBoardItemsFolded() {
@@ -3456,6 +3812,8 @@ const LexeraDashboard = (function () {
     var hasBoardFile = !!getActiveBoardFilePath();
     var allFolded = areAllBoardItemsFolded();
     var parkedCount = getParkedCount();
+    var archivedCount = getArchivedCount();
+    var deletedCount = getDeletedCount();
     var items = [
       { id: 'add-row', label: 'Add Row' },
       { id: allFolded ? 'unfold-all' : 'fold-all', label: allFolded ? 'Unfold All' : 'Fold All' },
@@ -3464,6 +3822,12 @@ const LexeraDashboard = (function () {
     ];
     if (parkedCount > 0) {
       items.push({ id: 'show-parked', label: 'Show Parked (' + parkedCount + ')' });
+    }
+    if (archivedCount > 0) {
+      items.push({ id: 'show-archived', label: 'Show Archived (' + archivedCount + ')' });
+    }
+    if (deletedCount > 0) {
+      items.push({ id: 'show-trash', label: 'Show Trash (' + deletedCount + ')' });
     }
     items.push({ separator: true });
     items.push({ id: 'rename-file', label: 'Rename File', disabled: !hasBoardFile });
@@ -3497,6 +3861,14 @@ const LexeraDashboard = (function () {
       showParkedItems();
       return;
     }
+    if (action === 'show-archived') {
+      showArchivedItems();
+      return;
+    }
+    if (action === 'show-trash') {
+      showDeletedItems();
+      return;
+    }
     if (action === 'rename-file') {
       renameActiveBoardFile();
       return;
@@ -3522,56 +3894,28 @@ const LexeraDashboard = (function () {
   }
 
   function showParkedItems() {
-    if (!fullBoardData || !activeBoardId) return;
-    var parked = [];
-    var allCols = getAllFullColumns();
-    for (var i = 0; i < allCols.length; i++) {
-      var col = allCols[i];
-      for (var j = 0; j < col.cards.length; j++) {
-        var card = col.cards[j];
-        if (card.content.indexOf('#hidden-internal-parked') !== -1) {
-          parked.push({ colIndex: i, cardIndex: j, card: card, colTitle: col.title });
+    showHiddenItemsDialog(
+      'Parked Items',
+      'No parked items',
+      collectHiddenItems('#hidden-internal-parked'),
+      [
+        {
+          id: 'restore',
+          label: 'Unpark',
+          handler: function (item) {
+            return updateHiddenItemTag(item, null);
+          }
+        },
+        {
+          id: 'trash',
+          label: 'Trash',
+          danger: true,
+          handler: function (item) {
+            return updateHiddenItemTag(item, '#hidden-internal-deleted');
+          }
         }
-      }
-    }
-    if (parked.length === 0) return;
-    showParkedDialog(parked);
-  }
-
-  function showParkedDialog(parkedItems) {
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'modal-dialog';
-    var html = '<div class="modal-title">Parked Items (' + parkedItems.length + ')</div>';
-    for (var i = 0; i < parkedItems.length; i++) {
-      var item = parkedItems[i];
-      var displayContent = item.card.content.replace(/#hidden-internal-parked/g, '').trim();
-      var firstLine = displayContent.split('\n')[0];
-      html += '<div class="parked-item" data-idx="' + i + '">';
-      html += '<div class="parked-item-content">' + escapeHtml(firstLine) + '</div>';
-      html += '<div class="parked-item-col">' + escapeHtml(item.colTitle) + '</div>';
-      html += '<button class="board-action-btn" data-unpark="' + i + '">Unpark</button>';
-      html += '</div>';
-    }
-    html += '<div style="text-align:center;margin-top:12px"><button class="board-action-btn" id="close-parked">Close</button></div>';
-    dialog.innerHTML = html;
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay || e.target.id === 'close-parked') {
-        overlay.remove();
-        return;
-      }
-      var unparkBtn = e.target.closest('[data-unpark]');
-      if (unparkBtn) {
-        var idx = parseInt(unparkBtn.getAttribute('data-unpark'), 10);
-        var item = parkedItems[idx];
-        unparkCard(item.colIndex, item.cardIndex);
-        overlay.remove();
-      }
-    });
+      ]
+    );
   }
 
   async function unparkCard(colIndex, fullCardIndex) {
@@ -3585,11 +3929,76 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshMainView: true });
   }
 
+  function showArchivedItems() {
+    showHiddenItemsDialog(
+      'Archived Items',
+      'No archived items',
+      collectHiddenItems('#hidden-internal-archived'),
+      [
+        {
+          id: 'restore',
+          label: 'Restore',
+          handler: function (item) {
+            return updateHiddenItemTag(item, null);
+          }
+        },
+        {
+          id: 'delete-forever',
+          label: 'Delete Forever',
+          danger: true,
+          handler: function (item) {
+            return permanentlyDeleteHiddenItem(item);
+          }
+        }
+      ]
+    );
+  }
+
+  function showDeletedItems() {
+    showHiddenItemsDialog(
+      'Trash',
+      'Trash is empty',
+      collectHiddenItems('#hidden-internal-deleted'),
+      [
+        {
+          id: 'restore',
+          label: 'Restore',
+          handler: function (item) {
+            return updateHiddenItemTag(item, null);
+          }
+        },
+        {
+          id: 'delete-forever',
+          label: 'Delete Forever',
+          danger: true,
+          handler: function (item) {
+            return permanentlyDeleteHiddenItem(item);
+          }
+        }
+      ],
+      [
+        {
+          id: 'empty-trash',
+          label: 'Empty Trash',
+          danger: true,
+          handler: async function (items) {
+            if (!items || items.length === 0) return true;
+            if (!confirm('Permanently delete all items in trash? This cannot be undone.')) return false;
+            await permanentlyDeleteHiddenItems(items);
+            return true;
+          }
+        }
+      ]
+    );
+  }
+
   function showBoardSettingsDialog() {
     var hasBoardSettings = !!(activeBoardId && fullBoardData);
     var s = hasBoardSettings && fullBoardData.boardSettings ? fullBoardData.boardSettings : {};
     var fields = [
       { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
+      { key: 'layoutRows', label: 'Layout Rows', placeholder: '', type: 'number' },
+      { key: 'layoutPreset', label: 'Layout Preset', placeholder: 'compact / spacious / custom', type: 'text' },
       { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
       { key: 'fontFamily', label: 'Font Family', placeholder: '', type: 'select', options: [
         '', 'Poppins', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Source Sans Pro',
@@ -3603,8 +4012,12 @@ const LexeraDashboard = (function () {
       { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
       { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'top', 'bottom'] },
       { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
+      { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
       { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'enabled', 'disabled'] },
-      { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] }
+      { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
+      { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
+      { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
+      { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
     ];
 
     var overlay = document.createElement('div');
@@ -4113,12 +4526,30 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function getBoardSettingValue(key, fallback) {
+    if (!fullBoardData || !fullBoardData.boardSettings) return fallback;
+    var value = fullBoardData.boardSettings[key];
+    return value == null || value === '' ? fallback : value;
+  }
+
+  function getHtmlContentRenderMode() {
+    var mode = getBoardSettingValue('htmlContentRenderMode', 'text');
+    return mode === 'html' ? 'html' : 'text';
+  }
+
+  function resolveActiveBoardColor(settings) {
+    settings = settings || {};
+    var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) return settings.boardColorDark || settings.boardColor || '';
+    return settings.boardColorLight || settings.boardColor || '';
+  }
+
   function applyBoardSettings() {
     var cssProps = [
       '--board-column-width', '--board-font-size', '--board-font-family',
       '--board-bg', '--board-color', '--board-color-dark', '--board-color-light',
       '--board-row-height', '--board-max-row-height', '--board-card-min-height',
-      '--board-whitespace'
+      '--board-whitespace', '--board-layout-rows'
     ];
     for (var i = 0; i < cssProps.length; i++) {
       $columnsContainer.style.removeProperty(cssProps[i]);
@@ -4129,6 +4560,7 @@ const LexeraDashboard = (function () {
     $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
     $columnsContainer.classList.remove('focus-scroll-mode');
     $columnsContainer.classList.remove('layout-spacious');
+    $columnsContainer.removeAttribute('data-layout-preset');
 
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
@@ -4140,6 +4572,7 @@ const LexeraDashboard = (function () {
     if (s.maxRowHeight) $columnsContainer.style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
     if (s.cardMinHeight) $columnsContainer.style.setProperty('--board-card-min-height', s.cardMinHeight);
     if (s.whitespace) $columnsContainer.style.setProperty('--board-whitespace', s.whitespace);
+    if (s.layoutRows) $columnsContainer.style.setProperty('--board-layout-rows', String(s.layoutRows));
     if (s.tagVisibility === 'hide') $columnsContainer.classList.add('tag-visibility-hide');
     if (s.tagVisibility === 'dim') $columnsContainer.classList.add('tag-visibility-dim');
     var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
@@ -4148,7 +4581,13 @@ const LexeraDashboard = (function () {
     if (s.htmlCommentRenderMode === 'hide') $columnsContainer.classList.add('html-comments-hide');
     if (s.htmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
     if (s.arrowKeyFocusScroll === 'enabled') $columnsContainer.classList.add('focus-scroll-mode');
-    if (s.layoutSpacing === 'spacious') $columnsContainer.classList.add('layout-spacious');
+    if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') $columnsContainer.classList.add('layout-spacious');
+    if (s.layoutPreset) $columnsContainer.setAttribute('data-layout-preset', s.layoutPreset);
+
+    var boardColor = resolveActiveBoardColor(s);
+    if (boardColor) $columnsContainer.style.setProperty('--board-color', boardColor);
+    if (s.boardColorDark || s.boardColor) $columnsContainer.style.setProperty('--board-color-dark', s.boardColorDark || s.boardColor);
+    if (s.boardColorLight || s.boardColor) $columnsContainer.style.setProperty('--board-color-light', s.boardColorLight || s.boardColor);
   }
 
   /**
@@ -5422,6 +5861,10 @@ const LexeraDashboard = (function () {
   // Also cancel on Escape
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      if (currentCardEditor) {
+        closeCardEditorOverlay({ save: false });
+        return;
+      }
       if (cardDrag && cardDrag.started) cancelCardDrag();
       else if (cardDrag) {
         cardDrag = null;
@@ -5566,6 +6009,28 @@ const LexeraDashboard = (function () {
   }
 
   function resolveCardDropTarget(mx, my) {
+    var isTreeCardDrag = ptrDrag && ptrDrag.type === 'tree-card';
+
+    // Tree card-to-card: precise between-card positioning in hierarchy
+    if (isTreeCardDrag) {
+      var treeCardTarget = getTreeCardDropTarget(mx, my);
+      if (treeCardTarget) {
+        var tcInsertIdx = treeCardTarget.before ? treeCardTarget.cardIndex : treeCardTarget.cardIndex + 1;
+        return {
+          kind: 'sidebar',
+          boardId: treeCardTarget.boardId,
+          rowIndex: treeCardTarget.rowIndex,
+          stackIndex: treeCardTarget.stackIndex,
+          colIndex: treeCardTarget.colIndex,
+          indexMode: treeCardTarget.indexMode,
+          insertIdx: tcInsertIdx,
+          insertMode: treeCardTarget.boardId === activeBoardId ? 'visible' : 'full',
+          sidebarNode: null,
+          container: null
+        };
+      }
+    }
+
     // Prefer sidebar hierarchy columns.
     var sidebarCol = findSidebarColumnAt(mx, my);
     if (sidebarCol) {
@@ -5607,40 +6072,43 @@ const LexeraDashboard = (function () {
       }
     }
 
-    // Sidebar stack drop: append to last column in stack.
-    var sidebarStackNode = findNodeAtPoint($boardList.querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
-    if (sidebarStackNode) {
-      var stackBoardId = sidebarStackNode.getAttribute('data-board-id');
-      var stackRowIdx = parseInt(sidebarStackNode.getAttribute('data-row-index'), 10);
-      var stackIdx = parseInt(sidebarStackNode.getAttribute('data-stack-index'), 10);
-      var stackTarget = buildSidebarCardTarget(stackBoardId, stackRowIdx, stackIdx, Number.POSITIVE_INFINITY, sidebarStackNode);
-      if (stackTarget) return stackTarget;
-    }
+    // Cards from tree can only go into columns — skip stack/row/board fallbacks
+    if (!isTreeCardDrag) {
+      // Sidebar stack drop: append to last column in stack.
+      var sidebarStackNode = findNodeAtPoint($boardList.querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
+      if (sidebarStackNode) {
+        var stackBoardId = sidebarStackNode.getAttribute('data-board-id');
+        var stackRowIdx = parseInt(sidebarStackNode.getAttribute('data-row-index'), 10);
+        var stackIdx = parseInt(sidebarStackNode.getAttribute('data-stack-index'), 10);
+        var stackTarget = buildSidebarCardTarget(stackBoardId, stackRowIdx, stackIdx, Number.POSITIVE_INFINITY, sidebarStackNode);
+        if (stackTarget) return stackTarget;
+      }
 
-    // Sidebar row drop: append to first non-empty stack/column in row.
-    var sidebarRowNode = findNodeAtPoint($boardList.querySelectorAll('.tree-row[data-tree-drag="tree-row"]'), mx, my);
-    if (sidebarRowNode) {
-      var rowBoardId = sidebarRowNode.getAttribute('data-board-id');
-      var rowIdx = parseInt(sidebarRowNode.getAttribute('data-row-index'), 10);
-      var rowDataSet = getBoardHierarchyRows(rowBoardId) || [];
-      var rowData = rowDataSet[rowIdx];
-      if (rowData && rowData.stacks) {
-        for (var rs = 0; rs < rowData.stacks.length; rs++) {
-          if (rowData.stacks[rs] && rowData.stacks[rs].columns && rowData.stacks[rs].columns.length > 0) {
-            var rowTarget = buildSidebarCardTarget(rowBoardId, rowIdx, rs, 0, sidebarRowNode);
-            if (rowTarget) return rowTarget;
-            break;
+      // Sidebar row drop: append to first non-empty stack/column in row.
+      var sidebarRowNode = findNodeAtPoint($boardList.querySelectorAll('.tree-row[data-tree-drag="tree-row"]'), mx, my);
+      if (sidebarRowNode) {
+        var rowBoardId = sidebarRowNode.getAttribute('data-board-id');
+        var rowIdx = parseInt(sidebarRowNode.getAttribute('data-row-index'), 10);
+        var rowDataSet = getBoardHierarchyRows(rowBoardId) || [];
+        var rowData = rowDataSet[rowIdx];
+        if (rowData && rowData.stacks) {
+          for (var rs = 0; rs < rowData.stacks.length; rs++) {
+            if (rowData.stacks[rs] && rowData.stacks[rs].columns && rowData.stacks[rs].columns.length > 0) {
+              var rowTarget = buildSidebarCardTarget(rowBoardId, rowIdx, rs, 0, sidebarRowNode);
+              if (rowTarget) return rowTarget;
+              break;
+            }
           }
         }
       }
-    }
 
-    // Sidebar board drop: append to first available column in board.
-    var sidebarBoardNode = findNodeAtPoint($boardList.querySelectorAll('.board-item[data-board-id]'), mx, my);
-    if (sidebarBoardNode) {
-      var boardNodeId = sidebarBoardNode.getAttribute('data-board-id');
-      var boardTarget = getFirstSidebarCardTargetForBoard(boardNodeId, sidebarBoardNode);
-      if (boardTarget) return boardTarget;
+      // Sidebar board drop: append to first available column in board.
+      var sidebarBoardNode = findNodeAtPoint($boardList.querySelectorAll('.board-item[data-board-id]'), mx, my);
+      if (sidebarBoardNode) {
+        var boardNodeId = sidebarBoardNode.getAttribute('data-board-id');
+        var boardTarget = getFirstSidebarCardTargetForBoard(boardNodeId, sidebarBoardNode);
+        if (boardTarget) return boardTarget;
+      }
     }
 
     // Then main board columns.
@@ -6234,7 +6702,10 @@ const LexeraDashboard = (function () {
     if (e.button !== 0) return;
     if (ptrDrag || cardDrag) return;
     if (e.target.closest('.board-row-title, .board-stack-title, .column-title')) return;
-    if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) return;
+    if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) {
+      console.log('[PTR-DND] mousedown blocked by interactive element: ' + e.target.className);
+      return;
+    }
 
     // Row grip
     var rowHeader = e.target.closest('.board-row-header');
@@ -6280,6 +6751,7 @@ const LexeraDashboard = (function () {
       var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       var columns = stackEl.querySelectorAll('.board-stack-content > .column');
       var colIdx = Array.prototype.indexOf.call(columns, colEl);
+      console.log('[COL-PTR] mousedown on column-header r=' + rowIdx + ' s=' + stackIdx + ' c=' + colIdx + ' target=' + e.target.className);
       ptrDrag = {
         type: 'column',
         source: {
@@ -6320,6 +6792,7 @@ const LexeraDashboard = (function () {
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
       ptrDrag.el.classList.add('dragging');
+      console.log('[PTR-DND] drag started type=' + ptrDrag.type);
       var lockableDragType =
         ptrDrag.type === 'board-row' ||
         ptrDrag.type === 'tree-row' ||
@@ -6334,6 +6807,7 @@ const LexeraDashboard = (function () {
       startCrossViewBridge('ptr');
       if (ptrDrag.type === 'column' || ptrDrag.type === 'tree-column') {
         insertStackDropZones();
+        console.log('[COL-PTR] inserted stack drop zones, count=' + $columnsContainer.querySelectorAll('.stack-drop-zone').length);
       }
 
       // Create ghost
@@ -6361,10 +6835,12 @@ const LexeraDashboard = (function () {
   document.addEventListener('mouseup', function (e) {
     if (!ptrDrag) return;
     if (!ptrDrag.started) {
+      console.log('[PTR-DND] mouseup without reaching threshold, type=' + ptrDrag.type);
       ptrDrag = null;
       stopCrossViewBridge();
       return;
     }
+    console.log('[PTR-DND] mouseup → executePtrDrop type=' + ptrDrag.type + ' at=' + e.clientX + ',' + e.clientY);
     executePtrDrop(e.clientX, e.clientY);
     cleanupPtrDrag();
   });
@@ -6428,7 +6904,23 @@ const LexeraDashboard = (function () {
       }
       return !!boardColumnHit;
     } else if (type === 'tree-card') {
-      return updateCardDropTarget(mx, my);
+      // Cards can only drop into columns (not stacks/rows/boards)
+      clearCardDropIndicators();
+      clearSidebarDropHighlights();
+      clearCardDragOverHighlights();
+      // Tree card-to-card indicator (between-card reorder in tree)
+      var treeCardHit = ptrFindStrictHitNode(
+        $boardList.querySelectorAll('.tree-node[data-tree-drag="tree-card"]'),
+        mx, my, 'tree-drop-above', 'tree-drop-below', true
+      );
+      if (treeCardHit) return true;
+      // Tree column highlight (drop appends to column)
+      var treeColNode = findSidebarColumnAt(mx, my);
+      if (treeColNode) { treeColNode.classList.add('drop-target'); return true; }
+      // Main board column
+      var mainCol = findColumnCardsContainerAt(mx, my);
+      if (mainCol) { mainCol.classList.add('card-drag-over'); showCardDropIndicator(mainCol, findCardInsertIndex(my, mainCol)); return true; }
+      return false;
     } else if (type === 'board') {
       var boardHit = ptrFindHitNode($boardList.querySelectorAll('.board-item'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
       return !!boardHit;
@@ -6632,6 +7124,27 @@ const LexeraDashboard = (function () {
     };
   }
 
+  function getTreeCardDropTarget(mx, my) {
+    var treeTarget = resolveDropTargetStrict($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-card"]'), mx, my, true);
+    if (!treeTarget) return null;
+    var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
+    var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
+    var stackIdx = parseInt(treeTarget.node.getAttribute('data-stack-index'), 10);
+    var colIdx = parseInt(treeTarget.node.getAttribute('data-col-local-index'), 10);
+    var cardIdx = parseInt(treeTarget.node.getAttribute('data-card-index'), 10);
+    if (isNaN(rowIdx) || isNaN(stackIdx) || isNaN(colIdx) || isNaN(cardIdx)) return null;
+    return {
+      kind: 'sidebar',
+      boardId: boardId,
+      rowIndex: rowIdx,
+      stackIndex: stackIdx,
+      colIndex: colIdx,
+      cardIndex: cardIdx,
+      before: treeTarget.before,
+      indexMode: boardId === activeBoardId ? 'display' : 'full'
+    };
+  }
+
   // Generic target resolver: returns { node, before } with edge snapping.
   function resolveDropTarget(nodeList, mx, my, vertical) {
     for (var i = 0; i < nodeList.length; i++) {
@@ -6712,6 +7225,20 @@ const LexeraDashboard = (function () {
     }
     return false;
   }
+  // Debug: log column ptr drop target periodically
+  var _colPtrLogTimer = 0;
+  var _origUpdateColumnPtrDropTarget = updateColumnPtrDropTarget;
+  updateColumnPtrDropTarget = function (mx, my) {
+    var result = _origUpdateColumnPtrDropTarget(mx, my);
+    var now = Date.now();
+    if (now - _colPtrLogTimer > 500) {
+      _colPtrLogTimer = now;
+      var cols = $columnsContainer.querySelectorAll('.column:not(.dragging)');
+      var zones = $columnsContainer.querySelectorAll('.stack-drop-zone');
+      console.log('[COL-PTR] updateDropTarget hit=' + result + ' cols=' + cols.length + ' zones=' + zones.length + ' mouse=' + mx + ',' + my);
+    }
+    return result;
+  };
 
   function clearPtrDropIndicators() {
     removeClassesFromNodeList($boardList.querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
@@ -6755,6 +7282,7 @@ const LexeraDashboard = (function () {
   }
 
   function executeColumnPtrDrop(mx, my, src) {
+    console.log('[COL-PTR] executeColumnPtrDrop src=r' + src.rowIndex + '/s' + src.stackIndex + '/c' + src.colIndex);
     function isSameActiveBoardDisplayTarget(target) {
       return (
         src &&
@@ -6775,6 +7303,7 @@ const LexeraDashboard = (function () {
     // Check drop zones first (create new stack at specific position)
     var zone = findStackDropZoneAt(mx, my);
     if (zone) {
+      console.log('[COL-PTR] drop on stack-drop-zone');
       var targetRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
       var insertIdx = parseInt(zone.getAttribute('data-insert-index'), 10);
       var zoneTarget = {
@@ -6793,6 +7322,7 @@ const LexeraDashboard = (function () {
     }
     // Check columns (reorder)
     var column = findDraggableColumnAt(mx, my);
+    console.log('[COL-PTR] drop check: zone=' + !!zone + ' column=' + !!column + ' stack=' + !!findBoardStackAt(mx, my));
     if (column) {
       var colRect = column.getBoundingClientRect();
       var stackEl = column.closest('.board-stack');
@@ -6841,7 +7371,9 @@ const LexeraDashboard = (function () {
 
     // Check hierarchy columns (reorder via sidebar tree)
     var treeColTarget = getTreeColumnDropTarget(mx, my);
+    console.log('[COL-PTR] tree targets: col=' + !!treeColTarget + ' at=' + mx + ',' + my);
     if (treeColTarget) {
+      console.log('[COL-PTR] tree col target: board=' + treeColTarget.boardId + ' r=' + treeColTarget.rowIndex + ' s=' + treeColTarget.stackIndex + ' c=' + treeColTarget.colIndex + ' sameBoard=' + isSameActiveBoardDisplayTarget(treeColTarget));
       if (isSameActiveBoardDisplayTarget(treeColTarget)) {
         if (src.rowIndex !== treeColTarget.rowIndex || src.stackIndex !== treeColTarget.stackIndex || src.colIndex !== treeColTarget.colIndex) {
           moveColumnWithinBoard(
@@ -6871,6 +7403,7 @@ const LexeraDashboard = (function () {
     // Check hierarchy stacks (append into target stack)
     var treeStackTarget = getTreeStackDropTarget(mx, my);
     if (treeStackTarget) {
+      console.log('[COL-PTR] tree stack target: board=' + treeStackTarget.boardId + ' r=' + treeStackTarget.rowIndex + ' s=' + treeStackTarget.stackIndex + ' sameBoard=' + isSameActiveBoardDisplayTarget(treeStackTarget));
       if (isSameActiveBoardDisplayTarget(treeStackTarget)) {
         if (src.rowIndex !== treeStackTarget.rowIndex || src.stackIndex !== treeStackTarget.stackIndex) {
           moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, treeStackTarget.rowIndex, treeStackTarget.stackIndex);
@@ -7093,16 +7626,17 @@ const LexeraDashboard = (function () {
   }
 
   async function moveColumnAcrossBoards(source, target) {
-    if (!source || !target || !source.boardId || !target.boardId) return;
+    console.log('[COL-XBOARD] moveColumnAcrossBoards source=', JSON.stringify(source), 'target=', JSON.stringify(target));
+    if (!source || !target || !source.boardId || !target.boardId) { console.log('[COL-XBOARD] abort: missing source/target boardId'); return; }
 
     var sourceBoardId = source.boardId;
     var targetBoardId = target.boardId;
     var sourceBoardData = await loadBoardDataForMutation(sourceBoardId);
-    if (!sourceBoardData) return;
+    if (!sourceBoardData) { console.log('[COL-XBOARD] abort: no sourceBoardData'); return; }
     var targetBoardData = sourceBoardId === targetBoardId
       ? sourceBoardData
       : await loadBoardDataForMutation(targetBoardId);
-    if (!targetBoardData) return;
+    if (!targetBoardData) { console.log('[COL-XBOARD] abort: no targetBoardData'); return; }
 
     var sourceLoc = resolveColumnLocationForMutation(
       sourceBoardId,
@@ -7112,7 +7646,7 @@ const LexeraDashboard = (function () {
       source.colIndex,
       source.indexMode || 'full'
     );
-    if (!sourceLoc || !sourceLoc.stack || !sourceLoc.stack.columns) return;
+    if (!sourceLoc || !sourceLoc.stack || !sourceLoc.stack.columns) { console.log('[COL-XBOARD] abort: sourceLoc not resolved', sourceLoc); return; }
 
     var activeTouched = sourceBoardId === activeBoardId || targetBoardId === activeBoardId;
     if (activeTouched && fullBoardData) pushUndo();
@@ -7427,7 +7961,59 @@ const LexeraDashboard = (function () {
 
   // --- Card Editing ---
 
+  function normalizeCardEditorMode(mode) {
+    if (mode === 'markdown' || mode === 'preview') return mode;
+    return 'dual';
+  }
+
+  function getCardEditorFormatSpec(fmt) {
+    if (fmt === 'bold') return { wrap: '**' };
+    if (fmt === 'italic') return { wrap: '*' };
+    if (fmt === 'underline') return { wrap: '_' };
+    if (fmt === 'strike') return { wrap: '~~' };
+    if (fmt === 'mark') return { wrap: '==' };
+    if (fmt === 'code') return { wrap: '`' };
+    if (fmt === 'link') return { prefix: '[', suffix: '](url)' };
+    if (fmt === 'heading') return { prefix: '## ', suffix: '' };
+    if (fmt === 'task') return { prefix: '- [ ] ', suffix: '' };
+    if (fmt === 'footnote') return { snippet: 'Reference[^1]\n\n[^1]: Footnote text' };
+    if (fmt === 'code-block') return { snippet: '```\ncode\n```' };
+    if (fmt === 'columns') return { snippet: '---:\n\n:--:\n\n:---' };
+    if (fmt === 'note') return { snippet: '::: note\n\n:::' };
+    return null;
+  }
+
+  function updateCheckboxLineInText(text, lineIndex, checked) {
+    var lines = String(text || '').split('\n');
+    if (lineIndex < 0 || lineIndex >= lines.length) return String(text || '');
+    if (checked) {
+      lines[lineIndex] = lines[lineIndex].replace(/\[([ ])\]/, '[x]');
+    } else {
+      lines[lineIndex] = lines[lineIndex].replace(/\[([xX])\]/, '[ ]');
+    }
+    return lines.join('\n');
+  }
+
+  function applyCardEditorMode(mode) {
+    if (!currentCardEditor || !currentCardEditor.dialog) return;
+    mode = normalizeCardEditorMode(mode);
+    currentCardEditor.mode = mode;
+    currentCardEditor.dialog.setAttribute('data-editor-mode', mode);
+    var buttons = currentCardEditor.dialog.querySelectorAll('[data-card-editor-mode]');
+    for (var i = 0; i < buttons.length; i++) {
+      var isActive = buttons[i].getAttribute('data-card-editor-mode') === mode;
+      buttons[i].classList.toggle('active', isActive);
+      buttons[i].setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    }
+    if (mode === 'preview') {
+      refreshCardEditorPreview();
+    }
+    cardEditorMode = mode;
+    localStorage.setItem('lexera-card-editor-mode', mode);
+  }
+
   function enterCardEditMode(cardEl, colIndex, cardIndex) {
+    if (currentCardEditor) return;
     if (!fullBoardData) return;
     var col = getFullColumn(colIndex);
     if (!col) return;
@@ -7436,75 +8022,251 @@ const LexeraDashboard = (function () {
     if (!card) return;
 
     isEditing = true;
-    var editCancelled = false;
     cardEl.classList.add('editing');
     cardEl.classList.remove('collapsed');
-    var contentEl = cardEl.querySelector('.card-content');
-    if (!contentEl) {
-      contentEl = document.createElement('div');
-      contentEl.className = 'card-content';
-      cardEl.appendChild(contentEl);
-    }
-    var textarea = document.createElement('textarea');
-    textarea.className = 'card-edit-input';
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay card-editor-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog card-editor-dialog';
+    dialog.innerHTML =
+      '<div class="card-editor-header">' +
+        '<div class="card-editor-header-main">' +
+          '<div class="card-editor-title-label">Card Editor</div>' +
+          '<div class="card-editor-title-text"></div>' +
+        '</div>' +
+        '<div class="card-editor-header-actions">' +
+          '<div class="card-editor-mode-toggle" role="group" aria-label="Editor mode">' +
+            '<button class="board-action-btn" type="button" data-card-editor-mode="markdown" aria-pressed="false">Markdown</button>' +
+            '<button class="board-action-btn" type="button" data-card-editor-mode="dual" aria-pressed="false">Dual</button>' +
+            '<button class="board-action-btn" type="button" data-card-editor-mode="preview" aria-pressed="false">Preview</button>' +
+          '</div>' +
+          '<button class="btn-small btn-cancel" data-card-editor-action="cancel">Cancel</button>' +
+          '<button class="btn-small btn-primary" data-card-editor-action="save">Save</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card-editor-toolbar">' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="bold" title="Bold">Bold</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="italic" title="Italic">Italic</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="underline" title="Underline">Underline</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="strike" title="Strikethrough">Strike</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="mark" title="Mark">Mark</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="code" title="Inline code">Code</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="link" title="Link">Link</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="heading" title="Heading">H2</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="task" title="Checklist item">Task</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="footnote" title="Footnote">Footnote</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="code-block" title="Code block">Block</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="columns" title="Multi-column block">Columns</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-fmt="note" title="Note container">Note</button>' +
+        '<span class="card-editor-hint">Ctrl/Cmd+Enter to save, Esc to cancel</span>' +
+      '</div>' +
+      '<div class="card-editor-body">' +
+        '<div class="card-editor-pane card-editor-text-pane">' +
+          '<div class="card-editor-pane-title">Markdown</div>' +
+          '<textarea class="card-editor-textarea card-edit-input" spellcheck="false"></textarea>' +
+        '</div>' +
+        '<div class="card-editor-pane card-editor-preview-pane">' +
+          '<div class="card-editor-pane-title">Preview</div>' +
+          '<div class="card-editor-preview" tabindex="0"></div>' +
+        '</div>' +
+      '</div>';
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    var textarea = dialog.querySelector('.card-editor-textarea');
+    var preview = dialog.querySelector('.card-editor-preview');
     textarea.value = card.content;
-    contentEl.innerHTML = '';
-    contentEl.appendChild(textarea);
 
-    function autoResize() {
-      textarea.style.height = 'auto';
-      textarea.style.height = textarea.scrollHeight + 'px';
-    }
-    textarea.addEventListener('input', autoResize);
-    requestAnimationFrame(function () {
-      textarea.focus();
-      autoResize();
+    currentCardEditor = {
+      overlay: overlay,
+      dialog: dialog,
+      textarea: textarea,
+      preview: preview,
+      cardEl: cardEl,
+      colIndex: colIndex,
+      fullCardIdx: fullIdx,
+      mode: normalizeCardEditorMode(cardEditorMode || localStorage.getItem('lexera-card-editor-mode') || 'dual')
+    };
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeCardEditorOverlay({ save: false });
     });
-
-    textarea.addEventListener('keydown', function (e) {
-      if (handleTextareaTabIndent(e, textarea)) return;
-      if (e.key === 'Enter' && e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        textarea.blur();
+    dialog.addEventListener('click', function (e) {
+      var modeBtn = e.target.closest('[data-card-editor-mode]');
+      if (modeBtn) {
+        applyCardEditorMode(modeBtn.getAttribute('data-card-editor-mode'));
+        if (currentCardEditor && currentCardEditor.textarea && currentCardEditor.mode !== 'preview') {
+          currentCardEditor.textarea.focus();
+        }
         return;
       }
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      var actionBtn = e.target.closest('[data-card-editor-action]');
+      if (actionBtn) {
+        var action = actionBtn.getAttribute('data-card-editor-action');
+        if (action === 'save') closeCardEditorOverlay({ save: true });
+        else if (action === 'cancel') closeCardEditorOverlay({ save: false });
+        return;
+      }
+      var fmtBtn = e.target.closest('[data-card-editor-fmt]');
+      if (!fmtBtn) return;
+      var fmt = fmtBtn.getAttribute('data-card-editor-fmt');
+      var formatSpec = getCardEditorFormatSpec(fmt);
+      if (formatSpec) {
+        insertFormatting(textarea, formatSpec);
+        textarea.focus();
+      }
+    });
+
+    textarea.addEventListener('input', refreshCardEditorPreview);
+    preview.addEventListener('change', function (e) {
+      if (!e.target.classList.contains('card-checkbox')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var lineIndex = parseInt(e.target.getAttribute('data-line'), 10);
+      if (!isFinite(lineIndex)) return;
+      textarea.value = updateCheckboxLineInText(textarea.value, lineIndex, e.target.checked);
+      refreshCardEditorPreview();
+    });
+    dialog.addEventListener('dragover', function (e) {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    dialog.addEventListener('drop', async function (e) {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      var markdown = typeof resolveDropContent === 'function'
+        ? await resolveDropContent(e.dataTransfer)
+        : '';
+      if (!markdown) return;
+      insertFormatting(textarea, { snippet: markdown });
+      textarea.focus();
+    });
+    dialog.addEventListener('keydown', function (e) {
+      if (e.target === textarea) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        textarea.blur();
+        closeCardEditorOverlay({ save: true });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        closeCardEditorOverlay({ save: true });
+        return;
       }
       if (e.key === 'Escape') {
-        editCancelled = true;
-        isEditing = false;
-        cardEl.classList.remove('editing');
-        contentEl.innerHTML = renderCardContent(card.content, activeBoardId);
-        // Update title in header
-        var titleEl = cardEl.querySelector('.card-title-display');
-        if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(card.content));
-        if (pendingRefresh) {
-          pendingRefresh = false;
-          loadBoard(activeBoardId);
+        e.preventDefault();
+        closeCardEditorOverlay({ save: false });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          applyCardEditorMode('markdown');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          applyCardEditorMode('dual');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          applyCardEditorMode('preview');
         }
       }
-      // Formatting shortcuts
+    });
+    textarea.addEventListener('keydown', function (e) {
+      if (handleTextareaTabIndent(e, textarea)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        closeCardEditorOverlay({ save: true });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        closeCardEditorOverlay({ save: true });
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeCardEditorOverlay({ save: false });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          applyCardEditorMode('markdown');
+          return;
+        }
+        if (e.key === '2') {
+          e.preventDefault();
+          applyCardEditorMode('dual');
+          return;
+        }
+        if (e.key === '3') {
+          e.preventDefault();
+          applyCardEditorMode('preview');
+          return;
+        }
+      }
       if (e.ctrlKey || e.metaKey) {
         var fmt = null;
         if (e.key === 'b') fmt = { wrap: '**' };
         else if (e.key === 'i') fmt = { wrap: '*' };
         else if (e.key === '`') fmt = { wrap: '`' };
         else if (e.key === 'k') fmt = { prefix: '[', suffix: '](url)' };
+        else if (e.key === 'u') fmt = { wrap: '_' };
+        else if (e.key === 'h') fmt = { prefix: '## ', suffix: '' };
         if (fmt) {
           e.preventDefault();
           insertFormatting(textarea, fmt);
-          autoResize();
         }
       }
     });
 
-    textarea.addEventListener('blur', function () {
-      if (editCancelled) return;
-      saveCardEdit(cardEl, colIndex, fullIdx, textarea.value);
+    refreshCardEditorPreview();
+    applyCardEditorMode(currentCardEditor.mode);
+    requestAnimationFrame(function () {
+      if (currentCardEditor && currentCardEditor.mode !== 'preview') {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      } else if (preview) {
+        preview.focus();
+      }
     });
+  }
+
+  function refreshCardEditorPreview() {
+    if (!currentCardEditor) return;
+    var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
+    if (currentCardEditor.preview) {
+      currentCardEditor.preview.innerHTML = renderCardContent(value, activeBoardId);
+      if (pendingMermaidRenders.length > 0) {
+        if (!mermaidReady) loadMermaidLibrary();
+        else processMermaidQueue();
+      }
+    }
+    var titleEl = currentCardEditor.dialog
+      ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
+      : null;
+    if (titleEl) {
+      titleEl.textContent = getCardTitle(stripInternalHiddenTags(value)).trim() || 'Untitled';
+    }
+  }
+
+  async function closeCardEditorOverlay(options) {
+    options = options || {};
+    if (!currentCardEditor) return;
+    var editor = currentCardEditor;
+    currentCardEditor = null;
+    isEditing = false;
+    if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
+    if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
+    if (options.save) {
+      await saveCardEdit(editor.cardEl, editor.colIndex, editor.fullCardIdx, editor.textarea.value);
+      return;
+    }
+    if (pendingRefresh) {
+      pendingRefresh = false;
+      loadBoard(activeBoardId);
+    }
   }
 
   function insertFormatting(textarea, fmt) {
@@ -7514,7 +8276,9 @@ const LexeraDashboard = (function () {
     var selected = text.substring(start, end);
 
     var replacement;
-    if (fmt.wrap) {
+    if (fmt.snippet != null) {
+      replacement = fmt.snippet;
+    } else if (fmt.wrap) {
       replacement = fmt.wrap + (selected || 'text') + fmt.wrap;
     } else {
       replacement = fmt.prefix + (selected || 'text') + fmt.suffix;
@@ -7522,8 +8286,10 @@ const LexeraDashboard = (function () {
 
     textarea.value = text.substring(0, start) + replacement + text.substring(end);
 
-    // Place cursor: if there was a selection, select the content between markers
-    if (selected) {
+    if (fmt.snippet != null) {
+      textarea.setSelectionRange(start, start + replacement.length);
+    } else if (selected) {
+      // Place cursor: if there was a selection, select the content between markers
       var contentStart = start + (fmt.wrap ? fmt.wrap.length : fmt.prefix.length);
       textarea.setSelectionRange(contentStart, contentStart + selected.length);
     } else {
@@ -7535,17 +8301,16 @@ const LexeraDashboard = (function () {
 
   async function saveCardEdit(cardEl, colIndex, fullCardIdx, newContent) {
     isEditing = false;
-    pushUndo();
     if (!fullBoardData || !activeBoardId) return;
     var col = getFullColumn(colIndex);
     if (!col || !col.cards[fullCardIdx]) return;
 
     var oldContent = col.cards[fullCardIdx].content;
     if (newContent === oldContent) {
-      cardEl.classList.remove('editing');
-      var contentEl = cardEl.querySelector('.card-content');
+      if (cardEl && cardEl.classList) cardEl.classList.remove('editing');
+      var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
       if (contentEl) contentEl.innerHTML = renderCardContent(oldContent, activeBoardId);
-      var titleEl = cardEl.querySelector('.card-title-display');
+      var titleEl = cardEl ? cardEl.querySelector('.card-title-display') : null;
       if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(oldContent));
       if (pendingRefresh) {
         pendingRefresh = false;
@@ -7554,6 +8319,7 @@ const LexeraDashboard = (function () {
       return;
     }
 
+    pushUndo();
     col.cards[fullCardIdx].content = newContent;
     await persistBoardMutation();
     if (pendingRefresh) {
@@ -7627,9 +8393,9 @@ const LexeraDashboard = (function () {
     nativeItems.push({ id: 'delete', label: 'Delete' });
 
     showNativeMenu(nativeItems, x, y).then(function (action) {
-      if (action) handleCardMenuAction(action, colIndex, cardIndex);
-    });
-  }
+    if (action) handleCardMenuAction(action, colIndex, cardIndex);
+  });
+}
 
   function handleCardMenuAction(action, colIndex, cardIndex) {
     if (action === 'add-card') {
@@ -7682,25 +8448,15 @@ const LexeraDashboard = (function () {
     if (fullIdx === -1) return;
     var card = col.cards[fullIdx];
     if (!card) return;
+    var nextContent = applyInternalHiddenTag(card.content || '', tag);
+    if (nextContent === card.content) return;
     pushUndo();
-
-    // Append tag to first line of content
-    var lines = card.content.split('\n');
-    lines[0] = lines[0] + ' ' + tag;
-    card.content = lines.join('\n');
-    await persistBoardMutation();
+    card.content = nextContent;
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
   }
 
   async function deleteCard(colIndex, cardIndex) {
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    var fullIdx = getFullCardIndex(col, cardIndex);
-    if (fullIdx < 0 || fullIdx >= col.cards.length) return;
-    pushUndo();
-
-    col.cards.splice(fullIdx, 1);
-    await persistBoardMutation();
+    await tagCard(colIndex, cardIndex, '#hidden-internal-deleted');
   }
 
   // --- Column Context Menu & Operations ---
@@ -7743,6 +8499,8 @@ const LexeraDashboard = (function () {
       }
     }
     nativeItems.push({ separator: true });
+    nativeItems.push({ id: 'archive', label: 'Archive Column' });
+    nativeItems.push({ id: 'park', label: 'Park Column' });
     nativeItems.push({ id: 'delete', label: 'Delete Column' });
 
     showNativeMenu(nativeItems, x, y).then(function (action) {
@@ -7795,9 +8553,24 @@ const LexeraDashboard = (function () {
       sortColumnCards(colIndex, 'title');
     } else if (action === 'sort-tag') {
       sortColumnCards(colIndex, 'tag');
+    } else if (action === 'archive') {
+      setColumnHiddenTag(colIndex, '#hidden-internal-archived');
+    } else if (action === 'park') {
+      setColumnHiddenTag(colIndex, '#hidden-internal-parked');
     } else if (action === 'delete') {
       deleteColumn(colIndex);
     }
+  }
+
+  async function setColumnHiddenTag(colIndex, tag) {
+    if (!fullBoardData || !activeBoardId) return;
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var nextTitle = applyInternalHiddenTag(col.title || '', tag);
+    if (nextTitle === col.title) return;
+    pushUndo();
+    col.title = nextTitle;
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
   }
 
   function sortColumnCards(colIndex, mode) {
@@ -7952,14 +8725,9 @@ const LexeraDashboard = (function () {
     var col = getFullColumn(colIndex);
     if (!col) return;
     if (col.cards.length > 0) {
-      if (!confirm('Delete column "' + stripStackTag(col.title) + '" and all ' + col.cards.length + ' cards?')) return;
+      if (!confirm('Move column "' + stripStackTag(col.title) + '" and all ' + col.cards.length + ' cards to trash?')) return;
     }
-    var container = findColumnContainer(colIndex);
-    if (!container) return;
-    pushUndo();
-    container.arr.splice(container.localIdx, 1);
-    removeEmptyStacksAndRows();
-    await persistBoardMutation();
+    await setColumnHiddenTag(colIndex, '#hidden-internal-deleted');
   }
 
   function toggleColCards(colIndex, collapse) {
@@ -8815,7 +9583,7 @@ const LexeraDashboard = (function () {
 
   // --- Util ---
 
-  function renderTable(lines, startIdx, boardId) {
+  function renderTable(lines, startIdx, boardId, renderState) {
     var headerLine = lines[startIdx].trim();
     var sepLine = lines[startIdx + 1].trim();
 
@@ -8837,7 +9605,7 @@ const LexeraDashboard = (function () {
 
     var out = '<table class="md-table"><thead><tr>';
     for (var h = 0; h < headers.length; h++) {
-      out += '<th style="text-align:' + aligns[h] + '">' + renderInline(headers[h], boardId) + '</th>';
+      out += '<th style="text-align:' + aligns[h] + '">' + renderInline(headers[h], boardId, renderState) + '</th>';
     }
     out += '</tr></thead><tbody>';
 
@@ -8848,7 +9616,7 @@ const LexeraDashboard = (function () {
       for (var c = 0; c < headers.length; c++) {
         var val = c < cells.length ? cells[c] : '';
         var align = c < aligns.length ? aligns[c] : 'left';
-        out += '<td style="text-align:' + align + '">' + renderInline(val, boardId) + '</td>';
+        out += '<td style="text-align:' + align + '">' + renderInline(val, boardId, renderState) + '</td>';
       }
       out += '</tr>';
     }
@@ -8899,10 +9667,73 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function renderCardContent(content, boardId) {
+  function escapeRegex(str) {
+    return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function applyAbbreviationsToHtml(html, abbrDefs) {
+    var keys = Object.keys(abbrDefs || {});
+    if (!html || keys.length === 0) return html;
+    keys.sort(function (a, b) { return b.length - a.length; });
+    var parts = String(html).split(/(<[^>]+>)/g);
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i] || parts[i].charAt(0) === '<') continue;
+      for (var j = 0; j < keys.length; j++) {
+        var key = keys[j];
+        var pattern = new RegExp('(^|[^\\w])(' + escapeRegex(key) + ')(?=[^\\w]|$)', 'g');
+        parts[i] = parts[i].replace(pattern, function (_, pre, match) {
+          return pre + '<abbr title="' + escapeAttr(abbrDefs[key]) + '">' + match + '</abbr>';
+        });
+      }
+    }
+    return parts.join('');
+  }
+
+  function renderCardContent(content, boardId, renderState, options) {
+    renderState = renderState || {};
+    options = options || {};
     var lines = content.split('\n');
     var html = '';
     var listTag = null; // 'ul' or 'ol'
+    var skipLines = {};
+    var footnoteDefs = renderState.footnoteDefs || (renderState.footnoteDefs = {});
+    var footnoteOrder = renderState.footnoteOrder || (renderState.footnoteOrder = []);
+    var abbrDefs = renderState.abbrDefs || (renderState.abbrDefs = {});
+
+    for (var scanIdx = 0; scanIdx < lines.length; scanIdx++) {
+      var footnoteMatch = lines[scanIdx].match(/^\[\^([^\]]+)\]:\s*(.*)$/);
+      if (footnoteMatch) {
+        var footnoteId = footnoteMatch[1];
+        var textParts = [];
+        if (footnoteMatch[2]) textParts.push(footnoteMatch[2]);
+        skipLines[scanIdx] = true;
+        var continuationIdx = scanIdx + 1;
+        while (continuationIdx < lines.length) {
+          var continuation = lines[continuationIdx];
+          if (/^( {2,}|\t)/.test(continuation)) {
+            textParts.push(continuation.replace(/^( {2,}|\t)/, ''));
+            skipLines[continuationIdx] = true;
+            continuationIdx++;
+            continue;
+          }
+          if (continuation.trim() === '') {
+            skipLines[continuationIdx] = true;
+            continuationIdx++;
+            break;
+          }
+          break;
+        }
+        footnoteDefs[footnoteId] = textParts.join(' ').trim();
+        if (footnoteOrder.indexOf(footnoteId) === -1) footnoteOrder.push(footnoteId);
+        scanIdx = continuationIdx - 1;
+        continue;
+      }
+      var abbrMatch = lines[scanIdx].match(/^\*\[([^\]]+)\]:\s*(.+)$/);
+      if (abbrMatch) {
+        abbrDefs[abbrMatch[1]] = abbrMatch[2].trim();
+        skipLines[scanIdx] = true;
+      }
+    }
 
     function closeList() {
       if (listTag) { html += '</' + listTag + '>'; listTag = null; }
@@ -8912,7 +9743,62 @@ const LexeraDashboard = (function () {
     }
 
     for (var i = 0; i < lines.length; i++) {
+      if (skipLines[i]) continue;
       var line = lines[i];
+
+      var multiStartMatch = line.match(/^---:\s*(\d+)?\s*$/);
+      if (multiStartMatch) {
+        closeList();
+        var multiColumns = [];
+        var multiGrowths = [];
+        var currentColumnLines = [];
+        var currentGrowth = parseInt(multiStartMatch[1], 10) || 1;
+        var nextIdx = i + 1;
+        for (; nextIdx < lines.length; nextIdx++) {
+          var multiLine = lines[nextIdx];
+          var multiSplitMatch = multiLine.match(/^:--:\s*(\d+)?\s*$/);
+          if (multiSplitMatch) {
+            multiColumns.push(currentColumnLines.join('\n'));
+            multiGrowths.push(currentGrowth);
+            currentColumnLines = [];
+            currentGrowth = parseInt(multiSplitMatch[1], 10) || 1;
+            continue;
+          }
+          if (/^:---\s*$/.test(multiLine)) {
+            multiColumns.push(currentColumnLines.join('\n'));
+            multiGrowths.push(currentGrowth);
+            break;
+          }
+          currentColumnLines.push(multiLine);
+        }
+        if (multiColumns.length > 0) {
+          html += '<div class="md-multicolumn">';
+          for (var mc = 0; mc < multiColumns.length; mc++) {
+            html += '<div class="md-multicolumn-column" style="flex-grow:' + multiGrowths[mc] + ';flex-basis:0">' +
+              renderCardContent(multiColumns[mc], boardId, renderState, { nested: true }) +
+              '</div>';
+          }
+          html += '</div>';
+          i = nextIdx;
+          continue;
+        }
+      }
+
+      var containerMatch = line.match(/^:::\s*([a-z0-9-]+)\s*$/i);
+      if (containerMatch) {
+        closeList();
+        var containerType = containerMatch[1].toLowerCase();
+        var containerLines = [];
+        i++;
+        while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) {
+          containerLines.push(lines[i]);
+          i++;
+        }
+        html += '<div class="md-container md-container-' + escapeAttr(containerType) + '">' +
+          renderCardContent(containerLines.join('\n'), boardId, renderState, { nested: true }) +
+          '</div>';
+        continue;
+      }
 
       // Fenced code blocks: ```lang ... ```
       var fenceMatch = line.match(/^```(\w*)$/);
@@ -8930,6 +9816,8 @@ const LexeraDashboard = (function () {
           var code = codeLines.join('\n');
           html += '<div class="mermaid-placeholder" id="' + mermaidId + '">Loading diagram...</div>';
           pendingMermaidRenders.push({ id: mermaidId, code: code });
+        } else if (lang.toLowerCase() === 'plantuml' || lang.toLowerCase() === 'puml') {
+          html += '<div class="plantuml-placeholder"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(codeLines.join('\n')) + '</code></pre></div>';
         } else {
           var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
           html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
@@ -8940,7 +9828,7 @@ const LexeraDashboard = (function () {
       // Markdown tables: |col|col| with |---|---| separator
       if (line.trim().indexOf('|') === 0 && i + 1 < lines.length && /^\|[\s:]*-+/.test(lines[i + 1].trim())) {
         closeList();
-        html += renderTable(lines, i, boardId);
+        html += renderTable(lines, i, boardId, renderState);
         // Skip past table lines
         while (i < lines.length && lines[i].trim().indexOf('|') === 0) i++;
         i--; // compensate for loop increment
@@ -8973,7 +9861,15 @@ const LexeraDashboard = (function () {
       var quoteMatch = line.match(/^>\s?(.*)/);
       if (quoteMatch) {
         closeList();
-        html += '<blockquote>' + renderInline(quoteMatch[1], boardId) + '</blockquote>';
+        html += '<blockquote>' + renderInline(quoteMatch[1], boardId, renderState) + '</blockquote>';
+        continue;
+      }
+
+      // Speaker notes
+      var speakerNoteMatch = line.match(/^;;\s?(.*)/);
+      if (speakerNoteMatch) {
+        closeList();
+        html += '<div class="speaker-note">' + renderInline(speakerNoteMatch[1], boardId, renderState) + '</div>';
         continue;
       }
 
@@ -8982,7 +9878,7 @@ const LexeraDashboard = (function () {
       if (headingMatch) {
         closeList();
         var level = headingMatch[1].length;
-        html += '<h' + level + '>' + renderInline(headingMatch[2], boardId) + '</h' + level + '>';
+        html += '<h' + level + '>' + renderInline(headingMatch[2], boardId, renderState) + '</h' + level + '>';
         continue;
       }
 
@@ -8994,7 +9890,7 @@ const LexeraDashboard = (function () {
         var checkedAttr = checked ? ' checked' : '';
         var strikePre = checked ? '<s>' : '';
         var strikePost = checked ? '</s>' : '';
-        html += '<li class="checkbox-item"><input type="checkbox" class="card-checkbox" data-line="' + i + '"' + checkedAttr + '> ' + strikePre + renderInline(checkMatch[2], boardId) + strikePost + '</li>';
+        html += '<li class="checkbox-item"><input type="checkbox" class="card-checkbox" data-line="' + i + '"' + checkedAttr + '> ' + strikePre + renderInline(checkMatch[2], boardId, renderState) + strikePost + '</li>';
         continue;
       }
 
@@ -9002,7 +9898,7 @@ const LexeraDashboard = (function () {
       var olMatch = line.match(/^\d+\.\s+(.+)/);
       if (olMatch) {
         openList('ol');
-        html += '<li>' + renderInline(olMatch[1], boardId) + '</li>';
+        html += '<li>' + renderInline(olMatch[1], boardId, renderState) + '</li>';
         continue;
       }
 
@@ -9010,21 +9906,40 @@ const LexeraDashboard = (function () {
       var listMatch = line.match(/^[-*]\s+(.+)/);
       if (listMatch) {
         openList('ul');
-        html += '<li>' + renderInline(listMatch[1], boardId) + '</li>';
+        html += '<li>' + renderInline(listMatch[1], boardId, renderState) + '</li>';
         continue;
       }
 
       // Regular line
       closeList();
-      html += '<div>' + renderInline(line, boardId) + '</div>';
+      html += '<div>' + renderInline(line, boardId, renderState) + '</div>';
     }
 
     closeList();
+    if (!options.nested && footnoteOrder.length > 0) {
+      html += '<div class="footnotes"><hr><ol>';
+      for (var fn = 0; fn < footnoteOrder.length; fn++) {
+        var footnoteId = footnoteOrder[fn];
+        var footnoteText = footnoteDefs[footnoteId] || '';
+        html += '<li id="footnote-' + escapeAttr(footnoteId) + '">' + renderInline(footnoteText, boardId, renderState) + '</li>';
+      }
+      html += '</ol></div>';
+    }
     return html;
   }
 
-  function renderInline(text, boardId) {
-    var safe = escapeHtml(text);
+  function renderInline(text, boardId, renderState) {
+    renderState = renderState || {};
+    var source = text || '';
+    var htmlTokens = [];
+    if (getHtmlContentRenderMode() === 'html') {
+      source = source.replace(/<[^>]+>/g, function (match) {
+        var token = '@@HTMLTOKEN' + htmlTokens.length + '@@';
+        htmlTokens.push(match);
+        return token;
+      });
+    }
+    var safe = escapeHtml(source);
 
     // Embeds: ![alt](path "optional title") — wrap in embed container with media category detection
     safe = safe.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (_, alt, rawSrc) {
@@ -9067,6 +9982,14 @@ const LexeraDashboard = (function () {
     // Wiki links: [[text]]
     safe = safe.replace(/\[\[([^\]]+)\]\]/g, '<span class="wiki-link">$1</span>');
 
+    // Footnote references: [^1]
+    safe = safe.replace(/\[\^([^\]]+)\]/g, function (_, footnoteId) {
+      var order = renderState.footnoteOrder || [];
+      var idx = order.indexOf(footnoteId);
+      var number = idx === -1 ? '?' : String(idx + 1);
+      return '<sup class="footnote-ref"><a href="#footnote-' + escapeAttr(footnoteId) + '">[' + number + ']</a></sup>';
+    });
+
     // Bold: **text**
     safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
@@ -9075,6 +9998,27 @@ const LexeraDashboard = (function () {
 
     // Strikethrough: ~~text~~
     safe = safe.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+
+    // Mark: ==text==
+    safe = safe.replace(/==([^=]+)==/g, '<mark>$1</mark>');
+
+    // Inserted text: ++text++
+    safe = safe.replace(/\+\+([^+]+)\+\+/g, '<ins>$1</ins>');
+
+    // Underline: _text_
+    safe = safe.replace(/(^|[^\w])_([^_\n]+)_/g, function (_, pre, value) {
+      return pre + '<u>' + value + '</u>';
+    });
+
+    // Subscript: H~2~O
+    safe = safe.replace(/(^|[^~])~([^~]+)~(?=[^~]|$)/g, function (_, pre, value) {
+      return pre + '<sub>' + value + '</sub>';
+    });
+
+    // Superscript: 29^th^
+    safe = safe.replace(/(^|[^^])\^([^^]+)\^(?=[^^]|$)/g, function (_, pre, value) {
+      return pre + '<sup>' + value + '</sup>';
+    });
 
     // Inline code: `code`
     safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -9091,6 +10035,11 @@ const LexeraDashboard = (function () {
       return pre + '<span class="temporal-tag" title="' + resolved + '">' + tag + '</span>';
     });
 
+    for (var i = 0; i < htmlTokens.length; i++) {
+      safe = safe.replace('@@HTMLTOKEN' + i + '@@', htmlTokens[i]);
+    }
+
+    safe = applyAbbreviationsToHtml(safe, renderState.abbrDefs || {});
     return safe;
   }
 

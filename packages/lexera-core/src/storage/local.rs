@@ -78,6 +78,39 @@ pub struct LocalStorage {
     remote_boards: RwLock<HashSet<String>>,
 }
 
+/// Check if two boards have different row/stack/column structure (count or IDs).
+/// Card-level differences are intentionally ignored — the CRDT handles card merging fine.
+fn has_structural_mismatch(a: &KanbanBoard, b: &KanbanBoard) -> bool {
+    if a.rows.len() != b.rows.len() {
+        return true;
+    }
+    for (ar, br) in a.rows.iter().zip(b.rows.iter()) {
+        if ar.id != br.id || ar.stacks.len() != br.stacks.len() {
+            return true;
+        }
+        for (as_, bs) in ar.stacks.iter().zip(br.stacks.iter()) {
+            if as_.id != bs.id || as_.columns.len() != bs.columns.len() {
+                return true;
+            }
+            for (ac, bc) in as_.columns.iter().zip(bs.columns.iter()) {
+                if ac.id != bc.id {
+                    return true;
+                }
+            }
+        }
+    }
+    // Also check legacy flat columns
+    if a.columns.len() != b.columns.len() {
+        return true;
+    }
+    for (ac, bc) in a.columns.iter().zip(b.columns.iter()) {
+        if ac.id != bc.id {
+            return true;
+        }
+    }
+    false
+}
+
 impl LocalStorage {
     pub fn new() -> Self {
         Self {
@@ -748,7 +781,21 @@ impl BoardStorage for LocalStorage {
             let current = c.to_board();
             c.apply_board(board, &current);
             let merged = c.to_board();
-            (merged, None) // CRDT = no conflicts
+
+            // If the CRDT's structure diverges from the incoming board (e.g. column
+            // removed from the middle, cross-board move), the truncate-from-end
+            // heuristic in sync_column_structure can produce the wrong layout.
+            // Detect this and rebuild the CRDT from the incoming board.
+            if has_structural_mismatch(&merged, board) {
+                log::info!(
+                    "[lexera.storage.crdt] Structural mismatch after CRDT merge on board {}, rebuilding CRDT",
+                    board_id
+                );
+                *c = crate::crdt::bridge::CrdtStore::from_board(board);
+                (board.clone(), None)
+            } else {
+                (merged, None) // CRDT = no conflicts
+            }
         } else if disk_hash != stored_hash && !stored_hash.is_empty() {
             // Legacy fallback: three-way merge (no CRDT available)
             log::info!(

@@ -361,15 +361,15 @@ impl CrdtStore {
         self.doc.commit();
     }
 
-    /// Synchronize column structure — add any new columns that exist in
-    /// incoming but not in the CRDT.
+    /// Synchronize column structure — ensure the CRDT's row/stack/column
+    /// structure matches the incoming board exactly (add missing, remove extra).
     fn sync_column_structure(&self, incoming: &KanbanBoard) {
         let root = self.doc.get_map("root");
         let format = get_string(&root, "format");
 
         if format == "new" {
             if let Some(rows_list) = get_movable_list(&root, "rows") {
-                // Ensure row/stack/column structure matches
+                // First pass: add missing rows and sync stacks/columns within each row
                 for (ri, row) in incoming.rows.iter().enumerate() {
                     // Add missing rows
                     if ri >= rows_list.len() {
@@ -401,6 +401,10 @@ impl CrdtStore {
                     }
 
                     if let Some(row_map) = get_map_at(&rows_list, ri) {
+                        // Update row title/id if changed
+                        row_map.insert("id", row.id.as_str()).unwrap();
+                        row_map.insert("title", row.title.as_str()).unwrap();
+
                         if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
                             for (si, stack) in row.stacks.iter().enumerate() {
                                 if si >= stacks_list.len() {
@@ -424,6 +428,10 @@ impl CrdtStore {
                                 }
 
                                 if let Some(stack_map) = get_map_at(&stacks_list, si) {
+                                    // Update stack title/id if changed
+                                    stack_map.insert("id", stack.id.as_str()).unwrap();
+                                    stack_map.insert("title", stack.title.as_str()).unwrap();
+
                                     if let Some(cols_list) = get_movable_list(&stack_map, "columns")
                                     {
                                         for (ci, col) in stack.columns.iter().enumerate() {
@@ -441,13 +449,29 @@ impl CrdtStore {
                                                         LoroMovableList::new(),
                                                     )
                                                     .unwrap();
+                                            } else if let Some(col_map) = get_map_at(&cols_list, ci) {
+                                                // Update column title/id if changed
+                                                col_map.insert("id", col.id.as_str()).unwrap();
+                                                col_map.insert("title", col.title.as_str()).unwrap();
                                             }
+                                        }
+                                        // Remove extra columns (deleted from end to avoid index shift)
+                                        while cols_list.len() > stack.columns.len() {
+                                            let _ = cols_list.delete(cols_list.len() - 1, 1);
                                         }
                                     }
                                 }
                             }
+                            // Remove extra stacks
+                            while stacks_list.len() > row.stacks.len() {
+                                let _ = stacks_list.delete(stacks_list.len() - 1, 1);
+                            }
                         }
                     }
+                }
+                // Remove extra rows
+                while rows_list.len() > incoming.rows.len() {
+                    let _ = rows_list.delete(rows_list.len() - 1, 1);
                 }
             }
         } else {

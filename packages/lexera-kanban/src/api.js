@@ -149,28 +149,38 @@ const LexeraApi = (function () {
 
   var syncWs = null;
   var syncBoardId = null;
+  var syncUserId = null;
   var syncOnUpdate = null;
   var syncOnPresence = null;
+  var syncReconnectTimer = null;
+  var syncShouldReconnect = false;
 
-  /**
-   * Connect to the WebSocket sync endpoint for a board.
-   * @param {string} boardId - The board ID to sync.
-   * @param {string} userId - The local user ID.
-   * @param {function} onUpdate - Called with no args when a ServerUpdate arrives.
-   * @param {function} [onPresence] - Called with array of online user_ids on presence change.
-   */
-  function connectSync(boardId, userId, onUpdate, onPresence) {
-    disconnectSync();
-    if (!baseUrl) return;
-    var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + boardId + '?user=' + encodeURIComponent(userId);
+  function clearSyncReconnectTimer() {
+    if (syncReconnectTimer) {
+      clearTimeout(syncReconnectTimer);
+      syncReconnectTimer = null;
+    }
+  }
+
+  function scheduleSyncReconnect() {
+    if (!syncShouldReconnect || syncReconnectTimer || !syncBoardId || !syncUserId || !baseUrl) return;
+    syncReconnectTimer = setTimeout(function () {
+      syncReconnectTimer = null;
+      if (!syncShouldReconnect || syncWs || !syncBoardId || !syncUserId || !baseUrl) return;
+      openSyncSocket();
+    }, 1500);
+  }
+
+  function openSyncSocket() {
+    if (!baseUrl || !syncBoardId || !syncUserId) return;
+    var wsUrl = baseUrl.replace(/^http/, 'ws') + '/sync/' + syncBoardId + '?user=' + encodeURIComponent(syncUserId);
+    var boardId = syncBoardId;
     syncWs = new WebSocket(wsUrl);
-    syncBoardId = boardId;
-    syncOnUpdate = onUpdate;
-    syncOnPresence = onPresence || null;
 
     syncWs.onopen = function () {
+      clearSyncReconnectTimer();
       // Send ClientHello with empty VV (we don't run a local Loro doc in the frontend)
-      var hello = JSON.stringify({ type: 'ClientHello', user_id: userId, vv: '' });
+      var hello = JSON.stringify({ type: 'ClientHello', user_id: syncUserId, vv: '' });
       syncWs.send(hello);
       console.log('[sync] WebSocket connected to board ' + boardId);
     };
@@ -186,6 +196,7 @@ const LexeraApi = (function () {
           if (syncOnPresence) syncOnPresence(msg.online_users || []);
         } else if (msg.type === 'ServerError') {
           console.warn('[sync] Server error: ' + msg.message);
+          syncShouldReconnect = false;
           disconnectSync();
         }
       } catch (e) {
@@ -200,18 +211,44 @@ const LexeraApi = (function () {
     syncWs.onclose = function () {
       console.log('[sync] WebSocket closed');
       syncWs = null;
-      syncBoardId = null;
+      if (syncOnPresence && syncShouldReconnect && syncBoardId === boardId) {
+        syncOnPresence([]);
+      }
+      if (syncShouldReconnect && syncBoardId === boardId) {
+        scheduleSyncReconnect();
+      }
     };
   }
 
+  /**
+   * Connect to the WebSocket sync endpoint for a board.
+   * @param {string} boardId - The board ID to sync.
+   * @param {string} userId - The local user ID.
+   * @param {function} onUpdate - Called with no args when a ServerUpdate arrives.
+   * @param {function} [onPresence] - Called with array of online user_ids on presence change.
+   */
+  function connectSync(boardId, userId, onUpdate, onPresence) {
+    disconnectSync();
+    if (!baseUrl) return;
+    syncBoardId = boardId;
+    syncUserId = userId;
+    syncOnUpdate = onUpdate;
+    syncOnPresence = onPresence || null;
+    syncShouldReconnect = true;
+    openSyncSocket();
+  }
+
   function disconnectSync() {
+    syncShouldReconnect = false;
+    clearSyncReconnectTimer();
     if (syncWs) {
       syncWs.close();
       syncWs = null;
-      syncBoardId = null;
-      syncOnUpdate = null;
-      syncOnPresence = null;
     }
+    syncBoardId = null;
+    syncUserId = null;
+    syncOnUpdate = null;
+    syncOnPresence = null;
   }
 
   function isSyncConnected() {
