@@ -99,8 +99,8 @@
   --tree-fg: var(--text-secondary);
   --tree-fg-hover: var(--text-primary);
   --tree-guide: var(--border);
-  --tree-toggle-fg: var(--text-secondary);
-  --tree-toggle-fg-hover: var(--text-primary);
+  --tree-toggle-fg: var(--text-primary);
+  --tree-toggle-fg-hover: var(--text-bright);
 }
 
 /* Dark theme vars are applied by JS via applyTheme() */
@@ -226,8 +226,6 @@ textarea {
 .sidebar-btn,
 .fold-btn,
 .card-collapse-toggle,
-.board-item-toggle,
-.tree-toggle,
 .column-menu-btn,
 .column-add-btn,
 .column-edit-btn,
@@ -263,8 +261,6 @@ textarea {
 .sidebar-btn:hover,
 .fold-btn:hover,
 .card-collapse-toggle:hover,
-.board-item-toggle:hover,
-.tree-toggle:hover,
 .column-menu-btn:hover,
 .column-add-btn:hover,
 .column-edit-btn:hover,
@@ -287,8 +283,6 @@ textarea {
 .sidebar-btn:focus-visible,
 .fold-btn:focus-visible,
 .card-collapse-toggle:focus-visible,
-.board-item-toggle:focus-visible,
-.tree-toggle:focus-visible,
 .column-menu-btn:focus-visible,
 .column-add-btn:focus-visible,
 .column-edit-btn:focus-visible,
@@ -309,8 +303,6 @@ textarea {
 .sidebar-btn:active,
 .fold-btn:active,
 .card-collapse-toggle:active,
-.board-item-toggle:active,
-.tree-toggle:active,
 .column-menu-btn:active,
 .column-add-btn:active,
 .column-edit-btn:active,
@@ -806,17 +798,8 @@ body.split-mode .layout > .main {
   border-left-color: var(--accent);
 }
 
-.board-item-toggle {
-  min-width: var(--hierarchy-btn-size);
-  width: var(--hierarchy-btn-size);
-  height: var(--hierarchy-btn-size);
-  font-size: var(--fold-icon-size);
-  font-weight: 700;
-  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
-}
-
 .board-item-toggle-spacer {
-  width: var(--hierarchy-btn-size);
+  width: 12px;
   flex-shrink: 0;
 }
 
@@ -942,23 +925,23 @@ body.split-mode .layout > .main {
 }
 /* (blank) Ancestor was last child: no continuing line */
 .indent-guide.last::before { display: none; }
-/* ├─ Branch: vertical through center + horizontal right */
+/* ├─ Branch: vertical through center + horizontal extending through gap + toggle/spacer */
 .indent-guide.branch::after {
   content: '';
   position: absolute;
   left: 5px;
   top: 50%;
-  right: 0;
+  right: calc(-1 * var(--space-1) - 12px);
   border-top: 1px solid var(--tree-guide);
 }
-/* └─ Corner: vertical from top to center + horizontal right */
+/* └─ Corner: vertical from top to center + horizontal extending through gap + toggle/spacer */
 .indent-guide.corner::before { bottom: 50%; }
 .indent-guide.corner::after {
   content: '';
   position: absolute;
   left: 5px;
   top: 50%;
-  right: 0;
+  right: calc(-1 * var(--space-1) - 12px);
   border-top: 1px solid var(--tree-guide);
 }
 
@@ -989,28 +972,105 @@ body.split-mode .layout > .main {
   background: rgba(0, 122, 204, 0.15);
 }
 
-/* Tree toggle icon: borderless inline +/− that blends with tree structure */
-.tree-toggle,
+/* Tree toggle: +/− icon at the branch junction.
+   The horizontal line comes from the indent-guide branch/corner extension.
+   Negative left margin keeps the junction aligned with the indent guide grid. */
+.tree-toggle {
+  min-width: 12px;
+  width: 12px;
+  height: auto;
+  align-self: stretch;
+  border: none;
+  background: none;
+  color: var(--tree-toggle-fg);
+  padding: 0;
+  margin-top: calc(-1 * var(--space-1));
+  margin-bottom: calc(-1 * var(--space-1));
+  margin-left: calc(-1 * var(--space-1));
+  position: relative;
+  cursor: pointer;
+}
+.tree-toggle:hover { color: var(--tree-toggle-fg-hover); }
+/* Collapsed: 1px vertical tick of + icon (currentColor), same weight as tree lines.
+   Expanded: 1px vertical continuation below junction (tree-guide). */
+.tree-toggle::before {
+  content: '';
+  position: absolute;
+  left: calc(3px + var(--space-1));
+  top: calc(50% - 4px);
+  height: 9px;
+  border-left: 1px solid currentColor;
+}
+.tree-toggle.expanded::before {
+  left: calc(3px + var(--space-1));
+  top: 50%;
+  bottom: 0;
+  height: auto;
+  border-left-color: var(--tree-guide);
+}
+/* Horizontal arm: 1px border-top, identical weight to indent guide branch lines.
+   Always visible (− when expanded, horizontal of + when collapsed). */
+.tree-toggle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(-1px + var(--space-1));
+  width: 9px;
+  border-top: 1px solid currentColor;
+}
+
+/* Board-level toggle: freestanding +/− (no tree connector lines) */
 .board-item-toggle {
-  min-width: var(--hierarchy-btn-size);
-  width: var(--hierarchy-btn-size);
-  height: var(--hierarchy-btn-size);
-  font-size: calc(12px * var(--ui-scale));
-  font-weight: 700;
+  min-width: 12px;
+  width: 12px;
+  height: auto;
+  align-self: stretch;
   background: none;
   border: none;
   color: var(--tree-toggle-fg);
+  padding: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
-.tree-toggle:hover,
 .board-item-toggle:hover { color: var(--tree-toggle-fg-hover); }
-.tree-toggle::before,
-.board-item-toggle::before { content: '+'; }
-.tree-toggle.expanded::before,
-.board-item-toggle.expanded::before { content: '\2212'; }
+.board-item-toggle::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: calc(50% - 4px);
+  height: 9px;
+  border-left: 1px solid currentColor;
+}
+.board-item-toggle.expanded::before { display: none; }
+.board-item-toggle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 9px;
+  border-top: 1px solid currentColor;
+}
 
+/* Leaf node spacer: continues horizontal branch line all the way through */
 .tree-toggle-spacer {
-  width: var(--hierarchy-btn-size);
+  width: 12px;
   flex-shrink: 0;
+  align-self: stretch;
+  position: relative;
+  margin-top: calc(-1 * var(--space-1));
+  margin-bottom: calc(-1 * var(--space-1));
+  margin-left: calc(-1 * var(--space-1));
+}
+.tree-toggle-spacer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  right: 0;
+  border-top: 1px solid var(--tree-guide);
 }
 
 /* Tree label + count */
@@ -1789,6 +1849,7 @@ body.embedded-mode .columns-container {
   border-radius: 0;
   background: transparent;
 }
+
 
 .footnotes {
   margin-top: 14px;
