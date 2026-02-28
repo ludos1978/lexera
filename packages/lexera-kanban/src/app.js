@@ -391,8 +391,34 @@ const LexeraDashboard = (function () {
     return null;
   }
 
+  function stripPathSearchAndHash(path) {
+    var value = String(path || '').trim();
+    if (!value) return '';
+    try {
+      if (isExternalHttpUrl(value)) value = new URL(value).pathname || '';
+    } catch (e) {
+      // Fall back to simple path parsing below.
+    }
+    return value.split('#')[0].split('?')[0];
+  }
+
+  function parseLocalFileReference(path) {
+    var raw = String(path || '').trim();
+    var basePath = stripPathSearchAndHash(raw);
+    var pageNumber = null;
+    var hashMatch = raw.match(/^(.+\.pdf)#(\d+)$/i);
+    if (hashMatch) pageNumber = parseInt(hashMatch[2], 10);
+    var queryMatch = raw.match(/^(.+\.pdf)\?(?:p|page)=(\d+)$/i);
+    if (!pageNumber && queryMatch) pageNumber = parseInt(queryMatch[2], 10);
+    return {
+      raw: raw,
+      path: basePath || raw,
+      pageNumber: isFinite(pageNumber) ? pageNumber : null
+    };
+  }
+
   function getFileNameFromPath(path) {
-    var normalized = normalizePathForCompare(path);
+    var normalized = normalizePathForCompare(stripPathSearchAndHash(path));
     if (!normalized) return '';
     var idx = normalized.lastIndexOf('/');
     return idx >= 0 ? normalized.slice(idx + 1) : normalized;
@@ -413,7 +439,7 @@ const LexeraDashboard = (function () {
   }
 
   function getDirNameFromPath(path) {
-    var normalized = normalizePathForCompare(path);
+    var normalized = normalizePathForCompare(stripPathSearchAndHash(path));
     if (!normalized) return '';
     var idx = normalized.lastIndexOf('/');
     return idx > 0 ? normalized.slice(0, idx) : '';
@@ -9643,9 +9669,10 @@ const LexeraDashboard = (function () {
     var boardId = link.getAttribute('data-board-id') || activeBoardId || '';
     var filePath = link.getAttribute('data-file-path') || link.getAttribute('data-original-href') || '';
     if (!boardId || !filePath || /^(https?:\/\/|mailto:|#)/.test(filePath)) return;
+    var fileRef = parseLocalFileReference(filePath);
     link.setAttribute('data-link-enhanced', '1');
-    var info = await requestFileInfo(boardId, filePath);
-    applyFileLinkInfo(link, info, filePath);
+    var info = await requestFileInfo(boardId, fileRef.path);
+    applyFileLinkInfo(link, info, fileRef.path);
   }
 
   async function enhanceIncludeDirectives(root) {
@@ -9755,6 +9782,7 @@ const LexeraDashboard = (function () {
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var filePath = container.getAttribute('data-file-path') || '';
     if (!boardId || !filePath) return;
+    var fileRef = parseLocalFileReference(filePath);
     var previewKind = getEmbedPreviewKind(filePath);
     if (!previewKind) return;
 
@@ -9766,7 +9794,12 @@ const LexeraDashboard = (function () {
     if (previewKind === 'pdf') {
       previewEl.setAttribute('loading', 'lazy');
       previewEl.setAttribute('title', getDisplayFileNameFromPath(filePath) || 'PDF preview');
-      previewEl.setAttribute('src', LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0');
+      previewEl.setAttribute(
+        'src',
+        LexeraApi.fileUrl(boardId, fileRef.path) +
+          '#toolbar=0&navpanes=0' +
+          (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '')
+      );
       container.appendChild(previewEl);
       return;
     }
@@ -9790,7 +9823,7 @@ const LexeraDashboard = (function () {
     try {
       var cached = embedPreviewCache[cacheKey];
       if (!cached) {
-        var response = await fetch(LexeraApi.fileUrl(boardId, filePath));
+        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
         if (!response.ok) throw new Error('Failed to load file preview');
         var text = await response.text();
         var previewPath = filePath;
@@ -9824,17 +9857,19 @@ const LexeraDashboard = (function () {
 
   function openBoardFileInSystem(boardId, filePath) {
     if (!filePath) return;
-    if (filePath.charAt(0) === '/' || !boardId) {
-      openInSystem(filePath);
+    var fileRef = parseLocalFileReference(filePath);
+    if (fileRef.path.charAt(0) === '/' || !boardId) {
+      openInSystem(fileRef.path);
       return;
     }
-    resolveBoardPath(boardId, filePath, 'absolute').then(function (absPath) {
+    resolveBoardPath(boardId, fileRef.path, 'absolute').then(function (absPath) {
       openInSystem(absPath);
     });
   }
 
   async function showBoardFilePreview(boardId, filePath) {
-    var ext = getFileExtension(filePath);
+    var fileRef = parseLocalFileReference(filePath);
+    var ext = getFileExtension(fileRef.path);
     var mediaCategory = getMediaCategory(ext);
     var previewKind = getEmbedPreviewKind(filePath);
     if (!filePath || !boardId) return;
@@ -9873,7 +9908,12 @@ const LexeraDashboard = (function () {
     });
 
     if (previewKind === 'pdf') {
-      body.innerHTML = '<iframe class="file-preview-frame" src="' + LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0"></iframe>';
+      body.innerHTML =
+        '<iframe class="file-preview-frame" src="' +
+        LexeraApi.fileUrl(boardId, fileRef.path) +
+        '#toolbar=0&navpanes=0' +
+        (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '') +
+        '"></iframe>';
       return;
     }
 
@@ -9891,22 +9931,22 @@ const LexeraDashboard = (function () {
     }
 
     if (mediaCategory === 'image') {
-      body.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(LexeraApi.fileUrl(boardId, filePath)) + '" alt="' + escapeAttr(getDisplayFileNameFromPath(filePath) || filePath) + '"></div>';
+      body.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '" alt="' + escapeAttr(getDisplayFileNameFromPath(filePath) || filePath) + '"></div>';
       return;
     }
 
     if (mediaCategory === 'video') {
-      body.innerHTML = '<div class="file-preview-media"><video class="file-preview-video" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, filePath)) + '"></video></div>';
+      body.innerHTML = '<div class="file-preview-media"><video class="file-preview-video" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '"></video></div>';
       return;
     }
 
     if (mediaCategory === 'audio') {
-      body.innerHTML = '<div class="file-preview-media"><audio class="file-preview-audio" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, filePath)) + '"></audio></div>';
+      body.innerHTML = '<div class="file-preview-media"><audio class="file-preview-audio" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '"></audio></div>';
       return;
     }
 
     try {
-      var response = await fetch(LexeraApi.fileUrl(boardId, filePath));
+      var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
       if (!response.ok) throw new Error('Failed to load preview');
       var text = await response.text();
       if (isMarkdownPreviewExtension(ext)) {
@@ -10055,15 +10095,16 @@ const LexeraDashboard = (function () {
       { id: 'file-finder', label: 'Show in Finder' },
     ], e.clientX, e.clientY).then(function (action) {
       if (!action) return;
+      var fileRef = parseLocalFileReference(filePath);
       var boardId = container
         ? container.getAttribute('data-board-id')
         : (activeBoardId || '');
 
       function resolveAndRun(fn) {
-        if (filePath.charAt(0) !== '/' && boardId) {
-          resolveBoardPath(boardId, filePath, 'absolute').then(function (resolvedPath) { fn(resolvedPath); });
+        if (fileRef.path.charAt(0) !== '/' && boardId) {
+          resolveBoardPath(boardId, fileRef.path, 'absolute').then(function (resolvedPath) { fn(resolvedPath); });
         } else {
-          fn(filePath);
+          fn(fileRef.path);
         }
       }
 
@@ -10254,6 +10295,7 @@ const LexeraDashboard = (function () {
     var filePath = container.getAttribute('data-file-path');
     var boardId = container.getAttribute('data-board-id');
     var embedIndex = parseInt(container.getAttribute('data-embed-index'), 10);
+    var fileRef = parseLocalFileReference(filePath);
 
     if (action === 'refresh') {
       var media = container.querySelector('img, video, audio');
@@ -10271,7 +10313,7 @@ const LexeraDashboard = (function () {
     } else if (action === 'info') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
-      LexeraApi.fileInfo(boardId, filePath).then(function (info) {
+      LexeraApi.fileInfo(boardId, fileRef.path).then(function (info) {
         var infoMenu = document.createElement('div');
         infoMenu.className = 'embed-menu embed-info-panel';
         var sizeStr = info.size ? formatFileSize(info.size) : 'unknown';
@@ -10314,18 +10356,18 @@ const LexeraDashboard = (function () {
     } else if (action === 'show-finder') {
       closeEmbedMenu();
       if (!filePath) return;
-      if (filePath.charAt(0) !== '/' && boardId) {
-        resolveBoardPath(boardId, filePath, 'absolute').then(function (absPath) {
+      if (fileRef.path.charAt(0) !== '/' && boardId) {
+        resolveBoardPath(boardId, fileRef.path, 'absolute').then(function (absPath) {
           showInFinder(absPath);
         });
       } else {
-        showInFinder(filePath);
+        showInFinder(fileRef.path);
       }
 
     } else if (action === 'path-fix') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
-      var filename = getDisplayFileNameFromPath(filePath);
+      var filename = getDisplayFileNameFromPath(fileRef.path);
       LexeraApi.request('/boards/' + boardId + '/find-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
