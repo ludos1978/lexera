@@ -405,6 +405,7 @@ const LexeraDashboard = (function () {
   function parseLocalFileReference(path) {
     var raw = String(path || '').trim();
     var basePath = stripPathSearchAndHash(raw);
+    var suffix = basePath && raw.indexOf(basePath) === 0 ? raw.slice(basePath.length) : '';
     var pageNumber = null;
     var hashMatch = raw.match(/^(.+\.pdf)#(\d+)$/i);
     if (hashMatch) pageNumber = parseInt(hashMatch[2], 10);
@@ -413,6 +414,7 @@ const LexeraDashboard = (function () {
     return {
       raw: raw,
       path: basePath || raw,
+      suffix: suffix,
       pageNumber: isFinite(pageNumber) ? pageNumber : null
     };
   }
@@ -10383,12 +10385,13 @@ const LexeraDashboard = (function () {
     } else if (action === 'convert-path') {
       closeEmbedMenu();
       if (!boardId || !filePath) return;
-      var isAbsolute = filePath.charAt(0) === '/';
-      resolveBoardPath(boardId, filePath, isAbsolute ? 'relative' : 'absolute').then(function (nextPath) {
-        if (!nextPath || nextPath === filePath) return;
+      var isAbsolute = fileRef.path.charAt(0) === '/';
+      resolveBoardPath(boardId, fileRef.path, isAbsolute ? 'relative' : 'absolute').then(function (nextPath) {
+        var nextTarget = nextPath ? nextPath + (fileRef.suffix || '') : '';
+        if (!nextTarget || nextTarget === filePath) return;
         mutateEmbedSource(container, function (content) {
           return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
-            return buildMarkdownEmbed(embed.alt, nextPath, embed.title, embed.rawAttrs);
+            return buildMarkdownEmbed(embed.alt, nextTarget, embed.title, embed.rawAttrs);
           });
         });
       }).catch(function () { /* silently fail */ });
@@ -10406,7 +10409,7 @@ const LexeraDashboard = (function () {
       closeEmbedMenu();
       mutateEmbedSource(container, function (content) {
         return replaceNthMarkdownEmbed(content, isFinite(embedIndex) ? embedIndex : 0, function (embed) {
-          return buildMarkdownEmbed(embed.alt, newPath, embed.title, embed.rawAttrs);
+          return buildMarkdownEmbed(embed.alt, newPath + (fileRef.suffix || ''), embed.title, embed.rawAttrs);
         });
       });
     }
