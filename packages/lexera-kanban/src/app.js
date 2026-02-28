@@ -145,8 +145,9 @@ const LexeraDashboard = (function () {
   var mermaidReady = false;
   var mermaidLoading = false;
   var pendingMermaidRenders = [];
-  var currentTagVisibilityMode = 'all';
+  var currentTagVisibilityMode = 'allexcludinglayout';
   var currentArrowKeyFocusScrollMode = 'nearest';
+  var currentHtmlCommentRenderMode = 'hidden';
   var urlParams = new URLSearchParams(window.location.search || '');
   var embeddedMode = urlParams.get('embedded') === '1';
   var embeddedPaneId = urlParams.get('pane') || '';
@@ -4684,7 +4685,8 @@ const LexeraDashboard = (function () {
 
   function normalizeTagVisibilityMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
-    if (!mode || mode === 'show') return 'all';
+    if (!mode) return 'allexcludinglayout';
+    if (mode === 'show') return 'all';
     if (mode === 'hide') return 'none';
     if (mode === 'standard') return 'allexcludinglayout';
     if (mode === 'custom') return 'customonly';
@@ -4697,7 +4699,8 @@ const LexeraDashboard = (function () {
 
   function normalizeHtmlCommentRenderMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
-    if (!mode || mode === 'show') return 'text';
+    if (!mode) return 'hidden';
+    if (mode === 'show') return 'text';
     if (mode === 'hide' || mode === 'hidden') return 'hidden';
     if (mode === 'text' || mode === 'dim') return mode;
     return 'text';
@@ -4739,6 +4742,18 @@ const LexeraDashboard = (function () {
       }
 
       if (hide) tagEl.style.display = 'none';
+    }
+  }
+
+  function applyRenderedHtmlCommentVisibility(root, mode) {
+    if (!root || !root.querySelectorAll) return;
+    var normalizedMode = normalizeHtmlCommentRenderMode(mode);
+    var comments = root.querySelectorAll('.html-comment');
+    for (var i = 0; i < comments.length; i++) {
+      comments[i].style.display = '';
+      comments[i].style.opacity = '';
+      if (normalizedMode === 'hidden') comments[i].style.display = 'none';
+      else if (normalizedMode === 'dim') comments[i].style.opacity = '0.3';
     }
   }
 
@@ -4829,7 +4844,7 @@ const LexeraDashboard = (function () {
   }
 
   function getHtmlContentRenderMode() {
-    var mode = getBoardSettingValue('htmlContentRenderMode', 'text');
+    var mode = getBoardSettingValue('htmlContentRenderMode', 'html');
     return mode === 'html' ? 'html' : 'text';
   }
 
@@ -4855,8 +4870,10 @@ const LexeraDashboard = (function () {
     $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
     $columnsContainer.classList.remove('layout-spacious');
     $columnsContainer.removeAttribute('data-layout-preset');
-    currentTagVisibilityMode = 'all';
+    currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
+    currentHtmlCommentRenderMode = 'hidden';
+    $columnsContainer.classList.add('html-comments-hide');
 
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
@@ -4873,9 +4890,9 @@ const LexeraDashboard = (function () {
     var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
     if (stickyMode) $columnsContainer.classList.add('sticky-headers-' + stickyMode);
     if (stickyMode === 'top') $columnsContainer.classList.add('sticky-headers'); // legacy alias
-    var htmlCommentMode = normalizeHtmlCommentRenderMode(s.htmlCommentRenderMode);
-    if (htmlCommentMode === 'hidden') $columnsContainer.classList.add('html-comments-hide');
-    if (htmlCommentMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
+    currentHtmlCommentRenderMode = normalizeHtmlCommentRenderMode(s.htmlCommentRenderMode);
+    if (currentHtmlCommentRenderMode === 'hidden') $columnsContainer.classList.add('html-comments-hide');
+    if (currentHtmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
     currentArrowKeyFocusScrollMode = normalizeArrowKeyFocusScrollMode(s.arrowKeyFocusScroll);
     if (currentArrowKeyFocusScrollMode !== 'disabled') $columnsContainer.classList.add('focus-scroll-mode');
     if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') $columnsContainer.classList.add('layout-spacious');
@@ -5132,6 +5149,7 @@ const LexeraDashboard = (function () {
     enhanceFileLinks($columnsContainer);
     enhanceIncludeDirectives($columnsContainer);
     enhanceColumnIncludeBadges($columnsContainer);
+    applyRenderedHtmlCommentVisibility($columnsContainer, currentHtmlCommentRenderMode);
     applyRenderedTagVisibility($columnsContainer, currentTagVisibilityMode);
 
     syncSidebarToView();
@@ -8647,6 +8665,7 @@ const LexeraDashboard = (function () {
       enhanceEmbeddedContent(currentCardEditor.preview);
       enhanceFileLinks(currentCardEditor.preview);
       enhanceIncludeDirectives(currentCardEditor.preview);
+      applyRenderedHtmlCommentVisibility(currentCardEditor.preview, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(currentCardEditor.preview, currentTagVisibilityMode);
     }
     var titleEl = currentCardEditor.dialog
@@ -10005,6 +10024,7 @@ const LexeraDashboard = (function () {
           embedCounter: 0
         }, { nested: true }) +
         '</div>';
+      applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(body, currentTagVisibilityMode);
 
       var nested = body.querySelectorAll('.include-inline-container[data-file-path]');
@@ -10082,6 +10102,7 @@ const LexeraDashboard = (function () {
         embedPreviewCache[cacheKey] = cached;
       }
       previewEl.innerHTML = cached;
+      applyRenderedHtmlCommentVisibility(previewEl, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(previewEl, currentTagVisibilityMode);
       if (pendingMermaidRenders.length > 0) {
         if (mermaidReady) processMermaidQueue();
@@ -10211,6 +10232,7 @@ const LexeraDashboard = (function () {
             embedCounter: 0
           }, { nested: true }) +
           '</div>';
+        applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
         applyRenderedTagVisibility(body, currentTagVisibilityMode);
         enhanceEmbeddedContent(body);
         enhanceFileLinks(body);
