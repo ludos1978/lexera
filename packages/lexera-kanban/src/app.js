@@ -145,6 +145,8 @@ const LexeraDashboard = (function () {
   var mermaidReady = false;
   var mermaidLoading = false;
   var pendingMermaidRenders = [];
+  var currentTagVisibilityMode = 'all';
+  var currentArrowKeyFocusScrollMode = 'nearest';
   var urlParams = new URLSearchParams(window.location.search || '');
   var embeddedMode = urlParams.get('embedded') === '1';
   var embeddedPaneId = urlParams.get('pane') || '';
@@ -2409,7 +2411,12 @@ const LexeraDashboard = (function () {
     unfocusCard();
     focusedCardEl = cardEl;
     cardEl.classList.add('focused');
-    cardEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (currentArrowKeyFocusScrollMode !== 'disabled') {
+      cardEl.scrollIntoView({
+        block: currentArrowKeyFocusScrollMode === 'center' ? 'center' : 'nearest',
+        behavior: 'smooth'
+      });
+    }
     syncSidebarToView();
   }
 
@@ -4225,12 +4232,12 @@ const LexeraDashboard = (function () {
       { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
       { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
       { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
-      { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
+      { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'all', 'allexcludinglayout', 'customonly', 'mentionsonly', 'none', 'dim'] },
       { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
-      { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'top', 'bottom'] },
-      { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'show', 'hide', 'dim'] },
+      { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'titleonly', 'full', 'bottom'] },
+      { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'text', 'hidden', 'dim'] },
       { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
-      { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'enabled', 'disabled'] },
+      { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'nearest', 'center', 'disabled'] },
       { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
       { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
       { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
@@ -4258,7 +4265,19 @@ const LexeraDashboard = (function () {
       for (var i = 0; i < fields.length; i++) {
         var f = fields[i];
         var val = s[f.key] != null ? s[f.key] : '';
-        if (f.key === 'stickyStackMode') val = normalizeStickyHeaderMode(val);
+        if (f.key === 'stickyStackMode') {
+          var stickyValue = String(val || '').trim().toLowerCase();
+          if (stickyValue === 'top' || stickyValue === 'titleonly' || stickyValue === 'column' || stickyValue === 'enabled' || stickyValue === 'true') val = 'titleonly';
+          else if (stickyValue === 'full') val = 'full';
+          else if (stickyValue === 'bottom') val = 'bottom';
+          else val = '';
+        } else if (f.key === 'tagVisibility') {
+          val = normalizeTagVisibilityMode(val);
+        } else if (f.key === 'htmlCommentRenderMode') {
+          val = normalizeHtmlCommentRenderMode(val);
+        } else if (f.key === 'arrowKeyFocusScroll') {
+          val = normalizeArrowKeyFocusScrollMode(val);
+        }
         html += '<div class="dialog-field">';
         html += '<label class="dialog-label">' + escapeHtml(f.label) + '</label>';
         if (f.type === 'select') {
@@ -4658,9 +4677,69 @@ const LexeraDashboard = (function () {
   function normalizeStickyHeaderMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
     if (!mode) return '';
-    if (mode === 'column' || mode === 'enabled' || mode === 'true') return 'top';
+    if (mode === 'column' || mode === 'enabled' || mode === 'true' || mode === 'titleonly' || mode === 'full') return 'top';
     if (mode === 'top' || mode === 'bottom') return mode;
     return '';
+  }
+
+  function normalizeTagVisibilityMode(rawMode) {
+    var mode = String(rawMode || '').trim().toLowerCase();
+    if (!mode || mode === 'show') return 'all';
+    if (mode === 'hide') return 'none';
+    if (mode === 'standard') return 'allexcludinglayout';
+    if (mode === 'custom') return 'customonly';
+    if (mode === 'mentions') return 'mentionsonly';
+    if (mode === 'all' || mode === 'allexcludinglayout' || mode === 'customonly' || mode === 'mentionsonly' || mode === 'none' || mode === 'dim') {
+      return mode;
+    }
+    return 'all';
+  }
+
+  function normalizeHtmlCommentRenderMode(rawMode) {
+    var mode = String(rawMode || '').trim().toLowerCase();
+    if (!mode || mode === 'show') return 'text';
+    if (mode === 'hide' || mode === 'hidden') return 'hidden';
+    if (mode === 'text' || mode === 'dim') return mode;
+    return 'text';
+  }
+
+  function normalizeArrowKeyFocusScrollMode(rawMode) {
+    var mode = String(rawMode || '').trim().toLowerCase();
+    if (!mode || mode === 'enabled') return 'nearest';
+    if (mode === 'disabled') return 'disabled';
+    if (mode === 'center' || mode === 'nearest') return mode;
+    return 'nearest';
+  }
+
+  function isLayoutTagName(tagName) {
+    var normalized = String(tagName || '').trim().replace(/^#/, '').toLowerCase();
+    return /^(row\d*|span\d*|stack|sticky|header|footer)$/.test(normalized);
+  }
+
+  function applyRenderedTagVisibility(root, mode) {
+    if (!root || !root.querySelectorAll) return;
+    var normalizedMode = normalizeTagVisibilityMode(mode);
+    var tags = root.querySelectorAll('.tag[data-tag]');
+    for (var i = 0; i < tags.length; i++) {
+      var tagEl = tags[i];
+      var tagName = tagEl.getAttribute('data-tag') || '';
+      var lowerTagName = tagName.toLowerCase();
+      var hide = false;
+      tagEl.style.display = '';
+      tagEl.style.opacity = '';
+
+      if (normalizedMode === 'none' || normalizedMode === 'mentionsonly') {
+        hide = true;
+      } else if (normalizedMode === 'allexcludinglayout') {
+        hide = isLayoutTagName(tagName);
+      } else if (normalizedMode === 'customonly') {
+        hide = isLayoutTagName(tagName) || !!TAG_COLORS[lowerTagName];
+      } else if (normalizedMode === 'dim') {
+        tagEl.style.opacity = '0.3';
+      }
+
+      if (hide) tagEl.style.display = 'none';
+    }
   }
 
   function normalizeColumnWidth(rawValue) {
@@ -4772,12 +4851,12 @@ const LexeraDashboard = (function () {
       $columnsContainer.style.removeProperty(cssProps[i]);
     }
     // Reset class-based settings
-    $columnsContainer.classList.remove('tag-visibility-hide', 'tag-visibility-dim');
     $columnsContainer.classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
-    $columnsContainer.classList.remove('focus-scroll-mode');
     $columnsContainer.classList.remove('layout-spacious');
     $columnsContainer.removeAttribute('data-layout-preset');
+    currentTagVisibilityMode = 'all';
+    currentArrowKeyFocusScrollMode = 'nearest';
 
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
@@ -4790,14 +4869,15 @@ const LexeraDashboard = (function () {
     if (s.cardMinHeight) $columnsContainer.style.setProperty('--board-card-min-height', s.cardMinHeight);
     if (s.whitespace) $columnsContainer.style.setProperty('--board-whitespace', s.whitespace);
     if (s.layoutRows) $columnsContainer.style.setProperty('--board-layout-rows', String(s.layoutRows));
-    if (s.tagVisibility === 'hide') $columnsContainer.classList.add('tag-visibility-hide');
-    if (s.tagVisibility === 'dim') $columnsContainer.classList.add('tag-visibility-dim');
+    currentTagVisibilityMode = normalizeTagVisibilityMode(s.tagVisibility);
     var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
     if (stickyMode) $columnsContainer.classList.add('sticky-headers-' + stickyMode);
     if (stickyMode === 'top') $columnsContainer.classList.add('sticky-headers'); // legacy alias
-    if (s.htmlCommentRenderMode === 'hide') $columnsContainer.classList.add('html-comments-hide');
-    if (s.htmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
-    if (s.arrowKeyFocusScroll === 'enabled') $columnsContainer.classList.add('focus-scroll-mode');
+    var htmlCommentMode = normalizeHtmlCommentRenderMode(s.htmlCommentRenderMode);
+    if (htmlCommentMode === 'hidden') $columnsContainer.classList.add('html-comments-hide');
+    if (htmlCommentMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
+    currentArrowKeyFocusScrollMode = normalizeArrowKeyFocusScrollMode(s.arrowKeyFocusScroll);
+    if (currentArrowKeyFocusScrollMode !== 'disabled') $columnsContainer.classList.add('focus-scroll-mode');
     if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') $columnsContainer.classList.add('layout-spacious');
     if (s.layoutPreset) $columnsContainer.setAttribute('data-layout-preset', s.layoutPreset);
 
@@ -5052,6 +5132,7 @@ const LexeraDashboard = (function () {
     enhanceFileLinks($columnsContainer);
     enhanceIncludeDirectives($columnsContainer);
     enhanceColumnIncludeBadges($columnsContainer);
+    applyRenderedTagVisibility($columnsContainer, currentTagVisibilityMode);
 
     syncSidebarToView();
   }
@@ -8566,6 +8647,7 @@ const LexeraDashboard = (function () {
       enhanceEmbeddedContent(currentCardEditor.preview);
       enhanceFileLinks(currentCardEditor.preview);
       enhanceIncludeDirectives(currentCardEditor.preview);
+      applyRenderedTagVisibility(currentCardEditor.preview, currentTagVisibilityMode);
     }
     var titleEl = currentCardEditor.dialog
       ? currentCardEditor.dialog.querySelector('.card-editor-title-text')
@@ -9923,6 +10005,7 @@ const LexeraDashboard = (function () {
           embedCounter: 0
         }, { nested: true }) +
         '</div>';
+      applyRenderedTagVisibility(body, currentTagVisibilityMode);
 
       var nested = body.querySelectorAll('.include-inline-container[data-file-path]');
       for (var i = 0; i < nested.length; i++) {
@@ -9999,6 +10082,7 @@ const LexeraDashboard = (function () {
         embedPreviewCache[cacheKey] = cached;
       }
       previewEl.innerHTML = cached;
+      applyRenderedTagVisibility(previewEl, currentTagVisibilityMode);
       if (pendingMermaidRenders.length > 0) {
         if (mermaidReady) processMermaidQueue();
         else loadMermaidLibrary();
@@ -10127,6 +10211,7 @@ const LexeraDashboard = (function () {
             embedCounter: 0
           }, { nested: true }) +
           '</div>';
+        applyRenderedTagVisibility(body, currentTagVisibilityMode);
         enhanceEmbeddedContent(body);
         enhanceFileLinks(body);
         enhanceIncludeDirectives(body);
@@ -10872,7 +10957,7 @@ const LexeraDashboard = (function () {
     // Tags with colored badges
     safe = safe.replace(/(^|\s)(#[a-zA-Z][\w-]*)/g, function(_, pre, tag) {
       var color = getTagColor(tag);
-      return pre + '<span class="tag" style="background:' + color + ';color:#fff">' + tag + '</span>';
+      return pre + '<span class="tag" data-tag="' + escapeAttr(tag) + '" style="background:' + color + ';color:#fff">' + tag + '</span>';
     });
     // Temporal tags
     safe = safe.replace(/(^|\s)([!@](?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi, function (_, pre, tag) {
@@ -11402,7 +11487,7 @@ const LexeraDashboard = (function () {
     // Tags: #tag-name (word boundary, not inside HTML attributes)
     safe = safe.replace(/(^|\s)(#[a-zA-Z][\w-]*)/g, function(_, pre, tag) {
       var color = getTagColor(tag);
-      return pre + '<span class="tag" style="background:' + color + ';color:#fff">' + tag + '</span>';
+      return pre + '<span class="tag" data-tag="' + escapeAttr(tag) + '" style="background:' + color + ';color:#fff">' + tag + '</span>';
     });
 
     // Temporal tags: legacy `!` prefix and package `@` prefix for dates, weeks, weekdays, times, and slots.
