@@ -462,6 +462,15 @@ const LexeraDashboard = (function () {
     return board && board.filePath ? board.filePath : '';
   }
 
+  function getBoardFilePathForId(boardId) {
+    if (!boardId) return '';
+    if (boardId === activeBoardId && activeBoardData && activeBoardData.filePath) {
+      return activeBoardData.filePath;
+    }
+    var board = findBoardMeta(boardId);
+    return board && board.filePath ? board.filePath : '';
+  }
+
   function stripMarkdownExtension(value) {
     return String(value || '').replace(/\.md$/i, '');
   }
@@ -4932,7 +4941,7 @@ const LexeraDashboard = (function () {
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
-      '<button class="column-fold-btn fold-btn" title="Fold column">&#9656;</button>' +
+      '<button class="column-fold-btn fold-btn" title="Fold column"></button>' +
       '<span class="drag-grip">\u22EE\u22EE</span>' +
       '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
@@ -5013,7 +5022,7 @@ const LexeraDashboard = (function () {
       var toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
-      toggle.textContent = '\u25B6';
+      toggle.textContent = '';
       (function (toggleEl, el) {
         toggleEl.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -5197,7 +5206,7 @@ const LexeraDashboard = (function () {
         }
       }
       rowHeader.innerHTML =
-        '<button class="row-fold-btn fold-btn" title="Fold row">&#9656;</button>' +
+        '<button class="row-fold-btn fold-btn" title="Fold row"></button>' +
         '<span class="drag-grip">\u22EE\u22EE</span>' +
         '<span class="board-row-title">' + escapeHtml(rowTitle.length > 40 ? rowTitle.slice(0, 40) + '\u2026' : rowTitle) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
@@ -5278,7 +5287,7 @@ const LexeraDashboard = (function () {
         stackHeader.className = 'board-stack-header';
         var stackColCount = stackColumns.length;
         stackHeader.innerHTML =
-          '<button class="stack-fold-btn fold-btn" title="Fold stack">&#9656;</button>' +
+          '<button class="stack-fold-btn fold-btn" title="Fold stack"></button>' +
           '<span class="drag-grip">\u22EE\u22EE</span>' +
           '<span class="board-stack-title">' + (stack.title ? escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
@@ -9466,6 +9475,7 @@ const LexeraDashboard = (function () {
     if (normalized.slice(-7) === '.drawio' || normalized.slice(-4) === '.dio') return 'diagram-drawio';
     if (/\.(xlsx|xls|ods)$/.test(normalized)) return 'spreadsheet';
     if (normalized.slice(-5) === '.epub') return 'epub';
+    if (/\.(doc|docx|odt|ppt|pptx|odp)$/.test(normalized)) return 'document';
     if (normalized.slice(-4) === '.pdf') return 'pdf';
     return '';
   }
@@ -9479,6 +9489,7 @@ const LexeraDashboard = (function () {
     }
     if (kind === 'spreadsheet') return { label: 'Spreadsheet file', emoji: '&#128200;' };
     if (kind === 'epub') return { label: 'EPUB file', emoji: '&#128218;' };
+    if (kind === 'document') return { label: 'Document file', emoji: '&#128196;' };
     return { label: 'File', emoji: '&#128196;' };
   }
 
@@ -9498,6 +9509,14 @@ const LexeraDashboard = (function () {
     return '<span class="embed-file-link"' + (extraStyleAttr || '') + '>' + meta.emoji + ' ' + escapeHtml(filename) + '</span>';
   }
 
+  function getSpecialPreviewPlaceholderText(previewKind) {
+    if (previewKind === 'diagram') return 'Open the source file in a dedicated app for full diagram editing.';
+    if (previewKind === 'spreadsheet') return 'Spreadsheet rendering is not available in this view yet.';
+    if (previewKind === 'epub') return 'EPUB rendering is not available in this view yet.';
+    if (previewKind === 'document') return 'Document rendering is not available in this view yet.';
+    return 'Preview is not available in this view yet.';
+  }
+
   function getEmbedPreviewKind(filePath) {
     var ext = getFileExtension(filePath);
     var special = getSpecialPreviewType(filePath);
@@ -9507,6 +9526,7 @@ const LexeraDashboard = (function () {
     if (special === 'diagram-drawio' || special === 'diagram-excalidraw') return 'diagram';
     if (special === 'spreadsheet') return 'spreadsheet';
     if (special === 'epub') return 'epub';
+    if (special === 'document') return 'document';
     return '';
   }
 
@@ -9535,6 +9555,133 @@ const LexeraDashboard = (function () {
         return null;
       });
     return pendingFileInfoCache[cacheKey];
+  }
+
+  function clearCachedFilePreviewState(boardId, filePath) {
+    var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
+    var infoKey = getFileInfoCacheKey(boardId, parseLocalFileReference(filePath).path);
+    delete embedPreviewCache[cacheKey];
+    delete fileInfoCache[infoKey];
+    delete pendingFileInfoCache[infoKey];
+  }
+
+  function encodeUtf8Base64(value) {
+    try {
+      return btoa(encodeURIComponent(String(value || '')).replace(/%([0-9A-F]{2})/g, function (_, hex) {
+        return String.fromCharCode(parseInt(hex, 16));
+      }));
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function getPathStem(path) {
+    var fileName = getFileNameFromPath(path);
+    return fileName ? fileName.replace(/\.[^.]+$/, '') : '';
+  }
+
+  function buildDiagramCachePrefix(sourcePath) {
+    var basename = getPathStem(sourcePath);
+    var pathHash = encodeUtf8Base64(String(sourcePath || '')).replace(/[/+=]/g, '').slice(0, 8);
+    return basename + '-' + pathHash + '-';
+  }
+
+  function buildDiagramCacheFileName(sourcePath, mtimeMs, extension, suffix) {
+    return buildDiagramCachePrefix(sourcePath) + Math.floor(mtimeMs) + (suffix || '') + '.' + extension;
+  }
+
+  function buildDiagramCacheDir(boardFilePath, sourcePath, cacheFolderName) {
+    var sourceDir = getDirNameFromPath(sourcePath);
+    if (!sourceDir) return '';
+    var boardDir = getDirNameFromPath(boardFilePath);
+    if (!boardDir || normalizePathForCompare(sourceDir) !== normalizePathForCompare(boardDir)) {
+      var sourceDirBase = getFileNameFromPath(sourceDir);
+      if (!sourceDirBase) return '';
+      return sourceDir + '/' + sourceDirBase + '-Media/' + cacheFolderName;
+    }
+    var boardBase = getPathStem(boardFilePath);
+    if (!boardBase) return '';
+    return boardDir + '/' + boardBase + '-Media/' + cacheFolderName;
+  }
+
+  function getEmbedPreviewPageNumber(previewKind, pageValue) {
+    var pageNumber = parseInt(pageValue, 10);
+    if (!(pageNumber > 0)) return 1;
+    if (previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
+      return pageNumber;
+    }
+    return 1;
+  }
+
+  function getSpecialPreviewRenderConfig(previewKind, filePath, pageNumber) {
+    var special = getSpecialPreviewType(filePath);
+    if (previewKind === 'diagram') {
+      if (special === 'diagram-excalidraw') {
+        return { cacheFolderName: 'excalidraw-cache', extension: 'svg', suffix: '' };
+      }
+      return { cacheFolderName: 'drawio-cache', extension: 'png', suffix: '' };
+    }
+    if (previewKind === 'spreadsheet') {
+      return { cacheFolderName: 'xlsx-cache', extension: 'png', suffix: '-s' + getEmbedPreviewPageNumber(previewKind, pageNumber) };
+    }
+    if (previewKind === 'epub') {
+      return { cacheFolderName: 'epub-cache', extension: 'png', suffix: '-p' + getEmbedPreviewPageNumber(previewKind, pageNumber) };
+    }
+    if (previewKind === 'document') {
+      return { cacheFolderName: 'document-cache', extension: 'png', suffix: '-p' + getEmbedPreviewPageNumber(previewKind, pageNumber) };
+    }
+    return null;
+  }
+
+  async function resolveCachedSpecialPreviewAsset(boardId, filePath, previewKind, options) {
+    if (!boardId || !filePath) return null;
+    var config = getSpecialPreviewRenderConfig(previewKind, filePath, options && options.pageNumber);
+    if (!config) return null;
+
+    var boardFilePath = getBoardFilePathForId(boardId);
+    if (!boardFilePath) return null;
+
+    var fileRef = parseLocalFileReference(filePath);
+    var sourceInfo = await requestFileInfo(boardId, fileRef.path);
+    if (!sourceInfo || !sourceInfo.exists) return null;
+
+    var mtimeMs = 0;
+    if (typeof sourceInfo.lastModifiedMs === 'number' && isFinite(sourceInfo.lastModifiedMs)) {
+      mtimeMs = sourceInfo.lastModifiedMs;
+    } else if (typeof sourceInfo.lastModified === 'number' && isFinite(sourceInfo.lastModified)) {
+      mtimeMs = sourceInfo.lastModified * 1000;
+    }
+    if (!(mtimeMs > 0)) return null;
+
+    var absoluteSourcePath = fileRef.path;
+    if (!isAbsoluteFilePath(absoluteSourcePath)) {
+      absoluteSourcePath = await resolveBoardPath(boardId, fileRef.path, 'absolute');
+    }
+    if (!isAbsoluteFilePath(absoluteSourcePath)) return null;
+
+    var cacheDir = buildDiagramCacheDir(boardFilePath, absoluteSourcePath, config.cacheFolderName);
+    if (!cacheDir) return null;
+    var cachePath = cacheDir + '/' + buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
+    var cacheInfo = await requestFileInfo(boardId, cachePath);
+    if (!cacheInfo || !cacheInfo.exists) return null;
+
+    return {
+      path: cachePath,
+      url: LexeraApi.fileUrl(boardId, cachePath),
+      alt: getDisplayFileNameFromPath(filePath) || filePath
+    };
+  }
+
+  async function renderCachedSpecialPreview(containerEl, boardId, filePath, previewKind, options) {
+    var asset = await resolveCachedSpecialPreviewAsset(boardId, filePath, previewKind, options);
+    if (!asset) return false;
+
+    if (options && options.modal) {
+      containerEl.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(asset.url) + '" alt="' + escapeAttr(asset.alt) + '"></div>';
+    } else {
+      containerEl.innerHTML = '<img class="file-preview-image" src="' + escapeAttr(asset.url) + '" alt="' + escapeAttr(asset.alt) + '" style="margin:0 auto;max-height:420px;">';
+    }
+    return true;
   }
 
   function isAbsoluteFilePath(value) {
@@ -10072,17 +10219,17 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub') {
-      previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
-        previewKind,
-        filePath,
-        previewKind === 'diagram'
-          ? 'Open the source file in a dedicated app for full diagram editing.'
-          : previewKind === 'spreadsheet'
-            ? 'Spreadsheet rendering is not available in this view yet.'
-            : 'EPUB rendering is not available in this view yet.'
-      );
+    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
       container.appendChild(previewEl);
+      var previewPage = container.getAttribute('data-preview-page') || '';
+      var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage });
+      if (!rendered) {
+        previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
+          previewKind,
+          filePath,
+          getSpecialPreviewPlaceholderText(previewKind)
+        );
+      }
       return;
     }
 
@@ -10137,13 +10284,13 @@ const LexeraDashboard = (function () {
     });
   }
 
-  async function showBoardFilePreview(boardId, filePath) {
+  async function showBoardFilePreview(boardId, filePath, options) {
     var fileRef = parseLocalFileReference(filePath);
     var ext = getFileExtension(fileRef.path);
     var mediaCategory = getMediaCategory(ext);
     var previewKind = getEmbedPreviewKind(filePath);
     if (!filePath || !boardId) return;
-    if (!(previewKind === 'pdf' || previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
+    if (!(previewKind === 'pdf' || previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document' || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
       openBoardFileInSystem(boardId, filePath);
       return;
     }
@@ -10187,16 +10334,19 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub') {
-      body.innerHTML = buildFilePreviewPlaceholderHtml(
-        previewKind,
-        filePath,
-        previewKind === 'diagram'
-          ? 'Open the source file in a dedicated app for full diagram editing.'
-          : previewKind === 'spreadsheet'
-            ? 'Spreadsheet rendering is not available in this view yet.'
-            : 'EPUB rendering is not available in this view yet.'
-      );
+    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
+      var modalPage = options && options.pageNumber ? options.pageNumber : '';
+      var rendered = await renderCachedSpecialPreview(body, boardId, filePath, previewKind, {
+        modal: true,
+        pageNumber: modalPage
+      });
+      if (!rendered) {
+        body.innerHTML = buildFilePreviewPlaceholderHtml(
+          previewKind,
+          filePath,
+          getSpecialPreviewPlaceholderText(previewKind)
+        );
+      }
       return;
     }
 
@@ -10304,7 +10454,8 @@ const LexeraDashboard = (function () {
         e.stopPropagation();
         showBoardFilePreview(
           embedContainer.getAttribute('data-board-id') || activeBoardId || '',
-          embedContainer.getAttribute('data-file-path') || ''
+          embedContainer.getAttribute('data-file-path') || '',
+          { pageNumber: embedContainer.getAttribute('data-preview-page') || '' }
         );
         return;
       }
@@ -10570,6 +10721,7 @@ const LexeraDashboard = (function () {
     var fileRef = parseLocalFileReference(filePath);
 
     if (action === 'refresh') {
+      clearCachedFilePreviewState(boardId || '', filePath || '');
       var media = container.querySelector('img, video, audio');
       if (media) {
         var src = media.getAttribute('src').split('?')[0];
@@ -11413,7 +11565,7 @@ const LexeraDashboard = (function () {
         inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
       } else if (category === 'audio') {
         inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
-      } else if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub') {
+      } else if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
         inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
       } else if (category === 'document') {
         var documentFilename = getDisplayFileNameFromPath(filePath);
@@ -11424,7 +11576,11 @@ const LexeraDashboard = (function () {
       }
 
       var embedIndex = renderState.embedCounter++;
-      var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '">' +
+      var previewPageValue = imageAttrs.values.page || imageAttrs.values.sheet || '';
+      var previewPageAttr = /^\d+$/.test(String(previewPageValue || ''))
+        ? ' data-preview-page="' + escapeAttr(String(Math.max(1, parseInt(previewPageValue, 10)))) + '"'
+        : '';
+      var embedHtml = '<span class="embed-container" data-file-path="' + escapeHtml(filePath) + '" data-board-id="' + (boardId || '') + '" data-media-type="' + category + '" data-embed-index="' + escapeAttr(String(embedIndex)) + '"' + previewPageAttr + '>' +
         inner +
         '<button class="embed-menu-btn" title="Embed actions">&#8942;</button>' +
         '</span>';

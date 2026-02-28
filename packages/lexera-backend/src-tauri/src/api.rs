@@ -815,6 +815,12 @@ async fn file_info(
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let last_modified_ms = meta
+        .as_ref()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
 
     Json(serde_json::json!({
         "exists": true,
@@ -823,6 +829,7 @@ async fn file_info(
         "extension": ext.as_deref().unwrap_or(""),
         "size": size,
         "lastModified": last_modified,
+        "lastModifiedMs": last_modified_ms,
         "mediaCategory": media_category(ext_ref),
         "previewable": is_previewable(ext_ref),
     }))
