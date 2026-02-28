@@ -543,8 +543,60 @@ const LexeraDashboard = (function () {
 
   // --- Order Helpers ---
 
+  function stripLayoutTags(title) {
+    return String(title || '')
+      .replace(/\s*#row\d*\b/gi, '')
+      .replace(/\s*#span\d*\b/gi, '')
+      .replace(/\s*#stack\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function stripStackTag(title) {
-    return title.replace(/\s*#stack\b/g, '').trim();
+    return stripLayoutTags(title);
+  }
+
+  function getColumnLayoutTags(title) {
+    title = String(title || '');
+    var rowMatch = title.match(/#row(\d+)\b/i);
+    var spanMatch = title.match(/#span(\d+)\b/i);
+    var stackMatch = title.match(/#stack\b/i);
+    return {
+      row: rowMatch ? rowMatch[0] : '',
+      span: spanMatch ? spanMatch[0] : '',
+      stack: !!stackMatch
+    };
+  }
+
+  function reconstructColumnTitle(userInput, originalTitle) {
+    var source = String(userInput || '');
+    var original = getColumnLayoutTags(originalTitle);
+    var next = getColumnLayoutTags(source);
+    var cleanTitle = source
+      .replace(/#row\d+\b/gi, '')
+      .replace(/#span\d+\b/gi, '')
+      .replace(/#stack\b/gi, '')
+      .replace(/#nospan\b/gi, '')
+      .replace(/#nostack\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    var parts = [];
+
+    if (cleanTitle) parts.push(cleanTitle);
+
+    var finalRow = next.row || original.row;
+    if (finalRow && finalRow.toLowerCase() !== '#row1') parts.push(finalRow);
+
+    if (!/#nospan\b/i.test(source)) {
+      var finalSpan = next.span || original.span;
+      if (finalSpan) parts.push(finalSpan);
+    }
+
+    if (!/#nostack\b/i.test(source) && (next.stack || (!next.stack && original.stack))) {
+      parts.push('#stack');
+    }
+
+    return parts.join(' ').trim();
   }
 
   function getOrderedItems(items, storageKey, idFn) {
@@ -3528,7 +3580,7 @@ const LexeraDashboard = (function () {
         if (!stack.columns) continue;
         for (var c = 0; c < stack.columns.length; c++) {
           var col = stack.columns[c];
-          var cleanColTitle = stripStackTag(stripInternalHiddenTags(col.title || '')) || ('Column ' + (c + 1));
+          var cleanColTitle = stripLayoutTags(stripInternalHiddenTags(col.title || '')) || ('Column ' + (c + 1));
           var columnMatches = hasInternalHiddenTag(col.title || '', tag);
           if (columnMatches) {
             items.push({
@@ -4759,7 +4811,7 @@ const LexeraDashboard = (function () {
    * Build a single column element (header, cards, footer) — shared by both formats.
    */
   function buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx) {
-    var displayTitle = stripStackTag(col.title);
+    var displayTitle = stripLayoutTags(col.title);
 
     var colEl = document.createElement('div');
     colEl.className = 'column';
@@ -8894,7 +8946,7 @@ const LexeraDashboard = (function () {
     if (!col) return;
     var titleEl = colEl.querySelector('.column-title');
     if (!titleEl) return;
-    var currentTitle = stripStackTag(col.title);
+    var currentTitle = stripLayoutTags(col.title);
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'column-rename-input';
@@ -8911,8 +8963,7 @@ const LexeraDashboard = (function () {
       var newTitle = input.value.trim();
       if (newTitle && newTitle !== currentTitle) {
         pushUndo();
-        // Preserve #stack tag if it was there
-        col.title = newTitle;
+        col.title = reconstructColumnTitle(newTitle, col.title);
         persistBoardMutation();
       } else {
         titleEl.innerHTML = renderTitleInline(currentTitle, activeBoardId);
@@ -10773,16 +10824,16 @@ const LexeraDashboard = (function () {
   function getCardTitle(content) {
     var lines = content.split('\n');
     for (var i = 0; i < lines.length; i++) {
-      var trimmed = lines[i].trim();
+      var trimmed = stripInternalHiddenTags(lines[i].replace(/<!--[\s\S]*?-->/g, '')).trim();
       if (trimmed === '') break;
-      if (/^<!--.*-->$/.test(trimmed)) continue;
       if (/^!\[/.test(trimmed)) continue; // skip image-only lines
       var headingMatch = trimmed.match(/^#{1,3}\s+(.+)/);
-      if (headingMatch) return headingMatch[1];
+      if (headingMatch) return headingMatch[1].trim();
       return trimmed;
     }
     for (var i = 0; i < lines.length; i++) {
-      if (lines[i].trim() !== '') return lines[i].trim();
+      var fallback = stripInternalHiddenTags(lines[i].replace(/<!--[\s\S]*?-->/g, '')).trim();
+      if (fallback !== '') return fallback;
     }
     return '';
   }
