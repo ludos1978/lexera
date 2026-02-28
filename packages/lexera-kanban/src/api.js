@@ -66,6 +66,22 @@ const LexeraApi = (function () {
     return request('/boards/' + boardId + '/columns');
   }
 
+  async function getBoardColumnsCached(boardId, version) {
+    const url = await discover();
+    if (!url) throw new Error('Backend not available');
+    const headers = {};
+    if (version != null) headers['If-None-Match'] = '"' + version + '"';
+    const res = await fetch(url + '/boards/' + boardId + '/columns', { headers });
+    if (res.status === 304) {
+      return { notModified: true, version };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json();
+  }
+
   async function addCard(boardId, colIndex, content) {
     return request('/boards/' + boardId + '/columns/' + colIndex + '/cards', {
       method: 'POST',
@@ -363,7 +379,7 @@ const LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardColumns, addCard, saveBoard, saveBoardWithBase, search,
+    discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, search,
     checkStatus, connectSSE, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId,
     getMe, updateMe, getServerInfo,

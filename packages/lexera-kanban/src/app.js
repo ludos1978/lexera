@@ -3432,8 +3432,17 @@ const LexeraDashboard = (function () {
     var seq = ++boardLoadSeq;
     try {
       clearBoardPreviewCaches(boardId);
-      var response = await LexeraApi.getBoardColumns(boardId);
+      var cachedVersion = (boardId === activeBoardId && activeBoardData && typeof activeBoardData.version === 'number')
+        ? activeBoardData.version
+        : null;
+      var response = cachedVersion != null
+        ? await LexeraApi.getBoardColumnsCached(boardId, cachedVersion)
+        : await LexeraApi.getBoardColumns(boardId);
       if (seq !== boardLoadSeq) return; // stale response, a newer load was started
+      if (response && response.notModified) {
+        connectSyncForBoard(boardId);
+        return;
+      }
       var boardMeta = findBoardMeta(boardId);
       if (boardMeta && boardMeta.filePath) {
         response.filePath = boardMeta.filePath;
@@ -4467,6 +4476,7 @@ const LexeraDashboard = (function () {
       if (activeBoardData) {
         activeBoardData.fullBoard = fullBoardData;
         if (typeof fullBoardData.title === 'string') activeBoardData.title = fullBoardData.title;
+        if (typeof result.version === 'number') activeBoardData.version = result.version;
       }
       if (result && result.hasConflicts) {
         showConflictDialog(result.conflicts, result.autoMerged);
@@ -4592,6 +4602,7 @@ const LexeraDashboard = (function () {
           if (activeBoardData) {
             activeBoardData.fullBoard = savedBoardData;
             if (typeof savedBoardData.title === 'string') activeBoardData.title = savedBoardData.title;
+            if (typeof result.version === 'number') activeBoardData.version = result.version;
           }
           updateDisplayFromFullBoard();
           if (result && result.hasConflicts) {
