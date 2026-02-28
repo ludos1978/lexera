@@ -574,6 +574,37 @@ const LexeraDashboard = (function () {
     return stripLayoutTags(title);
   }
 
+  function extractIncludePathFromTitle(title) {
+    var match = String(title || '').match(/!!!include\(([^)]+)\)!!!/i);
+    return match ? String(match[1] || '').trim() : '';
+  }
+
+  function removeIncludeSyntaxFromTitle(title) {
+    return String(title || '')
+      .replace(/!!!include\([^)]+\)!!!/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function addIncludeSyntaxToTitle(title, filePath) {
+    var cleanTitle = removeIncludeSyntaxFromTitle(title);
+    var cleanPath = String(filePath || '').trim();
+    return ((cleanTitle ? cleanTitle + ' ' : '') + '!!!include(' + cleanPath + ')!!!').trim();
+  }
+
+  function updateIncludePathInTitle(title, filePath) {
+    return addIncludeSyntaxToTitle(title, filePath);
+  }
+
+  function suggestIncludePathForColumn(title) {
+    var base = removeIncludeSyntaxFromTitle(stripLayoutTags(stripInternalHiddenTags(title || '')))
+      .replace(/[^\w.-]+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase();
+    return './' + (base || 'column') + '.md';
+  }
+
   function getColumnLayoutTags(title) {
     title = String(title || '');
     var rowMatch = title.match(/#row(\d+)\b/i);
@@ -9476,6 +9507,10 @@ const LexeraDashboard = (function () {
   function showColumnContextMenu(x, y, colIndex) {
     closeColumnContextMenu();
     closeCardContextMenu();
+    var col = getFullColumn(colIndex);
+    var includePath = col && col.includeSource && col.includeSource.rawPath
+      ? String(col.includeSource.rawPath)
+      : extractIncludePathFromTitle(col && col.title ? col.title : '');
 
     var nativeItems = [
       { id: 'rename', label: 'Rename' },
@@ -9511,6 +9546,16 @@ const LexeraDashboard = (function () {
       }
     }
     nativeItems.push({ separator: true });
+    if (includePath) {
+      nativeItems.push({ id: 'preview-include', label: 'Preview Include File' });
+      nativeItems.push({ id: 'open-include', label: 'Open Include in System App' });
+      nativeItems.push({ id: 'edit-include', label: 'Edit Include File' });
+      nativeItems.push({ id: 'disable-include', label: 'Disable Include Mode' });
+      nativeItems.push({ separator: true });
+    } else {
+      nativeItems.push({ id: 'enable-include', label: 'Enable Include Mode' });
+      nativeItems.push({ separator: true });
+    }
     nativeItems.push({ id: 'archive', label: 'Archive Column' });
     nativeItems.push({ id: 'park', label: 'Park Column' });
     nativeItems.push({ id: 'delete', label: 'Delete Column' });
@@ -9524,6 +9569,67 @@ const LexeraDashboard = (function () {
       }
       handleColumnAction(action, colIndex);
     });
+  }
+
+  async function setColumnIncludePath(colIndex, nextPath) {
+    var col = getFullColumn(colIndex);
+    if (!col || !fullBoardData || !activeBoardId) return false;
+    var cleanPath = String(nextPath || '').trim();
+    if (!cleanPath) return false;
+    var nextTitle = reconstructColumnTitle(
+      updateIncludePathInTitle(col.title || '', cleanPath),
+      col.title || ''
+    );
+    if (nextTitle === col.title && col.includeSource && col.includeSource.rawPath === cleanPath) {
+      return false;
+    }
+    pushUndo();
+    col.title = nextTitle;
+    col.includeSource = { rawPath: cleanPath };
+    return persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+  }
+
+  async function enableColumnIncludeMode(colIndex) {
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var requested = window.prompt('Include file path', suggestIncludePathForColumn(col.title || ''));
+    if (requested == null) return;
+    await setColumnIncludePath(colIndex, requested);
+  }
+
+  async function editColumnIncludeFile(colIndex) {
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var currentPath = col && col.includeSource && col.includeSource.rawPath
+      ? String(col.includeSource.rawPath)
+      : extractIncludePathFromTitle(col.title || '');
+    if (!currentPath) {
+      showNotification('This column is not in include mode');
+      return;
+    }
+    var requested = window.prompt('Edit include file path', currentPath);
+    if (requested == null) return;
+    await setColumnIncludePath(colIndex, requested);
+  }
+
+  async function disableColumnIncludeMode(colIndex) {
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var currentPath = col && col.includeSource && col.includeSource.rawPath
+      ? String(col.includeSource.rawPath)
+      : extractIncludePathFromTitle(col.title || '');
+    if (!currentPath) return;
+    if (!confirm('Disable include mode? Included cards will be written back into this board as regular cards.')) {
+      return;
+    }
+    var cleanTitle = removeIncludeSyntaxFromTitle(col.title || '');
+    if (!cleanTitle) {
+      cleanTitle = getDisplayNameFromPath(currentPath).replace(/\.[^.]+$/, '') || 'Untitled Column';
+    }
+    pushUndo();
+    col.title = reconstructColumnTitle(cleanTitle, col.title || '');
+    col.includeSource = null;
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
   }
 
   function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) {
@@ -9544,7 +9650,7 @@ const LexeraDashboard = (function () {
     persistBoardMutation({ refreshSidebar: true });
   }
 
-  function handleColumnAction(action, colIndex) {
+  async function handleColumnAction(action, colIndex) {
     if (action === 'rename') {
       var col = getFullColumn(colIndex);
       if (!col) return;
@@ -9565,6 +9671,24 @@ const LexeraDashboard = (function () {
       sortColumnCards(colIndex, 'title');
     } else if (action === 'sort-tag') {
       sortColumnCards(colIndex, 'tag');
+    } else if (action === 'preview-include') {
+      var previewCol = getFullColumn(colIndex);
+      var previewPath = previewCol && previewCol.includeSource && previewCol.includeSource.rawPath
+        ? String(previewCol.includeSource.rawPath)
+        : extractIncludePathFromTitle(previewCol && previewCol.title ? previewCol.title : '');
+      if (previewPath) showBoardFilePreview(activeBoardId, previewPath);
+    } else if (action === 'open-include') {
+      var openCol = getFullColumn(colIndex);
+      var openPath = openCol && openCol.includeSource && openCol.includeSource.rawPath
+        ? String(openCol.includeSource.rawPath)
+        : extractIncludePathFromTitle(openCol && openCol.title ? openCol.title : '');
+      if (openPath) openBoardFileInSystem(activeBoardId, openPath);
+    } else if (action === 'enable-include') {
+      await enableColumnIncludeMode(colIndex);
+    } else if (action === 'edit-include') {
+      await editColumnIncludeFile(colIndex);
+    } else if (action === 'disable-include') {
+      await disableColumnIncludeMode(colIndex);
     } else if (action === 'archive') {
       setColumnHiddenTag(colIndex, '#hidden-internal-archived');
     } else if (action === 'park') {

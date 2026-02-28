@@ -134,6 +134,27 @@ impl LocalStorage {
         normalized
     }
 
+    fn sync_board_include_sources(board: &mut KanbanBoard, board_dir: &Path) {
+        for column in board.all_columns_mut() {
+            if let Some(raw_path) = syntax::extract_include_path(&column.title) {
+                column.include_source = Some(IncludeSource {
+                    raw_path: raw_path.clone(),
+                    resolved_path: crate::include::resolver::resolve_include_path(
+                        &raw_path, board_dir,
+                    ),
+                });
+            } else {
+                column.include_source = None;
+            }
+        }
+    }
+
+    fn normalize_board_for_write(board: &KanbanBoard, board_dir: &Path) -> KanbanBoard {
+        let mut normalized = Self::ensure_board_card_kids(board);
+        Self::sync_board_include_sources(&mut normalized, board_dir);
+        normalized
+    }
+
     fn restore_include_sources(target: &mut KanbanBoard, source: &KanbanBoard) {
         let source_cols = source.all_columns();
         let mut target_cols = target.all_columns_mut();
@@ -856,13 +877,14 @@ impl BoardStorage for LocalStorage {
         board_id: &str,
         board: &KanbanBoard,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
-        let normalized_board = Self::ensure_board_card_kids(board);
         let lock = self.get_write_lock(board_id);
         let _guard = lock.lock().unwrap();
 
         let file_path = self
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+        let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let normalized_board = Self::normalize_board_for_write(board, &board_dir);
 
         // Take the CRDT out for mutation
         let mut crdt = {
@@ -939,7 +961,10 @@ impl BoardStorage for LocalStorage {
                 );
             }
 
-            (Self::ensure_board_card_kids(&result.board), Some(result))
+            (
+                Self::normalize_board_for_write(&result.board, &board_dir),
+                Some(result),
+            )
         } else {
             // No conflict — direct write
             (normalized_board.clone(), None)
@@ -1373,5 +1398,34 @@ kanban-plugin: board
         assert!(on_disk_include.contains("Existing content"));
         assert!(on_disk_include.contains("# Slide 2"));
         assert!(on_disk_include.contains("Added from API"));
+    }
+
+    #[test]
+    fn test_write_board_resolves_include_source_from_title_syntax() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Task 1\n",
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let mut board = storage.read_board(&id).unwrap();
+        board.columns[0].title = "Todo !!!include(./slides.md)!!!".to_string();
+        board.columns[0].include_source = None;
+
+        storage.write_board(&id, &board).unwrap();
+
+        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk_board.contains("## Todo !!!include(./slides.md)!!!"));
+        assert!(!on_disk_board.contains("- [ ] Task 1"));
+
+        let on_disk_include = fs::read_to_string(&include_path).unwrap();
+        assert!(on_disk_include.contains("Task 1"));
     }
 }
