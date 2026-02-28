@@ -10874,6 +10874,31 @@ const LexeraDashboard = (function () {
     return embedValue != null && embedValue !== '' && embedValue !== 'false' && embedValue !== '0';
   }
 
+  function renderInlineFileEmbedHtml(filePath, boardId, altText, titleText, extension, embedIndex) {
+    var label = decodeHtmlEntities(String(altText || '').trim()) || getDisplayFileNameFromPath(filePath) || filePath;
+    var typeLabel = String(extension || 'file').replace(/^\./, '').toUpperCase();
+    var wrapperStyle = 'display:block;margin:8px 0;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);overflow:hidden';
+    var headerStyle = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--bg-tertiary)';
+    var typeStyle = 'font-size:10px;font-weight:700;letter-spacing:0.04em;color:var(--text-secondary)';
+    var labelStyle = 'font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    var buttonStyle = 'position:static;top:auto;right:auto;min-width:18px;width:18px;height:18px;font-size:12px;opacity:1';
+    var captionHtml = titleText
+      ? '<div class="media-caption" style="padding:6px 8px 8px">' + renderInline(titleText, boardId, { footnoteDefs: {}, footnoteOrder: [], abbrDefs: {}, embedCounter: 0, linkCounter: 0 }) + '</div>'
+      : '';
+    return '<div class="inline-file-embed-container" data-file-path="' + escapeAttr(filePath) + '" data-board-id="' + escapeAttr(boardId || '') + '"' +
+      ' data-inline-type="' + escapeAttr(String(extension || '').toLowerCase()) + '"' +
+      ' data-embed-index="' + escapeAttr(String(embedIndex)) + '"' +
+      ' data-media-type="inline-file" style="' + escapeAttr(wrapperStyle) + '">' +
+      '<div class="inline-file-embed-header" style="' + escapeAttr(headerStyle) + '">' +
+      '<span class="inline-file-embed-type" style="' + escapeAttr(typeStyle) + '">' + escapeHtml(typeLabel) + '</span>' +
+      '<span class="inline-file-embed-label" data-action="open-inline-file" style="' + escapeAttr(labelStyle) + '">' + escapeHtml(label) + '</span>' +
+      '<button class="embed-menu-btn inline-file-menu-btn" data-action="inline-file-menu" title="File options" style="' + escapeAttr(buttonStyle) + '">&#8942;</button>' +
+      '</div>' +
+      '<div class="inline-file-embed-body" style="padding:8px"><div class="embed-preview-loading">Loading preview...</div></div>' +
+      captionHtml +
+      '</div>';
+  }
+
   function renderBoardFileLinkHtml(filePath, boardId, labelHtml, titleText, extraClass, options) {
     options = options || {};
     var normalizedPath = decodeHtmlEntities(String(filePath || '').trim());
@@ -11057,6 +11082,10 @@ const LexeraDashboard = (function () {
     for (var i = 0; i < containers.length; i++) {
       enhanceSingleEmbedContainer(containers[i]);
     }
+    var inlineContainers = root.querySelectorAll('.inline-file-embed-container[data-file-path][data-board-id]');
+    for (var j = 0; j < inlineContainers.length; j++) {
+      enhanceSingleInlineFileEmbed(inlineContainers[j]);
+    }
   }
 
   async function enhanceFileLinks(root) {
@@ -11076,6 +11105,48 @@ const LexeraDashboard = (function () {
     link.setAttribute('data-link-enhanced', '1');
     var info = await requestFileInfo(boardId, fileRef.path);
     applyFileLinkInfo(link, info, fileRef.path);
+  }
+
+  async function enhanceSingleInlineFileEmbed(container) {
+    if (!container || container.getAttribute('data-inline-enhanced') === '1') return;
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    var filePath = container.getAttribute('data-file-path') || '';
+    var ext = container.getAttribute('data-inline-type') || getInlineFileEmbedExtension(filePath);
+    var body = container.querySelector('.inline-file-embed-body');
+    if (!boardId || !filePath || !ext || !body) return;
+
+    container.setAttribute('data-inline-enhanced', '1');
+    body.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
+
+    var fileRef = parseLocalFileReference(filePath);
+    var info = await requestFileInfo(boardId, fileRef.path);
+    var isMissing = !info || info.exists === false;
+    container.classList.toggle('embed-broken', isMissing);
+    if (isMissing) {
+      body.innerHTML = '<div class="broken-include-placeholder">Inline file unavailable</div>';
+      return;
+    }
+
+    try {
+      var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
+      if (!response.ok) throw new Error('Failed to load inline file preview');
+      var text = await response.text();
+      var previewPath = filePath;
+      if (isBoardRelativePath(filePath)) {
+        previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
+      }
+      var kind = (ext === 'md' || ext === 'markdown') ? 'markdown' : 'text';
+      body.innerHTML = renderEmbedPreviewContent(kind, boardId, previewPath, text);
+      applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
+      applyRenderedTagVisibility(body, currentTagVisibilityMode);
+      flushPendingDiagramQueues();
+      enhanceEmbeddedContent(body);
+      enhanceFileLinks(body);
+      enhanceIncludeDirectives(body);
+    } catch (err) {
+      container.classList.add('embed-broken');
+      body.innerHTML = '<div class="broken-include-placeholder">Inline file unavailable</div>';
+    }
   }
 
   async function enhanceIncludeDirectives(root) {
@@ -11442,6 +11513,20 @@ const LexeraDashboard = (function () {
       }
     }
 
+    var inlineFileLabel = e.target.closest('.inline-file-embed-label[data-action="open-inline-file"]');
+    if (inlineFileLabel) {
+      var inlineFileContainer = inlineFileLabel.closest('.inline-file-embed-container[data-file-path]');
+      if (inlineFileContainer) {
+        e.preventDefault();
+        e.stopPropagation();
+        openBoardFileInSystem(
+          inlineFileContainer.getAttribute('data-board-id') || activeBoardId || '',
+          inlineFileContainer.getAttribute('data-file-path') || ''
+        );
+        return;
+      }
+    }
+
     var linkMenuBtn = e.target.closest('.link-menu-btn');
     if (linkMenuBtn) {
       e.preventDefault();
@@ -11456,7 +11541,7 @@ const LexeraDashboard = (function () {
     if (e.target.classList.contains('embed-menu-btn') || e.target.classList.contains('include-menu-btn')) {
       e.stopPropagation();
       var container = e.target.closest(
-        '.embed-container, .external-embed-container, ' +
+        '.embed-container, .external-embed-container, .inline-file-embed-container, ' +
         '.include-link-container[data-file-path], .include-inline-container[data-file-path]'
       );
       if (!container) return;
@@ -11506,7 +11591,7 @@ const LexeraDashboard = (function () {
     }
 
     var container = e.target.closest(
-      '.embed-container, .external-embed-container, ' +
+      '.embed-container, .external-embed-container, .inline-file-embed-container, ' +
       '.include-link-container[data-file-path], .include-inline-container[data-file-path], ' +
       '.image-path-overlay-container[data-file-path], .video-path-overlay-container[data-file-path], ' +
       '.wysiwyg-media[data-file-path], .wysiwyg-media-block[data-file-path]'
@@ -12032,6 +12117,11 @@ const LexeraDashboard = (function () {
       if (media) {
         var src = media.getAttribute('src').split('?')[0];
         media.setAttribute('src', src + '?t=' + Date.now());
+      } else if (container.classList.contains('inline-file-embed-container')) {
+        container.removeAttribute('data-inline-enhanced');
+        var inlineBody = container.querySelector('.inline-file-embed-body');
+        if (inlineBody) inlineBody.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
+        enhanceSingleInlineFileEmbed(container);
       }
       container.classList.remove('embed-broken');
       container.removeAttribute('data-embed-enhanced');
@@ -12510,6 +12600,30 @@ const LexeraDashboard = (function () {
     var dot = fileName.lastIndexOf('.');
     if (dot <= 0 || dot === fileName.length - 1) return '';
     return fileName.substring(dot + 1).toLowerCase();
+  }
+
+  var INLINE_FILE_EMBED_EXTENSIONS = {
+    md: true,
+    markdown: true,
+    txt: true,
+    log: true,
+    csv: true,
+    tsv: true,
+    json: true,
+    yaml: true,
+    yml: true,
+    toml: true,
+    ini: true,
+    cfg: true,
+    conf: true,
+    xml: true,
+    html: true,
+    htm: true
+  };
+
+  function getInlineFileEmbedExtension(path) {
+    var ext = getFileExtension(path);
+    return INLINE_FILE_EMBED_EXTENSIONS[ext] ? ext : '';
   }
 
   // --- Card Collapse ---
@@ -13182,9 +13296,10 @@ const LexeraDashboard = (function () {
       var titleText = decodeHtmlEntities(normalizeMarkdownAttrValue(parsedTarget.title));
       var imageAttrs = parseMarkdownImageAttributes(rawAttrs);
       var ext = getFileExtension(fileRef.path);
-      var category = getMediaCategory(ext);
       var isExternalHttp = isExternalHttpUrl(filePath);
       var isExternal = isExternalHttp || filePath.indexOf('data:') === 0;
+      var inlineFileExtension = !isExternal ? getInlineFileEmbedExtension(fileRef.path) : '';
+      var category = getMediaCategory(ext);
 
       if (isExternalHttp && shouldRenderExternalEmbed(filePath, imageAttrs)) {
         var embedWidth = sanitizeCssLength(imageAttrs.values.width) || '100%';
@@ -13202,6 +13317,17 @@ const LexeraDashboard = (function () {
           return '<figure class="media-figure">' + externalEmbedHtml + externalCaptionHtml + '</figure>';
         }
         return externalEmbedHtml;
+      }
+
+      if (inlineFileExtension && boardId) {
+        return renderInlineFileEmbedHtml(
+          filePath,
+          boardId,
+          alt || '',
+          titleText || '',
+          inlineFileExtension,
+          renderState.embedCounter++
+        );
       }
 
       var src = filePath;
