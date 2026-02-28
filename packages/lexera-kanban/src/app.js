@@ -9782,8 +9782,9 @@ const LexeraDashboard = (function () {
 
   async function showBoardFilePreview(boardId, filePath) {
     var ext = getFileExtension(filePath);
+    var mediaCategory = getMediaCategory(ext);
     if (!filePath || !boardId) return;
-    if (!(ext === 'pdf' || isTextPreviewExtension(ext))) {
+    if (!(ext === 'pdf' || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
       openBoardFileInSystem(boardId, filePath);
       return;
     }
@@ -9819,6 +9820,21 @@ const LexeraDashboard = (function () {
 
     if (ext === 'pdf') {
       body.innerHTML = '<iframe class="file-preview-frame" src="' + LexeraApi.fileUrl(boardId, filePath) + '#toolbar=0&navpanes=0"></iframe>';
+      return;
+    }
+
+    if (mediaCategory === 'image') {
+      body.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(LexeraApi.fileUrl(boardId, filePath)) + '" alt="' + escapeAttr(getDisplayFileNameFromPath(filePath) || filePath) + '"></div>';
+      return;
+    }
+
+    if (mediaCategory === 'video') {
+      body.innerHTML = '<div class="file-preview-media"><video class="file-preview-video" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, filePath)) + '"></video></div>';
+      return;
+    }
+
+    if (mediaCategory === 'audio') {
+      body.innerHTML = '<div class="file-preview-media"><audio class="file-preview-audio" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, filePath)) + '"></audio></div>';
       return;
     }
 

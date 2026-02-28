@@ -2801,6 +2801,26 @@ u {
   padding: 4px 2px;
 }
 
+.file-preview-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  max-height: 70vh;
+}
+
+.file-preview-image,
+.file-preview-video {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 6px;
+}
+
+.file-preview-audio {
+  width: min(640px, 100%);
+}
+
 .file-preview-text {
   margin: 0;
   white-space: pre-wrap;
