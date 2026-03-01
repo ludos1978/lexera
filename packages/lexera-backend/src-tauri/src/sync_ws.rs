@@ -22,6 +22,9 @@ use tokio::sync::mpsc;
 
 use crate::state::AppState;
 
+const WS_HELLO_TIMEOUT_SECS: u64 = 10;
+const WS_PING_INTERVAL_SECS: u64 = 30;
+
 fn b64() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
@@ -169,7 +172,7 @@ async fn handle_sync_session(
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // 1. Wait for ClientHello (10s timeout)
-    let hello = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    let hello = tokio::time::timeout(std::time::Duration::from_secs(WS_HELLO_TIMEOUT_SECS), async {
         while let Some(Ok(msg)) = ws_rx.next().await {
             if let Message::Text(text) = msg {
                 return serde_json::from_str::<ClientMessage>(&text).ok();
@@ -183,7 +186,7 @@ async fn handle_sync_session(
         Ok(Some(ClientMessage::ClientHello { user_id, vv })) => (user_id, vv),
         _ => {
             let err = serde_json::to_string(&ServerMessage::ServerError {
-                message: "Expected ClientHello within 10s".to_string(),
+                message: format!("Expected ClientHello within {}s", WS_HELLO_TIMEOUT_SECS),
             })
             .unwrap_or_default();
             let _ = ws_tx.send(Message::Text(err.into())).await;
@@ -266,7 +269,7 @@ async fn handle_sync_session(
 
     // Write task: forward hub messages to WebSocket + periodic ping keepalive
     let write_task = tokio::spawn(async move {
-        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(WS_PING_INTERVAL_SECS));
         ping_interval.tick().await; // consume the immediate first tick
         loop {
             tokio::select! {

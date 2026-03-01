@@ -8,6 +8,8 @@ use tokio_stream::StreamExt;
 
 use crate::state::AppState;
 
+const SSE_KEEPALIVE_SECS: u64 = 30;
+
 /// SSE endpoint: streams BoardChangeEvent as JSON to connected clients.
 pub async fn sse_events(
     State(state): State<AppState>,
@@ -24,7 +26,7 @@ pub async fn sse_events(
     // Keep-alive every 30 seconds
     let stream = stream.merge(tokio_stream::StreamExt::map(
         tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(SSE_KEEPALIVE_SECS),
         )),
         |_| Ok(Event::default().comment("keep-alive")),
     ));
