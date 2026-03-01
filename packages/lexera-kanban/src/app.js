@@ -424,6 +424,8 @@ const LexeraDashboard = (function () {
   var splitRootEl = null;
   var splitToggleBtn = null;
   var splitOrientationBtn = null;
+  var $savingIndicator = null;
+  var $foldAllBtn = null;
   var dashboardState = {
     query: localStorage.getItem('lexera-dashboard-query') || '',
     scope: localStorage.getItem('lexera-dashboard-scope') === 'all' ? 'all' : 'active',
@@ -626,6 +628,9 @@ const LexeraDashboard = (function () {
   const $mgmtPanelBody = document.getElementById('mgmt-panel-body');
   const $btnSidebarSync = document.getElementById('btn-sidebar-sync');
   const $mgmtClose = document.getElementById('mgmt-close');
+  const $headerActions = document.querySelector('.header-actions');
+  const $sidebarHeader = $sidebar ? $sidebar.querySelector('.sidebar-header') : null;
+  const $sidebarLockBtn = document.getElementById('btn-sidebar-lock');
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
@@ -1258,8 +1263,7 @@ const LexeraDashboard = (function () {
     sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
 
     var sidebarHeight = $sidebar.clientHeight || 0;
-    var sidebarHeader = $sidebar.querySelector('.sidebar-header');
-    var headerHeight = sidebarHeader ? sidebarHeader.offsetHeight : 0;
+    var headerHeight = $sidebarHeader ? $sidebarHeader.offsetHeight : 0;
     var dividerHeight = $sidebarDashboardDivider ? ($sidebarDashboardDivider.offsetHeight || 8) : 0;
     var available = sidebarHeight - headerHeight - dividerHeight;
     if (available <= 0) return;
@@ -1300,8 +1304,7 @@ const LexeraDashboard = (function () {
       },
       onStart: function () {
         var sidebarRect = $sidebar.getBoundingClientRect();
-        var sidebarHeader = $sidebar.querySelector('.sidebar-header');
-        var headerBottom = sidebarHeader ? sidebarHeader.getBoundingClientRect().bottom : sidebarRect.top;
+        var headerBottom = $sidebarHeader ? $sidebarHeader.getBoundingClientRect().bottom : sidebarRect.top;
         var dividerHeight = $sidebarDashboardDivider.offsetHeight || 8;
         var trackStart = headerBottom;
         var trackSize = sidebarRect.height - (headerBottom - sidebarRect.top) - dividerHeight;
@@ -1751,8 +1754,7 @@ const LexeraDashboard = (function () {
     activeSplitPane = normalizeSplitPane(activeSplitPane);
     splitRatios.vertical = normalizeSplitRatio(splitRatios.vertical);
     splitRatios.horizontal = normalizeSplitRatio(splitRatios.horizontal);
-    var headerActions = document.querySelector('.header-actions');
-    if (!headerActions) return;
+    if (!$headerActions) return;
     splitToggleBtn = document.getElementById('btn-split-toggle');
     splitOrientationBtn = document.getElementById('btn-split-orientation');
     if (!splitToggleBtn) {
@@ -1771,12 +1773,12 @@ const LexeraDashboard = (function () {
     }
 
     // Keep split controls anchored at top-right (before connection indicator).
-    if ($connectionDot && $connectionDot.parentElement === headerActions) {
-      headerActions.insertBefore(splitToggleBtn, $connectionDot);
-      headerActions.insertBefore(splitOrientationBtn, $connectionDot);
+    if ($connectionDot && $connectionDot.parentElement === $headerActions) {
+      $headerActions.insertBefore(splitToggleBtn, $connectionDot);
+      $headerActions.insertBefore(splitOrientationBtn, $connectionDot);
     } else {
-      headerActions.appendChild(splitToggleBtn);
-      headerActions.appendChild(splitOrientationBtn);
+      $headerActions.appendChild(splitToggleBtn);
+      $headerActions.appendChild(splitOrientationBtn);
     }
 
     splitToggleBtn.addEventListener('click', function () {
@@ -3850,14 +3852,13 @@ const LexeraDashboard = (function () {
   }
 
   (function () {
-    var lockBtn = document.getElementById('btn-sidebar-lock');
-    updateLockButton(lockBtn);
-    if (lockBtn) {
-      lockBtn.addEventListener('click', function (e) {
+    updateLockButton($sidebarLockBtn);
+    if ($sidebarLockBtn) {
+      $sidebarLockBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         hierarchyLocked = !hierarchyLocked;
         localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
-        updateLockButton(lockBtn);
+        updateLockButton($sidebarLockBtn);
         renderBoardList();
       });
     }
@@ -4507,6 +4508,10 @@ const LexeraDashboard = (function () {
     html += '</div>';
     $boardHeader.innerHTML = html;
 
+    // Refresh board-header-lifetime cached refs
+    $savingIndicator = document.getElementById('saving-indicator');
+    $foldAllBtn = document.getElementById('btn-fold-all');
+
     var paneFileTitleBtn = document.getElementById('btn-pane-file-title');
     var paneFileRenameBtn = document.getElementById('btn-pane-file-rename');
     var paneFileFolderBtn = document.getElementById('btn-pane-file-folder');
@@ -4550,9 +4555,8 @@ const LexeraDashboard = (function () {
       });
     }
 
-    var foldBtn = document.getElementById('btn-fold-all');
-    if (foldBtn) {
-      foldBtn.addEventListener('click', function () {
+    if ($foldAllBtn) {
+      $foldAllBtn.addEventListener('click', function () {
         toggleFoldAll();
       });
     }
@@ -4723,8 +4727,7 @@ const LexeraDashboard = (function () {
       }
     }
     saveFoldState(activeBoardId);
-    var foldBtn = document.getElementById('btn-fold-all');
-    if (foldBtn) foldBtn.textContent = allFolded ? 'Fold All' : 'Unfold All';
+    if ($foldAllBtn) $foldAllBtn.textContent = allFolded ? 'Fold All' : 'Unfold All';
   }
 
   function showParkedItems() {
@@ -4828,15 +4831,13 @@ const LexeraDashboard = (function () {
 
   var savingTimeout = null;
   function showSaving() {
-    var el = document.getElementById('saving-indicator');
-    if (el) el.classList.add('visible');
+    if ($savingIndicator) $savingIndicator.classList.add('visible');
     clearTimeout(savingTimeout);
   }
   function hideSaving() {
     clearTimeout(savingTimeout);
     savingTimeout = setTimeout(function () {
-      var el = document.getElementById('saving-indicator');
-      if (el) el.classList.remove('visible');
+      if ($savingIndicator) $savingIndicator.classList.remove('visible');
     }, 500);
   }
 
@@ -5306,8 +5307,10 @@ const LexeraDashboard = (function () {
     var connectBtn = document.getElementById('mgmt-connect-remote');
     if (connectBtn) {
       connectBtn.addEventListener('click', async function () {
-        var url = document.getElementById('mgmt-remote-url').value.trim();
-        var token = document.getElementById('mgmt-remote-token').value.trim();
+        var urlInput = document.getElementById('mgmt-remote-url');
+        var tokenInput = document.getElementById('mgmt-remote-token');
+        var url = urlInput ? urlInput.value.trim() : '';
+        var token = tokenInput ? tokenInput.value.trim() : '';
         var statusEl = document.getElementById('mgmt-connect-status');
         if (!url || !token) {
           if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = 'URL and token required'; }
@@ -5316,8 +5319,8 @@ const LexeraDashboard = (function () {
         try {
           await LexeraApi.connectRemote(url, token);
           if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Connected'; }
-          document.getElementById('mgmt-remote-url').value = '';
-          document.getElementById('mgmt-remote-token').value = '';
+          if (urlInput) urlInput.value = '';
+          if (tokenInput) tokenInput.value = '';
           renderMgmtConnections();
           poll();
         } catch (err) {
