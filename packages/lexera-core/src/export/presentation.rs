@@ -1308,4 +1308,460 @@ mod tests {
         assert!(output.contains("deep/image.png"));
         assert!(!output.contains("./image.png"));
     }
+
+    // ======================================================================
+    // from_board / from_columns with tag_visibility
+    // ======================================================================
+
+    #[test]
+    fn from_board_tag_visibility_none_strips_all_tags() {
+        let opts = PresentationOptions {
+            tag_visibility: TagVisibility::None,
+            ..default_opts()
+        };
+        let b = board_with(vec![column_with(
+            "Col #urgent",
+            vec![card("Task #todo @user")],
+        )]);
+        let output = from_board(&b, &opts);
+        // tag_visibility None strips both # and @ tags
+        assert!(!output.contains("#urgent"));
+        assert!(!output.contains("#todo"));
+        assert!(!output.contains("@user"));
+        assert!(output.contains("Task"));
+        assert!(output.contains("Col"));
+    }
+
+    #[test]
+    fn from_board_tag_visibility_mentions_only_keeps_at_tags() {
+        let opts = PresentationOptions {
+            tag_visibility: TagVisibility::MentionsOnly,
+            ..default_opts()
+        };
+        let b = board_with(vec![column_with(
+            "Col",
+            vec![card("Task #todo @alice")],
+        )]);
+        let output = from_board(&b, &opts);
+        assert!(!output.contains("#todo"));
+        assert!(output.contains("@alice"));
+        assert!(output.contains("Task"));
+    }
+
+    #[test]
+    fn from_board_tag_visibility_allexcludinglayout() {
+        let opts = PresentationOptions {
+            tag_visibility: TagVisibility::AllExcludingLayout,
+            ..default_opts()
+        };
+        let b = board_with(vec![column_with(
+            "Col #stack",
+            vec![card("Task #urgent #row2")],
+        )]);
+        let output = from_board(&b, &opts);
+        // Layout tags (#stack, #row2) stripped; custom tag (#urgent) kept
+        assert!(!output.contains("#stack"));
+        assert!(!output.contains("#row2"));
+        assert!(output.contains("#urgent"));
+    }
+
+    // ======================================================================
+    // to_document with tag_visibility
+    // ======================================================================
+
+    #[test]
+    fn to_document_tag_visibility_none() {
+        let opts = PresentationOptions {
+            tag_visibility: TagVisibility::None,
+            ..default_opts()
+        };
+        let b = board_with(vec![column_with(
+            "Chapter",
+            vec![card("Content #tag @mention")],
+        )]);
+        let output = to_document(&b, PageBreaks::Continuous, &opts);
+        assert!(!output.contains("#tag"));
+        assert!(!output.contains("@mention"));
+        assert!(output.contains("Content"));
+    }
+
+    #[test]
+    fn to_document_crlf_in_card_content() {
+        let b = board_with(vec![column_with(
+            "Ch",
+            vec![card("Line1\r\nLine2\r\nLine3")],
+        )]);
+        let output = to_document(&b, PageBreaks::Continuous, &default_opts());
+        assert!(output.contains("Line1\nLine2\nLine3"));
+        assert!(!output.contains("\r"));
+    }
+
+    // ======================================================================
+    // task_to_slide_content edge cases
+    // ======================================================================
+
+    #[test]
+    fn task_to_slide_content_with_exclude_tags() {
+        let opts = PresentationOptions {
+            exclude_tags: vec!["#hidden".to_string()],
+            ..default_opts()
+        };
+        let result = task_to_slide_content("keep this\nremove #hidden\nalso keep", &opts);
+        assert!(result.contains("keep this"));
+        assert!(!result.contains("remove #hidden"));
+        assert!(result.contains("also keep"));
+    }
+
+    #[test]
+    fn task_to_slide_content_no_newline() {
+        let opts = PresentationOptions {
+            strip_includes: true,
+            ..default_opts()
+        };
+        let result = task_to_slide_content("!!!include(x.md)!!!", &opts);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn task_to_slide_content_crlf_normalization() {
+        let result = task_to_slide_content("line1\r\nline2\r\n", &default_opts());
+        assert_eq!(result, "line1\nline2\n");
+    }
+
+    // ======================================================================
+    // parse_presentation edge cases
+    // ======================================================================
+
+    #[test]
+    fn parse_presentation_frontmatter_only() {
+        let input = "---\nmarp: true\n---\n";
+        let slides = parse_presentation(input);
+        assert_eq!(slides.len(), 1);
+        // After stripping frontmatter, only empty string remains
+        assert!(slides[0].content.is_empty());
+    }
+
+    #[test]
+    fn parse_presentation_multiple_html_comments_in_single_slide() {
+        let input = "<!-- a --> text <!-- b --> more <!-- c -->";
+        let slides = parse_presentation(input);
+        assert_eq!(slides.len(), 1);
+        assert!(slides[0].content.contains("<!-- a -->"));
+        assert!(slides[0].content.contains("<!-- b -->"));
+        assert!(slides[0].content.contains("<!-- c -->"));
+    }
+
+    #[test]
+    fn parse_presentation_separator_not_in_blank_context() {
+        // --- without surrounding blank lines is NOT a separator
+        let input = "before\n---\nafter";
+        let slides = parse_presentation(input);
+        assert_eq!(slides.len(), 1);
+        assert!(slides[0].content.contains("before"));
+        assert!(slides[0].content.contains("after"));
+    }
+
+    #[test]
+    fn parse_presentation_only_whitespace_content() {
+        let input = "   \n\n---\n\n   ";
+        let slides = parse_presentation(input);
+        assert_eq!(slides.len(), 2);
+    }
+
+    // ======================================================================
+    // is_relative_resource_path
+    // ======================================================================
+
+    #[test]
+    fn is_relative_resource_path_empty() {
+        assert!(!is_relative_resource_path(""));
+        assert!(!is_relative_resource_path("   "));
+    }
+
+    #[test]
+    fn is_relative_resource_path_anchor() {
+        assert!(!is_relative_resource_path("#section"));
+    }
+
+    #[test]
+    fn is_relative_resource_path_http() {
+        assert!(!is_relative_resource_path("http://example.com"));
+        assert!(!is_relative_resource_path("https://example.com"));
+    }
+
+    #[test]
+    fn is_relative_resource_path_mailto_and_data() {
+        assert!(!is_relative_resource_path("mailto:user@example.com"));
+        assert!(!is_relative_resource_path("data:image/png;base64,abc"));
+    }
+
+    #[test]
+    fn is_relative_resource_path_absolute() {
+        assert!(!is_relative_resource_path("/absolute/path.md"));
+    }
+
+    #[test]
+    fn is_relative_resource_path_relative() {
+        assert!(is_relative_resource_path("./file.md"));
+        assert!(is_relative_resource_path("sub/file.md"));
+        assert!(is_relative_resource_path("file.md"));
+        assert!(is_relative_resource_path("../up/file.md"));
+    }
+
+    // ======================================================================
+    // join_relative_path
+    // ======================================================================
+
+    #[test]
+    fn join_relative_path_resolves_dot_dot() {
+        let result = join_relative_path("sub/dir", "../file.md");
+        assert_eq!(result, "sub/file.md");
+    }
+
+    #[test]
+    fn join_relative_path_resolves_dot() {
+        let result = join_relative_path("sub", "./file.md");
+        assert_eq!(result, "sub/file.md");
+    }
+
+    #[test]
+    fn join_relative_path_simple() {
+        let result = join_relative_path("root/mid", "image.png");
+        assert_eq!(result, "root/mid/image.png");
+    }
+
+    #[test]
+    fn join_relative_path_multiple_parent_refs() {
+        let result = join_relative_path("a/b/c", "../../file.md");
+        assert_eq!(result, "a/file.md");
+    }
+
+    // ======================================================================
+    // resolve_include_card_paths edge cases
+    // ======================================================================
+
+    #[test]
+    fn resolve_include_paths_preserves_anchor_links() {
+        let src = include_source("./sub/slides.md");
+        let content = "[section](#heading)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "[section](#heading)");
+    }
+
+    #[test]
+    fn resolve_include_paths_preserves_mailto() {
+        let src = include_source("./sub/slides.md");
+        let content = "[email](mailto:user@example.com)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "[email](mailto:user@example.com)");
+    }
+
+    #[test]
+    fn resolve_include_paths_preserves_data_uri() {
+        let src = include_source("./sub/slides.md");
+        let content = "![img](data:image/png;base64,abc)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "![img](data:image/png;base64,abc)");
+    }
+
+    #[test]
+    fn resolve_include_paths_image_with_parent_ref() {
+        let src = include_source("./deep/nested/slides.md");
+        let content = "![img](../shared/photo.jpg)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "![img](deep/shared/photo.jpg)");
+    }
+
+    #[test]
+    fn resolve_include_paths_link_with_parent_ref() {
+        let src = include_source("./deep/nested/slides.md");
+        let content = "[doc](../shared/readme.md)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "[doc](deep/shared/readme.md)");
+    }
+
+    #[test]
+    fn resolve_include_paths_multiple_images_same_line() {
+        let src = include_source("./sub/slides.md");
+        let content = "![a](./a.png) text ![b](./b.png)";
+        let result = resolve_include_card_paths(content, &src);
+        assert!(result.contains("![a](sub/a.png)"));
+        assert!(result.contains("![b](sub/b.png)"));
+    }
+
+    #[test]
+    fn resolve_include_paths_http_link_next_to_relative() {
+        let src = include_source("./sub/slides.md");
+        let content = "[local](./readme.md) and [ext](https://example.com)";
+        let result = resolve_include_card_paths(content, &src);
+        assert!(result.contains("[local](sub/readme.md)"));
+        assert!(result.contains("[ext](https://example.com)"));
+    }
+
+    // ======================================================================
+    // format_output / build_yaml_frontmatter edge cases
+    // ======================================================================
+
+    #[test]
+    fn format_output_empty_slides() {
+        let slides: Vec<String> = vec![];
+        let result = format_output(&slides, &default_opts());
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn format_output_single_slide() {
+        let slides = vec!["Hello world\n\n".to_string()];
+        let result = format_output(&slides, &default_opts());
+        assert_eq!(result, "Hello world\n\n");
+    }
+
+    #[test]
+    fn format_output_with_marp_no_global_classes() {
+        let opts = PresentationOptions {
+            include_marp_directives: true,
+            ..default_opts()
+        };
+        let slides = vec!["Slide 1".to_string()];
+        let result = format_output(&slides, &opts);
+        assert!(result.contains("marp: true"));
+        assert!(result.contains("theme: \"default\""));
+        assert!(!result.contains("class:"));
+    }
+
+    #[test]
+    fn format_output_per_slide_and_local_classes_both() {
+        let mut per_slide = HashMap::new();
+        per_slide.insert(0, vec!["special".to_string()]);
+        let opts = PresentationOptions {
+            marp_local_classes: vec!["base".to_string()],
+            per_slide_classes: Some(per_slide),
+            ..default_opts()
+        };
+        let slides = vec!["Content".to_string()];
+        let result = format_output(&slides, &opts);
+        // Both local class and per-slide class should appear
+        assert!(result.contains("<!-- _class: base -->"));
+        assert!(result.contains("<!-- _class: special -->"));
+    }
+
+    #[test]
+    fn yaml_frontmatter_with_no_custom_yaml() {
+        let opts = PresentationOptions {
+            include_marp_directives: true,
+            ..default_opts()
+        };
+        let yaml = build_yaml_frontmatter(&opts);
+        assert!(yaml.contains("marp: true"));
+        assert!(yaml.contains("theme: \"default\""));
+        assert!(!yaml.contains("class:"));
+    }
+
+    // ======================================================================
+    // filter_excluded_lines edge cases
+    // ======================================================================
+
+    #[test]
+    fn filter_excluded_lines_all_lines_excluded() {
+        let content = "#exclude line1\n#exclude line2\n#exclude line3";
+        let result = filter_excluded_lines(content, &["#exclude".to_string()]);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn filter_excluded_lines_multiple_tags() {
+        let content = "keep\nremove1 #tag1\nremove2 #tag2\nalso keep";
+        let result = filter_excluded_lines(
+            content,
+            &["#tag1".to_string(), "#tag2".to_string()],
+        );
+        assert_eq!(result, "keep\nalso keep");
+    }
+
+    #[test]
+    fn filter_excluded_lines_single_line() {
+        let content = "only line #exclude";
+        let result = filter_excluded_lines(content, &["#exclude".to_string()]);
+        assert_eq!(result, "");
+    }
+
+    // ======================================================================
+    // get_processed_column_title
+    // ======================================================================
+
+    #[test]
+    fn get_processed_column_title_excluded() {
+        let col = column_with("Hidden #exclude", vec![]);
+        let opts = PresentationOptions {
+            exclude_tags: vec!["#exclude".to_string()],
+            ..default_opts()
+        };
+        let result = get_processed_column_title(&col, &opts);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn get_processed_column_title_strip_includes() {
+        let col = column_with("!!!include(file.md)!!! Title", vec![]);
+        let opts = PresentationOptions {
+            strip_includes: true,
+            ..default_opts()
+        };
+        let result = get_processed_column_title(&col, &opts);
+        assert_eq!(result, Some("Title".to_string()));
+    }
+
+    #[test]
+    fn get_processed_column_title_include_only() {
+        let col = column_with("!!!include(file.md)!!!", vec![]);
+        let opts = PresentationOptions {
+            strip_includes: true,
+            ..default_opts()
+        };
+        let result = get_processed_column_title(&col, &opts);
+        assert_eq!(result, Some("".to_string()));
+    }
+
+    #[test]
+    fn get_processed_column_title_normal() {
+        let col = column_with("Normal Title", vec![]);
+        let result = get_processed_column_title(&col, &default_opts());
+        assert_eq!(result, Some("Normal Title".to_string()));
+    }
+
+    // ======================================================================
+    // filter_tasks
+    // ======================================================================
+
+    #[test]
+    fn filter_tasks_no_exclude_tags() {
+        let cards = vec![card("a"), card("b #tag"), card("c")];
+        let opts = default_opts();
+        let result = filter_tasks(&cards, &opts);
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn filter_tasks_excludes_matching() {
+        let cards = vec![card("keep"), card("drop #skip"), card("also keep")];
+        let opts = PresentationOptions {
+            exclude_tags: vec!["#skip".to_string()],
+            ..default_opts()
+        };
+        let result = filter_tasks(&cards, &opts);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].content, "keep");
+        assert_eq!(result[1].content, "also keep");
+    }
+
+    #[test]
+    fn filter_tasks_all_excluded() {
+        let cards = vec![card("a #x"), card("b #x")];
+        let opts = PresentationOptions {
+            exclude_tags: vec!["#x".to_string()],
+            ..default_opts()
+        };
+        let result = filter_tasks(&cards, &opts);
+        assert!(result.is_empty());
+    }
 }

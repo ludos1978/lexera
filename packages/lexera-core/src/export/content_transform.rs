@@ -713,4 +713,241 @@ mod tests {
         let out = apply_list_split_transform(input);
         assert_eq!(out, "1) first\n\n<!-- -->\n2) second");
     }
+
+    // -----------------------------------------------------------------------
+    // Transform chaining: speaker notes -> HTML comments
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn speaker_note_comment_then_html_comment_remove_strips_generated_comments() {
+        // When speaker notes are converted to HTML comments (Comment mode),
+        // and then HTML comment removal runs, the generated speaker-note
+        // comments should be removed (they lack SPEAKER-NOTE: prefix).
+        let input = "text\n;; my speaker note\nmore text";
+        let opts = TransformOptions {
+            speaker_note_mode: Some(SpeakerNoteMode::Comment),
+            html_comment_mode: Some(HtmlCommentMode::Remove),
+            html_content_mode: None,
+            format: ExportFormat::Presentation,
+        };
+        let out = apply_transforms(input, &opts);
+        // The speaker note was wrapped as <!-- my speaker note -->
+        // then the HTML comment removal should strip it
+        assert!(!out.contains("speaker note"));
+        assert!(out.contains("text"));
+        assert!(out.contains("more text"));
+    }
+
+    #[test]
+    fn speaker_note_comment_preserves_speaker_note_prefix_comments() {
+        // If content already has a SPEAKER-NOTE: comment, html_comment_mode Remove
+        // should preserve it.
+        let input = "text\n<!-- SPEAKER-NOTE: important -->\nmore";
+        let opts = TransformOptions {
+            speaker_note_mode: None,
+            html_comment_mode: Some(HtmlCommentMode::Remove),
+            html_content_mode: None,
+            format: ExportFormat::Presentation,
+        };
+        let out = apply_transforms(input, &opts);
+        assert!(out.contains("<!-- SPEAKER-NOTE: important -->"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Speaker note edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn speaker_note_multiple_separate_blocks() {
+        let input = ";; block1\ntext\n;; block2a\n;; block2b\nend";
+        let out = apply_speaker_note_transform(input, SpeakerNoteMode::Comment);
+        assert_eq!(out, "<!-- block1 -->\ntext\n<!-- block2a\nblock2b -->\nend");
+    }
+
+    #[test]
+    fn speaker_note_remove_only_note_lines() {
+        let input = ";; note1\n;; note2\n;; note3";
+        let out = apply_speaker_note_transform(input, SpeakerNoteMode::Remove);
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn speaker_note_with_special_chars() {
+        let input = ";; note with <html> & \"quotes\"";
+        let out = apply_speaker_note_transform(input, SpeakerNoteMode::Comment);
+        assert_eq!(out, "<!-- note with <html> & \"quotes\" -->");
+    }
+
+    // -----------------------------------------------------------------------
+    // HTML content transform edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn html_content_preserves_http_url_ref() {
+        let input = "see <http://example.com> for info";
+        let out = apply_html_content_transform(input, HtmlContentMode::Remove);
+        assert_eq!(out, "see <http://example.com> for info");
+    }
+
+    #[test]
+    fn html_content_closing_tags_removed() {
+        let input = "</div></span></p>";
+        let out = apply_html_content_transform(input, HtmlContentMode::Remove);
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn html_content_mixed_tags_and_comments() {
+        let input = "<div>text</div> <!-- keep --> <span>more</span>";
+        let out = apply_html_content_transform(input, HtmlContentMode::Remove);
+        assert_eq!(out, "text <!-- keep --> more");
+    }
+
+    #[test]
+    fn html_content_multiple_code_blocks_restored_correctly() {
+        let input = "`<b>one</b>` text `<i>two</i>` <b>remove</b>";
+        let out = apply_html_content_transform(input, HtmlContentMode::Remove);
+        assert_eq!(out, "`<b>one</b>` text `<i>two</i>` remove");
+    }
+
+    #[test]
+    fn html_content_fenced_code_with_multiple_tags() {
+        let input = "```\n<div><span>inside</span></div>\n```\n<b>outside</b>";
+        let out = apply_html_content_transform(input, HtmlContentMode::Remove);
+        assert!(out.contains("<div><span>inside</span></div>"));
+        assert!(!out.contains("<b>outside</b>"));
+        assert!(out.contains("outside"));
+    }
+
+    // -----------------------------------------------------------------------
+    // HTML comment edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn html_comment_nested_speaker_note_prefix() {
+        // SPEAKER-NOTE: with extra leading whitespace should still be preserved
+        let input = "<!--   SPEAKER-NOTE: keep me -->";
+        let out = apply_html_comment_transform(input, HtmlCommentMode::Remove);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn html_comment_empty_comment() {
+        let input = "before<!---->after";
+        let out = apply_html_comment_transform(input, HtmlCommentMode::Remove);
+        assert_eq!(out, "beforeafter");
+    }
+
+    #[test]
+    fn html_comment_adjacent_comments() {
+        let input = "<!-- a --><!-- b -->text";
+        let out = apply_html_comment_transform(input, HtmlCommentMode::Remove);
+        assert_eq!(out, "text");
+    }
+
+    // -----------------------------------------------------------------------
+    // List split edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn list_split_empty_input() {
+        let out = apply_list_split_transform("");
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn list_split_single_item() {
+        let input = "- only item";
+        let out = apply_list_split_transform(input);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn list_split_indented_same_level_gets_separator() {
+        let input = "  - item1\n\n  - item2";
+        let out = apply_list_split_transform(input);
+        assert_eq!(out, "  - item1\n\n<!-- -->\n  - item2");
+    }
+
+    #[test]
+    fn list_split_different_marker_types_mixed() {
+        let input = "- dash\n\n* star\n\n+ plus";
+        let out = apply_list_split_transform(input);
+        // All are list items at the same level, so separators should be inserted
+        assert!(out.contains("<!-- -->"));
+    }
+
+    #[test]
+    fn list_split_heading_between_lists_breaks_context() {
+        let input = "- a\n\n## Heading\n\n- b";
+        let out = apply_list_split_transform(input);
+        // The heading breaks the list context, so no separator
+        assert!(!out.contains("<!-- -->"));
+    }
+
+    // -----------------------------------------------------------------------
+    // apply_transforms format gating
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn transforms_skips_document_format() {
+        let input = ";; note\n<b>bold</b>";
+        let opts = TransformOptions {
+            speaker_note_mode: Some(SpeakerNoteMode::Remove),
+            html_comment_mode: Some(HtmlCommentMode::Remove),
+            html_content_mode: Some(HtmlContentMode::Remove),
+            format: ExportFormat::Document,
+        };
+        let out = apply_transforms(input, &opts);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn transforms_skips_keep_format() {
+        let input = ";; note\n<b>bold</b>";
+        let opts = TransformOptions {
+            speaker_note_mode: Some(SpeakerNoteMode::Remove),
+            html_comment_mode: Some(HtmlCommentMode::Remove),
+            html_content_mode: Some(HtmlContentMode::Remove),
+            format: ExportFormat::Keep,
+        };
+        let out = apply_transforms(input, &opts);
+        assert_eq!(out, input);
+    }
+
+    // -----------------------------------------------------------------------
+    // Serde edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn serde_html_comment_mode() {
+        let json = serde_json::to_string(&HtmlCommentMode::Remove).unwrap();
+        assert_eq!(json, "\"remove\"");
+        let parsed: HtmlCommentMode = serde_json::from_str("\"keep\"").unwrap();
+        assert_eq!(parsed, HtmlCommentMode::Keep);
+    }
+
+    #[test]
+    fn serde_html_content_mode() {
+        let json = serde_json::to_string(&HtmlContentMode::Keep).unwrap();
+        assert_eq!(json, "\"keep\"");
+        let parsed: HtmlContentMode = serde_json::from_str("\"remove\"").unwrap();
+        assert_eq!(parsed, HtmlContentMode::Remove);
+    }
+
+    #[test]
+    fn serde_export_format_all_variants() {
+        assert_eq!(
+            serde_json::to_string(&ExportFormat::Keep).unwrap(),
+            "\"keep\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ExportFormat::Kanban).unwrap(),
+            "\"kanban\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ExportFormat::Document).unwrap(),
+            "\"document\""
+        );
+    }
 }

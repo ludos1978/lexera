@@ -904,4 +904,282 @@ mod tests {
         let result = filter_excluded_from_board(&board, &[s("#x")]);
         assert!(result.columns[0].include_source.is_some());
     }
+
+    // ---- card_header_has_exclude_tag edge cases ----------------------------
+
+    #[test]
+    fn card_header_empty_first_line_means_no_header() {
+        // Content starts with empty line => no card header => tag is body-level
+        let content = "\n#exclude on body line";
+        assert!(!card_header_has_exclude_tag(content, &[s("#exclude")]));
+    }
+
+    #[test]
+    fn card_header_multiline_header() {
+        // Two non-empty lines before first blank line = both are header
+        let content = "line1\nline2 #exclude\n\nbody";
+        assert!(card_header_has_exclude_tag(content, &[s("#exclude")]));
+    }
+
+    #[test]
+    fn card_header_tag_on_first_line_only() {
+        let content = "title #exclude\n\nbody text";
+        assert!(card_header_has_exclude_tag(content, &[s("#exclude")]));
+    }
+
+    #[test]
+    fn card_header_no_empty_line_entire_content_is_header() {
+        // No empty line means all lines are header
+        let content = "line1\nline2\nline3 #exclude";
+        assert!(card_header_has_exclude_tag(content, &[s("#exclude")]));
+    }
+
+    #[test]
+    fn card_header_no_match() {
+        let content = "title\nsubtitle\n\nbody #exclude";
+        assert!(!card_header_has_exclude_tag(content, &[s("#exclude")]));
+    }
+
+    // ---- filter_card_content_lines -----------------------------------------
+
+    #[test]
+    fn filter_card_content_lines_removes_matching() {
+        let content = "keep\nremove #skip\nalso keep\n#skip line";
+        let result = filter_card_content_lines(content, &[s("#skip")]);
+        assert_eq!(result, "keep\nalso keep");
+    }
+
+    #[test]
+    fn filter_card_content_lines_no_match() {
+        let content = "line1\nline2\nline3";
+        let result = filter_card_content_lines(content, &[s("#exclude")]);
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn filter_card_content_lines_empty_content() {
+        let result = filter_card_content_lines("", &[s("#exclude")]);
+        assert_eq!(result, "");
+    }
+
+    // ---- filter_excluded_from_kanban edge cases ----------------------------
+
+    #[test]
+    fn kanban_nested_continuation_lines_skipped_after_excluded_parent() {
+        // Indented non-task continuation lines of an excluded task are also skipped
+        let md = "## Col\n- [ ] parent #exclude\n  continuation line\n    deep line\n- [ ] next";
+        let result = filter_excluded_from_kanban(md, &[s("#exclude")]);
+        assert!(!result.contains("parent"));
+        assert!(!result.contains("continuation line"));
+        assert!(!result.contains("deep line"));
+        assert!(result.contains("next"));
+    }
+
+    #[test]
+    fn kanban_nested_child_task_not_excluded_without_tag() {
+        // A nested task line (- [ ]) is treated as a NEW task, even if indented
+        // under an excluded parent. It passes if it doesn't have the tag.
+        let md = "## Col\n- [ ] parent #exclude\n  - [ ] child task\n- [ ] next";
+        let result = filter_excluded_from_kanban(md, &[s("#exclude")]);
+        assert!(!result.contains("parent"));
+        // child task is a separate task and does NOT carry #exclude, so it's kept
+        assert!(result.contains("child task"));
+        assert!(result.contains("next"));
+    }
+
+    #[test]
+    fn kanban_task_at_different_indentation_resets_exclusion() {
+        // Non-task continuation "child" is skipped (indented under excluded task),
+        // but "kept_line" at base indent resets the exclusion state
+        let md = "## Col\n- [ ] dropped #skip\n  child\nkept_line\n- [ ] next";
+        let result = filter_excluded_from_kanban(md, &[s("#skip")]);
+        assert!(!result.contains("dropped"));
+        assert!(!result.contains("child"));
+        assert!(result.contains("kept_line"));
+        assert!(result.contains("next"));
+    }
+
+    #[test]
+    fn kanban_multiple_columns_mixed() {
+        let md = "## Keep\n- [ ] task1\n## Drop #exclude\n- [ ] task2\n## AlsoKeep\n- [ ] task3";
+        let result = filter_excluded_from_kanban(md, &[s("#exclude")]);
+        assert!(result.contains("## Keep"));
+        assert!(result.contains("task1"));
+        assert!(!result.contains("## Drop"));
+        assert!(!result.contains("task2"));
+        assert!(result.contains("## AlsoKeep"));
+        assert!(result.contains("task3"));
+    }
+
+    #[test]
+    fn kanban_empty_content() {
+        let result = filter_excluded_from_kanban("", &[s("#exclude")]);
+        assert_eq!(result, "");
+    }
+
+    // ---- filter_excluded_from_presentation edge cases ----------------------
+
+    #[test]
+    fn presentation_all_slides_excluded() {
+        let content = "# Slide1 #exclude\nContent\n---\n# Slide2 #exclude\nMore";
+        let result = filter_excluded_from_presentation(content, &[s("#exclude")]);
+        assert!(result.trim().is_empty() || !result.contains("Slide"));
+    }
+
+    #[test]
+    fn presentation_slide_with_only_comment_and_tag() {
+        let content = "<!-- kid:abc -->\n# Title #exclude\nContent";
+        let result = filter_excluded_from_presentation(content, &[s("#exclude")]);
+        // The title line has the exclude tag, so the whole slide is dropped
+        assert!(!result.contains("Title"));
+        assert!(!result.contains("Content"));
+    }
+
+    #[test]
+    fn presentation_preserves_slides_without_tags() {
+        let content = "# Slide 1\nContent\n---\n# Slide 2\nMore";
+        let result = filter_excluded_from_presentation(content, &[s("#exclude")]);
+        assert!(result.contains("Slide 1"));
+        assert!(result.contains("Slide 2"));
+    }
+
+    // ---- filter_excluded_from_markdown auto-detection ----------------------
+
+    #[test]
+    fn markdown_autodetect_frontmatter_start_as_presentation() {
+        let content = "---\ntitle: test\n---\nContent #exclude";
+        let result = filter_excluded_from_markdown(content, &[s("#exclude")]);
+        // Starts with --- so it's detected as presentation
+        assert!(!result.contains("Content"));
+    }
+
+    // ---- TagVisibility from_str_loose additional cases --------------------
+
+    #[test]
+    fn tag_visibility_from_str_loose_all_variants() {
+        assert_eq!(TagVisibility::from_str_loose("all"), TagVisibility::All);
+        assert_eq!(
+            TagVisibility::from_str_loose("allexcludinglayout"),
+            TagVisibility::AllExcludingLayout
+        );
+        assert_eq!(
+            TagVisibility::from_str_loose("customonly"),
+            TagVisibility::CustomOnly
+        );
+        assert_eq!(
+            TagVisibility::from_str_loose("mentionsonly"),
+            TagVisibility::MentionsOnly
+        );
+        assert_eq!(TagVisibility::from_str_loose("none"), TagVisibility::None);
+    }
+
+    #[test]
+    fn tag_visibility_from_str_loose_mixed_case() {
+        assert_eq!(
+            TagVisibility::from_str_loose("AllExcludingLayout"),
+            TagVisibility::AllExcludingLayout
+        );
+        assert_eq!(
+            TagVisibility::from_str_loose("CUSTOMONLY"),
+            TagVisibility::CustomOnly
+        );
+        assert_eq!(
+            TagVisibility::from_str_loose("MentionsOnly"),
+            TagVisibility::MentionsOnly
+        );
+    }
+
+    #[test]
+    fn tag_visibility_from_str_loose_empty_string() {
+        assert_eq!(TagVisibility::from_str_loose(""), TagVisibility::All);
+    }
+
+    // ---- strip functions ---------------------------------------------------
+
+    #[test]
+    fn strip_layout_tags_no_layout() {
+        let result = strip_layout_tags("Title #urgent #feature");
+        assert_eq!(result, "Title #urgent #feature");
+    }
+
+    #[test]
+    fn strip_layout_tags_only_layout() {
+        let result = strip_layout_tags("#row #span #stack");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn strip_configured_tags_preserves_unknown() {
+        let result = strip_configured_tags("Task #myproject #custom");
+        assert_eq!(result, "Task #myproject #custom");
+    }
+
+    #[test]
+    fn strip_hash_tags_removes_all_hash() {
+        let result = strip_hash_tags("text #a #b #c @user");
+        assert_eq!(result, "text @user");
+    }
+
+    #[test]
+    fn strip_all_tags_empty_input() {
+        let result = strip_all_tags("");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn strip_all_tags_only_tags() {
+        let result = strip_all_tags("#tag1 @user #tag2");
+        assert_eq!(result, "");
+    }
+
+    // ---- board filter with multiple exclude tags ---------------------------
+
+    #[test]
+    fn board_filter_multiple_exclude_tags() {
+        let board = make_legacy_board(vec![make_column(
+            "c1",
+            "Col",
+            vec![
+                make_card("1", "keep"),
+                make_card("2", "drop1 #tag1"),
+                make_card("3", "drop2 #tag2"),
+                make_card("4", "also keep"),
+            ],
+        )]);
+        let result = filter_excluded_from_board(&board, &[s("#tag1"), s("#tag2")]);
+        assert_eq!(result.columns[0].cards.len(), 2);
+        assert_eq!(result.columns[0].cards[0].content, "keep");
+        assert_eq!(result.columns[0].cards[1].content, "also keep");
+    }
+
+    #[test]
+    fn board_filter_card_with_kid_preserved() {
+        let card_with_kid = KanbanCard {
+            id: "1".to_string(),
+            content: "task".to_string(),
+            checked: true,
+            kid: Some("abcd1234".to_string()),
+        };
+        let board = make_legacy_board(vec![make_column("c1", "Col", vec![card_with_kid])]);
+        let result = filter_excluded_from_board(&board, &[s("#x")]);
+        assert_eq!(result.columns[0].cards[0].kid, Some("abcd1234".to_string()));
+        assert!(result.columns[0].cards[0].checked);
+    }
+
+    #[test]
+    fn board_filter_all_columns_excluded() {
+        let board = make_legacy_board(vec![
+            make_column("c1", "Col1 #exclude", vec![make_card("1", "task")]),
+            make_column("c2", "Col2 #exclude", vec![make_card("2", "task")]),
+        ]);
+        let result = filter_excluded_from_board(&board, &[s("#exclude")]);
+        assert!(result.columns.is_empty());
+    }
+
+    #[test]
+    fn board_filter_empty_board() {
+        let board = make_legacy_board(vec![]);
+        let result = filter_excluded_from_board(&board, &[s("#exclude")]);
+        assert!(result.columns.is_empty());
+    }
 }
