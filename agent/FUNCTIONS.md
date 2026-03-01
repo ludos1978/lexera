@@ -569,6 +569,12 @@ Redesigned the internal clipboard/parking system to use consistent hidden tags f
 - `ExportTreeBuilder.buildExportTree()` — (MODIFIED) Filters out columns with parked/deleted/#exclude tags
 - `ExportTreeBuilder.getCleanColumnTitle()` — (MODIFIED) Strips hidden and #exclude tags from titles
 
+### Modified: `packages/lexera-kanban/src/export/exportTreeUI.js`
+- `ExportTreeUI.updateSelectionClasses(node)` — In-place DOM class update for selection state; walks tree and toggles 'selected' CSS class on existing elements by data-node-id, avoiding full DOM rebuild
+- `ExportTreeUI.toggleNode(nodeId)` — (MODIFIED) Uses updateSelectionClasses instead of full render
+- `ExportTreeUI.clearSelection()` — (MODIFIED) Uses updateSelectionClasses instead of full render
+- `ExportTreeUI.selectAll()` — (MODIFIED) Uses updateSelectionClasses instead of full render
+
 ---
 
 ## Recent Updates (2026-02-18) - Recurring Yearless Tags + Month/Quarter Support

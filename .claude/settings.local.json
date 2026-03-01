@@ -237,7 +237,13 @@
       "Bash(cd /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages && cargo clean 2>&1)",
       "Bash(./run-lexera.sh:*)",
       "Bash(tee:*)",
-      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/run-lexera.sh:*)"
+      "Bash(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/run-lexera.sh:*)",
+      "Bash(git apply:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(cd:*)",
+      "Bash(git worktree:*)",
+      "Bash(perl:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []
