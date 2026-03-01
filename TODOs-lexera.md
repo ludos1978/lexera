@@ -1,189 +1,353 @@
-## Lexera Kanban v2
+Deep Analysis Summary (2026-03-01)
 
-### Completed
-- [x] "Open in system application" on embedded files doesn't open anything
-- [x] Add "Show in Finder" option for embedded files
-- [x] Board list sidebar: add unfold/expand to list all columns within each board
-- [x] Right-clicking on file elements (embeds, links) should show context menu with: open file (same as alt+click), show in Finder
+## Architecture Overview
 
-### Open
+### packages/lexera-core (Rust library, ~9,925 LOC, 28 source files)
+- Parser: Dual format support - legacy (## columns) and new hierarchical (# rows, ## stacks, ### columns) with auto-detection
+- Types: KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack with card identity tracking via kid field
+- Merge System: 3-way merge at card level using kid markers, conflict detection, auto-merge for non-conflicting changes, conservative approach (keeps user work when externally deleted)
+- CRDT Bridge: Loro-based CRDT (v1.10) with diff-based minimal operations, undo/redo via UndoManager, .md.crdt file persistence
+- Storage: BoardStorage trait with LocalStorage impl - atomic writes (tmp+fsync+rename), SHA-256 based self-write suppression, include file tracking via bidirectional IncludeMap
+- Search: Advanced query language with hash tags (#), temporal tags (@), metadata (is:open), due filters, regex (/pattern/), negation, quoted phrases, German date names
+- Watcher: notify-debouncer-full with 500ms debounce, parent directory watching, self-write tracker with 10s TTL
+- Include: !!!include(path)!!! syntax, URL-encoded paths, slide format parser (--- separator), nested include support
+- Export: Content transforms (speaker notes, HTML removal, code block preservation), presentation/document format generation
+- 93+ unit tests with good coverage
 
-- [x] The minimal height of all rows combined must be the height of the viewport. Rows should fill the view vertically so there is no dead space below the board.
+### packages/lexera-backend (Tauri + Axum, ~5,887 Rust LOC + 1,330 JS LOC)
+- REST API: boards, columns, cards, media upload, search, templates, export with ETag caching
+- WebSocket sync: CRDT-based per-board sync with version vectors, presence tracking
+- Collaboration: auth service (in-memory), invite tokens (in-memory), public rooms (in-memory), UDP LAN discovery
+- SSE: events for local change notifications + log streaming
+- Capture: clipboard watcher, quick capture popup with file drop
+- Tray: system tray with board shortcuts, quick capture, connection settings
+- Server: Axum with port fallback (5 ports), restart capability, CORS
 
-- [ ] Drag-and-drop must never modify the layout structure. No layout shifts during drag operations. Follow the v1 pattern: dimension-lock containers during drag to prevent flex reflow. Visual-only feedback (opacity, box-shadow). Drop zones: one at the far left, one at the far right, and one between each stack — fixed size, no expanding. No other drop zones.
+### packages/lexera-kanban (Tauri frontend, ~14,700 JS LOC + 4,100 CSS LOC + ~700 Rust LOC)
+- Kanban board UI with drag-and-drop (pointer events), card editing, WYSIWYG editor (stub), tree view
+- Export pipeline: 3-phase (Extract, Transform, Output) with Marp/Pandoc integration
+- Templates: frontmatter parsing, variable substitution, template management
+- Live sync: WebSocket CRDT sync with reconnection, undo/redo (JSON-based full state copy)
+- API client: HTTP discovery, REST client, WebSocket sync, SSE events/logs
 
-- [ ] Split view: allow viewing 2 or more boards simultaneously by splitting the view vertically or horizontally. Each split pane is an independent board view with its own board selection.
+### packages/lexera-capture-ios (Tauri iOS, ~609 Rust LOC + 880 HTML LOC + 130 Swift LOC)
+- iOS Share Sheet extension for text, URL, and image capture (JPEG base64)
+- App Group container for data sharing between main app and extension
+- IosStorage: BoardStorage trait impl with RwLock<HashMap> cache, atomic file writes
+- Default Inbox board auto-creation, pending share queue processing
+- 4-page SPA: Capture, Search, Boards, Settings
+- 6 unit tests
 
----
+────────────────────────────────────────────────────────────────────────────────
 
-### Backend — Working (local-only)
+## Critical Code Quality Issues
 
-These features are implemented and functional for single-user local operation:
+### CRDT Bridge Unwraps (lexera-core, 41+ instances)
+- Location: crdt/bridge.rs - all Loro operations use .unwrap()
+- Risk: silent panics if CRDT document is corrupted, no error context for debugging
+- Fix: add Result propagation or at minimum log::error! before unwrap
 
-- [x] Local board storage with atomic writes (tmp → fsync → rename)
-- [x] Markdown parsing: legacy (`##` columns) and hierarchical (`#`/`##`/`###` rows/stacks/columns)
-- [x] File watcher with 500ms debounce (notify-debouncer-full, macOS FSEvents)
-- [x] Self-write suppression via SHA-256 fingerprinting
-- [x] 3-way card-level merge (base=cached, theirs=disk, ours=incoming)
-- [x] Card identity tracking via `<!-- kid:XXXXXXXX -->` markers
-- [x] Conflict backup files (`board.conflict-{timestamp}.md`)
-- [x] Include file support (`!!!include(path)!!!`, slide format `---` separator)
-- [x] Bidirectional include map (board↔include path tracking)
-- [x] REST API: boards, columns, cards, files, search, media upload
-- [x] SSE event stream for local file change notifications
-- [x] ETag/versioning for conditional requests (304 Not Modified)
-- [x] Config loading (`~/.config/lexera/sync.json`)
-- [x] Local identity (`~/.config/lexera/identity.json`, auto-generated UUID)
-- [x] System tray app (macOS menu bar only)
-- [x] Quick capture + clipboard watcher
+### iOS Storage RwLock Poisoning (lexera-capture-ios, 12 instances)
+- Location: ios_storage.rs - all .read().unwrap() and .write().unwrap() calls
+- Risk: app crash if any thread panics while holding lock
+- Fix: use unwrap_or_else(|p| p.into_inner()) or proper error handling
 
----
+### Backend CORS Allow::Any (lexera-backend)
+- Location: server.rs line 20
+- Risk: any origin can make API requests
+- Fix: restrict to specific origins or localhost
 
-### Backend — Collaboration Scaffolding (in-memory, non-persistent)
+### Monolithic app.js (lexera-kanban, 14,700 lines)
+- Single file handles cards, boards, UI, sync, drag-drop, export, search, settings
+- 50+ global mutable variables, 273 DOM queries
+- Impact: untestable, unmaintainable, high cognitive load
+- Fix: split into 8+ modules (boardManager, cardManager, dragDrop, sync, ui, keyboard, sidebar, analytics)
 
-These modules exist but are purely in-memory. All data is lost on restart. No network communication exists.
+### No Test Coverage in Frontend (lexera-kanban)
+- Zero test files for any JavaScript code
+- No test framework configured
+- All testing is manual
 
-- [~] AuthService: user/role management (Owner/Editor/Viewer), no real auth (user ID via `?user=` query param)
-- [~] InviteService: invite link generation with expiry/usage limits, acceptance, revocation
-- [~] PublicRoomService: room publicity toggle, member counting, max_users
-- [~] Collaboration API endpoints: 12 routes under `/collab/`
-- [~] Local user bootstrapped as Owner of all boards on startup
-- [~] Hourly cleanup task for expired invites
+### Undo/Redo Memory Issue (lexera-kanban)
+- Uses JSON.stringify of full board state per action (MAX 100 entries)
+- With 1000 cards: ~500KB per entry = up to 50MB memory
+- Fix: implement delta-based undo or leverage CRDT undo
 
----
+────────────────────────────────────────────────────────────────────────────────
 
-### Plan: Required Features for Working Multi-User Sync
+## Security Issues
 
-#### Phase 1 — Persistence Layer
-Without persistence, collaboration services are useless (data lost on restart).
+### No Authentication (lexera-backend)
+- Only authorization (role checks), no actual authentication mechanism
+- Uses ?user= query param for identity
+- All collab services in-memory only (lost on restart)
 
-- [ ] **1.1 — Persist collaboration data to disk**
-  - AuthService: users, memberships → JSON file (`~/.config/lexera/collab/auth.json`)
-  - InviteService: active invites → JSON file (`~/.config/lexera/collab/invites.json`)
-  - PublicRoomService: public room settings → JSON file (`~/.config/lexera/collab/rooms.json`)
-  - Write on every mutation, load on startup
-  - Keep the current in-memory structures as cache, persist as write-through
+### Path Traversal Incomplete (lexera-backend, api.rs)
+- Line 1026: checks for ".." and "/" but misses "./" and URL encoding
+- Media upload filename validation could be bypassed
 
-- [ ] **1.2 — Config: add collaboration settings to sync.json**
-  - `collab.enabled: bool` — master toggle
-  - `collab.listen_address: string` — bind address (default `0.0.0.0` for LAN, `127.0.0.1` for local-only)
-  - `collab.discovery: "manual" | "mdns"` — how peers find each other
-  - `collab.shared_boards: [board_id]` — which boards are shared
+### CSP Too Permissive
+- Both kanban and capture-ios allow 'unsafe-inline' for scripts
+- Backend tauri.conf.json also uses unsafe-inline
 
-#### Phase 2 — Authentication & Security
-Currently: no auth at all (user ID passed as query param). Must fix before exposing to network.
+### No TLS
+- All connections unencrypted
+- WebSocket sync sends CRDT updates in plaintext
+- Discovery broadcasts on UDP without authentication
 
-- [ ] **2.1 — Token-based authentication**
-  - On registration/login: issue a signed JWT or opaque session token
-  - All API requests require `Authorization: Bearer <token>` header
-  - Remove `?user=` query param authentication
-  - Token stored client-side, refreshed on reconnect
+### No Rate Limiting (lexera-backend)
+- Expensive operations (search, find-file, export) have no throttling
+- WebSocket channels have no backpressure handling
 
-- [ ] **2.2 — TLS for HTTP server**
-  - Generate self-signed cert on first run (stored in `~/.config/lexera/certs/`)
-  - Or accept user-provided cert path in config
-  - HTTPS required for all non-localhost connections
+────────────────────────────────────────────────────────────────────────────────
 
-- [ ] **2.3 — Invite link security**
-  - Invite tokens become one-time-use auth bootstrap tokens
-  - Accepting an invite registers the remote user and issues a session token
-  - Invite links include server address + port + token
+## Technical Debt by Package
 
-#### Phase 3 — Network Sync Protocol
-Currently: file watcher + SSE only works for local clients on same machine. Need actual network sync.
+### lexera-core
+1. 41+ unwrap() calls in crdt/bridge.rs - needs error handling
+2. No include file cycle detection - could cause infinite recursion
+3. Dual parser paths (legacy vs new format) - maintenance burden, 2x test cases
+4. CRDT metadata limitation: YAML header, footer, settings stored outside CRDT (Phase 1 known limitation)
+5. Merge ignores card reordering within columns - only tracks content/checked/column changes
+6. Include files merged as atomic chunks, not card-level - concurrent edits cause full conflict
+7. Search uses ASCII case sensitivity, no Unicode/accent normalization
+8. has_structural_mismatch() may false-trigger on implicit Default rows/stacks
+9. No CRDT corruption recovery tests
+10. No concurrent access tests for storage
 
-- [ ] **3.1 — Replace SSE with WebSocket for bidirectional communication**
-  - SSE is one-way (server→client). WebSocket allows client→server push
-  - Endpoint: `ws://host:port/sync`
-  - Message types: `board_changed`, `board_update`, `presence`, `cursor_position`
-  - Per-board subscription: clients subscribe to specific board IDs
-  - Reconnection with version catch-up (client sends last known version)
+### lexera-backend
+1. api.rs at 1,622 lines needs decomposition (board ops, media, templates)
+2. Duplicate path resolution logic (resolve_board_file, serve_media, file_info)
+3. All collab services volatile (auth, invites, public rooms lost on restart)
+4. Mix of std::sync::Mutex and tokio::sync::Mutex - lock ordering not documented
+5. Synchronous file I/O (std::fs) in async context instead of tokio::fs
+6. No graceful shutdown - background tasks (watchers, services) never explicitly cancelled
+7. SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s
+8. Hardcoded discovery port (41820), broadcast only (no multicast for subnets)
+9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
+10. Temp files in /tmp not cleaned up on error (capture.rs)
+11. BoardSettings merge verbose - 17 manual field assignments
+12. Frontend JS: global mutable state, fetch without timeout, poll-based updates (10s/5s)
+13. No input validation on board IDs or column indices
+14. Excessive cloning in auth.rs and invite.rs
 
-- [ ] **3.2 — Board sync protocol**
-  - **Pull**: client sends `{board_id, last_version}` → server responds with full board or delta if version differs
-  - **Push**: client sends `{board_id, content, base_version}` → server does 3-way merge → broadcasts result
-  - Leverage existing merge infrastructure (already has 3-way card-level merge)
-  - Version vector per board (monotonic counter already exists, extend to per-user vectors for true distributed sync)
+### lexera-kanban
+1. Monolithic app.js (14,700 lines) - needs modularization
+2. WYSIWYG editor is a stub (58 lines, console.log noop)
+3. No test coverage at all
+4. Undo/redo serializes full board state (memory explosion risk)
+5. 14 !important declarations in CSS (specificity issues)
+6. 18+ console.error/console.log left as debug output
+7. No error boundaries on event handlers - single error crashes entire feature
+8. Memory leak: addEventListener without cleanup (e.g., resize handler in card editor)
+9. Export tree re-renders entire tree on single node toggle
+10. Implicit script load order dependency (no ES6 modules)
+11. No input validation in export dialog (path traversal possible)
+12. Template variable substitution has no type checking, fails silently
+13. WebSocket reconnection: fixed 1.5s interval, no exponential backoff
+14. 273 uncached DOM queries (querySelector/getElementById)
+15. No virtual scrolling for large boards
+16. Export pipeline has no rollback on partial failure
 
-- [ ] **3.3 — Conflict resolution over network**
-  - Current 3-way merge works for local (disk vs cache vs incoming)
-  - Extend: when two remote clients push simultaneously, server merges both against shared base
-  - On unresolvable conflict: server picks winner (last-write-wins or owner priority), notifies loser with diff
-  - Conflict backup still created on server side
+### lexera-capture-ios
+1. 12 RwLock .unwrap() calls - poisoning risk
+2. Silent file I/O failures in scan_boards() and process_pending()
+3. Startup panics with .expect() - no graceful fallback
+4. write_board() returns Ok(None) - merge infrastructure unused
+5. No board deletion/card editing commands
+6. No data encryption in App Group container
+7. Base64 images in JSON could exhaust memory for large images
+8. Race condition window between lock releases in write_board_file()
+9. Unused `base64` dependency in Cargo.toml
+10. Monolithic 880-line index.html with inline JS
+11. No search result navigation (can't click to go to result)
+12. No schema versioning for board format
 
-#### Phase 4 — Peer Discovery & Connection Management
+────────────────────────────────────────────────────────────────────────────────
 
-- [ ] **4.1 — mDNS/DNS-SD discovery (LAN)**
-  - Advertise service via `_lexera._tcp.local` using mdns-sd crate
-  - Other Lexera instances auto-discover peers on same network
-  - Show discovered peers in UI, user chooses to connect
+## Recommendations - What to Work On Next
 
-- [ ] **4.2 — Manual peer connection**
-  - User enters `host:port` + invite token to connect to a remote instance
-  - Connection persisted in config for auto-reconnect
+### Priority 1: Phase 1 - Persistence Layer
 
-- [ ] **4.3 — Connection state management**
-  - Track connected peers per board: `{user_id, display_name, last_seen, status}`
-  - Heartbeat/ping-pong over WebSocket (30s interval)
-  - Graceful disconnect notification
-  - Reconnection with exponential backoff
+Why: All collaboration features are currently in-memory and lost on restart. This is the foundation for everything else.
 
-#### Phase 5 — Shared File Sync (boards + media + includes)
+Tasks:
+1. Create ~/.config/lexera/collab/auth.json for user/membership persistence
+2. Create ~/.config/lexera/collab/invites.json for invite tracking
+3. Create ~/.config/lexera/collab/rooms.json for public room settings
+4. Add collab config to sync.json: collab.enabled, collab.listen_address, collab.discovery, collab.shared_boards
 
-- [ ] **5.1 — Board file sync**
-  - Primary mechanism: exchange parsed board data over WebSocket (not raw file content)
-  - Server is authority: receives edits, merges, broadcasts canonical state
-  - Clients apply received state to their local file (using existing atomic write)
+Impact: Enables real multi-user testing, prerequisite for all other phases
 
-- [ ] **5.2 — Include file sync**
-  - Include files referenced by shared boards must also be synced
-  - Leverage existing IncludeMap to identify which includes belong to which boards
-  - Same merge strategy (slide-level, using existing slide_parser)
+────────────────────────────────────────────────────────────────────────────────
 
-- [ ] **5.3 — Media file sync**
-  - Media files (images, attachments) need transfer between peers
-  - Content-addressable: hash-based dedup (already using SHA-256)
-  - On-demand pull: when client encounters unknown media reference, request from server
-  - Upload endpoint already exists (`POST /boards/:id/media`), extend with hash-based check
+### Priority 2: Phase 2 - Authentication & Security
 
-#### Phase 6 — Presence & Awareness
+Why: Currently uses ?user= query param - completely insecure. Must fix before any network exposure.
 
-- [ ] **6.1 — User presence on boards**
-  - Broadcast which users are viewing/editing which board
-  - Show active users in board header (avatar/initials + name)
+Tasks:
+1. Implement JWT or opaque session token system
+2. Add Authorization: Bearer <token> header requirement to all API routes
+3. Generate self-signed TLS cert on first run (or accept user-provided)
+4. Convert invite tokens to one-time auth bootstrap tokens
+5. Fix CORS to specific origins (not Allow::Any)
+6. Complete path traversal prevention (handle ./ and URL encoding)
+7. Add rate limiting on expensive operations
 
-- [ ] **6.2 — Card-level editing indicators**
-  - When user is editing a card, broadcast card ID + user to peers
-  - Show "being edited by X" indicator on card
-  - Optional: lock card while being edited (pessimistic) or allow concurrent (optimistic with merge)
+Impact: Security foundation, enables safe network testing
 
----
+────────────────────────────────────────────────────────────────────────────────
 
-### Implementation Priority / Suggested Order
+### Priority 3: CRDT Error Handling Hardening
 
-1. **Phase 1** (persistence) — prerequisite for everything, small scope
-2. **Phase 2** (auth) — must have before exposing to network
-3. **Phase 3** (network sync) — core value, builds on existing merge
-4. **Phase 4** (discovery) — usability, can start with manual-only
-5. **Phase 5** (file sync) — completes the picture for real usage
-6. **Phase 6** (presence) — nice-to-have, can defer
+Why: 41+ unwrap() calls in crdt/bridge.rs and 12 in ios_storage.rs can cause silent crashes. This is a stability risk for all platforms.
 
-### Architecture Decision: Hub-and-Spoke vs Peer-to-Peer
+Tasks:
+1. Replace unwrap() in crdt/bridge.rs with proper Result propagation or logged fallbacks
+2. Replace RwLock unwrap() in ios_storage.rs with poisoning recovery
+3. Add CRDT corruption recovery (rebuild from .md if .crdt is invalid)
+4. Add include file cycle detection to prevent infinite recursion
+5. Add concurrent access tests for storage
 
-The current codebase is structured as a **server** (Axum HTTP). Two viable paths:
+Impact: Stability across all platforms, prevents data loss from silent panics
 
-**Option A: Hub-and-Spoke (recommended for v1)**
-- One Lexera instance acts as "host", others connect as clients
-- Host has the authoritative board files
-- Simpler conflict resolution (single merge point)
-- Matches existing API structure
+────────────────────────────────────────────────────────────────────────────────
 
-**Option B: Peer-to-Peer (future)**
-- All instances are equal, sync directly
-- Requires CRDT or vector clocks for convergence
-- More complex but resilient (no single point of failure)
-- Could evolve from Option A by making the merge logic symmetric
+### Priority 4: Phase 3 - WebSocket Sync Protocol
 
-## Misc Tasks
+Why: SSE is one-way only. Real collaboration needs bidirectional communication. WebSocket exists but needs hardening.
 
-- [ ] add a 
+Tasks:
+1. Add exponential backoff to WebSocket reconnection (currently fixed 1.5s)
+2. Add idle timeout detection for WebSocket connections
+3. Add backpressure handling to sync channels
+4. Implement per-board subscriptions properly
+5. Add version catch-up on reconnect (client sends last known VV)
+
+Impact: Core value proposition - real-time collaboration
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 5: Frontend Modularization (lexera-kanban)
+
+Why: 14,700-line app.js is untestable and unmaintainable. This blocks all frontend quality improvements.
+
+Tasks:
+1. Split app.js into modules: boardManager, cardManager, dragDrop, sync, ui, keyboard, sidebar
+2. Encapsulate 50+ global variables into classes/closures
+3. Implement ES6 modules or bundler (replace implicit script load order)
+4. Add error boundaries to all event handlers
+5. Replace JSON.stringify undo/redo with delta-based approach
+6. Cache frequently used DOM queries
+
+Impact: Enables testing, reduces bugs, improves maintainability
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 6: CRDT Integration Enhancement
+
+Why: CRDT exists but could be more robust for edge cases.
+
+Tasks:
+1. Add vector clock support (currently uses monotonic counter)
+2. Improve structural change handling in sync_column_structure
+3. Add conflict resolution strategies beyond last-write-wins
+4. Test concurrent edits from multiple peers
+5. Move YAML/settings into CRDT for collaborative consistency
+
+Impact: Better merge quality, fewer conflicts
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 7: Include File Sync
+
+Why: Include files are tracked but not synced between peers.
+
+Tasks:
+1. Extend WebSocket protocol to include slide file updates
+2. Add hash-based dedup for include content (like media)
+3. Implement on-demand pull for missing includes
+4. Implement card-level merge for include files (not atomic chunks)
+
+Impact: Complete board sync experience
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 8: UI - Drag-and-Drop Stability Fix
+
+Why: Affects UX significantly.
+
+Tasks:
+1. Lock container dimensions during drag operations
+2. Add fixed-size drop zones (left, right, between stacks)
+3. Prevent flex reflow during drag
+4. Visual-only feedback (opacity, box-shadow)
+5. Add error boundaries to drag event handlers
+
+Impact: Better user experience, fewer accidental layout changes
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 9: Complete WYSIWYG Editor
+
+Why: Currently a 58-line stub (console.log noop) but exposed in UI. Users see a non-functional feature.
+
+Tasks:
+1. Implement actual rich text editing for card content
+2. Support markdown rendering and editing toggle
+3. Integrate with card save flow
+
+Impact: Core editing experience improvement
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 10: iOS Capture Hardening
+
+Why: Functional MVP but has stability and data integrity risks.
+
+Tasks:
+1. Fix RwLock poisoning handling (12 instances)
+2. Add file I/O error propagation (not silent failures)
+3. Implement card editing/deletion
+4. Enable merge infrastructure (currently returns Ok(None))
+5. Add search result navigation
+6. Remove unused base64 dependency
+
+Impact: Production-ready iOS capture
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 11: Split View Feature
+
+Why: Nice-to-have productivity feature for comparing boards.
+
+Tasks:
+1. Add vertical/horizontal split pane UI
+2. Each pane has independent board selection
+3. Sync state per-pane (not shared)
+
+Impact: Enhanced productivity, multi-board workflows
+
+────────────────────────────────────────────────────────────────────────────────
+
+## Code Metrics Summary
+
+| Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
+|---------|----------|--------|---------|-------|--------|
+| lexera-core | ~9,925 | - | - | 93+ | Good |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 0 | Medium |
+| lexera-kanban | ~700 | ~17,000 | ~4,100 | 0 | Needs Work |
+| lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **99+** | - |
+
+## Quality Ratings
+
+| Aspect | Core | Backend | Kanban | iOS |
+|--------|------|---------|--------|-----|
+| Architecture | 4/5 | 3/5 | 2/5 | 3/5 |
+| Code Quality | 4/5 | 3/5 | 2/5 | 3/5 |
+| Testing | 4/5 | 1/5 | 1/5 | 2/5 |
+| Error Handling | 3/5 | 2/5 | 2/5 | 2/5 |
+| Security | 3/5 | 1/5 | 2/5 | 2/5 |
+| Maintainability | 3/5 | 2/5 | 1/5 | 3/5 |
+| API Design | 4/5 | 3/5 | 3/5 | 3/5 |

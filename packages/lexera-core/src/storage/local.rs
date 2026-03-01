@@ -1079,6 +1079,7 @@ impl BoardStorage for LocalStorage {
                     file_path: state.file_path.to_string_lossy().to_string(),
                     last_modified: format!("{}Z", last_modified),
                     columns,
+                    board_settings: state.board.board_settings.clone(),
                 }
             })
             .collect()

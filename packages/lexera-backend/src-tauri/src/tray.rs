@@ -26,7 +26,7 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
     let connection_settings = MenuItem::with_id(
         app,
         "connection_settings",
-        "Connection Settings",
+        "Management",
         true,
         None::<&str>,
     )?;

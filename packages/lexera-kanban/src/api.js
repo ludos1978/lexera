@@ -605,6 +605,50 @@ const LexeraApi = (function () {
     return request('/remote-boards');
   }
 
+  async function getBoardSettings(boardId) {
+    return request('/boards/' + boardId + '/settings');
+  }
+
+  async function updateBoardSettings(boardId, settings) {
+    return request('/boards/' + boardId + '/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async function getNetworkInterfaces() {
+    return request('/collab/network-interfaces');
+  }
+
+  async function updateServerConfig(config) {
+    return request('/collab/server-config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+  }
+
+  async function getConnections() {
+    return request('/collab/connections');
+  }
+
+  async function connectRemote(serverUrl, token) {
+    return request('/collab/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server_url: serverUrl, token: token }),
+    });
+  }
+
+  async function disconnectRemote(localBoardId) {
+    return request('/collab/connect/' + localBoardId, { method: 'DELETE' });
+  }
+
+  async function getDiscoveredPeers() {
+    return request('/collab/discovered-peers');
+  }
+
   return {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
@@ -615,5 +659,8 @@ const LexeraApi = (function () {
     registerUser, listMembers, getPresence, leaveRoom,
     makePublic, makePrivate, listPublicRooms, joinPublicRoom,
     getRemoteBoards,
+    getBoardSettings, updateBoardSettings,
+    getNetworkInterfaces, updateServerConfig,
+    getConnections, connectRemote, disconnectRemote, getDiscoveredPeers,
   };
 })();

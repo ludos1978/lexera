@@ -21,7 +21,7 @@ pub fn open_connection_window(app: &AppHandle) {
         "connection-settings",
         WebviewUrl::App("connection-settings.html".into()),
     )
-    .title("Connection Settings")
+    .title("Management")
     .inner_size(520.0, 640.0)
     .center()
     .resizable(true)

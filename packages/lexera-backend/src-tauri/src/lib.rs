@@ -61,6 +61,13 @@ pub fn run() {
                 })
                 .build(),
         )
+        .on_window_event(|_window, event| {
+            // Prevent app exit when the last window closes (this is a tray-only app)
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = _window.hide();
+            }
+        })
         .setup(|app| {
             // Hide from Dock, show only as menu bar (tray) app
             #[cfg(target_os = "macos")]

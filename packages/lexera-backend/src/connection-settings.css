@@ -341,3 +341,127 @@ body {
 }
 .status-text.error { color: var(--error); }
 .status-text.success { color: var(--success); }
+
+/* Board row with remove */
+.board-row-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.board-row:hover .board-row-remove { opacity: 1; }
+.board-row-remove:hover {
+  color: var(--error);
+  border-color: var(--error);
+  background: rgba(244, 71, 71, 0.14);
+}
+
+/* Detail tabs */
+.detail-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-tab {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s;
+}
+.detail-tab:hover { color: var(--text-primary); }
+.detail-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.detail-tab-content { display: none; }
+.detail-tab-content.active { display: block; }
+
+/* Settings grid inside board details */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 4px 8px;
+  align-items: center;
+}
+.settings-grid label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-grid input,
+.settings-grid select {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--input-border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+}
+.settings-grid input:focus,
+.settings-grid select:focus {
+  border-color: var(--accent);
+}
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Confirm dialog overlay */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.confirm-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  max-width: 360px;
+  width: 90%;
+}
+.confirm-message {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+  line-height: 1.4;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* No max-height restriction when we have many boards */
+.list-container.boards-list {
+  max-height: none;
+}

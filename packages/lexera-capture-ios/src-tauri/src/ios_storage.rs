@@ -263,6 +263,7 @@ impl BoardStorage for IosStorage {
                         .to_string(),
                     last_modified: String::new(),
                     columns,
+                    board_settings: state.board.board_settings.clone(),
                 }
             })
             .collect()

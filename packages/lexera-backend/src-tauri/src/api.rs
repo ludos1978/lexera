@@ -17,6 +17,8 @@ use std::collections::HashMap;
 ///   GET  /boards                              -> list all boards
 ///   POST /boards                              -> add board by file path
 ///   DELETE /boards/:boardId                   -> remove board from tracking
+///   GET  /boards/:boardId/settings            -> read board settings only
+///   PUT  /boards/:boardId/settings            -> update board settings only (merge)
 ///   GET  /boards/:boardId/columns             -> full column data with cards (+ ETag)
 ///   POST /boards/:boardId/columns/:colIndex/cards -> add card
 ///   POST /boards/:boardId/media               -> upload media file
@@ -139,6 +141,10 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/boards/{board_id}",
             axum::routing::put(write_board).delete(remove_board_endpoint),
+        )
+        .route(
+            "/boards/{board_id}/settings",
+            get(get_board_settings).put(update_board_settings),
         )
         .route(
             "/boards/{board_id}/sync-save",
@@ -743,6 +749,94 @@ async fn remove_board_endpoint(
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// GET /boards/{board_id}/settings — read board settings without loading full board data.
+async fn get_board_settings(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let board = state.storage.read_board(&board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!("Board not found: {}", board_id),
+            }),
+        )
+    })?;
+
+    let settings = board
+        .board_settings
+        .unwrap_or_default();
+
+    Ok(Json(serde_json::json!({
+        "boardId": board_id,
+        "boardSettings": settings,
+    })))
+}
+
+/// PUT /boards/{board_id}/settings — update board settings only (merges with existing).
+async fn update_board_settings(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(incoming): Json<lexera_core::types::BoardSettings>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let mut board = state.storage.read_board(&board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!("Board not found: {}", board_id),
+            }),
+        )
+    })?;
+
+    // Merge incoming settings into existing (only overwrite non-None fields)
+    let mut current = board.board_settings.unwrap_or_default();
+    if incoming.column_width.is_some() { current.column_width = incoming.column_width; }
+    if incoming.layout_rows.is_some() { current.layout_rows = incoming.layout_rows; }
+    if incoming.max_row_height.is_some() { current.max_row_height = incoming.max_row_height; }
+    if incoming.row_height.is_some() { current.row_height = incoming.row_height; }
+    if incoming.layout_preset.is_some() { current.layout_preset = incoming.layout_preset; }
+    if incoming.sticky_stack_mode.is_some() { current.sticky_stack_mode = incoming.sticky_stack_mode; }
+    if incoming.tag_visibility.is_some() { current.tag_visibility = incoming.tag_visibility; }
+    if incoming.card_min_height.is_some() { current.card_min_height = incoming.card_min_height; }
+    if incoming.font_size.is_some() { current.font_size = incoming.font_size; }
+    if incoming.font_family.is_some() { current.font_family = incoming.font_family; }
+    if incoming.whitespace.is_some() { current.whitespace = incoming.whitespace; }
+    if incoming.html_comment_render_mode.is_some() { current.html_comment_render_mode = incoming.html_comment_render_mode; }
+    if incoming.html_content_render_mode.is_some() { current.html_content_render_mode = incoming.html_content_render_mode; }
+    if incoming.arrow_key_focus_scroll.is_some() { current.arrow_key_focus_scroll = incoming.arrow_key_focus_scroll; }
+    if incoming.board_color.is_some() { current.board_color = incoming.board_color; }
+    if incoming.board_color_dark.is_some() { current.board_color_dark = incoming.board_color_dark; }
+    if incoming.board_color_light.is_some() { current.board_color_light = incoming.board_color_light; }
+    board.board_settings = Some(current.clone());
+
+    state.storage.write_board(&board_id, &board).map_err(|e| {
+        log_api_issue(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "lexera.api.update_board_settings",
+            format!("Failed to write board settings for {}: {}", board_id, e),
+        );
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+
+    // Broadcast change so SSE clients can react
+    let _ = state.event_tx.send(
+        lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
+            board_id: board_id.clone(),
+        },
+    );
+    broadcast_crdt_to_sync_hub(&state, &board_id).await;
+
+    Ok(Json(serde_json::json!({
+        "boardId": board_id,
+        "boardSettings": current,
+    })))
 }
 
 async fn search(

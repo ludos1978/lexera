@@ -150,6 +150,8 @@ pub struct BoardInfo {
     pub file_path: String,
     pub last_modified: String,
     pub columns: Vec<ColumnSummary>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub board_settings: Option<BoardSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -4702,3 +4702,382 @@ select.export-input {
   cursor: default;
   border-style: dashed;
 }
+
+/* ── Management Panel (slide-out from right) ─────────────────── */
+
+.mgmt-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 90vw;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.25);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+}
+
+.mgmt-panel.open {
+  transform: translateX(0);
+}
+
+.mgmt-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.08);
+  -webkit-app-region: drag;
+}
+
+.mgmt-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-secondary);
+}
+
+.mgmt-panel-header .btn-icon {
+  -webkit-app-region: no-drag;
+}
+
+.mgmt-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+}
+
+/* Sections inside the panel */
+.mgmt-section {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+
+.mgmt-section:last-child {
+  border-bottom: none;
+}
+
+.mgmt-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.mgmt-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.mgmt-field-row:last-child {
+  margin-bottom: 0;
+}
+
+.mgmt-field-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.mgmt-field-input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.mgmt-field-input:focus {
+  border-color: var(--accent);
+}
+
+/* Board items in management panel */
+.mgmt-board-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-board-row:last-child {
+  border-bottom: none;
+}
+
+.mgmt-board-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mgmt-board-name:hover {
+  color: var(--text-bright);
+}
+
+.mgmt-board-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mgmt-board-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.mgmt-board-row:hover .mgmt-board-remove {
+  opacity: 1;
+}
+
+.mgmt-board-remove:hover {
+  color: var(--error);
+  border-color: var(--error);
+  background: rgba(244, 71, 71, 0.14);
+}
+
+/* Board details (expandable) */
+.mgmt-board-details {
+  display: none;
+  padding: 6px 0 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-board-details.expanded {
+  display: block;
+}
+
+/* Detail tabs */
+.mgmt-detail-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-detail-tab {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.mgmt-detail-tab:hover {
+  color: var(--text-primary);
+}
+
+.mgmt-detail-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.mgmt-detail-tab-content {
+  display: none;
+}
+
+.mgmt-detail-tab-content.active {
+  display: block;
+}
+
+/* Settings grid inside board details */
+.mgmt-settings-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.mgmt-settings-grid label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mgmt-settings-grid input,
+.mgmt-settings-grid select {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 11px;
+  outline: none;
+}
+
+.mgmt-settings-grid input:focus,
+.mgmt-settings-grid select:focus {
+  border-color: var(--accent);
+}
+
+.mgmt-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+/* Status text */
+.mgmt-status {
+  font-size: 12px;
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+.mgmt-status.error {
+  color: var(--error);
+}
+
+.mgmt-status.success {
+  color: var(--success);
+}
+
+/* Connection items in management panel */
+.mgmt-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-connection-row:last-child {
+  border-bottom: none;
+}
+
+.mgmt-connection-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mgmt-connection-url {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgmt-connection-board {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.mgmt-connection-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.mgmt-connection-status.ok {
+  background: var(--success);
+}
+
+.mgmt-connection-status.err {
+  background: var(--error);
+}
+
+/* Peer items */
+.mgmt-peer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mgmt-peer-row:last-child {
+  border-bottom: none;
+}
+
+.mgmt-peer-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mgmt-peer-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgmt-peer-url {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.mgmt-list-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* Add-board input row */
+.mgmt-add-board-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.mgmt-add-board-row input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: monospace;
+  outline: none;
+}
+
+.mgmt-add-board-row input:focus {
+  border-color: var(--accent);
+}
