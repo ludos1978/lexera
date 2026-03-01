@@ -90,6 +90,7 @@ fn read_image_as_base64(ctx: &CrsContext) -> (Option<String>, Option<String>) {
 
 /// Copy the current selection (simulate Cmd+C), then open the capture popup.
 /// Spawns async so the shortcut handler doesn't block.
+#[cfg(target_os = "macos")]
 pub fn capture_selection_and_open(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -115,6 +116,12 @@ pub fn capture_selection_and_open(app: &AppHandle) {
 
         open_capture_popup(&app);
     });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn capture_selection_and_open(app: &AppHandle) {
+    log::warn!("[lexera.capture] Selection capture via AppleScript is not supported on this platform");
+    open_capture_popup(app);
 }
 
 /// Focus the quick-capture popup window (opening it first if needed).
