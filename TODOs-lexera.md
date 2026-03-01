@@ -188,8 +188,8 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 9. ~~capture.rs uses macOS-only AppleScript, no cross-platform alternative~~ FIXED: #[cfg(target_os)] platform guard with fallback stub (commit e98ea915)
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
 11. ~~BoardSettings merge verbose - 17 manual field assignments~~ FIXED: merge_from() with macro (commit afae724d)
-12. Frontend JS: global mutable state, ~~fetch without timeout~~, poll-based updates (10s/5s) -- fetch timeout FIXED (commit 35c2545e); poll→SSE plan documented (needs new event types in BoardChangeEvent)
-13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
+12. Frontend JS: global mutable state, ~~fetch without timeout~~, ~~poll-based updates (10s/5s)~~ -- fetch timeout FIXED (commit 35c2545e); poll→SSE FIXED: SSE events for collab/peer changes + connection-settings.js SSE client (commit 3b833df5)
+13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e); column index bounds check in add_card (commit 3b833df5)
 14. ~~Excessive cloning in auth.rs and invite.rs~~ FIXED: borrow instead of clone, retain for cleanup (commit a70a33a0)
 
 ### lexera-kanban
@@ -220,7 +220,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 7. ~~Base64 images in JSON could exhaust memory for large images~~ FIXED: 10MB base64 limit in process_pending (commit 95e8c6a2)
 8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
 9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
-10. Monolithic 880-line index.html with inline JS
+10. ~~Monolithic 880-line index.html with inline JS~~ FIXED: extracted to app.js, CSP tightened (commit 95e6f3b7)
 11. ~~No search result navigation (can't click to go to result)~~ FIXED: click navigates to board + highlights card (commit 91d21a8e)
 12. No schema versioning for board format — core concern, not iOS-specific; add schemaVersion to YAML frontmatter when format evolution is needed
 
@@ -420,7 +420,7 @@ Why: Zero frontend test coverage and zero backend integration tests. Need concre
 
 Tasks:
 1. Frontend: add Jest or Vitest + happy-dom/jsdom for DOM testing; create test utilities for mocking Tauri APIs; target api.js 80%, exportService.js 70%, utility modules 80%
-2. Backend: add axum_test for integration tests; test board CRUD, collaboration flows, WebSocket sync; create test state helpers (create_test_state pattern)
+2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD tests via tower::ServiceExt (commit 3b833df5); remaining: collaboration flows, WebSocket sync
 
 Impact: Enables safe refactoring and regression prevention across both frontend and backend
 
