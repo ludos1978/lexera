@@ -35,6 +35,19 @@ use std::collections::HashMap;
 ///   POST /templates/:id/copy                  -> copy template files with variable substitution
 use std::convert::Infallible;
 use std::path::PathBuf;
+
+/// Check if a user-supplied path segment contains path traversal sequences.
+/// Percent-decodes the input first, then checks the decoded string for:
+/// "..", "/", "\", "./" prefix, and "/./" in path.
+fn has_path_traversal(input: &str) -> bool {
+    use percent_encoding::percent_decode_str;
+    let decoded = percent_decode_str(input).decode_utf8_lossy();
+    decoded.contains("..")
+        || decoded.contains('/')
+        || decoded.contains('\\')
+        || decoded.starts_with("./")
+        || decoded.contains("/./")
+}
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
@@ -939,6 +952,15 @@ async fn upload_media(
     })?;
 
     let filename = field.file_name().unwrap_or("capture").to_string();
+
+    // Prevent path traversal in uploaded filename
+    if has_path_traversal(&filename) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Invalid filename".to_string() }),
+        ));
+    }
+
     let data = field.bytes().await.map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -1012,6 +1034,14 @@ async fn serve_media(
         )
     })?;
 
+    // Prevent path traversal (check before constructing file path)
+    if has_path_traversal(&filename) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Invalid filename".to_string() }),
+        ));
+    }
+
     let board_dir = board_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
@@ -1021,16 +1051,6 @@ async fn serve_media(
         .unwrap_or("board");
     let media_dir = board_dir.join(format!("{}-Media", board_stem));
     let file_path = media_dir.join(&filename);
-
-    // Prevent path traversal
-    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid filename".to_string(),
-            }),
-        ));
-    }
 
     let data = std::fs::read(&file_path).map_err(|_| {
         (

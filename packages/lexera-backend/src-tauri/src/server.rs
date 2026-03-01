@@ -1,56 +1,43 @@
 use crate::api::api_router;
 use crate::collab_api::collab_router;
-use crate::export_api::export_router;
 use crate::state::AppState;
 use crate::sync_ws::sync_router;
 /// HTTP server: spawns axum on a background tokio task.
-use axum::{
-    extract::Request,
-    middleware::{self, Next},
-    response::Response,
-    Router,
-};
-use tower_http::cors::{Any, CorsLayer};
+use axum::Router;
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 /// Fallback ports to try when the configured port is in use.
 const FALLBACK_PORTS: &[u16] = &[13080, 12080, 14080, 11080, 15080];
 
 fn build_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin(AllowOrigin::predicate(|origin, _| {
+            let origin_str = match std::str::from_utf8(origin.as_bytes()) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            // Allow tauri://localhost (Tauri webview on macOS)
+            if origin_str == "tauri://localhost" {
+                return true;
+            }
+            // Allow http://localhost and http://localhost:<port>
+            if let Some(rest) = origin_str.strip_prefix("http://localhost") {
+                return rest.is_empty() || rest.starts_with(':');
+            }
+            // Allow http://127.0.0.1 and http://127.0.0.1:<port>
+            if let Some(rest) = origin_str.strip_prefix("http://127.0.0.1") {
+                return rest.is_empty() || rest.starts_with(':');
+            }
+            false
+        }))
         .allow_methods(Any)
         .allow_headers(Any);
 
     api_router()
         .merge(collab_router())
         .merge(sync_router())
-        .merge(export_router())
-        .layer(middleware::from_fn(log_http_error_responses))
         .layer(cors)
         .with_state(state)
-}
-
-async fn log_http_error_responses(req: Request, next: Next) -> Response {
-    let method = req.method().clone();
-    let uri = req.uri().clone();
-    let response = next.run(req).await;
-    let status = response.status();
-
-    if status.is_client_error() || status.is_server_error() {
-        let mut path = uri.path().to_string();
-        if let Some(query) = uri.query() {
-            path.push('?');
-            path.push_str(query);
-        }
-        let target = "lexera.http";
-        if status.is_server_error() {
-            log::error!(target: target, "{} {} -> {}", method, path, status);
-        } else {
-            log::warn!(target: target, "{} {} -> {}", method, path, status);
-        }
-    }
-
-    response
 }
 
 /// Try to bind a TCP listener on the given address:port.
