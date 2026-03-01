@@ -1,194 +1,59 @@
-# V1 Implementation Specs - Master Index
+# V2 Base Plan Index
 
-**Version**: V1 (VS Code Extension)
-**Last Updated**: 2026-03-01
-**Total Specs**: 13 files, 5,212 lines
-**Purpose**: Document V1 architecture for V2 implementation reference
+## V2 Package Map
 
----
+| Workstream | V2 target | Main v1 base | Shared dependency | Notes |
+|------------|-----------|--------------|-------------------|-------|
+| Board model, parser, includes, search, merge, storage | `packages/lexera-core` | `src/`, mainly parser/types/state/search logic | `packages/marp-engine` for presentation/export pipeline | Rust is the source of truth in v2 |
+| Desktop runtime, board registry, watcher, sync, collaboration, capture | `packages/lexera-backend` | `src/services/*`, `src/files/*`, `src/core/*`, `packages/ludos-sync/` | `packages/lexera-core` | Replaces extension host + standalone sync server |
+| Board UI, editor, drag/drop, menus, dashboard | `packages/lexera-kanban` | `src/html/*`, `src/kanbanWebviewPanel.ts`, board/editor UX | `packages/lexera-core`, backend API | Replaces the v1 webview client |
+| Mobile capture | `packages/lexera-capture-ios` | no direct v1 package equivalent | `packages/lexera-core` concepts | New in v2 |
+| Presentation and export | `packages/lexera-core` + `packages/lexera-backend` | `src/services/export/*`, `src/html/exportMarpUI.js` | `packages/marp-engine` | Shared engine stays shared |
 
-## Quick Reference
+## V1 Reference Specs By V2 Area
 
-| Category | Specs | Total Lines |
-|----------|-------|-------------|
-| Shared | Types, Parser, Markdown | 1,042 |
-| Core | Board, Editor, Gather, StateMachine | 1,446 |
-| UX | DragDrop, Search, Menus, Export | 1,622 |
-| Services | BoardRegistry, MediaTracker | 602 |
+### Core logic feeding `lexera-core`
 
----
+- `shared/types/SPEC.md`: board, column, card, and settings model
+- `shared/parser/SPEC.md`: markdown parsing and generation rules
+- `shared/markdown/SPEC.md`: rich markdown rendering behaviors worth preserving
+- `core/gather/SPEC.md`: automatic sorting and board query behavior
+- `ux/search/SPEC.md`: card search and temporal resolution behavior
+- `core/statemachine/SPEC.md`: useful reference for change sequencing, but not a direct port
 
-## Application Overview
+### Backend/runtime feeding `lexera-backend`
 
-### What is V1?
+- `services/boardregistry/SPEC.md`: central board registry responsibilities
+- `services/mediatracker/SPEC.md`: file/media tracking responsibilities
+- `core/statemachine/SPEC.md`: coordination patterns for save/change handling
+- v1 runtime outside this folder: `packages/ludos-sync/`
 
-V1 is a VS Code extension that provides Kanban board functionality for markdown files. It renders `.md` files with specific YAML frontmatter as interactive Kanban boards.
+### Client UX feeding `lexera-kanban`
 
-### Application Flow
+- `core/board/SPEC.md`: board rendering and structure
+- `core/editor/SPEC.md`: card editing behavior
+- `ux/dragdrop/SPEC.md`: drag/drop interaction model
+- `ux/menus/SPEC.md`: context menu behavior
+- `ux/search/SPEC.md`: dashboard/search UX
+- `ux/export/SPEC.md`: export UI behaviors worth keeping
+- `shared/markdown/SPEC.md`: client-side rendering details
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        VS CODE EXTENSION HOST                         │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
-│  │ extension.ts│───►│ Commands    │───►│ Services     │                │
-│  │ (entry)     │    │ (actions)   │    │ (state)     │                 │
-│  └──────────────┘    └──────────────┘    └──────────────┘                  │
-│         │                   │                   │                       │
-│         ▼                   ▼                   ▼                       │  
-│  ┌──────────────────────────────────────────────────────────────────┐        │
-│  │                    BoardRegistryService                     │        │
-│  │                    (Central State Manager)                  │        │
-│  └──────────────────────────────────────────────────────────────────┘        │
-│         │                                                               │
-│         ├──────────────────────┬──────────────────────┐                    │
-│         ▼                    ▼                    ▼                     │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
-│  │ Sidebar     │    │Dashboard    │    │Webview      │                   │
-│  │ (Board Tree)│    │(Scanner)    │    │(Board View) │                   │
-│  │             │    │             │    │             │                   │
-│  │ kanbanBoards│    │kanbanDash   │    │kanbanWebview│                   │
-│  │ Provider.ts │    │boardProvider│    │Panel.ts     │                   │
-│  └──────────────┘    └──────────────┘    └──────────────┘                   │
-│                                                 │                        │
-│                                                 ▼                        │
-│                                    ┌────────────────────────┐              │
-│                                    │ HTML Webview         │              │
-│                                    │ (src/html/*.js)      │              │
-│                                    │                      │              │
-│                                    │ - webview.js         │              │
-│                                    │ - boardRenderer.js   │              │
-│                                    │ - dragDrop.js        │              │
-│                                    │ - cardEditor.js      │              │
-│                                    │ - markdownRenderer.js│              │
-│                                    └────────────────────────┘              │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+### Shared/export layer feeding `lexera-core` and `lexera-backend`
 
-### Key Components
+- `ux/export/SPEC.md`: export flow and settings
+- `shared/markdown/SPEC.md`: markdown plugin behavior
+- shared code outside this folder: `packages/marp-engine/`
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| **Entry Point** | `extension.ts` | Extension activation, command registration |
-| **State Manager** | `BoardRegistryService.ts` | Central board state, workspace scanning |
-| **Board View** | `kanbanWebviewPanel.ts` | Webview panel management, message passing |
-| **HTML Frontend** | `src/html/webview.js` | Board rendering, user interactions |
-| **Sidebar** | `kanbanBoardsProvider.ts` | Board tree in VS Code sidebar |
-| **Dashboard** | `kanbanDashboardProvider.ts` | Upcoming items, tag search |
-| **Parser** | `markdownParser.ts` | Markdown → Kanban board parsing |
-| **Sync Server** | `packages/ludos-sync/` | CalDAV/WebDAV sync |
+## Deferred Or V1-Only Reference Specs
 
----
+These are still useful references, but they are not shaping the initial v2 package split:
 
-## Design Patterns Used
+- `plugins/registry/SPEC.md`: plugin-system ideas, not a base-plan requirement
+- `services/keybinding/SPEC.md`: VS Code-specific service, likely replaced by host-native shortcuts
+- `services/notification/SPEC.md`: VS Code-specific service, likely replaced by Tauri/UI-native dialogs
 
-### 1. Singleton Pattern
-Used for services that need global state:
-- `BoardRegistryService.getInstance()`
-- `PluginRegistry.getInstance()`
-- `WorkspaceMediaIndex.getInstance()`
+## Reading Order
 
-### 2. Provider Pattern
-VS Code integration for UI components:
-- `KanbanBoardsProvider` (TreeDataProvider)
-- `KanbanDashboardProvider` (WebviewViewProvider)
-- `KanbanWebviewPanel` (WebviewPanel)
-
-### 3. Event-Driven Architecture
-Communication between components via events:
-- `vscode.EventEmitter` for VS Code events
-- `postMessage()` for webview communication
-- Custom `SaveEventDispatcher` for file watching
-
-### 4. Plugin System
-Extensible import/export/diagram handlers:
-- `PluginRegistry` manages plugin lifecycle
-- Interface-based plugins (`ImportPlugin`, `ExportPlugin`, `DiagramPlugin`)
-- Built-in plugins loaded at startup
-
-### 5. Command Pattern
-All user actions are VS Code commands:
-- `markdown-kanban.board.addCard`
-- `markdown-kanban.card.toggleCheckbox`
-- Commands registered in `extension.ts`
-
-### 6. Message Handler Pattern
-Webview ↔ Extension communication:
-- Request/response pattern with message types
-- `messageHandler.ts` routes messages to handlers
-- Type-safe message definitions
-
-### 7. Repository Pattern
-Data access abstraction:
-- `KanbanFileService` handles file I/O
-- Storage adapters for different backends
-
-### 8. Observer Pattern
-File watching and change notification:
-- `UnifiedChangeHandler` watches file changes
-- Notifies all open panels of changes
-
----
-
-## Feature Index
-
-### Shared Components
-
-| Feature | Spec File | Source | Lines |
-|---------|-----------|--------|-------|
-| [Types](shared/types/SPEC.md) | KanbanBoard, KanbanColumn, KanbanCard | `src/types.ts` | 313 |
-| [Parser](shared/parser/SPEC.md) | State machine, parsing rules | `src/markdownParser.ts` | 477 |
-| [Markdown](shared/markdown/SPEC.md) | Plugins, media, diagrams | `src/html/markdownRenderer.js` | 252 |
-
-### Core Components
-
-| Feature | Spec File | Source | Lines |
-|---------|-----------|--------|-------|
-| [Board](core/board/SPEC.md) | DOM structure, folding | `src/html/boardRenderer.js` | 449 |
-| [Editor](core/editor/SPEC.md) | Inline editing, WYSIWYG | `src/html/cardEditor.js` | 517 |
-| [Gather](core/gather/SPEC.md) | Automatic sorting | `src/board/GatherQueryEngine.ts` | 220 |
-| [StateMachine](core/statemachine/SPEC.md) | Change handling | `src/core/ChangeStateMachine.ts` | 260 |
-
-### UX Components
-
-| Feature | Spec File | Source | Lines |
-|---------|-----------|--------|-------|
-| [DragDrop](ux/dragdrop/SPEC.md) | Drag state machine | `src/html/dragDrop.js` | 695 |
-| [Search](ux/search/SPEC.md) | Dashboard scanner | `src/dashboard/DashboardScanner.ts` | 362 |
-| [Menus](ux/menus/SPEC.md) | Context menus | `src/html/menuOperations.js` | 280 |
-| [Export](ux/export/SPEC.md) | Dialog, Marp | `src/html/exportMarpUI.js` | 285 |
-
-### Services
-
-| Feature | Spec File | Source | Lines |
-|---------|-----------|--------|-------|
-| [BoardRegistry](services/boardregistry/SPEC.md) | Singleton manager | `src/services/BoardRegistryService.ts` | 280 |
-| [MediaTracker](services/mediatracker/SPEC.md) | File change detection | `src/services/MediaTracker.ts` | 322 |
-
----
-
-## Key Files to Understand V1
-
-1. **`src/extension.ts`** - Entry point, command registration
-2. **`src/services/BoardRegistryService.ts`** - Central state
-3. **`src/kanbanWebviewPanel.ts`** - Webview management
-4. **`src/html/webview.js`** - Frontend entry point
-5. **`src/html/boardRenderer.js`** - Board rendering
-6. **`src/html/dragDrop.js`** - Drag & drop
-7. **`src/markdownParser.ts`** - Parsing logic
-8. **`src/types.ts`** - Type definitions
-
----
-
-## Documentation Progress
-
-All 13 specs complete (5,212 lines):
-
-| Category | Specs | Status |
-|----------|-------|--------|
-| Shared | Types, Parser, Markdown | ✅ |
-| Core | Board, Editor, Gather, StateMachine | ✅ |
-| UX | DragDrop, Search, Menus, Export | ✅ |
-| Services | BoardRegistry, MediaTracker | ✅ |
+1. `BASE_PLAN.md`
+2. This file
+3. The relevant v1 `SPEC.md` files for the workstream you are changing

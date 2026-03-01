@@ -1,75 +1,40 @@
-# V1 Implementation Specifications
+# V2 Base Plan + V1 Reference
 
-This directory contains detailed implementation specs for the Lexera V1 (VS Code Extension) codebase.
+`packages/agent/specs` is now a planning surface for the Lexera v2 packages, with the old v1 specs kept as reference material.
 
-## Purpose
+## Scope
 
-- Document each feature with increasing detail
-- Describe data structures, data instances, and function usages
-- Describe use cases (UX requirements) first
-- Provide clean structure for V2 implementation reference
+- V2 targets: `packages/lexera-core`, `packages/lexera-backend`, `packages/lexera-kanban`, `packages/lexera-capture-ios`
+- V1 source of truth for behavior: `src/` and `packages/ludos-sync/`
+- Shared across v1 and v2: `packages/marp-engine/`
 
-## Documentation Structure
+## How To Use This Folder
 
-```
+1. Start with `BASE_PLAN.md` for the simplified v2 plan.
+2. Use `INDEX.md` to map a v2 workstream back to the relevant v1 reference specs.
+3. Use `PROGRESS.md` to see what is baseline, adapted, deferred, or v1-only.
+
+## Planning Rules
+
+- Port behavior, not VS Code abstractions.
+- Prefer `lexera-core` for shared board logic, parsing, storage, search, merge, and export transforms.
+- Treat `lexera-backend` as the replacement for extension-side services and `packages/ludos-sync`.
+- Treat `lexera-kanban` as the replacement for the v1 board webview UI.
+- Keep `marp-engine` shared instead of duplicating export logic.
+- Defer extension-only systems unless a v2 package clearly needs them.
+
+## Directory Layout
+
+```text
 specs/
-├── README.md                    # This file
-├── INDEX.md                     # Master index of all specs
-├── shared/                      # Shared components (used across features)
-│   ├── types/                   # Type definitions
-│   ├── parser/                  # Markdown parser
-│   ├── storage/                 # File storage
-│   └── events/                  # Event system
-├── core/                        # Core application features
-│   ├── board/                   # Board management
-│   ├── column/                  # Column management
-│   ├── card/                    # Card management
-│   └── editor/                  # Card editing
-├── ux/                          # User experience features
-│   ├── navigation/              # Navigation & keyboard
-│   ├── dragdrop/                # Drag & drop
-│   ├── search/                  # Search functionality
-│   └── export/                  # Export features
-├── sync/                        # Synchronization
-│   ├── caldav/                  # CalDAV sync
-│   ├── webdav/                  # WebDAV sync
-│   └── ical/                    # iCal export
-└── plugins/                     # Plugin system
-    ├── registry/                # Plugin registry
-    ├── diagram/                 # Diagram plugins
-    └── export/                  # Export plugins
+├── BASE_PLAN.md                 # Simplified v2 plan
+├── INDEX.md                     # V2 package map + v1 reference map
+├── PROGRESS.md                  # Current planning status
+├── shared/                      # V1 reference specs
+├── core/                        # V1 reference specs
+├── ux/                          # V1 reference specs
+├── services/                    # V1 reference specs
+└── plugins/                     # V1 reference specs
 ```
 
-## Document Template
-
-Each feature spec follows this structure:
-
-```markdown
-# Feature Name
-
-## UX Requirements (Use Cases)
-- User can...
-- When user does X, Y happens
-
-## Data Structures
-- Type definitions
-- Schemas
-
-## Data Instances
-- Example data
-- State examples
-
-## Functions
-- Function signatures
-- Behavior descriptions
-
-## Integration Points
-- How this feature connects to others
-```
-
-## How to Use
-
-1. Read `INDEX.md` for overview
-2. Navigate to specific feature directory
-3. Start with UX Requirements
-4. Reference Data Structures for implementation
+The `SPEC.md` files are still mostly v1-oriented snapshots. They are inputs for v2 planning, not a one-to-one definition of the v2 package structure.

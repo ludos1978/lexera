@@ -301,8 +301,8 @@ Tasks:
 2. Encapsulate 50+ global variables into classes/closures
 3. Implement ES6 modules or bundler (replace implicit script load order)
 4. ~~Add error boundaries to all event handlers~~ DONE: 15 try/catch wrappers (commit 903a40a3)
-5. Replace JSON.stringify undo/redo with delta-based approach
-6. Cache frequently used DOM queries
+5. ~~Replace JSON.stringify undo/redo with delta-based approach~~ DONE (commit 3f18e76a)
+6. ~~Cache frequently used DOM queries~~ DONE: all static elements cached (commits dfd92d0a, 68ca877e, 3a0ac18f)
 
 Impact: Enables testing, reduces bugs, improves maintainability
 
@@ -473,3 +473,74 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
 | API Design | 4/5 | 3/5 | 3/5 | 3/5 |
 | Collaboration | 4/5 (CRDT) | 4/5 (presence, persistence) | 3/5 (presence UI) | - |
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 14: V1 Feature Parity — Missing Features
+
+Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalone, `packages/lexera-*`).
+
+#### High Impact
+
+1. **Dashboard Scanner** — Port `src/dashboard/DashboardScanner.ts` (~700 LOC) to `lexera-core/src/dashboard/`
+   - Temporal tag extraction and resolution
+   - Upcoming items with timeframe filtering
+   - Recurring task classification (overdue, outdated, resetToRepeat, future)
+   - Undated task collection, calendar event detection
+
+2. **Gather Query Engine** — Port `src/board/GatherQueryEngine.ts` (~400 LOC) to `lexera-core/src/gather.rs`
+   - Query syntax in column titles: `?#tag`, `?@temporal`, `?.today`
+   - Automatic task sorting, `#ungathered` collection, sticky tasks
+
+3. **Marp Engine Full Plugin Set** — Port `packages/marp-engine/engine/engine.js` plugins
+   - Missing markdown extensions: underline, sub/sup, mark, insert, multicolumn, containers
+   - Fragment support (`+` lists, fragmented table rows)
+   - Custom containers (`::: note`, `::: columns`, `::: center`, etc.)
+   - Image captions, mermaid diagrams, media embeds
+
+#### Medium Impact
+
+4. **Change State Machine** — Port `src/core/ChangeStateMachine.ts` (~700 LOC) to backend
+   - Unified entry point for file changes with states: IDLE → READING → PROCESSING → WRITING
+   - Event queue, debouncing, coalescing, conflict detection
+
+5. **Board Registry Service** — Extend `LocalStorage` with `src/services/BoardRegistryService.ts` features
+   - Custom board ordering, search history (recent + pinned), per-board file watchers
+
+6. **Link Handling** — Port `src/services/LinkHandler.ts` (~800 LOC) to `lexera-core/src/links.rs`
+   - Wiki link resolution `[[filename]]`, relative paths, link validation, link replacement on rename
+
+7. **Clipboard Commands** — Port `src/commands/ClipboardCommands.ts` (~1,200 LOC) to frontend
+   - Copy/paste cards with markdown formatting, cross-board movement, multi-select
+
+8. **Backup Manager** — Port `src/services/BackupManager.ts` (~400 LOC) to `LocalStorage::write_board`
+   - Automatic backup before saves, rotation (keep last N), restoration
+
+9. **Card Editor Enhanced** — Port `src/html/cardEditor.js` features
+   - Checkbox toggle, inline date picker, tag autocomplete, content preview
+
+10. **Handout Generator** — Port HandoutTransformer from marp-engine
+    - Multi-slide grid layouts, configurable slides-per-page, print-optimized CSS
+
+#### Low Impact
+
+11. **Keybinding Service** — Configurable keyboard shortcuts (`KeyboardManager` module)
+12. **Diagram Commands** — Mermaid/PlantUML generation (implement via plugin system)
+13. **Archive Commands** — Archive completed cards, bulk archive, date-based archiving
+14. **Workspace Media Index** — Scan workspace for media files, track usage, autocomplete
+15. **iCal Export** — Temporal tag to VEVENT mapping, calendar subscription (`lexera-core/src/export/ical.rs`)
+16. **Webview Update Service** — Debounced updates, message batching (add if performance issues arise)
+17. **PDF/PPTX Export** — Port Python scripts or implement in Rust
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 15: ludos-sync Port to Rust
+
+Why: `packages/ludos-sync` (~3,500 LOC TypeScript) provides WebDAV/CalDAV sync. Port natively to Rust (no Node.js sidecar) for single binary, shared types, and better storage integration.
+
+Tasks:
+1. **iCal Mapper** → `lexera-core/src/export/ical.rs` — Temporal tags → VEVENT, time range parsing, checkbox → STATUS, #tags → CATEGORIES, SHA-256 stable UIDs
+2. **XBEL Mapper** → `lexera-core/src/export/xbel.rs` — Folders → Columns, Bookmarks → Cards with `[Title](url "xbel-id")`, #stack tag grouping
+3. **CalDAV Middleware** → `lexera-backend/src/caldav/` — PROPFIND, REPORT, calendar-multiget, calendar-query, time-range filtering, `.well-known/caldav` discovery
+4. **WebDAV Bookmark Adapter** → `lexera-backend/src/webdav/` — Nephele-like adapter for Floccus sync, ETag change detection, mutex-protected read-modify-write
+5. **Localhost Auth** → Extend existing `lexera-backend/src/auth/` — IP-based localhost verification, optional Basic Auth

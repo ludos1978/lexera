@@ -2,10 +2,26 @@
 
 This document lists all functions and methods in the TypeScript codebase for the Markdown Kanban extension.
 
-**Last Updated:** 2026-02-27
+**Last Updated:** 2026-03-01
 
 ## Format
 Each entry follows: `path_to_filename-classname_functionname` or `path_to_filename-functionname` (when not in a class)
+
+---
+
+## Recent Updates (2026-03-01) - Visual Drop Zone Indicators
+
+### Modified: `lexera-kanban/src/app.js`
+- `insertDropZoneIndicators(dragType)` — (NEW) Creates fixed-size visual indicator elements at valid drop boundaries when drag starts. Supports card, row, stack, and column drag types. Indicators are position:absolute, pointer-events:none.
+- `removeDropZoneIndicators()` — (NEW) Removes all `.drop-zone-indicator` elements from the DOM. Called on drag cleanup.
+- `clearDropZoneIndicatorHighlights()` — (NEW) Removes `active` class from all drop zone indicators.
+- `highlightDropZoneIndicator(dragType, mx, my)` — (NEW) Reads existing drag-over CSS classes on elements and activates the adjacent drop zone indicator to show where the item will land.
+
+### Modified: `lexera-kanban/src/app.css`
+- `.drop-zone-indicator` — (NEW) Base styles for visual drop zone indicator elements (absolute, pointer-events:none, accent-colored, opacity 0 by default).
+- `.drop-zone-indicator.vertical` — (NEW) 4px wide vertical bar spanning parent height.
+- `.drop-zone-indicator.horizontal` — (NEW) 4px tall horizontal bar spanning parent width.
+- `.drop-zone-indicator.active` — (NEW) Fades indicator to 0.6 opacity when the adjacent element is the current drop target.
 
 ---
 
