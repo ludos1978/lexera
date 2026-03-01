@@ -74,7 +74,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - Watcher: notify-debouncer-full with 500ms debounce, parent directory watching, self-write tracker with 10s TTL
 - Include: !!!include(path)!!! syntax, URL-encoded paths, slide format parser (--- separator), nested include support
 - Export: Content transforms (speaker notes, HTML removal, code block preservation), presentation/document format generation
-- 93+ unit tests with good coverage
+- 262 unit tests with good coverage
 
 ### packages/lexera-backend (Tauri + Axum, ~5,887 Rust LOC + 1,330 JS LOC)
 - REST API: boards, columns, cards, media upload, search, templates, export with ETag caching
@@ -98,7 +98,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - IosStorage: BoardStorage trait impl with RwLock<HashMap> cache, atomic file writes
 - Default Inbox board auto-creation, pending share queue processing
 - 4-page SPA: Capture, Search, Boards, Settings
-- 6 unit tests
+- 28 unit tests
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -123,10 +123,10 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - Fix: split into 8+ modules (boardManager, cardManager, dragDrop, sync, ui, keyboard, sidebar, analytics)
 - Note: api.rs backend equivalent was split into 7 modules (commit 29dd0730)
 
-### No Test Coverage in Frontend (lexera-kanban)
-- Zero test files for any JavaScript code
-- No test framework configured
-- All testing is manual
+### ~~No Test Coverage in Frontend (lexera-kanban)~~ FIXED
+- ~~Zero test files for any JavaScript code~~ 176 tests across 3 test files (templates, api, exportService)
+- ~~No test framework configured~~ Vitest + IIFE loader
+- ~~All testing is manual~~ Automated test suite
 
 ### Undo/Redo Memory Issue (lexera-kanban)
 - Uses JSON.stringify of full board state per action (MAX 100 entries)
@@ -146,9 +146,9 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - ~~Line 1026: checks for ".." and "/" but misses "./" and URL encoding~~
 - Fixed: has_path_traversal() with percent-decoding (commit f41165c8)
 
-### ~~CSP Too Permissive~~ PARTIALLY FIXED
+### ~~CSP Too Permissive~~ FIXED
 - ~~Backend and Kanban allow 'unsafe-inline' for scripts~~ FIXED: removed from script-src (commit 5cbe794e)
-- Capture-iOS still needs 'unsafe-inline' (inline script block in index.html)
+- ~~Capture-iOS still needs 'unsafe-inline'~~ FIXED: inline script extracted to app.js (commit 95e6f3b7)
 - style-src 'unsafe-inline' retained in all packages (needed for inline style attributes)
 
 ### No TLS
@@ -206,7 +206,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
 12. ~~Template variable substitution has no type checking, fails silently~~ FIXED: lexeraLog warnings (commit 6d354ee8)
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
-14. ~~273 uncached DOM queries (querySelector/getElementById)~~ PARTIALLY FIXED: 21 static elements cached with lazy getters (commits dfd92d0a, 68ca877e)
+14. ~~273 uncached DOM queries (querySelector/getElementById)~~ PARTIALLY FIXED: ~50 static elements cached with lazy getters (commits dfd92d0a, 68ca877e, 3a0ac18f)
 15. No virtual scrolling for large boards
 16. ~~Export pipeline has no rollback on partial failure~~ FIXED: createdFiles tracking + remove_export_files cleanup (commit 065c7b70)
 
@@ -314,7 +314,7 @@ Why: CRDT exists but could be more robust for edge cases.
 
 Tasks:
 1. Add vector clock support (currently uses monotonic counter)
-2. Improve structural change handling in sync_column_structure
+2. ~~Improve structural change handling in sync_column_structure~~ FIXED: has_structural_diff() + format upgrade branch (commit b0d05a1a)
 3. Add conflict resolution strategies beyond last-write-wins
 4. ~~Test concurrent edits from multiple peers~~ DONE: 4 concurrent edit scenarios (commit 1f6270ec)
 5. Move YAML/settings into CRDT for collaborative consistency
@@ -420,7 +420,7 @@ Why: Zero frontend test coverage and zero backend integration tests. Need concre
 
 Tasks:
 1. ~~Frontend: add Vitest for testing~~ DONE: Vitest + IIFE loader + 46 templates.js + 72 api.js + 58 exportService.js tests (commits e538a088, 596e1a14, 1f150ad0)
-2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD + 3 search + 3 template + 5 media/file_ops + 8 collab tests via tower::ServiceExt (commits 3b833df5, 646d7551, d907903d, 9abb479a)
+2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD + 3 search + 3 template + 5 media/file_ops + 8 collab + 5 SSE/events tests via tower::ServiceExt (commits 3b833df5, 646d7551, d907903d, 9abb479a, 91f89d99)
 
 Impact: Enables safe refactoring and regression prevention across both frontend and backend
 
@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 255 | Good |
-| lexera-backend | ~5,887 | ~1,330 | ~200 | 24 | Medium |
+| lexera-core | ~9,925 | - | - | 262 | Good |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 29 | Medium |
 | lexera-kanban | ~700 | ~17,000 | ~4,100 | 176 (JS) | Improved |
-| lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **461** | - |
+| lexera-capture-ios | ~609 | ~320 | ~200 | 28 | Medium |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **495** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -467,7 +467,7 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
 | Code Quality | 4/5 (+: Result propagation) | 3/5 | 2/5 | 3/5 (+: RwLock fix) |
-| Testing | 4/5 (+: cycle detection tests) | 1/5 | 1/5 | 2/5 |
+| Testing | 4/5 (+: cycle detection tests) | 2/5 (+: 29 integration tests) | 1/5 | 3/5 (+: 28 unit tests) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
 | Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
