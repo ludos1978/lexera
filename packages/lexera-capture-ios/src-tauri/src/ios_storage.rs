@@ -616,4 +616,342 @@ mod tests {
             assert!(cols[0].cards[0].content.contains("persisted card"));
         }
     }
+
+    // ---------------------------------------------------------------
+    // delete_board
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_delete_board() {
+        let (storage, _dir) = temp_storage();
+        let id = storage.create_board("Temp Board").unwrap();
+        assert_eq!(storage.list_boards().len(), 2); // inbox + Temp Board
+
+        storage.delete_board(&id).unwrap();
+        assert_eq!(storage.list_boards().len(), 1); // only inbox remains
+        assert!(storage.read_board(&id).is_none());
+    }
+
+    #[test]
+    fn test_delete_board_removes_file_from_disk() {
+        let (storage, dir) = temp_storage();
+        let id = storage.create_board("Ephemeral").unwrap();
+        let file_path = dir.path().join("boards").join("Ephemeral.md");
+        assert!(file_path.exists());
+
+        storage.delete_board(&id).unwrap();
+        assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn test_delete_inbox_board_is_rejected() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+
+        let result = storage.delete_board(&inbox_id);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::InvalidBoard(msg) => {
+                assert!(msg.contains("Inbox"), "Expected message about Inbox, got: {}", msg);
+            }
+            other => panic!("Expected InvalidBoard error, got: {:?}", other),
+        }
+
+        // Inbox must still exist
+        assert!(storage.read_board(&inbox_id).is_some());
+    }
+
+    #[test]
+    fn test_delete_nonexistent_board() {
+        let (storage, _dir) = temp_storage();
+
+        let result = storage.delete_board("does_not_exist");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::BoardNotFound(_) => {}
+            other => panic!("Expected BoardNotFound error, got: {:?}", other),
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // edit_card
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_edit_card() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+        storage.add_card(&inbox_id, 0, "original content").unwrap();
+
+        storage.edit_card(&inbox_id, 0, 0, "updated content").unwrap();
+
+        let board = storage.read_board(&inbox_id).unwrap();
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards.len(), 1);
+        assert_eq!(cols[0].cards[0].content, "updated content");
+    }
+
+    #[test]
+    fn test_edit_card_persists_to_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let boards_dir = dir.path().join("boards");
+        let pending_path = dir.path().join("ShareExtension/pending.json");
+
+        {
+            let storage = IosStorage::new(boards_dir.clone(), pending_path.clone()).unwrap();
+            let inbox_id = storage.inbox_board_id();
+            storage.add_card(&inbox_id, 0, "before edit").unwrap();
+            storage.edit_card(&inbox_id, 0, 0, "after edit").unwrap();
+        }
+
+        // Reload from disk
+        {
+            let storage = IosStorage::new(boards_dir, pending_path).unwrap();
+            let inbox_id = storage.inbox_board_id();
+            let board = storage.read_board(&inbox_id).unwrap();
+            let cols = board.all_columns();
+            assert_eq!(cols[0].cards[0].content, "after edit");
+        }
+    }
+
+    #[test]
+    fn test_edit_card_nonexistent_board() {
+        let (storage, _dir) = temp_storage();
+
+        let result = storage.edit_card("no_such_board", 0, 0, "text");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::BoardNotFound(_) => {}
+            other => panic!("Expected BoardNotFound error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_edit_card_column_out_of_range() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+        storage.add_card(&inbox_id, 0, "a card").unwrap();
+
+        let result = storage.edit_card(&inbox_id, 99, 0, "text");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::ColumnOutOfRange { index, .. } => {
+                assert_eq!(index, 99);
+            }
+            other => panic!("Expected ColumnOutOfRange error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_edit_card_card_index_out_of_range() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+        // Column 0 exists but has no cards
+        let result = storage.edit_card(&inbox_id, 0, 5, "text");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::InvalidBoard(msg) => {
+                assert!(msg.contains("Card index"), "Expected card-index message, got: {}", msg);
+            }
+            other => panic!("Expected InvalidBoard (card index) error, got: {:?}", other),
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // delete_card
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_delete_card() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+        storage.add_card(&inbox_id, 0, "card A").unwrap();
+        storage.add_card(&inbox_id, 0, "card B").unwrap();
+
+        let board = storage.read_board(&inbox_id).unwrap();
+        assert_eq!(board.all_columns()[0].cards.len(), 2);
+
+        // Delete first card ("card A")
+        storage.delete_card(&inbox_id, 0, 0).unwrap();
+
+        let board = storage.read_board(&inbox_id).unwrap();
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards.len(), 1);
+        assert!(cols[0].cards[0].content.contains("card B"));
+    }
+
+    #[test]
+    fn test_delete_card_persists_to_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let boards_dir = dir.path().join("boards");
+        let pending_path = dir.path().join("ShareExtension/pending.json");
+
+        {
+            let storage = IosStorage::new(boards_dir.clone(), pending_path.clone()).unwrap();
+            let inbox_id = storage.inbox_board_id();
+            storage.add_card(&inbox_id, 0, "will be deleted").unwrap();
+            storage.add_card(&inbox_id, 0, "will remain").unwrap();
+            storage.delete_card(&inbox_id, 0, 0).unwrap();
+        }
+
+        {
+            let storage = IosStorage::new(boards_dir, pending_path).unwrap();
+            let inbox_id = storage.inbox_board_id();
+            let board = storage.read_board(&inbox_id).unwrap();
+            let cols = board.all_columns();
+            assert_eq!(cols[0].cards.len(), 1);
+            assert!(cols[0].cards[0].content.contains("will remain"));
+        }
+    }
+
+    #[test]
+    fn test_delete_card_nonexistent_board() {
+        let (storage, _dir) = temp_storage();
+
+        let result = storage.delete_card("no_such_board", 0, 0);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::BoardNotFound(_) => {}
+            other => panic!("Expected BoardNotFound error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_delete_card_column_out_of_range() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+
+        let result = storage.delete_card(&inbox_id, 99, 0);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::ColumnOutOfRange { index, .. } => {
+                assert_eq!(index, 99);
+            }
+            other => panic!("Expected ColumnOutOfRange error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_delete_card_card_index_out_of_range() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+
+        let result = storage.delete_card(&inbox_id, 0, 10);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::InvalidBoard(msg) => {
+                assert!(msg.contains("Card index"), "Expected card-index message, got: {}", msg);
+            }
+            other => panic!("Expected InvalidBoard (card index) error, got: {:?}", other),
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // get_board (read_board)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_get_board_returns_inbox() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+
+        let board = storage.read_board(&inbox_id);
+        assert!(board.is_some());
+        let board = board.unwrap();
+        assert!(board.title == "Inbox" || board.title == "inbox");
+        // Inbox board has 3 columns: Captured, Tagged, Archived
+        assert_eq!(board.all_columns().len(), 3);
+    }
+
+    #[test]
+    fn test_get_board_returns_created_board() {
+        let (storage, _dir) = temp_storage();
+        let id = storage.create_board("Shopping List").unwrap();
+
+        let board = storage.read_board(&id);
+        assert!(board.is_some());
+        let board = board.unwrap();
+        assert_eq!(board.title, "Shopping List");
+        // Default created board has 2 columns: Inbox, Done
+        assert_eq!(board.all_columns().len(), 2);
+    }
+
+    #[test]
+    fn test_get_board_nonexistent_returns_none() {
+        let (storage, _dir) = temp_storage();
+
+        let board = storage.read_board("does_not_exist");
+        assert!(board.is_none());
+    }
+
+    #[test]
+    fn test_get_board_after_adding_cards() {
+        let (storage, _dir) = temp_storage();
+        let id = storage.create_board("Work").unwrap();
+        storage.add_card(&id, 0, "task 1").unwrap();
+        storage.add_card(&id, 0, "task 2").unwrap();
+        storage.add_card(&id, 1, "done task").unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards.len(), 2);
+        assert_eq!(cols[1].cards.len(), 1);
+        assert!(cols[0].cards[0].content.contains("task 1"));
+        assert!(cols[0].cards[1].content.contains("task 2"));
+        assert!(cols[1].cards[0].content.contains("done task"));
+    }
+
+    // ---------------------------------------------------------------
+    // Edge cases
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_add_card_to_nonexistent_board() {
+        let (storage, _dir) = temp_storage();
+
+        let result = storage.add_card("no_such_board", 0, "orphan card");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::BoardNotFound(_) => {}
+            other => panic!("Expected BoardNotFound error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_add_card_to_invalid_column_index() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+
+        let result = storage.add_card(&inbox_id, 99, "card");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            StorageError::ColumnOutOfRange { index, .. } => {
+                assert_eq!(index, 99);
+            }
+            other => panic!("Expected ColumnOutOfRange error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_create_board_duplicate_name_returns_same_id() {
+        let (storage, _dir) = temp_storage();
+        let id1 = storage.create_board("Duplicate").unwrap();
+        let id2 = storage.create_board("Duplicate").unwrap();
+
+        // create_board returns the existing board_id when a duplicate name is used
+        assert_eq!(id1, id2);
+        // Still only 2 boards total (inbox + Duplicate)
+        assert_eq!(storage.list_boards().len(), 2);
+    }
+
+    #[test]
+    fn test_create_board_special_characters_in_name() {
+        let (storage, _dir) = temp_storage();
+        let id = storage.create_board("My Board! @#$%").unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert_eq!(board.title, "My Board! @#$%");
+        // Special characters (except space, hyphen, alphanumeric) become underscores in filename
+        assert_eq!(storage.list_boards().len(), 2);
+    }
 }
