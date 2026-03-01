@@ -31,6 +31,64 @@ function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = doc
 function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn')); }
 function getElLogCloseBtn() { return elLogCloseBtn || (elLogCloseBtn = document.getElementById('log-close-btn')); }
 
+var elBoardList = null;
+var elBoardHeader = null;
+var elColumnsContainer = null;
+var elSearchResults = null;
+var elEmptyState = null;
+var elConnectionDot = null;
+var elMainContent = null;
+var elLayout = null;
+var elSidebar = null;
+var elSidebarDashboardDivider = null;
+var elSidebarWidthDivider = null;
+var elDashboardRoot = null;
+var elDashboardSearchInput = null;
+var elDashboardSearchBtn = null;
+var elDashboardScopeSelect = null;
+var elDashboardPinBtn = null;
+var elInspectorBtn = null;
+var elDashboardPinnedList = null;
+var elDashboardResultsList = null;
+var elDashboardDeadlineList = null;
+var elDashboardOverdueList = null;
+var elMgmtPanel = null;
+var elMgmtPanelBody = null;
+var elBtnSidebarSync = null;
+var elMgmtClose = null;
+var elHeaderActions = null;
+var elSidebarLockBtn = null;
+var elSidebarHeader = null;
+
+function getElBoardList() { return elBoardList || (elBoardList = document.getElementById('board-list')); }
+function getElBoardHeader() { return elBoardHeader || (elBoardHeader = document.getElementById('board-header')); }
+function getElColumnsContainer() { return elColumnsContainer || (elColumnsContainer = document.getElementById('columns-container')); }
+function getElSearchResults() { return elSearchResults || (elSearchResults = document.getElementById('search-results')); }
+function getElEmptyState() { return elEmptyState || (elEmptyState = document.getElementById('empty-state')); }
+function getElConnectionDot() { return elConnectionDot || (elConnectionDot = document.getElementById('connection-dot')); }
+function getElMainContent() { return elMainContent || (elMainContent = document.getElementById('main-content')); }
+function getElLayout() { return elLayout || (elLayout = document.querySelector('.layout')); }
+function getElSidebar() { return elSidebar || (elSidebar = document.querySelector('.sidebar')); }
+function getElSidebarDashboardDivider() { return elSidebarDashboardDivider || (elSidebarDashboardDivider = document.getElementById('sidebar-dashboard-divider')); }
+function getElSidebarWidthDivider() { return elSidebarWidthDivider || (elSidebarWidthDivider = document.getElementById('sidebar-width-divider')); }
+function getElDashboardRoot() { return elDashboardRoot || (elDashboardRoot = document.getElementById('sidebar-dashboard')); }
+function getElDashboardSearchInput() { return elDashboardSearchInput || (elDashboardSearchInput = document.getElementById('dashboard-search-input')); }
+function getElDashboardSearchBtn() { return elDashboardSearchBtn || (elDashboardSearchBtn = document.getElementById('btn-dashboard-search')); }
+function getElDashboardScopeSelect() { return elDashboardScopeSelect || (elDashboardScopeSelect = document.getElementById('dashboard-scope-select')); }
+function getElDashboardPinBtn() { return elDashboardPinBtn || (elDashboardPinBtn = document.getElementById('btn-dashboard-pin')); }
+function getElInspectorBtn() { return elInspectorBtn || (elInspectorBtn = document.getElementById('btn-inspector')); }
+function getElDashboardPinnedList() { return elDashboardPinnedList || (elDashboardPinnedList = document.getElementById('dashboard-pinned-list')); }
+function getElDashboardResultsList() { return elDashboardResultsList || (elDashboardResultsList = document.getElementById('dashboard-results-list')); }
+function getElDashboardDeadlineList() { return elDashboardDeadlineList || (elDashboardDeadlineList = document.getElementById('dashboard-deadline-list')); }
+function getElDashboardOverdueList() { return elDashboardOverdueList || (elDashboardOverdueList = document.getElementById('dashboard-overdue-list')); }
+function getElMgmtPanel() { return elMgmtPanel || (elMgmtPanel = document.getElementById('mgmt-panel')); }
+function getElMgmtPanelBody() { return elMgmtPanelBody || (elMgmtPanelBody = document.getElementById('mgmt-panel-body')); }
+function getElBtnSidebarSync() { return elBtnSidebarSync || (elBtnSidebarSync = document.getElementById('btn-sidebar-sync')); }
+function getElMgmtClose() { return elMgmtClose || (elMgmtClose = document.getElementById('mgmt-close')); }
+function getElHeaderActions() { return elHeaderActions || (elHeaderActions = document.querySelector('.header-actions')); }
+function getElSidebarLockBtn() { return elSidebarLockBtn || (elSidebarLockBtn = document.getElementById('btn-sidebar-lock')); }
+function getElSidebarHeader() { var s = getElSidebar(); return elSidebarHeader || (elSidebarHeader = s ? s.querySelector('.sidebar-header') : null); }
+
 function normalizeLogMessage(message) {
   if (message == null) return String(message);
   if (typeof message === 'string') return message;
@@ -599,38 +657,11 @@ const LexeraDashboard = (function () {
     applyTheme(currentThemeId || 'lexera');
   });
 
-  // DOM refs
-  const $boardList = document.getElementById('board-list');
-  const $boardHeader = document.getElementById('board-header');
-  const $columnsContainer = document.getElementById('columns-container');
-  const $searchResults = document.getElementById('search-results');
-  const $emptyState = document.getElementById('empty-state');
+  // DOM refs — static elements use lazy-init getters (see top of file)
+  // Dynamic elements (not in index.html) still need local lookup:
   const $searchContainer = document.querySelector('.search-container');
   const $searchInput = document.getElementById('search-input');
   const $searchToggleBtn = document.getElementById('btn-search-toggle');
-  const $connectionDot = document.getElementById('connection-dot');
-  const $mainContent = document.getElementById('main-content');
-  const $layout = document.querySelector('.layout');
-  const $sidebar = document.querySelector('.sidebar');
-  const $sidebarDashboardDivider = document.getElementById('sidebar-dashboard-divider');
-  const $sidebarWidthDivider = document.getElementById('sidebar-width-divider');
-  const $dashboardRoot = document.getElementById('sidebar-dashboard');
-  const $dashboardSearchInput = document.getElementById('dashboard-search-input');
-  const $dashboardSearchBtn = document.getElementById('btn-dashboard-search');
-  const $dashboardScopeSelect = document.getElementById('dashboard-scope-select');
-  const $dashboardPinBtn = document.getElementById('btn-dashboard-pin');
-  const $inspectorBtn = document.getElementById('btn-inspector');
-  const $dashboardPinnedList = document.getElementById('dashboard-pinned-list');
-  const $dashboardResultsList = document.getElementById('dashboard-results-list');
-  const $dashboardDeadlineList = document.getElementById('dashboard-deadline-list');
-  const $dashboardOverdueList = document.getElementById('dashboard-overdue-list');
-  const $mgmtPanel = document.getElementById('mgmt-panel');
-  const $mgmtPanelBody = document.getElementById('mgmt-panel-body');
-  const $btnSidebarSync = document.getElementById('btn-sidebar-sync');
-  const $mgmtClose = document.getElementById('mgmt-close');
-  const $headerActions = document.querySelector('.header-actions');
-  const $sidebarHeader = $sidebar ? $sidebar.querySelector('.sidebar-header') : null;
-  const $sidebarLockBtn = document.getElementById('btn-sidebar-lock');
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
@@ -938,7 +969,7 @@ const LexeraDashboard = (function () {
 
   function saveFoldState(boardId) {
     var folded = [];
-    var cols = $columnsContainer.querySelectorAll('.column[data-col-title]');
+    var cols = getElColumnsContainer().querySelectorAll('.column[data-col-title]');
     for (var i = 0; i < cols.length; i++) {
       if (cols[i].classList.contains('folded')) {
         folded.push(cols[i].getAttribute('data-col-title'));
@@ -948,7 +979,7 @@ const LexeraDashboard = (function () {
 
     // Also save row/stack fold states for new format
     var rowFolded = [];
-    var rows = $columnsContainer.querySelectorAll('.board-row[data-row-title]');
+    var rows = getElColumnsContainer().querySelectorAll('.board-row[data-row-title]');
     for (var i = 0; i < rows.length; i++) {
       if (rows[i].classList.contains('folded')) {
         rowFolded.push(rows[i].getAttribute('data-row-title'));
@@ -957,7 +988,7 @@ const LexeraDashboard = (function () {
     localStorage.setItem('lexera-row-fold:' + boardId, JSON.stringify(rowFolded));
 
     var stackFolded = [];
-    var stacks = $columnsContainer.querySelectorAll('.board-stack[data-stack-title]');
+    var stacks = getElColumnsContainer().querySelectorAll('.board-stack[data-stack-title]');
     for (var i = 0; i < stacks.length; i++) {
       if (stacks[i].classList.contains('folded')) {
         stackFolded.push(stacks[i].getAttribute('data-stack-title'));
@@ -1245,30 +1276,30 @@ const LexeraDashboard = (function () {
   }
 
   function applySidebarSectionLayout() {
-    if (!$sidebar || !$boardList) return;
-    var dashboardHidden = !$dashboardRoot || $dashboardRoot.classList.contains('hidden');
+    if (!getElSidebar() || !getElBoardList()) return;
+    var dashboardHidden = !getElDashboardRoot() || getElDashboardRoot().classList.contains('hidden');
 
     if (dashboardHidden) {
-      if ($sidebarDashboardDivider) $sidebarDashboardDivider.classList.add('hidden');
-      $boardList.style.flex = '1 1 auto';
-      $boardList.style.height = '';
-      if ($dashboardRoot) {
-        $dashboardRoot.style.flex = '';
-        $dashboardRoot.style.height = '';
+      if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.add('hidden');
+      getElBoardList().style.flex = '1 1 auto';
+      getElBoardList().style.height = '';
+      if (getElDashboardRoot()) {
+        getElDashboardRoot().style.flex = '';
+        getElDashboardRoot().style.height = '';
       }
       return;
     }
 
-    if ($sidebarDashboardDivider) $sidebarDashboardDivider.classList.remove('hidden');
+    if (getElSidebarDashboardDivider()) getElSidebarDashboardDivider().classList.remove('hidden');
     sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
 
-    var sidebarHeight = $sidebar.clientHeight || 0;
-    var headerHeight = $sidebarHeader ? $sidebarHeader.offsetHeight : 0;
-    var dividerHeight = $sidebarDashboardDivider ? ($sidebarDashboardDivider.offsetHeight || 8) : 0;
+    var sidebarHeight = getElSidebar().clientHeight || 0;
+    var headerHeight = getElSidebarHeader() ? getElSidebarHeader().offsetHeight : 0;
+    var dividerHeight = getElSidebarDashboardDivider() ? (getElSidebarDashboardDivider().offsetHeight || 8) : 0;
     var available = sidebarHeight - headerHeight - dividerHeight;
     if (available <= 0) return;
 
-    var styles = window.getComputedStyle($sidebar);
+    var styles = window.getComputedStyle(getElSidebar());
     var hierarchyMin = parseFloat(styles.getPropertyValue('--sidebar-hierarchy-min')) || 140;
     var dashboardMin = parseFloat(styles.getPropertyValue('--sidebar-dashboard-min')) || 180;
     var minSum = hierarchyMin + dashboardMin;
@@ -1284,31 +1315,31 @@ const LexeraDashboard = (function () {
     boardHeight = Math.max(minBoard, Math.min(maxBoard, boardHeight));
     var dashboardHeight = Math.max(0, available - boardHeight);
 
-    $boardList.style.flex = '0 0 ' + boardHeight + 'px';
-    $boardList.style.height = boardHeight + 'px';
-    if ($dashboardRoot) {
-      $dashboardRoot.style.flex = '0 0 ' + dashboardHeight + 'px';
-      $dashboardRoot.style.height = dashboardHeight + 'px';
+    getElBoardList().style.flex = '0 0 ' + boardHeight + 'px';
+    getElBoardList().style.height = boardHeight + 'px';
+    if (getElDashboardRoot()) {
+      getElDashboardRoot().style.flex = '0 0 ' + dashboardHeight + 'px';
+      getElDashboardRoot().style.height = dashboardHeight + 'px';
     }
   }
 
   function setupSidebarSectionResize() {
-    if (!$sidebar || !$sidebarDashboardDivider) return;
+    if (!getElSidebar() || !getElSidebarDashboardDivider()) return;
     sidebarSplitRatio = normalizeSidebarSplitRatio(sidebarSplitRatio);
     applySidebarSectionLayout();
     window.addEventListener('resize', applySidebarSectionLayout);
 
-    bindPointerDividerDrag($sidebarDashboardDivider, {
+    bindPointerDividerDrag(getElSidebarDashboardDivider(), {
       canStart: function () {
-        return !!$dashboardRoot && !$dashboardRoot.classList.contains('hidden');
+        return !!getElDashboardRoot() && !getElDashboardRoot().classList.contains('hidden');
       },
       onStart: function () {
-        var sidebarRect = $sidebar.getBoundingClientRect();
-        var headerBottom = $sidebarHeader ? $sidebarHeader.getBoundingClientRect().bottom : sidebarRect.top;
-        var dividerHeight = $sidebarDashboardDivider.offsetHeight || 8;
+        var sidebarRect = getElSidebar().getBoundingClientRect();
+        var headerBottom = getElSidebarHeader() ? getElSidebarHeader().getBoundingClientRect().bottom : sidebarRect.top;
+        var dividerHeight = getElSidebarDashboardDivider().offsetHeight || 8;
         var trackStart = headerBottom;
         var trackSize = sidebarRect.height - (headerBottom - sidebarRect.top) - dividerHeight;
-        $sidebar.classList.add('resizing-sections');
+        getElSidebar().classList.add('resizing-sections');
         return {
           trackStart: trackStart,
           trackSize: Math.max(1, trackSize)
@@ -1320,7 +1351,7 @@ const LexeraDashboard = (function () {
         applySidebarSectionLayout();
       },
       onEnd: function () {
-        $sidebar.classList.remove('resizing-sections');
+        getElSidebar().classList.remove('resizing-sections');
         localStorage.setItem('lexera-sidebar-split-ratio', String(normalizeSidebarSplitRatio(sidebarSplitRatio)));
         applySidebarSectionLayout();
       },
@@ -1333,14 +1364,14 @@ const LexeraDashboard = (function () {
   }
 
   function applySidebarWidth() {
-    if (!$sidebar) return;
+    if (!getElSidebar()) return;
     if (sidebarWidth > 0) {
       document.documentElement.style.setProperty('--sidebar-width', sidebarWidth + 'px');
     }
   }
 
   function setupSidebarWidthResize() {
-    if (!$sidebar || !$sidebarWidthDivider || !$layout) return;
+    if (!getElSidebar() || !getElSidebarWidthDivider() || !getElLayout()) return;
     var SIDEBAR_MIN = 180;
     var SIDEBAR_MAX = 600;
     var SIDEBAR_DEFAULT = 300;
@@ -1348,10 +1379,10 @@ const LexeraDashboard = (function () {
 
     applySidebarWidth();
 
-    bindPointerDividerDrag($sidebarWidthDivider, {
+    bindPointerDividerDrag(getElSidebarWidthDivider(), {
       onStart: function () {
-        var sidebarRect = $sidebar.getBoundingClientRect();
-        $layout.classList.add('resizing-sidebar-width');
+        var sidebarRect = getElSidebar().getBoundingClientRect();
+        getElLayout().classList.add('resizing-sidebar-width');
         return { left: sidebarRect.left };
       },
       onMove: function (ev, ctx) {
@@ -1363,7 +1394,7 @@ const LexeraDashboard = (function () {
         applySidebarSectionLayout();
       },
       onEnd: function () {
-        $layout.classList.remove('resizing-sidebar-width');
+        getElLayout().classList.remove('resizing-sidebar-width');
         localStorage.setItem('lexera-sidebar-width', String(sidebarWidth));
         applySidebarSectionLayout();
       },
@@ -1606,7 +1637,7 @@ const LexeraDashboard = (function () {
   }
 
   function ensureSplitRoot() {
-    if (splitRootEl || !$layout) return splitRootEl;
+    if (splitRootEl || !getElLayout()) return splitRootEl;
     splitRootEl = document.createElement('div');
     splitRootEl.id = 'split-root';
     splitRootEl.className = 'split-root';
@@ -1663,7 +1694,7 @@ const LexeraDashboard = (function () {
         }
       });
     }
-    $layout.appendChild(splitRootEl);
+    getElLayout().appendChild(splitRootEl);
     updateActiveSplitPaneUi();
     return splitRootEl;
   }
@@ -1703,7 +1734,7 @@ const LexeraDashboard = (function () {
       if (splitRootEl) {
         splitRootEl.classList.remove('active', 'vertical', 'horizontal');
       }
-      if ($mainContent) $mainContent.classList.remove('hidden');
+      if (getElMainContent()) getElMainContent().classList.remove('hidden');
       if (activeBoardId && !searchMode) loadBoard(activeBoardId);
       else renderMainView();
       saveSplitState();
@@ -1719,7 +1750,7 @@ const LexeraDashboard = (function () {
     root.classList.toggle('vertical', splitViewMode === 'vertical');
     root.classList.toggle('horizontal', splitViewMode === 'horizontal');
     applySplitRatioLayout();
-    if ($mainContent) $mainContent.classList.add('hidden');
+    if (getElMainContent()) getElMainContent().classList.add('hidden');
     refreshSplitFrames(!!forceReload);
   }
 
@@ -1754,7 +1785,7 @@ const LexeraDashboard = (function () {
     activeSplitPane = normalizeSplitPane(activeSplitPane);
     splitRatios.vertical = normalizeSplitRatio(splitRatios.vertical);
     splitRatios.horizontal = normalizeSplitRatio(splitRatios.horizontal);
-    if (!$headerActions) return;
+    if (!getElHeaderActions()) return;
     splitToggleBtn = document.getElementById('btn-split-toggle');
     splitOrientationBtn = document.getElementById('btn-split-orientation');
     if (!splitToggleBtn) {
@@ -1773,12 +1804,12 @@ const LexeraDashboard = (function () {
     }
 
     // Keep split controls anchored at top-right (before connection indicator).
-    if ($connectionDot && $connectionDot.parentElement === $headerActions) {
-      $headerActions.insertBefore(splitToggleBtn, $connectionDot);
-      $headerActions.insertBefore(splitOrientationBtn, $connectionDot);
+    if (getElConnectionDot() && getElConnectionDot().parentElement === getElHeaderActions()) {
+      getElHeaderActions().insertBefore(splitToggleBtn, getElConnectionDot());
+      getElHeaderActions().insertBefore(splitOrientationBtn, getElConnectionDot());
     } else {
-      $headerActions.appendChild(splitToggleBtn);
-      $headerActions.appendChild(splitOrientationBtn);
+      getElHeaderActions().appendChild(splitToggleBtn);
+      getElHeaderActions().appendChild(splitOrientationBtn);
     }
 
     splitToggleBtn.addEventListener('click', function () {
@@ -2000,7 +2031,7 @@ const LexeraDashboard = (function () {
 
   function setDashboardScope(scope) {
     dashboardState.scope = normalizeDashboardScope(scope);
-    if ($dashboardScopeSelect) $dashboardScopeSelect.value = dashboardState.scope;
+    if (getElDashboardScopeSelect()) getElDashboardScopeSelect().value = dashboardState.scope;
     persistDashboardPrefs();
   }
 
@@ -2008,8 +2039,8 @@ const LexeraDashboard = (function () {
     options = options || {};
     var next = String(query || '').trim();
     dashboardState.query = next;
-    if ($dashboardSearchInput && $dashboardSearchInput.value !== next) {
-      $dashboardSearchInput.value = next;
+    if (getElDashboardSearchInput() && getElDashboardSearchInput().value !== next) {
+      getElDashboardSearchInput().value = next;
     }
     if (dashboardState.pinnedQueries.indexOf(next) !== -1) {
       dashboardState.activePinnedQuery = next;
@@ -2093,13 +2124,13 @@ const LexeraDashboard = (function () {
   }
 
   function renderDashboardPinnedList() {
-    if (!$dashboardPinnedList) return;
-    $dashboardPinnedList.innerHTML = '';
+    if (!getElDashboardPinnedList()) return;
+    getElDashboardPinnedList().innerHTML = '';
     if (!dashboardState.pinnedQueries || dashboardState.pinnedQueries.length === 0) {
       var empty = document.createElement('div');
       empty.className = 'dashboard-empty';
       empty.textContent = 'No pinned searches';
-      $dashboardPinnedList.appendChild(empty);
+      getElDashboardPinnedList().appendChild(empty);
       return;
     }
 
@@ -2143,7 +2174,7 @@ const LexeraDashboard = (function () {
           setDashboardQuery(query, { keepPinnedSelection: true });
           scheduleDashboardRefresh(0);
         });
-        $dashboardPinnedList.appendChild(item);
+        getElDashboardPinnedList().appendChild(item);
       })(dashboardState.pinnedQueries[i]);
     }
   }
@@ -2194,23 +2225,23 @@ const LexeraDashboard = (function () {
   }
 
   function renderDashboard() {
-    if (!$dashboardRoot) return;
+    if (!getElDashboardRoot()) return;
     var scopeHint = scopeHintForDashboard();
     var loadingNote = dashboardState.loading ? 'Loading...' : null;
 
     renderDashboardPinnedList();
     renderDashboardResultItems(
-      $dashboardResultsList,
+      getElDashboardResultsList(),
       dashboardState.results,
       scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search')
     );
     renderDashboardResultItems(
-      $dashboardDeadlineList,
+      getElDashboardDeadlineList(),
       dashboardState.deadlines,
       scopeHint || loadingNote || 'No open tasks with due dates'
     );
     renderDashboardResultItems(
-      $dashboardOverdueList,
+      getElDashboardOverdueList(),
       dashboardState.overdue,
       scopeHint || loadingNote || 'No overdue tasks'
     );
@@ -2218,7 +2249,7 @@ const LexeraDashboard = (function () {
 
   async function refreshDashboardData(options) {
     options = options || {};
-    if (!$dashboardRoot || embeddedMode) return;
+    if (!getElDashboardRoot() || embeddedMode) return;
     if (!connected) {
       dashboardState.loading = false;
       dashboardState.results = [];
@@ -2263,7 +2294,7 @@ const LexeraDashboard = (function () {
   }
 
   function scheduleDashboardRefresh(delayMs) {
-    if (!$dashboardRoot || embeddedMode) return;
+    if (!getElDashboardRoot() || embeddedMode) return;
     clearTimeout(dashboardRefreshTimer);
     dashboardRefreshTimer = setTimeout(function () {
       refreshDashboardData();
@@ -2271,9 +2302,9 @@ const LexeraDashboard = (function () {
   }
 
   function setupDashboardControls() {
-    if (!$dashboardRoot) return;
+    if (!getElDashboardRoot()) return;
     if (embeddedMode) {
-      $dashboardRoot.classList.add('hidden');
+      getElDashboardRoot().classList.add('hidden');
       applySidebarSectionLayout();
       return;
     }
@@ -2284,21 +2315,21 @@ const LexeraDashboard = (function () {
       dashboardState.activePinnedQuery = '';
     }
 
-    if ($dashboardSearchInput) $dashboardSearchInput.value = dashboardState.query || '';
-    if ($dashboardScopeSelect) $dashboardScopeSelect.value = dashboardState.scope;
+    if (getElDashboardSearchInput()) getElDashboardSearchInput().value = dashboardState.query || '';
+    if (getElDashboardScopeSelect()) getElDashboardScopeSelect().value = dashboardState.scope;
 
-    if ($dashboardSearchInput) {
-      $dashboardSearchInput.addEventListener('input', function () {
-        setDashboardQuery($dashboardSearchInput.value);
+    if (getElDashboardSearchInput()) {
+      getElDashboardSearchInput().addEventListener('input', function () {
+        setDashboardQuery(getElDashboardSearchInput().value);
         clearTimeout(dashboardSearchDebounce);
         dashboardSearchDebounce = setTimeout(function () {
           refreshDashboardData({ deferRender: true });
         }, 220);
       });
-      $dashboardSearchInput.addEventListener('keydown', function (e) {
+      getElDashboardSearchInput().addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
           e.preventDefault();
-          setDashboardQuery($dashboardSearchInput.value);
+          setDashboardQuery(getElDashboardSearchInput().value);
           refreshDashboardData({ deferRender: true });
         } else if (e.key === 'Escape') {
           e.preventDefault();
@@ -2308,22 +2339,22 @@ const LexeraDashboard = (function () {
       });
     }
 
-    if ($dashboardSearchBtn) {
-      $dashboardSearchBtn.addEventListener('click', function () {
-        setDashboardQuery($dashboardSearchInput ? $dashboardSearchInput.value : dashboardState.query);
+    if (getElDashboardSearchBtn()) {
+      getElDashboardSearchBtn().addEventListener('click', function () {
+        setDashboardQuery(getElDashboardSearchInput() ? getElDashboardSearchInput().value : dashboardState.query);
         refreshDashboardData({ deferRender: true });
       });
     }
 
-    if ($dashboardScopeSelect) {
-      $dashboardScopeSelect.addEventListener('change', function () {
-        setDashboardScope($dashboardScopeSelect.value);
+    if (getElDashboardScopeSelect()) {
+      getElDashboardScopeSelect().addEventListener('change', function () {
+        setDashboardScope(getElDashboardScopeSelect().value);
         refreshDashboardData({ deferRender: true });
       });
     }
 
-    if ($dashboardPinBtn) {
-      $dashboardPinBtn.addEventListener('click', function () {
+    if (getElDashboardPinBtn()) {
+      getElDashboardPinBtn().addEventListener('click', function () {
         var query = String(dashboardState.query || '').trim();
         if (!query) {
           showNotification('Enter a query to pin');
@@ -2344,7 +2375,7 @@ const LexeraDashboard = (function () {
       });
     }
 
-    $dashboardRoot.addEventListener('click', function (e) {
+    getElDashboardRoot().addEventListener('click', function (e) {
       var chip = e.target.closest('.dashboard-chip[data-dashboard-query]');
       if (!chip) return;
       e.preventDefault();
@@ -2381,18 +2412,18 @@ const LexeraDashboard = (function () {
     document.addEventListener('keydown', handleKeyNavigation);
 
     // Management panel close button
-    if ($mgmtClose) $mgmtClose.addEventListener('click', function () {
+    if (getElMgmtClose()) getElMgmtClose().addEventListener('click', function () {
       closeManagementPanel();
     });
 
     // External file drop on columns container
-    $columnsContainer.addEventListener('dragover', function (e) {
+    getElColumnsContainer().addEventListener('dragover', function (e) {
       if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
       }
     });
-    $columnsContainer.addEventListener('drop', function (e) {
+    getElColumnsContainer().addEventListener('drop', function (e) {
       if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
       if (!activeBoardId) return;
       e.preventDefault();
@@ -2413,22 +2444,22 @@ const LexeraDashboard = (function () {
     });
 
     // Sidebar drop: add .md files from OS drag-and-drop when unlocked.
-    if ($sidebar) {
-      $sidebar.addEventListener('dragover', function (e) {
+    if (getElSidebar()) {
+      getElSidebar().addEventListener('dragover', function (e) {
         if (hierarchyLocked) return;
         if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
-          $sidebar.classList.add('drop-zone-active');
+          getElSidebar().classList.add('drop-zone-active');
         }
       });
-      $sidebar.addEventListener('dragleave', function (e) {
-        if (!e.relatedTarget || !$sidebar.contains(e.relatedTarget)) {
-          $sidebar.classList.remove('drop-zone-active');
+      getElSidebar().addEventListener('dragleave', function (e) {
+        if (!e.relatedTarget || !getElSidebar().contains(e.relatedTarget)) {
+          getElSidebar().classList.remove('drop-zone-active');
         }
       });
-      $sidebar.addEventListener('drop', function (e) {
-        $sidebar.classList.remove('drop-zone-active');
+      getElSidebar().addEventListener('drop', function (e) {
+        getElSidebar().classList.remove('drop-zone-active');
         if (hierarchyLocked) return;
         var dt = e.dataTransfer;
         if (!dt) return;
@@ -2444,23 +2475,23 @@ const LexeraDashboard = (function () {
       tauriListen('tauri://drag-over', function (event) {
         if (hierarchyLocked) return;
         var pos = event.payload.position;
-        if ($sidebar && pos) {
-          if (isPositionInsideElement(pos, $sidebar)) {
-            $sidebar.classList.add('drop-zone-active');
+        if (getElSidebar() && pos) {
+          if (isPositionInsideElement(pos, getElSidebar())) {
+            getElSidebar().classList.add('drop-zone-active');
           } else {
-            $sidebar.classList.remove('drop-zone-active');
+            getElSidebar().classList.remove('drop-zone-active');
           }
         }
       });
       tauriListen('tauri://drag-leave', function () {
-        if ($sidebar) $sidebar.classList.remove('drop-zone-active');
+        if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
       });
       tauriListen('tauri://drag-drop', function (event) {
-        if ($sidebar) $sidebar.classList.remove('drop-zone-active');
+        if (getElSidebar()) getElSidebar().classList.remove('drop-zone-active');
         if (hierarchyLocked) return;
         var paths = event.payload.paths || [];
         var pos = event.payload.position;
-        if ($sidebar && pos && !isPositionInsideElement(pos, $sidebar)) {
+        if (getElSidebar() && pos && !isPositionInsideElement(pos, getElSidebar())) {
           return;
         }
         addBoardsByPath(paths);
@@ -2502,7 +2533,7 @@ const LexeraDashboard = (function () {
   }
 
   function navigateCards(key) {
-    var allCards = $columnsContainer.querySelectorAll('.card');
+    var allCards = getElColumnsContainer().querySelectorAll('.card');
     if (allCards.length === 0) return;
 
     if (!focusedCardEl || !focusedCardEl.isConnected) {
@@ -2515,12 +2546,12 @@ const LexeraDashboard = (function () {
 
     if (key === 'ArrowDown') {
       // Next card in same column
-      var next = $columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
+      var next = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
       if (next) focusCard(next);
     } else if (key === 'ArrowUp') {
       // Previous card in same column
       if (cj > 0) {
-        var prev = $columnsContainer.querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
+        var prev = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
         if (prev) focusCard(prev);
       }
     } else if (key === 'ArrowRight' || key === 'ArrowLeft') {
@@ -2531,10 +2562,10 @@ const LexeraDashboard = (function () {
       var targetPos = key === 'ArrowRight' ? curPos + 1 : curPos - 1;
       if (targetPos >= 0 && targetPos < colIndices.length) {
         var targetColIdx = colIndices[targetPos];
-        var target = $columnsContainer.querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
+        var target = getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="' + cj + '"]');
         if (!target) {
           // Try last card in target column
-          var colCards = $columnsContainer.querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
+          var colCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + targetColIdx + '"]');
           if (colCards.length > 0) target = colCards[colCards.length - 1];
         }
         if (target) focusCard(target);
@@ -3079,7 +3110,7 @@ const LexeraDashboard = (function () {
   function setConnected(state) {
     if (state && !connected) loadTemplatesOnce();
     connected = state;
-    $connectionDot.classList.toggle('connected', state);
+    getElConnectionDot().classList.toggle('connected', state);
   }
 
   // --- Board List ---
@@ -3482,11 +3513,11 @@ const LexeraDashboard = (function () {
   }
 
   function renderBoardList() {
-    $boardList.innerHTML = '';
+    getElBoardList().innerHTML = '';
     var orderedBoards = getOrderedItems(boards, 'lexera-board-order', function (b) { return b.id; });
     var expandedIds = getSidebarExpandedBoards();
 
-    if ($btnSidebarSync) $btnSidebarSync.classList.toggle('active', sidebarSyncEnabled);
+    if (getElBtnSidebarSync()) getElBtnSidebarSync().classList.toggle('active', sidebarSyncEnabled);
 
     for (var i = 0; i < orderedBoards.length; i++) {
       var board = orderedBoards[i];
@@ -3632,7 +3663,7 @@ const LexeraDashboard = (function () {
               e.stopPropagation();
               var colIdx = colNode.getAttribute('data-col-index');
               if (colIdx != null) {
-                var colEl = $columnsContainer.querySelector('.column-cards[data-col-index="' + colIdx + '"]');
+                var colEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIdx + '"]');
                 if (colEl) {
                   var column = colEl.closest('.column');
                   if (column) column.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
@@ -3648,7 +3679,7 @@ const LexeraDashboard = (function () {
               var cardColIdx = cardNode.getAttribute('data-col-index');
               var cardIdx = cardNode.getAttribute('data-card-index');
               if (cardColIdx != null && cardIdx != null) {
-                var cardEl = $columnsContainer.querySelector(
+                var cardEl = getElColumnsContainer().querySelector(
                   '.card[data-col-index="' + cardColIdx + '"][data-card-index="' + cardIdx + '"]'
                 );
                 if (cardEl) focusCard(cardEl);
@@ -3666,7 +3697,7 @@ const LexeraDashboard = (function () {
             }
           });
 
-          // Tree DnD is handled by the pointer-based drag system (mousedown on $boardList)
+          // Tree DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
         }
 
         var boardRow = wrapperEl.querySelector('.board-item');
@@ -3727,10 +3758,10 @@ const LexeraDashboard = (function () {
             }
           });
         });
-        // Board DnD is handled by the pointer-based drag system (mousedown on $boardList)
+        // Board DnD is handled by the pointer-based drag system (mousedown on getElBoardList())
       })(board.id, i, wrapper, board.filePath);
 
-      $boardList.appendChild(wrapper);
+      getElBoardList().appendChild(wrapper);
     }
 
     // Remote boards section
@@ -3738,7 +3769,7 @@ const LexeraDashboard = (function () {
       var remoteDivider = document.createElement('div');
       remoteDivider.className = 'sidebar-section-divider';
       remoteDivider.innerHTML = '<span class="sidebar-section-label">Remote</span>';
-      $boardList.appendChild(remoteDivider);
+      getElBoardList().appendChild(remoteDivider);
 
       for (var ri = 0; ri < remoteBoards.length; ri++) {
         var rb = remoteBoards[ri];
@@ -3755,7 +3786,7 @@ const LexeraDashboard = (function () {
             selectBoard(boardId);
           });
         })(rb.id);
-        $boardList.appendChild(rbEl);
+        getElBoardList().appendChild(rbEl);
       }
     }
   }
@@ -3774,8 +3805,8 @@ const LexeraDashboard = (function () {
     }
 
     // Priority 2: first visible column in viewport
-    var columns = $columnsContainer.querySelectorAll('.column');
-    var containerRect = $columnsContainer.getBoundingClientRect();
+    var columns = getElColumnsContainer().querySelectorAll('.column');
+    var containerRect = getElColumnsContainer().getBoundingClientRect();
     for (var i = 0; i < columns.length; i++) {
       var rect = columns[i].getBoundingClientRect();
       if (rect.left >= containerRect.left && rect.right > containerRect.left) {
@@ -3793,15 +3824,15 @@ const LexeraDashboard = (function () {
 
   function highlightSidebarNode(selector) {
     // Remove previous highlight
-    var prev = $boardList.querySelector('.sync-highlight');
+    var prev = getElBoardList().querySelector('.sync-highlight');
     if (prev) prev.classList.remove('sync-highlight');
 
-    var node = $boardList.querySelector(selector);
+    var node = getElBoardList().querySelector(selector);
     if (!node) return;
 
     // Expand all parent .tree-children containers
     var parent = node.parentElement;
-    while (parent && parent !== $boardList) {
+    while (parent && parent !== getElBoardList()) {
       if (parent.classList.contains('tree-children') && !parent.classList.contains('expanded')) {
         parent.classList.add('expanded');
         var toggleNode = parent.previousElementSibling;
@@ -3828,15 +3859,15 @@ const LexeraDashboard = (function () {
 
   // Sidebar sync button handler
   (function () {
-    if ($btnSidebarSync) {
-      $btnSidebarSync.addEventListener('click', function (e) {
+    if (getElBtnSidebarSync()) {
+      getElBtnSidebarSync().addEventListener('click', function (e) {
         e.stopPropagation();
         sidebarSyncEnabled = !sidebarSyncEnabled;
         localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
-        $btnSidebarSync.classList.toggle('active', sidebarSyncEnabled);
+        getElBtnSidebarSync().classList.toggle('active', sidebarSyncEnabled);
         if (sidebarSyncEnabled) syncSidebarToView();
         else {
-          var prev = $boardList.querySelector('.sync-highlight');
+          var prev = getElBoardList().querySelector('.sync-highlight');
           if (prev) prev.classList.remove('sync-highlight');
         }
       });
@@ -3852,13 +3883,13 @@ const LexeraDashboard = (function () {
   }
 
   (function () {
-    updateLockButton($sidebarLockBtn);
-    if ($sidebarLockBtn) {
-      $sidebarLockBtn.addEventListener('click', function (e) {
+    updateLockButton(getElSidebarLockBtn());
+    if (getElSidebarLockBtn()) {
+      getElSidebarLockBtn().addEventListener('click', function (e) {
         e.stopPropagation();
         hierarchyLocked = !hierarchyLocked;
         localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
-        updateLockButton($sidebarLockBtn);
+        updateLockButton(getElSidebarLockBtn());
         renderBoardList();
       });
     }
@@ -3866,7 +3897,7 @@ const LexeraDashboard = (function () {
 
   // Debounced scroll sync
   var scrollSyncTimer = null;
-  $columnsContainer.addEventListener('scroll', function () {
+  getElColumnsContainer().addEventListener('scroll', function () {
     if (!sidebarSyncEnabled) return;
     clearTimeout(scrollSyncTimer);
     scrollSyncTimer = setTimeout(syncSidebarToView, 300);
@@ -4449,23 +4480,23 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    $searchResults.classList.add('hidden');
+    getElSearchResults().classList.add('hidden');
 
     if (!activeBoardData) {
       refreshHeaderFileControls();
-      $boardHeader.classList.add('hidden');
-      $columnsContainer.classList.add('hidden');
-      $emptyState.classList.remove('hidden');
-      $emptyState.innerHTML =
+      getElBoardHeader().classList.add('hidden');
+      getElColumnsContainer().classList.add('hidden');
+      getElEmptyState().classList.remove('hidden');
+      getElEmptyState().innerHTML =
         '<div class="empty-state-icon">&#9776;</div>' +
         '<div>' + (connected ? 'Select a board from the sidebar' : 'Waiting for server...') + '</div>';
       return;
     }
 
-    $emptyState.classList.add('hidden');
-    $boardHeader.classList.remove('hidden');
+    getElEmptyState().classList.add('hidden');
+    getElBoardHeader().classList.remove('hidden');
     renderBoardHeader();
-    $columnsContainer.classList.remove('hidden');
+    getElColumnsContainer().classList.remove('hidden');
     applyBoardSettings();
     updateDisplayFromFullBoard();
     renderColumns();
@@ -4506,7 +4537,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn" id="btn-collab" title="Open collaboration settings">Collab</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Board options">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
-    $boardHeader.innerHTML = html;
+    getElBoardHeader().innerHTML = html;
 
     // Refresh board-header-lifetime cached refs
     $savingIndicator = document.getElementById('saving-indicator');
@@ -4613,7 +4644,7 @@ const LexeraDashboard = (function () {
         showBoardContextMenu(rect.right, rect.bottom);
       });
     }
-    $boardHeader.addEventListener('contextmenu', function (e) {
+    getElBoardHeader().addEventListener('contextmenu', function (e) {
       e.preventDefault();
       e.stopPropagation();
       showBoardContextMenu(e.clientX, e.clientY);
@@ -4633,7 +4664,7 @@ const LexeraDashboard = (function () {
   }
 
   function areAllBoardItemsFolded() {
-    var foldables = $columnsContainer.querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
+    var foldables = getElColumnsContainer().querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
     if (foldables.length === 0) return false;
     for (var i = 0; i < foldables.length; i++) {
       if (!foldables[i].classList.contains('folded')) return false;
@@ -4717,7 +4748,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleFoldAll() {
-    var foldables = $columnsContainer.querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
+    var foldables = getElColumnsContainer().querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
     var allFolded = areAllBoardItemsFolded();
     for (var i = 0; i < foldables.length; i++) {
       if (allFolded) {
@@ -5140,17 +5171,17 @@ const LexeraDashboard = (function () {
     mgmtPanelOpen = true;
     if (options.boardId) mgmtExpandedBoardId = options.boardId;
     if (options.tab && options.boardId) mgmtActiveBoardTab[options.boardId] = options.tab;
-    if ($mgmtPanel) $mgmtPanel.classList.add('open');
+    if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
     renderManagementPanel(options.section);
   }
 
   function closeManagementPanel() {
     mgmtPanelOpen = false;
-    if ($mgmtPanel) $mgmtPanel.classList.remove('open');
+    if (getElMgmtPanel()) getElMgmtPanel().classList.remove('open');
   }
 
   async function renderManagementPanel(scrollToSection) {
-    if (!$mgmtPanelBody) return;
+    if (!getElMgmtPanelBody()) return;
 
     var html = '';
 
@@ -5238,7 +5269,7 @@ const LexeraDashboard = (function () {
 
     html += '</div>';
 
-    $mgmtPanelBody.innerHTML = html;
+    getElMgmtPanelBody().innerHTML = html;
 
     // ── Wire up events ──
 
@@ -5338,7 +5369,7 @@ const LexeraDashboard = (function () {
 
     // Scroll to section if requested
     if (scrollToSection) {
-      var sectionEl = $mgmtPanelBody.querySelector('[data-mgmt-section="' + scrollToSection + '"]');
+      var sectionEl = getElMgmtPanelBody().querySelector('[data-mgmt-section="' + scrollToSection + '"]');
       if (sectionEl) sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
@@ -5784,8 +5815,8 @@ const LexeraDashboard = (function () {
     return false;
   }
 
-  if ($inspectorBtn) {
-    $inspectorBtn.addEventListener('click', function (e) {
+  if (getElInspectorBtn()) {
+    getElInspectorBtn().addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
       toggleInspector();
@@ -5967,7 +5998,7 @@ const LexeraDashboard = (function () {
   }
 
   function clearLayoutLockStyles() {
-    var nodes = $columnsContainer.querySelectorAll('.board-row, .board-stack, .column');
+    var nodes = getElColumnsContainer().querySelectorAll('.board-row, .board-stack, .column');
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
       if (!el || !el.style) continue;
@@ -5982,8 +6013,8 @@ const LexeraDashboard = (function () {
   }
 
   function syncRenderedRowWidths() {
-    if (!$columnsContainer) return;
-    var rows = $columnsContainer.querySelectorAll('.board-row');
+    if (!getElColumnsContainer()) return;
+    var rows = getElColumnsContainer().querySelectorAll('.board-row');
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
       if (!row || row.classList.contains('layout-locked') || row.classList.contains('folded')) {
@@ -6055,45 +6086,45 @@ const LexeraDashboard = (function () {
       '--board-whitespace', '--board-layout-rows'
     ];
     for (var i = 0; i < cssProps.length; i++) {
-      $columnsContainer.style.removeProperty(cssProps[i]);
+      getElColumnsContainer().style.removeProperty(cssProps[i]);
     }
     // Reset class-based settings
-    $columnsContainer.classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
-    $columnsContainer.classList.remove('html-comments-hide', 'html-comments-dim');
-    $columnsContainer.classList.remove('layout-spacious');
-    $columnsContainer.removeAttribute('data-layout-preset');
+    getElColumnsContainer().classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
+    getElColumnsContainer().classList.remove('html-comments-hide', 'html-comments-dim');
+    getElColumnsContainer().classList.remove('layout-spacious');
+    getElColumnsContainer().removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
     currentHtmlCommentRenderMode = 'hidden';
-    $columnsContainer.classList.add('html-comments-hide');
+    getElColumnsContainer().classList.add('html-comments-hide');
 
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
     var normalizedColWidth = normalizeColumnWidth(s.columnWidth);
-    if (normalizedColWidth) $columnsContainer.style.setProperty('--board-column-width', normalizedColWidth);
-    if (s.fontSize) $columnsContainer.style.setProperty('--board-font-size', s.fontSize);
-    if (s.fontFamily) $columnsContainer.style.setProperty('--board-font-family', s.fontFamily);
-    if (s.rowHeight) $columnsContainer.style.setProperty('--board-row-height', s.rowHeight);
-    if (s.maxRowHeight) $columnsContainer.style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
-    if (s.cardMinHeight) $columnsContainer.style.setProperty('--board-card-min-height', s.cardMinHeight);
-    if (s.whitespace) $columnsContainer.style.setProperty('--board-whitespace', s.whitespace);
-    if (s.layoutRows) $columnsContainer.style.setProperty('--board-layout-rows', String(s.layoutRows));
+    if (normalizedColWidth) getElColumnsContainer().style.setProperty('--board-column-width', normalizedColWidth);
+    if (s.fontSize) getElColumnsContainer().style.setProperty('--board-font-size', s.fontSize);
+    if (s.fontFamily) getElColumnsContainer().style.setProperty('--board-font-family', s.fontFamily);
+    if (s.rowHeight) getElColumnsContainer().style.setProperty('--board-row-height', s.rowHeight);
+    if (s.maxRowHeight) getElColumnsContainer().style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
+    if (s.cardMinHeight) getElColumnsContainer().style.setProperty('--board-card-min-height', s.cardMinHeight);
+    if (s.whitespace) getElColumnsContainer().style.setProperty('--board-whitespace', s.whitespace);
+    if (s.layoutRows) getElColumnsContainer().style.setProperty('--board-layout-rows', String(s.layoutRows));
     currentTagVisibilityMode = normalizeTagVisibilityMode(s.tagVisibility);
     var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
-    if (stickyMode) $columnsContainer.classList.add('sticky-headers-' + stickyMode);
-    if (stickyMode === 'top') $columnsContainer.classList.add('sticky-headers'); // legacy alias
+    if (stickyMode) getElColumnsContainer().classList.add('sticky-headers-' + stickyMode);
+    if (stickyMode === 'top') getElColumnsContainer().classList.add('sticky-headers'); // legacy alias
     currentHtmlCommentRenderMode = normalizeHtmlCommentRenderMode(s.htmlCommentRenderMode);
-    if (currentHtmlCommentRenderMode === 'hidden') $columnsContainer.classList.add('html-comments-hide');
-    if (currentHtmlCommentRenderMode === 'dim') $columnsContainer.classList.add('html-comments-dim');
+    if (currentHtmlCommentRenderMode === 'hidden') getElColumnsContainer().classList.add('html-comments-hide');
+    if (currentHtmlCommentRenderMode === 'dim') getElColumnsContainer().classList.add('html-comments-dim');
     currentArrowKeyFocusScrollMode = normalizeArrowKeyFocusScrollMode(s.arrowKeyFocusScroll);
-    if (currentArrowKeyFocusScrollMode !== 'disabled') $columnsContainer.classList.add('focus-scroll-mode');
-    if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') $columnsContainer.classList.add('layout-spacious');
-    if (s.layoutPreset) $columnsContainer.setAttribute('data-layout-preset', s.layoutPreset);
+    if (currentArrowKeyFocusScrollMode !== 'disabled') getElColumnsContainer().classList.add('focus-scroll-mode');
+    if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') getElColumnsContainer().classList.add('layout-spacious');
+    if (s.layoutPreset) getElColumnsContainer().setAttribute('data-layout-preset', s.layoutPreset);
 
     var boardColor = resolveActiveBoardColor(s);
-    if (boardColor) $columnsContainer.style.setProperty('--board-color', boardColor);
-    if (s.boardColorDark || s.boardColor) $columnsContainer.style.setProperty('--board-color-dark', s.boardColorDark || s.boardColor);
-    if (s.boardColorLight || s.boardColor) $columnsContainer.style.setProperty('--board-color-light', s.boardColorLight || s.boardColor);
+    if (boardColor) getElColumnsContainer().style.setProperty('--board-color', boardColor);
+    if (s.boardColorDark || s.boardColor) getElColumnsContainer().style.setProperty('--board-color-dark', s.boardColorDark || s.boardColor);
+    if (s.boardColorLight || s.boardColor) getElColumnsContainer().style.setProperty('--board-color-light', s.boardColorLight || s.boardColor);
   }
 
   /**
@@ -6321,10 +6352,10 @@ const LexeraDashboard = (function () {
     unfocusCard();
     // Defensive cleanup: stale drag artifacts can inflate row widths.
     cleanupPtrDrag();
-    $columnsContainer.innerHTML = '';
+    getElColumnsContainer().innerHTML = '';
     if (!activeBoardData) return;
 
-    $columnsContainer.classList.add('new-format');
+    getElColumnsContainer().classList.add('new-format');
     renderNewFormatBoard();
     clearLayoutLockStyles();
     syncRenderedRowWidths();
@@ -6332,12 +6363,12 @@ const LexeraDashboard = (function () {
 
     flushPendingDiagramQueues();
 
-    enhanceEmbeddedContent($columnsContainer);
-    enhanceFileLinks($columnsContainer);
-    enhanceIncludeDirectives($columnsContainer);
-    enhanceColumnIncludeBadges($columnsContainer);
-    applyRenderedHtmlCommentVisibility($columnsContainer, currentHtmlCommentRenderMode);
-    applyRenderedTagVisibility($columnsContainer, currentTagVisibilityMode);
+    enhanceEmbeddedContent(getElColumnsContainer());
+    enhanceFileLinks(getElColumnsContainer());
+    enhanceIncludeDirectives(getElColumnsContainer());
+    enhanceColumnIncludeBadges(getElColumnsContainer());
+    applyRenderedHtmlCommentVisibility(getElColumnsContainer(), currentHtmlCommentRenderMode);
+    applyRenderedTagVisibility(getElColumnsContainer(), currentTagVisibilityMode);
 
     syncSidebarToView();
     updateCardEditingIndicators();
@@ -6360,7 +6391,7 @@ const LexeraDashboard = (function () {
       var emptyRows = document.createElement('div');
       emptyRows.className = 'board-level-empty board-level-empty-rows';
       emptyRows.appendChild(renderCreationSource('row', {}, { btnText: '+ Add row' }));
-      $columnsContainer.appendChild(emptyRows);
+      getElColumnsContainer().appendChild(emptyRows);
       return;
     }
 
@@ -6430,7 +6461,7 @@ const LexeraDashboard = (function () {
           e.stopPropagation();
           showRowContextMenu(e.clientX, e.clientY, rowIdx);
         });
-        // Row drag is handled by the pointer-based drag system (mousedown on $columnsContainer)
+        // Row drag is handled by the pointer-based drag system (mousedown on getElColumnsContainer())
       })(rowEl, r);
       rowEl.appendChild(rowHeader);
 
@@ -6551,7 +6582,7 @@ const LexeraDashboard = (function () {
       }
 
       rowEl.appendChild(rowContent);
-      $columnsContainer.appendChild(rowEl);
+      getElColumnsContainer().appendChild(rowEl);
     }
   }
 
@@ -6865,7 +6896,7 @@ const LexeraDashboard = (function () {
     var rootSelector = type === 'row'
       ? '.board-row[data-row-index="' + rowIdx + '"]'
       : '.board-stack[data-row-index="' + rowIdx + '"][data-stack-index="' + stackIdx + '"]';
-    var rootEl = $columnsContainer.querySelector(rootSelector);
+    var rootEl = getElColumnsContainer().querySelector(rootSelector);
     if (!rootEl) return;
 
     var titleSelector = type === 'row' ? '.board-row-title' : '.board-stack-title';
@@ -7298,7 +7329,7 @@ const LexeraDashboard = (function () {
 
   function lockBoardLayoutForDrag() {
     if (dragLayoutLocks) return;
-    var nodes = $columnsContainer.querySelectorAll('.board-row, .board-stack, .column');
+    var nodes = getElColumnsContainer().querySelectorAll('.board-row, .board-stack, .column');
     dragLayoutLocks = [];
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
@@ -7340,7 +7371,7 @@ const LexeraDashboard = (function () {
   }
 
   // Single mousedown listener on the columns container (event delegation)
-  $columnsContainer.addEventListener('mousedown', function (e) {
+  getElColumnsContainer().addEventListener('mousedown', function (e) {
     try {
     // Only left mouse button
     if (e.button !== 0) return;
@@ -7509,7 +7540,7 @@ const LexeraDashboard = (function () {
   }
 
   function getColumnCardsContainers() {
-    return $columnsContainer.querySelectorAll('.column-cards');
+    return getElColumnsContainer().querySelectorAll('.column-cards');
   }
 
   function findColumnCardsContainerAt(mx, my) {
@@ -7521,26 +7552,26 @@ const LexeraDashboard = (function () {
   }
 
   function findStackDropZoneAt(mx, my) {
-    return findNodeAtPoint($columnsContainer.querySelectorAll('.stack-drop-zone'), mx, my);
+    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.stack-drop-zone'), mx, my);
   }
 
   function findDraggableColumnAt(mx, my) {
-    return findNodeAtPoint($columnsContainer.querySelectorAll('.column:not(.dragging)'), mx, my);
+    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.column:not(.dragging)'), mx, my);
   }
 
   function findBoardStackAt(mx, my) {
-    return findNodeAtPoint($columnsContainer.querySelectorAll('.board-stack'), mx, my);
+    return findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my);
   }
 
   function clearSidebarDropHighlights() {
     removeClassFromNodeList(
-      $boardList.querySelectorAll('.tree-column.drop-target, .tree-stack.drop-target, .tree-row.drop-target, .board-item.drop-target'),
+      getElBoardList().querySelectorAll('.tree-column.drop-target, .tree-stack.drop-target, .tree-row.drop-target, .board-item.drop-target'),
       'drop-target'
     );
   }
 
   function findSidebarColumnAt(mx, my) {
-    return findNodeAtPoint($boardList.querySelectorAll('.tree-column[data-tree-drag="tree-column"]'), mx, my);
+    return findNodeAtPoint(getElBoardList().querySelectorAll('.tree-column[data-tree-drag="tree-column"]'), mx, my);
   }
 
   function getVisibleCardCountInColumn(col) {
@@ -7661,7 +7692,7 @@ const LexeraDashboard = (function () {
     // Cards from tree can only go into columns — skip stack/row/board fallbacks
     if (!isTreeCardDrag) {
       // Sidebar stack drop: append to last column in stack.
-      var sidebarStackNode = findNodeAtPoint($boardList.querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
+      var sidebarStackNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
       if (sidebarStackNode) {
         var stackBoardId = sidebarStackNode.getAttribute('data-board-id');
         var stackRowIdx = parseInt(sidebarStackNode.getAttribute('data-row-index'), 10);
@@ -7671,7 +7702,7 @@ const LexeraDashboard = (function () {
       }
 
       // Sidebar row drop: append to first non-empty stack/column in row.
-      var sidebarRowNode = findNodeAtPoint($boardList.querySelectorAll('.tree-row[data-tree-drag="tree-row"]'), mx, my);
+      var sidebarRowNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-row[data-tree-drag="tree-row"]'), mx, my);
       if (sidebarRowNode) {
         var rowBoardId = sidebarRowNode.getAttribute('data-board-id');
         var rowIdx = parseInt(sidebarRowNode.getAttribute('data-row-index'), 10);
@@ -7689,7 +7720,7 @@ const LexeraDashboard = (function () {
       }
 
       // Sidebar board drop: append to first available column in board.
-      var sidebarBoardNode = findNodeAtPoint($boardList.querySelectorAll('.board-item[data-board-id]'), mx, my);
+      var sidebarBoardNode = findNodeAtPoint(getElBoardList().querySelectorAll('.board-item[data-board-id]'), mx, my);
       if (sidebarBoardNode) {
         var boardNodeId = sidebarBoardNode.getAttribute('data-board-id');
         var boardTarget = getFirstSidebarCardTargetForBoard(boardNodeId, sidebarBoardNode);
@@ -8219,7 +8250,7 @@ const LexeraDashboard = (function () {
   // --- Pointer-based DnD for rows/stacks/columns/boards (bypasses broken HTML5 DnD in WebKit) ---
 
   // Sidebar: tree grips and board item grips
-  $boardList.addEventListener('mousedown', function (e) {
+  getElBoardList().addEventListener('mousedown', function (e) {
     try {
     if (e.button !== 0) return;
     if (ptrDrag || cardDrag) return;
@@ -8292,7 +8323,7 @@ const LexeraDashboard = (function () {
   });
 
   // Main board: row/stack/column drag starts from header area (not just grip)
-  $columnsContainer.addEventListener('mousedown', function (e) {
+  getElColumnsContainer().addEventListener('mousedown', function (e) {
     try {
     if (e.button !== 0) return;
     if (ptrDrag || cardDrag) return;
@@ -8481,22 +8512,22 @@ const LexeraDashboard = (function () {
   function updatePtrDropTargetByType(type, mx, my) {
     clearPtrDropIndicators();
     if (type === 'tree-row' || type === 'board-row') {
-      var rowBoardHit = ptrFindHitNode($columnsContainer.querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
-      var rowTreeHit = ptrFindHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+      var rowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
+      var rowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
       return !!(rowBoardHit || rowTreeHit);
     } else if (type === 'tree-stack' || type === 'board-stack') {
-      var stackBoardHit = ptrFindHitNode($columnsContainer.querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
-      var stackTreeHit = ptrFindHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+      var stackBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
+      var stackTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
       return !!(stackBoardHit || stackTreeHit);
     } else if (type === 'tree-column' || type === 'column') {
       var boardColumnHit = updateColumnPtrDropTarget(mx, my);
-      var treeColHit = ptrFindStrictHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+      var treeColHit = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
       if (treeColHit) return true;
       if (!treeColHit) {
-        var treeStackHit = ptrFindStrictHitNode($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+        var treeStackHit = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
         if (treeStackHit) return true;
         if (!treeStackHit) {
-          var stackZone = findNodeAtPoint($boardList.querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
+          var stackZone = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
           if (stackZone) {
             stackZone.classList.add('tree-drop-stack-target');
             return true;
@@ -8511,7 +8542,7 @@ const LexeraDashboard = (function () {
       clearCardDragOverHighlights();
       // Tree card-to-card indicator (between-card reorder in tree)
       var treeCardHit = ptrFindStrictHitNode(
-        $boardList.querySelectorAll('.tree-node[data-tree-drag="tree-card"]'),
+        getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-card"]'),
         mx, my, 'tree-drop-above', 'tree-drop-below', true
       );
       if (treeCardHit) return true;
@@ -8523,7 +8554,7 @@ const LexeraDashboard = (function () {
       if (mainCol) { mainCol.classList.add('card-drag-over'); showCardDropIndicator(mainCol, findCardInsertIndex(my, mainCol)); return true; }
       return false;
     } else if (type === 'board') {
-      var boardHit = ptrFindHitNode($boardList.querySelectorAll('.board-item'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
+      var boardHit = ptrFindHitNode(getElBoardList().querySelectorAll('.board-item'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
       return !!boardHit;
     }
     return false;
@@ -8537,7 +8568,7 @@ const LexeraDashboard = (function () {
   }
 
   function getRowDropTarget(mx, my) {
-    var boardTarget = ptrFindDropTarget($columnsContainer.querySelectorAll('.board-row'), mx, my, true);
+    var boardTarget = ptrFindDropTarget(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, true);
     if (boardTarget) {
       var boardRowIdx = parseInt(boardTarget.node.getAttribute('data-row-index'), 10);
       if (!isNaN(boardRowIdx)) {
@@ -8549,7 +8580,7 @@ const LexeraDashboard = (function () {
         };
       }
     }
-    var treeTarget = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, true);
+    var treeTarget = ptrFindDropTarget(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, true);
     if (treeTarget) {
       var treeBoardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
       var treeRowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
@@ -8566,7 +8597,7 @@ const LexeraDashboard = (function () {
   }
 
   function getStackDropTarget(mx, my) {
-    var boardTarget = ptrFindDropTarget($columnsContainer.querySelectorAll('.board-stack'), mx, my, false);
+    var boardTarget = ptrFindDropTarget(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, false);
     if (boardTarget) {
       var boardRowIdx = parseInt(boardTarget.node.getAttribute('data-row-index'), 10);
       var boardStackIdx = parseInt(boardTarget.node.getAttribute('data-stack-index'), 10);
@@ -8580,7 +8611,7 @@ const LexeraDashboard = (function () {
         };
       }
     }
-    var treeTarget = ptrFindDropTarget($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
+    var treeTarget = ptrFindDropTarget(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
     if (treeTarget) {
       var treeBoardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
       var treeRowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
@@ -8677,7 +8708,7 @@ const LexeraDashboard = (function () {
   }
 
   function getTreeColumnDropTarget(mx, my) {
-    var treeTarget = resolveDropTargetStrict($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, true);
+    var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, true);
     if (!treeTarget) return null;
     var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
     var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
@@ -8695,7 +8726,7 @@ const LexeraDashboard = (function () {
   }
 
   function getTreeStackDropTarget(mx, my) {
-    var treeTarget = resolveDropTargetStrict($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
+    var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, true);
     if (treeTarget) {
       var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
       var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
@@ -8710,7 +8741,7 @@ const LexeraDashboard = (function () {
         };
       }
     }
-    var zone = findNodeAtPoint($boardList.querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
+    var zone = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone'), mx, my);
     if (!zone) return null;
     var zoneBoardId = zone.getAttribute('data-board-id') || activeBoardId;
     var zoneRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
@@ -8726,7 +8757,7 @@ const LexeraDashboard = (function () {
   }
 
   function getTreeCardDropTarget(mx, my) {
-    var treeTarget = resolveDropTargetStrict($boardList.querySelectorAll('.tree-node[data-tree-drag="tree-card"]'), mx, my, true);
+    var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-card"]'), mx, my, true);
     if (!treeTarget) return null;
     var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
     var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
@@ -8827,13 +8858,13 @@ const LexeraDashboard = (function () {
     return false;
   }
   function clearPtrDropIndicators() {
-    removeClassesFromNodeList($boardList.querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
-    removeClassesFromNodeList($boardList.querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
-    removeClassesFromNodeList($columnsContainer.querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom']);
-    removeClassesFromNodeList($columnsContainer.querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
-    removeClassesFromNodeList($columnsContainer.querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom']);
-    removeClassFromNodeList($columnsContainer.querySelectorAll('.stack-drop-zone'), 'active');
-    removeClassFromNodeList($boardList.querySelectorAll('.tree-children.tree-stack-drop-zone.tree-drop-stack-target'), 'tree-drop-stack-target');
+    removeClassesFromNodeList(getElBoardList().querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
+    removeClassesFromNodeList(getElBoardList().querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
+    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassFromNodeList(getElColumnsContainer().querySelectorAll('.stack-drop-zone'), 'active');
+    removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone.tree-drop-stack-target'), 'tree-drop-stack-target');
     clearCardDropIndicators();
     clearCardDragOverHighlights();
     clearSidebarDropHighlights();
@@ -8848,7 +8879,7 @@ const LexeraDashboard = (function () {
     } else if (type === 'tree-stack' || type === 'board-stack') {
       applyStackDropByPoint(src, mx, my);
     } else if (type === 'board') {
-      var t = ptrFindDropTarget($boardList.querySelectorAll('.board-item'), mx, my, true);
+      var t = ptrFindDropTarget(getElBoardList().querySelectorAll('.board-item'), mx, my, true);
       if (t) {
         var targetIdx = parseInt(t.node.getAttribute('data-board-index'), 10);
         if (src.index !== targetIdx) reorderBoards(src.index, targetIdx, t.before);
@@ -9330,7 +9361,7 @@ const LexeraDashboard = (function () {
   }
 
   function insertStackDropZones() {
-    var rowContents = $columnsContainer.querySelectorAll('.board-row-content');
+    var rowContents = getElColumnsContainer().querySelectorAll('.board-row-content');
     for (var r = 0; r < rowContents.length; r++) {
       var rowContent = rowContents[r];
       var rowEl = rowContent.closest('.board-row');
@@ -9371,7 +9402,7 @@ const LexeraDashboard = (function () {
   }
 
   function removeStackDropZones() {
-    var zones = $columnsContainer.querySelectorAll('.stack-drop-zone');
+    var zones = getElColumnsContainer().querySelectorAll('.stack-drop-zone');
     for (var i = 0; i < zones.length; i++) zones[i].remove();
   }
 
@@ -9978,7 +10009,7 @@ const LexeraDashboard = (function () {
   }
 
   function findVisibleCardElement(colIndex, cardIndex) {
-    return $columnsContainer.querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+    return getElColumnsContainer().querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
   }
 
   function openCardEditor(cardEl, colIndex, cardIndex, mode) {
@@ -10686,12 +10717,12 @@ const LexeraDashboard = (function () {
       addCardColumn = colIndex;
       renderColumns();
     } else if (action === 'edit') {
-      var cardsEls = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+      var cardsEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
       if (cardsEls.length > 0) {
         openCardEditor(cardsEls[0], colIndex, cardIndex, 'inline');
       }
     } else if (action === 'edit-overlay') {
-      var overlayCardsEls = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+      var overlayCardsEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
       if (overlayCardsEls.length > 0) {
         openCardEditor(overlayCardsEls[0], colIndex, cardIndex, 'overlay');
       }
@@ -10906,7 +10937,7 @@ const LexeraDashboard = (function () {
     if (action === 'rename') {
       var col = getFullColumn(colIndex);
       if (!col) return;
-      var colEl = $columnsContainer.querySelector('.column[data-col-title="' + escapeAttr(col.title) + '"]');
+      var colEl = getElColumnsContainer().querySelector('.column[data-col-title="' + escapeAttr(col.title) + '"]');
       if (colEl) enterColumnRename(colEl, colIndex);
     } else if (action === 'add-card') {
       addCardColumn = colIndex;
@@ -11118,7 +11149,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleColCards(colIndex, collapse) {
-    var cards = $columnsContainer.querySelectorAll('.card[data-col-index="' + colIndex + '"]');
+    var cards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
     for (var i = 0; i < cards.length; i++) {
       if (collapse) {
         cards[i].classList.add('collapsed');
@@ -11202,7 +11233,7 @@ const LexeraDashboard = (function () {
   function exitSearchMode() {
     searchMode = false;
     searchResults = null;
-    $searchResults.classList.add('hidden');
+    getElSearchResults().classList.add('hidden');
     updateHeaderSearchVisibility();
     renderMainView();
   }
@@ -11227,7 +11258,7 @@ const LexeraDashboard = (function () {
     var changed = false;
 
     if (typeof result.rowIndex === 'number') {
-      var rowEl = $columnsContainer.querySelector('.board-row[data-row-index="' + result.rowIndex + '"]');
+      var rowEl = getElColumnsContainer().querySelector('.board-row[data-row-index="' + result.rowIndex + '"]');
       if (rowEl && rowEl.classList.contains('folded')) {
         rowEl.classList.remove('folded');
         changed = true;
@@ -11236,7 +11267,7 @@ const LexeraDashboard = (function () {
 
     if (typeof result.rowIndex === 'number' && typeof result.stackIndex === 'number') {
       var stackSelector = '.board-stack[data-row-index="' + result.rowIndex + '"][data-stack-index="' + result.stackIndex + '"]';
-      var stackEl = $columnsContainer.querySelector(stackSelector);
+      var stackEl = getElColumnsContainer().querySelector(stackSelector);
       if (stackEl && stackEl.classList.contains('folded')) {
         stackEl.classList.remove('folded');
         changed = true;
@@ -11244,7 +11275,7 @@ const LexeraDashboard = (function () {
     }
 
     if (typeof result.columnIndex === 'number') {
-      var cardsEl = $columnsContainer.querySelector('.column-cards[data-col-index="' + result.columnIndex + '"]');
+      var cardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + result.columnIndex + '"]');
       var colEl = cardsEl ? cardsEl.closest('.column') : null;
       if (colEl && colEl.classList.contains('folded')) {
         colEl.classList.remove('folded');
@@ -11260,7 +11291,7 @@ const LexeraDashboard = (function () {
     if (!result) return false;
     var cardId = result.cardId ? String(result.cardId) : '';
     if (cardId) {
-      var byId = $columnsContainer.querySelector('.card[data-card-id="' + escapeAttr(cardId) + '"]');
+      var byId = getElColumnsContainer().querySelector('.card[data-card-id="' + escapeAttr(cardId) + '"]');
       if (byId) {
         focusCard(byId);
         return true;
@@ -11268,7 +11299,7 @@ const LexeraDashboard = (function () {
     }
 
     if (typeof result.columnIndex === 'number') {
-      var candidates = $columnsContainer.querySelectorAll('.card[data-col-index="' + result.columnIndex + '"]');
+      var candidates = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + result.columnIndex + '"]');
       if (candidates.length > 0) {
         var firstLine = String(result.cardContent || '').split('\n')[0].trim();
         for (var i = 0; i < candidates.length; i++) {
@@ -11316,13 +11347,13 @@ const LexeraDashboard = (function () {
   }
 
   function renderSearchResults() {
-    $boardHeader.classList.add('hidden');
-    $columnsContainer.classList.add('hidden');
-    $emptyState.classList.add('hidden');
-    $searchResults.classList.remove('hidden');
+    getElBoardHeader().classList.add('hidden');
+    getElColumnsContainer().classList.add('hidden');
+    getElEmptyState().classList.add('hidden');
+    getElSearchResults().classList.remove('hidden');
 
     if (!searchResults || !searchResults.results.length) {
-      $searchResults.innerHTML =
+      getElSearchResults().innerHTML =
         '<div class="search-results-title">Search: "' + escapeHtml(searchResults ? searchResults.query : '') + '"</div>' +
         '<div class="empty-state" style="height:auto;padding:40px"><div>No results found</div></div>';
       return;
@@ -11364,9 +11395,9 @@ const LexeraDashboard = (function () {
       html += '</div>';
     }
 
-    $searchResults.innerHTML = html;
+    getElSearchResults().innerHTML = html;
 
-    var resultItems = $searchResults.querySelectorAll('.search-result-item');
+    var resultItems = getElSearchResults().querySelectorAll('.search-result-item');
     for (var k = 0; k < resultItems.length; k++) {
       resultItems[k].addEventListener('click', function () {
         var idx = parseOptionalSearchIndex(this.getAttribute('data-result-index'));
@@ -14028,7 +14059,7 @@ const LexeraDashboard = (function () {
 
   function saveCardCollapseState(boardId) {
     var collapsed = [];
-    var cards = $columnsContainer.querySelectorAll('.card[data-card-id]');
+    var cards = getElColumnsContainer().querySelectorAll('.card[data-card-id]');
     for (var i = 0; i < cards.length; i++) {
       if (cards[i].classList.contains('collapsed')) {
         collapsed.push(cards[i].getAttribute('data-card-id'));
