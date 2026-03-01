@@ -35,7 +35,7 @@ class ExportUI {
         this.boardData = boardData;
         this.boardName = this._deriveBoardName(boardData);
 
-        console.log('[ExportUI] init boardId=' + boardId);
+        lexeraLog('info', '[kanban.export.init] boardId=' + boardId);
 
         // Build tree from board data
         this.tree = ExportTreeBuilder.buildExportTree(boardData);
@@ -64,7 +64,6 @@ class ExportUI {
         var modal = document.getElementById('export-modal');
         if (modal) {
             modal.style.display = 'flex';
-            console.log('[ExportUI] show');
         }
     }
 
@@ -72,7 +71,6 @@ class ExportUI {
         var modal = document.getElementById('export-modal');
         if (modal) {
             modal.style.display = 'none';
-            console.log('[ExportUI] hide');
         }
     }
 
@@ -141,7 +139,7 @@ class ExportUI {
         var options = this.collectOptions();
         options.mode = mode;
 
-        console.log('[ExportUI] executeExport mode=' + mode);
+        lexeraLog('info', '[kanban.export.execute] mode=' + mode);
 
         // Validate selection
         if (!options.columnIndexes || options.columnIndexes.length === 0) {
@@ -174,7 +172,7 @@ class ExportUI {
                 this._setStatus('Export failed: ' + (result.message || 'Unknown error'));
             }
         } catch (err) {
-            console.log('[ExportUI] executeExport error:', err);
+            lexeraLog('error', '[kanban.export.execute] ' + (err.message || String(err)));
             this._setStatus('Export error: ' + (err.message || String(err)));
         } finally {
             this._disableButtons(false);
@@ -292,9 +290,9 @@ class ExportUI {
                     ? 'Marp CLI available' + (marpStatus.version ? ' (v' + marpStatus.version + ')' : '')
                     : 'Marp CLI not found';
             }
-            console.log('[ExportUI] Marp available=' + this.marpAvailable);
+            lexeraLog('info', '[kanban.export.tools] Marp available=' + this.marpAvailable);
         } catch (err) {
-            console.log('[ExportUI] Marp check failed:', err);
+            lexeraLog('warn', '[kanban.export.tools] Marp check failed: ' + (err.message || String(err)));
             this.marpAvailable = false;
         }
 
@@ -309,9 +307,9 @@ class ExportUI {
                     ? 'Pandoc available' + (pandocStatus.version ? ' (v' + pandocStatus.version + ')' : '')
                     : 'Pandoc not found';
             }
-            console.log('[ExportUI] Pandoc available=' + this.pandocAvailable);
+            lexeraLog('info', '[kanban.export.tools] Pandoc available=' + this.pandocAvailable);
         } catch (err) {
-            console.log('[ExportUI] Pandoc check failed:', err);
+            lexeraLog('warn', '[kanban.export.tools] Pandoc check failed: ' + (err.message || String(err)));
             this.pandocAvailable = false;
         }
 
@@ -320,9 +318,8 @@ class ExportUI {
             try {
                 this.marpThemes = await ExportService.getMarpThemes([]);
                 this._populateMarpThemes();
-                console.log('[ExportUI] Marp themes: ' + this.marpThemes.length);
             } catch (err) {
-                console.log('[ExportUI] Theme discovery failed:', err);
+                lexeraLog('warn', '[kanban.export.tools] Theme discovery failed: ' + (err.message || String(err)));
                 this.marpThemes = [];
             }
         }
@@ -489,10 +486,10 @@ class ExportUI {
                     if (input) input.value = selected;
                 }
             } else {
-                console.log('[ExportUI] Tauri dialog not available, user must type path manually');
+                lexeraLog('warn', '[kanban.export.browse] Tauri dialog not available');
             }
         } catch (err) {
-            console.log('[ExportUI] Browse folder error:', err);
+            lexeraLog('warn', '[kanban.export.browse] ' + (err.message || String(err)));
         }
     }
 
@@ -518,7 +515,7 @@ class ExportUI {
                 document.body.removeChild(ta);
             }
         } catch (err) {
-            console.log('[ExportUI] Clipboard write failed:', err);
+            lexeraLog('warn', '[kanban.export.clipboard] Write failed: ' + (err.message || String(err)));
         }
     }
 
@@ -527,7 +524,6 @@ class ExportUI {
      * @param {string} msg
      */
     _setStatus(msg) {
-        console.log('[ExportUI] status: ' + msg);
         var el = document.getElementById('export-status');
         if (el) el.textContent = msg;
     }
