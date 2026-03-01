@@ -281,7 +281,8 @@ impl CrdtStore {
         current: &KanbanBoard,
     ) -> io::Result<()> {
         let changes = diff::diff_boards(current, incoming);
-        if changes.is_empty() {
+        let has_structural_change = self.has_structural_diff(incoming);
+        if changes.is_empty() && !has_structural_change {
             return Ok(());
         }
 
@@ -370,6 +371,62 @@ impl CrdtStore {
 
         self.doc.commit();
         Ok(())
+    }
+
+    /// Check whether the incoming board has a different structure than the CRDT.
+    /// Detects format upgrade (legacy→new), row/stack/column count changes, and
+    /// title/id changes that `diff_boards` (card-level only) would miss.
+    fn has_structural_diff(&self, incoming: &KanbanBoard) -> bool {
+        let root = self.doc.get_map("root");
+        let format = get_string(&root, "format");
+
+        // Format upgrade: legacy CRDT but incoming has rows
+        if format != "new" && !incoming.rows.is_empty() {
+            return true;
+        }
+
+        if format == "new" {
+            if let Some(rows_list) = get_movable_list(&root, "rows") {
+                if rows_list.len() != incoming.rows.len() {
+                    return true;
+                }
+                for (ri, row) in incoming.rows.iter().enumerate() {
+                    if let Some(row_map) = get_map_at(&rows_list, ri) {
+                        if get_string(&row_map, "title") != row.title {
+                            return true;
+                        }
+                        if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
+                            if stacks_list.len() != row.stacks.len() {
+                                return true;
+                            }
+                            for (si, stack) in row.stacks.iter().enumerate() {
+                                if let Some(stack_map) = get_map_at(&stacks_list, si) {
+                                    if get_string(&stack_map, "title") != stack.title {
+                                        return true;
+                                    }
+                                    if let Some(cols_list) =
+                                        get_movable_list(&stack_map, "columns")
+                                    {
+                                        if cols_list.len() != stack.columns.len() {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Legacy format: check column count
+            if let Some(columns_list) = get_movable_list(&root, "columns") {
+                if columns_list.len() != incoming.columns.len() {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// Synchronize column structure — ensure the CRDT's row/stack/column
@@ -505,6 +562,52 @@ impl CrdtStore {
                 // Remove extra rows
                 while rows_list.len() > incoming.rows.len() {
                     let _ = rows_list.delete(rows_list.len() - 1, 1);
+                }
+            }
+        } else if !incoming.rows.is_empty() {
+            // Legacy CRDT but incoming board has rows — upgrade format.
+            // Rebuild the entire CRDT structure as "new" format, populating
+            // card lists from the incoming board data.
+            root.insert("format", "new").map_err(loro_err)?;
+
+            let rows_list: LoroMovableList = root
+                .insert_container("rows", LoroMovableList::new())
+                .map_err(loro_err)?;
+            for row in &incoming.rows {
+                let row_map: LoroMap =
+                    rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
+                row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                let stacks_list: LoroMovableList = row_map
+                    .insert_container("stacks", LoroMovableList::new())
+                    .map_err(loro_err)?;
+                for stack in &row.stacks {
+                    let stack_map: LoroMap =
+                        stacks_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                    stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
+                    stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                    let cols_list: LoroMovableList = stack_map
+                        .insert_container("columns", LoroMovableList::new())
+                        .map_err(loro_err)?;
+                    for col in &stack.columns {
+                        let col_map: LoroMap =
+                            cols_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                        col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
+                        col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+                        let cards_list: LoroMovableList = col_map
+                            .insert_container("cards", LoroMovableList::new())
+                            .map_err(loro_err)?;
+                        // Populate cards from the incoming board
+                        for card in &col.cards {
+                            let card_map: LoroMap =
+                                cards_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                            let kid = card.kid.as_deref().unwrap_or("");
+                            let content = card_identity::strip_kid(&card.content);
+                            card_map.insert("kid", kid).map_err(loro_err)?;
+                            card_map.insert("content", content.as_str()).map_err(loro_err)?;
+                            card_map.insert("checked", card.checked).map_err(loro_err)?;
+                        }
+                    }
                 }
             }
         } else {
@@ -1274,5 +1377,125 @@ mod tests {
         let total_a: usize = result_a.all_columns().iter().map(|c| c.cards.len()).sum();
         let total_b: usize = result_b.all_columns().iter().map(|c| c.cards.len()).sum();
         assert_eq!(total_a, total_b, "both peers must have the same total card count");
+    }
+
+    #[test]
+    fn test_legacy_crdt_upgrades_to_new_format_on_row_add() {
+        // Simulate: board starts as legacy (flat columns), frontend converts to
+        // rows/stacks, then user adds a new row. The CRDT must upgrade format.
+        let legacy_board = KanbanBoard {
+            valid: true,
+            title: "Legacy Board".to_string(),
+            columns: vec![
+                KanbanColumn {
+                    id: "col-1".to_string(),
+                    title: "Todo".to_string(),
+                    cards: vec![KanbanCard {
+                        id: "c1".to_string(),
+                        content: "Task A".to_string(),
+                        checked: false,
+                        kid: Some("aaaa0001".to_string()),
+                    }],
+                    include_source: None,
+                },
+                KanbanColumn {
+                    id: "col-2".to_string(),
+                    title: "Done".to_string(),
+                    cards: vec![],
+                    include_source: None,
+                },
+            ],
+            rows: vec![], // legacy: no rows
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+        };
+
+        let mut store = CrdtStore::from_board(&legacy_board).unwrap();
+
+        // Verify CRDT is in legacy format
+        let board = store.to_board();
+        assert!(board.rows.is_empty(), "should start as legacy format");
+        assert_eq!(board.columns.len(), 2);
+
+        // Frontend converts to new format (as migrateLegacyBoard does):
+        let current = store.to_board();
+        let incoming = KanbanBoard {
+            valid: true,
+            title: "Legacy Board".to_string(),
+            columns: vec![], // frontend clears this
+            rows: vec![
+                KanbanRow {
+                    id: "row-1".to_string(),
+                    title: "Legacy Board".to_string(),
+                    stacks: vec![KanbanStack {
+                        id: "stack-1".to_string(),
+                        title: "Todo".to_string(),
+                        columns: vec![
+                            KanbanColumn {
+                                id: "col-1".to_string(),
+                                title: "Todo".to_string(),
+                                cards: vec![KanbanCard {
+                                    id: "c1".to_string(),
+                                    content: "Task A".to_string(),
+                                    checked: false,
+                                    kid: Some("aaaa0001".to_string()),
+                                }],
+                                include_source: None,
+                            },
+                            KanbanColumn {
+                                id: "col-2".to_string(),
+                                title: "Done".to_string(),
+                                cards: vec![],
+                                include_source: None,
+                            },
+                        ],
+                    }],
+                },
+                // User added a new row:
+                KanbanRow {
+                    id: "row-2".to_string(),
+                    title: "New Row".to_string(),
+                    stacks: vec![KanbanStack {
+                        id: "stack-2".to_string(),
+                        title: "Default".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-3".to_string(),
+                            title: "New Column".to_string(),
+                            cards: vec![],
+                            include_source: None,
+                        }],
+                    }],
+                },
+            ],
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+        };
+
+        store.apply_board(&incoming, &current).unwrap();
+
+        // Verify CRDT upgraded to new format
+        let result = store.to_board();
+        assert!(!result.rows.is_empty(), "CRDT must upgrade to new format");
+        assert_eq!(result.rows.len(), 2, "must have both rows");
+        assert_eq!(result.rows[0].title, "Legacy Board");
+        assert_eq!(result.rows[1].title, "New Row");
+
+        // Verify cards survived the format upgrade
+        let all_cards: Vec<&KanbanCard> = result
+            .all_columns()
+            .iter()
+            .flat_map(|c| c.cards.iter())
+            .collect();
+        assert!(
+            all_cards.iter().any(|c| c.content == "Task A"),
+            "existing card must survive format upgrade"
+        );
+
+        // Verify column structure
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[1].stacks[0].columns.len(), 1);
+        assert_eq!(result.rows[1].stacks[0].columns[0].title, "New Column");
     }
 }
