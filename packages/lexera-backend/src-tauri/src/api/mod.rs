@@ -11,10 +11,12 @@ mod events;
 mod file_ops;
 mod live_sync;
 mod media;
+mod rate_limit;
 mod search;
 mod template;
 
 use crate::state::AppState;
+use rate_limit::{rate_limit_middleware, RateLimiter};
 
 /// Axum REST API routes.
 ///
@@ -38,6 +40,35 @@ use crate::state::AppState;
 ///   GET  /templates/:id                       -> full template content + extra files
 ///   POST /templates/:id/copy                  -> copy template files with variable substitution
 pub fn api_router() -> Router<AppState> {
+    // Rate-limited sub-routers for expensive endpoints (requests per second)
+    let search_routes = Router::new()
+        .route("/search", get(search::search))
+        .route_layer(axum::middleware::from_fn_with_state(
+            RateLimiter::new(10),
+            rate_limit_middleware,
+        ));
+
+    let find_file_routes = Router::new()
+        .route(
+            "/boards/{board_id}/find-file",
+            axum::routing::post(file_ops::find_file),
+        )
+        .route_layer(axum::middleware::from_fn_with_state(
+            RateLimiter::new(5),
+            rate_limit_middleware,
+        ));
+
+    let template_copy_routes = Router::new()
+        .route(
+            "/templates/{template_id}/copy",
+            axum::routing::post(template::copy_template_files),
+        )
+        .route_layer(axum::middleware::from_fn_with_state(
+            RateLimiter::new(2),
+            rate_limit_middleware,
+        ));
+
+    // All other routes without rate limiting
     Router::new()
         .route("/boards", get(board::list_boards).post(board::add_board_endpoint))
         .route("/remote-boards", get(board::list_remote_boards))
@@ -82,14 +113,9 @@ pub fn api_router() -> Router<AppState> {
         .route("/boards/{board_id}/file", get(file_ops::serve_file))
         .route("/boards/{board_id}/file-info", get(file_ops::file_info))
         .route(
-            "/boards/{board_id}/find-file",
-            axum::routing::post(file_ops::find_file),
-        )
-        .route(
             "/boards/{board_id}/convert-path",
             axum::routing::post(file_ops::convert_path),
         )
-        .route("/search", get(search::search))
         .route("/logs", get(events::list_logs))
         .route("/logs/stream", get(events::stream_logs))
         .route("/events", get(events::sse_events))
@@ -100,10 +126,9 @@ pub fn api_router() -> Router<AppState> {
         )
         .route("/templates", get(template::list_templates))
         .route("/templates/{template_id}", get(template::get_template))
-        .route(
-            "/templates/{template_id}/copy",
-            axum::routing::post(template::copy_template_files),
-        )
+        .merge(search_routes)
+        .merge(find_file_routes)
+        .merge(template_copy_routes)
 }
 
 // ── Shared types and helpers used across sub-modules ────────────────────
