@@ -208,10 +208,37 @@ pub fn run() {
                 log::warn!("[lexera.watcher] Failed to create file watcher: {}", e);
             }
 
-            // Initialize collaboration services
-            let invite_service = Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new()));
-            let public_service = Arc::new(std::sync::Mutex::new(crate::public::PublicRoomService::new()));
-            let auth_service = Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new()));
+            // Initialize collaboration services with persistence
+            let collab_dir = dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("lexera")
+                .join("collab");
+            if let Err(e) = std::fs::create_dir_all(&collab_dir) {
+                log::error!("[collab] Failed to create collab dir {:?}: {}", collab_dir, e);
+            }
+
+            let auth_path = collab_dir.join("auth.json");
+            let invites_path = collab_dir.join("invites.json");
+            let public_rooms_path = collab_dir.join("public_rooms.json");
+
+            let auth_service = Arc::new(std::sync::Mutex::new(
+                crate::auth::AuthService::load_from_file(&auth_path).unwrap_or_else(|e| {
+                    log::warn!("[collab] Failed to load auth state: {}, starting empty", e);
+                    crate::auth::AuthService::new()
+                }),
+            ));
+            let invite_service = Arc::new(std::sync::Mutex::new(
+                crate::invite::InviteService::load_from_file(&invites_path).unwrap_or_else(|e| {
+                    log::warn!("[collab] Failed to load invite state: {}, starting empty", e);
+                    crate::invite::InviteService::new()
+                }),
+            ));
+            let public_service = Arc::new(std::sync::Mutex::new(
+                crate::public::PublicRoomService::load_from_file(&public_rooms_path).unwrap_or_else(|e| {
+                    log::warn!("[collab] Failed to load public rooms state: {}, starting empty", e);
+                    crate::public::PublicRoomService::new()
+                }),
+            ));
 
             // Bootstrap local user as owner of all boards
             {
@@ -253,6 +280,33 @@ pub fn run() {
                 }
             });
 
+            // Start periodic save for collaboration services (every 60 seconds)
+            let save_auth = auth_service.clone();
+            let save_invite = invite_service.clone();
+            let save_public = public_service.clone();
+            let save_dir = collab_dir.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    if let Ok(auth) = save_auth.lock() {
+                        if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
+                            log::error!("[collab.save] Failed to save auth state: {}", e);
+                        }
+                    }
+                    if let Ok(invite) = save_invite.lock() {
+                        if let Err(e) = invite.save_to_file(&save_dir.join("invites.json")) {
+                            log::error!("[collab.save] Failed to save invite state: {}", e);
+                        }
+                    }
+                    if let Ok(public) = save_public.lock() {
+                        if let Err(e) = public.save_to_file(&save_dir.join("public_rooms.json")) {
+                            log::error!("[collab.save] Failed to save public rooms state: {}", e);
+                        }
+                    }
+                }
+            });
+
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
             let sync_client = Arc::new(tokio::sync::Mutex::new(crate::sync_client::SyncClientManager::new()));
             let discovery = Arc::new(std::sync::Mutex::new(crate::discovery::DiscoveryService::new()));
@@ -285,6 +339,7 @@ pub fn run() {
                 sync_client,
                 discovery: discovery.clone(),
                 app_handle: app_handle.clone(),
+                collab_dir,
             };
 
             // Spawn HTTP server

@@ -48,4 +48,6 @@ pub struct AppState {
     pub discovery: Arc<std::sync::Mutex<DiscoveryService>>,
     // Tauri app handle for opening windows from REST handlers
     pub app_handle: tauri::AppHandle,
+    // Directory for collaboration service persistence files
+    pub collab_dir: PathBuf,
 }

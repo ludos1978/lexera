@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 /// Invitation service: create, accept, and revoke invite links.
+use std::io;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
@@ -200,6 +202,52 @@ impl InviteService {
             log::info!("[invite] Cleaned up {} expired invites", count);
         }
         count
+    }
+
+    /// Save all invite state to a JSON file. Uses atomic write (tmp + rename).
+    pub fn save_to_file(&self, path: &Path) -> io::Result<()> {
+        let json = serde_json::to_string_pretty(&self.invites)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &json)?;
+        std::fs::rename(&tmp_path, path)?;
+
+        log::info!("[invite.save] Saved {} invites to {}", self.invites.len(), path.display());
+        Ok(())
+    }
+
+    /// Load invite state from a JSON file. Returns empty service if file is missing or corrupt.
+    pub fn load_from_file(path: &Path) -> io::Result<Self> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                log::info!("[invite.load] No invite file at {}, starting empty", path.display());
+                return Ok(Self::new());
+            }
+            Err(e) => return Err(e),
+        };
+
+        let invites: std::collections::HashMap<String, InviteLink> =
+            match serde_json::from_str(&content) {
+                Ok(d) => d,
+                Err(e) => {
+                    log::warn!(
+                        "[invite.load] Corrupt invite file at {}: {}, starting empty",
+                        path.display(),
+                        e
+                    );
+                    return Ok(Self::new());
+                }
+            };
+
+        log::info!(
+            "[invite.load] Loaded {} invites from {}",
+            invites.len(),
+            path.display()
+        );
+
+        Ok(Self { invites })
     }
 }
 

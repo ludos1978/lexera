@@ -140,6 +140,33 @@ fn parse_role_or_bad_request(role: &str) -> Result<RoomRole> {
     })
 }
 
+/// Save auth service state to disk. Logs errors but does not fail the request.
+fn save_auth(state: &AppState) {
+    if let Ok(auth) = state.auth_service.lock() {
+        if let Err(e) = auth.save_to_file(&state.collab_dir.join("auth.json")) {
+            log::error!("[collab.save] Failed to save auth state: {}", e);
+        }
+    }
+}
+
+/// Save invite service state to disk. Logs errors but does not fail the request.
+fn save_invites(state: &AppState) {
+    if let Ok(invite) = state.invite_service.lock() {
+        if let Err(e) = invite.save_to_file(&state.collab_dir.join("invites.json")) {
+            log::error!("[collab.save] Failed to save invite state: {}", e);
+        }
+    }
+}
+
+/// Save public room service state to disk. Logs errors but does not fail the request.
+fn save_public_rooms(state: &AppState) {
+    if let Ok(public) = state.public_service.lock() {
+        if let Err(e) = public.save_to_file(&state.collab_dir.join("public_rooms.json")) {
+            log::error!("[collab.save] Failed to save public rooms state: {}", e);
+        }
+    }
+}
+
 // ============================================================================
 // Invite Endpoints
 // ============================================================================
@@ -160,26 +187,29 @@ async fn create_invite(
     let room_title = state.storage.read_board(&room_id).map(|b| b.title.clone());
 
     // Create invite
-    let mut invite_service = lock_arc(&state.invite_service, "invite")?;
-    let invite = invite_service
-        .create_invite(
-            CreateInviteRequest {
-                room_id: room_id.clone(),
-                inviter_id: user_id.clone(),
-                role: body.role.clone(),
-                expires_in_hours: body.expires_in_hours,
-                max_uses: body.max_uses,
-                email: None,
-            },
-            room_title,
-        )
-        .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::bad_request(&e.to_string())),
+    let invite = {
+        let mut invite_service = lock_arc(&state.invite_service, "invite")?;
+        invite_service
+            .create_invite(
+                CreateInviteRequest {
+                    room_id: room_id.clone(),
+                    inviter_id: user_id.clone(),
+                    role: body.role.clone(),
+                    expires_in_hours: body.expires_in_hours,
+                    max_uses: body.max_uses,
+                    email: None,
+                },
+                room_title,
             )
-        })?;
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse::bad_request(&e.to_string())),
+                )
+            })?
+    };
 
+    save_invites(&state);
     Ok(Json(invite))
 }
 
@@ -233,16 +263,20 @@ async fn accept_invite(
     // Add user to room
     let role = parse_role_or_bad_request(&join.role)?;
 
-    let mut auth_service = lock_arc(&state.auth_service, "auth")?;
-    auth_service
-        .add_to_room(&join.room_id, &user_id, role, "invite")
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new(&e.to_string())),
-            )
-        })?;
+    {
+        let mut auth_service = lock_arc(&state.auth_service, "auth")?;
+        auth_service
+            .add_to_room(&join.room_id, &user_id, role, "invite")
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse::new(&e.to_string())),
+                )
+            })?;
+    }
 
+    save_invites(&state);
+    save_auth(&state);
     Ok(Json(join))
 }
 
@@ -257,10 +291,13 @@ async fn revoke_invite(
     // Verify user is owner
     require_invite_permission_in_state(&state, &room_id, &user_id)?;
 
-    lock_arc(&state.invite_service, "invite")?
-        .revoke_invite(&token, &room_id)
-        .map_err(|_| (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())))?;
+    {
+        lock_arc(&state.invite_service, "invite")?
+            .revoke_invite(&token, &room_id)
+            .map_err(|_| (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())))?;
+    }
 
+    save_invites(&state);
     Ok(Json(SuccessResponse { success: true }))
 }
 
@@ -318,14 +355,17 @@ async fn make_public(
         default_role: body.default_role.clone(),
         max_users: body.max_users,
     };
-    let mut public = lock_arc(&state.public_service, "public")?;
-    public.make_public(&req, member_count).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::bad_request(&e.to_string())),
-        )
-    })?;
+    {
+        let mut public = lock_arc(&state.public_service, "public")?;
+        public.make_public(&req, member_count).map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::bad_request(&e.to_string())),
+            )
+        })?;
+    }
 
+    save_public_rooms(&state);
     Ok(Json(SuccessResponse { success: true }))
 }
 
@@ -340,8 +380,11 @@ async fn make_private(
     // Verify user can invite (owner only)
     require_invite_permission_in_state(&state, &room_id, &user_id)?;
 
-    lock_arc(&state.public_service, "public")?.make_private(&room_id);
+    {
+        lock_arc(&state.public_service, "public")?.make_private(&room_id);
+    }
 
+    save_public_rooms(&state);
     Ok(Json(SuccessResponse { success: true }))
 }
 

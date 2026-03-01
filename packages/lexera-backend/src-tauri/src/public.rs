@@ -1,6 +1,8 @@
 /// Public rooms service: manage boards that anyone can join (server mode).
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io;
+use std::path::Path;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,7 +38,7 @@ impl DefaultRole {
 }
 
 /// Configuration for a public room
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicRoomConfig {
     pub default_role: String,
     pub max_users: Option<i64>,
@@ -131,6 +133,73 @@ impl PublicRoomService {
     pub fn is_public(&self, room_id: &str) -> bool {
         self.public_rooms.contains_key(room_id)
     }
+
+    /// Save all public room state to a JSON file. Uses atomic write (tmp + rename).
+    pub fn save_to_file(&self, path: &Path) -> io::Result<()> {
+        let data = PublicRoomData {
+            public_rooms: self.public_rooms.clone(),
+            member_counts: self.member_counts.clone(),
+        };
+
+        let json = serde_json::to_string_pretty(&data)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &json)?;
+        std::fs::rename(&tmp_path, path)?;
+
+        log::info!(
+            "[public.save] Saved {} public rooms to {}",
+            self.public_rooms.len(),
+            path.display()
+        );
+        Ok(())
+    }
+
+    /// Load public room state from a JSON file. Returns empty service if file is missing or corrupt.
+    pub fn load_from_file(path: &Path) -> io::Result<Self> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                log::info!(
+                    "[public.load] No public rooms file at {}, starting empty",
+                    path.display()
+                );
+                return Ok(Self::new());
+            }
+            Err(e) => return Err(e),
+        };
+
+        let data: PublicRoomData = match serde_json::from_str(&content) {
+            Ok(d) => d,
+            Err(e) => {
+                log::warn!(
+                    "[public.load] Corrupt public rooms file at {}: {}, starting empty",
+                    path.display(),
+                    e
+                );
+                return Ok(Self::new());
+            }
+        };
+
+        log::info!(
+            "[public.load] Loaded {} public rooms from {}",
+            data.public_rooms.len(),
+            path.display()
+        );
+
+        Ok(Self {
+            public_rooms: data.public_rooms,
+            member_counts: data.member_counts,
+        })
+    }
+}
+
+/// Serializable container for all PublicRoomService state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PublicRoomData {
+    public_rooms: HashMap<String, PublicRoomConfig>,
+    member_counts: HashMap<String, usize>,
 }
 
 #[derive(Debug, Error)]

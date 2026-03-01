@@ -1,6 +1,8 @@
 /// Auth service: user management, room membership, and permissions.
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io;
+use std::path::Path;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,7 +12,7 @@ pub struct User {
     pub email: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RoomRole {
     Owner,
     Editor,
@@ -194,6 +196,96 @@ impl AuthService {
 
         log::info!("[auth] Removed user {} from room {}", user_id, room_id);
     }
+
+    /// Save all auth state to a JSON file. Uses atomic write (tmp + rename).
+    pub fn save_to_file(&self, path: &Path) -> io::Result<()> {
+        // Convert tuple-keyed memberships to a serializable list
+        let membership_list: Vec<MembershipEntry> = self
+            .memberships
+            .iter()
+            .map(|((room_id, user_id), role)| MembershipEntry {
+                room_id: room_id.clone(),
+                user_id: user_id.clone(),
+                role: *role,
+            })
+            .collect();
+
+        let data = AuthData {
+            users: self.users.clone(),
+            memberships: membership_list,
+            room_members: self.room_members.clone(),
+        };
+
+        let json = serde_json::to_string_pretty(&data)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &json)?;
+        std::fs::rename(&tmp_path, path)?;
+
+        log::info!("[auth.save] Saved auth state to {}", path.display());
+        Ok(())
+    }
+
+    /// Load auth state from a JSON file. Returns empty service if file is missing or corrupt.
+    pub fn load_from_file(path: &Path) -> io::Result<Self> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                log::info!("[auth.load] No auth file at {}, starting empty", path.display());
+                return Ok(Self::new());
+            }
+            Err(e) => return Err(e),
+        };
+
+        let data: AuthData = match serde_json::from_str(&content) {
+            Ok(d) => d,
+            Err(e) => {
+                log::warn!("[auth.load] Corrupt auth file at {}: {}, starting empty", path.display(), e);
+                return Ok(Self::new());
+            }
+        };
+
+        // Rebuild the tuple-keyed memberships map from the list
+        let mut memberships = HashMap::new();
+        for entry in &data.memberships {
+            memberships.insert(
+                (entry.room_id.clone(), entry.user_id.clone()),
+                entry.role,
+            );
+        }
+
+        log::info!(
+            "[auth.load] Loaded {} users, {} memberships from {}",
+            data.users.len(),
+            memberships.len(),
+            path.display()
+        );
+
+        Ok(Self {
+            users: data.users,
+            memberships,
+            room_members: data.room_members,
+        })
+    }
+}
+
+/// Serializable representation of a single membership entry.
+/// Needed because HashMap<(String, String), RoomRole> can't be directly serialized
+/// as JSON (JSON object keys must be strings, not tuples).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MembershipEntry {
+    room_id: String,
+    user_id: String,
+    role: RoomRole,
+}
+
+/// Serializable container for all AuthService state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AuthData {
+    users: HashMap<String, User>,
+    memberships: Vec<MembershipEntry>,
+    room_members: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Error)]
