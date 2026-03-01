@@ -12910,8 +12910,13 @@ const LexeraDashboard = (function () {
    * items: array of { id, label, separator, disabled, items (for submenus) }
    */
   var activeHtmlMenu = null;
+  var activeHtmlMenuClickOutside = null;
 
   function closeHtmlMenu() {
+    if (activeHtmlMenuClickOutside) {
+      document.removeEventListener('mousedown', activeHtmlMenuClickOutside, true);
+      activeHtmlMenuClickOutside = null;
+    }
     if (activeHtmlMenu) { activeHtmlMenu.remove(); activeHtmlMenu = null; }
   }
 
@@ -12969,13 +12974,15 @@ const LexeraDashboard = (function () {
       // Close on click outside
       function onClickOutside(e) {
         if (!menu.contains(e.target)) {
-          document.removeEventListener('mousedown', onClickOutside, true);
           closeHtmlMenu();
           resolve(null);
         }
       }
+      activeHtmlMenuClickOutside = onClickOutside;
       setTimeout(function () {
-        document.addEventListener('mousedown', onClickOutside, true);
+        if (activeHtmlMenuClickOutside === onClickOutside) {
+          document.addEventListener('mousedown', onClickOutside, true);
+        }
       }, 0);
     });
   }
