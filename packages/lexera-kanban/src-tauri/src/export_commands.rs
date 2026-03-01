@@ -606,3 +606,30 @@ pub async fn write_export_file(path: String, content: String) -> Result<(), Stri
         .map_err(|e| format!("Failed to write file: {}", e))?;
     Ok(())
 }
+
+/// Remove files created during a failed export and their parent directory if empty.
+#[tauri::command]
+pub async fn remove_export_files(paths: Vec<String>) -> Result<(), String> {
+    for file_path in &paths {
+        let p = Path::new(file_path);
+        if p.exists() {
+            std::fs::remove_file(p)
+                .map_err(|e| format!("Failed to remove {}: {}", file_path, e))?;
+            log::info!("[export] Cleaned up: {}", file_path);
+        }
+    }
+    // Remove parent directories if they are now empty
+    for file_path in &paths {
+        if let Some(parent) = Path::new(file_path).parent() {
+            if parent.is_dir() {
+                if let Ok(mut entries) = std::fs::read_dir(parent) {
+                    if entries.next().is_none() {
+                        let _ = std::fs::remove_dir(parent);
+                        log::info!("[export] Removed empty directory: {}", parent.display());
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}

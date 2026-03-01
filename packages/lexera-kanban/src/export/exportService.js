@@ -227,104 +227,122 @@ class ExportService {
             return { success: true, content, message: 'Content ready for clipboard' };
         }
 
-        // ── Save / Preview: write markdown file first ──
-        const ext = ExportService.getExtensionForFormat(options.format, options.marpFormat, options.pandocFormat);
-        const mdPath = ExportService.generateExportPath(
-            options.targetFolder,
-            options.exportFolderName,
-            '.md'
-        );
+        // Track files created during this export for cleanup on failure
+        const createdFiles = [];
 
-        console.log('[ExportService] Phase 3: writing markdown to', mdPath);
-        await window.__TAURI__.core.invoke('write_export_file', { path: mdPath, content });
-
-        // ── Preview mode: start Marp watch ──
-        if (mode === 'preview') {
-            console.log('[ExportService] Phase 3: starting Marp preview');
-            const watchResult = await window.__TAURI__.core.invoke('marp_watch', {
-                opts: {
-                    inputPath: mdPath,
-                    format: 'html',
-                    outputPath: '',
-                    theme: options.marpTheme || null,
-                    themeDirs: null,
-                    enginePath: null,
-                    browser: null,
-                    pptxEditable: null,
-                    additionalArgs: null,
-                    handout: null,
-                    handoutLayout: null,
-                    handoutSlidesPerPage: null,
-                    handoutDirection: null,
-                },
-            });
-            return {
-                success: watchResult.success,
-                exportedPath: mdPath,
-                message: watchResult.message || 'Preview started',
-            };
-        }
-
-        // ── Save mode ──
-        if (options.runMarp && options.format === 'presentation' && options.marpFormat !== 'markdown') {
-            const marpOutputPath = ExportService.generateExportPath(
+        try {
+            // ── Save / Preview: write markdown file first ──
+            const ext = ExportService.getExtensionForFormat(options.format, options.marpFormat, options.pandocFormat);
+            const mdPath = ExportService.generateExportPath(
                 options.targetFolder,
                 options.exportFolderName,
-                '.' + options.marpFormat
+                '.md'
             );
 
-            console.log('[ExportService] Phase 3: running Marp export to', marpOutputPath);
-            const marpResult = await window.__TAURI__.core.invoke('marp_export', {
-                opts: {
-                    inputPath: mdPath,
-                    format: options.marpFormat,
-                    outputPath: marpOutputPath,
-                    enginePath: null,
-                    theme: options.marpTheme || null,
-                    themeDirs: null,
-                    browser: null,
-                    pptxEditable: options.marpPptxEditable || false,
-                    additionalArgs: null,
-                    handout: options.marpHandout || false,
-                    handoutLayout: options.marpHandoutLayout || null,
-                    handoutSlidesPerPage: options.marpHandoutSlidesPerPage || null,
-                    handoutDirection: options.marpHandoutDirection || null,
-                },
-            });
+            console.log('[ExportService] Phase 3: writing markdown to', mdPath);
+            await window.__TAURI__.core.invoke('write_export_file', { path: mdPath, content });
+            createdFiles.push(mdPath);
 
-            return {
-                success: marpResult.success,
-                exportedPath: marpResult.outputPath,
-                message: marpResult.message || 'Marp export completed',
-            };
+            // ── Preview mode: start Marp watch ──
+            if (mode === 'preview') {
+                console.log('[ExportService] Phase 3: starting Marp preview');
+                const watchResult = await window.__TAURI__.core.invoke('marp_watch', {
+                    opts: {
+                        inputPath: mdPath,
+                        format: 'html',
+                        outputPath: '',
+                        theme: options.marpTheme || null,
+                        themeDirs: null,
+                        enginePath: null,
+                        browser: null,
+                        pptxEditable: null,
+                        additionalArgs: null,
+                        handout: null,
+                        handoutLayout: null,
+                        handoutSlidesPerPage: null,
+                        handoutDirection: null,
+                    },
+                });
+                return {
+                    success: watchResult.success,
+                    exportedPath: mdPath,
+                    message: watchResult.message || 'Preview started',
+                };
+            }
+
+            // ── Save mode ──
+            if (options.runMarp && options.format === 'presentation' && options.marpFormat !== 'markdown') {
+                const marpOutputPath = ExportService.generateExportPath(
+                    options.targetFolder,
+                    options.exportFolderName,
+                    '.' + options.marpFormat
+                );
+
+                console.log('[ExportService] Phase 3: running Marp export to', marpOutputPath);
+                const marpResult = await window.__TAURI__.core.invoke('marp_export', {
+                    opts: {
+                        inputPath: mdPath,
+                        format: options.marpFormat,
+                        outputPath: marpOutputPath,
+                        enginePath: null,
+                        theme: options.marpTheme || null,
+                        themeDirs: null,
+                        browser: null,
+                        pptxEditable: options.marpPptxEditable || false,
+                        additionalArgs: null,
+                        handout: options.marpHandout || false,
+                        handoutLayout: options.marpHandoutLayout || null,
+                        handoutSlidesPerPage: options.marpHandoutSlidesPerPage || null,
+                        handoutDirection: options.marpHandoutDirection || null,
+                    },
+                });
+
+                return {
+                    success: marpResult.success,
+                    exportedPath: marpResult.outputPath,
+                    message: marpResult.message || 'Marp export completed',
+                };
+            }
+
+            if (options.runPandoc && options.format === 'document') {
+                const pandocOutputPath = ExportService.generateExportPath(
+                    options.targetFolder,
+                    options.exportFolderName,
+                    '.' + options.pandocFormat
+                );
+
+                console.log('[ExportService] Phase 3: running Pandoc export to', pandocOutputPath);
+                const pandocResult = await window.__TAURI__.core.invoke('pandoc_export', {
+                    opts: {
+                        inputPath: mdPath,
+                        outputPath: pandocOutputPath,
+                        format: options.pandocFormat,
+                        additionalArgs: null,
+                    },
+                });
+
+                return {
+                    success: pandocResult.success,
+                    exportedPath: pandocResult.outputPath,
+                    message: pandocResult.message || 'Pandoc export completed',
+                };
+            }
+
+            // Save mode without Marp/Pandoc — the .md file itself is the output
+            return { success: true, exportedPath: mdPath, message: 'Markdown file saved' };
+
+        } catch (err) {
+            // Clean up files created during this failed export
+            if (createdFiles.length > 0) {
+                console.log('[ExportService] Cleaning up partial output:', createdFiles);
+                try {
+                    await window.__TAURI__.core.invoke('remove_export_files', { paths: createdFiles });
+                } catch (cleanupErr) {
+                    console.log('[ExportService] Cleanup failed:', cleanupErr);
+                }
+            }
+            throw err;
         }
-
-        if (options.runPandoc && options.format === 'document') {
-            const pandocOutputPath = ExportService.generateExportPath(
-                options.targetFolder,
-                options.exportFolderName,
-                '.' + options.pandocFormat
-            );
-
-            console.log('[ExportService] Phase 3: running Pandoc export to', pandocOutputPath);
-            const pandocResult = await window.__TAURI__.core.invoke('pandoc_export', {
-                opts: {
-                    inputPath: mdPath,
-                    outputPath: pandocOutputPath,
-                    format: options.pandocFormat,
-                    additionalArgs: null,
-                },
-            });
-
-            return {
-                success: pandocResult.success,
-                exportedPath: pandocResult.outputPath,
-                message: pandocResult.message || 'Pandoc export completed',
-            };
-        }
-
-        // Save mode without Marp/Pandoc — the .md file itself is the output
-        return { success: true, exportedPath: mdPath, message: 'Markdown file saved' };
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

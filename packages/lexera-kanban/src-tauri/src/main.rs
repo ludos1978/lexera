@@ -25,6 +25,7 @@ fn main() {
             export_commands::discover_marp_themes,
             export_commands::open_export_folder,
             export_commands::write_export_file,
+            export_commands::remove_export_files,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
