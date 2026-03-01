@@ -1715,22 +1715,14 @@ body.embedded-mode .columns-container {
   max-width: none;
 }
 
-/* Force-clear stale inline lock sizing from interrupted drags. */
-.columns-container.new-format .board-row:not(.layout-locked) {
-  width: auto !important;
-  min-width: 0 !important;
-  max-width: none !important;
-}
-
-.columns-container.new-format .board-stack:not(.layout-locked) {
-  width: auto !important;
-  max-width: none !important;
-}
-
-.columns-container.new-format .column:not(.layout-locked) {
-  width: auto !important;
-  max-width: none !important;
-}
+/*
+ * Drag layout lock: lockBoardLayoutForDrag() pins element dimensions via
+ * inline styles AND adds .layout-locked.  unlockBoardLayoutForDrag() restores
+ * originals AND removes the class.  clearLayoutLockStyles() sweeps any stale
+ * inline sizing from elements that lost .layout-locked (e.g. after re-render).
+ * No !important overrides are needed because .layout-locked is always present
+ * while inline lock styles exist, and clearLayoutLockStyles removes leftovers.
+ */
 
 .columns-container.new-format .board-row-content {
   flex: 0 0 auto;
@@ -3234,6 +3226,30 @@ select.dialog-input option,
 .stack-drop-zone.active::after {
   color: var(--accent);
   font-weight: bold;
+}
+
+/* Visual drop zone indicators (cosmetic feedback during drag) */
+.drop-zone-indicator {
+  position: absolute;
+  pointer-events: none;
+  z-index: 8;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.drop-zone-indicator.vertical {
+  width: 4px;
+  top: 4px;
+  bottom: 4px;
+}
+.drop-zone-indicator.horizontal {
+  height: 4px;
+  left: 4px;
+  right: 4px;
+}
+.drop-zone-indicator.active {
+  opacity: 0.6;
 }
 
 /* Notification toast */
