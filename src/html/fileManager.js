@@ -2063,6 +2063,12 @@ function initializeFileManager() {
     window.executeAllPaths = executeAllPaths;
     window.toggleDiffForFile = toggleDiffForFile;
     window.showFileManagerNotice = showFileManagerNotice;
+    window.verifyContentSync = verifyContentSync;
+    window.closeVerificationResults = closeVerificationResults;
+    window.forceWriteAllContent = forceWriteAllContent;
+    window.cancelForceWrite = cancelForceWrite;
+    window.confirmForceWrite = confirmForceWrite;
+    window.reloadImages = reloadImages;
 
     document.addEventListener('keydown', handleFileManagerKeydown);
 

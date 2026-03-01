@@ -435,11 +435,28 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 | lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
 | **Total** | **~17,121** | **~18,650** | **~4,500** | **99+** | - |
 
-### TODO: Missing Function Implementations (from button/menu audit 2026-03-01)
+### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
-1. ~~`copyFullPath()` in webview.js~~ FIXED: clipboard copy via navigator.clipboard.writeText (commit 02be2ec2)
-2. ~~`copyStoredPath()` in webview.js~~ FIXED: clipboard copy via navigator.clipboard.writeText (commit 02be2ec2)
-3. ~~`path-context-menu` contextmenu handler~~ FIXED: right-click on file-name shows menu (commit 02be2ec2)
+All inline onclick/onchange/onkeypress handlers now properly exposed to `window` scope.
+
+**menuOperations.js** — 14 functions added to window:
+toggleColumnSticky, toggleHiddenColumnContent, insertColumnBefore, insertColumnAfter, duplicateColumn, deleteColumn, moveColumnLeft, moveColumnRight, changeColumnSpan, toggleColumnStack, sortColumn, copyColumnAsMarkdown, copyTaskAsMarkdown, toggleHiddenContent
+
+**webview.js** — 7 functions added to window:
+toggleMarpSettingsVisibility, setTaskMinHeight, setWhitespace, setFontFamily, setStickyStackMode, setHtmlCommentRenderMode, setHtmlContentRenderMode
+
+**fileManager.js** — 6 functions added to window:
+verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWrite, confirmForceWrite, reloadImages
+
+**Previously fixed (commit 02be2ec2):**
+- ~~`copyFullPath()`~~ FIXED
+- ~~`copyStoredPath()`~~ FIXED
+- ~~`path-context-menu` contextmenu handler~~ FIXED
+
+**Intentionally disabled (commented out in HTML, functions exist):**
+- Column menu: "Move column left/right" — use drag & drop instead
+- Card menu: "Move (Top/Up/Down/Bottom)" — use drag & drop instead
+- Card menu: "Move to list" — use drag & drop instead
 
 ────────────────────────────────────────────────────────────────────────────────
 

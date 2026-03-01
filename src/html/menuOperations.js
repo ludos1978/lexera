@@ -3472,6 +3472,20 @@ window.parkTaskFromMenu = parkTaskFromMenu;
 window.archiveTaskFromMenu = archiveTaskFromMenu;
 window.parkColumnFromMenu = parkColumnFromMenu;
 window.archiveColumnFromMenu = archiveColumnFromMenu;
+window.deleteColumn = deleteColumn;
+window.insertColumnBefore = insertColumnBefore;
+window.insertColumnAfter = insertColumnAfter;
+window.duplicateColumn = duplicateColumn;
+window.moveColumnLeft = moveColumnLeft;
+window.moveColumnRight = moveColumnRight;
+window.changeColumnSpan = changeColumnSpan;
+window.toggleColumnSticky = toggleColumnSticky;
+window.toggleColumnStack = toggleColumnStack;
+window.sortColumn = sortColumn;
+window.copyColumnAsMarkdown = copyColumnAsMarkdown;
+window.copyTaskAsMarkdown = copyTaskAsMarkdown;
+window.toggleHiddenContent = toggleHiddenContent;
+window.toggleHiddenColumnContent = toggleHiddenColumnContent;
 
 // Update visual tag state - handles borders and other tag-based styling
 function updateVisualTagState(element, allTags, elementType, isCollapsed) {
