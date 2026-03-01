@@ -1828,4 +1828,105 @@ kanban-plugin: board
         assert_eq!(board.columns[0].cards.len(), 1);
         assert_eq!(board.columns[1].cards.len(), 1);
     }
+
+    #[test]
+    fn test_concurrent_read_board() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD).unwrap();
+
+        let storage = Arc::new(LocalStorage::new());
+        let id = storage.add_board(tmp.path()).unwrap();
+
+        let thread_count = 8;
+        let barrier = Arc::new(std::sync::Barrier::new(thread_count));
+        let mut handles = Vec::new();
+
+        for _ in 0..thread_count {
+            let s = Arc::clone(&storage);
+            let bid = id.clone();
+            let b = Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                b.wait();
+                let board = s.read_board(&bid).unwrap();
+                assert!(board.valid);
+                assert_eq!(board.columns.len(), 2);
+                assert_eq!(board.columns[0].cards.len(), 2);
+                assert_eq!(board.columns[1].cards.len(), 1);
+            }));
+        }
+
+        for h in handles {
+            h.join().expect("thread panicked during concurrent read");
+        }
+    }
+
+    #[test]
+    fn test_concurrent_write_read() {
+        let storage = Arc::new(LocalStorage::new());
+
+        // Pre-populate a board via add_remote_board (no file I/O)
+        let board = parser::parse_markdown(TEST_BOARD);
+        storage.add_remote_board("board-rw", board);
+
+        let thread_count = 8;
+        let barrier = Arc::new(std::sync::Barrier::new(thread_count));
+        let mut handles = Vec::new();
+
+        // Half the threads write new remote boards, half read the existing one
+        for i in 0..thread_count {
+            let s = Arc::clone(&storage);
+            let b = Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                b.wait();
+                if i % 2 == 0 {
+                    // Writer: add a distinct remote board
+                    let new_board = parser::parse_markdown(TEST_BOARD);
+                    s.add_remote_board(&format!("board-rw-{}", i), new_board);
+                } else {
+                    // Reader: read the pre-populated board
+                    let board = s.read_board("board-rw");
+                    assert!(board.is_some());
+                    let board = board.unwrap();
+                    assert_eq!(board.columns.len(), 2);
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().expect("thread panicked during concurrent write/read");
+        }
+    }
+
+    #[test]
+    fn test_concurrent_multiple_writes() {
+        let storage = Arc::new(LocalStorage::new());
+
+        let thread_count = 8;
+        let barrier = Arc::new(std::sync::Barrier::new(thread_count));
+        let mut handles = Vec::new();
+
+        for i in 0..thread_count {
+            let s = Arc::clone(&storage);
+            let b = Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                b.wait();
+                let board = parser::parse_markdown(TEST_BOARD);
+                s.add_remote_board(&format!("board-mw-{}", i), board);
+            }));
+        }
+
+        for h in handles {
+            h.join().expect("thread panicked during concurrent writes");
+        }
+
+        // Verify all boards were saved correctly
+        for i in 0..thread_count {
+            let board = storage.read_board(&format!("board-mw-{}", i));
+            assert!(board.is_some(), "board-mw-{} should exist", i);
+            let board = board.unwrap();
+            assert_eq!(board.columns.len(), 2);
+            assert_eq!(board.columns[0].cards.len(), 2);
+            assert_eq!(board.columns[1].cards.len(), 1);
+        }
+    }
 }
