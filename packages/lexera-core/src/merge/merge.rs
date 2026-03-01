@@ -587,4 +587,513 @@ mod tests {
         assert!(result.conflicts.is_empty());
         assert_eq!(result.board.rows[0].stacks[0].columns[0].cards.len(), 1);
     }
+
+    // ---------------------------------------------------------------
+    // Complex multi-card merge (many cards, mixed operations)
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_merge_complex_multi_card() {
+        // Base has 4 cards across 2 columns
+        let base = make_board(vec![
+            (
+                "Todo",
+                vec![
+                    make_card("aaa00001", "Task A", false),
+                    make_card("aaa00002", "Task B", false),
+                ],
+            ),
+            (
+                "Done",
+                vec![
+                    make_card("aaa00003", "Task C", true),
+                    make_card("aaa00004", "Task D", true),
+                ],
+            ),
+        ]);
+
+        // Theirs: modified Task A content, deleted Task D, added Task E
+        let theirs = make_board(vec![
+            (
+                "Todo",
+                vec![
+                    make_card("aaa00001", "Task A updated by theirs", false),
+                    make_card("aaa00002", "Task B", false),
+                ],
+            ),
+            (
+                "Done",
+                vec![
+                    make_card("aaa00003", "Task C", true),
+                    // Task D removed
+                    make_card("aaa00005", "Task E new", false),
+                ],
+            ),
+        ]);
+
+        // Ours: checked Task B, moved Task A to Done, deleted Task C
+        let ours = make_board(vec![
+            (
+                "Todo",
+                vec![make_card("aaa00002", "Task B", true)],
+            ),
+            (
+                "Done",
+                vec![
+                    // Task C removed by us
+                    make_card("aaa00001", "Task A", false),
+                    make_card("aaa00004", "Task D", true),
+                ],
+            ),
+        ]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+
+        // Task A: theirs changed content, ours moved to Done. Content should be theirs',
+        // column should use theirs' column since b.column_title (Todo) != t.column_title (Todo) is false,
+        // so it uses ours column (Done).
+        // Actually: base col=Todo, theirs col=Todo, ours col=Done.
+        // theirs didn't move it (base=theirs=Todo), so target = ours col = Done.
+        let all_cards: Vec<_> = result
+            .board
+            .columns
+            .iter()
+            .flat_map(|c| c.cards.iter().map(move |card| (c.title.clone(), card)))
+            .collect();
+
+        let task_a = all_cards
+            .iter()
+            .find(|(_, card)| card.kid.as_deref() == Some("aaa00001"));
+        assert!(task_a.is_some());
+        let (col, card) = task_a.unwrap();
+        assert_eq!(card.content, "Task A updated by theirs");
+        assert_eq!(col, "Done");
+
+        // Task B: ours checked it, no content change from either side
+        let task_b = all_cards
+            .iter()
+            .find(|(_, card)| card.kid.as_deref() == Some("aaa00002"));
+        assert!(task_b.is_some());
+        assert!(task_b.unwrap().1.checked);
+
+        // Task C: in base+theirs, not in ours => user deleted, should be removed
+        let task_c = all_cards
+            .iter()
+            .find(|(_, card)| card.kid.as_deref() == Some("aaa00003"));
+        assert!(task_c.is_none());
+
+        // Task D: in base+ours, not in theirs => externally deleted, conservative keeps ours
+        let task_d = all_cards
+            .iter()
+            .find(|(_, card)| card.kid.as_deref() == Some("aaa00004"));
+        assert!(task_d.is_some());
+
+        // Task E: only in theirs => added externally, should be included
+        let task_e = all_cards
+            .iter()
+            .find(|(_, card)| card.kid.as_deref() == Some("aaa00005"));
+        assert!(task_e.is_some());
+        assert_eq!(task_e.unwrap().1.content, "Task E new");
+
+        assert!(result.conflicts.is_empty());
+    }
+
+    // ---------------------------------------------------------------
+    // Both content AND checked changed on different sides
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_merge_content_theirs_checked_ours() {
+        // Theirs changes content, ours changes checked => auto-merge, no conflict
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", false)])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Updated by theirs", false)],
+        )]);
+        let ours = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", true)])]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let card = &result.board.columns[0].cards[0];
+        assert_eq!(card.content, "Updated by theirs");
+        assert!(card.checked);
+    }
+
+    #[test]
+    fn test_merge_content_ours_checked_theirs() {
+        // Ours changes content, theirs changes checked => auto-merge, no conflict
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", false)])]);
+        let theirs = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", true)])]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Updated by ours", false)],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let card = &result.board.columns[0].cards[0];
+        assert_eq!(card.content, "Updated by ours");
+        assert!(card.checked);
+    }
+
+    #[test]
+    fn test_merge_both_content_and_checked_conflict() {
+        // Both sides change content differently AND both change checked differently
+        // => two conflicts (one for content, one for checked)
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", false)])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Theirs version", true)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Ours version", true)],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        // Content conflict (different content), but checked is the same (both true) => no checked conflict
+        assert_eq!(result.conflicts.len(), 1);
+        assert_eq!(result.conflicts[0].field, ConflictField::Content);
+    }
+
+    #[test]
+    fn test_merge_both_content_and_checked_two_conflicts() {
+        // Both sides change content differently AND checked differently
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", false)])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Theirs version", true)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Ours version", false)],
+        )]);
+
+        // base checked=false, theirs=true, ours=false. Both changed from base? No:
+        // ours checked (false) == base checked (false), so only theirs changed checked.
+        // That means checked takes theirs' value, no conflict on checked.
+        // Content: both changed differently => conflict on content.
+        let result = three_way_merge(&base, &theirs, &ours);
+        let content_conflicts: Vec<_> = result
+            .conflicts
+            .iter()
+            .filter(|c| c.field == ConflictField::Content)
+            .collect();
+        assert_eq!(content_conflicts.len(), 1);
+        // Checked should be theirs' value (true) since only theirs changed it
+        let card = &result.board.columns[0].cards[0];
+        assert!(card.checked);
+    }
+
+    #[test]
+    fn test_merge_real_two_conflicts_content_and_checked() {
+        // Construct a scenario where BOTH content and checked produce conflicts.
+        // base: content="Original", checked=false
+        // theirs: content="Theirs edit", checked=true
+        // ours: content="Ours edit", checked=false  -- wait, ours checked == base checked, no conflict
+        // Need: base checked differs from both theirs and ours, and theirs != ours for checked.
+        // That's impossible with bool if base=false: theirs=true, ours must be true (no conflict) or false (== base).
+        // With base=true: theirs=false, ours=false => theirs==ours, no conflict.
+        // So checked can only truly conflict when base=false, theirs=true, ours=true... but those are equal.
+        // Or base=true, theirs=false, ours=false... equal again.
+        // Actually: base=true, theirs=false, ours=false means both changed but to the same value => auto-merge.
+        // Boolean can never produce a true conflict where theirs != ours AND both changed from base,
+        // because there are only two boolean values. If both changed from base, they must have gone to the same value.
+        // This test verifies that understanding.
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Original", true)])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Theirs edit", false)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Ours edit", false)],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        // Both changed checked from true->false (same), so auto-merge on checked.
+        // Both changed content differently => conflict on content only.
+        let checked_conflicts: Vec<_> = result
+            .conflicts
+            .iter()
+            .filter(|c| c.field == ConflictField::Checked)
+            .collect();
+        assert_eq!(checked_conflicts.len(), 0);
+        assert_eq!(result.conflicts.len(), 1);
+        assert_eq!(result.conflicts[0].field, ConflictField::Content);
+        // Checked should be false (both agree)
+        let card = &result.board.columns[0].cards[0];
+        assert!(!card.checked);
+    }
+
+    // ---------------------------------------------------------------
+    // Fallback column behavior when target column missing
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_merge_fallback_column_when_target_missing() {
+        // Card wants to go to "Review" column but that column doesn't exist in merged result.
+        // The fallback should put it in the first column.
+        let base = make_board(vec![
+            ("Todo", vec![make_card("aaa00001", "Task A", false)]),
+            ("Review", vec![]),
+        ]);
+        // Theirs: removed Review column entirely
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Task A", false)],
+        )]);
+        // Ours: moved card to Review
+        let ours = make_board(vec![
+            ("Todo", vec![]),
+            ("Review", vec![make_card("aaa00001", "Task A", false)]),
+        ]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+
+        // The card target column is "Review" (ours moved it).
+        // "Review" is re-added by the column merge logic (it was in base+ours but not theirs).
+        // So the card should end up in Review.
+        let all_cards: Vec<_> = result
+            .board
+            .columns
+            .iter()
+            .flat_map(|c| c.cards.iter().map(move |card| (c.title.clone(), card)))
+            .collect();
+        let task_a = all_cards
+            .iter()
+            .find(|(_, card)| card.kid.as_deref() == Some("aaa00001"));
+        assert!(task_a.is_some());
+        // Conservative merge keeps the Review column from ours, so card lands there
+        assert_eq!(task_a.unwrap().0, "Review");
+    }
+
+    #[test]
+    fn test_add_card_to_column_fallback_first() {
+        // Directly test add_card_to_column with a missing target column
+        let mut columns = vec![
+            KanbanColumn {
+                id: "c1".into(),
+                title: "First".into(),
+                cards: vec![],
+                include_source: None,
+            },
+            KanbanColumn {
+                id: "c2".into(),
+                title: "Second".into(),
+                cards: vec![],
+                include_source: None,
+            },
+        ];
+        let card = make_card("aaa00001", "Orphan card", false);
+        add_card_to_column(&mut columns, "Nonexistent", card);
+
+        // Should fall back to the first column
+        assert_eq!(columns[0].cards.len(), 1);
+        assert_eq!(columns[0].cards[0].content, "Orphan card");
+        assert_eq!(columns[1].cards.len(), 0);
+    }
+
+    // ---------------------------------------------------------------
+    // Card appearing in both sides with modifications
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_merge_card_in_theirs_and_ours_not_base_same_content() {
+        // Both sides independently add a card with the same kid and same content
+        let base = make_board(vec![("Todo", vec![])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Shared idea", false)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Shared idea", false)],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        // Same content+checked => deduplicated to one card
+        let total_cards: usize = result.board.columns.iter().map(|c| c.cards.len()).sum();
+        assert_eq!(total_cards, 1);
+    }
+
+    #[test]
+    fn test_merge_card_in_theirs_and_ours_not_base_different_content() {
+        // Both sides independently add a card with the same kid but different content
+        let base = make_board(vec![("Todo", vec![])]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Version A", false)],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![make_card("aaa00001", "Version B", true)],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        // Different content with same kid, not in base => keeps theirs, auto_merged +1
+        assert!(result.conflicts.is_empty());
+        assert!(result.auto_merged >= 1);
+        let card = &result.board.columns[0].cards[0];
+        assert_eq!(card.content, "Version A");
+    }
+
+    #[test]
+    fn test_merge_card_both_deleted() {
+        // Card in base but deleted by both theirs and ours
+        let base = make_board(vec![("Todo", vec![make_card("aaa00001", "Old task", false)])]);
+        let theirs = make_board(vec![("Todo", vec![])]);
+        let ours = make_board(vec![("Todo", vec![])]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        assert!(result.board.columns[0].cards.is_empty());
+    }
+
+    #[test]
+    fn test_merge_card_moved_by_theirs() {
+        // Theirs moves card to a different column, ours leaves it
+        let base = make_board(vec![
+            ("Todo", vec![make_card("aaa00001", "Task A", false)]),
+            ("Done", vec![]),
+        ]);
+        let theirs = make_board(vec![
+            ("Todo", vec![]),
+            ("Done", vec![make_card("aaa00001", "Task A", false)]),
+        ]);
+        let ours = make_board(vec![
+            ("Todo", vec![make_card("aaa00001", "Task A", false)]),
+            ("Done", vec![]),
+        ]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        // Theirs moved it: base col=Todo, theirs col=Done, ours col=Todo.
+        // Since b.column_title (Todo) != t.column_title (Done), target = theirs col = Done.
+        let done_cards = &result
+            .board
+            .columns
+            .iter()
+            .find(|c| c.title == "Done")
+            .unwrap()
+            .cards;
+        assert_eq!(done_cards.len(), 1);
+        assert_eq!(done_cards[0].kid.as_deref(), Some("aaa00001"));
+    }
+
+    #[test]
+    fn test_merge_many_cards_mixed_operations() {
+        // Stress test with 6 cards and various operations
+        let base = make_board(vec![
+            (
+                "Backlog",
+                vec![
+                    make_card("c001", "Card 1", false),
+                    make_card("c002", "Card 2", false),
+                    make_card("c003", "Card 3", false),
+                ],
+            ),
+            (
+                "Active",
+                vec![
+                    make_card("c004", "Card 4", false),
+                    make_card("c005", "Card 5", false),
+                ],
+            ),
+            ("Done", vec![make_card("c006", "Card 6", true)]),
+        ]);
+
+        let theirs = make_board(vec![
+            (
+                "Backlog",
+                vec![
+                    make_card("c001", "Card 1 theirs-edit", false), // modified
+                    make_card("c002", "Card 2", false),             // unchanged
+                    // c003 removed by theirs
+                ],
+            ),
+            (
+                "Active",
+                vec![
+                    make_card("c004", "Card 4", false),
+                    make_card("c005", "Card 5", false),
+                    make_card("c007", "Card 7 new-theirs", false), // added by theirs
+                ],
+            ),
+            ("Done", vec![make_card("c006", "Card 6", true)]),
+        ]);
+
+        let ours = make_board(vec![
+            (
+                "Backlog",
+                vec![
+                    make_card("c001", "Card 1", false),     // unchanged
+                    make_card("c002", "Card 2", true),       // checked by ours
+                    make_card("c003", "Card 3", false),      // kept by ours
+                ],
+            ),
+            (
+                "Active",
+                vec![
+                    make_card("c004", "Card 4", true),       // checked by ours
+                    // c005 moved to Done by ours
+                ],
+            ),
+            (
+                "Done",
+                vec![
+                    make_card("c006", "Card 6", true),
+                    make_card("c005", "Card 5 done", true),   // moved+modified by ours
+                    make_card("c008", "Card 8 new-ours", false), // added by ours
+                ],
+            ),
+        ]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+
+        let all_cards: Vec<_> = result
+            .board
+            .columns
+            .iter()
+            .flat_map(|c| c.cards.iter().map(move |card| (c.title.clone(), card)))
+            .collect();
+
+        // c001: theirs changed content, ours unchanged => theirs content wins
+        let c001 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c001")).unwrap();
+        assert_eq!(c001.1.content, "Card 1 theirs-edit");
+
+        // c002: ours checked it => should be checked
+        let c002 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c002")).unwrap();
+        assert!(c002.1.checked);
+
+        // c003: in base+ours, not in theirs => conservative: keep ours
+        let c003 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c003"));
+        assert!(c003.is_some());
+
+        // c004: ours checked it
+        let c004 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c004")).unwrap();
+        assert!(c004.1.checked);
+
+        // c005: ours moved to Done and modified content. Theirs left it in Active.
+        // base col=Active, theirs col=Active, ours col=Done. theirs didn't move (b==t),
+        // so target = ours col = Done.
+        let c005 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c005")).unwrap();
+        assert_eq!(c005.0, "Done");
+
+        // c006: unchanged by both => present
+        let c006 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c006"));
+        assert!(c006.is_some());
+
+        // c007: only in theirs => included
+        let c007 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c007"));
+        assert!(c007.is_some());
+
+        // c008: only in ours => included
+        let c008 = all_cards.iter().find(|(_, c)| c.kid.as_deref() == Some("c008"));
+        assert!(c008.is_some());
+
+        // Total: c001-c008 present (c003 kept conservatively) = 8 cards
+        assert_eq!(all_cards.len(), 8);
+    }
 }

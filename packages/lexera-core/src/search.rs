@@ -620,4 +620,677 @@ mod tests {
         };
         assert!(!engine.matches(&doc));
     }
+
+    // ---------------------------------------------------------------
+    // Unicode / accent normalization
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_unicode_normalization_cafe() {
+        // "café" (with accent) should match a search for "cafe" (without accent)
+        let engine = SearchEngine::compile("cafe", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("Visit the café", false);
+        let doc = SearchDocument {
+            board_title: "Board",
+            column_title: "Col",
+            card_content: "Visit the café",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_unicode_normalization_resume() {
+        // "résumé" should match "resume"
+        let engine = SearchEngine::compile("resume", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("Send résumé", false);
+        let doc = SearchDocument {
+            board_title: "Board",
+            column_title: "Col",
+            card_content: "Send résumé",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_unicode_normalization_tag() {
+        // Tag with accent should match normalized search
+        let engine = SearchEngine::compile("#résumé", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("Apply #resume", false);
+        let doc = SearchDocument {
+            board_title: "Board",
+            column_title: "Col",
+            card_content: "Apply #resume",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_case_sensitive_skips_normalization() {
+        let opts = SearchOptions {
+            case_sensitive: true,
+            use_regex: false,
+        };
+        let engine = SearchEngine::compile("cafe", opts);
+        let meta = SearchCardMeta::from_card("Visit the café", false);
+        let doc = SearchDocument {
+            board_title: "Board",
+            column_title: "Col",
+            card_content: "Visit the café",
+            checked: false,
+            meta: &meta,
+        };
+        // case_sensitive mode does not strip accents, so "cafe" != "café"
+        assert!(!engine.matches(&doc));
+    }
+
+    // ---------------------------------------------------------------
+    // Regex mode edge cases
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_regex_mode_invalid_regex() {
+        let opts = SearchOptions {
+            case_sensitive: false,
+            use_regex: true,
+        };
+        let engine = SearchEngine::compile("[invalid(", opts);
+        // Invalid regex => regex_invalid = true, is_empty is false
+        assert!(!engine.is_empty());
+
+        let meta = SearchCardMeta::from_card("anything", false);
+        let doc = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "anything",
+            checked: false,
+            meta: &meta,
+        };
+        // Invalid regex should match nothing
+        assert!(!engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_regex_mode_special_characters() {
+        let opts = SearchOptions {
+            case_sensitive: false,
+            use_regex: true,
+        };
+        let engine = SearchEngine::compile(r"task\s+\d+", opts);
+        let meta = SearchCardMeta::from_card("task 42", false);
+        let doc = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task 42",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+
+        let meta2 = SearchCardMeta::from_card("taskABC", false);
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "taskABC",
+            checked: false,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    #[test]
+    fn test_regex_mode_empty_query() {
+        let opts = SearchOptions {
+            case_sensitive: false,
+            use_regex: true,
+        };
+        let engine = SearchEngine::compile("", opts);
+        assert!(engine.is_empty());
+    }
+
+    #[test]
+    fn test_inline_regex_term() {
+        // /pattern/ syntax inside a normal (non-regex-mode) query.
+        // Note: split_query_tokens treats backslash as escape, so we use a
+        // regex pattern that avoids backslashes (e.g. character class [0-9]).
+        let engine = SearchEngine::compile("/[0-9]{3}/", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("code 456", false);
+        let doc = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "code 456",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+
+        let meta2 = SearchCardMeta::from_card("code AB", false);
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "code AB",
+            checked: false,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    // ---------------------------------------------------------------
+    // Multiple negation terms
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_multiple_negation_tags() {
+        let engine = SearchEngine::compile("plan -#done -#waiting", SearchOptions::default());
+
+        // Card with neither excluded tag => matches
+        let meta1 = SearchCardMeta::from_card("plan #active", false);
+        let doc1 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "plan #active",
+            checked: false,
+            meta: &meta1,
+        };
+        assert!(engine.matches(&doc1));
+
+        // Card with #done => excluded
+        let meta2 = SearchCardMeta::from_card("plan #done", false);
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "plan #done",
+            checked: false,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+
+        // Card with #waiting => excluded
+        let meta3 = SearchCardMeta::from_card("plan #waiting", false);
+        let doc3 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "plan #waiting",
+            checked: false,
+            meta: &meta3,
+        };
+        assert!(!engine.matches(&doc3));
+
+        // Card with both #done and #waiting => excluded
+        let meta4 = SearchCardMeta::from_card("plan #done #waiting", false);
+        let doc4 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "plan #done #waiting",
+            checked: false,
+            meta: &meta4,
+        };
+        assert!(!engine.matches(&doc4));
+    }
+
+    #[test]
+    fn test_negation_text_term() {
+        // Negate a plain text term
+        let engine = SearchEngine::compile("task -urgent", SearchOptions::default());
+
+        let meta1 = SearchCardMeta::from_card("task normal priority", false);
+        let doc1 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task normal priority",
+            checked: false,
+            meta: &meta1,
+        };
+        assert!(engine.matches(&doc1));
+
+        let meta2 = SearchCardMeta::from_card("task urgent priority", false);
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task urgent priority",
+            checked: false,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    // ---------------------------------------------------------------
+    // DueFilter matching
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_due_filter_overdue() {
+        let engine = SearchEngine::compile("due:overdue", SearchOptions::default());
+
+        // Card with past due date, not checked => overdue
+        let meta1 = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec!["@2000-01-01".into()],
+            due_date: NaiveDate::from_ymd_opt(2000, 1, 1),
+            is_overdue: true,
+        };
+        let doc1 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "old task @2000-01-01",
+            checked: false,
+            meta: &meta1,
+        };
+        assert!(engine.matches(&doc1));
+
+        // Same card but checked => not overdue
+        let meta2 = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec!["@2000-01-01".into()],
+            due_date: NaiveDate::from_ymd_opt(2000, 1, 1),
+            is_overdue: false, // checked cards are not overdue
+        };
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "old task @2000-01-01",
+            checked: true,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    #[test]
+    fn test_due_filter_any() {
+        let engine = SearchEngine::compile("due:any", SearchOptions::default());
+
+        let meta1 = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec!["@2030-06-01".into()],
+            due_date: NaiveDate::from_ymd_opt(2030, 6, 1),
+            is_overdue: false,
+        };
+        let doc1 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task @2030-06-01",
+            checked: false,
+            meta: &meta1,
+        };
+        assert!(engine.matches(&doc1));
+
+        let meta2 = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: None,
+            is_overdue: false,
+        };
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task with no date",
+            checked: false,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    #[test]
+    fn test_due_filter_week_boundaries() {
+        // Build an engine - week boundaries are computed from Local::now()
+        // We test by constructing meta with specific due_dates and checking
+        // the engine's week_start / week_end logic.
+        let engine = SearchEngine::compile("due:week", SearchOptions::default());
+
+        // A card due within this week should match
+        let meta_this_week = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: Some(engine.week_start),
+            is_overdue: false,
+        };
+        let doc_this_week = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task",
+            checked: false,
+            meta: &meta_this_week,
+        };
+        assert!(engine.matches(&doc_this_week));
+
+        // A card due at the end of the week should also match
+        let meta_end_week = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: Some(engine.week_end),
+            is_overdue: false,
+        };
+        let doc_end_week = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task",
+            checked: false,
+            meta: &meta_end_week,
+        };
+        assert!(engine.matches(&doc_end_week));
+
+        // A card due the day after the week ends should NOT match
+        let meta_next_week = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: Some(engine.week_end + Duration::days(1)),
+            is_overdue: false,
+        };
+        let doc_next_week = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task",
+            checked: false,
+            meta: &meta_next_week,
+        };
+        assert!(!engine.matches(&doc_next_week));
+
+        // A card due the day before the week starts should NOT match
+        let meta_prev_week = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: Some(engine.week_start - Duration::days(1)),
+            is_overdue: false,
+        };
+        let doc_prev_week = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task",
+            checked: false,
+            meta: &meta_prev_week,
+        };
+        assert!(!engine.matches(&doc_prev_week));
+    }
+
+    #[test]
+    fn test_due_filter_future() {
+        let engine = SearchEngine::compile("due:future", SearchOptions::default());
+
+        let meta1 = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: Some(engine.today + Duration::days(30)),
+            is_overdue: false,
+        };
+        let doc1 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "future task",
+            checked: false,
+            meta: &meta1,
+        };
+        assert!(engine.matches(&doc1));
+
+        // Today is NOT future
+        let meta2 = SearchCardMeta {
+            hash_tags: vec![],
+            temporal_tags: vec![],
+            due_date: Some(engine.today),
+            is_overdue: false,
+        };
+        let doc2 = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "today task",
+            checked: false,
+            meta: &meta2,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    // ---------------------------------------------------------------
+    // Temporal tag parsing edge cases
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_temporal_quarter_parsing() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(
+            parse_temporal_to_date("@q1", today),
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@q2", today),
+            NaiveDate::from_ymd_opt(2026, 4, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@q3", today),
+            NaiveDate::from_ymd_opt(2026, 7, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@q4", today),
+            NaiveDate::from_ymd_opt(2026, 10, 1)
+        );
+    }
+
+    #[test]
+    fn test_temporal_quarter_with_year() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(
+            parse_temporal_to_date("@2025q1", today),
+            NaiveDate::from_ymd_opt(2025, 1, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@2027q3", today),
+            NaiveDate::from_ymd_opt(2027, 7, 1)
+        );
+    }
+
+    #[test]
+    fn test_temporal_invalid_quarter_out_of_range() {
+        // q0 and q5 should not match the quarter regex (it only allows [1-4])
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(parse_temporal_to_date("@q0", today), None);
+        assert_eq!(parse_temporal_to_date("@q5", today), None);
+    }
+
+    #[test]
+    fn test_temporal_month_boundaries() {
+        let today = NaiveDate::from_ymd_opt(2026, 6, 15).unwrap();
+        // Month names produce the 1st of that month in the current year
+        assert_eq!(
+            parse_temporal_to_date("@jan", today),
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@december", today),
+            NaiveDate::from_ymd_opt(2026, 12, 1)
+        );
+        // German month names
+        assert_eq!(
+            parse_temporal_to_date("@maerz", today),
+            NaiveDate::from_ymd_opt(2026, 3, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@okt", today),
+            NaiveDate::from_ymd_opt(2026, 10, 1)
+        );
+    }
+
+    #[test]
+    fn test_temporal_month_with_year() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(
+            parse_temporal_to_date("@2025jan", today),
+            NaiveDate::from_ymd_opt(2025, 1, 1)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@2027december", today),
+            NaiveDate::from_ymd_opt(2027, 12, 1)
+        );
+    }
+
+    #[test]
+    fn test_temporal_invalid_month_name() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        // Nonsense month name should return None
+        assert_eq!(parse_temporal_to_date("@notamonth", today), None);
+    }
+
+    #[test]
+    fn test_temporal_today_and_tomorrow() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(parse_temporal_to_date("@today", today), Some(today));
+        assert_eq!(
+            parse_temporal_to_date("@tomorrow", today),
+            Some(today + Duration::days(1))
+        );
+        // German variants
+        assert_eq!(parse_temporal_to_date("@heute", today), Some(today));
+        assert_eq!(
+            parse_temporal_to_date("@morgen", today),
+            Some(today + Duration::days(1))
+        );
+    }
+
+    #[test]
+    fn test_temporal_explicit_date_ymd() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(
+            parse_temporal_to_date("@2026-06-15", today),
+            NaiveDate::from_ymd_opt(2026, 6, 15)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@2026/06/15", today),
+            NaiveDate::from_ymd_opt(2026, 6, 15)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@2026.06.15", today),
+            NaiveDate::from_ymd_opt(2026, 6, 15)
+        );
+    }
+
+    #[test]
+    fn test_temporal_explicit_date_dmy() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(
+            parse_temporal_to_date("@15.06.2026", today),
+            NaiveDate::from_ymd_opt(2026, 6, 15)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@1/3/2026", today),
+            NaiveDate::from_ymd_opt(2026, 3, 1)
+        );
+    }
+
+    #[test]
+    fn test_temporal_invalid_date() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        // February 30 does not exist
+        assert_eq!(parse_temporal_to_date("@2026-02-30", today), None);
+        // Month 13 does not exist
+        assert_eq!(parse_temporal_to_date("@2026-13-01", today), None);
+    }
+
+    #[test]
+    fn test_temporal_empty_and_bare_at() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        assert_eq!(parse_temporal_to_date("@", today), None);
+        assert_eq!(parse_temporal_to_date("", today), None);
+    }
+
+    #[test]
+    fn test_temporal_iso_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        // ISO week: 2026-W01 starts on Monday 2025-12-29
+        assert_eq!(
+            parse_temporal_to_date("@2026-w01", today),
+            NaiveDate::from_isoywd_opt(2026, 1, Weekday::Mon)
+        );
+    }
+
+    #[test]
+    fn test_temporal_kw_week() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        // German-style week: kw10
+        assert_eq!(
+            parse_temporal_to_date("@kw10", today),
+            NaiveDate::from_isoywd_opt(2026, 10, Weekday::Mon)
+        );
+        assert_eq!(
+            parse_temporal_to_date("@2025kw01", today),
+            NaiveDate::from_isoywd_opt(2025, 1, Weekday::Mon)
+        );
+    }
+
+    #[test]
+    fn test_derive_due_date_picks_earliest() {
+        let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        let tags = vec!["@2026-06-15".to_string(), "@2026-01-10".to_string()];
+        let due = derive_due_date(&tags, today);
+        assert_eq!(due, NaiveDate::from_ymd_opt(2026, 1, 10));
+    }
+
+    // ---------------------------------------------------------------
+    // Misc query parsing edge cases
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_board_and_column_filters() {
+        let engine =
+            SearchEngine::compile("board:planning col:todo task", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("task description", false);
+
+        // Matching board+col+content
+        let doc1 = SearchDocument {
+            board_title: "Project Planning",
+            column_title: "Todo List",
+            card_content: "task description",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc1));
+
+        // Wrong board
+        let doc2 = SearchDocument {
+            board_title: "Other",
+            column_title: "Todo",
+            card_content: "task description",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(!engine.matches(&doc2));
+    }
+
+    #[test]
+    fn test_is_checked_filter() {
+        let engine = SearchEngine::compile("is:done", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("task", false);
+
+        let doc_checked = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task",
+            checked: true,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc_checked));
+
+        let doc_unchecked = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(!engine.matches(&doc_unchecked));
+    }
+
+    #[test]
+    fn test_empty_query_is_empty() {
+        let engine = SearchEngine::compile("", SearchOptions::default());
+        assert!(engine.is_empty());
+    }
+
+    #[test]
+    fn test_split_query_tokens_escaped_quote() {
+        let tokens = split_query_tokens(r#"hello \"world"#);
+        // The backslash escapes the quote, so it's part of the token
+        assert!(tokens.iter().any(|t| t.contains('"')));
+    }
 }
