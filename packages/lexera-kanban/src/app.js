@@ -2221,7 +2221,7 @@ const LexeraDashboard = (function () {
       dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(scopedOverdue), 40);
     } catch (err) {
       if (refreshId !== dashboardRefreshSeq) return;
-      console.error('[dashboard.search] Failed to refresh:', err);
+      logFrontendIssue('error', 'dashboard.search', 'Failed to refresh', err);
       dashboardState.results = [];
       dashboardState.deadlines = [];
       dashboardState.overdue = [];
@@ -2742,7 +2742,7 @@ const LexeraDashboard = (function () {
       liveDraftSyncRequest = null;
       if (!request || request.boardId !== activeBoardId) return;
       syncCardDraftToLiveSession(request.colIndex, request.fullCardIdx, request.content).catch(function (err) {
-        console.error('[live-sync] Failed to sync card draft:', err);
+        logFrontendIssue('error', 'live-sync', 'Failed to sync card draft', err);
       });
     }, 250);
   }
@@ -2777,7 +2777,7 @@ const LexeraDashboard = (function () {
     try {
       await ensureLiveSyncSession(boardId);
     } catch (err) {
-      console.warn('[live-sync] Failed to open session for board ' + boardId, err);
+      logFrontendIssue('warn', 'live-sync', 'Failed to open session for board ' + boardId, err);
     }
     if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === boardId) return;
     var userId = await ensureSyncUserId();
@@ -2787,7 +2787,7 @@ const LexeraDashboard = (function () {
       syncDebounceTimer = setTimeout(function () {
         syncDebounceTimer = null;
         importLiveSyncMessage(boardId, message.updates).catch(function (err) {
-          console.error('[live-sync] Failed to import sync update:', err);
+          logFrontendIssue('error', 'live-sync', 'Failed to import sync update', err);
           if (activeBoardId === boardId && !isEditing) loadBoard(boardId);
         });
       }, message.type === 'hello' ? 0 : 50);
@@ -4747,7 +4747,7 @@ const LexeraDashboard = (function () {
       scheduleDashboardRefresh(80);
       return true;
     } catch (err) {
-      console.error('[persistBoardMutation] Save failed, reloading board:', err);
+      logFrontendIssue('error', 'persistBoardMutation', 'Save failed, reloading board', err);
       await loadBoard(activeBoardId);
       if (typeof options.onError === 'function') {
         options.onError(err);
@@ -4875,7 +4875,7 @@ const LexeraDashboard = (function () {
       scheduleDashboardRefresh(80);
       return true;
     } catch (err) {
-      console.error('[commitBoardMutations] Save failed:', err);
+      logFrontendIssue('error', 'commitBoardMutations', 'Save failed', err);
       await poll();
       if (typeof options.onError === 'function') options.onError(err);
       return false;
@@ -5616,7 +5616,7 @@ const LexeraDashboard = (function () {
         showNotification(opened ? 'Inspector opened' : 'Inspector closed');
       })
       .catch(function (err) {
-        console.error('[inspector] Failed to toggle devtools:', err);
+        logFrontendIssue('error', 'inspector', 'Failed to toggle devtools', err);
         showNotification('Inspector unavailable in this build');
       });
   }
@@ -7555,7 +7555,7 @@ const LexeraDashboard = (function () {
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
     moveCard(source, target).catch(function (err) {
-      console.error('[moveCard] Drop failed:', err);
+      logFrontendIssue('error', 'moveCard', 'Drop failed', err);
     });
     return true;
   }
@@ -8105,7 +8105,6 @@ const LexeraDashboard = (function () {
     if (ptrDrag || cardDrag) return;
     if (e.target.closest('.board-row-title, .board-stack-title, .column-title')) return;
     if (e.target.closest('button, input, textarea, select, a, .column-rename-input, .card-menu-btn, .card-collapse-toggle, .card-checkbox')) {
-      console.log('[PTR-DND] mousedown blocked by interactive element: ' + e.target.className);
       return;
     }
 
@@ -8153,7 +8152,6 @@ const LexeraDashboard = (function () {
       var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       var columns = stackEl.querySelectorAll('.board-stack-content > .column');
       var colIdx = Array.prototype.indexOf.call(columns, colEl);
-      console.log('[COL-PTR] mousedown on column-header r=' + rowIdx + ' s=' + stackIdx + ' c=' + colIdx + ' target=' + e.target.className);
       ptrDrag = {
         type: 'column',
         source: {
@@ -8194,7 +8192,6 @@ const LexeraDashboard = (function () {
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
       ptrDrag.el.classList.add('dragging');
-      console.log('[PTR-DND] drag started type=' + ptrDrag.type);
       var lockableDragType =
         ptrDrag.type === 'board-row' ||
         ptrDrag.type === 'tree-row' ||
@@ -8209,7 +8206,6 @@ const LexeraDashboard = (function () {
       startCrossViewBridge('ptr');
       if (ptrDrag.type === 'column' || ptrDrag.type === 'tree-column') {
         insertStackDropZones();
-        console.log('[COL-PTR] inserted stack drop zones, count=' + $columnsContainer.querySelectorAll('.stack-drop-zone').length);
       }
 
       // Create ghost
@@ -8237,12 +8233,10 @@ const LexeraDashboard = (function () {
   document.addEventListener('mouseup', function (e) {
     if (!ptrDrag) return;
     if (!ptrDrag.started) {
-      console.log('[PTR-DND] mouseup without reaching threshold, type=' + ptrDrag.type);
       ptrDrag = null;
       stopCrossViewBridge();
       return;
     }
-    console.log('[PTR-DND] mouseup → executePtrDrop type=' + ptrDrag.type + ' at=' + e.clientX + ',' + e.clientY);
     executePtrDrop(e.clientX, e.clientY);
     cleanupPtrDrag();
   });
@@ -8432,7 +8426,7 @@ const LexeraDashboard = (function () {
         indexMode: targetIndexMode
       }
     ).catch(function (err) {
-      console.error('[moveRowAcrossBoards] Drop failed:', err);
+      lexeraLog('error', '[moveRowAcrossBoards] Drop failed: ' + err);
     });
     return true;
   }
@@ -8472,7 +8466,7 @@ const LexeraDashboard = (function () {
         indexMode: targetIndexMode
       }
     ).catch(function (err) {
-      console.error('[moveStackAcrossBoards] Drop failed:', err);
+      lexeraLog('error', '[moveStackAcrossBoards] Drop failed: ' + err);
     });
     return true;
   }
@@ -8627,21 +8621,6 @@ const LexeraDashboard = (function () {
     }
     return false;
   }
-  // Debug: log column ptr drop target periodically
-  var _colPtrLogTimer = 0;
-  var _origUpdateColumnPtrDropTarget = updateColumnPtrDropTarget;
-  updateColumnPtrDropTarget = function (mx, my) {
-    var result = _origUpdateColumnPtrDropTarget(mx, my);
-    var now = Date.now();
-    if (now - _colPtrLogTimer > 500) {
-      _colPtrLogTimer = now;
-      var cols = $columnsContainer.querySelectorAll('.column:not(.dragging)');
-      var zones = $columnsContainer.querySelectorAll('.stack-drop-zone');
-      console.log('[COL-PTR] updateDropTarget hit=' + result + ' cols=' + cols.length + ' zones=' + zones.length + ' mouse=' + mx + ',' + my);
-    }
-    return result;
-  };
-
   function clearPtrDropIndicators() {
     removeClassesFromNodeList($boardList.querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
     removeClassesFromNodeList($boardList.querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
@@ -8684,7 +8663,6 @@ const LexeraDashboard = (function () {
   }
 
   function executeColumnPtrDrop(mx, my, src) {
-    console.log('[COL-PTR] executeColumnPtrDrop src=r' + src.rowIndex + '/s' + src.stackIndex + '/c' + src.colIndex);
     function isSameActiveBoardDisplayTarget(target) {
       return (
         src &&
@@ -8698,14 +8676,13 @@ const LexeraDashboard = (function () {
 
     function moveAcross(targetDef) {
       moveColumnAcrossBoards(src, targetDef).catch(function (err) {
-        console.error('[moveColumnAcrossBoards] Drop failed:', err);
+        lexeraLog('error', '[moveColumnAcrossBoards] Drop failed: ' + err);
       });
     }
 
     // Check drop zones first (create new stack at specific position)
     var zone = findStackDropZoneAt(mx, my);
     if (zone) {
-      console.log('[COL-PTR] drop on stack-drop-zone');
       var targetRowIdx = parseInt(zone.getAttribute('data-row-index'), 10);
       var insertIdx = parseInt(zone.getAttribute('data-insert-index'), 10);
       var zoneTarget = {
@@ -8724,7 +8701,6 @@ const LexeraDashboard = (function () {
     }
     // Check columns (reorder)
     var column = findDraggableColumnAt(mx, my);
-    console.log('[COL-PTR] drop check: zone=' + !!zone + ' column=' + !!column + ' stack=' + !!findBoardStackAt(mx, my));
     if (column) {
       var colRect = column.getBoundingClientRect();
       var stackEl = column.closest('.board-stack');
@@ -8773,9 +8749,7 @@ const LexeraDashboard = (function () {
 
     // Check hierarchy columns (reorder via sidebar tree)
     var treeColTarget = getTreeColumnDropTarget(mx, my);
-    console.log('[COL-PTR] tree targets: col=' + !!treeColTarget + ' at=' + mx + ',' + my);
     if (treeColTarget) {
-      console.log('[COL-PTR] tree col target: board=' + treeColTarget.boardId + ' r=' + treeColTarget.rowIndex + ' s=' + treeColTarget.stackIndex + ' c=' + treeColTarget.colIndex + ' sameBoard=' + isSameActiveBoardDisplayTarget(treeColTarget));
       if (isSameActiveBoardDisplayTarget(treeColTarget)) {
         if (src.rowIndex !== treeColTarget.rowIndex || src.stackIndex !== treeColTarget.stackIndex || src.colIndex !== treeColTarget.colIndex) {
           moveColumnWithinBoard(
@@ -8805,7 +8779,6 @@ const LexeraDashboard = (function () {
     // Check hierarchy stacks (append into target stack)
     var treeStackTarget = getTreeStackDropTarget(mx, my);
     if (treeStackTarget) {
-      console.log('[COL-PTR] tree stack target: board=' + treeStackTarget.boardId + ' r=' + treeStackTarget.rowIndex + ' s=' + treeStackTarget.stackIndex + ' sameBoard=' + isSameActiveBoardDisplayTarget(treeStackTarget));
       if (isSameActiveBoardDisplayTarget(treeStackTarget)) {
         if (src.rowIndex !== treeStackTarget.rowIndex || src.stackIndex !== treeStackTarget.stackIndex) {
           moveColumnToExistingStack(src.rowIndex, src.stackIndex, src.colIndex, treeStackTarget.rowIndex, treeStackTarget.stackIndex);
@@ -9028,17 +9001,16 @@ const LexeraDashboard = (function () {
   }
 
   async function moveColumnAcrossBoards(source, target) {
-    console.log('[COL-XBOARD] moveColumnAcrossBoards source=', JSON.stringify(source), 'target=', JSON.stringify(target));
-    if (!source || !target || !source.boardId || !target.boardId) { console.log('[COL-XBOARD] abort: missing source/target boardId'); return; }
+    if (!source || !target || !source.boardId || !target.boardId) { lexeraLogWithTarget('warn', 'COL-XBOARD', 'abort: missing source/target boardId'); return; }
 
     var sourceBoardId = source.boardId;
     var targetBoardId = target.boardId;
     var sourceBoardData = await loadBoardDataForMutation(sourceBoardId);
-    if (!sourceBoardData) { console.log('[COL-XBOARD] abort: no sourceBoardData'); return; }
+    if (!sourceBoardData) { lexeraLogWithTarget('warn', 'COL-XBOARD', 'abort: no sourceBoardData'); return; }
     var targetBoardData = sourceBoardId === targetBoardId
       ? sourceBoardData
       : await loadBoardDataForMutation(targetBoardId);
-    if (!targetBoardData) { console.log('[COL-XBOARD] abort: no targetBoardData'); return; }
+    if (!targetBoardData) { lexeraLogWithTarget('warn', 'COL-XBOARD', 'abort: no targetBoardData'); return; }
 
     var sourceLoc = resolveColumnLocationForMutation(
       sourceBoardId,
@@ -9048,7 +9020,7 @@ const LexeraDashboard = (function () {
       source.colIndex,
       source.indexMode || 'full'
     );
-    if (!sourceLoc || !sourceLoc.stack || !sourceLoc.stack.columns) { console.log('[COL-XBOARD] abort: sourceLoc not resolved', sourceLoc); return; }
+    if (!sourceLoc || !sourceLoc.stack || !sourceLoc.stack.columns) { lexeraLogWithTarget('warn', 'COL-XBOARD', 'abort: sourceLoc not resolved'); return; }
 
     var activeTouched = sourceBoardId === activeBoardId || targetBoardId === activeBoardId;
     if (activeTouched && fullBoardData) pushUndo();
@@ -9346,7 +9318,7 @@ const LexeraDashboard = (function () {
       if (target.boardId !== source.boardId) changedBoards[target.boardId] = targetBoardData;
       await commitBoardMutations(changedBoards, { refreshSidebar: true });
     } catch (err) {
-      console.error('[moveCard] Failed:', err);
+      lexeraLog('error', '[moveCard] Failed: ' + err);
     }
   }
 
@@ -9540,7 +9512,7 @@ const LexeraDashboard = (function () {
     try {
       if (typeof editor.wysiwyg.destroy === 'function') editor.wysiwyg.destroy();
     } catch (err) {
-      console.warn('[card-editor] Failed to destroy WYSIWYG editor:', err);
+      lexeraLog('warn', '[card-editor] Failed to destroy WYSIWYG editor: ' + err);
     }
     editor.wysiwyg = null;
     if (editor.wysiwygWrap) editor.wysiwygWrap.innerHTML = '';
@@ -10962,7 +10934,7 @@ const LexeraDashboard = (function () {
         await selectBoard(resolved.boardId);
       }
     } catch (err) {
-      console.error('[wiki] Failed to open document:', resolved.document, err);
+      lexeraLog('error', '[wiki] Failed to open document: ' + resolved.document + ' ' + err);
       if (!options.silent) showNotification('Failed to open wiki link');
     }
     return resolved;
@@ -11079,7 +11051,7 @@ const LexeraDashboard = (function () {
         showNotification('Opened board, but could not focus the exact card');
       }
     } catch (err) {
-      console.error('[search.navigate] Failed to open search result:', err);
+      lexeraLog('error', '[search.navigate] Failed to open search result: ' + err);
       showNotification('Failed to open search result');
     }
   }
@@ -12789,7 +12761,7 @@ const LexeraDashboard = (function () {
     return tauriInvoke('show_context_menu', { items: items, x: x, y: y }).then(function (result) {
       return result;
     }).catch(function (err) {
-      console.error('[menu] Error:', err);
+      lexeraLog('error', '[menu] Error: ' + err);
       return showHtmlMenu(items, x, y);
     });
   }
@@ -13471,7 +13443,7 @@ const LexeraDashboard = (function () {
           }
         }
       } catch (err) {
-        console.error('File upload failed:', err);
+        lexeraLog('error', '[fileUpload] File upload failed: ' + err);
       }
     }
     if (hasNewCards) {
