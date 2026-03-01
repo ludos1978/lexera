@@ -206,7 +206,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
 12. ~~Template variable substitution has no type checking, fails silently~~ FIXED: lexeraLog warnings (commit 6d354ee8)
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
-14. ~~273 uncached DOM queries (querySelector/getElementById)~~ PARTIALLY FIXED: ~50 static elements cached with lazy getters (commits dfd92d0a, 68ca877e, 3a0ac18f)
+14. ~~273 uncached DOM queries (querySelector/getElementById)~~ FIXED: all static HTML elements cached with lazy getters; remaining queries are for dynamic elements (commits dfd92d0a, 68ca877e, 3a0ac18f)
 15. No virtual scrolling for large boards
 16. ~~Export pipeline has no rollback on partial failure~~ FIXED: createdFiles tracking + remove_export_files cleanup (commit 065c7b70)
 
@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 307 | Good |
-| lexera-backend | ~5,887 | ~1,330 | ~200 | 68 | Good |
+| lexera-core | ~9,925 | - | - | 429 | Good |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 119 | Good |
 | lexera-kanban | ~700 | ~17,000 | ~4,100 | 234 (JS) | Good |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 28 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **637** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **810** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -467,7 +467,7 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
 | Code Quality | 4/5 (+: Result propagation) | 3/5 | 2/5 | 3/5 (+: RwLock fix) |
-| Testing | 4/5 (+: 307 tests) | 3/5 (+: 68 tests, auth+invite+integration) | 2/5 (+: 234 tests) | 3/5 (+: 28 unit tests) |
+| Testing | 5/5 (429 tests) | 4/5 (119 tests, full service coverage) | 2/5 (+: 234 tests) | 3/5 (+: 28 unit tests) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
 | Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
