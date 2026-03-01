@@ -177,15 +177,15 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 
 ### lexera-backend
 1. ~~api.rs at 1,622 lines needs decomposition~~ FIXED: split into 7 modules (commit 29dd0730)
-2. Duplicate path resolution logic (resolve_board_file, serve_media, file_info)
+2. ~~Duplicate path resolution logic (resolve_board_file, serve_media, file_info)~~ FIXED: centralized in api/mod.rs
 3. ~~All collab services volatile~~ FIXED: JSON persistence (commit dd760315)
-4. Mix of std::sync::Mutex and tokio::sync::Mutex - lock ordering not documented
+4. ~~Mix of std::sync::Mutex and tokio::sync::Mutex - lock ordering not documented~~ FIXED: documented in state.rs (commit f2ae0c78)
 5. Synchronous file I/O (std::fs) in async context instead of tokio::fs
 6. No graceful shutdown - background tasks (watchers, services) never explicitly cancelled
 7. SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s
 8. Hardcoded discovery port (41820), broadcast only (no multicast for subnets)
 9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
-10. Temp files in /tmp not cleaned up on error (capture.rs)
+10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
 11. BoardSettings merge verbose - 17 manual field assignments
 12. Frontend JS: global mutable state, fetch without timeout, poll-based updates (10s/5s)
 13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
@@ -196,13 +196,13 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 2. WYSIWYG editor is a stub (58 lines, console.log noop)
 3. No test coverage at all
 4. Undo/redo serializes full board state (memory explosion risk)
-5. 14 !important declarations in CSS (specificity issues)
-6. ~~18+ console.error/console.log left as debug output~~ Partially fixed: 9 replaced (commit 73dc9c93)
+5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
+6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js; 15 remain in exportUI.js
 7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
-8. Memory leak: addEventListener without cleanup (e.g., resize handler in card editor)
+8. ~~Memory leak: addEventListener without cleanup~~ FIXED: showHtmlMenu click-outside leak (commit 9553c202); card editors use DOM replacement for cleanup
 9. Export tree re-renders entire tree on single node toggle
 10. Implicit script load order dependency (no ES6 modules)
-11. No input validation in export dialog (path traversal possible)
+11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
 12. Template variable substitution has no type checking, fails silently
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
 14. 273 uncached DOM queries (querySelector/getElementById)
@@ -285,7 +285,7 @@ Completed:
 Remaining:
 3. Add backpressure handling to sync channels
 4. Implement per-board subscriptions properly
-5. Add version catch-up on reconnect (client sends last known VV)
+5. ~~Add version catch-up on reconnect (client sends last known VV)~~ DONE: VV protocol in ClientHello/ServerHello
 
 Impact: Core value proposition - real-time collaboration
 
