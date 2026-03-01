@@ -215,7 +215,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 2. ~~Silent file I/O failures in scan_boards() and process_pending()~~ FIXED: error logging (commit 4f67f5ce)
 3. ~~Startup panics with .expect() - no graceful fallback~~ FIXED: graceful error handling (commit ee3dd8a2)
 4. ~~write_board() returns Ok(None) - merge infrastructure unused~~ BY DESIGN: iOS is append-only (add_card), no concurrent editing or merge needed
-5. ~~No board deletion/card editing commands~~ PARTIALLY FIXED: board deletion with Inbox protection (commit 07f12371); card editing still missing
+5. ~~No board deletion/card editing commands~~ FIXED: board deletion (commit 07f12371) + card edit/delete (commit d714fc30)
 6. No data encryption in App Group container
 7. ~~Base64 images in JSON could exhaust memory for large images~~ FIXED: 10MB base64 limit in process_pending (commit 95e8c6a2)
 8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 93+ | Good |
-| lexera-backend | ~5,887 | ~1,330 | ~200 | 0 | Medium |
-| lexera-kanban | ~700 | ~17,000 | ~4,100 | 0 | Needs Work |
+| lexera-core | ~9,925 | - | - | 255 | Good |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 19 | Medium |
+| lexera-kanban | ~700 | ~17,000 | ~4,100 | 118 (JS) | Improved |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **99+** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **398** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
