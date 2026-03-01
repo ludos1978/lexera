@@ -195,7 +195,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 ### lexera-kanban
 1. Monolithic app.js (14,700 lines) - needs modularization
 2. WYSIWYG editor is a stub (58 lines, console.log noop)
-3. No test coverage at all
+3. ~~No test coverage at all~~ FIXED: Vitest + 46 templates tests (commit e538a088)
 4. ~~Undo/redo serializes full board state (memory explosion risk)~~ MITIGATED: 10MB size cap + count cap (commit 93214dee)
 5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
 6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js (commits 73dc9c93, 1d1cad78)
@@ -215,7 +215,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 2. ~~Silent file I/O failures in scan_boards() and process_pending()~~ FIXED: error logging (commit 4f67f5ce)
 3. ~~Startup panics with .expect() - no graceful fallback~~ FIXED: graceful error handling (commit ee3dd8a2)
 4. ~~write_board() returns Ok(None) - merge infrastructure unused~~ BY DESIGN: iOS is append-only (add_card), no concurrent editing or merge needed
-5. No board deletion/card editing commands
+5. ~~No board deletion/card editing commands~~ PARTIALLY FIXED: board deletion with Inbox protection (commit 07f12371); card editing still missing
 6. No data encryption in App Group container
 7. ~~Base64 images in JSON could exhaust memory for large images~~ FIXED: 10MB base64 limit in process_pending (commit 95e8c6a2)
 8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
@@ -269,7 +269,7 @@ Completed:
 4. ~~Add include file cycle detection~~ DONE (commit e84fb78f)
 
 Remaining:
-3. CRDT corruption recovery already implemented (LocalStorage::import_crdt_updates rebuilds from .md on error)
+3. ~~CRDT corruption recovery already implemented~~ (LocalStorage::import_crdt_updates rebuilds from .md on error)
 5. ~~Add concurrent access tests for storage~~ DONE: 3 tests with Arc+Barrier (commit d00690fc)
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -348,8 +348,8 @@ Remaining:
 2. Add fixed-size drop zones (left, right, between stacks)
 3. ~~Prevent flex reflow during drag~~ Already implemented
 4. ~~Visual-only feedback (opacity, box-shadow)~~ Already implemented
-5. Add error boundaries to drag event handlers
-6. Fix event listener memory leaks (addEventListener without cleanup)
+5. ~~Add error boundaries to drag event handlers~~ DONE (commit 903a40a3)
+6. ~~Fix event listener memory leaks (addEventListener without cleanup)~~ DONE (commit 9553c202)
 
 Impact: Better user experience, fewer accidental layout changes
 
@@ -379,9 +379,9 @@ Completed:
 6. ~~Remove unused base64 dependency~~ DONE (commit 4f67f5ce)
 
 Remaining:
-3. Implement card editing/deletion
-4. Enable merge infrastructure (currently returns Ok(None))
-5. Add search result navigation
+3. Implement card editing/deletion — board deletion DONE (commit 07f12371), card editing still needed
+4. ~~Enable merge infrastructure (currently returns Ok(None))~~ BY DESIGN (iOS is append-only)
+5. ~~Add search result navigation~~ DONE (commit 91d21a8e)
 
 Impact: Production-ready iOS capture
 
@@ -419,7 +419,7 @@ Impact: Enables third-party exporters, integrations, and custom content types wi
 Why: Zero frontend test coverage and zero backend integration tests. Need concrete framework setup, not just identification of the gap.
 
 Tasks:
-1. Frontend: add Jest or Vitest + happy-dom/jsdom for DOM testing; create test utilities for mocking Tauri APIs; target api.js 80%, exportService.js 70%, utility modules 80%
+1. ~~Frontend: add Vitest for testing~~ DONE: Vitest + IIFE loader + 46 templates.js tests (commit e538a088); remaining: api.js, exportService.js test coverage
 2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD tests via tower::ServiceExt (commit 3b833df5); remaining: collaboration flows, WebSocket sync
 
 Impact: Enables safe refactoring and regression prevention across both frontend and backend
