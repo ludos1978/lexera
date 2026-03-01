@@ -171,7 +171,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 5. Merge ignores card reordering within columns - only tracks content/checked/column changes
 6. Include files merged as atomic chunks, not card-level - concurrent edits cause full conflict
 7. ~~Search uses ASCII case sensitivity, no Unicode/accent normalization~~ FIXED: unicode-normalization crate (commit a984c536)
-8. has_structural_mismatch() may false-trigger on implicit Default rows/stacks
+8. ~~has_structural_mismatch() may false-trigger on implicit Default rows/stacks~~ FIXED: normalize defaults (commit 70813a75)
 9. No CRDT corruption recovery tests
 10. No concurrent access tests for storage
 
@@ -217,7 +217,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 5. No board deletion/card editing commands
 6. No data encryption in App Group container
 7. Base64 images in JSON could exhaust memory for large images
-8. Race condition window between lock releases in write_board_file()
+8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
 9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
 10. Monolithic 880-line index.html with inline JS
 11. No search result navigation (can't click to go to result)
@@ -252,7 +252,7 @@ Tasks:
 4. Convert invite tokens to one-time auth bootstrap tokens
 5. ~~Fix CORS to specific origins (not Allow::Any)~~ DONE (commit f41165c8)
 6. ~~Complete path traversal prevention (handle ./ and URL encoding)~~ DONE (commit f41165c8)
-7. Add rate limiting on expensive operations
+7. ~~Add rate limiting on expensive operations~~ DONE: sliding-window limiter (commit 72f073a4)
 
 Impact: Security foundation, enables safe network testing
 
@@ -283,7 +283,7 @@ Completed:
 - ~~Per-card editing presence via WebSocket~~ DONE (commit 8eb60846)
 
 Remaining:
-3. Add backpressure handling to sync channels
+3. ~~Add backpressure handling to sync channels~~ DONE: bounded channels with try_send (commit 7c6cd2ae)
 4. Implement per-board subscriptions properly
 5. ~~Add version catch-up on reconnect (client sends last known VV)~~ DONE: VV protocol in ClientHello/ServerHello
 
