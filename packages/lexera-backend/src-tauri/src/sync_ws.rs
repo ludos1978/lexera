@@ -28,8 +28,12 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 
 // ── BoardSyncHub ────────────────────────────────────────────────────────────
 
+/// Per-client channel capacity. If a client falls behind by this many messages,
+/// new messages are dropped (safe for CRDT — the client will catch up via VV).
+const CLIENT_CHANNEL_CAPACITY: usize = 256;
+
 struct BoardRoom {
-    clients: HashMap<u64, mpsc::UnboundedSender<String>>,
+    clients: HashMap<u64, mpsc::Sender<String>>,
     peer_users: HashMap<u64, String>,
     next_peer_id: u64,
 }
@@ -60,14 +64,14 @@ impl BoardSyncHub {
         &mut self,
         board_id: &str,
         user_id: &str,
-    ) -> (u64, mpsc::UnboundedReceiver<String>) {
+    ) -> (u64, mpsc::Receiver<String>) {
         let room = self
             .rooms
             .entry(board_id.to_string())
             .or_insert_with(BoardRoom::new);
         let peer_id = room.next_peer_id;
         room.next_peer_id += 1;
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
         room.clients.insert(peer_id, tx);
         room.peer_users.insert(peer_id, user_id.to_string());
         (peer_id, rx)
@@ -89,7 +93,12 @@ impl BoardSyncHub {
         if let Some(room) = self.rooms.get(board_id) {
             for (&pid, tx) in &room.clients {
                 if pid != exclude_peer {
-                    let _ = tx.send(msg.to_string());
+                    if let Err(mpsc::error::TrySendError::Full(_)) = tx.try_send(msg.to_string()) {
+                        log::warn!(
+                            "[sync_ws.broadcast] Channel full for peer {} on board {}, dropping message (CRDT will self-heal)",
+                            pid, board_id
+                        );
+                    }
                 }
             }
         }
@@ -98,8 +107,13 @@ impl BoardSyncHub {
     /// Broadcast a JSON message to ALL clients in a board room (no exclusion).
     pub fn broadcast_all(&self, board_id: &str, msg: &str) {
         if let Some(room) = self.rooms.get(board_id) {
-            for tx in room.clients.values() {
-                let _ = tx.send(msg.to_string());
+            for (&pid, tx) in &room.clients {
+                if let Err(mpsc::error::TrySendError::Full(_)) = tx.try_send(msg.to_string()) {
+                    log::warn!(
+                        "[sync_ws.broadcast_all] Channel full for peer {} on board {}, dropping message (CRDT will self-heal)",
+                        pid, board_id
+                    );
+                }
             }
         }
     }
