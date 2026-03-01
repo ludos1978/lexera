@@ -25,6 +25,8 @@ struct BoardState {
     content_hash: String,
 }
 
+const MAX_BASE64_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10 MB (~7.5 MB raw)
+
 pub struct IosStorage {
     boards_dir: PathBuf,
     pending_path: PathBuf,
@@ -215,17 +217,29 @@ impl IosStorage {
             return Ok(0);
         }
 
-        let count = items.len();
         let inbox_id = self.inbox_board_id();
+        let mut processed = 0usize;
 
         for item in &items {
+            if let PendingItem::Image { data, filename, .. } = item {
+                if data.len() > MAX_BASE64_IMAGE_SIZE {
+                    log::warn!(
+                        "[ios_storage.process_pending] Rejecting oversized image '{}': {} bytes base64 exceeds {} byte limit",
+                        filename,
+                        data.len(),
+                        MAX_BASE64_IMAGE_SIZE
+                    );
+                    continue;
+                }
+            }
             let card_content = format_capture_as_markdown(item);
             self.add_card(&inbox_id, 0, &card_content)?;
+            processed += 1;
         }
 
         // Clear the queue
         fs::write(&self.pending_path, "[]")?;
-        Ok(count)
+        Ok(processed)
     }
 
     /// Write a board back to disk atomically (.tmp + rename).
