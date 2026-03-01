@@ -173,7 +173,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 7. ~~Search uses ASCII case sensitivity, no Unicode/accent normalization~~ FIXED: unicode-normalization crate (commit a984c536)
 8. ~~has_structural_mismatch() may false-trigger on implicit Default rows/stacks~~ FIXED: normalize defaults (commit 70813a75)
 9. ~~No CRDT corruption recovery tests~~ FIXED: 3 test cases (commit 84a4e565)
-10. No concurrent access tests for storage
+10. ~~No concurrent access tests for storage~~ FIXED: 3 concurrent tests with Arc+Barrier (commit d00690fc)
 
 ### lexera-backend
 1. ~~api.rs at 1,622 lines needs decomposition~~ FIXED: split into 7 modules (commit 29dd0730)
@@ -182,7 +182,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 4. ~~Mix of std::sync::Mutex and tokio::sync::Mutex - lock ordering not documented~~ FIXED: documented in state.rs (commit f2ae0c78)
 5. ~~Synchronous file I/O (std::fs) in async context instead of tokio::fs~~ FIXED: tokio::fs + spawn_blocking (commit 5a3afcec)
 6. ~~No graceful shutdown - background tasks never explicitly cancelled~~ FIXED: watch shutdown signal (commit 44ee5951)
-7. SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s
+7. ~~SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s~~ FIXED: named constants (commit 57c4fd2e)
 8. Hardcoded discovery port (41820), broadcast only (no multicast for subnets)
 9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
@@ -203,11 +203,11 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 9. ~~Export tree re-renders entire tree on single node toggle~~ FIXED: updateSelectionClasses (commit 3a110752)
 10. Implicit script load order dependency (no ES6 modules)
 11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
-12. Template variable substitution has no type checking, fails silently
+12. ~~Template variable substitution has no type checking, fails silently~~ FIXED: lexeraLog warnings (commit 6d354ee8)
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
 14. 273 uncached DOM queries (querySelector/getElementById)
 15. No virtual scrolling for large boards
-16. Export pipeline has no rollback on partial failure
+16. ~~Export pipeline has no rollback on partial failure~~ FIXED: createdFiles tracking + remove_export_files cleanup (commit 065c7b70)
 
 ### lexera-capture-ios
 1. ~~12 RwLock .unwrap() calls~~ FIXED: poisoning recovery (commit 4f67f5ce)
@@ -269,7 +269,7 @@ Completed:
 
 Remaining:
 3. CRDT corruption recovery already implemented (LocalStorage::import_crdt_updates rebuilds from .md on error)
-5. Add concurrent access tests for storage
+5. ~~Add concurrent access tests for storage~~ DONE: 3 tests with Arc+Barrier (commit d00690fc)
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -434,6 +434,14 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 | lexera-kanban | ~700 | ~17,000 | ~4,100 | 0 | Needs Work |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
 | **Total** | **~17,121** | **~18,650** | **~4,500** | **99+** | - |
+
+### TODO: Missing Function Implementations (from button/menu audit 2026-03-01)
+
+1. `copyFullPath()` in webview.js — context menu "Copy Full OS Path" is a stub (logs warning, does nothing). Needs clipboard copy of full OS path for the active file.
+2. `copyStoredPath()` in webview.js — context menu "Copy Stored Path" is a stub (logs warning, does nothing). Needs clipboard copy of the stored/relative path.
+3. `path-context-menu` HTML in webview.html (lines 1613-1616) — the context menu element exists but no code triggers/shows it (no `contextmenu` event listener). Needs a right-click handler to display it.
+
+────────────────────────────────────────────────────────────────────────────────
 
 ## Quality Ratings (updated after fixes)
 
