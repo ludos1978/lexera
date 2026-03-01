@@ -206,7 +206,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
 12. ~~Template variable substitution has no type checking, fails silently~~ FIXED: lexeraLog warnings (commit 6d354ee8)
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
-14. ~~273 uncached DOM queries (querySelector/getElementById)~~ PARTIALLY FIXED: 14 static elements cached with lazy getters (commit dfd92d0a)
+14. ~~273 uncached DOM queries (querySelector/getElementById)~~ PARTIALLY FIXED: 21 static elements cached with lazy getters (commits dfd92d0a, 68ca877e)
 15. No virtual scrolling for large boards
 16. ~~Export pipeline has no rollback on partial failure~~ FIXED: createdFiles tracking + remove_export_files cleanup (commit 065c7b70)
 
@@ -316,7 +316,7 @@ Tasks:
 1. Add vector clock support (currently uses monotonic counter)
 2. Improve structural change handling in sync_column_structure
 3. Add conflict resolution strategies beyond last-write-wins
-4. Test concurrent edits from multiple peers
+4. ~~Test concurrent edits from multiple peers~~ DONE: 4 concurrent edit scenarios (commit 1f6270ec)
 5. Move YAML/settings into CRDT for collaborative consistency
 
 Impact: Better merge quality, fewer conflicts
@@ -379,7 +379,7 @@ Completed:
 6. ~~Remove unused base64 dependency~~ DONE (commit 4f67f5ce)
 
 Remaining:
-3. Implement card editing/deletion — board deletion DONE (commit 07f12371), card editing still needed
+3. ~~Implement card editing/deletion~~ DONE: board deletion (commit 07f12371) + card edit/delete (commit d714fc30)
 4. ~~Enable merge infrastructure (currently returns Ok(None))~~ BY DESIGN (iOS is append-only)
 5. ~~Add search result navigation~~ DONE (commit 91d21a8e)
 
@@ -419,8 +419,8 @@ Impact: Enables third-party exporters, integrations, and custom content types wi
 Why: Zero frontend test coverage and zero backend integration tests. Need concrete framework setup, not just identification of the gap.
 
 Tasks:
-1. ~~Frontend: add Vitest for testing~~ DONE: Vitest + IIFE loader + 46 templates.js tests (commit e538a088); remaining: api.js, exportService.js test coverage
-2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD tests via tower::ServiceExt (commit 3b833df5); remaining: collaboration flows, WebSocket sync
+1. ~~Frontend: add Vitest for testing~~ DONE: Vitest + IIFE loader + 46 templates.js + 72 api.js + 58 exportService.js tests (commits e538a088, 596e1a14, 1f150ad0)
+2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD + 3 search + 3 template + 5 media/file_ops + 8 collab tests via tower::ServiceExt (commits 3b833df5, 646d7551, d907903d, 9abb479a)
 
 Impact: Enables safe refactoring and regression prevention across both frontend and backend
 
@@ -431,10 +431,10 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
 | lexera-core | ~9,925 | - | - | 255 | Good |
-| lexera-backend | ~5,887 | ~1,330 | ~200 | 19 | Medium |
-| lexera-kanban | ~700 | ~17,000 | ~4,100 | 118 (JS) | Improved |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 24 | Medium |
+| lexera-kanban | ~700 | ~17,000 | ~4,100 | 176 (JS) | Improved |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **398** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **461** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
