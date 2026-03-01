@@ -1899,185 +1899,9 @@ const LexeraDashboard = (function () {
     return html;
   }
 
-  // ── Share & Members Dialog ────────────────────────────────────────
-
-  async function showShareDialog(boardId) {
-    var userId = await ensureSyncUserId();
-
-    var overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'dialog';
-    dialog.style.minWidth = '420px';
-
-    var html = '<div class="dialog-title">Share & Members</div>';
-
-    // Section 1: Create Invite
-    html += '<div class="dialog-section">';
-    html += '<div class="dialog-section-title">Create Invite</div>';
-    html += '<div class="dialog-field" style="display:flex;gap:8px;align-items:flex-end">';
-    html += '<div style="flex:1">';
-    html += '<label class="dialog-label">Role</label>';
-    html += '<select class="dialog-input" id="share-role-select">';
-    html += '<option value="editor">Editor</option>';
-    html += '<option value="viewer">Viewer</option>';
-    html += '</select>';
-    html += '</div>';
-    html += '<div style="width:80px">';
-    html += '<label class="dialog-label">Max uses</label>';
-    html += '<input class="dialog-input" type="number" id="share-max-uses" value="1" min="1" style="width:100%">';
-    html += '</div>';
-    html += '<button class="btn-small btn-primary" id="share-create-invite" style="margin-bottom:0">Create</button>';
-    html += '</div>';
-    html += '<div id="share-invite-result"></div>';
-    html += '</div>';
-
-    // Section 2: Active Invites
-    html += '<div class="dialog-section">';
-    html += '<div class="dialog-section-title">Active Invites</div>';
-    html += '<div id="share-invites-list" class="invite-list"></div>';
-    html += '</div>';
-
-    // Section 3: Members
-    html += '<div class="dialog-section" style="border-bottom:none">';
-    html += '<div class="dialog-section-title">Members</div>';
-    html += '<div id="share-members-list" class="member-list"></div>';
-    html += '</div>';
-
-    // Actions
-    html += '<div class="dialog-actions">';
-    html += '<button class="btn-small btn-cancel" id="share-close">Close</button>';
-    html += '</div>';
-
-    dialog.innerHTML = html;
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    // Close handlers
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.remove();
-    });
-    document.getElementById('share-close').addEventListener('click', function () {
-      overlay.remove();
-    });
-
-    // Load data
-    await refreshShareDialog(boardId, userId, dialog);
-
-    // Create invite
-    document.getElementById('share-create-invite').addEventListener('click', async function () {
-      var role = document.getElementById('share-role-select').value;
-      var maxUses = parseInt(document.getElementById('share-max-uses').value, 10) || 1;
-      try {
-        var invite = await LexeraApi.createInvite(boardId, userId, role, maxUses);
-        var resultEl = document.getElementById('share-invite-result');
-        resultEl.innerHTML =
-          '<div class="invite-token-field">' +
-          '<input type="text" value="' + escapeAttr(invite.token) + '" readonly id="share-token-input">' +
-          '<button class="btn-small" id="share-copy-token">Copy</button>' +
-          '</div>';
-        document.getElementById('share-copy-token').addEventListener('click', function () {
-          var input = document.getElementById('share-token-input');
-          input.select();
-          navigator.clipboard.writeText(input.value).then(function () {
-            showNotification('Token copied to clipboard');
-          });
-        });
-        await refreshShareDialog(boardId, userId, dialog);
-      } catch (err) {
-        showNotification('Failed to create invite: ' + err.message);
-      }
-    });
-
-    // Revoke invite (delegated)
-    dialog.addEventListener('click', async function (e) {
-      var revokeBtn = e.target.closest('[data-revoke-token]');
-      if (!revokeBtn) return;
-      var token = revokeBtn.getAttribute('data-revoke-token');
-      try {
-        await LexeraApi.revokeInvite(boardId, token, userId);
-        showNotification('Invite revoked');
-        await refreshShareDialog(boardId, userId, dialog);
-      } catch (err) {
-        showNotification('Failed to revoke invite');
-      }
-    });
-  }
-
-  async function refreshShareDialog(boardId, userId, dialog) {
-    var results = await Promise.allSettled([
-      LexeraApi.listMembers(boardId, userId),
-      LexeraApi.getPresence(boardId, userId),
-      LexeraApi.listInvites(boardId, userId),
-    ]);
-
-    var members = results[0].status === 'fulfilled' ? results[0].value : [];
-    var onlineUsers = results[1].status === 'fulfilled' ? results[1].value : [];
-    var invites = results[2].status === 'fulfilled' ? results[2].value : [];
-
-    // Render members
-    var membersEl = dialog.querySelector('#share-members-list');
-    if (members.length === 0) {
-      membersEl.innerHTML = '<div class="dialog-note">No members yet</div>';
-    } else {
-      var mhtml = '';
-      for (var i = 0; i < members.length; i++) {
-        var m = members[i];
-        var isOnline = onlineUsers.indexOf(m.user_id) !== -1;
-        mhtml += '<div class="member-item">';
-        mhtml += '<span class="member-item-name">';
-        mhtml += '<span class="presence-dot' + (isOnline ? ' online' : '') + '"></span>';
-        mhtml += escapeHtml(m.user_name || m.user_id);
-        mhtml += '</span>';
-        mhtml += '<span class="member-item-role">' + escapeHtml(m.role) + '</span>';
-        mhtml += '</div>';
-      }
-      membersEl.innerHTML = mhtml;
-    }
-
-    // Render invites
-    var invitesEl = dialog.querySelector('#share-invites-list');
-    if (invites.length === 0) {
-      invitesEl.innerHTML = '<div class="dialog-note">No active invites</div>';
-    } else {
-      var ihtml = '';
-      for (var j = 0; j < invites.length; j++) {
-        var inv = invites[j];
-        ihtml += '<div class="invite-item">';
-        ihtml += '<div>';
-        ihtml += '<span>' + escapeHtml(inv.role) + '</span>';
-        ihtml += ' <span class="invite-item-info">' + inv.uses + '/' + inv.max_uses + ' uses</span>';
-        ihtml += '<div class="invite-token-field">';
-        ihtml += '<input type="text" value="' + escapeAttr(inv.token) + '" readonly>';
-        ihtml += '<button class="btn-small" data-copy-token="' + escapeAttr(inv.token) + '">Copy</button>';
-        ihtml += '</div>';
-        ihtml += '</div>';
-        ihtml += '<button class="btn-small btn-cancel" data-revoke-token="' + escapeAttr(inv.token) + '">Revoke</button>';
-        ihtml += '</div>';
-      }
-      invitesEl.innerHTML = ihtml;
-
-      // Bind copy buttons
-      var copyBtns = invitesEl.querySelectorAll('[data-copy-token]');
-      for (var k = 0; k < copyBtns.length; k++) {
-        copyBtns[k].addEventListener('click', function () {
-          var tokenVal = this.getAttribute('data-copy-token');
-          navigator.clipboard.writeText(tokenVal).then(function () {
-            showNotification('Token copied to clipboard');
-          });
-        });
-      }
-    }
-  }
-
   async function openSettingsDialogForBoard(boardId) {
     var targetBoardId = boardId || activeBoardId || '';
-    if (targetBoardId && targetBoardId !== activeBoardId) {
-      await selectBoard(targetBoardId);
-    } else if (targetBoardId && !fullBoardData) {
-      await loadBoard(targetBoardId);
-    }
-    showBoardSettingsDialog();
+    openManagementPanel({ section: 'boards', boardId: targetBoardId, tab: 'settings' });
   }
 
   function setupHeaderFileControls() {
@@ -2526,6 +2350,12 @@ const LexeraDashboard = (function () {
 
     document.addEventListener('keydown', handleKeyNavigation);
 
+    // Management panel close button
+    var mgmtCloseBtn = document.getElementById('mgmt-close');
+    if (mgmtCloseBtn) mgmtCloseBtn.addEventListener('click', function () {
+      closeManagementPanel();
+    });
+
     // External file drop on columns container
     $columnsContainer.addEventListener('dragover', function (e) {
       if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
@@ -2581,9 +2411,9 @@ const LexeraDashboard = (function () {
       });
     }
 
-    // Tauri drag-drop payload fallback (paths + pointer position).
-    if (window.__TAURI__) {
-      window.__TAURI__.event.listen('tauri://drag-over', function (event) {
+    // Tauri drag-drop payload (paths + pointer position).
+    if (hasTauri) {
+      tauriListen('tauri://drag-over', function (event) {
         if (hierarchyLocked) return;
         var pos = event.payload.position;
         if (sidebarEl && pos) {
@@ -2594,10 +2424,10 @@ const LexeraDashboard = (function () {
           }
         }
       });
-      window.__TAURI__.event.listen('tauri://drag-leave', function () {
+      tauriListen('tauri://drag-leave', function () {
         if (sidebarEl) sidebarEl.classList.remove('drop-zone-active');
       });
-      window.__TAURI__.event.listen('tauri://drag-drop', function (event) {
+      tauriListen('tauri://drag-drop', function (event) {
         if (sidebarEl) sidebarEl.classList.remove('drop-zone-active');
         if (hierarchyLocked) return;
         var paths = event.payload.paths || [];
@@ -2637,6 +2467,8 @@ const LexeraDashboard = (function () {
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       openCardEditor(focusedCardEl, ci, cj, 'inline');
+    } else if (key === 'Escape' && mgmtPanelOpen) {
+      closeManagementPanel();
     } else if (key === 'Escape' && focusedCardEl) {
       unfocusCard();
     }
@@ -3682,13 +3514,13 @@ const LexeraDashboard = (function () {
         }
 
         var boardRow = wrapperEl.querySelector('.board-item');
-        boardRow.addEventListener('click', function (e) {
+        boardRow.addEventListener('click', async function (e) {
           // Remove button click — handle inline via delegation
           if (targetClosest(e.target, '.board-item-remove')) {
             e.preventDefault();
             e.stopPropagation();
             var boardName = boardRow.querySelector('.board-item-title').textContent;
-            if (!confirm('Remove "' + boardName + '" from sidebar?\n(The file will not be deleted.)')) return;
+            if (!(await showConfirmDialog('Remove "' + boardName + '" from sidebar?\n(The file will not be deleted.)'))) return;
             // Optimistic UI update — remove immediately
             boards = boards.filter(function (b) { return b.id !== boardId; });
             delete boardHierarchyCache[boardId];
@@ -3731,9 +3563,9 @@ const LexeraDashboard = (function () {
             } else if (action === 'split-right') {
               openBoardInPane(boardId, 'b');
             } else if (action === 'share') {
-              await showShareDialog(boardId);
+              openManagementPanel({ section: 'boards', boardId: boardId, tab: 'sharing' });
             } else if (action === 'settings') {
-              await openSettingsDialogForBoard(boardId);
+              openManagementPanel({ section: 'boards', boardId: boardId, tab: 'settings' });
             } else if (action === 'reveal' && boardFilePath) {
               showInFinder(boardFilePath);
             }
@@ -4698,11 +4530,11 @@ const LexeraDashboard = (function () {
       return;
     }
     if (action === 'settings') {
-      openSettingsDialogForBoard(activeBoardId);
+      openManagementPanel({ section: 'boards', boardId: activeBoardId, tab: 'settings' });
       return;
     }
     if (action === 'collab') {
-      openConnectionWindow();
+      openManagementPanel({ section: 'boards', boardId: activeBoardId, tab: 'sharing' });
       return;
     }
     if (action === 'show-parked') {
@@ -4831,155 +4663,13 @@ const LexeraDashboard = (function () {
           danger: true,
           handler: async function (items) {
             if (!items || items.length === 0) return true;
-            if (!confirm('Permanently delete all items in trash? This cannot be undone.')) return false;
+            if (!(await showConfirmDialog('Permanently delete all items in trash? This cannot be undone.'))) return false;
             await permanentlyDeleteHiddenItems(items);
             return true;
           }
         }
       ]
     );
-  }
-
-  function showBoardSettingsDialog() {
-    var hasBoardSettings = !!(activeBoardId && fullBoardData);
-    var s = hasBoardSettings && fullBoardData.boardSettings ? fullBoardData.boardSettings : {};
-    var fields = [
-      { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
-      { key: 'layoutRows', label: 'Layout Rows', placeholder: '', type: 'number' },
-      { key: 'layoutPreset', label: 'Layout Preset', placeholder: 'compact / spacious / custom', type: 'text' },
-      { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
-      { key: 'fontFamily', label: 'Font Family', placeholder: '', type: 'select', options: [
-        '', 'Poppins', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Source Sans Pro',
-        'SF Pro Display', 'Helvetica Neue', 'Arial', 'Segoe UI', 'Verdana',
-        'Georgia', 'Times New Roman', 'Courier New', 'monospace', 'system-ui'
-      ] },
-      { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
-      { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
-      { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
-      { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'all', 'allexcludinglayout', 'customonly', 'mentionsonly', 'none', 'dim'] },
-      { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
-      { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'titleonly', 'full', 'bottom'] },
-      { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'text', 'hidden', 'dim'] },
-      { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
-      { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'nearest', 'center', 'disabled'] },
-      { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
-      { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
-      { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
-      { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
-    ];
-
-    var overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay';
-    var dialog = document.createElement('div');
-    dialog.className = 'dialog';
-    var html = '<div class="dialog-title">Settings</div>';
-    html += '<div class="dialog-section">';
-    html += '<div class="dialog-section-title">Window</div>';
-    html += '<div class="dialog-field">';
-    html += '<label class="dialog-label">Theme</label>';
-    html += '<select class="dialog-input" id="settings-theme-select">' +
-      buildThemeOptionsMarkup(currentThemeId || (THEMES[0] && THEMES[0].id)) +
-      '</select>';
-    html += '</div>';
-    html += '</div>';
-
-    if (hasBoardSettings) {
-      html += '<div class="dialog-section">';
-      html += '<div class="dialog-section-title">Board Options</div>';
-      for (var i = 0; i < fields.length; i++) {
-        var f = fields[i];
-        var val = s[f.key] != null ? s[f.key] : '';
-        if (f.key === 'stickyStackMode') {
-          var stickyValue = String(val || '').trim().toLowerCase();
-          if (stickyValue === 'top' || stickyValue === 'titleonly' || stickyValue === 'column' || stickyValue === 'enabled' || stickyValue === 'true') val = 'titleonly';
-          else if (stickyValue === 'full') val = 'full';
-          else if (stickyValue === 'bottom') val = 'bottom';
-          else val = '';
-        } else if (f.key === 'tagVisibility') {
-          val = normalizeTagVisibilityMode(val);
-        } else if (f.key === 'htmlCommentRenderMode') {
-          val = normalizeHtmlCommentRenderMode(val);
-        } else if (f.key === 'arrowKeyFocusScroll') {
-          val = normalizeArrowKeyFocusScrollMode(val);
-        }
-        html += '<div class="dialog-field">';
-        html += '<label class="dialog-label">' + escapeHtml(f.label) + '</label>';
-        if (f.type === 'select') {
-          html += '<select class="dialog-input" data-setting="' + f.key + '">';
-          for (var j = 0; j < f.options.length; j++) {
-            var opt = f.options[j];
-            var selected = (String(val) === opt) ? ' selected' : '';
-            html += '<option value="' + escapeHtml(opt) + '"' + selected + '>' + (opt || '(default)') + '</option>';
-          }
-          html += '</select>';
-        } else {
-          html += '<input class="dialog-input" type="' + f.type + '" data-setting="' + f.key + '" value="' +
-            escapeAttr(String(val)) + '" placeholder="' + escapeAttr(f.placeholder) + '">';
-        }
-        html += '</div>';
-      }
-      html += '</div>';
-    } else {
-      html += '<div class="dialog-note">Select a board to configure board options.</div>';
-    }
-
-    html += '<div class="dialog-actions dialog-actions-between">';
-    html += '<button class="btn-small" id="settings-export"' + (activeBoardId ? '' : ' disabled') + '>Export</button>';
-    html += '<div class="dialog-actions-right">';
-    html += '<button class="btn-small btn-cancel" id="settings-cancel">Cancel</button>';
-    html += '<button class="btn-small btn-primary" id="settings-save">' + (hasBoardSettings ? 'Save' : 'Apply') + '</button>';
-    html += '</div>';
-    html += '</div>';
-
-    dialog.innerHTML = html;
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.remove();
-    });
-    var exportBtn = document.getElementById('settings-export');
-    if (exportBtn) {
-      exportBtn.addEventListener('click', function () {
-        if (!activeBoardId) return;
-        window.print();
-      });
-    }
-    document.getElementById('settings-cancel').addEventListener('click', function () {
-      overlay.remove();
-    });
-    document.getElementById('settings-save').addEventListener('click', function () {
-      var themeSelect = document.getElementById('settings-theme-select');
-      if (themeSelect && themeSelect.value) applyTheme(themeSelect.value);
-
-      if (!hasBoardSettings || !fullBoardData) {
-        overlay.remove();
-        return;
-      }
-
-      pushUndo();
-      if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
-      var inputs = dialog.querySelectorAll('[data-setting]');
-      for (var k = 0; k < inputs.length; k++) {
-        var key = inputs[k].getAttribute('data-setting');
-        var value = inputs[k].value.trim();
-        if (value === '') {
-          fullBoardData.boardSettings[key] = null;
-        } else if (inputs[k].type === 'number' && value) {
-          fullBoardData.boardSettings[key] = parseInt(value, 10);
-        } else {
-          fullBoardData.boardSettings[key] = value;
-        }
-      }
-      persistBoardMutation({
-        beforeRefresh: applyBoardSettings
-      }).then(function () {
-        overlay.remove();
-      });
-    });
-
-    var firstInput = dialog.querySelector('.dialog-input');
-    if (firstInput) firstInput.focus();
   }
 
   var savingTimeout = null;
@@ -5226,13 +4916,681 @@ const LexeraDashboard = (function () {
     });
   }
 
+  // ── Confirm Dialog (replaces broken window.confirm in Tauri 2) ──
+
+  function showConfirmDialog(message) {
+    return new Promise(function (resolve) {
+      var overlay = document.createElement('div');
+      overlay.className = 'dialog-overlay';
+      var dialog = document.createElement('div');
+      dialog.className = 'dialog';
+      dialog.style.maxWidth = '380px';
+      dialog.innerHTML =
+        '<div class="dialog-title">Confirm</div>' +
+        '<div class="dialog-note" style="margin-bottom:16px;line-height:1.4;white-space:pre-line">' + escapeHtml(message) + '</div>' +
+        '<div class="dialog-actions">' +
+        '<button class="btn-small btn-cancel" data-confirm="cancel">Cancel</button>' +
+        '<button class="btn-small btn-primary" data-confirm="ok">OK</button>' +
+        '</div>';
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+      function close(result) {
+        overlay.remove();
+        resolve(result);
+      }
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close(false);
+      });
+      dialog.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-confirm]');
+        if (!btn) return;
+        close(btn.getAttribute('data-confirm') === 'ok');
+      });
+    });
+  }
+
+  // ── Management Panel ──────────────────────────────────────────
+
+  var BOARD_SETTINGS_FIELDS = [
+    { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
+    { key: 'layoutRows', label: 'Layout Rows', placeholder: '', type: 'number' },
+    { key: 'layoutPreset', label: 'Layout Preset', placeholder: 'compact / spacious / custom', type: 'text' },
+    { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
+    { key: 'fontFamily', label: 'Font Family', placeholder: '', type: 'select', options: [
+      '', 'Poppins', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Source Sans Pro',
+      'SF Pro Display', 'Helvetica Neue', 'Arial', 'Segoe UI', 'Verdana',
+      'Georgia', 'Times New Roman', 'Courier New', 'monospace', 'system-ui'
+    ] },
+    { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
+    { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
+    { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
+    { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'all', 'allexcludinglayout', 'customonly', 'mentionsonly', 'none', 'dim'] },
+    { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
+    { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'titleonly', 'full', 'bottom'] },
+    { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'text', 'hidden', 'dim'] },
+    { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
+    { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'nearest', 'center', 'disabled'] },
+    { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
+    { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
+    { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
+    { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
+  ];
+
+  var mgmtPanelOpen = false;
+  var mgmtExpandedBoardId = null;
+  var mgmtActiveBoardTab = {};
+
+  function openManagementPanel(options) {
+    options = options || {};
+    mgmtPanelOpen = true;
+    if (options.boardId) mgmtExpandedBoardId = options.boardId;
+    if (options.tab && options.boardId) mgmtActiveBoardTab[options.boardId] = options.tab;
+    var panel = document.getElementById('mgmt-panel');
+    if (panel) panel.classList.add('open');
+    renderManagementPanel(options.section);
+  }
+
+  function closeManagementPanel() {
+    mgmtPanelOpen = false;
+    var panel = document.getElementById('mgmt-panel');
+    if (panel) panel.classList.remove('open');
+  }
+
+  async function renderManagementPanel(scrollToSection) {
+    var body = document.getElementById('mgmt-panel-body');
+    if (!body) return;
+
+    var html = '';
+
+    // ── Theme ──
+    html += '<div class="mgmt-section" data-mgmt-section="theme">';
+    html += '<div class="mgmt-section-title">Theme</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label">Theme</label>';
+    html += '<select class="mgmt-field-input" id="mgmt-theme-select">' +
+      buildThemeOptionsMarkup(currentThemeId || (THEMES[0] && THEMES[0].id)) + '</select>';
+    html += '</div>';
+    html += '</div>';
+
+    // ── Identity ──
+    html += '<div class="mgmt-section" data-mgmt-section="identity">';
+    html += '<div class="mgmt-section-title">Identity</div>';
+    var identity = '';
+    try {
+      var info = await LexeraApi.getServerInfo();
+      identity = (info && info.displayName) || '';
+    } catch (e) { /* ignore */ }
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label">Display Name</label>';
+    html += '<input class="mgmt-field-input" id="mgmt-display-name" type="text" value="' + escapeAttr(identity) + '" placeholder="anonymous">';
+    html += '<button class="btn-small btn-primary" id="mgmt-save-name">Save</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // ── My Boards ──
+    html += '<div class="mgmt-section" data-mgmt-section="boards">';
+    html += '<div class="mgmt-section-title">My Boards</div>';
+    html += '<div class="mgmt-add-board-row">';
+    html += '<input type="text" id="mgmt-add-board-path" placeholder="Board file path (.md)">';
+    html += '<button class="btn-small btn-primary" id="mgmt-add-board-btn">Add</button>';
+    html += '</div>';
+    html += '<div id="mgmt-board-list"></div>';
+    html += '</div>';
+
+    // ── Server ──
+    html += '<div class="mgmt-section" data-mgmt-section="server">';
+    html += '<div class="mgmt-section-title">Server</div>';
+    var serverConfig = { bindAddress: '0.0.0.0', port: 13080 };
+    try {
+      var sc = await LexeraApi.getServerInfo();
+      if (sc) {
+        serverConfig.bindAddress = sc.bindAddress || sc.bind_address || serverConfig.bindAddress;
+        serverConfig.port = sc.port || serverConfig.port;
+      }
+    } catch (e) { /* ignore */ }
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label">Bind Address</label>';
+    html += '<input class="mgmt-field-input" id="mgmt-bind-address" type="text" value="' + escapeAttr(serverConfig.bindAddress) + '">';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label">Port</label>';
+    html += '<input class="mgmt-field-input" id="mgmt-port" type="number" value="' + escapeAttr(String(serverConfig.port)) + '">';
+    html += '</div>';
+    html += '<div class="mgmt-field-row" style="justify-content:flex-end">';
+    html += '<button class="btn-small btn-primary" id="mgmt-save-server">Save</button>';
+    html += '</div>';
+    html += '<div id="mgmt-server-status" class="mgmt-status"></div>';
+    html += '</div>';
+
+    // ── Network ──
+    html += '<div class="mgmt-section" data-mgmt-section="network">';
+    html += '<div class="mgmt-section-title">Network</div>';
+
+    // Connect to remote
+    html += '<div class="mgmt-field-row">';
+    html += '<input class="mgmt-field-input" id="mgmt-remote-url" type="text" placeholder="Remote server URL">';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<input class="mgmt-field-input" id="mgmt-remote-token" type="text" placeholder="Invite token">';
+    html += '<button class="btn-small btn-primary" id="mgmt-connect-remote">Join</button>';
+    html += '</div>';
+    html += '<div id="mgmt-connect-status" class="mgmt-status"></div>';
+
+    // Active connections
+    html += '<div style="margin-top:8px"><div class="mgmt-section-title" style="font-size:10px">Active Connections</div></div>';
+    html += '<div id="mgmt-connections-list"></div>';
+
+    // Discovered peers
+    html += '<div style="margin-top:8px"><div class="mgmt-section-title" style="font-size:10px">Discovered Peers</div></div>';
+    html += '<div id="mgmt-peers-list"></div>';
+
+    html += '</div>';
+
+    body.innerHTML = html;
+
+    // ── Wire up events ──
+
+    // Theme
+    var themeSelect = document.getElementById('mgmt-theme-select');
+    if (themeSelect) {
+      themeSelect.addEventListener('change', function () {
+        applyTheme(themeSelect.value);
+      });
+    }
+
+    // Identity
+    var saveNameBtn = document.getElementById('mgmt-save-name');
+    if (saveNameBtn) {
+      saveNameBtn.addEventListener('click', async function () {
+        var name = document.getElementById('mgmt-display-name').value.trim();
+        try {
+          await LexeraApi.updateServerConfig({ displayName: name });
+          showNotification('Display name saved');
+        } catch (err) {
+          showNotification('Failed to save name: ' + err.message);
+        }
+      });
+    }
+
+    // Add board
+    var addBoardBtn = document.getElementById('mgmt-add-board-btn');
+    if (addBoardBtn) {
+      addBoardBtn.addEventListener('click', async function () {
+        var pathInput = document.getElementById('mgmt-add-board-path');
+        var filePath = pathInput ? pathInput.value.trim() : '';
+        if (!filePath) return;
+        try {
+          await LexeraApi.request('/boards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file: filePath })
+          });
+          if (pathInput) pathInput.value = '';
+          showNotification('Board added');
+          poll();
+          renderMgmtBoardList();
+        } catch (err) {
+          showNotification('Failed to add board: ' + err.message);
+        }
+      });
+    }
+
+    // Server save
+    var saveServerBtn = document.getElementById('mgmt-save-server');
+    if (saveServerBtn) {
+      saveServerBtn.addEventListener('click', async function () {
+        var addr = document.getElementById('mgmt-bind-address').value.trim();
+        var port = parseInt(document.getElementById('mgmt-port').value, 10);
+        var statusEl = document.getElementById('mgmt-server-status');
+        try {
+          await LexeraApi.updateServerConfig({ bindAddress: addr, port: port });
+          if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Saved (restart required)'; }
+        } catch (err) {
+          if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = err.message; }
+        }
+      });
+    }
+
+    // Connect remote
+    var connectBtn = document.getElementById('mgmt-connect-remote');
+    if (connectBtn) {
+      connectBtn.addEventListener('click', async function () {
+        var url = document.getElementById('mgmt-remote-url').value.trim();
+        var token = document.getElementById('mgmt-remote-token').value.trim();
+        var statusEl = document.getElementById('mgmt-connect-status');
+        if (!url || !token) {
+          if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = 'URL and token required'; }
+          return;
+        }
+        try {
+          await LexeraApi.connectRemote(url, token);
+          if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Connected'; }
+          document.getElementById('mgmt-remote-url').value = '';
+          document.getElementById('mgmt-remote-token').value = '';
+          renderMgmtConnections();
+          poll();
+        } catch (err) {
+          if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = err.message; }
+        }
+      });
+    }
+
+    // Render dynamic lists
+    await Promise.all([
+      renderMgmtBoardList(),
+      renderMgmtConnections(),
+      renderMgmtPeers()
+    ]);
+
+    // Scroll to section if requested
+    if (scrollToSection) {
+      var sectionEl = body.querySelector('[data-mgmt-section="' + scrollToSection + '"]');
+      if (sectionEl) sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  async function renderMgmtBoardList() {
+    var container = document.getElementById('mgmt-board-list');
+    if (!container) return;
+    var boardList = [];
+    try {
+      boardList = await LexeraApi.getBoards();
+    } catch (e) { /* ignore */ }
+
+    if (!boardList.length) {
+      container.innerHTML = '<div class="mgmt-list-empty">No boards</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < boardList.length; i++) {
+      var b = boardList[i];
+      var isExpanded = mgmtExpandedBoardId === b.id;
+      html += '<div class="mgmt-board-row">';
+      html += '<span class="mgmt-board-name" data-mgmt-expand="' + escapeAttr(b.id) + '">' + escapeHtml(b.title || b.id) + '</span>';
+      html += '<div class="mgmt-board-actions">';
+      html += '<button class="mgmt-board-remove" data-mgmt-remove="' + escapeAttr(b.id) + '" data-mgmt-remove-name="' + escapeAttr(b.title || b.id) + '" title="Remove board">&times;</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '<div class="mgmt-board-details' + (isExpanded ? ' expanded' : '') + '" data-mgmt-details="' + escapeAttr(b.id) + '">';
+      if (isExpanded) {
+        html += renderMgmtBoardDetailsContent(b.id, b.boardSettings || b.board_settings || {});
+      }
+      html += '</div>';
+    }
+    container.innerHTML = html;
+
+    // Delegated events
+    container.addEventListener('click', function (e) {
+      // Expand/collapse
+      var expandBtn = e.target.closest('[data-mgmt-expand]');
+      if (expandBtn) {
+        var boardId = expandBtn.getAttribute('data-mgmt-expand');
+        if (mgmtExpandedBoardId === boardId) {
+          mgmtExpandedBoardId = null;
+        } else {
+          mgmtExpandedBoardId = boardId;
+        }
+        renderMgmtBoardList();
+        return;
+      }
+
+      // Remove
+      var removeBtn = e.target.closest('[data-mgmt-remove]');
+      if (removeBtn) {
+        var rmId = removeBtn.getAttribute('data-mgmt-remove');
+        var rmName = removeBtn.getAttribute('data-mgmt-remove-name');
+        mgmtRemoveBoard(rmId, rmName);
+        return;
+      }
+
+      // Tab switching
+      var tabBtn = e.target.closest('[data-mgmt-tab]');
+      if (tabBtn) {
+        var tabBoardId = tabBtn.getAttribute('data-mgmt-tab-board');
+        var tabName = tabBtn.getAttribute('data-mgmt-tab');
+        mgmtActiveBoardTab[tabBoardId] = tabName;
+        var detailsEl = container.querySelector('[data-mgmt-details="' + tabBoardId + '"]');
+        if (detailsEl) {
+          detailsEl.querySelectorAll('.mgmt-detail-tab').forEach(function (t) {
+            t.classList.toggle('active', t.getAttribute('data-mgmt-tab') === tabName);
+          });
+          detailsEl.querySelectorAll('.mgmt-detail-tab-content').forEach(function (c) {
+            c.classList.toggle('active', c.getAttribute('data-mgmt-tab-panel') === tabName);
+          });
+        }
+        return;
+      }
+
+      // Save settings
+      var saveBtn = e.target.closest('[data-mgmt-save-settings]');
+      if (saveBtn) {
+        mgmtSaveBoardSettings(saveBtn.getAttribute('data-mgmt-save-settings'));
+        return;
+      }
+
+      // Create invite
+      var createInvBtn = e.target.closest('[data-mgmt-create-invite]');
+      if (createInvBtn) {
+        mgmtCreateInvite(createInvBtn.getAttribute('data-mgmt-create-invite'));
+        return;
+      }
+
+      // Revoke invite
+      var revokeBtn = e.target.closest('[data-mgmt-revoke]');
+      if (revokeBtn) {
+        mgmtRevokeInvite(revokeBtn.getAttribute('data-mgmt-revoke-board'), revokeBtn.getAttribute('data-mgmt-revoke'));
+        return;
+      }
+
+      // Copy token
+      var copyBtn = e.target.closest('[data-mgmt-copy]');
+      if (copyBtn) {
+        var tokenVal = copyBtn.getAttribute('data-mgmt-copy');
+        navigator.clipboard.writeText(tokenVal).then(function () {
+          showNotification('Token copied to clipboard');
+        });
+        return;
+      }
+    });
+  }
+
+  function renderMgmtBoardDetailsContent(boardId, settings) {
+    var activeTab = mgmtActiveBoardTab[boardId] || 'settings';
+    var html = '';
+
+    // Tabs
+    html += '<div class="mgmt-detail-tabs">';
+    html += '<button class="mgmt-detail-tab' + (activeTab === 'settings' ? ' active' : '') + '" data-mgmt-tab="settings" data-mgmt-tab-board="' + escapeAttr(boardId) + '">Settings</button>';
+    html += '<button class="mgmt-detail-tab' + (activeTab === 'sharing' ? ' active' : '') + '" data-mgmt-tab="sharing" data-mgmt-tab-board="' + escapeAttr(boardId) + '">Sharing</button>';
+    html += '<button class="mgmt-detail-tab' + (activeTab === 'members' ? ' active' : '') + '" data-mgmt-tab="members" data-mgmt-tab-board="' + escapeAttr(boardId) + '">Members</button>';
+    html += '</div>';
+
+    // ── Settings tab ──
+    html += '<div class="mgmt-detail-tab-content' + (activeTab === 'settings' ? ' active' : '') + '" data-mgmt-tab-panel="settings">';
+    html += '<div class="mgmt-settings-grid">';
+    for (var i = 0; i < BOARD_SETTINGS_FIELDS.length; i++) {
+      var f = BOARD_SETTINGS_FIELDS[i];
+      var val = settings[f.key] != null ? settings[f.key] : '';
+      if (f.key === 'stickyStackMode') {
+        var sv = String(val || '').trim().toLowerCase();
+        if (sv === 'top' || sv === 'titleonly' || sv === 'column' || sv === 'enabled' || sv === 'true') val = 'titleonly';
+        else if (sv === 'full') val = 'full';
+        else if (sv === 'bottom') val = 'bottom';
+        else val = '';
+      } else if (f.key === 'tagVisibility') {
+        val = normalizeTagVisibilityMode(val);
+      } else if (f.key === 'htmlCommentRenderMode') {
+        val = normalizeHtmlCommentRenderMode(val);
+      } else if (f.key === 'arrowKeyFocusScroll') {
+        val = normalizeArrowKeyFocusScrollMode(val);
+      }
+      html += '<label>' + escapeHtml(f.label) + '</label>';
+      if (f.type === 'select') {
+        html += '<select data-board-setting="' + f.key + '">';
+        for (var j = 0; j < f.options.length; j++) {
+          var opt = f.options[j];
+          html += '<option value="' + escapeAttr(opt) + '"' + (String(val) === opt ? ' selected' : '') + '>' + (opt || '(default)') + '</option>';
+        }
+        html += '</select>';
+      } else {
+        html += '<input type="' + f.type + '" data-board-setting="' + f.key + '" value="' + escapeAttr(String(val)) + '" placeholder="' + escapeAttr(f.placeholder) + '">';
+      }
+    }
+    html += '</div>';
+    html += '<div class="mgmt-settings-actions">';
+    html += '<button class="btn-small btn-primary" data-mgmt-save-settings="' + escapeAttr(boardId) + '">Save</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // ── Sharing tab ──
+    html += '<div class="mgmt-detail-tab-content' + (activeTab === 'sharing' ? ' active' : '') + '" data-mgmt-tab-panel="sharing">';
+    html += '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:8px">';
+    html += '<div style="flex:1"><label style="font-size:11px;color:var(--text-secondary)">Role</label>';
+    html += '<select class="mgmt-field-input" data-mgmt-invite-role="' + escapeAttr(boardId) + '">';
+    html += '<option value="editor">Editor</option><option value="viewer">Viewer</option></select></div>';
+    html += '<div style="width:60px"><label style="font-size:11px;color:var(--text-secondary)">Uses</label>';
+    html += '<input class="mgmt-field-input" type="number" data-mgmt-invite-uses="' + escapeAttr(boardId) + '" value="1" min="1" style="width:100%"></div>';
+    html += '<button class="btn-small btn-primary" data-mgmt-create-invite="' + escapeAttr(boardId) + '">Create</button>';
+    html += '</div>';
+    html += '<div data-mgmt-invite-result="' + escapeAttr(boardId) + '"></div>';
+    html += '<div data-mgmt-invites-list="' + escapeAttr(boardId) + '"><div class="mgmt-list-empty">Loading...</div></div>';
+    html += '</div>';
+
+    // ── Members tab ──
+    html += '<div class="mgmt-detail-tab-content' + (activeTab === 'members' ? ' active' : '') + '" data-mgmt-tab-panel="members">';
+    html += '<div data-mgmt-members-list="' + escapeAttr(boardId) + '"><div class="mgmt-list-empty">Loading...</div></div>';
+    html += '</div>';
+
+    // Load sharing/members data async
+    setTimeout(function () { mgmtRefreshBoardCollabData(boardId); }, 0);
+
+    return html;
+  }
+
+  async function mgmtRefreshBoardCollabData(boardId) {
+    var userId = await ensureSyncUserId();
+    var results = await Promise.allSettled([
+      LexeraApi.listMembers(boardId, userId),
+      LexeraApi.getPresence(boardId, userId),
+      LexeraApi.listInvites(boardId, userId),
+    ]);
+    var members = results[0].status === 'fulfilled' ? results[0].value : [];
+    var onlineUsers = results[1].status === 'fulfilled' ? results[1].value : [];
+    var invites = results[2].status === 'fulfilled' ? results[2].value : [];
+
+    // Render members
+    var membersEl = document.querySelector('[data-mgmt-members-list="' + boardId + '"]');
+    if (membersEl) {
+      if (members.length === 0) {
+        membersEl.innerHTML = '<div class="mgmt-list-empty">No members yet</div>';
+      } else {
+        var mhtml = '';
+        for (var i = 0; i < members.length; i++) {
+          var m = members[i];
+          var isOnline = onlineUsers.indexOf(m.user_id) !== -1;
+          mhtml += '<div class="member-item">';
+          mhtml += '<span class="member-item-name">';
+          mhtml += '<span class="presence-dot' + (isOnline ? ' online' : '') + '"></span>';
+          mhtml += escapeHtml(m.user_name || m.user_id);
+          mhtml += '</span>';
+          mhtml += '<span class="member-item-role">' + escapeHtml(m.role) + '</span>';
+          mhtml += '</div>';
+        }
+        membersEl.innerHTML = mhtml;
+      }
+    }
+
+    // Render invites
+    var invitesEl = document.querySelector('[data-mgmt-invites-list="' + boardId + '"]');
+    if (invitesEl) {
+      if (invites.length === 0) {
+        invitesEl.innerHTML = '<div class="mgmt-list-empty">No active invites</div>';
+      } else {
+        var ihtml = '';
+        for (var j = 0; j < invites.length; j++) {
+          var inv = invites[j];
+          ihtml += '<div class="invite-item">';
+          ihtml += '<div>';
+          ihtml += '<span>' + escapeHtml(inv.role) + '</span>';
+          ihtml += ' <span class="invite-item-info">' + inv.uses + '/' + inv.max_uses + ' uses</span>';
+          ihtml += '<div class="invite-token-field">';
+          ihtml += '<input type="text" value="' + escapeAttr(inv.token) + '" readonly>';
+          ihtml += '<button class="btn-small" data-mgmt-copy="' + escapeAttr(inv.token) + '">Copy</button>';
+          ihtml += '</div>';
+          ihtml += '</div>';
+          ihtml += '<button class="btn-small btn-cancel" data-mgmt-revoke="' + escapeAttr(inv.token) + '" data-mgmt-revoke-board="' + escapeAttr(boardId) + '">Revoke</button>';
+          ihtml += '</div>';
+        }
+        invitesEl.innerHTML = ihtml;
+      }
+    }
+  }
+
+  async function mgmtCreateInvite(boardId) {
+    var userId = await ensureSyncUserId();
+    var roleEl = document.querySelector('[data-mgmt-invite-role="' + boardId + '"]');
+    var usesEl = document.querySelector('[data-mgmt-invite-uses="' + boardId + '"]');
+    var role = roleEl ? roleEl.value : 'editor';
+    var maxUses = usesEl ? parseInt(usesEl.value, 10) || 1 : 1;
+    try {
+      var invite = await LexeraApi.createInvite(boardId, userId, role, maxUses);
+      var resultEl = document.querySelector('[data-mgmt-invite-result="' + boardId + '"]');
+      if (resultEl) {
+        resultEl.innerHTML =
+          '<div class="invite-token-field">' +
+          '<input type="text" value="' + escapeAttr(invite.token) + '" readonly>' +
+          '<button class="btn-small" data-mgmt-copy="' + escapeAttr(invite.token) + '">Copy</button>' +
+          '</div>';
+      }
+      await mgmtRefreshBoardCollabData(boardId);
+    } catch (err) {
+      showNotification('Failed to create invite: ' + err.message);
+    }
+  }
+
+  async function mgmtRevokeInvite(boardId, token) {
+    var userId = await ensureSyncUserId();
+    try {
+      await LexeraApi.revokeInvite(boardId, token, userId);
+      showNotification('Invite revoked');
+      await mgmtRefreshBoardCollabData(boardId);
+    } catch (err) {
+      showNotification('Failed to revoke invite');
+    }
+  }
+
+  async function mgmtSaveBoardSettings(boardId) {
+    var detailsEl = document.querySelector('[data-mgmt-details="' + boardId + '"]');
+    if (!detailsEl) return;
+    var inputs = detailsEl.querySelectorAll('[data-board-setting]');
+    var settings = {};
+    for (var k = 0; k < inputs.length; k++) {
+      var key = inputs[k].getAttribute('data-board-setting');
+      var value = inputs[k].value.trim();
+      if (value === '') {
+        settings[key] = null;
+      } else if (inputs[k].type === 'number' && value) {
+        settings[key] = parseInt(value, 10);
+      } else {
+        settings[key] = value;
+      }
+    }
+    try {
+      // If this is the active board, persist via full board mutation
+      // (preserves all fields including ones not in the REST struct)
+      if (boardId === activeBoardId && fullBoardData) {
+        pushUndo();
+        if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
+        for (var s in settings) {
+          fullBoardData.boardSettings[s] = settings[s];
+        }
+        await persistBoardMutation({ beforeRefresh: applyBoardSettings });
+      } else {
+        await LexeraApi.updateBoardSettings(boardId, settings);
+      }
+      showNotification('Board settings saved');
+    } catch (err) {
+      showNotification('Failed to save settings: ' + err.message);
+    }
+  }
+
+  async function mgmtRemoveBoard(boardId, boardName) {
+    var ok = await showConfirmDialog('Remove "' + boardName + '" from sidebar?\n(The file will not be deleted.)');
+    if (!ok) return;
+    try {
+      await LexeraApi.removeBoard(boardId);
+      // Update local state
+      boards = boards.filter(function (b) { return b.id !== boardId; });
+      delete boardHierarchyCache[boardId];
+      if (activeBoardId === boardId) {
+        activeBoardId = null;
+        activeBoardData = null;
+        fullBoardData = null;
+        localStorage.removeItem('lexera-last-board');
+      }
+      renderBoardList();
+      renderMainView();
+      scheduleDashboardRefresh(60);
+      if (mgmtExpandedBoardId === boardId) mgmtExpandedBoardId = null;
+      renderMgmtBoardList();
+      showNotification('Board removed');
+    } catch (err) {
+      showNotification('Failed to remove board');
+      poll();
+    }
+  }
+
+  async function renderMgmtConnections() {
+    var container = document.getElementById('mgmt-connections-list');
+    if (!container) return;
+    var connections = [];
+    try {
+      connections = await LexeraApi.getConnections();
+    } catch (e) { /* ignore */ }
+    if (!connections || !connections.length) {
+      container.innerHTML = '<div class="mgmt-list-empty">No active connections</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < connections.length; i++) {
+      var c = connections[i];
+      html += '<div class="mgmt-connection-row">';
+      html += '<div class="mgmt-connection-info">';
+      html += '<div class="mgmt-connection-url">';
+      html += '<span class="mgmt-connection-status ' + (c.status === 'ok' || c.connected ? 'ok' : 'err') + '"></span>';
+      html += escapeHtml(c.serverUrl || c.server_url || c.url || '');
+      html += '</div>';
+      if (c.localBoardId || c.local_board_id) {
+        html += '<div class="mgmt-connection-board">' + escapeHtml(c.localBoardId || c.local_board_id) + '</div>';
+      }
+      html += '</div>';
+      html += '<button class="btn-small btn-cancel" data-mgmt-disconnect="' + escapeAttr(c.localBoardId || c.local_board_id || '') + '">Disconnect</button>';
+      html += '</div>';
+    }
+    container.innerHTML = html;
+
+    container.addEventListener('click', async function (e) {
+      var disBtn = e.target.closest('[data-mgmt-disconnect]');
+      if (!disBtn) return;
+      try {
+        await LexeraApi.disconnectRemote(disBtn.getAttribute('data-mgmt-disconnect'));
+        showNotification('Disconnected');
+        renderMgmtConnections();
+      } catch (err) {
+        showNotification('Disconnect failed: ' + err.message);
+      }
+    });
+  }
+
+  async function renderMgmtPeers() {
+    var container = document.getElementById('mgmt-peers-list');
+    if (!container) return;
+    var peers = [];
+    try {
+      peers = await LexeraApi.getDiscoveredPeers();
+    } catch (e) { /* ignore */ }
+    if (!peers || !peers.length) {
+      container.innerHTML = '<div class="mgmt-list-empty">No peers discovered</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < peers.length; i++) {
+      var p = peers[i];
+      html += '<div class="mgmt-peer-row">';
+      html += '<div class="mgmt-peer-info">';
+      html += '<div class="mgmt-peer-name">' + escapeHtml(p.displayName || p.display_name || p.name || 'Unknown') + '</div>';
+      html += '<div class="mgmt-peer-url">' + escapeHtml(p.url || p.address || '') + '</div>';
+      html += '</div>';
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  }
+
   // ── Collaboration ────────────────────────────────────────────────
 
   function openConnectionWindow() {
-    LexeraApi.request('/open-connection-window', { method: 'POST' }).catch(function (err) {
-      console.warn('[collab] Failed to open connection window:', err);
-      showNotification('Connection window unavailable');
-    });
+    openManagementPanel({ section: 'network' });
   }
 
   function showNotification(message) {
@@ -5697,7 +6055,7 @@ const LexeraDashboard = (function () {
       titleContainer.className = 'card-title-container';
       var titleDisplay = document.createElement('div');
       titleDisplay.className = 'card-title-display';
-      titleDisplay.innerHTML = renderTitleInline(getCardTitle(card.content));
+      titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)));
       titleContainer.appendChild(titleDisplay);
       headerRow.appendChild(titleContainer);
 
@@ -5712,7 +6070,7 @@ const LexeraDashboard = (function () {
       // --- Card Content Body ---
       var contentBody = document.createElement('div');
       contentBody.className = 'card-content';
-      contentBody.innerHTML = renderCardContent(card.content, activeBoardId);
+      contentBody.innerHTML = renderCardContent(getIncludeResolvedContent(card.content, col.index), activeBoardId);
       cardEl.appendChild(contentBody);
 
       (function (el, ci, cj, btn) {
@@ -6670,7 +7028,7 @@ const LexeraDashboard = (function () {
       }
     }
     if (totalCards > 0) {
-      if (!confirm('Move row "' + stripInternalHiddenTags(row.title || '') + '" and all ' + totalCards + ' cards to trash?')) return;
+      if (!(await showConfirmDialog('Move row "' + stripInternalHiddenTags(row.title || '') + '" and all ' + totalCards + ' cards to trash?'))) return;
     }
     await setRowHiddenTag(rowIdx, '#hidden-internal-deleted');
   }
@@ -6716,7 +7074,7 @@ const LexeraDashboard = (function () {
       totalCards += stack.columns[c].cards.length;
     }
     if (totalCards > 0) {
-      if (!confirm('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and all ' + totalCards + ' cards to trash?')) return;
+      if (!(await showConfirmDialog('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and all ' + totalCards + ' cards to trash?'))) return;
     }
     await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-deleted');
   }
@@ -9071,7 +9429,14 @@ const LexeraDashboard = (function () {
   function syncCardEditorWysiwygContext(editor) {
     var boardId = editor && editor.boardId ? editor.boardId : (activeBoardId || '');
     var boardFilePath = getBoardFilePathForId(boardId) || getActiveBoardFilePath() || '';
-    var includeDir = getDirNameFromPath(boardFilePath);
+    var includeDir = '';
+    var col = editor && editor.colIndex != null ? getFullColumn(editor.colIndex) : null;
+    if (col && col.includeSource && col.includeSource.rawPath) {
+      var boardDir = getDirNameFromPath(boardFilePath);
+      includeDir = getDirNameFromPath(joinBoardRelativePath(boardDir, col.includeSource.rawPath));
+    } else {
+      includeDir = getDirNameFromPath(boardFilePath);
+    }
     window.currentTaskIncludeContext = includeDir ? { includeDir: includeDir } : null;
     window.currentFilePath = boardFilePath || '';
   }
@@ -9413,11 +9778,13 @@ const LexeraDashboard = (function () {
 
   function renderCardDisplayState(cardEl, content) {
     if (!cardEl) return;
+    var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
+    var resolved = getIncludeResolvedContent(content, colIndex);
     var titleEl = cardEl.querySelector('.card-title-display');
-    if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(content));
+    if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(resolved));
     var contentEl = cardEl.querySelector('.card-content');
     if (contentEl) {
-      contentEl.innerHTML = renderCardContent(content, activeBoardId);
+      contentEl.innerHTML = renderCardContent(resolved, activeBoardId);
       flushPendingDiagramQueues();
       enhanceEmbeddedContent(contentEl);
       enhanceFileLinks(contentEl);
@@ -9914,7 +10281,8 @@ const LexeraDashboard = (function () {
     if (!currentCardEditor) return;
     var value = currentCardEditor.textarea ? currentCardEditor.textarea.value : '';
     if (currentCardEditor.preview) {
-      currentCardEditor.preview.innerHTML = renderCardContent(value, activeBoardId);
+      var resolved = getIncludeResolvedContent(value, currentCardEditor.colIndex);
+      currentCardEditor.preview.innerHTML = renderCardContent(resolved, activeBoardId);
       flushPendingDiagramQueues();
       enhanceEmbeddedContent(currentCardEditor.preview);
       enhanceFileLinks(currentCardEditor.preview);
@@ -10272,7 +10640,7 @@ const LexeraDashboard = (function () {
       ? String(col.includeSource.rawPath)
       : extractIncludePathFromTitle(col.title || '');
     if (!currentPath) return;
-    if (!confirm('Disable include mode? Included cards will be written back into this board as regular cards.')) {
+    if (!(await showConfirmDialog('Disable include mode? Included cards will be written back into this board as regular cards.'))) {
       return;
     }
     var cleanTitle = removeIncludeSyntaxFromTitle(col.title || '');
@@ -10513,7 +10881,7 @@ const LexeraDashboard = (function () {
     var col = getFullColumn(colIndex);
     if (!col) return;
     if (col.cards.length > 0) {
-      if (!confirm('Move column "' + stripStackTag(col.title) + '" and all ' + col.cards.length + ' cards to trash?')) return;
+      if (!(await showConfirmDialog('Move column "' + stripStackTag(col.title) + '" and all ' + col.cards.length + ' cards to trash?'))) return;
     }
     await setColumnHiddenTag(colIndex, '#hidden-internal-deleted');
   }
@@ -11262,6 +11630,14 @@ const LexeraDashboard = (function () {
     });
 
     return rewritten;
+  }
+
+  function getIncludeResolvedContent(content, colIndex) {
+    var col = getFullColumn(colIndex);
+    if (col && col.includeSource && col.includeSource.rawPath) {
+      return resolveMarkdownRelativeTargets(content, col.includeSource.rawPath);
+    }
+    return content;
   }
 
   function applyFileLinkInfo(link, info, filePath) {
@@ -12312,6 +12688,23 @@ const LexeraDashboard = (function () {
       return window.__TAURI__.core.invoke(cmd, args);
     }
     return Promise.reject(new Error('Tauri not available'));
+  }
+
+  function tauriListen(eventName, callback) {
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.transformCallback === 'function') {
+      var handler = window.__TAURI_INTERNALS__.transformCallback(function (event) {
+        callback(event);
+      }, false);
+      window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+        event: eventName,
+        target: { kind: 'Any' },
+        handler: handler,
+      });
+      return;
+    }
+    if (window.__TAURI__ && window.__TAURI__.event) {
+      window.__TAURI__.event.listen(eventName, callback);
+    }
   }
 
   /**

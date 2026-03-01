@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{KanbanBoard, KanbanColumn};
+use crate::types::{KanbanBoard, KanbanColumn, IncludeSource};
 use super::tag_filter::{TagVisibility, process_markdown_content, has_exclude_tag};
 
 // ---------------------------------------------------------------------------
@@ -39,6 +40,16 @@ fn include_syntax_re() -> &'static Regex {
 fn crlf_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"\r\n?").unwrap())
+}
+
+fn md_image_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?").unwrap())
+}
+
+fn md_include_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"!!!include\(([^)]+)\)!!!").unwrap())
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +228,11 @@ pub fn from_columns(columns: &[&KanbanColumn], options: &PresentationOptions) ->
         // Task slides
         let tasks = filter_tasks(&column.cards, options);
         for card in &tasks {
-            slide_contents.push(task_to_slide_content(&card.content, options));
+            let content = match &column.include_source {
+                Some(src) => resolve_include_card_paths(&card.content, src),
+                None => card.content.clone(),
+            };
+            slide_contents.push(task_to_slide_content(&content, options));
         }
     }
 
@@ -248,7 +263,11 @@ pub fn to_document(
         let tasks = filter_tasks(&column.cards, options);
 
         for card in &tasks {
-            let mut content = normalize_crlf(&card.content);
+            let raw_content = match &column.include_source {
+                Some(src) => resolve_include_card_paths(&card.content, src),
+                None => card.content.clone(),
+            };
+            let mut content = normalize_crlf(&raw_content);
 
             if options.strip_includes {
                 content = include_syntax_re()
@@ -292,6 +311,142 @@ pub fn to_document(
 /// Normalise CRLF / lone CR to LF.
 fn normalize_crlf(s: &str) -> String {
     crlf_re().replace_all(s, "\n").into_owned()
+}
+
+/// Check whether a path is a relative resource path (not absolute, not external).
+fn is_relative_resource_path(path: &str) -> bool {
+    let trimmed = path.trim();
+    if trimmed.is_empty() { return false; }
+    if trimmed.starts_with('#') { return false; }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") { return false; }
+    if trimmed.starts_with("mailto:") || trimmed.starts_with("data:") { return false; }
+    !Path::new(trimmed).is_absolute()
+}
+
+/// Join a base directory with a relative path, resolving `.` and `..`.
+fn join_relative_path(base_dir: &str, rel_path: &str) -> String {
+    let base = Path::new(base_dir);
+    let joined = base.join(rel_path);
+    // Normalize the path by resolving . and ..
+    let mut parts: Vec<&std::ffi::OsStr> = Vec::new();
+    for component in joined.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => { parts.pop(); }
+            other => { parts.push(other.as_os_str()); }
+        }
+    }
+    let result: std::path::PathBuf = parts.iter().collect();
+    result.to_string_lossy().to_string()
+}
+
+/// Rewrite relative paths in markdown content so they resolve relative to
+/// the board directory instead of the include file's directory.
+/// `include_source.raw_path` is the include file path relative to the board dir.
+fn resolve_include_card_paths(content: &str, include_source: &IncludeSource) -> String {
+    let include_dir = Path::new(&include_source.raw_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if include_dir.is_empty() {
+        return content.to_string();
+    }
+
+    // Rewrite image embeds: ![alt](path){attrs}
+    let result = md_image_re().replace_all(content, |caps: &regex::Captures| {
+        let alt = &caps[1];
+        let raw_target = &caps[2];
+        let attrs = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+        if !is_relative_resource_path(raw_target) {
+            return caps[0].to_string();
+        }
+        let resolved = join_relative_path(&include_dir, raw_target);
+        format!("![{alt}]({resolved}){attrs}")
+    }).into_owned();
+
+    // Rewrite links: [label](path)
+    // Must avoid re-matching already rewritten image embeds — images start with `!`
+    // Use a manual scan approach instead
+    let result = rewrite_markdown_links(&result, &include_dir);
+
+    // Rewrite include directives: !!!include(path)!!!
+    let result = md_include_re().replace_all(&result, |caps: &regex::Captures| {
+        let raw_path = &caps[1];
+        if !is_relative_resource_path(raw_path) {
+            return caps[0].to_string();
+        }
+        let resolved = join_relative_path(&include_dir, raw_path);
+        format!("!!!include({resolved})!!!")
+    }).into_owned();
+
+    result
+}
+
+/// Rewrite markdown links [label](path) without touching image embeds ![alt](path).
+fn rewrite_markdown_links(content: &str, include_dir: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Skip image embeds (handled separately)
+        if i + 1 < bytes.len() && bytes[i] == b'!' && bytes[i + 1] == b'[' {
+            // Find the closing ](...)
+            if let Some(end) = find_markdown_link_end(&content[i + 1..]) {
+                let chunk = &content[i..i + 1 + end];
+                result.push_str(chunk);
+                // Skip optional {attrs}
+                let after = i + 1 + end;
+                if after < bytes.len() && bytes[after] == b'{' {
+                    if let Some(close) = content[after..].find('}') {
+                        result.push_str(&content[after..after + close + 1]);
+                        i = after + close + 1;
+                        continue;
+                    }
+                }
+                i = after;
+                continue;
+            }
+        }
+        // Match [label](path)
+        if bytes[i] == b'[' {
+            if let Some((label, path, total_len)) = parse_md_link(&content[i..]) {
+                if is_relative_resource_path(&path) {
+                    let resolved = join_relative_path(include_dir, &path);
+                    result.push_str(&format!("[{label}]({resolved})"));
+                } else {
+                    result.push_str(&content[i..i + total_len]);
+                }
+                i += total_len;
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
+/// Find the end of a markdown link starting at `[` — returns position after `)`.
+fn find_markdown_link_end(s: &str) -> Option<usize> {
+    let close_bracket = s.find(']')?;
+    let after = close_bracket + 1;
+    if s.as_bytes().get(after) != Some(&b'(') { return None; }
+    let close_paren = s[after..].find(')')? + after + 1;
+    Some(close_paren)
+}
+
+/// Parse a markdown link `[label](path)` at the start of `s`.
+/// Returns (label, path, total_bytes_consumed).
+fn parse_md_link(s: &str) -> Option<(String, String, usize)> {
+    if !s.starts_with('[') { return None; }
+    let close_bracket = s.find(']')?;
+    let label = &s[1..close_bracket];
+    let after = close_bracket + 1;
+    if s.as_bytes().get(after) != Some(&b'(') { return None; }
+    let paren_content_start = after + 1;
+    let close_paren = s[paren_content_start..].find(')')? + paren_content_start;
+    let path = &s[paren_content_start..close_paren];
+    Some((label.to_string(), path.to_string(), close_paren + 1))
 }
 
 /// Process a column title: check exclude tags, optionally strip include syntax.
@@ -1037,5 +1192,120 @@ mod tests {
         assert!(slides[2].content.contains("A2"));
         assert!(slides[3].content.contains("Col B"));
         assert!(slides[4].content.contains("B1"));
+    }
+
+    // ======================================================================
+    // resolve_include_card_paths
+    // ======================================================================
+
+    fn include_source(raw_path: &str) -> IncludeSource {
+        IncludeSource {
+            raw_path: raw_path.to_string(),
+            resolved_path: std::path::PathBuf::new(),
+        }
+    }
+
+    #[test]
+    fn resolve_include_paths_rewrites_images() {
+        let src = include_source("./sub/slides.md");
+        let content = "![photo](./photo.jpg)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "![photo](sub/photo.jpg)");
+    }
+
+    #[test]
+    fn resolve_include_paths_rewrites_links() {
+        let src = include_source("./sub/slides.md");
+        let content = "[doc](./readme.md)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "[doc](sub/readme.md)");
+    }
+
+    #[test]
+    fn resolve_include_paths_rewrites_nested_includes() {
+        let src = include_source("./sub/slides.md");
+        let content = "!!!include(./deeper/nested.md)!!!";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "!!!include(sub/deeper/nested.md)!!!");
+    }
+
+    #[test]
+    fn resolve_include_paths_leaves_absolute_paths() {
+        let src = include_source("./sub/slides.md");
+        let content = "![photo](/abs/photo.jpg)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "![photo](/abs/photo.jpg)");
+    }
+
+    #[test]
+    fn resolve_include_paths_leaves_external_urls() {
+        let src = include_source("./sub/slides.md");
+        let content = "![logo](https://example.com/logo.png)";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "![logo](https://example.com/logo.png)");
+    }
+
+    #[test]
+    fn resolve_include_paths_no_include_source_dir() {
+        let src = include_source("slides.md");
+        let content = "![photo](./photo.jpg)";
+        let result = resolve_include_card_paths(content, &src);
+        // No parent dir to prepend, path unchanged
+        assert_eq!(result, "![photo](./photo.jpg)");
+    }
+
+    #[test]
+    fn resolve_include_paths_image_with_attrs() {
+        let src = include_source("./sub/slides.md");
+        let content = "![photo](./photo.jpg){width=300}";
+        let result = resolve_include_card_paths(content, &src);
+        assert_eq!(result, "![photo](sub/photo.jpg){width=300}");
+    }
+
+    #[test]
+    fn resolve_include_paths_mixed_content() {
+        let src = include_source("./root/mid/presentation.md");
+        let content = "# Slide\n\n![img](./image.png)\n\nSome text [link](./doc.pdf)\n\n!!!include(./extra.md)!!!";
+        let result = resolve_include_card_paths(content, &src);
+        assert!(result.contains("![img](root/mid/image.png)"));
+        assert!(result.contains("[link](root/mid/doc.pdf)"));
+        assert!(result.contains("!!!include(root/mid/extra.md)!!!"));
+    }
+
+    #[test]
+    fn resolve_include_paths_does_not_mangle_image_links() {
+        let src = include_source("./sub/slides.md");
+        let content = "![photo](./photo.jpg)\n[doc](./readme.md)";
+        let result = resolve_include_card_paths(content, &src);
+        assert!(result.contains("![photo](sub/photo.jpg)"));
+        assert!(result.contains("[doc](sub/readme.md)"));
+    }
+
+    #[test]
+    fn from_board_include_column_rewrites_paths() {
+        let col = KanbanColumn {
+            id: "col1".to_string(),
+            title: "Slides".to_string(),
+            cards: vec![card("![img](./photo.jpg)")],
+            include_source: Some(include_source("./sub/slides.md")),
+        };
+        let b = board_with(vec![col]);
+        let output = from_board(&b, &default_opts());
+        assert!(output.contains("sub/photo.jpg"));
+        assert!(!output.contains("./photo.jpg"));
+    }
+
+    #[test]
+    fn to_document_include_column_rewrites_paths() {
+        let col = KanbanColumn {
+            id: "col1".to_string(),
+            title: "Chapter".to_string(),
+            cards: vec![card("![img](./image.png)")],
+            include_source: Some(include_source("./deep/notes.md")),
+        };
+        let b = board_with(vec![col]);
+        let output = to_document(&b, PageBreaks::Continuous, &default_opts());
+        assert!(output.contains("deep/image.png"));
+        assert!(!output.contains("./image.png"));
     }
 }
