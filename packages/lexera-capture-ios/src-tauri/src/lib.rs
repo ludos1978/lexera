@@ -31,14 +31,19 @@ pub fn run() {
             let boards_dir = storage_path.join("Documents").join("boards");
             let pending_path = storage_path.join("ShareExtension").join("pending.json");
 
-            let storage = Arc::new(
-                ios_storage::IosStorage::new(boards_dir, pending_path)
-                    .expect("Failed to initialize iOS storage"),
-            );
+            let storage = match ios_storage::IosStorage::new(boards_dir, pending_path) {
+                Ok(s) => Arc::new(s),
+                Err(e) => {
+                    log::error!("[ios_capture.setup] Failed to initialize iOS storage: {}", e);
+                    return Err(Box::new(e));
+                }
+            };
 
             app.manage(storage);
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Lexera Capture");
+        .unwrap_or_else(|e| {
+            log::error!("[ios_capture.run] Tauri runtime failed: {}", e);
+        });
 }
