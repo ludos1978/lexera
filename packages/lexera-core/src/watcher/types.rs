@@ -48,6 +48,8 @@ pub enum BoardChangeEvent {
         )]
         path: PathBuf,
     },
+    CollabConnectionChanged,
+    PeerDiscoveryChanged,
 }
 
 fn serialize_path<S: serde::Serializer>(path: &PathBuf, s: S) -> Result<S::Ok, S::Error> {

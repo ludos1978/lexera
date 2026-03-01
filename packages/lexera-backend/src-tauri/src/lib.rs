@@ -392,7 +392,7 @@ pub fn run() {
                 sync_hub,
                 sync_client,
                 discovery: discovery.clone(),
-                app_handle: app_handle.clone(),
+                app_handle: Some(app_handle.clone()),
                 collab_dir,
                 shutdown_tx,
             };
@@ -401,6 +401,7 @@ pub fn run() {
             let discovery_for_start = discovery.clone();
             let discovery_user_id = local_user.id.clone();
             let discovery_user_name = local_user.name.clone();
+            let event_tx_for_discovery = event_tx.clone();
             tauri::async_runtime::spawn(async move {
                 match server::spawn_server(app_state).await {
                     Ok((actual_port, shutdown_tx)) => {
@@ -430,7 +431,7 @@ pub fn run() {
                         // Start UDP discovery if not localhost-only
                         if discovery_bind != "127.0.0.1" {
                             if let Ok(mut disc) = discovery_for_start.lock() {
-                                disc.start(actual_port, discovery_user_id, discovery_user_name);
+                                disc.start(actual_port, discovery_user_id, discovery_user_name, event_tx_for_discovery);
                                 log::info!("[discovery] Started LAN discovery");
                             }
                         } else {

@@ -153,6 +153,32 @@ pub async fn add_card(
         ));
     }
 
+    let board = state.storage.read_board(&board_id).ok_or_else(|| {
+        let status = StatusCode::NOT_FOUND;
+        let error = format!("Board not found: {}", board_id);
+        log_api_issue(status, "lexera.api.add_card", &error);
+        (status, Json(ErrorResponse { error }))
+    })?;
+    let num_columns = board.all_columns().len();
+    if col_index >= num_columns {
+        let status = StatusCode::BAD_REQUEST;
+        let error = format!(
+            "Column index {} out of range for board {} (has {} columns)",
+            col_index, board_id, num_columns
+        );
+        log_api_issue(status, "lexera.api.add_card", &error);
+        return Err((
+            status,
+            Json(ErrorResponse {
+                error: format!(
+                    "Column index {} out of range (max {})",
+                    col_index,
+                    num_columns.saturating_sub(1)
+                ),
+            }),
+        ));
+    }
+
     state
         .storage
         .add_card(&board_id, col_index, &body.content)
@@ -633,8 +659,6 @@ fn build_write_board_response(
     }
 }
 
-/// After a REST write, broadcast CRDT updates to sync-connected WebSocket clients.
-/// Exports CRDT data BEFORE acquiring the hub lock to avoid lock ordering issues.
 async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
     // Quick check (racy but fine -- worst case we export then find no clients)
     {
@@ -655,4 +679,217 @@ async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
     let msg_str = msg.to_string();
     let hub = state.sync_hub.lock().await;
     hub.broadcast(board_id, 0, &msg_str);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::Router;
+    use http_body_util::BodyExt;
+    use lexera_core::storage::local::LocalStorage;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    fn test_state(tmp: &std::path::Path) -> AppState {
+        let storage = Arc::new(LocalStorage::new());
+        let (event_tx, _) = tokio::sync::broadcast::channel(16);
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+        AppState {
+            storage,
+            event_tx,
+            port: 0,
+            bind_address: "127.0.0.1".into(),
+            live_port: Arc::new(std::sync::Mutex::new(0)),
+            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
+            incoming: None,
+            local_user_id: "test-user".into(),
+            config_path: tmp.join("config.json"),
+            identity_path: tmp.join("identity.json"),
+            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
+            watcher: Arc::new(std::sync::Mutex::new(None)),
+            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
+            public_service: Arc::new(std::sync::Mutex::new(
+                crate::public::PublicRoomService::new(),
+            )),
+            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(
+                crate::sync_ws::BoardSyncHub::new(),
+            )),
+            sync_client: Arc::new(tokio::sync::Mutex::new(
+                crate::sync_client::SyncClientManager::new(),
+            )),
+            discovery: Arc::new(std::sync::Mutex::new(
+                crate::discovery::DiscoveryService::new(),
+            )),
+            app_handle: None,
+            collab_dir: tmp.join("collab"),
+            shutdown_tx,
+        }
+    }
+
+    fn test_router(state: AppState) -> Router {
+        crate::api::api_router().with_state(state)
+    }
+
+    async fn body_json(body: Body) -> serde_json::Value {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn write_board_file(dir: &std::path::Path, name: &str, content: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    const MINIMAL_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] Task A
+- [ ] Task B
+
+## Done
+- [x] Task C
+";
+
+    #[tokio::test]
+    async fn list_boards_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/boards")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let boards = json["boards"].as_array().unwrap();
+        assert!(boards.is_empty());
+    }
+
+    #[tokio::test]
+    async fn add_board_and_list() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "test.md", MINIMAL_BOARD);
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/boards")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "file": board_path.to_str().unwrap() }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let json = body_json(resp.into_body()).await;
+        let board_id = json["boardId"].as_str().unwrap().to_string();
+        assert!(!board_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_columns_for_added_board() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "cols.md", MINIMAL_BOARD);
+        let state = test_state(tmp.path());
+
+        let board_id = state.storage.add_board(&board_path).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/boards/{}/columns", board_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let columns = json["columns"].as_array().unwrap();
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0]["title"].as_str().unwrap(), "Todo");
+        assert_eq!(columns[1]["title"].as_str().unwrap(), "Done");
+
+        let todo_cards = columns[0]["cards"].as_array().unwrap();
+        assert_eq!(todo_cards.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn delete_board() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "del.md", MINIMAL_BOARD);
+        let state = test_state(tmp.path());
+
+        let board_id = state.storage.add_board(&board_path).unwrap();
+
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(&format!("/boards/{}", board_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["success"], true);
+
+        let app2 = test_router(state);
+        let resp2 = app2
+            .oneshot(
+                Request::builder()
+                    .uri("/boards")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let json2 = body_json(resp2.into_body()).await;
+        assert!(json2["boards"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_columns_nonexistent_board_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/boards/does-not-exist/columns")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
 }

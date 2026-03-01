@@ -27,5 +27,13 @@ thiserror = "2"
 if-addrs = "0.13"
 percent-encoding = "2"
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"
+
+[features]
+test = ["tauri/test"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

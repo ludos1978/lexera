@@ -75,10 +75,7 @@
     await loadDiscoveredPeers();
 
     setupEventListeners();
-
-    // Poll for connection status and peer discovery
-    setInterval(loadConnections, 10000);
-    setInterval(loadDiscoveredPeers, 5000);
+    connectSSE();
   }
 
   async function discoverBackend() {
@@ -110,6 +107,59 @@
       } catch (e) { /* next port */ }
     }
     return null;
+  }
+
+  var sseSource = null;
+  var fallbackConnectionsInterval = null;
+  var fallbackPeersInterval = null;
+
+  function connectSSE() {
+    if (sseSource) {
+      sseSource.close();
+      sseSource = null;
+    }
+    clearFallbackPolling();
+
+    sseSource = new EventSource(baseUrl + '/events');
+
+    sseSource.onmessage = function (e) {
+      try {
+        var event = JSON.parse(e.data);
+        if (event.type === 'CollabConnectionChanged') {
+          loadConnections();
+        } else if (event.type === 'PeerDiscoveryChanged') {
+          loadDiscoveredPeers();
+        }
+      } catch (_) {}
+    };
+
+    sseSource.onerror = function () {
+      if (sseSource) {
+        sseSource.close();
+        sseSource = null;
+      }
+      startFallbackPolling();
+    };
+  }
+
+  function startFallbackPolling() {
+    if (!fallbackConnectionsInterval) {
+      fallbackConnectionsInterval = setInterval(loadConnections, 10000);
+    }
+    if (!fallbackPeersInterval) {
+      fallbackPeersInterval = setInterval(loadDiscoveredPeers, 5000);
+    }
+  }
+
+  function clearFallbackPolling() {
+    if (fallbackConnectionsInterval) {
+      clearInterval(fallbackConnectionsInterval);
+      fallbackConnectionsInterval = null;
+    }
+    if (fallbackPeersInterval) {
+      clearInterval(fallbackPeersInterval);
+      fallbackPeersInterval = null;
+    }
   }
 
   async function apiGet(path) {

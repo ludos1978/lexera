@@ -89,7 +89,7 @@ pub struct AppState {
     // UDP LAN discovery service
     pub discovery: Arc<std::sync::Mutex<DiscoveryService>>,
     // Tauri app handle for opening windows from REST handlers
-    pub app_handle: tauri::AppHandle,
+    pub app_handle: Option<tauri::AppHandle>,
     // Directory for collaboration service persistence files
     pub collab_dir: PathBuf,
     /// Global shutdown signal — send `true` to cancel all background tasks.

@@ -2,6 +2,7 @@ use crate::auth::{RoomMember as AuthRoomMember, RoomRole};
 use crate::invite::{CreateInviteRequest, InviteLink, RoomJoin};
 use crate::public::{MakePublicRequest, PublicRoom};
 use crate::state::AppState;
+use lexera_core::watcher::types::BoardChangeEvent;
 /// Collaboration API: invitations, public rooms, user management.
 use axum::{
     extract::{Path, Query, State},
@@ -671,6 +672,8 @@ async fn connect_remote(
             )
         })?;
 
+    let _ = state.event_tx.send(BoardChangeEvent::CollabConnectionChanged);
+
     Ok(Json(
         serde_json::json!({ "success": true, "local_board_id": local_board_id }),
     ))
@@ -683,6 +686,7 @@ async fn disconnect_remote(
 ) -> Result<Json<SuccessResponse>> {
     let mut client = state.sync_client.lock().await;
     client.disconnect(&local_board_id, &state.storage);
+    let _ = state.event_tx.send(BoardChangeEvent::CollabConnectionChanged);
     Ok(Json(SuccessResponse { success: true }))
 }
 
@@ -806,20 +810,22 @@ async fn update_server_config(
     match crate::server::restart_server(state.clone(), new_bind.clone(), new_port).await {
         Ok(actual_port) => {
             // Update tray to reflect new port
-            if let Err(e) = crate::tray::setup_tray(&state.app_handle, actual_port) {
-                log::error!(
-                    target: "lexera.tray",
-                    "Failed to update tray icon after restart on port {}: {}",
-                    actual_port,
-                    e
-                );
+            if let Some(ref handle) = state.app_handle {
+                if let Err(e) = crate::tray::setup_tray(handle, actual_port) {
+                    log::error!(
+                        target: "lexera.tray",
+                        "Failed to update tray icon after restart on port {}: {}",
+                        actual_port,
+                        e
+                    );
+                }
             }
 
             // Restart discovery if needed
             if let Ok(mut disc) = state.discovery.lock() {
                 disc.stop();
                 if new_bind != "127.0.0.1" {
-                    disc.start(actual_port, user_id, user_name);
+                    disc.start(actual_port, user_id, user_name, state.event_tx.clone());
                     log::info!("[discovery] Restarted on port {}", actual_port);
                 }
             }

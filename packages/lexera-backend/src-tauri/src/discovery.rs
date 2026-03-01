@@ -2,11 +2,13 @@
 ///
 /// Each backend periodically broadcasts a JSON beacon on UDP port 41820.
 /// Other backends listening on the same port discover peers automatically.
+use lexera_core::watcher::types::BoardChangeEvent;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::UdpSocket;
+use tokio::sync::broadcast;
 
 const DISCOVERY_PORT: u16 = 41820;
 const ANNOUNCE_INTERVAL_SECS: u64 = 5;
@@ -45,7 +47,7 @@ impl DiscoveryService {
 
     /// Start the discovery announcer and listener.
     /// Must be called from a tokio runtime context.
-    pub fn start(&mut self, http_port: u16, user_id: String, user_name: String) {
+    pub fn start(&mut self, http_port: u16, user_id: String, user_name: String, event_tx: broadcast::Sender<BoardChangeEvent>) {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         self.shutdown = Some(shutdown_tx);
 
@@ -110,6 +112,7 @@ impl DiscoveryService {
         // Spawn listener
         let listen_user_id = user_id;
         let mut listen_shutdown = shutdown_rx;
+        let listen_event_tx = event_tx;
         tokio::spawn(async move {
             let socket = match UdpSocket::bind(format!("0.0.0.0:{}", DISCOVERY_PORT)).await {
                 Ok(s) => s,
@@ -159,6 +162,7 @@ impl DiscoveryService {
                                                 src_addr.ip(),
                                                 beacon.port
                                             );
+                                            let _ = listen_event_tx.send(BoardChangeEvent::PeerDiscoveryChanged);
                                         }
                                     }
                                 }

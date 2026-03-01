@@ -45,7 +45,9 @@ pub async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
 }
 
 pub async fn open_connection_window(State(state): State<AppState>) -> Json<serde_json::Value> {
-    crate::connection_window::open_connection_window(&state.app_handle);
+    if let Some(ref handle) = state.app_handle {
+        crate::connection_window::open_connection_window(handle);
+    }
     Json(serde_json::json!({ "success": true }))
 }
 
