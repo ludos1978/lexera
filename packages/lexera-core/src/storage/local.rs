@@ -80,7 +80,52 @@ pub struct LocalStorage {
 
 /// Check if two boards have different row/stack/column structure (count or IDs).
 /// Card-level differences are intentionally ignored — the CRDT handles card merging fine.
+///
+/// A board with no rows but flat columns (legacy format) is considered structurally
+/// equivalent to a board with a single "Default" row / "Default" stack containing
+/// the same columns (new format produced by the parser).
 fn has_structural_mismatch(a: &KanbanBoard, b: &KanbanBoard) -> bool {
+    /// Return the effective flat column IDs for a board, normalizing implicit
+    /// Default row/stack to the legacy flat representation.
+    fn effective_columns(board: &KanbanBoard) -> Vec<&str> {
+        if board.rows.is_empty() {
+            board.columns.iter().map(|c| c.id.as_str()).collect()
+        } else if board.rows.len() == 1
+            && board.rows[0].title == "Default"
+            && board.rows[0].stacks.len() == 1
+            && board.rows[0].stacks[0].title == "Default"
+        {
+            // Single Default row with single Default stack — treat as flat columns
+            board.rows[0].stacks[0]
+                .columns
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect()
+        } else {
+            // Multi-row or non-default structure — no normalization
+            Vec::new()
+        }
+    }
+
+    let a_is_implicit = a.rows.is_empty()
+        || (a.rows.len() == 1
+            && a.rows[0].title == "Default"
+            && a.rows[0].stacks.len() == 1
+            && a.rows[0].stacks[0].title == "Default");
+    let b_is_implicit = b.rows.is_empty()
+        || (b.rows.len() == 1
+            && b.rows[0].title == "Default"
+            && b.rows[0].stacks.len() == 1
+            && b.rows[0].stacks[0].title == "Default");
+
+    if a_is_implicit && b_is_implicit {
+        // Both are implicit Default structures — compare effective flat columns
+        let ac = effective_columns(a);
+        let bc = effective_columns(b);
+        return ac.len() != bc.len() || ac.iter().zip(bc.iter()).any(|(a, b)| a != b);
+    }
+
+    // Both have explicit row/stack structure — compare row by row
     if a.rows.len() != b.rows.len() {
         return true;
     }
