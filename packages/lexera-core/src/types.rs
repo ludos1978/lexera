@@ -271,4 +271,32 @@ impl BoardSettings {
             _ => {}
         }
     }
+
+    /// Merge `incoming` into `self`, overwriting only fields that are `Some` in `incoming`.
+    pub fn merge_from(&mut self, incoming: BoardSettings) {
+        macro_rules! merge_option {
+            ($($field:ident),+ $(,)?) => {
+                $(if incoming.$field.is_some() { self.$field = incoming.$field; })+
+            };
+        }
+        merge_option!(
+            column_width,
+            layout_rows,
+            max_row_height,
+            row_height,
+            layout_preset,
+            sticky_stack_mode,
+            tag_visibility,
+            card_min_height,
+            font_size,
+            font_family,
+            whitespace,
+            html_comment_render_mode,
+            html_content_render_mode,
+            arrow_key_focus_scroll,
+            board_color,
+            board_color_dark,
+            board_color_light,
+        );
+    }
 }
