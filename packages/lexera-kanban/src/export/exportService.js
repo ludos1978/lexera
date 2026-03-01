@@ -29,7 +29,7 @@ class ExportService {
      */
     static async export(options) {
         try {
-            console.log('[ExportService] Starting export', options.format, options.mode);
+            lexeraLog('info', '[ExportService] Starting export ' + options.format + ' ' + options.mode);
 
             // Phase 1 — Extract
             const extracted = await ExportService._extract(options);
@@ -44,7 +44,7 @@ class ExportService {
             return await ExportService._output(transformed, options);
 
         } catch (err) {
-            console.log('[ExportService] Export failed:', err);
+            lexeraLog('error', '[ExportService] Export failed: ' + (err.message || String(err)));
             return { success: false, message: err.message || String(err) };
         }
     }
@@ -144,7 +144,7 @@ class ExportService {
             };
         }
 
-        console.log('[ExportService] Phase 1: POST', endpoint);
+        lexeraLog('info', '[ExportService] Phase 1: POST ' + endpoint);
 
         const res = await fetch(endpoint, {
             method: 'POST',
@@ -193,7 +193,7 @@ class ExportService {
             format: 'presentation',
         };
 
-        console.log('[ExportService] Phase 2: POST', endpoint);
+        lexeraLog('info', '[ExportService] Phase 2: POST ' + endpoint);
 
         const res = await fetch(endpoint, {
             method: 'POST',
@@ -223,7 +223,7 @@ class ExportService {
 
         // ── Copy mode: return content for the caller to put on clipboard ──
         if (mode === 'copy') {
-            console.log('[ExportService] Phase 3: copy (' + content.length + ' chars)');
+            lexeraLog('info', '[ExportService] Phase 3: copy (' + content.length + ' chars)');
             return { success: true, content, message: 'Content ready for clipboard' };
         }
 
@@ -239,13 +239,13 @@ class ExportService {
                 '.md'
             );
 
-            console.log('[ExportService] Phase 3: writing markdown to', mdPath);
+            lexeraLog('info', '[ExportService] Phase 3: writing markdown to ' + mdPath);
             await window.__TAURI__.core.invoke('write_export_file', { path: mdPath, content });
             createdFiles.push(mdPath);
 
             // ── Preview mode: start Marp watch ──
             if (mode === 'preview') {
-                console.log('[ExportService] Phase 3: starting Marp preview');
+                lexeraLog('info', '[ExportService] Phase 3: starting Marp preview');
                 const watchResult = await window.__TAURI__.core.invoke('marp_watch', {
                     opts: {
                         inputPath: mdPath,
@@ -278,7 +278,7 @@ class ExportService {
                     '.' + options.marpFormat
                 );
 
-                console.log('[ExportService] Phase 3: running Marp export to', marpOutputPath);
+                lexeraLog('info', '[ExportService] Phase 3: running Marp export to ' + marpOutputPath);
                 const marpResult = await window.__TAURI__.core.invoke('marp_export', {
                     opts: {
                         inputPath: mdPath,
@@ -311,7 +311,7 @@ class ExportService {
                     '.' + options.pandocFormat
                 );
 
-                console.log('[ExportService] Phase 3: running Pandoc export to', pandocOutputPath);
+                lexeraLog('info', '[ExportService] Phase 3: running Pandoc export to ' + pandocOutputPath);
                 const pandocResult = await window.__TAURI__.core.invoke('pandoc_export', {
                     opts: {
                         inputPath: mdPath,
@@ -334,11 +334,11 @@ class ExportService {
         } catch (err) {
             // Clean up files created during this failed export
             if (createdFiles.length > 0) {
-                console.log('[ExportService] Cleaning up partial output:', createdFiles);
+                lexeraLog('warn', '[ExportService] Cleaning up partial output: ' + createdFiles.join(', '));
                 try {
                     await window.__TAURI__.core.invoke('remove_export_files', { paths: createdFiles });
                 } catch (cleanupErr) {
-                    console.log('[ExportService] Cleanup failed:', cleanupErr);
+                    lexeraLog('error', '[ExportService] Cleanup failed: ' + (cleanupErr.message || String(cleanupErr)));
                 }
             }
             throw err;

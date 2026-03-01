@@ -14,11 +14,14 @@ const mockWindow = {
   ExportService: null, // will be assigned by the source file
 };
 
+const mockLexeraLog = vi.fn();
+
 beforeAll(() => {
   ES = loadIIFE('export/exportService.js', 'ExportService', {
     window: mockWindow,
     fetch: mockFetch,
     console: globalThis.console,
+    lexeraLog: mockLexeraLog,
   });
 });
 
