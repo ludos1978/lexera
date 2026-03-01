@@ -184,7 +184,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 6. ~~No graceful shutdown - background tasks never explicitly cancelled~~ FIXED: watch shutdown signal (commit 44ee5951)
 7. ~~SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s~~ FIXED: named constants (commit 57c4fd2e)
 8. ~~Hardcoded discovery port (41820)~~ FIXED: DISCOVERY_PORT constant already exists; broadcast only (no multicast for subnets)
-9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
+9. ~~capture.rs uses macOS-only AppleScript, no cross-platform alternative~~ FIXED: #[cfg(target_os)] platform guard with fallback stub (commit e98ea915)
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
 11. ~~BoardSettings merge verbose - 17 manual field assignments~~ FIXED: merge_from() with macro (commit afae724d)
 12. Frontend JS: global mutable state, ~~fetch without timeout~~, poll-based updates (10s/5s) -- fetch timeout FIXED (commit 35c2545e)
@@ -205,7 +205,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
 12. ~~Template variable substitution has no type checking, fails silently~~ FIXED: lexeraLog warnings (commit 6d354ee8)
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
-14. 273 uncached DOM queries (querySelector/getElementById)
+14. ~~273 uncached DOM queries (querySelector/getElementById)~~ PARTIALLY FIXED: 14 static elements cached with lazy getters (commit dfd92d0a)
 15. No virtual scrolling for large boards
 16. ~~Export pipeline has no rollback on partial failure~~ FIXED: createdFiles tracking + remove_export_files cleanup (commit 065c7b70)
 
@@ -213,7 +213,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 1. ~~12 RwLock .unwrap() calls~~ FIXED: poisoning recovery (commit 4f67f5ce)
 2. ~~Silent file I/O failures in scan_boards() and process_pending()~~ FIXED: error logging (commit 4f67f5ce)
 3. ~~Startup panics with .expect() - no graceful fallback~~ FIXED: graceful error handling (commit ee3dd8a2)
-4. write_board() returns Ok(None) - merge infrastructure unused
+4. ~~write_board() returns Ok(None) - merge infrastructure unused~~ BY DESIGN: iOS is append-only (add_card), no concurrent editing or merge needed
 5. No board deletion/card editing commands
 6. No data encryption in App Group container
 7. ~~Base64 images in JSON could exhaust memory for large images~~ FIXED: 10MB base64 limit in process_pending (commit 95e8c6a2)
@@ -221,7 +221,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
 10. Monolithic 880-line index.html with inline JS
 11. No search result navigation (can't click to go to result)
-12. No schema versioning for board format
+12. No schema versioning for board format — core concern, not iOS-specific; add schemaVersion to YAML frontmatter when format evolution is needed
 
 ────────────────────────────────────────────────────────────────────────────────
 
