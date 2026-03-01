@@ -249,11 +249,28 @@ async fn handle_sync_session(
     let board_id_read = board_id.clone();
     let state_read = state.clone();
 
-    // Write task: forward hub messages to WebSocket
+    // Write task: forward hub messages to WebSocket + periodic ping keepalive
     let write_task = tokio::spawn(async move {
-        while let Some(msg) = hub_rx.recv().await {
-            if ws_tx.send(Message::Text(msg.into())).await.is_err() {
-                break;
+        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        ping_interval.tick().await; // consume the immediate first tick
+        loop {
+            tokio::select! {
+                maybe_msg = hub_rx.recv() => {
+                    match maybe_msg {
+                        Some(msg) => {
+                            if ws_tx.send(Message::Text(msg.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                _ = ping_interval.tick() => {
+                    if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
+                        log::info!("[sync_ws] Ping failed for peer, closing connection");
+                        break;
+                    }
+                }
             }
         }
     });

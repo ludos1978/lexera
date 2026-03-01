@@ -355,6 +355,7 @@ const LexeraApi = (function () {
   var syncReconnectTimer = null;
   var syncShouldReconnect = false;
   var syncHasConnectedOnce = false;
+  var syncReconnectAttempt = 0;
 
   function clearSyncReconnectTimer() {
     if (syncReconnectTimer) {
@@ -365,11 +366,18 @@ const LexeraApi = (function () {
 
   function scheduleSyncReconnect() {
     if (!syncShouldReconnect || syncReconnectTimer || !syncBoardId || !syncUserId || !baseUrl) return;
+    var delay = Math.min(1000 * Math.pow(2, syncReconnectAttempt), 30000);
+    delay += Math.random() * 0.3 * delay;
+    syncReconnectAttempt++;
+    logApiIssue('info', 'sync.reconnect', 'Reconnecting in ' + Math.round(delay) + 'ms (attempt ' + syncReconnectAttempt + ')', undefined, {
+      dedupeKey: 'sync.reconnect.schedule',
+      dedupeWindowMs: 0
+    });
     syncReconnectTimer = setTimeout(function () {
       syncReconnectTimer = null;
       if (!syncShouldReconnect || syncWs || !syncBoardId || !syncUserId || !baseUrl) return;
       openSyncSocket();
-    }, 1500);
+    }, delay);
   }
 
   function openSyncSocket() {
@@ -380,6 +388,7 @@ const LexeraApi = (function () {
 
     syncWs.onopen = function () {
       clearSyncReconnectTimer();
+      syncReconnectAttempt = 0;
       var vv = '';
       if (typeof syncHelloVvProvider === 'function') {
         try {
@@ -498,6 +507,7 @@ const LexeraApi = (function () {
 
   function disconnectSync() {
     syncShouldReconnect = false;
+    syncReconnectAttempt = 0;
     clearSyncReconnectTimer();
     if (syncWs) {
       syncWs.close();
