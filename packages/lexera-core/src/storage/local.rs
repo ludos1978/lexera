@@ -280,7 +280,7 @@ impl LocalStorage {
             }
         } else if let Some(ref base) = normalized_base {
             let current = Self::normalize_board_for_write(
-                &self.parse_with_includes(&disk_content, board_id, &board_dir)?,
+                &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
                 &board_dir,
             );
             let merge = card_merge::three_way_merge(base, &current, &normalized_board);
@@ -424,7 +424,7 @@ impl LocalStorage {
 
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let board = Self::normalize_board_for_write(
-            &self.parse_with_includes(&content, &board_id, &board_dir)?,
+            &self.parse_with_includes(&content, &board_id, &board_dir, &file_path)?,
             &board_dir,
         );
 
@@ -486,7 +486,7 @@ impl LocalStorage {
         let content = fs::read_to_string(&file_path)?;
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let board = Self::normalize_board_for_write(
-            &self.parse_with_includes(&content, board_id, &board_dir)?,
+            &self.parse_with_includes(&content, board_id, &board_dir, &file_path)?,
             &board_dir,
         );
 
@@ -649,11 +649,32 @@ impl LocalStorage {
 
     /// Parse markdown content with include support.
     /// Detects include columns, loads their files, and updates the include map.
+    /// `board_file_path` is the canonical path of the board file itself, used to
+    /// seed the visited set so a board cannot include itself.
     fn parse_with_includes(
         &self,
         content: &str,
         board_id: &str,
         board_dir: &Path,
+        board_file_path: &Path,
+    ) -> Result<KanbanBoard, StorageError> {
+        // Seed the visited set with the board file's canonical path
+        let mut visited = HashSet::new();
+        let canonical = fs::canonicalize(board_file_path)
+            .unwrap_or_else(|_| board_file_path.to_path_buf());
+        visited.insert(canonical);
+        self.parse_with_includes_inner(content, board_id, board_dir, &mut visited)
+    }
+
+    /// Inner include parser with cycle detection via a visited-path set.
+    /// `visited` contains canonical paths that must not be included (the board
+    /// file itself, and any ancestor include files in a recursive chain).
+    fn parse_with_includes_inner(
+        &self,
+        content: &str,
+        board_id: &str,
+        board_dir: &Path,
+        visited: &HashSet<PathBuf>,
     ) -> Result<KanbanBoard, StorageError> {
         // First pass: parse to detect include columns
         let preliminary = parser::parse_markdown(content);
@@ -678,7 +699,24 @@ impl LocalStorage {
 
         for (_, title) in &column_titles {
             if let Some(raw_path) = syntax::extract_include_path(title) {
+                // Skip if already loaded (multiple columns referencing same file)
+                if include_contents.contains_key(&raw_path) {
+                    continue;
+                }
+
                 let resolved = crate::include::resolver::resolve_include_path(&raw_path, board_dir);
+                let canonical = fs::canonicalize(&resolved).unwrap_or_else(|_| resolved.clone());
+
+                // Cycle detection: skip if this path is the board file itself
+                // or any ancestor in the include chain
+                if visited.contains(&canonical) {
+                    log::warn!(
+                        "[include.resolver] Cycle detected: {} already included",
+                        canonical.display()
+                    );
+                    continue;
+                }
+
                 match fs::read_to_string(&resolved) {
                     Ok(file_content) => {
                         include_contents.insert(raw_path, file_content);
@@ -1129,7 +1167,7 @@ impl BoardStorage for LocalStorage {
         let file_content = fs::read_to_string(&file_path)?;
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let mut board = Self::normalize_board_for_write(
-            &self.parse_with_includes(&file_content, board_id, &board_dir)?,
+            &self.parse_with_includes(&file_content, board_id, &board_dir, &file_path)?,
             &board_dir,
         );
 
@@ -1593,5 +1631,56 @@ kanban-plugin: board
             board.all_columns().len() >= 4,
             "expected multiple columns in fixture board"
         );
+    }
+
+    #[test]
+    fn test_include_cycle_detection_self_include() {
+        // Board file includes itself — cycle detection should skip it
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./board.md)!!!\n",
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        // The self-including column should have no cards (cycle was skipped)
+        assert_eq!(board.columns.len(), 1);
+        assert!(
+            board.columns[0].cards.is_empty(),
+            "self-including column should have no cards due to cycle detection"
+        );
+    }
+
+    #[test]
+    fn test_include_same_file_twice_both_get_cards() {
+        // Two columns including the same file should both get cards — this is
+        // not a cycle, just two views of the same data
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\n---\n\n## !!!include(./slides.md)!!!\n\n## !!!include(./slides.md)!!!\n",
+        )
+        .unwrap();
+        fs::write(&include_path, "# Slide 1\n\nContent\n").unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        assert_eq!(board.columns.len(), 2);
+        // Both columns should get the same cards from the shared include file
+        assert_eq!(board.columns[0].cards.len(), 1);
+        assert_eq!(board.columns[1].cards.len(), 1);
     }
 }
