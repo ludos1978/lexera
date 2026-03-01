@@ -197,7 +197,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 2. WYSIWYG editor is a stub (58 lines, console.log noop)
 3. ~~No test coverage at all~~ FIXED: Vitest + 264 tests across 5 files (commits e538a088, 596e1a14, 1f150ad0, f981ce3a, 3f18e76a)
 4. ~~Undo/redo serializes full board state (memory explosion risk)~~ FIXED: delta-based undo/redo, 5x+ memory reduction (commits 93214dee, 3f18e76a)
-5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
+5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: all 14 eliminated (commits earlier, ea52fd98)
 6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js+exportService.js (commits 73dc9c93, 1d1cad78, ee33f76b)
 7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
 8. ~~Memory leak: addEventListener without cleanup~~ FIXED: showHtmlMenu click-outside leak (commit 9553c202); card editors use DOM replacement for cleanup
@@ -345,7 +345,7 @@ Analysis: Deep review revealed that layout locking (`dragLayoutLocks`, `lockBoar
 
 Remaining:
 1. ~~Lock container dimensions during drag~~ Already implemented via dragLayoutLocks
-2. Add fixed-size drop zones (left, right, between stacks)
+2. ~~Add fixed-size drop zones (left, right, between stacks)~~ DONE: visual drop zone indicators (commit ea52fd98)
 3. ~~Prevent flex reflow during drag~~ Already implemented
 4. ~~Visual-only feedback (opacity, box-shadow)~~ Already implemented
 5. ~~Add error boundaries to drag event handlers~~ DONE (commit 903a40a3)
@@ -466,7 +466,7 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 | Aspect | Core | Backend | Kanban | iOS |
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
-| Code Quality | 4/5 (+: Result propagation) | 3/5 | 2/5 | 3/5 (+: RwLock fix) |
+| Code Quality | 5/5 (zero production unwrap) | 4/5 (zero production unwrap, named constants) | 2/5 | 4/5 (zero production unwrap, named constants) |
 | Testing | 5/5 (429 tests) | 4/5 (119 tests, full service coverage) | 3/5 (264 tests across 5 files) | 3/5 (+: 28 unit tests) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
 | Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
