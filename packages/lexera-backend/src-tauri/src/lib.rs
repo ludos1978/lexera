@@ -29,6 +29,13 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use tauri::Manager;
 
+/// Capacity of the board-change event broadcast channel.
+const EVENT_CHANNEL_CAPACITY: usize = 256;
+/// Seconds between expired-invite cleanup runs.
+const INVITE_CLEANUP_INTERVAL_SECS: u64 = 3600;
+/// Seconds between periodic saves of collaboration state and config.
+const PERIODIC_SAVE_INTERVAL_SECS: u64 = 60;
+
 pub fn run() {
     if let Err(e) = log_bridge::init() {
         log_bridge::write_fallback_line(&format!("failed to initialize backend logger: {}", e));
@@ -55,8 +62,13 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     if let tauri_plugin_global_shortcut::ShortcutState::Pressed = event.state {
-                        let focus: tauri_plugin_global_shortcut::Shortcut =
-                            "CmdOrCtrl+B".parse().unwrap();
+                        let focus: tauri_plugin_global_shortcut::Shortcut = match "CmdOrCtrl+B".parse() {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log::error!("[lexera.shortcut] Failed to parse CmdOrCtrl+B shortcut: {}", e);
+                                return;
+                            }
+                        };
                         if *shortcut == focus {
                             capture::focus_capture_popup(app);
                         } else {
@@ -86,8 +98,8 @@ pub fn run() {
             let local_user = config::load_or_create_identity();
             let identity_path = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("lexera")
-                .join("identity.json");
+                .join(config::CONFIG_DIR_NAME)
+                .join(config::IDENTITY_FILENAME);
 
             if let Err(e) = tray::setup_tray(&app.handle().clone(), port) {
                 log::error!(
@@ -103,7 +115,13 @@ pub fn run() {
             let mut board_paths: Vec<(String, PathBuf)> = Vec::new();
 
             {
-                let cfg = config.lock().unwrap();
+                let cfg = match config.lock() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("[lexera.setup] Config mutex poisoned during board loading: {}", e);
+                        return Ok(());
+                    }
+                };
                 for entry in &cfg.boards {
                     let path = PathBuf::from(&entry.file);
                     match storage.add_board(&path) {
@@ -118,7 +136,7 @@ pub fn run() {
             }
 
             // Resolve incoming config (map file path to board ID)
-            let incoming = config.lock().unwrap().incoming.clone().and_then(|inc| {
+            let incoming = config.lock().ok().and_then(|cfg| cfg.incoming.clone()).and_then(|inc| {
                 let inc_path = PathBuf::from(&inc.board);
                 board_paths.iter().find(|(_, p)| {
                     let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
@@ -136,7 +154,7 @@ pub fn run() {
 
             // Create file watcher
             let include_map = Arc::new(RwLock::new(IncludeMap::new()));
-            let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<BoardChangeEvent>(256);
+            let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<BoardChangeEvent>(EVENT_CHANNEL_CAPACITY);
 
             let watcher_arc: Arc<std::sync::Mutex<Option<FileWatcher>>> = Arc::new(std::sync::Mutex::new(None));
 
@@ -163,7 +181,12 @@ pub fn run() {
                 let mut event_rx = watcher.event_sender().subscribe();
 
                 // Store watcher in Arc for AppState access
-                *watcher_arc.lock().unwrap() = Some(watcher);
+                match watcher_arc.lock() {
+                    Ok(mut guard) => *guard = Some(watcher),
+                    Err(e) => {
+                        log::error!("[lexera.watcher] Watcher mutex poisoned, cannot store file watcher: {}", e);
+                    }
+                }
 
                 // Spawn event processing loop
                 let storage_for_events = storage.clone();
@@ -229,8 +252,8 @@ pub fn run() {
             // Initialize collaboration services with persistence
             let collab_dir = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("lexera")
-                .join("collab");
+                .join(config::CONFIG_DIR_NAME)
+                .join(config::COLLAB_DIR_NAME);
             if let Err(e) = std::fs::create_dir_all(&collab_dir) {
                 log::error!("[collab] Failed to create collab dir {:?}: {}", collab_dir, e);
             }
@@ -282,7 +305,7 @@ pub fn run() {
             let invite_cleanup = invite_service.clone();
             let mut invite_shutdown_rx = shutdown_rx.clone();
             tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Every hour
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(INVITE_CLEANUP_INTERVAL_SECS));
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
@@ -315,7 +338,7 @@ pub fn run() {
             let save_dir = collab_dir.clone();
             let mut save_shutdown_rx = shutdown_rx.clone();
             tauri::async_runtime::spawn(async move {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(PERIODIC_SAVE_INTERVAL_SECS));
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
@@ -429,7 +452,7 @@ pub fn run() {
                         });
 
                         // Start UDP discovery if not localhost-only
-                        if discovery_bind != "127.0.0.1" {
+                        if discovery_bind != config::DEFAULT_BIND_ADDRESS {
                             if let Ok(mut disc) = discovery_for_start.lock() {
                                 disc.start(actual_port, discovery_user_id, discovery_user_name, event_tx_for_discovery);
                                 log::info!("[discovery] Started LAN discovery");

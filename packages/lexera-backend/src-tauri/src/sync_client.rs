@@ -248,7 +248,7 @@ async fn run_sync_client(
         user_id,
         vv: String::new(),
     })
-    .unwrap();
+    .map_err(|e| format!("Failed to serialize ClientHello: {}", e))?;
     ws_tx
         .send(Message::Text(hello.into()))
         .await
