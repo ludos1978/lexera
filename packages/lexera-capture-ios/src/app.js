@@ -5,6 +5,9 @@
     let currentCaptureType = 'text';
     let currentBoardId = null;
     let searchDebounce = null;
+    let editingCardColIndex = null;
+    let editingCardIndex = null;
+    let currentBoard = null;
 
     // ─── Toast ───
     function showToast(msg, isError) {
@@ -231,6 +234,7 @@
         if (!board) { showToast('Board not found', true); return; }
 
         currentBoardId = boardId;
+        currentBoard = board;
         document.getElementById('boards-list').style.display = 'none';
         document.querySelector('#page-boards > div:first-child').style.display = 'none';
         const detail = document.getElementById('board-detail');
@@ -245,10 +249,13 @@
 
         // Combine columns from flat and row-based formats
         const columns = board.columns || [];
-        colsEl.innerHTML = columns.map(col => {
-          const cards = (col.cards || []).map(card => {
+        colsEl.innerHTML = columns.map((col, colIdx) => {
+          const cards = (col.cards || []).map((card, cardIdx) => {
             const content = card.content.replace(/<!--\s*kid:[a-f0-9]+\s*-->/g, '').trim();
-            return '<div class="board-card-item' + (card.checked ? ' checked' : '') + '" data-card-id="' + escHtml(card.id) + '">' +
+            return '<div class="board-card-item' + (card.checked ? ' checked' : '') + '"' +
+              ' data-card-id="' + escHtml(card.id) + '"' +
+              ' data-col-index="' + colIdx + '"' +
+              ' data-card-index="' + cardIdx + '">' +
               escHtml(content) + '</div>';
           }).join('');
           return '<div class="board-column">' +
@@ -256,6 +263,13 @@
             (cards || '<div class="board-empty">No cards</div>') +
           '</div>';
         }).join('');
+
+        colsEl.querySelectorAll('.board-card-item').forEach(el => {
+          el.addEventListener('click', () => openEditCardDialog(
+            parseInt(el.dataset.colIndex),
+            parseInt(el.dataset.cardIndex)
+          ));
+        });
 
         if (highlightCardId) {
           const target = colsEl.querySelector('[data-card-id="' + highlightCardId + '"]');
@@ -304,6 +318,83 @@
     document.getElementById('dialog-delete-board').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) {
         document.getElementById('dialog-delete-board').classList.remove('show');
+      }
+    });
+
+    // ─── Edit card dialog ───
+    function openEditCardDialog(colIndex, cardIndex) {
+      if (!currentBoard) return;
+      const columns = currentBoard.columns || [];
+      if (colIndex >= columns.length) return;
+      const cards = columns[colIndex].cards || [];
+      if (cardIndex >= cards.length) return;
+
+      editingCardColIndex = colIndex;
+      editingCardIndex = cardIndex;
+
+      const rawContent = cards[cardIndex].content;
+      const displayContent = rawContent.replace(/<!--\s*kid:[a-f0-9]+\s*-->/g, '').trim();
+      document.getElementById('edit-card-content').value = displayContent;
+      document.getElementById('dialog-edit-card').classList.add('show');
+    }
+
+    document.getElementById('dialog-edit-cancel').addEventListener('click', () => {
+      document.getElementById('dialog-edit-card').classList.remove('show');
+    });
+
+    document.getElementById('dialog-edit-card').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        document.getElementById('dialog-edit-card').classList.remove('show');
+      }
+    });
+
+    document.getElementById('dialog-edit-save').addEventListener('click', async () => {
+      const newContent = document.getElementById('edit-card-content').value.trim();
+      if (!newContent) return;
+      try {
+        await invoke('edit_card', {
+          boardId: currentBoardId,
+          columnIndex: editingCardColIndex,
+          cardIndex: editingCardIndex,
+          newContent
+        });
+        document.getElementById('dialog-edit-card').classList.remove('show');
+        showToast('Card updated');
+        openBoardDetail(currentBoardId);
+        loadBoards();
+      } catch (e) {
+        showToast('Error: ' + e, true);
+      }
+    });
+
+    document.getElementById('dialog-edit-delete').addEventListener('click', () => {
+      document.getElementById('dialog-edit-card').classList.remove('show');
+      document.getElementById('dialog-delete-card').classList.add('show');
+    });
+
+    document.getElementById('dialog-delete-card-cancel').addEventListener('click', () => {
+      document.getElementById('dialog-delete-card').classList.remove('show');
+    });
+
+    document.getElementById('dialog-delete-card').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        document.getElementById('dialog-delete-card').classList.remove('show');
+      }
+    });
+
+    document.getElementById('dialog-delete-card-confirm').addEventListener('click', async () => {
+      try {
+        await invoke('delete_card', {
+          boardId: currentBoardId,
+          columnIndex: editingCardColIndex,
+          cardIndex: editingCardIndex
+        });
+        document.getElementById('dialog-delete-card').classList.remove('show');
+        showToast('Card deleted');
+        openBoardDetail(currentBoardId);
+        loadBoards();
+      } catch (e) {
+        showToast('Error: ' + e, true);
       }
     });
 

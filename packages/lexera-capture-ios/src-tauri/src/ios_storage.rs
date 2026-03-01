@@ -222,6 +222,79 @@ impl IosStorage {
         Ok(())
     }
 
+    pub fn edit_card(
+        &self,
+        board_id: &str,
+        column_index: usize,
+        card_index: usize,
+        new_content: &str,
+    ) -> Result<(), StorageError> {
+        {
+            let mut boards = self.boards.write().unwrap_or_else(|p| {
+                log::warn!("[ios_storage.edit_card] Lock was poisoned, recovering");
+                p.into_inner()
+            });
+            let state = boards
+                .get_mut(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+
+            let mut columns = state.board.all_columns_mut();
+            if column_index >= columns.len() {
+                return Err(StorageError::ColumnOutOfRange {
+                    index: column_index,
+                    max: columns.len().saturating_sub(1),
+                });
+            }
+
+            if card_index >= columns[column_index].cards.len() {
+                return Err(StorageError::InvalidBoard(format!(
+                    "Card index {} out of range (0-{})",
+                    card_index,
+                    columns[column_index].cards.len().saturating_sub(1)
+                )));
+            }
+
+            columns[column_index].cards[card_index].content = new_content.to_string();
+        }
+        self.write_board_file(board_id)
+    }
+
+    pub fn delete_card(
+        &self,
+        board_id: &str,
+        column_index: usize,
+        card_index: usize,
+    ) -> Result<(), StorageError> {
+        {
+            let mut boards = self.boards.write().unwrap_or_else(|p| {
+                log::warn!("[ios_storage.delete_card] Lock was poisoned, recovering");
+                p.into_inner()
+            });
+            let state = boards
+                .get_mut(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+
+            let mut columns = state.board.all_columns_mut();
+            if column_index >= columns.len() {
+                return Err(StorageError::ColumnOutOfRange {
+                    index: column_index,
+                    max: columns.len().saturating_sub(1),
+                });
+            }
+
+            if card_index >= columns[column_index].cards.len() {
+                return Err(StorageError::InvalidBoard(format!(
+                    "Card index {} out of range (0-{})",
+                    card_index,
+                    columns[column_index].cards.len().saturating_sub(1)
+                )));
+            }
+
+            columns[column_index].cards.remove(card_index);
+        }
+        self.write_board_file(board_id)
+    }
+
     pub fn process_pending(&self) -> Result<usize, StorageError> {
         if !self.pending_path.exists() {
             return Ok(0);

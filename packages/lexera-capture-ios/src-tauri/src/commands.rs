@@ -70,6 +70,31 @@ pub fn delete_board(
 }
 
 #[tauri::command]
+pub fn edit_card(
+    storage: tauri::State<'_, Arc<IosStorage>>,
+    board_id: String,
+    column_index: usize,
+    card_index: usize,
+    new_content: String,
+) -> Result<(), String> {
+    storage
+        .edit_card(&board_id, column_index, card_index, &new_content)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_card(
+    storage: tauri::State<'_, Arc<IosStorage>>,
+    board_id: String,
+    column_index: usize,
+    card_index: usize,
+) -> Result<(), String> {
+    storage
+        .delete_card(&board_id, column_index, card_index)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn search(
     storage: tauri::State<'_, Arc<IosStorage>>,
     query: String,

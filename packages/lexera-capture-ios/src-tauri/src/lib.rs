@@ -14,6 +14,8 @@ pub fn run() {
             commands::get_board,
             commands::create_board,
             commands::delete_board,
+            commands::edit_card,
+            commands::delete_card,
             commands::search,
             commands::process_pending_shares,
         ])
