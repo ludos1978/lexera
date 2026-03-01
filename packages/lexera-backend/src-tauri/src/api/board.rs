@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 use super::live_sync;
-use super::{insert_header_safe, log_api_issue, ErrorResponse};
+use super::{insert_header_safe, log_api_issue, validate_board_id, ErrorResponse};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -64,6 +64,7 @@ pub async fn get_board_columns(
     Path(board_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
     let board = state.storage.read_board(&board_id).ok_or_else(|| {
         let status = StatusCode::NOT_FOUND;
         let error = format!("Board not found: {}", board_id);
@@ -136,6 +137,7 @@ pub async fn add_card(
     Path((board_id, col_index)): Path<(String, usize)>,
     Json(body): Json<AddCardBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
     if body.content.trim().is_empty() {
         let status = StatusCode::BAD_REQUEST;
         let error = format!(
@@ -190,6 +192,7 @@ pub async fn write_board(
     Path(board_id): Path<String>,
     Json(board): Json<lexera_core::types::KanbanBoard>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
     let result = state
         .storage
         .write_board(&board_id, &board)
@@ -222,6 +225,7 @@ pub async fn write_board_with_base(
     Path(board_id): Path<String>,
     Json(body): Json<SyncSaveBoardBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
     let result = state
         .storage
         .write_board_from_base(&board_id, &body.base_board, &body.board)
@@ -452,7 +456,7 @@ pub async fn remove_board_endpoint(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    // Get file path before removing
+    validate_board_id(&board_id)?;
     let file_path = state.storage.get_board_path(&board_id);
 
     state.storage.remove_board(&board_id).map_err(|e| {
@@ -506,6 +510,7 @@ pub async fn get_board_settings(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
     let board = state.storage.read_board(&board_id).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
@@ -531,6 +536,7 @@ pub async fn update_board_settings(
     Path(board_id): Path<String>,
     Json(incoming): Json<lexera_core::types::BoardSettings>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
     let mut board = state.storage.read_board(&board_id).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,

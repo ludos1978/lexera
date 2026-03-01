@@ -1,5 +1,6 @@
 use axum::{
     http::{HeaderMap, StatusCode},
+    response::Json,
     routing::get,
     Router,
 };
@@ -110,6 +111,37 @@ pub fn api_router() -> Router<AppState> {
 #[derive(Serialize)]
 pub struct ErrorResponse {
     pub error: String,
+}
+
+fn validate_board_id(id: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if id.is_empty() {
+        log::warn!(target: "lexera.api.validate", "Rejected empty board ID");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Board ID must not be empty".to_string(),
+            }),
+        ));
+    }
+    if id.len() > 256 {
+        log::warn!(target: "lexera.api.validate", "Rejected board ID exceeding 256 chars (len={})", id.len());
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Board ID too long (max 256 characters)".to_string(),
+            }),
+        ));
+    }
+    if has_path_traversal(id) {
+        log::warn!(target: "lexera.api.validate", "Rejected board ID with path traversal characters: {}", id);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Board ID contains invalid characters".to_string(),
+            }),
+        ));
+    }
+    Ok(())
 }
 
 /// Check if a user-supplied path segment contains path traversal sequences.
