@@ -173,3 +173,135 @@ pub async fn serve_media(
 
     Ok((headers, data))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::Router;
+    use http_body_util::BodyExt;
+    use lexera_core::storage::local::LocalStorage;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    use crate::state::AppState;
+
+    fn test_state(tmp: &std::path::Path) -> AppState {
+        let storage = Arc::new(LocalStorage::new());
+        let (event_tx, _) = tokio::sync::broadcast::channel(16);
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+        AppState {
+            storage,
+            event_tx,
+            port: 0,
+            bind_address: "127.0.0.1".into(),
+            live_port: Arc::new(std::sync::Mutex::new(0)),
+            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
+            incoming: None,
+            local_user_id: "test-user".into(),
+            config_path: tmp.join("config.json"),
+            identity_path: tmp.join("identity.json"),
+            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
+            watcher: Arc::new(std::sync::Mutex::new(None)),
+            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
+            public_service: Arc::new(std::sync::Mutex::new(
+                crate::public::PublicRoomService::new(),
+            )),
+            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(
+                crate::sync_ws::BoardSyncHub::new(),
+            )),
+            sync_client: Arc::new(tokio::sync::Mutex::new(
+                crate::sync_client::SyncClientManager::new(),
+            )),
+            discovery: Arc::new(std::sync::Mutex::new(
+                crate::discovery::DiscoveryService::new(),
+            )),
+            app_handle: None,
+            collab_dir: tmp.join("collab"),
+            shutdown_tx,
+        }
+    }
+
+    fn test_router(state: AppState) -> Router {
+        crate::api::api_router().with_state(state)
+    }
+
+    const MINIMAL_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Col
+- [ ] card
+";
+
+    #[tokio::test]
+    async fn serve_media_nonexistent_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = tmp.path().join("board.md");
+        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
+
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!("/boards/{}/media/nonexistent.png", board_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn upload_media_creates_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = tmp.path().join("board.md");
+        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
+
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+
+        let boundary = "----TestBoundary";
+        let body = format!(
+            "--{boundary}\r\n\
+             Content-Disposition: form-data; name=\"file\"; filename=\"test.png\"\r\n\
+             Content-Type: image/png\r\n\
+             \r\n\
+             fakepng\r\n\
+             --{boundary}--\r\n"
+        );
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/boards/{}/media", board_id))
+                    .header(
+                        "content-type",
+                        format!("multipart/form-data; boundary={}", boundary),
+                    )
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["filename"], "test.png");
+        assert!(json["path"].as_str().unwrap().contains("test.png"));
+
+        // Verify the file was actually written
+        let media_dir = tmp.path().join("board-Media");
+        assert!(media_dir.join("test.png").exists());
+    }
+}
