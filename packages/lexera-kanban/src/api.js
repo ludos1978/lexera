@@ -82,6 +82,9 @@ const LexeraApi = (function () {
     return null;
   }
 
+  var DEFAULT_TIMEOUT_MS = 10000;
+  var LONG_TIMEOUT_MS = 30000;
+
   async function request(path, options) {
     const method = options && options.method ? String(options.method).toUpperCase() : 'GET';
     const url = await discover();
@@ -93,13 +96,23 @@ const LexeraApi = (function () {
       });
       throw error;
     }
+    var timeoutMs = options && typeof options.timeoutMs === 'number' ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
     let res;
     try {
-      res = await fetch(url + path, options);
+      res = await fetch(url + path, Object.assign({}, options, { signal: controller.signal }));
     } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        var timeoutError = new Error('Request timed out: ' + method + ' ' + path);
+        logApiIssue('error', 'api.request', method + ' ' + path + ' timed out after ' + timeoutMs + 'ms', timeoutError);
+        throw timeoutError;
+      }
       logApiIssue('error', 'api.request', method + ' ' + path + ' transport failed', error);
       throw error;
     }
+    clearTimeout(timeoutId);
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
       const error = new Error(`${res.status}: ${text}`);
@@ -134,13 +147,22 @@ const LexeraApi = (function () {
     }
     const headers = {};
     if (version != null) headers['If-None-Match'] = '"' + version + '"';
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, DEFAULT_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(url + '/boards/' + boardId + '/columns', { headers });
+      res = await fetch(url + '/boards/' + boardId + '/columns', { headers, signal: controller.signal });
     } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        var timeoutError = new Error('Request timed out: GET /boards/' + boardId + '/columns');
+        logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns timed out after ' + DEFAULT_TIMEOUT_MS + 'ms', timeoutError);
+        throw timeoutError;
+      }
       logApiIssue('error', 'api.getBoardColumnsCached', 'GET /boards/' + boardId + '/columns transport failed', error);
       throw error;
     }
+    clearTimeout(timeoutId);
     if (res.status === 304) {
       return { notModified: true, version };
     }
@@ -171,14 +193,14 @@ const LexeraApi = (function () {
     params.set('q', query || '');
     if (options && options.regex) params.set('regex', 'true');
     if (options && options.caseSensitive) params.set('caseSensitive', 'true');
-    return request('/search?' + params.toString());
+    return request('/search?' + params.toString(), { timeoutMs: LONG_TIMEOUT_MS });
   }
 
   async function checkStatus() {
     try {
       const url = await discover();
       if (!url) return false;
-      const res = await fetch(url + '/status');
+      const res = await fetch(url + '/status', { signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
       return res.ok;
     } catch (error) {
       logApiIssue('warn', 'api.status', 'Status check failed', error, {
@@ -262,13 +284,22 @@ const LexeraApi = (function () {
     }
     var form = new FormData();
     form.append('file', file, file.name);
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, LONG_TIMEOUT_MS);
     var res;
     try {
-      res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form });
+      res = await fetch(url + '/boards/' + boardId + '/media', { method: 'POST', body: form, signal: controller.signal });
     } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        var timeoutError = new Error('Request timed out: POST /boards/' + boardId + '/media');
+        logApiIssue('error', 'api.uploadMedia', 'POST /boards/' + boardId + '/media timed out after ' + LONG_TIMEOUT_MS + 'ms', timeoutError);
+        throw timeoutError;
+      }
       logApiIssue('error', 'api.uploadMedia', 'POST /boards/' + boardId + '/media transport failed', error);
       throw error;
     }
+    clearTimeout(timeoutId);
     if (!res.ok) {
       var text = await res.text().catch(function () { return res.statusText; });
       var error = new Error(res.status + ': ' + text);
