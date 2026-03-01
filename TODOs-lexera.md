@@ -172,7 +172,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 6. Include files merged as atomic chunks, not card-level - concurrent edits cause full conflict
 7. ~~Search uses ASCII case sensitivity, no Unicode/accent normalization~~ FIXED: unicode-normalization crate (commit a984c536)
 8. ~~has_structural_mismatch() may false-trigger on implicit Default rows/stacks~~ FIXED: normalize defaults (commit 70813a75)
-9. No CRDT corruption recovery tests
+9. ~~No CRDT corruption recovery tests~~ FIXED: 3 test cases (commit 84a4e565)
 10. No concurrent access tests for storage
 
 ### lexera-backend
@@ -187,7 +187,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
 11. ~~BoardSettings merge verbose - 17 manual field assignments~~ FIXED: merge_from() with macro (commit afae724d)
-12. Frontend JS: global mutable state, fetch without timeout, poll-based updates (10s/5s)
+12. Frontend JS: global mutable state, ~~fetch without timeout~~, poll-based updates (10s/5s) -- fetch timeout FIXED (commit 35c2545e)
 13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
 14. Excessive cloning in auth.rs and invite.rs
 
@@ -200,7 +200,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js (commits 73dc9c93, 1d1cad78)
 7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
 8. ~~Memory leak: addEventListener without cleanup~~ FIXED: showHtmlMenu click-outside leak (commit 9553c202); card editors use DOM replacement for cleanup
-9. Export tree re-renders entire tree on single node toggle
+9. ~~Export tree re-renders entire tree on single node toggle~~ FIXED: updateSelectionClasses (commit 3a110752)
 10. Implicit script load order dependency (no ES6 modules)
 11. ~~No input validation in export dialog (path traversal possible)~~ FIXED: whitelist sanitization in exportUI.js
 12. Template variable substitution has no type checking, fails silently
@@ -237,7 +237,7 @@ Completed:
 3. ~~public_rooms.json for public room settings~~
 4. ~~60s periodic auto-save + atomic writes~~
 
-Remaining: Add collab config to sync.json (collab.enabled, collab.listen_address, etc.)
+~~Remaining: Add collab config to sync.json~~ DONE: added to periodic + shutdown save cycle (commit c3bbff1d)
 
 ────────────────────────────────────────────────────────────────────────────────
 
