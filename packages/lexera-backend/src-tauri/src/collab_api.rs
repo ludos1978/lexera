@@ -916,3 +916,363 @@ pub fn collab_router() -> Router<AppState> {
         )
         .route("/collab/connections", get(list_connections))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use axum::Router;
+    use http_body_util::BodyExt;
+    use lexera_core::storage::local::LocalStorage;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    use crate::state::AppState;
+
+    fn test_state(tmp: &std::path::Path) -> AppState {
+        let storage = Arc::new(LocalStorage::new());
+        let (event_tx, _) = tokio::sync::broadcast::channel(16);
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+        AppState {
+            storage,
+            event_tx,
+            port: 0,
+            bind_address: "127.0.0.1".into(),
+            live_port: Arc::new(std::sync::Mutex::new(0)),
+            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
+            incoming: None,
+            local_user_id: "test-user".into(),
+            config_path: tmp.join("config.json"),
+            identity_path: tmp.join("identity.json"),
+            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
+            watcher: Arc::new(std::sync::Mutex::new(None)),
+            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
+            public_service: Arc::new(std::sync::Mutex::new(
+                crate::public::PublicRoomService::new(),
+            )),
+            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(
+                crate::sync_ws::BoardSyncHub::new(),
+            )),
+            sync_client: Arc::new(tokio::sync::Mutex::new(
+                crate::sync_client::SyncClientManager::new(),
+            )),
+            discovery: Arc::new(std::sync::Mutex::new(
+                crate::discovery::DiscoveryService::new(),
+            )),
+            app_handle: None,
+            collab_dir: tmp.join("collab"),
+            shutdown_tx,
+        }
+    }
+
+    fn test_router(state: AppState) -> Router {
+        super::collab_router().with_state(state)
+    }
+
+    async fn body_json(body: Body) -> serde_json::Value {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    fn seed_owner(state: &AppState, room_id: &str) {
+        let mut auth = state.auth_service.lock().unwrap();
+        auth.register_user(crate::auth::User {
+            id: "test-user".into(),
+            name: "Test User".into(),
+            email: None,
+        })
+        .unwrap();
+        auth.add_to_room(room_id, "test-user", crate::auth::RoomRole::Owner, "test")
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn register_user() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "id": "alice",
+                            "name": "Alice"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["success"], true);
+    }
+
+    #[tokio::test]
+    async fn register_duplicate_user_returns_conflict() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        {
+            let mut auth = state.auth_service.lock().unwrap();
+            auth.register_user(crate::auth::User {
+                id: "alice".into(),
+                name: "Alice".into(),
+                email: None,
+            })
+            .unwrap();
+        }
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/users/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "id": "alice",
+                            "name": "Alice Again"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn list_members_requires_auth() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/rooms/room1/members")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn list_members_after_join() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        seed_owner(&state, "room1");
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/rooms/room1/members?user=test-user")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let members = json.as_array().unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0]["user_id"], "test-user");
+        assert_eq!(members[0]["role"], "owner");
+    }
+
+    #[tokio::test]
+    async fn create_invite_and_accept() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("collab")).unwrap();
+        let state = test_state(tmp.path());
+        seed_owner(&state, "room1");
+
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/rooms/room1/invites?user=test-user")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "role": "editor"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let invite_json = body_json(resp.into_body()).await;
+        let token = invite_json["token"].as_str().unwrap().to_string();
+        assert_eq!(invite_json["room_id"], "room1");
+        assert_eq!(invite_json["role"], "editor");
+
+        {
+            let mut auth = state.auth_service.lock().unwrap();
+            auth.register_user(crate::auth::User {
+                id: "bob".into(),
+                name: "Bob".into(),
+                email: None,
+            })
+            .unwrap();
+        }
+
+        let app2 = test_router(state.clone());
+        let resp2 = app2
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/collab/invites/{}/accept?user=bob", token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp2.status(), StatusCode::OK);
+        let join_json = body_json(resp2.into_body()).await;
+        assert_eq!(join_json["room_id"], "room1");
+        assert_eq!(join_json["role"], "editor");
+
+        let app3 = test_router(state);
+        let resp3 = app3
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/rooms/room1/members?user=test-user")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp3.status(), StatusCode::OK);
+        let members = body_json(resp3.into_body()).await;
+        let members = members.as_array().unwrap();
+        assert_eq!(members.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn accept_invalid_invite_returns_404() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/invites/bad-token/accept?user=alice")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn create_invite_requires_owner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+
+        {
+            let mut auth = state.auth_service.lock().unwrap();
+            auth.register_user(crate::auth::User {
+                id: "viewer1".into(),
+                name: "Viewer".into(),
+                email: None,
+            })
+            .unwrap();
+            auth.add_to_room("room1", "viewer1", crate::auth::RoomRole::Viewer, "test")
+                .unwrap();
+        }
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/rooms/room1/invites?user=viewer1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "role": "editor" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn leave_room() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        seed_owner(&state, "room1");
+
+        {
+            let mut auth = state.auth_service.lock().unwrap();
+            auth.register_user(crate::auth::User {
+                id: "bob".into(),
+                name: "Bob".into(),
+                email: None,
+            })
+            .unwrap();
+            auth.add_to_room("room1", "bob", crate::auth::RoomRole::Editor, "test")
+                .unwrap();
+        }
+
+        let app = test_router(state.clone());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/collab/rooms/room1/leave?user=bob")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let app2 = test_router(state);
+        let resp2 = app2
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/rooms/room1/members?user=test-user")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let members = body_json(resp2.into_body()).await;
+        let members = members.as_array().unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0]["user_id"], "test-user");
+    }
+}
