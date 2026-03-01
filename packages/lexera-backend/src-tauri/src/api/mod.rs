@@ -242,3 +242,170 @@ fn resolve_board_file(
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+
+    // ── validate_board_id ───────────────────────────────────────────────
+
+    #[test]
+    fn validate_board_id_rejects_empty() {
+        let result = validate_board_id("");
+        assert!(result.is_err());
+        let (status, body) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.error.contains("empty"), "error should mention empty: {}", body.error);
+    }
+
+    #[test]
+    fn validate_board_id_rejects_overlength() {
+        let long_id = "a".repeat(257);
+        let result = validate_board_id(&long_id);
+        assert!(result.is_err());
+        let (status, body) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.error.contains("long"), "error should mention length: {}", body.error);
+    }
+
+    #[test]
+    fn validate_board_id_accepts_max_length() {
+        let id = "b".repeat(256);
+        assert!(validate_board_id(&id).is_ok(), "256-char ID should be accepted");
+    }
+
+    #[test]
+    fn validate_board_id_rejects_dot_dot() {
+        let result = validate_board_id("foo..bar");
+        assert!(result.is_err());
+        let (status, _) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_board_id_rejects_forward_slash() {
+        let result = validate_board_id("foo/bar");
+        assert!(result.is_err());
+        let (status, _) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_board_id_rejects_backslash() {
+        let result = validate_board_id("foo\\bar");
+        assert!(result.is_err());
+        let (status, _) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_board_id_accepts_normal_id() {
+        assert!(validate_board_id("my-board-123").is_ok());
+    }
+
+    #[test]
+    fn validate_board_id_accepts_single_char() {
+        assert!(validate_board_id("x").is_ok());
+    }
+
+    // ── has_path_traversal ──────────────────────────────────────────────
+
+    #[test]
+    fn has_path_traversal_detects_raw_dot_dot() {
+        assert!(has_path_traversal(".."));
+        assert!(has_path_traversal("foo/../bar"));
+        assert!(has_path_traversal("../etc/passwd"));
+    }
+
+    #[test]
+    fn has_path_traversal_detects_forward_slash() {
+        assert!(has_path_traversal("foo/bar"));
+        assert!(has_path_traversal("/absolute"));
+    }
+
+    #[test]
+    fn has_path_traversal_detects_backslash() {
+        assert!(has_path_traversal("foo\\bar"));
+        assert!(has_path_traversal("\\\\server\\share"));
+    }
+
+    #[test]
+    fn has_path_traversal_detects_percent_encoded_dot_dot() {
+        // %2e = '.', so %2e%2e = '..'
+        assert!(
+            has_path_traversal("%2e%2e"),
+            "percent-encoded '..' should be detected"
+        );
+        assert!(
+            has_path_traversal("foo%2f%2e%2e%2fbar"),
+            "percent-encoded '/../' should be detected"
+        );
+    }
+
+    #[test]
+    fn has_path_traversal_detects_percent_encoded_slash() {
+        // %2f = '/'
+        assert!(
+            has_path_traversal("foo%2fbar"),
+            "percent-encoded '/' should be detected"
+        );
+    }
+
+    #[test]
+    fn has_path_traversal_allows_safe_paths() {
+        assert!(!has_path_traversal("my-board-123"));
+        assert!(!has_path_traversal("board_name"));
+        assert!(!has_path_traversal("board.name")); // single dot is fine
+        assert!(!has_path_traversal("a-b-c-d"));
+        assert!(!has_path_traversal("BOARD-2024"));
+    }
+
+    // ── insert_header_safe ──────────────────────────────────────────────
+
+    #[test]
+    fn insert_header_safe_valid_value() {
+        let mut headers = HeaderMap::new();
+        insert_header_safe(&mut headers, "x-custom", "hello");
+        assert_eq!(
+            headers.get("x-custom").map(|v| v.to_str().unwrap()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn insert_header_safe_multiple_values() {
+        let mut headers = HeaderMap::new();
+        insert_header_safe(&mut headers, "content-type", "application/json");
+        insert_header_safe(&mut headers, "x-request-id", "abc-123");
+        assert_eq!(
+            headers.get("content-type").map(|v| v.to_str().unwrap()),
+            Some("application/json")
+        );
+        assert_eq!(
+            headers.get("x-request-id").map(|v| v.to_str().unwrap()),
+            Some("abc-123")
+        );
+    }
+
+    #[test]
+    fn insert_header_safe_invalid_value_does_not_panic() {
+        let mut headers = HeaderMap::new();
+        // Header values cannot contain newlines or certain control characters
+        insert_header_safe(&mut headers, "x-bad", "line1\nline2");
+        assert!(
+            headers.get("x-bad").is_none(),
+            "invalid header value should not be inserted"
+        );
+    }
+
+    #[test]
+    fn insert_header_safe_empty_value_succeeds() {
+        let mut headers = HeaderMap::new();
+        insert_header_safe(&mut headers, "x-empty", "");
+        assert_eq!(
+            headers.get("x-empty").map(|v| v.to_str().unwrap()),
+            Some("")
+        );
+    }
+}
