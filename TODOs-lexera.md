@@ -124,7 +124,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - Note: api.rs backend equivalent was split into 7 modules (commit 29dd0730)
 
 ### ~~No Test Coverage in Frontend (lexera-kanban)~~ FIXED
-- ~~Zero test files for any JavaScript code~~ 176 tests across 3 test files (templates, api, exportService)
+- ~~Zero test files for any JavaScript code~~ 234 tests across 4 test files (templates, api, exportService, appUtils)
 - ~~No test framework configured~~ Vitest + IIFE loader
 - ~~All testing is manual~~ Automated test suite
 
@@ -195,7 +195,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 ### lexera-kanban
 1. Monolithic app.js (14,700 lines) - needs modularization
 2. WYSIWYG editor is a stub (58 lines, console.log noop)
-3. ~~No test coverage at all~~ FIXED: Vitest + 46 templates tests (commit e538a088)
+3. ~~No test coverage at all~~ FIXED: Vitest + 234 tests across 4 files (commits e538a088, 596e1a14, 1f150ad0, f981ce3a)
 4. ~~Undo/redo serializes full board state (memory explosion risk)~~ MITIGATED: 10MB size cap + count cap (commit 93214dee)
 5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
 6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js (commits 73dc9c93, 1d1cad78)
@@ -419,8 +419,8 @@ Impact: Enables third-party exporters, integrations, and custom content types wi
 Why: Zero frontend test coverage and zero backend integration tests. Need concrete framework setup, not just identification of the gap.
 
 Tasks:
-1. ~~Frontend: add Vitest for testing~~ DONE: Vitest + IIFE loader + 46 templates.js + 72 api.js + 58 exportService.js tests (commits e538a088, 596e1a14, 1f150ad0)
-2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD + 3 search + 3 template + 5 media/file_ops + 8 collab + 5 SSE/events tests via tower::ServiceExt (commits 3b833df5, 646d7551, d907903d, 9abb479a, 91f89d99)
+1. ~~Frontend: add Vitest for testing~~ DONE: Vitest + IIFE loader + 46 templates + 72 api + 58 exportService + 58 appUtils tests (commits e538a088, 596e1a14, 1f150ad0, f981ce3a)
+2. ~~Backend: add axum_test for integration tests; test board CRUD~~ DONE: 5 board CRUD + 3 search + 3 template + 5 media/file_ops + 8 collab + 5 SSE/events + 21 auth + 18 invite tests (commits 3b833df5, 646d7551, d907903d, 9abb479a, 91f89d99, e4455cc9, 0f6a6ab8)
 
 Impact: Enables safe refactoring and regression prevention across both frontend and backend
 
@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 262 | Good |
-| lexera-backend | ~5,887 | ~1,330 | ~200 | 29 | Medium |
-| lexera-kanban | ~700 | ~17,000 | ~4,100 | 176 (JS) | Improved |
+| lexera-core | ~9,925 | - | - | 307 | Good |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 68 | Good |
+| lexera-kanban | ~700 | ~17,000 | ~4,100 | 234 (JS) | Good |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 28 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **495** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **637** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -467,7 +467,7 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
 | Code Quality | 4/5 (+: Result propagation) | 3/5 | 2/5 | 3/5 (+: RwLock fix) |
-| Testing | 4/5 (+: cycle detection tests) | 2/5 (+: 29 integration tests) | 1/5 | 3/5 (+: 28 unit tests) |
+| Testing | 4/5 (+: 307 tests) | 3/5 (+: 68 tests, auth+invite+integration) | 2/5 (+: 234 tests) | 3/5 (+: 28 unit tests) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
 | Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
