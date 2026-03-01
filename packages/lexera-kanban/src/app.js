@@ -387,6 +387,8 @@ const LexeraDashboard = (function () {
   var undoStack = [];
   var redoStack = [];
   var MAX_UNDO = 30;
+  var MAX_UNDO_BYTES = 10 * 1024 * 1024;
+  var undoTotalBytes = 0;
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
   var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
   var mermaidIdCounter = 0;
@@ -5789,8 +5791,15 @@ const LexeraDashboard = (function () {
 
   function pushUndo() {
     if (!fullBoardData) return;
-    undoStack.push(JSON.stringify(fullBoardData));
-    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    var entry = JSON.stringify(fullBoardData);
+    undoStack.push(entry);
+    undoTotalBytes += entry.length;
+    if (undoStack.length > MAX_UNDO) {
+      undoTotalBytes -= undoStack.shift().length;
+    }
+    while (undoTotalBytes > MAX_UNDO_BYTES && undoStack.length > 0) {
+      undoTotalBytes -= undoStack.shift().length;
+    }
     redoStack = [];
   }
 
@@ -5798,7 +5807,9 @@ const LexeraDashboard = (function () {
     if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
     var saveBase = getBoardSaveBase(fullBoardData);
     redoStack.push(JSON.stringify(fullBoardData));
-    fullBoardData = JSON.parse(undoStack.pop());
+    var popped = undoStack.pop();
+    undoTotalBytes -= popped.length;
+    fullBoardData = JSON.parse(popped);
     setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
     await persistBoardMutation();
   }
@@ -5806,7 +5817,9 @@ const LexeraDashboard = (function () {
   async function redo() {
     if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
     var saveBase = getBoardSaveBase(fullBoardData);
-    undoStack.push(JSON.stringify(fullBoardData));
+    var entry = JSON.stringify(fullBoardData);
+    undoStack.push(entry);
+    undoTotalBytes += entry.length;
     fullBoardData = JSON.parse(redoStack.pop());
     setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
     await persistBoardMutation();
