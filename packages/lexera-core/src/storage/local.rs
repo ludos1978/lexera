@@ -234,13 +234,13 @@ impl LocalStorage {
                     board_id
                 );
                 current = Self::ensure_board_card_kids(&current);
-                *c = crate::crdt::bridge::CrdtStore::from_board(&current);
+                *c = crate::crdt::bridge::CrdtStore::from_board(&current)?;
             }
 
             if let Some(ref base) = normalized_base {
                 let merge = card_merge::three_way_merge(base, &current, &normalized_board);
                 let desired_board = Self::normalize_board_for_write(&merge.board, &board_dir);
-                c.apply_board(&desired_board, &current);
+                c.apply_board(&desired_board, &current)?;
                 let mut merged = c.to_board();
                 Self::restore_include_sources(&mut merged, &desired_board);
 
@@ -249,7 +249,7 @@ impl LocalStorage {
                         "[lexera.storage.crdt] Structural mismatch after base-aware merge on board {}, rebuilding CRDT",
                         board_id
                     );
-                    *c = crate::crdt::bridge::CrdtStore::from_board(&desired_board);
+                    *c = crate::crdt::bridge::CrdtStore::from_board(&desired_board)?;
                     let board_to_write = desired_board.clone();
                     (
                         board_to_write.clone(),
@@ -263,7 +263,7 @@ impl LocalStorage {
                     )
                 }
             } else {
-                c.apply_board(&normalized_board, &current);
+                c.apply_board(&normalized_board, &current)?;
                 let mut merged = c.to_board();
                 Self::restore_include_sources(&mut merged, &normalized_board);
 
@@ -272,7 +272,7 @@ impl LocalStorage {
                         "[lexera.storage.crdt] Structural mismatch after CRDT merge on board {}, rebuilding CRDT",
                         board_id
                     );
-                    *c = crate::crdt::bridge::CrdtStore::from_board(&normalized_board);
+                    *c = crate::crdt::bridge::CrdtStore::from_board(&normalized_board)?;
                     (normalized_board.clone(), None)
                 } else {
                     (merged, None)
@@ -445,15 +445,17 @@ impl LocalStorage {
                 }
                 Err(e) => {
                     log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
-                    let c = CrdtStore::from_board(&board);
-                    let _ = c.save_to_file(&crdt_path);
-                    Some(c)
+                    match CrdtStore::from_board(&board) {
+                        Ok(c) => { let _ = c.save_to_file(&crdt_path); Some(c) }
+                        Err(e) => { log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e); None }
+                    }
                 }
             }
         } else {
-            let c = CrdtStore::from_board(&board);
-            let _ = c.save_to_file(&crdt_path);
-            Some(c)
+            match CrdtStore::from_board(&board) {
+                Ok(c) => { let _ = c.save_to_file(&crdt_path); Some(c) }
+                Err(e) => { log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e); None }
+            }
         };
 
         let state = BoardState {
@@ -495,7 +497,9 @@ impl LocalStorage {
         let crdt_path = file_path.with_extension("md.crdt");
         let crdt = if let Some(mut c) = old_crdt {
             let old_board = c.to_board();
-            c.apply_board(&board, &old_board);
+            if let Err(e) = c.apply_board(&board, &old_board) {
+                log::error!("[lexera.crdt] Failed to apply board to CRDT: {}", e);
+            }
             c.set_metadata(
                 board.yaml_header.clone(),
                 board.kanban_footer.clone(),
@@ -504,9 +508,10 @@ impl LocalStorage {
             let _ = c.save_to_file(&crdt_path);
             Some(c)
         } else {
-            let c = CrdtStore::from_board(&board);
-            let _ = c.save_to_file(&crdt_path);
-            Some(c)
+            match CrdtStore::from_board(&board) {
+                Ok(c) => { let _ = c.save_to_file(&crdt_path); Some(c) }
+                Err(e) => { log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e); None }
+            }
         };
 
         let new_state = BoardState {
@@ -909,7 +914,7 @@ impl LocalStorage {
         let boards = self.boards.read().unwrap();
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
-        Some(crdt.save())
+        crdt.save().ok()
     }
 
     /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
@@ -1171,7 +1176,9 @@ impl BoardStorage for LocalStorage {
         // Update CRDT with the new card
         if let Some(ref mut c) = crdt {
             let old_board = c.to_board();
-            c.apply_board(&board, &old_board);
+            if let Err(e) = c.apply_board(&board, &old_board) {
+                log::error!("[lexera.crdt] Failed to apply card addition to CRDT: {}", e);
+            }
         }
 
         let markdown = self.persist_board_files(board_id, &file_path, &board)?;

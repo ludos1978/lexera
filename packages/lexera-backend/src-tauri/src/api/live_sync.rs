@@ -112,7 +112,7 @@ pub fn open_session(
     let mut crdt = if let Some(bytes) = snapshot {
         CrdtStore::load(&bytes).map_err(|e| e.to_string())?
     } else {
-        CrdtStore::from_board(&normalized)
+        CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?
     };
     crdt.set_peer_id(session_peer_id(&session_uuid))
         .map_err(|e| e.to_string())?;
@@ -165,7 +165,9 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
     let incoming_ids = card_id_map(&incoming);
     let current_ids = card_id_map(&current_board);
 
-    session.crdt.apply_board(&incoming, &current_board);
+    if let Err(e) = session.crdt.apply_board(&incoming, &current_board) {
+        log::error!("[live_sync.apply] Failed to apply board to CRDT: {}", e);
+    }
     let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
     restore_card_ids(&mut next_board, &[&incoming_ids, &current_ids]);
     session.current_board = next_board.clone();
