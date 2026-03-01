@@ -1086,4 +1086,193 @@ mod tests {
             .content
             .contains("Persistent task"));
     }
+
+    fn make_two_peers(board: &KanbanBoard) -> (CrdtStore, CrdtStore) {
+        let peer_a = CrdtStore::from_board(board).unwrap();
+        let snapshot = peer_a.save().unwrap();
+        let mut peer_b = CrdtStore::load(&snapshot).unwrap();
+        peer_b.set_metadata(board.yaml_header.clone(), board.kanban_footer.clone(), board.board_settings.clone());
+        peer_b.set_peer_id(2).unwrap();
+        (peer_a, peer_b)
+    }
+
+    fn sync_peers(a: &mut CrdtStore, b: &mut CrdtStore) {
+        let vv_a = a.oplog_vv();
+        let vv_b = b.oplog_vv();
+        let delta_a = a.export_updates_since(&vv_b).unwrap();
+        let delta_b = b.export_updates_since(&vv_a).unwrap();
+        a.import_updates(&delta_b).unwrap();
+        b.import_updates(&delta_a).unwrap();
+    }
+
+    fn collect_kids(board: &KanbanBoard) -> std::collections::HashSet<String> {
+        board.all_columns().iter()
+            .flat_map(|col| col.cards.iter())
+            .filter_map(|card| card.kid.clone())
+            .collect()
+    }
+
+    #[test]
+    fn test_concurrent_edit_different_cards() {
+        let base = make_legacy_board(vec![
+            ("Todo", vec![
+                make_card("aaaa0001", "Card A", false),
+                make_card("aaaa0002", "Card B", false),
+            ]),
+            ("Done", vec![]),
+        ]);
+        let (mut peer_a, mut peer_b) = make_two_peers(&base);
+
+        let base_a = peer_a.to_board();
+        let mut board_a = base_a.clone();
+        board_a.columns[0].cards[0].content = "Card A edited by peer A".to_string();
+        peer_a.apply_board(&board_a, &base_a).unwrap();
+
+        let base_b = peer_b.to_board();
+        let mut board_b = base_b.clone();
+        board_b.columns[0].cards[1].content = "Card B edited by peer B".to_string();
+        peer_b.apply_board(&board_b, &base_b).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+
+        assert_eq!(result_a.columns[0].cards.len(), 2);
+        assert_eq!(result_b.columns[0].cards.len(), 2);
+
+        let a_contents: Vec<&str> = result_a.columns[0].cards.iter().map(|c| c.content.as_str()).collect();
+        let b_contents: Vec<&str> = result_b.columns[0].cards.iter().map(|c| c.content.as_str()).collect();
+
+        assert!(a_contents.contains(&"Card A edited by peer A"));
+        assert!(a_contents.contains(&"Card B edited by peer B"));
+        assert_eq!(a_contents, b_contents);
+    }
+
+    #[test]
+    fn test_concurrent_edit_same_card_lww() {
+        let base = make_legacy_board(vec![
+            ("Todo", vec![make_card("aaaa0001", "Original content", false)]),
+        ]);
+        let (mut peer_a, mut peer_b) = make_two_peers(&base);
+
+        let base_a = peer_a.to_board();
+        let mut board_a = base_a.clone();
+        board_a.columns[0].cards[0].content = "Peer A version".to_string();
+        board_a.columns[0].cards[0].checked = true;
+        peer_a.apply_board(&board_a, &base_a).unwrap();
+
+        let base_b = peer_b.to_board();
+        let mut board_b = base_b.clone();
+        board_b.columns[0].cards[0].content = "Peer B version".to_string();
+        peer_b.apply_board(&board_b, &base_b).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+
+        assert_eq!(result_a.columns[0].cards.len(), 1);
+        assert_eq!(result_b.columns[0].cards.len(), 1);
+
+        let content_a = &result_a.columns[0].cards[0].content;
+        let content_b = &result_b.columns[0].cards[0].content;
+        assert_eq!(content_a, content_b, "both peers must converge to the same content");
+        assert!(
+            content_a == "Peer A version" || content_a == "Peer B version",
+            "converged content must be one of the two writes, got: {}",
+            content_a
+        );
+
+        let checked_a = result_a.columns[0].cards[0].checked;
+        let checked_b = result_b.columns[0].cards[0].checked;
+        assert_eq!(checked_a, checked_b, "both peers must converge to the same checked state");
+
+        let kids_a = collect_kids(&result_a);
+        let kids_b = collect_kids(&result_b);
+        assert_eq!(kids_a, kids_b, "card identities must match after merge");
+        assert!(kids_a.contains("aaaa0001"), "original card identity must survive");
+    }
+
+    #[test]
+    fn test_concurrent_add_card_and_move_card() {
+        let base = make_legacy_board(vec![
+            ("Todo", vec![make_card("aaaa0001", "Movable card", false)]),
+            ("Done", vec![]),
+        ]);
+        let (mut peer_a, mut peer_b) = make_two_peers(&base);
+
+        let base_a = peer_a.to_board();
+        let board_a = make_legacy_board(vec![
+            ("Todo", vec![
+                make_card("aaaa0001", "Movable card", false),
+                make_card("aaaa0002", "New card by peer A", false),
+            ]),
+            ("Done", vec![]),
+        ]);
+        peer_a.apply_board(&board_a, &base_a).unwrap();
+
+        let base_b = peer_b.to_board();
+        let board_b = make_legacy_board(vec![
+            ("Todo", vec![]),
+            ("Done", vec![make_card("aaaa0001", "Movable card", false)]),
+        ]);
+        peer_b.apply_board(&board_b, &base_b).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+
+        let kids_a = collect_kids(&result_a);
+        let kids_b = collect_kids(&result_b);
+        assert_eq!(kids_a, kids_b, "both peers must have the same set of cards");
+        assert!(kids_a.contains("aaaa0001"), "moved card must survive");
+        assert!(kids_a.contains("aaaa0002"), "added card must survive");
+
+        let total_cards_a: usize = result_a.all_columns().iter().map(|c| c.cards.len()).sum();
+        let total_cards_b: usize = result_b.all_columns().iter().map(|c| c.cards.len()).sum();
+        assert_eq!(total_cards_a, 2, "peer A must see exactly 2 cards total");
+        assert_eq!(total_cards_b, 2, "peer B must see exactly 2 cards total");
+    }
+
+    #[test]
+    fn test_concurrent_delete_and_edit_same_card() {
+        let base = make_legacy_board(vec![
+            ("Todo", vec![
+                make_card("aaaa0001", "Card to conflict", false),
+                make_card("aaaa0002", "Survivor card", false),
+            ]),
+        ]);
+        let (mut peer_a, mut peer_b) = make_two_peers(&base);
+
+        let base_a = peer_a.to_board();
+        let board_a = make_legacy_board(vec![
+            ("Todo", vec![
+                make_card("aaaa0002", "Survivor card", false),
+            ]),
+        ]);
+        peer_a.apply_board(&board_a, &base_a).unwrap();
+
+        let base_b = peer_b.to_board();
+        let mut board_b = base_b.clone();
+        board_b.columns[0].cards[0].content = "Edited by peer B".to_string();
+        board_b.columns[0].cards[0].checked = true;
+        peer_b.apply_board(&board_b, &base_b).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+
+        let kids_a = collect_kids(&result_a);
+        let kids_b = collect_kids(&result_b);
+        assert_eq!(kids_a, kids_b, "both peers must converge to the same card set");
+
+        assert!(kids_a.contains("aaaa0002"), "uncontested card must survive");
+
+        let total_a: usize = result_a.all_columns().iter().map(|c| c.cards.len()).sum();
+        let total_b: usize = result_b.all_columns().iter().map(|c| c.cards.len()).sum();
+        assert_eq!(total_a, total_b, "both peers must have the same total card count");
+    }
 }
