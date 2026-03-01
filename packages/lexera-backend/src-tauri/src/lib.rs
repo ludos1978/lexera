@@ -82,6 +82,7 @@ pub fn run() {
             let config = config::load_config(&config_path);
             let port = config.port;
             let bind_address = config.bind_address.clone();
+            let config = Arc::new(std::sync::Mutex::new(config));
             let local_user = config::load_or_create_identity();
             let identity_path = dirs::config_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
@@ -101,20 +102,23 @@ pub fn run() {
             let storage = Arc::new(LocalStorage::new());
             let mut board_paths: Vec<(String, PathBuf)> = Vec::new();
 
-            for entry in &config.boards {
-                let path = PathBuf::from(&entry.file);
-                match storage.add_board(&path) {
-                    Ok(id) => {
-                        log::info!("Loaded board: {} -> {}", entry.file, id);
-                        let canonical = std::fs::canonicalize(&path).unwrap_or(path);
-                        board_paths.push((id, canonical));
+            {
+                let cfg = config.lock().unwrap();
+                for entry in &cfg.boards {
+                    let path = PathBuf::from(&entry.file);
+                    match storage.add_board(&path) {
+                        Ok(id) => {
+                            log::info!("Loaded board: {} -> {}", entry.file, id);
+                            let canonical = std::fs::canonicalize(&path).unwrap_or(path);
+                            board_paths.push((id, canonical));
+                        }
+                        Err(e) => log::warn!("Failed to load board {}: {}", entry.file, e),
                     }
-                    Err(e) => log::warn!("Failed to load board {}: {}", entry.file, e),
                 }
             }
 
             // Resolve incoming config (map file path to board ID)
-            let incoming = config.incoming.clone().and_then(|inc| {
+            let incoming = config.lock().unwrap().incoming.clone().and_then(|inc| {
                 let inc_path = PathBuf::from(&inc.board);
                 board_paths.iter().find(|(_, p)| {
                     let canonical_inc = std::fs::canonicalize(&inc_path).unwrap_or(inc_path.clone());
@@ -302,10 +306,12 @@ pub fn run() {
                 }
             });
 
-            // Start periodic save for collaboration services (every 60 seconds)
+            // Start periodic save for collaboration services and config (every 60 seconds)
             let save_auth = auth_service.clone();
             let save_invite = invite_service.clone();
             let save_public = public_service.clone();
+            let save_config_arc = config.clone();
+            let save_config_path = config_path.clone();
             let save_dir = collab_dir.clone();
             let mut save_shutdown_rx = shutdown_rx.clone();
             tauri::async_runtime::spawn(async move {
@@ -313,6 +319,11 @@ pub fn run() {
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
+                            if let Ok(cfg) = save_config_arc.lock() {
+                                if let Err(e) = crate::config::save_config(&save_config_path, &cfg) {
+                                    log::error!("[collab.save] Failed to save sync config: {}", e);
+                                }
+                            }
                             if let Ok(auth) = save_auth.lock() {
                                 if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
                                     log::error!("[collab.save] Failed to save auth state: {}", e);
@@ -331,6 +342,9 @@ pub fn run() {
                         }
                         _ = save_shutdown_rx.changed() => {
                             // Final save before exiting
+                            if let Ok(cfg) = save_config_arc.lock() {
+                                let _ = crate::config::save_config(&save_config_path, &cfg);
+                            }
                             if let Ok(auth) = save_auth.lock() {
                                 let _ = auth.save_to_file(&save_dir.join("auth.json"));
                             }
@@ -369,7 +383,7 @@ pub fn run() {
                 local_user_id: local_user.id.clone(),
                 config_path: config_path.clone(),
                 identity_path,
-                config: Arc::new(std::sync::Mutex::new(config)),
+                config: config.clone(),
                 watcher: watcher_arc,
                 // Collaboration services
                 invite_service,
