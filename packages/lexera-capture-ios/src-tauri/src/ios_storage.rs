@@ -67,10 +67,16 @@ impl IosStorage {
     fn scan_boards(&self) {
         let entries = match fs::read_dir(&self.boards_dir) {
             Ok(e) => e,
-            Err(_) => return,
+            Err(e) => {
+                log::error!("[ios_storage.scan_boards] Failed to read boards directory: {}", e);
+                return;
+            }
         };
 
-        let mut boards = self.boards.write().unwrap();
+        let mut boards = self.boards.write().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.scan_boards] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("md") {
@@ -107,7 +113,10 @@ impl IosStorage {
     /// Ensure the default Inbox board exists.
     fn ensure_inbox(&self) {
         let inbox_id = board_id_from_filename("inbox.md");
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.ensure_inbox] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         if boards.contains_key(&inbox_id) {
             return;
         }
@@ -122,7 +131,10 @@ impl IosStorage {
 
         let mut board = parser::parse_markdown(content);
         board.title = "Inbox".to_string();
-        let mut boards = self.boards.write().unwrap();
+        let mut boards = self.boards.write().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.ensure_inbox] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         boards.insert(
             inbox_id,
             BoardState {
@@ -153,7 +165,10 @@ impl IosStorage {
         let filename = format!("{}.md", safe_name.trim());
         let board_id = board_id_from_filename(&filename);
 
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.create_board] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         if boards.contains_key(&board_id) {
             return Ok(board_id);
         }
@@ -165,7 +180,10 @@ impl IosStorage {
 
         let mut board = parser::parse_markdown(&content);
         board.title = title.to_string();
-        let mut boards = self.boards.write().unwrap();
+        let mut boards = self.boards.write().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.create_board] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         boards.insert(
             board_id.clone(),
             BoardState {
@@ -187,7 +205,10 @@ impl IosStorage {
         let content = fs::read_to_string(&self.pending_path)?;
         let items: Vec<PendingItem> = match serde_json::from_str(&content) {
             Ok(items) => items,
-            Err(_) => return Ok(0),
+            Err(e) => {
+                log::warn!("[ios_storage.process_pending] Failed to parse pending.json: {}", e);
+                return Ok(0);
+            }
         };
 
         if items.is_empty() {
@@ -209,7 +230,10 @@ impl IosStorage {
 
     /// Write a board back to disk atomically (.tmp + rename).
     fn write_board_file(&self, board_id: &str) -> Result<(), StorageError> {
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.write_board_file] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         let state = boards
             .get(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -227,7 +251,10 @@ impl IosStorage {
         drop(boards);
 
         // Update hash
-        let mut boards = self.boards.write().unwrap();
+        let mut boards = self.boards.write().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.write_board_file] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         if let Some(state) = boards.get_mut(board_id) {
             state.content_hash = content_hash(&content);
         }
@@ -238,7 +265,10 @@ impl IosStorage {
 
 impl BoardStorage for IosStorage {
     fn list_boards(&self) -> Vec<BoardInfo> {
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.list_boards] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         boards
             .iter()
             .map(|(id, state)| {
@@ -270,7 +300,10 @@ impl BoardStorage for IosStorage {
     }
 
     fn read_board(&self, board_id: &str) -> Option<KanbanBoard> {
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.read_board] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         boards.get(board_id).map(|s| s.board.clone())
     }
 
@@ -280,7 +313,10 @@ impl BoardStorage for IosStorage {
         board: &KanbanBoard,
     ) -> Result<Option<lexera_core::merge::merge::MergeResult>, StorageError> {
         {
-            let mut boards = self.boards.write().unwrap();
+            let mut boards = self.boards.write().unwrap_or_else(|p| {
+                log::warn!("[ios_storage.write_board] Lock was poisoned, recovering");
+                p.into_inner()
+            });
             let state = boards
                 .get_mut(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -297,7 +333,10 @@ impl BoardStorage for IosStorage {
         content: &str,
     ) -> Result<(), StorageError> {
         {
-            let mut boards = self.boards.write().unwrap();
+            let mut boards = self.boards.write().unwrap_or_else(|p| {
+                log::warn!("[ios_storage.add_card] Lock was poisoned, recovering");
+                p.into_inner()
+            });
             let state = boards
                 .get_mut(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -330,7 +369,10 @@ impl BoardStorage for IosStorage {
     fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
         let engine = SearchEngine::compile(query, options);
 
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.search_with_options] Lock was poisoned, recovering");
+            p.into_inner()
+        });
         let mut results = Vec::new();
 
         for (board_id, state) in boards.iter() {
