@@ -583,7 +583,7 @@ body.split-mode .layout > .main {
 
 .sidebar-dashboard-divider.hidden,
 .sidebar .sidebar-dashboard.hidden {
-  display: none !important;
+  display: none;
 }
 
 .sidebar-dashboard-header {
@@ -1111,7 +1111,7 @@ body.split-mode .layout > .main {
 }
 .tree-node:hover .tree-grip { opacity: 1; }
 .tree-grip:hover {
-  opacity: 1 !important;
+  opacity: 1;
   color: var(--icon-btn-fg-hover, var(--text-bright));
   border-color: var(--icon-btn-border-hover, var(--text-secondary));
   background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
@@ -1156,12 +1156,12 @@ body.split-mode .layout > .main {
 
 body.embedded-mode .status-bar,
 body.embedded-mode .log-panel {
-  display: none !important;
+  display: none;
 }
 
 body.embedded-mode .header,
 body.embedded-mode .sidebar {
-  display: none !important;
+  display: none;
 }
 
 body.embedded-mode .layout {
@@ -2115,10 +2115,6 @@ u {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.card-menu-sub {
-  padding-left: 20px !important;
 }
 
 .column-cards {
@@ -3206,7 +3202,7 @@ select.dialog-input option,
 .board-row.layout-locked,
 .board-stack.layout-locked,
 .column.layout-locked {
-  transition: none !important;
+  transition: none;
 }
 .stack-drop-zone {
   position: absolute;
@@ -3539,6 +3535,10 @@ select.dialog-input option,
 .card-menu-item:hover {
   background: var(--menu-item-bg-hover);
   color: var(--menu-item-fg-hover);
+}
+
+.card-menu-sub {
+  padding-left: 20px;
 }
 
 .card-menu-divider {
@@ -3949,8 +3949,6 @@ select.dialog-input option,
 .log-error .log-level { color: var(--error); }
 .log-error { background: rgba(211, 47, 47, 0.06); }
 
-.hidden { display: none !important; }
-
 /* ── Collaboration UI ──────────────────────────────────────────────── */
 
 .invite-token-field {
@@ -4140,7 +4138,7 @@ select.dialog-input option,
   body { background: white; color: black; }
   .sidebar, .board-header-actions, .column-menu-btn,
   .card-context-menu, .notification, #search-results,
-  #empty-state, .saving-indicator, .log-panel, .status-bar { display: none !important; }
+  #empty-state, .saving-indicator, .log-panel, .status-bar { display: none; }
   .main { margin-left: 0; }
   .columns-container { overflow: visible; flex-wrap: wrap; gap: 12px; }
   .column { break-inside: avoid; border: 1px solid #ccc; background: white; }
@@ -5120,3 +5118,6 @@ select.export-input {
 .mgmt-add-board-row input:focus {
   border-color: var(--accent);
 }
+
+/* ── Utility: must be last to win by source order at (0,1,0) ─────── */
+.hidden { display: none; }
