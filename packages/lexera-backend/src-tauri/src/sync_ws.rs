@@ -248,6 +248,7 @@ async fn handle_sync_session(
     // 6. Split into read and write tasks
     let board_id_read = board_id.clone();
     let state_read = state.clone();
+    let auth_user_read = auth_user.to_string();
 
     // Write task: forward hub messages to WebSocket + periodic ping keepalive
     let write_task = tokio::spawn(async move {
@@ -324,6 +325,25 @@ async fn handle_sync_session(
                         },
                     );
                 }
+                ClientMessage::ClientEditingPresence {
+                    card_kid,
+                    user_name,
+                    cursor_pos,
+                    is_typing,
+                } => {
+                    let msg = serde_json::to_string(
+                        &ServerMessage::ServerEditingPresence {
+                            user_id: auth_user_read.clone(),
+                            user_name,
+                            card_kid,
+                            cursor_pos,
+                            is_typing,
+                        },
+                    )
+                    .unwrap_or_default();
+                    let hub = state_read.sync_hub.lock().await;
+                    hub.broadcast(&board_id_read, peer_id, &msg);
+                }
                 _ => {} // Ignore unexpected messages
             }
         }
@@ -346,6 +366,16 @@ async fn handle_sync_session(
         })
         .unwrap_or_default();
         hub.broadcast_all(&board_id, &presence_msg);
+        // Clear editing presence for this peer
+        let editing_clear = serde_json::to_string(&ServerMessage::ServerEditingPresence {
+            user_id: auth_user.to_string(),
+            user_name: String::new(),
+            card_kid: None,
+            cursor_pos: None,
+            is_typing: false,
+        })
+        .unwrap_or_default();
+        hub.broadcast_all(&board_id, &editing_clear);
     }
     log::info!(
         "[sync_ws] Peer {} disconnected from board {}",

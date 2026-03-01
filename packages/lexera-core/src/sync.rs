@@ -14,6 +14,14 @@ use serde::{Deserialize, Serialize};
 pub enum ClientMessage {
     ClientHello { user_id: String, vv: String },
     ClientUpdate { updates: String },
+    /// Ephemeral editing presence: which card this user is editing, cursor position, typing state.
+    /// Send with `card_kid: None` to signal "stopped editing".
+    ClientEditingPresence {
+        card_kid: Option<String>,
+        user_name: String,
+        cursor_pos: Option<u32>,
+        is_typing: bool,
+    },
 }
 
 /// Messages sent from server to client.
@@ -33,6 +41,14 @@ pub enum ServerMessage {
     },
     ServerPresence {
         online_users: Vec<String>,
+    },
+    /// Ephemeral per-card editing presence relayed from another peer.
+    ServerEditingPresence {
+        user_id: String,
+        user_name: String,
+        card_kid: Option<String>,
+        cursor_pos: Option<u32>,
+        is_typing: bool,
     },
 }
 

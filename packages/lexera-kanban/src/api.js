@@ -351,6 +351,7 @@ const LexeraApi = (function () {
   var syncUserId = null;
   var syncOnUpdate = null;
   var syncOnPresence = null;
+  var syncOnEditingPresence = null;
   var syncHelloVvProvider = null;
   var syncReconnectTimer = null;
   var syncShouldReconnect = false;
@@ -435,6 +436,8 @@ const LexeraApi = (function () {
           }
         } else if (msg.type === 'ServerPresence') {
           if (syncOnPresence) syncOnPresence(msg.online_users || []);
+        } else if (msg.type === 'ServerEditingPresence') {
+          if (syncOnEditingPresence) syncOnEditingPresence(msg);
         } else if (msg.type === 'ServerError') {
           console.warn('[sync] Server error: ' + msg.message);
           syncShouldReconnect = false;
@@ -491,6 +494,9 @@ const LexeraApi = (function () {
     syncHelloVvProvider = options && typeof options.getHelloVv === 'function'
       ? options.getHelloVv
       : null;
+    syncOnEditingPresence = options && typeof options.onEditingPresence === 'function'
+      ? options.onEditingPresence
+      : null;
     syncShouldReconnect = true;
     syncHasConnectedOnce = false;
     openSyncSocket();
@@ -501,6 +507,18 @@ const LexeraApi = (function () {
     syncWs.send(JSON.stringify({
       type: 'ClientUpdate',
       updates: updates,
+    }));
+    return true;
+  }
+
+  function sendEditingPresence(cardKid, userName, cursorPos, isTyping) {
+    if (!syncWs || syncWs.readyState !== WebSocket.OPEN) return false;
+    syncWs.send(JSON.stringify({
+      type: 'ClientEditingPresence',
+      card_kid: cardKid || null,
+      user_name: userName || '',
+      cursor_pos: typeof cursorPos === 'number' ? cursorPos : null,
+      is_typing: !!isTyping,
     }));
     return true;
   }
@@ -517,6 +535,7 @@ const LexeraApi = (function () {
     syncUserId = null;
     syncOnUpdate = null;
     syncOnPresence = null;
+    syncOnEditingPresence = null;
     syncHelloVvProvider = null;
     syncHasConnectedOnce = false;
   }
@@ -663,7 +682,7 @@ const LexeraApi = (function () {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
-    connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate,
+    connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,
     getMe, updateMe, getServerInfo,
     createInvite, listInvites, revokeInvite, acceptInvite,
     registerUser, listMembers, getPresence, leaveRoom,

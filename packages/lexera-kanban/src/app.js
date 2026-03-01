@@ -2555,7 +2555,9 @@ const LexeraDashboard = (function () {
   // ── WebSocket CRDT Sync ─────────────────────────────────────────────
 
   var syncUserId = null;
+  var syncUserName = null;
   var boardPresenceCache = {}; // boardId -> [user_id, ...]
+  var editingPresenceMap = {}; // user_id -> { card_kid, user_name, cursor_pos, is_typing }
 
   function getLiveSyncSession(boardId) {
     if (!liveSyncState) return null;
@@ -2759,6 +2761,7 @@ const LexeraDashboard = (function () {
     try {
       var data = await LexeraApi.request('/collab/me');
       if (data && data.id) syncUserId = data.id;
+      if (data && data.name) syncUserName = data.name;
     } catch (e) {
       // collab/me not available — use a fallback
     }
@@ -2795,10 +2798,20 @@ const LexeraDashboard = (function () {
       // On ServerPresence: update cache and sidebar badge
       boardPresenceCache[boardId] = onlineUsers;
       updateBoardPresenceIndicator(boardId);
+      // Clean up editing presence for users who went offline
+      var changed = false;
+      for (var uid in editingPresenceMap) {
+        if (onlineUsers.indexOf(uid) === -1) {
+          delete editingPresenceMap[uid];
+          changed = true;
+        }
+      }
+      if (changed) updateCardEditingIndicators();
     }, {
       getHelloVv: function () {
         return getLiveSyncHelloVv(boardId);
-      }
+      },
+      onEditingPresence: handleEditingPresence
     });
   }
 
@@ -2816,6 +2829,120 @@ const LexeraDashboard = (function () {
         badge.style.display = 'none';
       }
     }
+  }
+
+  // ── Per-card editing presence ──────────────────────────────────────
+
+  var PRESENCE_COLORS = [
+    '#e57373', '#f06292', '#ba68c8', '#9575cd',
+    '#7986cb', '#64b5f6', '#4fc3f7', '#4dd0e1',
+    '#4db6ac', '#81c784', '#aed581', '#ffb74d'
+  ];
+
+  function userIdToColor(str) {
+    var hash = 0;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash = hash & hash;
+    }
+    return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
+  }
+
+  function getInitials(name) {
+    if (!name) return 'U';
+    var parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.substring(0, 2).toUpperCase();
+  }
+
+  function handleEditingPresence(msg) {
+    var userId = msg.user_id;
+    if (!userId || userId === syncUserId) return;
+    if (!msg.card_kid) {
+      delete editingPresenceMap[userId];
+    } else {
+      editingPresenceMap[userId] = {
+        card_kid: msg.card_kid,
+        user_name: msg.user_name || userId,
+        cursor_pos: msg.cursor_pos,
+        is_typing: msg.is_typing
+      };
+    }
+    updateCardEditingIndicators();
+  }
+
+  function updateCardEditingIndicators() {
+    // Remove all existing indicators and remote-editing classes
+    var existing = document.querySelectorAll('.card-editing-indicator');
+    for (var i = 0; i < existing.length; i++) {
+      existing[i].parentNode.removeChild(existing[i]);
+    }
+    var remoteCards = document.querySelectorAll('.card.remote-editing');
+    for (var i = 0; i < remoteCards.length; i++) {
+      remoteCards[i].classList.remove('remote-editing');
+    }
+
+    // Build kid -> [editors] map
+    var kidEditors = {};
+    for (var uid in editingPresenceMap) {
+      var entry = editingPresenceMap[uid];
+      if (!entry.card_kid) continue;
+      if (!kidEditors[entry.card_kid]) kidEditors[entry.card_kid] = [];
+      kidEditors[entry.card_kid].push(entry);
+    }
+
+    if (Object.keys(kidEditors).length === 0) return;
+
+    // Find card elements by data-card-kid attribute
+    for (var kid in kidEditors) {
+      var cardEl = document.querySelector('.card[data-card-kid="' + kid + '"]');
+      if (!cardEl) continue;
+      cardEl.classList.add('remote-editing');
+      var indicator = document.createElement('div');
+      indicator.className = 'card-editing-indicator';
+      var html = '';
+      var editors = kidEditors[kid];
+      for (var j = 0; j < editors.length; j++) {
+        var e = editors[j];
+        var color = userIdToColor(e.user_name || 'unknown');
+        var typingClass = e.is_typing ? ' typing' : '';
+        html += '<span class="card-editor-badge' + typingClass + '" style="background:' + color + '" title="' + escapeHtml(e.user_name) + '">'
+          + escapeHtml(getInitials(e.user_name))
+          + '</span>';
+      }
+      indicator.innerHTML = html;
+      var header = cardEl.querySelector('.card-header');
+      var menuBtn = cardEl.querySelector('.card-menu-btn');
+      if (header && menuBtn) {
+        header.insertBefore(indicator, menuBtn);
+      } else if (header) {
+        header.appendChild(indicator);
+      }
+    }
+  }
+
+  var editingPresenceTimer = null;
+  var editingPresenceRequest = null;
+
+  function queueEditingPresenceBroadcast(cardKid, cursorPos, isTyping) {
+    if (!cardKid || !LexeraApi.isSyncConnected()) return;
+    editingPresenceRequest = { cardKid: cardKid, cursorPos: cursorPos, isTyping: isTyping };
+    if (editingPresenceTimer) return;
+    editingPresenceTimer = setTimeout(function () {
+      editingPresenceTimer = null;
+      var req = editingPresenceRequest;
+      editingPresenceRequest = null;
+      if (!req) return;
+      LexeraApi.sendEditingPresence(req.cardKid, syncUserName || syncUserId, req.cursorPos, req.isTyping);
+    }, 250);
+  }
+
+  function clearEditingPresenceQueue() {
+    if (editingPresenceTimer) {
+      clearTimeout(editingPresenceTimer);
+      editingPresenceTimer = null;
+    }
+    editingPresenceRequest = null;
   }
 
   function handleSSEEvent(event) {
@@ -3771,6 +3898,7 @@ const LexeraDashboard = (function () {
     try {
       loadStage = 'clear-caches';
       clearBoardPreviewCaches(boardId);
+      editingPresenceMap = {};
       var cachedVersion = (boardId === activeBoardId && activeBoardData && typeof activeBoardData.version === 'number')
         ? activeBoardData.version
         : null;
@@ -6022,6 +6150,7 @@ const LexeraDashboard = (function () {
       cardEl.setAttribute('data-col-index', col.index.toString());
       cardEl.setAttribute('data-card-index', j.toString());
       cardEl.setAttribute('data-card-id', cardId);
+      if (card.kid) cardEl.setAttribute('data-card-kid', card.kid);
       var firstTag = getFirstTag(card.content);
       if (firstTag) cardEl.style.borderLeftColor = getTagColor(firstTag);
       var isCollapsed = collapsedCards.indexOf(cardId) !== -1;
@@ -6173,6 +6302,7 @@ const LexeraDashboard = (function () {
     applyRenderedTagVisibility($columnsContainer, currentTagVisibilityMode);
 
     syncSidebarToView();
+    updateCardEditingIndicators();
   }
 
   /**
@@ -9866,9 +9996,21 @@ const LexeraDashboard = (function () {
       }, 0);
     }
 
+    // Broadcast editing presence when opening inline editor
+    if (card.kid && LexeraApi.isSyncConnected()) {
+      LexeraApi.sendEditingPresence(card.kid, syncUserName || syncUserId, textarea.selectionStart, false);
+    }
+
     textarea.addEventListener('input', function () {
       autoResizeInlineCardTextarea(textarea);
       queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
+      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
+    });
+    textarea.addEventListener('keyup', function () {
+      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
+    });
+    textarea.addEventListener('mouseup', function () {
+      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
     });
     textarea.addEventListener('blur', maybeSaveOnBlur);
     textarea.addEventListener('keydown', function (e) {
@@ -9925,6 +10067,11 @@ const LexeraDashboard = (function () {
     var editor = currentInlineCardEditor;
     currentInlineCardEditor = null;
     isEditing = false;
+    // Clear editing presence
+    clearEditingPresenceQueue();
+    if (LexeraApi.isSyncConnected()) {
+      LexeraApi.sendEditingPresence(null, '', null, false);
+    }
     if (editor.cardEl && editor.cardEl.classList) editor.cardEl.classList.remove('editing');
     if (options.save) {
       clearPendingCardDraftSync();
@@ -10109,9 +10256,21 @@ const LexeraDashboard = (function () {
       applyCardEditorFormatting(textarea, snippet);
     });
 
+    // Broadcast editing presence when opening overlay editor
+    if (card.kid && LexeraApi.isSyncConnected()) {
+      LexeraApi.sendEditingPresence(card.kid, syncUserName || syncUserId, textarea.selectionStart, false);
+    }
+
     textarea.addEventListener('input', function () {
       refreshCardEditorPreview();
       queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
+      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
+    });
+    textarea.addEventListener('keyup', function () {
+      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
+    });
+    textarea.addEventListener('mouseup', function () {
+      if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
     });
     preview.addEventListener('change', function (e) {
       if (!e.target.classList.contains('card-checkbox')) return;
@@ -10276,6 +10435,11 @@ const LexeraDashboard = (function () {
     var editor = currentCardEditor;
     currentCardEditor = null;
     isEditing = false;
+    // Clear editing presence
+    clearEditingPresenceQueue();
+    if (LexeraApi.isSyncConnected()) {
+      LexeraApi.sendEditingPresence(null, '', null, false);
+    }
     if (editor.wysiwyg && typeof editor.wysiwyg.getMarkdown === 'function' && editor.textarea) {
       editor.textarea.value = editor.wysiwyg.getMarkdown() || editor.textarea.value;
     }

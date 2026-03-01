@@ -4044,6 +4044,45 @@ select.dialog-input option,
   flex-shrink: 0;
 }
 
+/* ── Per-card editing presence indicators ─────────────────────────── */
+
+.card-editing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.card-editor-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.card-editor-badge.typing {
+  animation: typing-pulse 1s ease-in-out infinite;
+}
+
+@keyframes typing-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.card.remote-editing {
+  opacity: 0.85;
+  border-left-color: var(--text-secondary);
+}
+
 .collab-status {
   display: flex;
   align-items: center;

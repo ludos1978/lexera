@@ -315,7 +315,8 @@ async fn run_sync_client(
                 );
                 break;
             }
-            ServerMessage::ServerPresence { .. } => {
+            ServerMessage::ServerPresence { .. }
+            | ServerMessage::ServerEditingPresence { .. } => {
                 // Presence updates are handled by the frontend, not the backend sync client
             }
         }
