@@ -378,7 +378,7 @@ pub async fn add_board_endpoint(
     Json(body): Json<AddBoardBody>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     let path = PathBuf::from(&body.file);
-    if !path.exists() {
+    if tokio::fs::metadata(&path).await.is_err() {
         let status = StatusCode::NOT_FOUND;
         let error = format!("File not found: {}", body.file);
         log_api_issue(status, "lexera.api.add_board", &error);
@@ -411,7 +411,7 @@ pub async fn add_board_endpoint(
     })?;
 
     // Watch the new board file
-    let canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+    let canonical = tokio::fs::canonicalize(&path).await.unwrap_or_else(|_| path.clone());
     if let Ok(mut watcher_guard) = state.watcher.lock() {
         if let Some(ref mut watcher) = *watcher_guard {
             if let Err(e) = watcher.watch_board(&board_id, &canonical) {
@@ -490,10 +490,29 @@ pub async fn remove_board_endpoint(
     // Update config and persist
     if let Some(ref path) = file_path {
         let path_str = path.to_string_lossy().to_string();
+        // Collect board file paths from config (release lock before async work)
+        let board_files: Vec<String> = state
+            .config
+            .lock()
+            .ok()
+            .map(|cfg| cfg.boards.iter().map(|b| b.file.clone()).collect())
+            .unwrap_or_default();
+        // Pre-compute canonical paths asynchronously
+        let mut canonical_map: Vec<(String, PathBuf)> = Vec::new();
+        for file in &board_files {
+            let canonical = tokio::fs::canonicalize(file)
+                .await
+                .unwrap_or_else(|_| PathBuf::from(file));
+            canonical_map.push((file.clone(), canonical));
+        }
+        // Re-acquire lock and filter
         if let Ok(mut cfg) = state.config.lock() {
             cfg.boards.retain(|b| {
-                let entry_canonical =
-                    std::fs::canonicalize(&b.file).unwrap_or_else(|_| PathBuf::from(&b.file));
+                let entry_canonical = canonical_map
+                    .iter()
+                    .find(|(file, _)| file == &b.file)
+                    .map(|(_, c)| c.clone())
+                    .unwrap_or_else(|| PathBuf::from(&b.file));
                 entry_canonical != *path && b.file != path_str
             });
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
@@ -548,23 +567,7 @@ pub async fn update_board_settings(
 
     // Merge incoming settings into existing (only overwrite non-None fields)
     let mut current = board.board_settings.unwrap_or_default();
-    if incoming.column_width.is_some() { current.column_width = incoming.column_width; }
-    if incoming.layout_rows.is_some() { current.layout_rows = incoming.layout_rows; }
-    if incoming.max_row_height.is_some() { current.max_row_height = incoming.max_row_height; }
-    if incoming.row_height.is_some() { current.row_height = incoming.row_height; }
-    if incoming.layout_preset.is_some() { current.layout_preset = incoming.layout_preset; }
-    if incoming.sticky_stack_mode.is_some() { current.sticky_stack_mode = incoming.sticky_stack_mode; }
-    if incoming.tag_visibility.is_some() { current.tag_visibility = incoming.tag_visibility; }
-    if incoming.card_min_height.is_some() { current.card_min_height = incoming.card_min_height; }
-    if incoming.font_size.is_some() { current.font_size = incoming.font_size; }
-    if incoming.font_family.is_some() { current.font_family = incoming.font_family; }
-    if incoming.whitespace.is_some() { current.whitespace = incoming.whitespace; }
-    if incoming.html_comment_render_mode.is_some() { current.html_comment_render_mode = incoming.html_comment_render_mode; }
-    if incoming.html_content_render_mode.is_some() { current.html_content_render_mode = incoming.html_content_render_mode; }
-    if incoming.arrow_key_focus_scroll.is_some() { current.arrow_key_focus_scroll = incoming.arrow_key_focus_scroll; }
-    if incoming.board_color.is_some() { current.board_color = incoming.board_color; }
-    if incoming.board_color_dark.is_some() { current.board_color_dark = incoming.board_color_dark; }
-    if incoming.board_color_light.is_some() { current.board_color_light = incoming.board_color_light; }
+    current.merge_from(incoming);
     board.board_settings = Some(current.clone());
 
     state.storage.write_board(&board_id, &board).map_err(|e| {

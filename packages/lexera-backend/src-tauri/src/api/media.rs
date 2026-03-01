@@ -84,7 +84,7 @@ pub async fn upload_media(
     }
 
     // Create media directory if needed
-    std::fs::create_dir_all(&media_dir).map_err(|e| {
+    tokio::fs::create_dir_all(&media_dir).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -102,7 +102,7 @@ pub async fn upload_media(
         .to_string();
 
     // Write file
-    std::fs::write(&final_path, &data).map_err(|e| {
+    tokio::fs::write(&final_path, &data).await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -152,7 +152,7 @@ pub async fn serve_media(
     let media_rel_path = format!("{}-Media/{}", board_stem, filename);
     let file_path = resolve_board_file(&state, &board_id, &media_rel_path)?;
 
-    let data = std::fs::read(&file_path).map_err(|_| {
+    let data = tokio::fs::read(&file_path).await.map_err(|_| {
         (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {

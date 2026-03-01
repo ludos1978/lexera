@@ -35,7 +35,7 @@ pub async fn serve_file(
     Query(params): Query<FileQuery>,
 ) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
     let file_path = resolve_board_file(&state, &board_id, &params.path)?;
-    let data = std::fs::read(&file_path).map_err(|_| {
+    let data = tokio::fs::read(&file_path).await.map_err(|_| {
         (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -48,7 +48,7 @@ pub async fn serve_file(
     let mut headers = HeaderMap::new();
     insert_header_safe(&mut headers, "content-type", ct);
     insert_header_safe(&mut headers, "cache-control", "public, max-age=3600");
-    if let Ok(meta) = std::fs::metadata(&file_path) {
+    if let Ok(meta) = tokio::fs::metadata(&file_path).await {
         if let Ok(modified) = meta.modified() {
             if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
                 let modified_value = dur.as_secs().to_string();
@@ -82,7 +82,7 @@ pub async fn file_info(
         .and_then(|e| e.to_str())
         .map(|s| s.to_lowercase());
     let ext_ref = ext.as_deref();
-    let meta = std::fs::metadata(&fp).ok();
+    let meta = tokio::fs::metadata(&fp).await.ok();
     let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
     let last_modified = meta
         .as_ref()
@@ -126,34 +126,41 @@ pub async fn find_file(
     })?;
     let board_dir = board_path
         .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
     let target = body.filename.to_lowercase();
-    let mut matches = Vec::new();
 
-    fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize) {
-        if depth > 5 {
-            return;
-        }
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, target, matches, depth + 1);
-            } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.to_lowercase().contains(target) {
-                    matches.push(path.to_string_lossy().to_string());
-                    if matches.len() >= 20 {
-                        return;
+    let matches = tokio::task::spawn_blocking(move || {
+        let mut matches = Vec::new();
+
+        fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize) {
+            if depth > 5 {
+                return;
+            }
+            let entries = match std::fs::read_dir(dir) {
+                Ok(e) => e,
+                Err(_) => return,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, target, matches, depth + 1);
+                } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name.to_lowercase().contains(target) {
+                        matches.push(path.to_string_lossy().to_string());
+                        if matches.len() >= 20 {
+                            return;
+                        }
                     }
                 }
             }
         }
-    }
 
-    walk(board_dir, &target, &mut matches, 0);
+        walk(&board_dir, &target, &mut matches, 0);
+        matches
+    })
+    .await
+    .unwrap_or_default();
 
     Ok(Json(serde_json::json!({
         "query": body.filename,
@@ -186,7 +193,7 @@ pub async fn convert_path(
                 serde_json::json!({ "path": body.path, "changed": false }),
             ));
         }
-        let abs = board_dir.join(&body.path).canonicalize().map_err(|_| {
+        let abs = tokio::fs::canonicalize(board_dir.join(&body.path)).await.map_err(|_| {
             (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {
@@ -203,10 +210,10 @@ pub async fn convert_path(
                 serde_json::json!({ "path": body.path, "changed": false }),
             ));
         }
-        let canonical_board_dir = board_dir
-            .canonicalize()
+        let canonical_board_dir = tokio::fs::canonicalize(&board_dir)
+            .await
             .unwrap_or_else(|_| board_dir.to_path_buf());
-        let canonical_file = p.canonicalize().map_err(|_| {
+        let canonical_file = tokio::fs::canonicalize(p).await.map_err(|_| {
             (
                 StatusCode::NOT_FOUND,
                 Json(ErrorResponse {

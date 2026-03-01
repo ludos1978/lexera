@@ -127,49 +127,56 @@ fn sanitize_filename(name: &str) -> String {
 /// GET /templates -- list all available templates.
 pub async fn list_templates(State(state): State<AppState>) -> Json<serde_json::Value> {
     let templates_dir = get_templates_dir(&state);
-    let mut templates: Vec<TemplateSummary> = Vec::new();
 
-    let entries = match std::fs::read_dir(&templates_dir) {
-        Ok(e) => e,
-        Err(_) => return Json(serde_json::json!(templates)),
-    };
+    let templates = tokio::task::spawn_blocking(move || {
+        let mut templates: Vec<TemplateSummary> = Vec::new();
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let template_md = path.join("template.md");
-        if !template_md.exists() {
-            continue;
-        }
-        let content = match std::fs::read_to_string(&template_md) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let entries = match std::fs::read_dir(&templates_dir) {
+            Ok(e) => e,
+            Err(_) => return templates,
         };
 
-        let id = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let template_md = path.join("template.md");
+            if !template_md.exists() {
+                continue;
+            }
+            let content = match std::fs::read_to_string(&template_md) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
 
-        let (parsed_name, template_type, description, icon, has_variables) =
-            parse_template_frontmatter(&content);
+            let id = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
 
-        templates.push(TemplateSummary {
-            name: if parsed_name.is_empty() {
-                id.clone()
-            } else {
-                parsed_name
-            },
-            id,
-            template_type,
-            description,
-            icon,
-            has_variables,
-        });
-    }
+            let (parsed_name, template_type, description, icon, has_variables) =
+                parse_template_frontmatter(&content);
+
+            templates.push(TemplateSummary {
+                name: if parsed_name.is_empty() {
+                    id.clone()
+                } else {
+                    parsed_name
+                },
+                id,
+                template_type,
+                description,
+                icon,
+                has_variables,
+            });
+        }
+
+        templates
+    })
+    .await
+    .unwrap_or_default();
 
     Json(serde_json::json!(templates))
 }
@@ -193,7 +200,7 @@ pub async fn get_template(
     let template_dir = templates_dir.join(&template_id);
     let template_md = template_dir.join("template.md");
 
-    let content = std::fs::read_to_string(&template_md).map_err(|_| {
+    let content = tokio::fs::read_to_string(&template_md).await.map_err(|_| {
         (
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -204,8 +211,8 @@ pub async fn get_template(
 
     // List extra files (everything except template.md)
     let mut files: Vec<String> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&template_dir) {
-        for entry in entries.flatten() {
+    if let Ok(mut entries) = tokio::fs::read_dir(&template_dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name().to_string_lossy().to_string();
             if name != "template.md" {
                 files.push(name);
@@ -237,7 +244,7 @@ pub async fn copy_template_files(
 
     let templates_dir = get_templates_dir(&state);
     let template_dir = templates_dir.join(&template_id);
-    if !template_dir.is_dir() {
+    if tokio::fs::metadata(&template_dir).await.map(|m| !m.is_dir()).unwrap_or(true) {
         return Err((
             StatusCode::NOT_FOUND,
             Json(ErrorResponse {
@@ -260,64 +267,77 @@ pub async fn copy_template_files(
         })?;
     let board_dir = board_path
         .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
 
-    // Copy all files except template.md
-    let mut copied: Vec<String> = Vec::new();
-    let entries = std::fs::read_dir(&template_dir).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to read template dir: {}", e),
-            }),
-        )
-    })?;
+    // Copy all files except template.md (spawn_blocking for bulk fs operations)
+    let variables = body.variables;
+    let copied = tokio::task::spawn_blocking(move || {
+        let mut copied: Vec<String> = Vec::new();
+        let entries = match std::fs::read_dir(&template_dir) {
+            Ok(e) => e,
+            Err(e) => {
+                log::warn!("[templates.copy] Failed to read template dir: {}", e);
+                return Err(format!("Failed to read template dir: {}", e));
+            }
+        };
 
-    for entry in entries.flatten() {
-        let src_path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-        if file_name == "template.md" || src_path.is_dir() {
-            continue;
-        }
+        for entry in entries.flatten() {
+            let src_path = entry.path();
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if file_name == "template.md" || src_path.is_dir() {
+                continue;
+            }
 
-        // Apply variable substitution to filename
-        let dest_name = sanitize_filename(&substitute_variables(&file_name, &body.variables));
-        let dest_path = board_dir.join(&dest_name);
+            // Apply variable substitution to filename
+            let dest_name = sanitize_filename(&substitute_variables(&file_name, &variables));
+            let dest_path = board_dir.join(&dest_name);
 
-        // For text files, substitute variables in content; for binary, just copy
-        if is_text_file(&src_path) {
-            match std::fs::read_to_string(&src_path) {
-                Ok(content) => {
-                    let substituted = substitute_variables(&content, &body.variables);
-                    if let Err(e) = std::fs::write(&dest_path, &substituted) {
+            // For text files, substitute variables in content; for binary, just copy
+            if is_text_file(&src_path) {
+                match std::fs::read_to_string(&src_path) {
+                    Ok(content) => {
+                        let substituted = substitute_variables(&content, &variables);
+                        if let Err(e) = std::fs::write(&dest_path, &substituted) {
+                            log::warn!(
+                                "[templates.copy] Failed to write {}: {}",
+                                dest_path.display(),
+                                e
+                            );
+                            continue;
+                        }
+                    }
+                    Err(e) => {
                         log::warn!(
-                            "[templates.copy] Failed to write {}: {}",
-                            dest_path.display(),
+                            "[templates.copy] Failed to read text file {}: {}",
+                            src_path.display(),
                             e
                         );
                         continue;
                     }
                 }
-                Err(e) => {
-                    log::warn!(
-                        "[templates.copy] Failed to read text file {}: {}",
-                        src_path.display(),
-                        e
-                    );
-                    continue;
-                }
+            } else if let Err(e) = std::fs::copy(&src_path, &dest_path) {
+                log::warn!(
+                    "[templates.copy] Failed to copy {}: {}",
+                    src_path.display(),
+                    e
+                );
+                continue;
             }
-        } else if let Err(e) = std::fs::copy(&src_path, &dest_path) {
-            log::warn!(
-                "[templates.copy] Failed to copy {}: {}",
-                src_path.display(),
-                e
-            );
-            continue;
+
+            copied.push(dest_name);
         }
 
-        copied.push(dest_name);
-    }
+        Ok(copied)
+    })
+    .await
+    .unwrap_or_else(|_| Ok(Vec::new()))
+    .map_err(|e: String| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )
+    })?;
 
     Ok(Json(serde_json::json!({
         "copied": copied,
