@@ -2946,6 +2946,7 @@ const LexeraDashboard = (function () {
   }
 
   function handleSSEEvent(event) {
+    try {
     if (!activeBoardId || searchMode) return;
     var kind = event.kind || event.type || '';
     var boardId = event.board_id || event.boardId || '';
@@ -2978,6 +2979,9 @@ const LexeraDashboard = (function () {
       } else {
         loadBoard(activeBoardId);
       }
+    }
+    } catch (err) {
+      logFrontendIssue('error', 'sse', 'Error in handleSSEEvent', err);
     }
   }
 
@@ -6280,6 +6284,7 @@ const LexeraDashboard = (function () {
   }
 
   function renderColumns() {
+    try {
     unfocusCard();
     // Defensive cleanup: stale drag artifacts can inflate row widths.
     cleanupPtrDrag();
@@ -6303,6 +6308,9 @@ const LexeraDashboard = (function () {
 
     syncSidebarToView();
     updateCardEditingIndicators();
+    } catch (err) {
+      logFrontendIssue('error', 'render', 'Failed to render columns', err);
+    }
   }
 
   /**
@@ -7300,6 +7308,7 @@ const LexeraDashboard = (function () {
 
   // Single mousedown listener on the columns container (event delegation)
   $columnsContainer.addEventListener('mousedown', function (e) {
+    try {
     // Only left mouse button
     if (e.button !== 0) return;
     // Don't start drag on interactive elements
@@ -7343,11 +7352,14 @@ const LexeraDashboard = (function () {
     }
     startCrossViewBridge('card');
     e.preventDefault();
+    } catch (err) {
+      logFrontendIssue('error', 'drag.card', 'Error in card mousedown handler', err);
+    }
   });
 
   document.addEventListener('mousemove', function (e) {
     if (!cardDrag) return;
-
+    try {
     // Check threshold before starting actual drag
     if (!cardDrag.started) {
       var dx = e.clientX - cardDrag.startX;
@@ -7365,10 +7377,15 @@ const LexeraDashboard = (function () {
 
     // Find drop target
     updateCardDropTarget(e.clientX, e.clientY);
+    } catch (err) {
+      logFrontendIssue('error', 'drag.card', 'Error in card mousemove handler', err);
+      cancelCardDrag();
+    }
   });
 
   document.addEventListener('mouseup', function (e) {
     if (!cardDrag) return;
+    try {
     if (!cardDrag.started) {
       // Was just a click, not a drag — enter edit mode
       var clickedCard = cardDrag.el;
@@ -7380,11 +7397,16 @@ const LexeraDashboard = (function () {
       return;
     }
     finishCardDrag(e.clientX, e.clientY);
+    } catch (err) {
+      logFrontendIssue('error', 'drag.card', 'Error in card mouseup handler', err);
+      cancelCardDrag();
+    }
   });
 
   // Also cancel on Escape
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      try {
       if (currentInlineCardEditor) {
         closeInlineCardEditor({ save: false });
         return;
@@ -7402,6 +7424,9 @@ const LexeraDashboard = (function () {
       else if (ptrDrag) {
         ptrDrag = null;
         stopCrossViewBridge();
+      }
+      } catch (err) {
+        logFrontendIssue('error', 'keyboard', 'Error in Escape keydown handler', err);
       }
     }
   });
@@ -8162,6 +8187,7 @@ const LexeraDashboard = (function () {
 
   // Sidebar: tree grips and board item grips
   $boardList.addEventListener('mousedown', function (e) {
+    try {
     if (e.button !== 0) return;
     if (ptrDrag || cardDrag) return;
 
@@ -8227,10 +8253,14 @@ const LexeraDashboard = (function () {
       e.stopPropagation();
       return;
     }
+    } catch (err) {
+      logFrontendIssue('error', 'drag.ptr', 'Error in sidebar mousedown handler', err);
+    }
   });
 
   // Main board: row/stack/column drag starts from header area (not just grip)
   $columnsContainer.addEventListener('mousedown', function (e) {
+    try {
     if (e.button !== 0) return;
     if (ptrDrag || cardDrag) return;
     if (e.target.closest('.board-row-title, .board-stack-title, .column-title')) return;
@@ -8310,12 +8340,15 @@ const LexeraDashboard = (function () {
       e.stopPropagation();
       return;
     }
+    } catch (err) {
+      logFrontendIssue('error', 'drag.ptr', 'Error in board mousedown handler', err);
+    }
   });
 
   // Pointer drag: mousemove
   document.addEventListener('mousemove', function (e) {
     if (!ptrDrag) return;
-
+    try {
     if (!ptrDrag.started) {
       var dx = e.clientX - ptrDrag.startX;
       var dy = e.clientY - ptrDrag.startY;
@@ -8357,11 +8390,16 @@ const LexeraDashboard = (function () {
     }
 
     updatePtrDropTarget(e.clientX, e.clientY);
+    } catch (err) {
+      logFrontendIssue('error', 'drag.ptr', 'Error in ptr mousemove handler', err);
+      cleanupPtrDrag();
+    }
   });
 
   // Pointer drag: mouseup
   document.addEventListener('mouseup', function (e) {
     if (!ptrDrag) return;
+    try {
     if (!ptrDrag.started) {
       ptrDrag = null;
       stopCrossViewBridge();
@@ -8369,6 +8407,10 @@ const LexeraDashboard = (function () {
     }
     executePtrDrop(e.clientX, e.clientY);
     cleanupPtrDrag();
+    } catch (err) {
+      logFrontendIssue('error', 'drag.ptr', 'Error in ptr mouseup handler', err);
+      cleanupPtrDrag();
+    }
   });
 
   // Safety net for interrupted drags (window focus loss, tab hide).
@@ -10002,9 +10044,13 @@ const LexeraDashboard = (function () {
     }
 
     textarea.addEventListener('input', function () {
+      try {
       autoResizeInlineCardTextarea(textarea);
       queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
       if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
+      } catch (err) {
+        logFrontendIssue('error', 'editor.inline', 'Error in inline editor input handler', err);
+      }
     });
     textarea.addEventListener('keyup', function () {
       if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
@@ -10014,6 +10060,7 @@ const LexeraDashboard = (function () {
     });
     textarea.addEventListener('blur', maybeSaveOnBlur);
     textarea.addEventListener('keydown', function (e) {
+      try {
       if (handleTextareaTabIndent(e, textarea)) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 's')) {
         e.preventDefault();
@@ -10023,6 +10070,9 @@ const LexeraDashboard = (function () {
       if (e.key === 'Escape') {
         e.preventDefault();
         closeInlineCardEditor({ save: false });
+      }
+      } catch (err) {
+        logFrontendIssue('error', 'editor.inline', 'Error in inline editor keydown handler', err);
       }
     });
 
@@ -10262,9 +10312,13 @@ const LexeraDashboard = (function () {
     }
 
     textarea.addEventListener('input', function () {
+      try {
       refreshCardEditorPreview();
       queueCardDraftLiveSync(colIndex, fullIdx, textarea.value);
       if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, true);
+      } catch (err) {
+        logFrontendIssue('error', 'editor.overlay', 'Error in overlay editor input handler', err);
+      }
     });
     textarea.addEventListener('keyup', function () {
       if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
@@ -10305,6 +10359,7 @@ const LexeraDashboard = (function () {
       textarea.focus();
     });
     dialog.addEventListener('keydown', function (e) {
+      try {
       if (e.target === textarea) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -10336,8 +10391,12 @@ const LexeraDashboard = (function () {
           applyCardEditorMode('wysiwyg');
         }
       }
+      } catch (err) {
+        logFrontendIssue('error', 'editor.overlay', 'Error in overlay dialog keydown handler', err);
+      }
     });
     textarea.addEventListener('keydown', function (e) {
+      try {
       if (handleTextareaTabIndent(e, textarea)) return;
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -10388,6 +10447,9 @@ const LexeraDashboard = (function () {
           e.preventDefault();
           insertFormatting(textarea, fmt);
         }
+      }
+      } catch (err) {
+        logFrontendIssue('error', 'editor.overlay', 'Error in overlay textarea keydown handler', err);
       }
     });
 
