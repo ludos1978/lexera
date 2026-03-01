@@ -155,9 +155,9 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - WebSocket sync sends CRDT updates in plaintext
 - Discovery broadcasts on UDP without authentication
 
-### No Rate Limiting (lexera-backend)
-- Expensive operations (search, find-file, export) have no throttling
-- WebSocket channels have no backpressure handling
+### ~~No Rate Limiting (lexera-backend)~~ FIXED
+- ~~Expensive operations (search, find-file, export) have no throttling~~ FIXED: sliding-window limiter (commit 72f073a4)
+- ~~WebSocket channels have no backpressure handling~~ FIXED: bounded channels with try_send (commit 7c6cd2ae)
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -183,13 +183,13 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 5. ~~Synchronous file I/O (std::fs) in async context instead of tokio::fs~~ FIXED: tokio::fs + spawn_blocking (commit 5a3afcec)
 6. ~~No graceful shutdown - background tasks never explicitly cancelled~~ FIXED: watch shutdown signal (commit 44ee5951)
 7. ~~SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s~~ FIXED: named constants (commit 57c4fd2e)
-8. Hardcoded discovery port (41820), broadcast only (no multicast for subnets)
+8. ~~Hardcoded discovery port (41820)~~ FIXED: DISCOVERY_PORT constant already exists; broadcast only (no multicast for subnets)
 9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
 11. ~~BoardSettings merge verbose - 17 manual field assignments~~ FIXED: merge_from() with macro (commit afae724d)
 12. Frontend JS: global mutable state, ~~fetch without timeout~~, poll-based updates (10s/5s) -- fetch timeout FIXED (commit 35c2545e)
 13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
-14. Excessive cloning in auth.rs and invite.rs
+14. ~~Excessive cloning in auth.rs and invite.rs~~ FIXED: borrow instead of clone, retain for cleanup (commit a70a33a0)
 
 ### lexera-kanban
 1. Monolithic app.js (14,700 lines) - needs modularization
@@ -216,7 +216,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 4. write_board() returns Ok(None) - merge infrastructure unused
 5. No board deletion/card editing commands
 6. No data encryption in App Group container
-7. Base64 images in JSON could exhaust memory for large images
+7. ~~Base64 images in JSON could exhaust memory for large images~~ FIXED: 10MB base64 limit in process_pending (commit 95e8c6a2)
 8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
 9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
 10. Monolithic 880-line index.html with inline JS
@@ -437,9 +437,9 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 ### TODO: Missing Function Implementations (from button/menu audit 2026-03-01)
 
-1. `copyFullPath()` in webview.js — context menu "Copy Full OS Path" is a stub (logs warning, does nothing). Needs clipboard copy of full OS path for the active file.
-2. `copyStoredPath()` in webview.js — context menu "Copy Stored Path" is a stub (logs warning, does nothing). Needs clipboard copy of the stored/relative path.
-3. `path-context-menu` HTML in webview.html (lines 1613-1616) — the context menu element exists but no code triggers/shows it (no `contextmenu` event listener). Needs a right-click handler to display it.
+1. ~~`copyFullPath()` in webview.js~~ FIXED: clipboard copy via navigator.clipboard.writeText (commit 02be2ec2)
+2. ~~`copyStoredPath()` in webview.js~~ FIXED: clipboard copy via navigator.clipboard.writeText (commit 02be2ec2)
+3. ~~`path-context-menu` contextmenu handler~~ FIXED: right-click on file-name shows menu (commit 02be2ec2)
 
 ────────────────────────────────────────────────────────────────────────────────
 
