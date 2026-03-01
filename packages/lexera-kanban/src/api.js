@@ -31,14 +31,13 @@ const LexeraApi = (function () {
     }
     recentApiLogAt[dedupeKey] = now;
 
-    var fullMessage = '[' + target + '] ' + message;
-    if (typeof error === 'undefined') {
-      if (level === 'error') console.error(fullMessage);
-      else console.warn(fullMessage);
-      return;
+    var fullMessage = '[api.' + target + '] ' + message;
+    if (typeof error !== 'undefined') {
+      fullMessage += ': ' + formatApiError(error);
     }
-    if (level === 'error') console.error(fullMessage, error);
-    else console.warn(fullMessage, error);
+    if (typeof lexeraLogWithTarget === 'function') {
+      lexeraLogWithTarget(level, 'api.' + target, fullMessage);
+    }
   }
 
   async function discover() {
@@ -409,7 +408,7 @@ const LexeraApi = (function () {
         logApiIssue('error', 'sync.send', 'Failed to send ClientHello for board ' + boardId, e);
         throw e;
       }
-      console.log('[sync] WebSocket connected to board ' + boardId);
+      if (typeof lexeraLog === 'function') lexeraLog('info', '[api.sync.connect] WebSocket connected to board ' + boardId);
     };
 
     syncWs.onmessage = function (evt) {
@@ -418,7 +417,7 @@ const LexeraApi = (function () {
         if (msg.type === 'ServerHello') {
           var reconnectHello = syncHasConnectedOnce;
           syncHasConnectedOnce = true;
-          console.log('[sync] Received ServerHello, peer_id=' + msg.peer_id);
+          if (typeof lexeraLog === 'function') lexeraLog('info', '[api.sync.hello] Received ServerHello, peer_id=' + msg.peer_id);
           if (syncOnUpdate) {
             syncOnUpdate({
               type: 'hello',
@@ -439,7 +438,7 @@ const LexeraApi = (function () {
         } else if (msg.type === 'ServerEditingPresence') {
           if (syncOnEditingPresence) syncOnEditingPresence(msg);
         } else if (msg.type === 'ServerError') {
-          console.warn('[sync] Server error: ' + msg.message);
+          logApiIssue('warn', 'sync.server-error', 'Server error: ' + msg.message);
           syncShouldReconnect = false;
           disconnectSync();
         }
@@ -456,7 +455,6 @@ const LexeraApi = (function () {
         dedupeKey: 'sync.socket.error|' + boardId,
         dedupeWindowMs: 3000
       });
-      console.warn('[sync] WebSocket error');
     };
 
     syncWs.onclose = function (event) {
@@ -466,7 +464,7 @@ const LexeraApi = (function () {
           dedupeWindowMs: 3000
         });
       }
-      console.log('[sync] WebSocket closed');
+      if (typeof lexeraLog === 'function') lexeraLog('info', '[api.sync.close] WebSocket closed');
       syncWs = null;
       if (syncOnPresence && syncShouldReconnect && syncBoardId === boardId) {
         syncOnPresence([]);
