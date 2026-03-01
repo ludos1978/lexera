@@ -447,6 +447,7 @@ const LexeraDashboard = (function () {
   var MAX_UNDO = 30;
   var MAX_UNDO_BYTES = 10 * 1024 * 1024;
   var undoTotalBytes = 0;
+  var undoPendingSnapshot = null; // snapshot taken before the last mutation, awaiting delta computation
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
   var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
   var mermaidIdCounter = 0;
@@ -5823,27 +5824,333 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function pushUndo() {
-    if (!fullBoardData) return;
-    var entry = JSON.stringify(fullBoardData);
-    undoStack.push(entry);
-    undoTotalBytes += entry.length;
-    if (undoStack.length > MAX_UNDO) {
-      undoTotalBytes -= undoStack.shift().length;
+  /**
+   * Compute a structural delta between two board states.
+   * Returns a delta object containing only the differences.
+   * Uses the known board hierarchy: top-level fields, boardSettings,
+   * rows > stacks > columns > cards.
+   * Arrays of objects with 'id' fields are diffed by id matching.
+   */
+  function computeBoardDelta(oldBoard, newBoard) {
+    var delta = {};
+    // Compare top-level scalar fields
+    var scalarKeys = ['valid', 'title', 'yamlHeader', 'kanbanFooter'];
+    for (var k = 0; k < scalarKeys.length; k++) {
+      var key = scalarKeys[k];
+      if (oldBoard[key] !== newBoard[key]) {
+        delta[key] = { o: oldBoard[key], n: newBoard[key] };
+      }
+    }
+    // Compare boardSettings as a flat object
+    var oldSettings = oldBoard.boardSettings || null;
+    var newSettings = newBoard.boardSettings || null;
+    var settingsDelta = diffFlatObject(oldSettings, newSettings);
+    if (settingsDelta) delta.boardSettings = settingsDelta;
+    // Compare rows array (rows > stacks > columns > cards)
+    var rowsDelta = diffIdArray(oldBoard.rows || [], newBoard.rows || [], diffRow);
+    if (rowsDelta) delta.rows = rowsDelta;
+    // Compare legacy columns array
+    var colsDelta = diffIdArray(oldBoard.columns || [], newBoard.columns || [], diffColumn);
+    if (colsDelta) delta.columns = colsDelta;
+    return delta;
+  }
+
+  /**
+   * Diff two flat objects (like boardSettings). Returns null if identical.
+   * Result: { key: { o: oldVal, n: newVal }, ... } for changed/added/removed keys.
+   */
+  function diffFlatObject(oldObj, newObj) {
+    if (oldObj === newObj) return null;
+    if (!oldObj && !newObj) return null;
+    if (!oldObj) return { __replaced: { o: null, n: JSON.parse(JSON.stringify(newObj)) } };
+    if (!newObj) return { __replaced: { o: JSON.parse(JSON.stringify(oldObj)), n: null } };
+    var diff = null;
+    var allKeys = {};
+    var k;
+    for (k in oldObj) allKeys[k] = true;
+    for (k in newObj) allKeys[k] = true;
+    for (k in allKeys) {
+      var ov = oldObj[k], nv = newObj[k];
+      if (ov !== nv) {
+        if (!diff) diff = {};
+        diff[k] = { o: ov, n: nv };
+      }
+    }
+    return diff;
+  }
+
+  /**
+   * Diff two arrays of objects that each have an 'id' field.
+   * diffItemFn is called for items that exist in both arrays to produce per-item deltas.
+   * Returns null if arrays are identical.
+   * Result: { order: [id1, id2, ...], added: { id: fullItem }, removed: { id: fullItem }, modified: { id: itemDelta } }
+   */
+  function diffIdArray(oldArr, newArr, diffItemFn) {
+    var oldIds = oldArr.map(function (item) { return item.id; });
+    var newIds = newArr.map(function (item) { return item.id; });
+    var oldMap = {};
+    for (var i = 0; i < oldArr.length; i++) oldMap[oldArr[i].id] = oldArr[i];
+    var newMap = {};
+    for (var j = 0; j < newArr.length; j++) newMap[newArr[j].id] = newArr[j];
+    var result = null;
+    // Check order change
+    var orderChanged = oldIds.length !== newIds.length || oldIds.some(function (id, idx) { return id !== newIds[idx]; });
+    if (orderChanged) {
+      result = result || {};
+      result.oldOrder = oldIds;
+      result.newOrder = newIds;
+    }
+    // Find added items
+    for (var a = 0; a < newArr.length; a++) {
+      if (!oldMap[newArr[a].id]) {
+        result = result || {};
+        if (!result.added) result.added = {};
+        result.added[newArr[a].id] = JSON.parse(JSON.stringify(newArr[a]));
+      }
+    }
+    // Find removed items
+    for (var r = 0; r < oldArr.length; r++) {
+      if (!newMap[oldArr[r].id]) {
+        result = result || {};
+        if (!result.removed) result.removed = {};
+        result.removed[oldArr[r].id] = JSON.parse(JSON.stringify(oldArr[r]));
+      }
+    }
+    // Find modified items
+    for (var m = 0; m < newArr.length; m++) {
+      if (oldMap[newArr[m].id]) {
+        var itemDelta = diffItemFn(oldMap[newArr[m].id], newArr[m]);
+        if (itemDelta) {
+          result = result || {};
+          if (!result.modified) result.modified = {};
+          result.modified[newArr[m].id] = itemDelta;
+        }
+      }
+    }
+    return result;
+  }
+
+  /** Diff a single row: compare title + stacks array. */
+  function diffRow(oldRow, newRow) {
+    var delta = null;
+    if (oldRow.title !== newRow.title) {
+      delta = delta || {};
+      delta.title = { o: oldRow.title, n: newRow.title };
+    }
+    var stacksDelta = diffIdArray(oldRow.stacks || [], newRow.stacks || [], diffStack);
+    if (stacksDelta) {
+      delta = delta || {};
+      delta.stacks = stacksDelta;
+    }
+    return delta;
+  }
+
+  /** Diff a single stack: compare title + columns array. */
+  function diffStack(oldStack, newStack) {
+    var delta = null;
+    if (oldStack.title !== newStack.title) {
+      delta = delta || {};
+      delta.title = { o: oldStack.title, n: newStack.title };
+    }
+    var colsDelta = diffIdArray(oldStack.columns || [], newStack.columns || [], diffColumn);
+    if (colsDelta) {
+      delta = delta || {};
+      delta.columns = colsDelta;
+    }
+    return delta;
+  }
+
+  /** Diff a single column: compare title, include_source, + cards array. */
+  function diffColumn(oldCol, newCol) {
+    var delta = null;
+    if (oldCol.title !== newCol.title) {
+      delta = delta || {};
+      delta.title = { o: oldCol.title, n: newCol.title };
+    }
+    var oldSrc = oldCol.include_source ? JSON.stringify(oldCol.include_source) : null;
+    var newSrc = newCol.include_source ? JSON.stringify(newCol.include_source) : null;
+    if (oldSrc !== newSrc) {
+      delta = delta || {};
+      delta.include_source = { o: oldCol.include_source || null, n: newCol.include_source || null };
+    }
+    var cardsDelta = diffIdArray(oldCol.cards || [], newCol.cards || [], diffCard);
+    if (cardsDelta) {
+      delta = delta || {};
+      delta.cards = cardsDelta;
+    }
+    return delta;
+  }
+
+  /** Diff a single card: compare content, checked, kid. */
+  function diffCard(oldCard, newCard) {
+    var delta = null;
+    var cardFields = ['content', 'checked', 'kid'];
+    for (var f = 0; f < cardFields.length; f++) {
+      var field = cardFields[f];
+      if (oldCard[field] !== newCard[field]) {
+        delta = delta || {};
+        delta[field] = { o: oldCard[field], n: newCard[field] };
+      }
+    }
+    return delta;
+  }
+
+  /**
+   * Apply a board delta to fullBoardData, mutating it in place.
+   * If reverse is true, apply the delta in reverse (undo direction).
+   */
+  function applyBoardDelta(board, delta, reverse) {
+    // Apply top-level scalar changes
+    var scalarKeys = ['valid', 'title', 'yamlHeader', 'kanbanFooter'];
+    for (var k = 0; k < scalarKeys.length; k++) {
+      var key = scalarKeys[k];
+      if (delta[key]) {
+        board[key] = reverse ? delta[key].o : delta[key].n;
+      }
+    }
+    // Apply boardSettings changes
+    if (delta.boardSettings) {
+      applyFlatObjectDelta(board, 'boardSettings', delta.boardSettings, reverse);
+    }
+    // Apply rows delta
+    if (delta.rows) {
+      board.rows = applyIdArrayDelta(board.rows || [], delta.rows, reverse, applyRowDelta);
+    }
+    // Apply legacy columns delta
+    if (delta.columns) {
+      board.columns = applyIdArrayDelta(board.columns || [], delta.columns, reverse, applyColumnDelta);
+    }
+  }
+
+  /** Apply a flat-object delta (for boardSettings). */
+  function applyFlatObjectDelta(parent, prop, diff, reverse) {
+    if (diff.__replaced) {
+      parent[prop] = reverse ? JSON.parse(JSON.stringify(diff.__replaced.o)) : JSON.parse(JSON.stringify(diff.__replaced.n));
+      return;
+    }
+    if (!parent[prop]) parent[prop] = {};
+    for (var k in diff) {
+      parent[prop][k] = reverse ? diff[k].o : diff[k].n;
+    }
+  }
+
+  /**
+   * Apply an id-array delta. Returns the new array.
+   * applyItemDeltaFn applies per-item modifications in place.
+   */
+  function applyIdArrayDelta(arr, delta, reverse, applyItemDeltaFn) {
+    // Build id->item map from current array
+    var map = {};
+    for (var i = 0; i < arr.length; i++) map[arr[i].id] = arr[i];
+    // Handle removals (in reverse direction these are additions)
+    var toRemove = reverse ? delta.added : delta.removed;
+    if (toRemove) {
+      for (var rid in toRemove) delete map[rid];
+    }
+    // Handle additions (in reverse direction these are removals)
+    var toAdd = reverse ? delta.removed : delta.added;
+    if (toAdd) {
+      for (var aid in toAdd) map[aid] = JSON.parse(JSON.stringify(toAdd[aid]));
+    }
+    // Apply modifications
+    if (delta.modified) {
+      for (var mid in delta.modified) {
+        if (map[mid]) {
+          applyItemDeltaFn(map[mid], delta.modified[mid], reverse);
+        }
+      }
+    }
+    // Reconstruct array in correct order
+    var targetOrder = reverse ? (delta.oldOrder || delta.newOrder) : (delta.newOrder || delta.oldOrder);
+    if (targetOrder) {
+      var result = [];
+      for (var o = 0; o < targetOrder.length; o++) {
+        if (map[targetOrder[o]]) result.push(map[targetOrder[o]]);
+      }
+      return result;
+    }
+    // No order change — return current array with modifications applied
+    return arr.filter(function (item) { return !!map[item.id]; })
+      .concat(Object.keys(map).filter(function (id) {
+        return !arr.some(function (item) { return item.id === id; });
+      }).map(function (id) { return map[id]; }));
+  }
+
+  /** Apply a row delta in place. */
+  function applyRowDelta(row, delta, reverse) {
+    if (delta.title) row.title = reverse ? delta.title.o : delta.title.n;
+    if (delta.stacks) {
+      row.stacks = applyIdArrayDelta(row.stacks || [], delta.stacks, reverse, applyStackDelta);
+    }
+  }
+
+  /** Apply a stack delta in place. */
+  function applyStackDelta(stack, delta, reverse) {
+    if (delta.title) stack.title = reverse ? delta.title.o : delta.title.n;
+    if (delta.columns) {
+      stack.columns = applyIdArrayDelta(stack.columns || [], delta.columns, reverse, applyColumnDelta);
+    }
+  }
+
+  /** Apply a column delta in place. */
+  function applyColumnDelta(col, delta, reverse) {
+    if (delta.title) col.title = reverse ? delta.title.o : delta.title.n;
+    if (delta.include_source) col.include_source = reverse ? delta.include_source.o : delta.include_source.n;
+    if (delta.cards) {
+      col.cards = applyIdArrayDelta(col.cards || [], delta.cards, reverse, applyCardDelta);
+    }
+  }
+
+  /** Apply a card delta in place. */
+  function applyCardDelta(card, delta, reverse) {
+    var cardFields = ['content', 'checked', 'kid'];
+    for (var f = 0; f < cardFields.length; f++) {
+      var field = cardFields[f];
+      if (delta[field]) {
+        card[field] = reverse ? delta[field].o : delta[field].n;
+      }
+    }
+  }
+
+  /** Estimate the byte size of a delta object for memory tracking. */
+  function estimateDeltaSize(delta) {
+    return JSON.stringify(delta).length;
+  }
+
+  /**
+   * Finalize any pending undo snapshot by computing the delta
+   * between the snapshot (pre-mutation state) and current fullBoardData (post-mutation state).
+   */
+  function finalizePendingUndo() {
+    if (!undoPendingSnapshot || !fullBoardData) return;
+    var delta = computeBoardDelta(undoPendingSnapshot, fullBoardData);
+    var deltaSize = estimateDeltaSize(delta);
+    undoStack.push({ delta: delta, size: deltaSize });
+    undoTotalBytes += deltaSize;
+    while (undoStack.length > MAX_UNDO) {
+      undoTotalBytes -= undoStack.shift().size;
     }
     while (undoTotalBytes > MAX_UNDO_BYTES && undoStack.length > 0) {
-      undoTotalBytes -= undoStack.shift().length;
+      undoTotalBytes -= undoStack.shift().size;
     }
+    undoPendingSnapshot = null;
+  }
+
+  function pushUndo() {
+    if (!fullBoardData) return;
+    finalizePendingUndo();
+    undoPendingSnapshot = cloneBoardData(fullBoardData);
     redoStack = [];
   }
 
   async function undo() {
+    finalizePendingUndo();
     if (undoStack.length === 0 || !fullBoardData || !activeBoardId) return;
     var saveBase = getBoardSaveBase(fullBoardData);
-    redoStack.push(JSON.stringify(fullBoardData));
-    var popped = undoStack.pop();
-    undoTotalBytes -= popped.length;
-    fullBoardData = JSON.parse(popped);
+    var entry = undoStack.pop();
+    undoTotalBytes -= entry.size;
+    redoStack.push(entry);
+    applyBoardDelta(fullBoardData, entry.delta, true);
     setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
     await persistBoardMutation();
   }
@@ -5851,10 +6158,10 @@ const LexeraDashboard = (function () {
   async function redo() {
     if (redoStack.length === 0 || !fullBoardData || !activeBoardId) return;
     var saveBase = getBoardSaveBase(fullBoardData);
-    var entry = JSON.stringify(fullBoardData);
+    var entry = redoStack.pop();
     undoStack.push(entry);
-    undoTotalBytes += entry.length;
-    fullBoardData = JSON.parse(redoStack.pop());
+    undoTotalBytes += entry.size;
+    applyBoardDelta(fullBoardData, entry.delta, false);
     setBoardSaveBase(fullBoardData, saveBase || fullBoardData);
     await persistBoardMutation();
   }
