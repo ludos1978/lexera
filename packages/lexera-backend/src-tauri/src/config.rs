@@ -204,3 +204,250 @@ fn backup_corrupt_identity(path: &PathBuf) {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    // --- resolve_templates_path ---
+
+    #[test]
+    fn resolve_templates_path_with_custom_value() {
+        let custom = Some("/my/custom/templates".to_string());
+        let result = resolve_templates_path(&custom);
+        assert_eq!(result, PathBuf::from("/my/custom/templates"));
+    }
+
+    #[test]
+    fn resolve_templates_path_with_none_falls_back_to_default() {
+        let result = resolve_templates_path(&None);
+        // Should end with lexera/templates regardless of the platform config dir
+        assert!(
+            result.ends_with("lexera/templates"),
+            "Expected path ending with lexera/templates, got: {}",
+            result.display()
+        );
+    }
+
+    // --- load_config ---
+
+    #[test]
+    fn load_config_with_valid_json() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+        let json = r#"{
+            "port": 9999,
+            "bind_address": "0.0.0.0",
+            "boards": [{"file": "board.md"}],
+            "templates_path": "/tpl"
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let cfg = load_config(&path.to_path_buf());
+        assert_eq!(cfg.port, 9999);
+        assert_eq!(cfg.bind_address, "0.0.0.0");
+        assert_eq!(cfg.boards.len(), 1);
+        assert_eq!(cfg.boards[0].file, "board.md");
+        assert_eq!(cfg.templates_path, Some("/tpl".to_string()));
+        assert!(cfg.incoming.is_none());
+    }
+
+    #[test]
+    fn load_config_with_invalid_json_returns_default() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+        fs::write(&path, "NOT VALID JSON!!!").unwrap();
+
+        let cfg = load_config(&path.to_path_buf());
+        assert_eq!(cfg.port, 13080);
+        assert_eq!(cfg.bind_address, "127.0.0.1");
+        assert!(cfg.boards.is_empty());
+    }
+
+    #[test]
+    fn load_config_missing_file_returns_default() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nonexistent.json");
+
+        let cfg = load_config(&path.to_path_buf());
+        assert_eq!(cfg.port, 13080);
+        assert_eq!(cfg.bind_address, "127.0.0.1");
+        assert!(cfg.boards.is_empty());
+    }
+
+    #[test]
+    fn load_config_partial_json_fills_defaults() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sync.json");
+        // Only port is specified; other fields should get defaults
+        fs::write(&path, r#"{"port": 5555}"#).unwrap();
+
+        let cfg = load_config(&path.to_path_buf());
+        assert_eq!(cfg.port, 5555);
+        assert_eq!(cfg.bind_address, "127.0.0.1");
+        assert!(cfg.boards.is_empty());
+        assert!(cfg.incoming.is_none());
+        assert!(cfg.templates_path.is_none());
+    }
+
+    // --- save_config ---
+
+    #[test]
+    fn save_config_creates_parent_dirs_and_writes_valid_json() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join("deep").join("sync.json");
+
+        let cfg = SyncConfig {
+            port: 8080,
+            bind_address: "192.168.1.1".to_string(),
+            boards: vec![BoardEntry {
+                file: "test.md".to_string(),
+                name: Some("Test Board".to_string()),
+            }],
+            incoming: Some(IncomingConfig {
+                board: "inbox.md".to_string(),
+                column: 2,
+            }),
+            templates_path: Some("/tpl".to_string()),
+        };
+
+        save_config(&path.to_path_buf(), &cfg).unwrap();
+
+        // File must exist and contain valid JSON
+        let content = fs::read_to_string(&path).unwrap();
+        let parsed: SyncConfig = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed.port, 8080);
+        assert_eq!(parsed.bind_address, "192.168.1.1");
+        assert_eq!(parsed.boards.len(), 1);
+        assert_eq!(parsed.boards[0].file, "test.md");
+        assert!(parsed.incoming.is_some());
+        assert_eq!(parsed.incoming.unwrap().column, 2);
+    }
+
+    // --- Config round-trip ---
+
+    #[test]
+    fn config_round_trip_preserves_data() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("roundtrip.json");
+
+        let original = SyncConfig {
+            port: 12345,
+            bind_address: "10.0.0.1".to_string(),
+            boards: vec![
+                BoardEntry {
+                    file: "a.md".to_string(),
+                    name: None,
+                },
+                BoardEntry {
+                    file: "b.md".to_string(),
+                    name: Some("B".to_string()),
+                },
+            ],
+            incoming: Some(IncomingConfig {
+                board: "inbox.md".to_string(),
+                column: 0,
+            }),
+            templates_path: Some("/my/templates".to_string()),
+        };
+
+        save_config(&path.to_path_buf(), &original).unwrap();
+        let loaded = load_config(&path.to_path_buf());
+
+        assert_eq!(loaded.port, original.port);
+        assert_eq!(loaded.bind_address, original.bind_address);
+        assert_eq!(loaded.boards.len(), original.boards.len());
+        assert_eq!(loaded.boards[0].file, "a.md");
+        assert_eq!(loaded.boards[1].name, Some("B".to_string()));
+        assert_eq!(loaded.templates_path, original.templates_path);
+        assert!(loaded.incoming.is_some());
+        assert_eq!(loaded.incoming.as_ref().unwrap().board, "inbox.md");
+        assert_eq!(loaded.incoming.as_ref().unwrap().column, 0);
+    }
+
+    // --- Identity persistence ---
+
+    #[test]
+    fn persist_identity_creates_file_and_preserves_on_reload() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sub").join("identity.json");
+
+        let user = crate::auth::User {
+            id: "test-uuid-1234".to_string(),
+            name: "Alice".to_string(),
+            email: Some("alice@example.com".to_string()),
+        };
+
+        // First write
+        persist_identity(&path.to_path_buf(), &user);
+        assert!(path.exists(), "Identity file should have been created");
+
+        // Read back
+        let content = fs::read_to_string(&path).unwrap();
+        let loaded: crate::auth::User = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, "test-uuid-1234");
+        assert_eq!(loaded.name, "Alice");
+        assert_eq!(loaded.email, Some("alice@example.com".to_string()));
+    }
+
+    #[test]
+    fn persist_identity_overwrites_existing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("identity.json");
+
+        let user1 = crate::auth::User {
+            id: "id-1".to_string(),
+            name: "First".to_string(),
+            email: None,
+        };
+        persist_identity(&path.to_path_buf(), &user1);
+
+        let user2 = crate::auth::User {
+            id: "id-2".to_string(),
+            name: "Second".to_string(),
+            email: Some("second@test.com".to_string()),
+        };
+        persist_identity(&path.to_path_buf(), &user2);
+
+        let content = fs::read_to_string(&path).unwrap();
+        let loaded: crate::auth::User = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, "id-2");
+        assert_eq!(loaded.name, "Second");
+    }
+
+    #[test]
+    fn create_and_persist_identity_generates_uuid() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("identity.json");
+
+        let user = create_and_persist_identity(&path.to_path_buf());
+
+        // Must be a valid UUID v4
+        assert!(
+            Uuid::parse_str(&user.id).is_ok(),
+            "Identity id should be a valid UUID, got: {}",
+            user.id
+        );
+        // Name should come from os_username helper
+        assert!(!user.name.is_empty());
+        assert!(user.email.is_none());
+
+        // File should exist on disk with the same data
+        let content = fs::read_to_string(&path).unwrap();
+        let loaded: crate::auth::User = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, user.id);
+    }
+
+    // --- SyncConfig default values ---
+
+    #[test]
+    fn sync_config_default_values() {
+        let cfg = SyncConfig::default();
+        assert_eq!(cfg.port, 13080);
+        assert_eq!(cfg.bind_address, "127.0.0.1");
+        assert!(cfg.boards.is_empty());
+        assert!(cfg.incoming.is_none());
+        assert!(cfg.templates_path.is_none());
+    }
+}
