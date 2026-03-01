@@ -146,9 +146,10 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - ~~Line 1026: checks for ".." and "/" but misses "./" and URL encoding~~
 - Fixed: has_path_traversal() with percent-decoding (commit f41165c8)
 
-### CSP Too Permissive
-- Both kanban and capture-ios allow 'unsafe-inline' for scripts
-- Backend tauri.conf.json also uses unsafe-inline
+### ~~CSP Too Permissive~~ PARTIALLY FIXED
+- ~~Backend and Kanban allow 'unsafe-inline' for scripts~~ FIXED: removed from script-src (commit 5cbe794e)
+- Capture-iOS still needs 'unsafe-inline' (inline script block in index.html)
+- style-src 'unsafe-inline' retained in all packages (needed for inline style attributes)
 
 ### No TLS
 - All connections unencrypted
@@ -187,7 +188,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 9. ~~capture.rs uses macOS-only AppleScript, no cross-platform alternative~~ FIXED: #[cfg(target_os)] platform guard with fallback stub (commit e98ea915)
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
 11. ~~BoardSettings merge verbose - 17 manual field assignments~~ FIXED: merge_from() with macro (commit afae724d)
-12. Frontend JS: global mutable state, ~~fetch without timeout~~, poll-based updates (10s/5s) -- fetch timeout FIXED (commit 35c2545e)
+12. Frontend JS: global mutable state, ~~fetch without timeout~~, poll-based updates (10s/5s) -- fetch timeout FIXED (commit 35c2545e); poll→SSE plan documented (needs new event types in BoardChangeEvent)
 13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
 14. ~~Excessive cloning in auth.rs and invite.rs~~ FIXED: borrow instead of clone, retain for cleanup (commit a70a33a0)
 
@@ -195,7 +196,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 1. Monolithic app.js (14,700 lines) - needs modularization
 2. WYSIWYG editor is a stub (58 lines, console.log noop)
 3. No test coverage at all
-4. Undo/redo serializes full board state (memory explosion risk)
+4. ~~Undo/redo serializes full board state (memory explosion risk)~~ MITIGATED: 10MB size cap + count cap (commit 93214dee)
 5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
 6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js (commits 73dc9c93, 1d1cad78)
 7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
@@ -220,7 +221,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
 9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
 10. Monolithic 880-line index.html with inline JS
-11. No search result navigation (can't click to go to result)
+11. ~~No search result navigation (can't click to go to result)~~ FIXED: click navigates to board + highlights card (commit 91d21a8e)
 12. No schema versioning for board format — core concern, not iOS-specific; add schemaVersion to YAML frontmatter when format evolution is needed
 
 ────────────────────────────────────────────────────────────────────────────────
