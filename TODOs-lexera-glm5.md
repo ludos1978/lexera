@@ -4461,3 +4461,77 @@ escapeIcalText(text): string
    - [ ] Create plugin interfaces
    - [ ] Create PluginRegistry
    - [ ] Migrate existing features to plugins
+
+---
+
+# Part VII: V2 Reference Specs
+
+Comprehensive V1 implementation specs are available in `packages/agent/specs/` for V2 reference.
+
+## Specs Summary
+
+**Total: 13 specs, 5,212 lines**
+
+### Shared Components (1,042 lines)
+
+| Spec | Source | Purpose |
+|------|--------|---------|
+| [Types](packages/agent/specs/shared/types/SPEC.md) | `src/types.ts` | KanbanBoard, KanbanColumn, KanbanCard |
+| [Parser](packages/agent/specs/shared/parser/SPEC.md) | `src/markdownParser.ts` | State machine, parsing rules |
+| [Markdown](packages/agent/specs/shared/markdown/SPEC.md) | `src/html/markdownRenderer.js` | Plugins, media, diagrams |
+
+### Core Components (1,446 lines)
+
+| Spec | Source | Purpose |
+|------|--------|---------|
+| [Board](packages/agent/specs/core/board/SPEC.md) | `src/html/boardRenderer.js` | DOM structure, folding |
+| [Editor](packages/agent/specs/core/editor/SPEC.md) | `src/html/cardEditor.js` | Inline editing, WYSIWYG |
+| [Gather](packages/agent/specs/core/gather/SPEC.md) | `src/board/GatherQueryEngine.ts` | Automatic sorting |
+| [StateMachine](packages/agent/specs/core/statemachine/SPEC.md) | `src/core/ChangeStateMachine.ts` | Unified change handling |
+
+### UX Components (1,622 lines)
+
+| Spec | Source | Purpose |
+|------|--------|---------|
+| [DragDrop](packages/agent/specs/ux/dragdrop/SPEC.md) | `src/html/dragDrop.js` | Drag state machine |
+| [Search](packages/agent/specs/ux/search/SPEC.md) | `src/dashboard/DashboardScanner.ts` | Dashboard scanner |
+| [Menus](packages/agent/specs/ux/menus/SPEC.md) | `src/html/menuOperations.js` | Context menus |
+| [Export](packages/agent/specs/ux/export/SPEC.md) | `src/html/exportMarpUI.js` | Dialog, Marp settings |
+
+### Services (602 lines)
+
+| Spec | Source | Purpose |
+|------|--------|---------|
+| [BoardRegistry](packages/agent/specs/services/boardregistry/SPEC.md) | `src/services/BoardRegistryService.ts` | Singleton manager |
+| [MediaTracker](packages/agent/specs/services/mediatracker/SPEC.md) | `src/services/MediaTracker.ts` | File change detection |
+
+## Spec Structure
+
+Each spec follows this template:
+
+```markdown
+# Feature Specification
+
+**File**: Source location
+**Lines**: Line count
+**Purpose**: What it does
+**Dependencies**: What it needs
+
+## UX Requirements
+- User-facing requirements
+
+## Architecture
+- Diagrams and flow charts
+
+## Data Structures
+- TypeScript interfaces
+
+## Functions
+- Public API
+
+## Integration Points
+- How it connects to other components
+
+## Migration Notes for V2
+- What to keep, improve, or port to Rust
+```
