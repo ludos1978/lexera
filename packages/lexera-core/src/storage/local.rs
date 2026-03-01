@@ -1704,6 +1704,106 @@ kanban-plugin: board
     }
 
     #[test]
+    fn test_crdt_recovery_from_corrupt_file() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        // Write corrupt data to the .crdt file
+        let crdt_path = dir.path().join("board.md.crdt");
+        fs::write(&crdt_path, b"this is not valid crdt data at all!!!").unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        // Board should load successfully despite corrupt .crdt
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+
+        // CRDT should have been rebuilt (check it exists in state)
+        let boards = storage.boards.read().unwrap();
+        let state = boards.get(&id).unwrap();
+        assert!(state.crdt.is_some(), "CRDT should be rebuilt from .md after corrupt .crdt");
+
+        // The rebuilt CRDT should produce a board matching the .md
+        let crdt_board = state.crdt.as_ref().unwrap().to_board();
+        assert_eq!(crdt_board.columns.len(), 2);
+        assert_eq!(crdt_board.columns[0].title, "Todo");
+        assert_eq!(crdt_board.columns[1].title, "Done");
+    }
+
+    #[test]
+    fn test_crdt_recovery_missing_crdt_file() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        // No .crdt file exists at all
+        let crdt_path = dir.path().join("board.md.crdt");
+        assert!(!crdt_path.exists());
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+
+        // CRDT should have been created fresh
+        let boards = storage.boards.read().unwrap();
+        let state = boards.get(&id).unwrap();
+        assert!(state.crdt.is_some(), "CRDT should be created fresh when .crdt file is missing");
+
+        // .crdt file should now exist on disk (saved during add_board)
+        assert!(crdt_path.exists(), ".crdt file should be written to disk after creation");
+    }
+
+    #[test]
+    fn test_crdt_recovery_preserves_board_content() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        // Write corrupt .crdt to force recovery
+        let crdt_path = dir.path().join("board.md.crdt");
+        fs::write(&crdt_path, &[0xFF, 0xFE, 0x00, 0x01, 0x02]).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        assert_eq!(board.columns.len(), 2);
+
+        // Verify column titles
+        assert_eq!(board.columns[0].title, "Todo");
+        assert_eq!(board.columns[1].title, "Done");
+
+        // Verify card contents
+        assert_eq!(board.columns[0].cards.len(), 2);
+        assert_eq!(board.columns[0].cards[0].content, "Buy groceries");
+        assert!(!board.columns[0].cards[0].checked);
+        assert_eq!(board.columns[0].cards[1].content, "Walk the dog");
+        assert!(!board.columns[0].cards[1].checked);
+
+        assert_eq!(board.columns[1].cards.len(), 1);
+        assert_eq!(board.columns[1].cards[0].content, "Laundry");
+        assert!(board.columns[1].cards[0].checked);
+
+        // Verify the CRDT also produces the same content
+        let boards = storage.boards.read().unwrap();
+        let state = boards.get(&id).unwrap();
+        let crdt_board = state.crdt.as_ref().unwrap().to_board();
+        assert_eq!(crdt_board.columns.len(), 2);
+        assert_eq!(crdt_board.columns[0].cards.len(), 2);
+        assert_eq!(crdt_board.columns[1].cards.len(), 1);
+        assert!(crdt_board.columns[0].cards[0].content.contains("Buy groceries"));
+        assert!(crdt_board.columns[1].cards[0].content.contains("Laundry"));
+    }
+
+    #[test]
     fn test_include_same_file_twice_both_get_cards() {
         // Two columns including the same file should both get cards — this is
         // not a cycle, just two views of the same data
