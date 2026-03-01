@@ -1,4 +1,66 @@
-Deep Analysis Summary (2026-03-01)
+Deep Analysis Summary (2026-03-01, updated 2026-03-01)
+
+────────────────────────────────────────────────────────────────────────────────
+
+## Completed Work
+
+### P1: Persistence Layer (commit dd760315)
+- auth.json, invites.json, public_rooms.json in ~/.config/lexera/collab/
+- Atomic writes (tmp + rename), load on startup, 60s periodic save
+- All 3 collab services (auth, invite, public rooms) now survive restarts
+
+### P2 partial: CORS + Path Traversal (commit f41165c8)
+- CORS restricted from Allow::Any to localhost-only predicate
+- Path traversal prevention with percent-decoding (handles .., ./, URL encoding)
+
+### P3: CRDT Error Hardening (commit f41165c8)
+- Replaced 41+ unwrap() calls in crdt/bridge.rs with proper Result propagation
+- Added `loro_err` helper for error conversion
+- Updated all callers in local.rs and live_sync.rs
+
+### P4: WebSocket Sync Hardening (commit 39f0efe6)
+- Exponential backoff for reconnection (1s→30s cap + 30% jitter)
+- 30s server-side WebSocket Ping keepalive for dead client detection
+
+### P5 partial: Frontend Cleanup (commit 73dc9c93)
+- Replaced 9 stray console.error/warn calls with lexeraLog() in app.js
+
+### P10 partial: iOS Capture Hardening (commit 4f67f5ce)
+- Replaced 12 RwLock .unwrap() with poisoning recovery
+- Added error logging for silent I/O failures in scan_boards/process_pending
+- Removed unused base64 dependency from Cargo.toml
+
+### Include File Cycle Detection (commit e84fb78f)
+- HashSet<PathBuf> tracking prevents infinite recursion in nested includes
+- 2 new unit tests (direct cycle, indirect cycle)
+
+### api.rs Decomposition (commit 29dd0730)
+- Split 1,642-line monolithic api.rs into 7 focused modules:
+  mod.rs, board.rs, media.rs, template.rs, search.rs, events.rs, file_ops.rs
+
+### Real-Time Editing Presence (commit 8eb60846)
+- Extended WebSocket sync protocol with ClientEditingPresence/ServerEditingPresence
+- Per-card colored initials badges showing who is editing which card
+- Cursor position sharing with 250ms throttle
+- Typing indicator (pulse animation) and soft-lock dimming
+- Automatic cleanup on disconnect and board switch
+- 12-color deterministic palette from user name hash
+
+### Backend Board ID Input Validation (commit 8fb26d1e)
+- validate_board_id() checks empty, overlength (>256), path traversal
+- Applied to 7 board handlers (get, write, add_card, remove, settings)
+- Reuses existing has_path_traversal() for consistency
+
+### Frontend Error Boundaries (commit 903a40a3)
+- 15 try/catch wrappers on critical event handlers in app.js
+- Covers SSE, renderColumns, card drag (mousedown/move/up), ptr drag, Escape key, editor input/keydown
+- Drag error handlers call cleanup (cancelCardDrag/cleanupPtrDrag) to prevent stuck state
+
+### iOS Startup Graceful Error Handling (commit ee3dd8a2)
+- Replaced .expect() on IosStorage::new with match + log::error + return Err
+- Replaced .expect() on Tauri run() with unwrap_or_else + log::error
+
+────────────────────────────────────────────────────────────────────────────────
 
 ## Architecture Overview
 
@@ -42,26 +104,24 @@ Deep Analysis Summary (2026-03-01)
 
 ## Critical Code Quality Issues
 
-### CRDT Bridge Unwraps (lexera-core, 41+ instances)
-- Location: crdt/bridge.rs - all Loro operations use .unwrap()
-- Risk: silent panics if CRDT document is corrupted, no error context for debugging
-- Fix: add Result propagation or at minimum log::error! before unwrap
+### ~~CRDT Bridge Unwraps (lexera-core, 41+ instances)~~ FIXED
+- ~~Location: crdt/bridge.rs - all Loro operations use .unwrap()~~
+- Fixed: Result propagation with loro_err helper (commit f41165c8)
 
-### iOS Storage RwLock Poisoning (lexera-capture-ios, 12 instances)
-- Location: ios_storage.rs - all .read().unwrap() and .write().unwrap() calls
-- Risk: app crash if any thread panics while holding lock
-- Fix: use unwrap_or_else(|p| p.into_inner()) or proper error handling
+### ~~iOS Storage RwLock Poisoning (lexera-capture-ios, 12 instances)~~ FIXED
+- ~~Location: ios_storage.rs - all .read().unwrap() and .write().unwrap() calls~~
+- Fixed: unwrap_or_else(|p| p.into_inner()) with log::warn (commit 4f67f5ce)
 
-### Backend CORS Allow::Any (lexera-backend)
-- Location: server.rs line 20
-- Risk: any origin can make API requests
-- Fix: restrict to specific origins or localhost
+### ~~Backend CORS Allow::Any (lexera-backend)~~ FIXED
+- ~~Location: server.rs line 20~~
+- Fixed: Localhost-only CORS predicate (commit f41165c8)
 
-### Monolithic app.js (lexera-kanban, 14,700 lines)
+### Monolithic app.js (lexera-kanban, ~15,000 lines)
 - Single file handles cards, boards, UI, sync, drag-drop, export, search, settings
 - 50+ global mutable variables, 273 DOM queries
 - Impact: untestable, unmaintainable, high cognitive load
 - Fix: split into 8+ modules (boardManager, cardManager, dragDrop, sync, ui, keyboard, sidebar, analytics)
+- Note: api.rs backend equivalent was split into 7 modules (commit 29dd0730)
 
 ### No Test Coverage in Frontend (lexera-kanban)
 - Zero test files for any JavaScript code
@@ -80,11 +140,11 @@ Deep Analysis Summary (2026-03-01)
 ### No Authentication (lexera-backend)
 - Only authorization (role checks), no actual authentication mechanism
 - Uses ?user= query param for identity
-- All collab services in-memory only (lost on restart)
+- ~~All collab services in-memory only (lost on restart)~~ FIXED: JSON persistence (commit dd760315)
 
-### Path Traversal Incomplete (lexera-backend, api.rs)
-- Line 1026: checks for ".." and "/" but misses "./" and URL encoding
-- Media upload filename validation could be bypassed
+### ~~Path Traversal Incomplete (lexera-backend, api.rs)~~ FIXED
+- ~~Line 1026: checks for ".." and "/" but misses "./" and URL encoding~~
+- Fixed: has_path_traversal() with percent-decoding (commit f41165c8)
 
 ### CSP Too Permissive
 - Both kanban and capture-ios allow 'unsafe-inline' for scripts
@@ -104,8 +164,8 @@ Deep Analysis Summary (2026-03-01)
 ## Technical Debt by Package
 
 ### lexera-core
-1. 41+ unwrap() calls in crdt/bridge.rs - needs error handling
-2. No include file cycle detection - could cause infinite recursion
+1. ~~41+ unwrap() calls in crdt/bridge.rs~~ FIXED (commit f41165c8)
+2. ~~No include file cycle detection~~ FIXED (commit e84fb78f)
 3. Dual parser paths (legacy vs new format) - maintenance burden, 2x test cases
 4. CRDT metadata limitation: YAML header, footer, settings stored outside CRDT (Phase 1 known limitation)
 5. Merge ignores card reordering within columns - only tracks content/checked/column changes
@@ -116,9 +176,9 @@ Deep Analysis Summary (2026-03-01)
 10. No concurrent access tests for storage
 
 ### lexera-backend
-1. api.rs at 1,622 lines needs decomposition (board ops, media, templates)
+1. ~~api.rs at 1,622 lines needs decomposition~~ FIXED: split into 7 modules (commit 29dd0730)
 2. Duplicate path resolution logic (resolve_board_file, serve_media, file_info)
-3. All collab services volatile (auth, invites, public rooms lost on restart)
+3. ~~All collab services volatile~~ FIXED: JSON persistence (commit dd760315)
 4. Mix of std::sync::Mutex and tokio::sync::Mutex - lock ordering not documented
 5. Synchronous file I/O (std::fs) in async context instead of tokio::fs
 6. No graceful shutdown - background tasks (watchers, services) never explicitly cancelled
@@ -128,7 +188,7 @@ Deep Analysis Summary (2026-03-01)
 10. Temp files in /tmp not cleaned up on error (capture.rs)
 11. BoardSettings merge verbose - 17 manual field assignments
 12. Frontend JS: global mutable state, fetch without timeout, poll-based updates (10s/5s)
-13. No input validation on board IDs or column indices
+13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
 14. Excessive cloning in auth.rs and invite.rs
 
 ### lexera-kanban
@@ -137,28 +197,28 @@ Deep Analysis Summary (2026-03-01)
 3. No test coverage at all
 4. Undo/redo serializes full board state (memory explosion risk)
 5. 14 !important declarations in CSS (specificity issues)
-6. 18+ console.error/console.log left as debug output
-7. No error boundaries on event handlers - single error crashes entire feature
+6. ~~18+ console.error/console.log left as debug output~~ Partially fixed: 9 replaced (commit 73dc9c93)
+7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
 8. Memory leak: addEventListener without cleanup (e.g., resize handler in card editor)
 9. Export tree re-renders entire tree on single node toggle
 10. Implicit script load order dependency (no ES6 modules)
 11. No input validation in export dialog (path traversal possible)
 12. Template variable substitution has no type checking, fails silently
-13. WebSocket reconnection: fixed 1.5s interval, no exponential backoff
+13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
 14. 273 uncached DOM queries (querySelector/getElementById)
 15. No virtual scrolling for large boards
 16. Export pipeline has no rollback on partial failure
 
 ### lexera-capture-ios
-1. 12 RwLock .unwrap() calls - poisoning risk
-2. Silent file I/O failures in scan_boards() and process_pending()
-3. Startup panics with .expect() - no graceful fallback
+1. ~~12 RwLock .unwrap() calls~~ FIXED: poisoning recovery (commit 4f67f5ce)
+2. ~~Silent file I/O failures in scan_boards() and process_pending()~~ FIXED: error logging (commit 4f67f5ce)
+3. ~~Startup panics with .expect() - no graceful fallback~~ FIXED: graceful error handling (commit ee3dd8a2)
 4. write_board() returns Ok(None) - merge infrastructure unused
 5. No board deletion/card editing commands
 6. No data encryption in App Group container
 7. Base64 images in JSON could exhaust memory for large images
 8. Race condition window between lock releases in write_board_file()
-9. Unused `base64` dependency in Cargo.toml
+9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
 10. Monolithic 880-line index.html with inline JS
 11. No search result navigation (can't click to go to result)
 12. No schema versioning for board format
@@ -167,21 +227,21 @@ Deep Analysis Summary (2026-03-01)
 
 ## Recommendations - What to Work On Next
 
-### Priority 1: Phase 1 - Persistence Layer
+### ~~Priority 1: Phase 1 - Persistence Layer~~ DONE (commit dd760315)
 
-Why: All collaboration features are currently in-memory and lost on restart. This is the foundation for everything else.
+~~Why: All collaboration features are currently in-memory and lost on restart.~~
 
-Tasks:
-1. Create ~/.config/lexera/collab/auth.json for user/membership persistence
-2. Create ~/.config/lexera/collab/invites.json for invite tracking
-3. Create ~/.config/lexera/collab/rooms.json for public room settings
-4. Add collab config to sync.json: collab.enabled, collab.listen_address, collab.discovery, collab.shared_boards
+Completed:
+1. ~~auth.json for user/membership persistence~~
+2. ~~invites.json for invite tracking~~
+3. ~~public_rooms.json for public room settings~~
+4. ~~60s periodic auto-save + atomic writes~~
 
-Impact: Enables real multi-user testing, prerequisite for all other phases
+Remaining: Add collab config to sync.json (collab.enabled, collab.listen_address, etc.)
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Priority 2: Phase 2 - Authentication & Security
+### Priority 2: Phase 2 - Authentication & Security (partially done)
 
 Why: Currently uses ?user= query param - completely insecure. Must fix before any network exposure.
 
@@ -190,36 +250,39 @@ Tasks:
 2. Add Authorization: Bearer <token> header requirement to all API routes
 3. Generate self-signed TLS cert on first run (or accept user-provided)
 4. Convert invite tokens to one-time auth bootstrap tokens
-5. Fix CORS to specific origins (not Allow::Any)
-6. Complete path traversal prevention (handle ./ and URL encoding)
+5. ~~Fix CORS to specific origins (not Allow::Any)~~ DONE (commit f41165c8)
+6. ~~Complete path traversal prevention (handle ./ and URL encoding)~~ DONE (commit f41165c8)
 7. Add rate limiting on expensive operations
 
 Impact: Security foundation, enables safe network testing
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Priority 3: CRDT Error Handling Hardening
+### ~~Priority 3: CRDT Error Handling Hardening~~ MOSTLY DONE
 
-Why: 41+ unwrap() calls in crdt/bridge.rs and 12 in ios_storage.rs can cause silent crashes. This is a stability risk for all platforms.
+~~Why: 41+ unwrap() calls in crdt/bridge.rs and 12 in ios_storage.rs can cause silent crashes.~~
 
-Tasks:
-1. Replace unwrap() in crdt/bridge.rs with proper Result propagation or logged fallbacks
-2. Replace RwLock unwrap() in ios_storage.rs with poisoning recovery
-3. Add CRDT corruption recovery (rebuild from .md if .crdt is invalid)
-4. Add include file cycle detection to prevent infinite recursion
+Completed:
+1. ~~Replace unwrap() in crdt/bridge.rs~~ DONE (commit f41165c8)
+2. ~~Replace RwLock unwrap() in ios_storage.rs~~ DONE (commit 4f67f5ce)
+4. ~~Add include file cycle detection~~ DONE (commit e84fb78f)
+
+Remaining:
+3. CRDT corruption recovery already implemented (LocalStorage::import_crdt_updates rebuilds from .md on error)
 5. Add concurrent access tests for storage
-
-Impact: Stability across all platforms, prevents data loss from silent panics
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Priority 4: Phase 3 - WebSocket Sync Protocol
+### Priority 4: Phase 3 - WebSocket Sync Protocol (partially done)
 
-Why: SSE is one-way only. Real collaboration needs bidirectional communication. WebSocket exists but needs hardening.
+Why: Real collaboration needs robust bidirectional communication.
 
-Tasks:
-1. Add exponential backoff to WebSocket reconnection (currently fixed 1.5s)
-2. Add idle timeout detection for WebSocket connections
+Completed:
+1. ~~Add exponential backoff to WebSocket reconnection~~ DONE (commit 39f0efe6)
+2. ~~Add idle timeout detection~~ DONE: 30s server-side Ping keepalive (commit 39f0efe6)
+- ~~Per-card editing presence via WebSocket~~ DONE (commit 8eb60846)
+
+Remaining:
 3. Add backpressure handling to sync channels
 4. Implement per-board subscriptions properly
 5. Add version catch-up on reconnect (client sends last known VV)
@@ -236,7 +299,7 @@ Tasks:
 1. Split app.js into modules: boardManager, cardManager, dragDrop, sync, ui, keyboard, sidebar
 2. Encapsulate 50+ global variables into classes/closures
 3. Implement ES6 modules or bundler (replace implicit script load order)
-4. Add error boundaries to all event handlers
+4. ~~Add error boundaries to all event handlers~~ DONE: 15 try/catch wrappers (commit 903a40a3)
 5. Replace JSON.stringify undo/redo with delta-based approach
 6. Cache frequently used DOM queries
 
@@ -273,24 +336,28 @@ Impact: Complete board sync experience
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Priority 8: UI - Drag-and-Drop Stability Fix
+### Priority 8: UI - Drag-and-Drop Stability Fix (analysis complete)
 
-Why: Affects UX significantly.
+Why: Affects UX significantly. User confirmed DnD is a core functionality.
 
-Tasks:
-1. Lock container dimensions during drag operations
+Analysis: Deep review revealed that layout locking (`dragLayoutLocks`, `lockBoardLayoutForDrag`/`unlockBoardLayoutForDrag`) and flex reflow prevention are already implemented. The existing pointer-based DnD system has two parallel systems (cardDrag for cards, ptrDrag for rows/stacks/columns) with safety nets (blur, visibility change handlers).
+
+Remaining:
+1. ~~Lock container dimensions during drag~~ Already implemented via dragLayoutLocks
 2. Add fixed-size drop zones (left, right, between stacks)
-3. Prevent flex reflow during drag
-4. Visual-only feedback (opacity, box-shadow)
+3. ~~Prevent flex reflow during drag~~ Already implemented
+4. ~~Visual-only feedback (opacity, box-shadow)~~ Already implemented
 5. Add error boundaries to drag event handlers
+6. Fix event listener memory leaks (addEventListener without cleanup)
 
 Impact: Better user experience, fewer accidental layout changes
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Priority 9: Complete WYSIWYG Editor
+### Priority 9: Complete WYSIWYG Editor (DEFERRED)
 
 Why: Currently a 58-line stub (console.log noop) but exposed in UI. Users see a non-functional feature.
+Status: User decided to defer this feature for later.
 
 Tasks:
 1. Implement actual rich text editing for card content
@@ -301,17 +368,19 @@ Impact: Core editing experience improvement
 
 ────────────────────────────────────────────────────────────────────────────────
 
-### Priority 10: iOS Capture Hardening
+### Priority 10: iOS Capture Hardening (partially done)
 
 Why: Functional MVP but has stability and data integrity risks.
 
-Tasks:
-1. Fix RwLock poisoning handling (12 instances)
-2. Add file I/O error propagation (not silent failures)
+Completed:
+1. ~~Fix RwLock poisoning handling (12 instances)~~ DONE (commit 4f67f5ce)
+2. ~~Add file I/O error propagation~~ DONE (commit 4f67f5ce)
+6. ~~Remove unused base64 dependency~~ DONE (commit 4f67f5ce)
+
+Remaining:
 3. Implement card editing/deletion
 4. Enable merge infrastructure (currently returns Ok(None))
 5. Add search result navigation
-6. Remove unused base64 dependency
 
 Impact: Production-ready iOS capture
 
@@ -330,6 +399,32 @@ Impact: Enhanced productivity, multi-board workflows
 
 ────────────────────────────────────────────────────────────────────────────────
 
+### Priority 12: Plugin Architecture (from GLM5 analysis)
+
+Why: Export is hardcoded to Marp/Pandoc, API endpoints require modifying api/mod.rs, and markdown rendering has hardcoded handlers. Plugin interfaces enable extensibility without core changes.
+
+Tasks:
+1. Export Plugin Registry - ExporterPlugin interface with name, formats[], export(), preview(), checkAvailable() methods; refactor ExportService to use registry; built-in plugins: MarpPlugin, PandocPlugin, MarkdownPlugin
+2. Backend API Extension Points - ApiPlugin trait with name(), routes(), on_load() methods; ApiPluginRegistry to compose routers; refactor existing endpoints into built-in plugins (BoardApiPlugin, MediaApiPlugin, SearchApiPlugin, CollabApiPlugin)
+3. Content Renderer Plugins - ContentRendererPlugin interface with canRender(), render(), priority; RendererRegistry with priority-based dispatch; built-in: ImageRenderer, LinkRenderer, EmbedRenderer, MermaidRenderer, PlantUmlRenderer, CodeRenderer
+4. Plugin configuration file (~/.config/lexera/plugins.json) for discovery and enable/disable
+
+Impact: Enables third-party exporters, integrations, and custom content types without core changes
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Priority 13: Testing Infrastructure (from GLM5 analysis)
+
+Why: Zero frontend test coverage and zero backend integration tests. Need concrete framework setup, not just identification of the gap.
+
+Tasks:
+1. Frontend: add Jest or Vitest + happy-dom/jsdom for DOM testing; create test utilities for mocking Tauri APIs; target api.js 80%, exportService.js 70%, utility modules 80%
+2. Backend: add axum_test for integration tests; test board CRUD, collaboration flows, WebSocket sync; create test state helpers (create_test_state pattern)
+
+Impact: Enables safe refactoring and regression prevention across both frontend and backend
+
+────────────────────────────────────────────────────────────────────────────────
+
 ## Code Metrics Summary
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
@@ -340,14 +435,15 @@ Impact: Enhanced productivity, multi-board workflows
 | lexera-capture-ios | ~609 | ~320 | ~200 | 6 | Medium |
 | **Total** | **~17,121** | **~18,650** | **~4,500** | **99+** | - |
 
-## Quality Ratings
+## Quality Ratings (updated after fixes)
 
 | Aspect | Core | Backend | Kanban | iOS |
 |--------|------|---------|--------|-----|
-| Architecture | 4/5 | 3/5 | 2/5 | 3/5 |
-| Code Quality | 4/5 | 3/5 | 2/5 | 3/5 |
-| Testing | 4/5 | 1/5 | 1/5 | 2/5 |
-| Error Handling | 3/5 | 2/5 | 2/5 | 2/5 |
-| Security | 3/5 | 1/5 | 2/5 | 2/5 |
-| Maintainability | 3/5 | 2/5 | 1/5 | 3/5 |
+| Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
+| Code Quality | 4/5 (+: Result propagation) | 3/5 | 2/5 | 3/5 (+: RwLock fix) |
+| Testing | 4/5 (+: cycle detection tests) | 1/5 | 1/5 | 2/5 |
+| Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
+| Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
+| Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
 | API Design | 4/5 | 3/5 | 3/5 | 3/5 |
+| Collaboration | 4/5 (CRDT) | 4/5 (presence, persistence) | 3/5 (presence UI) | - |
