@@ -170,7 +170,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 4. CRDT metadata limitation: YAML header, footer, settings stored outside CRDT (Phase 1 known limitation)
 5. Merge ignores card reordering within columns - only tracks content/checked/column changes
 6. Include files merged as atomic chunks, not card-level - concurrent edits cause full conflict
-7. Search uses ASCII case sensitivity, no Unicode/accent normalization
+7. ~~Search uses ASCII case sensitivity, no Unicode/accent normalization~~ FIXED: unicode-normalization crate (commit a984c536)
 8. has_structural_mismatch() may false-trigger on implicit Default rows/stacks
 9. No CRDT corruption recovery tests
 10. No concurrent access tests for storage
@@ -180,13 +180,13 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 2. ~~Duplicate path resolution logic (resolve_board_file, serve_media, file_info)~~ FIXED: centralized in api/mod.rs
 3. ~~All collab services volatile~~ FIXED: JSON persistence (commit dd760315)
 4. ~~Mix of std::sync::Mutex and tokio::sync::Mutex - lock ordering not documented~~ FIXED: documented in state.rs (commit f2ae0c78)
-5. Synchronous file I/O (std::fs) in async context instead of tokio::fs
-6. No graceful shutdown - background tasks (watchers, services) never explicitly cancelled
+5. ~~Synchronous file I/O (std::fs) in async context instead of tokio::fs~~ FIXED: tokio::fs + spawn_blocking (commit 5a3afcec)
+6. ~~No graceful shutdown - background tasks never explicitly cancelled~~ FIXED: watch shutdown signal (commit 44ee5951)
 7. SSE keep-alive hardcoded 30s, WebSocket timeout hardcoded 10s
 8. Hardcoded discovery port (41820), broadcast only (no multicast for subnets)
 9. capture.rs uses macOS-only AppleScript, no cross-platform alternative
 10. ~~Temp files in /tmp not cleaned up on error (capture.rs)~~ FIXED: all error paths clean up
-11. BoardSettings merge verbose - 17 manual field assignments
+11. ~~BoardSettings merge verbose - 17 manual field assignments~~ FIXED: merge_from() with macro (commit afae724d)
 12. Frontend JS: global mutable state, fetch without timeout, poll-based updates (10s/5s)
 13. ~~No input validation on board IDs or column indices~~ FIXED: validate_board_id() (commit 8fb26d1e)
 14. Excessive cloning in auth.rs and invite.rs
@@ -197,7 +197,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 3. No test coverage at all
 4. Undo/redo serializes full board state (memory explosion risk)
 5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
-6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js; 15 remain in exportUI.js
+6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js (commits 73dc9c93, 1d1cad78)
 7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
 8. ~~Memory leak: addEventListener without cleanup~~ FIXED: showHtmlMenu click-outside leak (commit 9553c202); card editors use DOM replacement for cleanup
 9. Export tree re-renders entire tree on single node toggle
