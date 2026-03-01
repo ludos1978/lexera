@@ -124,14 +124,14 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 - Note: api.rs backend equivalent was split into 7 modules (commit 29dd0730)
 
 ### ~~No Test Coverage in Frontend (lexera-kanban)~~ FIXED
-- ~~Zero test files for any JavaScript code~~ 234 tests across 4 test files (templates, api, exportService, appUtils)
+- ~~Zero test files for any JavaScript code~~ 264 tests across 5 test files (templates, api, exportService, appUtils, undoDelta)
 - ~~No test framework configured~~ Vitest + IIFE loader
 - ~~All testing is manual~~ Automated test suite
 
-### Undo/Redo Memory Issue (lexera-kanban)
-- Uses JSON.stringify of full board state per action (MAX 100 entries)
-- With 1000 cards: ~500KB per entry = up to 50MB memory
-- Fix: implement delta-based undo or leverage CRDT undo
+### ~~Undo/Redo Memory Issue (lexera-kanban)~~ FIXED
+- ~~Uses JSON.stringify of full board state per action (MAX 100 entries)~~
+- ~~With 1000 cards: ~500KB per entry = up to 50MB memory~~
+- Fixed: delta-based undo/redo storing only structural diffs, 5x+ memory reduction (commit 3f18e76a)
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -195,10 +195,10 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 ### lexera-kanban
 1. Monolithic app.js (14,700 lines) - needs modularization
 2. WYSIWYG editor is a stub (58 lines, console.log noop)
-3. ~~No test coverage at all~~ FIXED: Vitest + 234 tests across 4 files (commits e538a088, 596e1a14, 1f150ad0, f981ce3a)
-4. ~~Undo/redo serializes full board state (memory explosion risk)~~ MITIGATED: 10MB size cap + count cap (commit 93214dee)
+3. ~~No test coverage at all~~ FIXED: Vitest + 264 tests across 5 files (commits e538a088, 596e1a14, 1f150ad0, f981ce3a, 3f18e76a)
+4. ~~Undo/redo serializes full board state (memory explosion risk)~~ FIXED: delta-based undo/redo, 5x+ memory reduction (commits 93214dee, 3f18e76a)
 5. ~~14 !important declarations in CSS (specificity issues)~~ FIXED: reduced to 7, all override JS inline drag styles
-6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js (commits 73dc9c93, 1d1cad78)
+6. ~~18+ console.error/console.log left as debug output~~ FIXED in app.js+api.js+exportUI.js+exportService.js (commits 73dc9c93, 1d1cad78, ee33f76b)
 7. ~~No error boundaries on event handlers - single error crashes entire feature~~ FIXED: 15 try/catch wrappers (commit 903a40a3)
 8. ~~Memory leak: addEventListener without cleanup~~ FIXED: showHtmlMenu click-outside leak (commit 9553c202); card editors use DOM replacement for cleanup
 9. ~~Export tree re-renders entire tree on single node toggle~~ FIXED: updateSelectionClasses (commit 3a110752)
@@ -432,9 +432,9 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 |---------|----------|--------|---------|-------|--------|
 | lexera-core | ~9,925 | - | - | 429 | Good |
 | lexera-backend | ~5,887 | ~1,330 | ~200 | 119 | Good |
-| lexera-kanban | ~700 | ~17,000 | ~4,100 | 234 (JS) | Good |
+| lexera-kanban | ~700 | ~17,000 | ~4,100 | 264 (JS) | Good |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 28 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **810** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **840** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -467,7 +467,7 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
 | Code Quality | 4/5 (+: Result propagation) | 3/5 | 2/5 | 3/5 (+: RwLock fix) |
-| Testing | 5/5 (429 tests) | 4/5 (119 tests, full service coverage) | 2/5 (+: 234 tests) | 3/5 (+: 28 unit tests) |
+| Testing | 5/5 (429 tests) | 4/5 (119 tests, full service coverage) | 3/5 (264 tests across 5 files) | 3/5 (+: 28 unit tests) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
 | Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
