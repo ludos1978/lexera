@@ -8,6 +8,8 @@ use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 /// Fallback ports to try when the configured port is in use.
 const FALLBACK_PORTS: &[u16] = &[13080, 12080, 14080, 11080, 15080];
+/// Milliseconds to wait after shutting down the old server before rebinding.
+const RESTART_REBIND_DELAY_MS: u64 = 200;
 
 fn build_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
@@ -144,7 +146,7 @@ pub async fn restart_server(
     }
 
     // Brief pause to let the old listener release
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(RESTART_REBIND_DELAY_MS)).await;
 
     // Build candidate port list (no mutex held here)
     let mut candidates: Vec<u16> = vec![new_port];

@@ -9,6 +9,21 @@ use uuid::Uuid;
 /// Re-export shared config types from lexera-core.
 pub use lexera_core::config::{BoardEntry, IncomingConfig};
 
+/// Default HTTP server port for the backend.
+pub const DEFAULT_PORT: u16 = 13080;
+/// Default network interface to bind to (localhost only).
+pub const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1";
+/// Config directory name under the platform config root.
+pub const CONFIG_DIR_NAME: &str = "lexera";
+/// Main sync configuration filename.
+pub const SYNC_CONFIG_FILENAME: &str = "sync.json";
+/// Local user identity filename.
+pub const IDENTITY_FILENAME: &str = "identity.json";
+/// Templates subdirectory name inside the config directory.
+pub const TEMPLATES_DIR_NAME: &str = "templates";
+/// Collaboration service persistence subdirectory.
+pub const COLLAB_DIR_NAME: &str = "collab";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
     #[serde(default = "default_port")]
@@ -24,11 +39,11 @@ pub struct SyncConfig {
 }
 
 fn default_port() -> u16 {
-    13080
+    DEFAULT_PORT
 }
 
 fn default_bind_address() -> String {
-    "127.0.0.1".to_string()
+    DEFAULT_BIND_ADDRESS.to_string()
 }
 
 impl Default for SyncConfig {
@@ -51,8 +66,8 @@ pub fn resolve_templates_path(config_value: &Option<String>) -> PathBuf {
     } else {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("lexera")
-            .join("templates")
+            .join(CONFIG_DIR_NAME)
+            .join(TEMPLATES_DIR_NAME)
     }
 }
 
@@ -62,7 +77,7 @@ pub fn resolve_templates_path(config_value: &Option<String>) -> PathBuf {
 pub fn get_backend_url() -> Result<String, String> {
     let config = load_config(&default_config_path());
     let host = if config.bind_address == "0.0.0.0" {
-        "127.0.0.1".to_string()
+        DEFAULT_BIND_ADDRESS.to_string()
     } else {
         config.bind_address
     };
@@ -73,8 +88,8 @@ pub fn get_backend_url() -> Result<String, String> {
 pub fn default_config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("lexera")
-        .join("sync.json")
+        .join(CONFIG_DIR_NAME)
+        .join(SYNC_CONFIG_FILENAME)
 }
 
 /// Load config from path. Returns default if file doesn't exist.
@@ -106,8 +121,8 @@ pub fn save_config(path: &PathBuf, config: &SyncConfig) -> Result<(), std::io::E
 pub fn load_or_create_identity() -> crate::auth::User {
     let path = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("lexera")
-        .join("identity.json");
+        .join(CONFIG_DIR_NAME)
+        .join(IDENTITY_FILENAME);
 
     match fs::read_to_string(&path) {
         Ok(content) => match serde_json::from_str::<crate::auth::User>(&content) {

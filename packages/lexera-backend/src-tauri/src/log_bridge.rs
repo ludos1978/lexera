@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use tokio::sync::broadcast;
 
+/// Maximum number of log entries to keep in the in-memory ring buffer.
 const MAX_LOG_ENTRIES: usize = 2000;
+/// Capacity of the log broadcast channel for live log streaming.
+const LOG_BROADCAST_CAPACITY: usize = 512;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +47,7 @@ impl BackendLogHub {
 }
 
 static LOG_HUB: LazyLock<BackendLogHub> = LazyLock::new(|| {
-    let (tx, _) = broadcast::channel(512);
+    let (tx, _) = broadcast::channel(LOG_BROADCAST_CAPACITY);
     BackendLogHub {
         entries: Mutex::new(VecDeque::with_capacity(MAX_LOG_ENTRIES)),
         tx,
@@ -60,7 +63,7 @@ impl BackendLogFile {
     fn new() -> Self {
         let path = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("lexera")
+            .join(crate::config::CONFIG_DIR_NAME)
             .join("logs")
             .join("backend.log");
         let file = Self::open(&path).ok();

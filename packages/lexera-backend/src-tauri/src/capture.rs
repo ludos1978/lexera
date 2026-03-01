@@ -11,6 +11,15 @@ pub type ClipboardEntry = lexera_core::capture::CaptureEntry;
 /// Shared clipboard history, newest first.
 pub type ClipboardHistory = Arc<Mutex<Vec<ClipboardEntry>>>;
 
+/// Maximum number of clipboard entries to retain in memory.
+const MAX_CLIPBOARD_HISTORY: usize = 50;
+/// Width of the quick-capture popup window in logical pixels.
+const CAPTURE_WINDOW_WIDTH: f64 = 420.0;
+/// Height of the quick-capture popup window in logical pixels.
+const CAPTURE_WINDOW_HEIGHT: f64 = 460.0;
+/// Milliseconds to wait for the simulated Cmd+C to complete before reading clipboard.
+const COPY_SIMULATION_DELAY_MS: u64 = 150;
+
 static NEXT_ENTRY_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// Read current clipboard content and add as a new entry to the history.
@@ -47,8 +56,7 @@ pub fn capture_clipboard_to_history(history: &ClipboardHistory) {
 
     if let Ok(mut hist) = history.lock() {
         hist.insert(0, entry);
-        // Keep max 50 entries
-        hist.truncate(50);
+        hist.truncate(MAX_CLIPBOARD_HISTORY);
     }
 }
 
@@ -105,7 +113,7 @@ pub fn capture_selection_and_open(app: &AppHandle) {
             .await;
 
         // Brief delay for the copy to complete
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(COPY_SIMULATION_DELAY_MS)).await;
 
         // Capture the selection into history before re-enabling watcher
         if let Some(history) = app.try_state::<ClipboardHistory>() {
@@ -152,7 +160,7 @@ pub fn open_capture_popup(app: &AppHandle) {
         WebviewUrl::App("quick-capture.html".into()),
     )
     .title("Quick Capture")
-    .inner_size(420.0, 460.0)
+    .inner_size(CAPTURE_WINDOW_WIDTH, CAPTURE_WINDOW_HEIGHT)
     .center()
     .resizable(true)
     .always_on_top(true)

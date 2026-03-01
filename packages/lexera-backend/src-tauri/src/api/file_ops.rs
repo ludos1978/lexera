@@ -9,6 +9,13 @@ use serde::Deserialize;
 use super::{insert_header_safe, resolve_board_file, ErrorResponse};
 use crate::state::AppState;
 
+/// Maximum directory depth for recursive file search.
+const FILE_SEARCH_MAX_DEPTH: usize = 5;
+/// Maximum number of matching files returned by find-file.
+const FILE_SEARCH_MAX_RESULTS: usize = 20;
+/// Cache-Control header value for served static files (1 hour).
+const STATIC_FILE_CACHE_CONTROL: &str = "public, max-age=3600";
+
 #[derive(Deserialize)]
 pub struct FileQuery {
     path: String,
@@ -47,7 +54,7 @@ pub async fn serve_file(
     let ct = content_type_for_ext(ext);
     let mut headers = HeaderMap::new();
     insert_header_safe(&mut headers, "content-type", ct);
-    insert_header_safe(&mut headers, "cache-control", "public, max-age=3600");
+    insert_header_safe(&mut headers, "cache-control", STATIC_FILE_CACHE_CONTROL);
     if let Ok(meta) = tokio::fs::metadata(&file_path).await {
         if let Ok(modified) = meta.modified() {
             if let Ok(dur) = modified.duration_since(std::time::UNIX_EPOCH) {
@@ -133,8 +140,8 @@ pub async fn find_file(
     let matches = tokio::task::spawn_blocking(move || {
         let mut matches = Vec::new();
 
-        fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize) {
-            if depth > 5 {
+        fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize, max_depth: usize, max_results: usize) {
+            if depth > max_depth {
                 return;
             }
             let entries = match std::fs::read_dir(dir) {
@@ -144,11 +151,11 @@ pub async fn find_file(
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    walk(&path, target, matches, depth + 1);
+                    walk(&path, target, matches, depth + 1, max_depth, max_results);
                 } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name.to_lowercase().contains(target) {
                         matches.push(path.to_string_lossy().to_string());
-                        if matches.len() >= 20 {
+                        if matches.len() >= max_results {
                             return;
                         }
                     }
@@ -156,7 +163,7 @@ pub async fn find_file(
             }
         }
 
-        walk(&board_dir, &target, &mut matches, 0);
+        walk(&board_dir, &target, &mut matches, 0, FILE_SEARCH_MAX_DEPTH, FILE_SEARCH_MAX_RESULTS);
         matches
     })
     .await

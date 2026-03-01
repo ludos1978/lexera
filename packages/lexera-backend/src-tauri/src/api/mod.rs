@@ -18,6 +18,15 @@ mod template;
 use crate::state::AppState;
 use rate_limit::{rate_limit_middleware, RateLimiter};
 
+/// Maximum allowed length for a board ID (path segment safety).
+const MAX_BOARD_ID_LENGTH: usize = 256;
+/// Rate limit for the search endpoint (requests per second).
+const SEARCH_RATE_LIMIT: usize = 10;
+/// Rate limit for the find-file endpoint (requests per second).
+const FIND_FILE_RATE_LIMIT: usize = 5;
+/// Rate limit for the template copy endpoint (requests per second).
+const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
+
 /// Axum REST API routes.
 ///
 ///   GET  /boards                              -> list all boards
@@ -44,7 +53,7 @@ pub fn api_router() -> Router<AppState> {
     let search_routes = Router::new()
         .route("/search", get(search::search))
         .route_layer(axum::middleware::from_fn_with_state(
-            RateLimiter::new(10),
+            RateLimiter::new(SEARCH_RATE_LIMIT),
             rate_limit_middleware,
         ));
 
@@ -54,7 +63,7 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::post(file_ops::find_file),
         )
         .route_layer(axum::middleware::from_fn_with_state(
-            RateLimiter::new(5),
+            RateLimiter::new(FIND_FILE_RATE_LIMIT),
             rate_limit_middleware,
         ));
 
@@ -64,7 +73,7 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::post(template::copy_template_files),
         )
         .route_layer(axum::middleware::from_fn_with_state(
-            RateLimiter::new(2),
+            RateLimiter::new(TEMPLATE_COPY_RATE_LIMIT),
             rate_limit_middleware,
         ));
 
@@ -148,12 +157,12 @@ fn validate_board_id(id: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> 
             }),
         ));
     }
-    if id.len() > 256 {
-        log::warn!(target: "lexera.api.validate", "Rejected board ID exceeding 256 chars (len={})", id.len());
+    if id.len() > MAX_BOARD_ID_LENGTH {
+        log::warn!(target: "lexera.api.validate", "Rejected board ID exceeding {} chars (len={})", MAX_BOARD_ID_LENGTH, id.len());
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Board ID too long (max 256 characters)".to_string(),
+                error: format!("Board ID too long (max {} characters)", MAX_BOARD_ID_LENGTH),
             }),
         ));
     }

@@ -13,6 +13,8 @@ use tokio::sync::broadcast;
 const DISCOVERY_PORT: u16 = 41820;
 const ANNOUNCE_INTERVAL_SECS: u64 = 5;
 const PEER_TTL_SECS: u64 = 20;
+/// Maximum size of a single UDP beacon packet (bytes).
+const UDP_RECV_BUFFER_SIZE: usize = 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Beacon {
@@ -131,7 +133,7 @@ impl DiscoveryService {
                 DISCOVERY_PORT
             );
 
-            let mut buf = [0u8; 1024];
+            let mut buf = [0u8; UDP_RECV_BUFFER_SIZE];
             loop {
                 tokio::select! {
                     result = socket.recv_from(&mut buf) => {

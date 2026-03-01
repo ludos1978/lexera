@@ -8,6 +8,9 @@ use lexera_core::media::{content_type_for_ext, dedup_filename};
 use super::{has_path_traversal, insert_header_safe, resolve_board_file, ErrorResponse};
 use crate::state::AppState;
 
+/// Cache-Control header value for served media files (1 hour).
+const MEDIA_CACHE_CONTROL: &str = "public, max-age=3600";
+
 /// POST /boards/{board_id}/media -- upload a file to the board's media folder.
 /// The media folder is `{board_basename}-Media/` next to the board .md file.
 /// Returns the relative path suitable for markdown embedding.
@@ -169,7 +172,7 @@ pub async fn serve_media(
 
     let mut headers = HeaderMap::new();
     insert_header_safe(&mut headers, "content-type", content_type);
-    insert_header_safe(&mut headers, "cache-control", "public, max-age=3600");
+    insert_header_safe(&mut headers, "cache-control", MEDIA_CACHE_CONTROL);
 
     Ok((headers, data))
 }

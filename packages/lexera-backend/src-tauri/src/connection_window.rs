@@ -5,6 +5,11 @@
 /// collaboration UI — it only talks to the local backend.
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+/// Width of the connection-settings window in logical pixels.
+const CONNECTION_WINDOW_WIDTH: f64 = 520.0;
+/// Height of the connection-settings window in logical pixels.
+const CONNECTION_WINDOW_HEIGHT: f64 = 640.0;
+
 pub fn open_connection_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("connection-settings") {
         let _ = window.show();
@@ -22,7 +27,7 @@ pub fn open_connection_window(app: &AppHandle) {
         WebviewUrl::App("connection-settings.html".into()),
     )
     .title("Management")
-    .inner_size(520.0, 640.0)
+    .inner_size(CONNECTION_WINDOW_WIDTH, CONNECTION_WINDOW_HEIGHT)
     .center()
     .resizable(true)
     .build()

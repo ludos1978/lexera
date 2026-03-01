@@ -14,6 +14,9 @@ use lexera_core::storage::BoardStorage;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+/// Minimum allowed port number for server configuration (ports below this are privileged).
+const MIN_CONFIGURABLE_PORT: u16 = 1024;
+
 // ============================================================================
 // Request/Response Types
 // ============================================================================
@@ -754,7 +757,7 @@ async fn list_network_interfaces(
         "current_bind_address": current_bind,
         "current_port": actual_port,
         "configured_port": configured_port,
-        "default_port": 13080,
+        "default_port": crate::config::DEFAULT_PORT,
     }))
 }
 
@@ -780,10 +783,10 @@ async fn update_server_config(
     }
 
     // Validate port
-    if body.port < 1024 {
+    if body.port < MIN_CONFIGURABLE_PORT {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::bad_request("Port must be >= 1024")),
+            Json(ErrorResponse::bad_request(&format!("Port must be >= {}", MIN_CONFIGURABLE_PORT))),
         ));
     }
 
@@ -824,7 +827,7 @@ async fn update_server_config(
             // Restart discovery if needed
             if let Ok(mut disc) = state.discovery.lock() {
                 disc.stop();
-                if new_bind != "127.0.0.1" {
+                if new_bind != crate::config::DEFAULT_BIND_ADDRESS {
                     disc.start(actual_port, user_id, user_name, state.event_tx.clone());
                     log::info!("[discovery] Restarted on port {}", actual_port);
                 }
