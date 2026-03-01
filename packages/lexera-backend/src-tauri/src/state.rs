@@ -92,4 +92,6 @@ pub struct AppState {
     pub app_handle: tauri::AppHandle,
     // Directory for collaboration service persistence files
     pub collab_dir: PathBuf,
+    /// Global shutdown signal — send `true` to cancel all background tasks.
+    pub shutdown_tx: tokio::sync::watch::Sender<bool>,
 }

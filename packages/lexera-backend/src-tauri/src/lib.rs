@@ -34,7 +34,12 @@ pub fn run() {
         log_bridge::write_fallback_line(&format!("failed to initialize backend logger: {}", e));
     }
 
-    let run_result = tauri::Builder::default()
+    // Global shutdown signal — created before Tauri builder so both setup and
+    // the run-event handler can hold a reference.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let shutdown_tx_for_exit = shutdown_tx.clone();
+
+    let build_result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             capture::read_clipboard,
             capture::read_clipboard_image,
@@ -68,7 +73,7 @@ pub fn run() {
                 let _ = _window.hide();
             }
         })
-        .setup(|app| {
+        .setup(move |app| {
             // Hide from Dock, show only as menu bar (tray) app
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -159,46 +164,55 @@ pub fn run() {
                 // Spawn event processing loop
                 let storage_for_events = storage.clone();
                 let event_tx_for_forward = event_tx.clone();
+                let mut event_shutdown_rx = shutdown_rx.clone();
 
                 tauri::async_runtime::spawn(async move {
                     loop {
-                        match event_rx.recv().await {
-                            Ok(event) => {
-                                // Check self-write before propagating
-                                match &event {
-                                    BoardChangeEvent::MainFileChanged { board_id } => {
-                                        if let Some(path) = storage_for_events.get_board_path(board_id) {
-                                            if storage_for_events.check_self_write(&path) {
-                                                log::info!("[lexera.events] Suppressed self-write for board {}", board_id);
-                                                continue;
+                        tokio::select! {
+                            result = event_rx.recv() => {
+                                match result {
+                                    Ok(event) => {
+                                        // Check self-write before propagating
+                                        match &event {
+                                            BoardChangeEvent::MainFileChanged { board_id } => {
+                                                if let Some(path) = storage_for_events.get_board_path(board_id) {
+                                                    if storage_for_events.check_self_write(&path) {
+                                                        log::info!("[lexera.events] Suppressed self-write for board {}", board_id);
+                                                        continue;
+                                                    }
+                                                }
+                                                if let Err(e) = storage_for_events.reload_board(board_id) {
+                                                    log::warn!("[lexera.events] Failed to reload board {}: {}", board_id, e);
+                                                }
                                             }
-                                        }
-                                        if let Err(e) = storage_for_events.reload_board(board_id) {
-                                            log::warn!("[lexera.events] Failed to reload board {}: {}", board_id, e);
-                                        }
-                                    }
-                                    BoardChangeEvent::IncludeFileChanged { board_ids, include_path } => {
-                                        if storage_for_events.check_self_write(include_path) {
-                                            log::info!("[lexera.events] Suppressed self-write for include {:?}", include_path);
-                                            continue;
-                                        }
-                                        for bid in board_ids {
-                                            if let Err(e) = storage_for_events.reload_board(bid) {
-                                                log::warn!("[lexera.events] Failed to reload board {}: {}", bid, e);
+                                            BoardChangeEvent::IncludeFileChanged { board_ids, include_path } => {
+                                                if storage_for_events.check_self_write(include_path) {
+                                                    log::info!("[lexera.events] Suppressed self-write for include {:?}", include_path);
+                                                    continue;
+                                                }
+                                                for bid in board_ids {
+                                                    if let Err(e) = storage_for_events.reload_board(bid) {
+                                                        log::warn!("[lexera.events] Failed to reload board {}: {}", bid, e);
+                                                    }
+                                                }
                                             }
+                                            _ => {}
                                         }
-                                    }
-                                    _ => {}
-                                }
 
-                                // Forward event to SSE clients
-                                let _ = event_tx_for_forward.send(event);
+                                        // Forward event to SSE clients
+                                        let _ = event_tx_for_forward.send(event);
+                                    }
+                                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                        log::warn!("[lexera.events] Lagged by {} events", n);
+                                    }
+                                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                        log::info!("[lexera.events] Event channel closed");
+                                        break;
+                                    }
+                                }
                             }
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                                log::warn!("[lexera.events] Lagged by {} events", n);
-                            }
-                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                                log::info!("[lexera.events] Event channel closed");
+                            _ = event_shutdown_rx.changed() => {
+                                log::info!("[lexera.events] Shutdown signal received");
                                 break;
                             }
                         }
@@ -262,19 +276,27 @@ pub fn run() {
 
             // Start periodic cleanup for expired invites
             let invite_cleanup = invite_service.clone();
+            let mut invite_shutdown_rx = shutdown_rx.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // Every hour
                 loop {
-                    interval.tick().await;
-                    match invite_cleanup.lock() {
-                        Ok(mut service) => {
-                            let count = service.cleanup_expired();
-                            if count > 0 {
-                                log::info!("[collab] Cleaned up {} expired invites", count);
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            match invite_cleanup.lock() {
+                                Ok(mut service) => {
+                                    let count = service.cleanup_expired();
+                                    if count > 0 {
+                                        log::info!("[collab] Cleaned up {} expired invites", count);
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("[collab] Invite cleanup skipped; service unavailable: {}", e);
+                                }
                             }
                         }
-                        Err(e) => {
-                            log::error!("[collab] Invite cleanup skipped; service unavailable: {}", e);
+                        _ = invite_shutdown_rx.changed() => {
+                            log::info!("[collab] Invite cleanup shutting down");
+                            break;
                         }
                     }
                 }
@@ -285,23 +307,41 @@ pub fn run() {
             let save_invite = invite_service.clone();
             let save_public = public_service.clone();
             let save_dir = collab_dir.clone();
+            let mut save_shutdown_rx = shutdown_rx.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
                 loop {
-                    interval.tick().await;
-                    if let Ok(auth) = save_auth.lock() {
-                        if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
-                            log::error!("[collab.save] Failed to save auth state: {}", e);
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            if let Ok(auth) = save_auth.lock() {
+                                if let Err(e) = auth.save_to_file(&save_dir.join("auth.json")) {
+                                    log::error!("[collab.save] Failed to save auth state: {}", e);
+                                }
+                            }
+                            if let Ok(invite) = save_invite.lock() {
+                                if let Err(e) = invite.save_to_file(&save_dir.join("invites.json")) {
+                                    log::error!("[collab.save] Failed to save invite state: {}", e);
+                                }
+                            }
+                            if let Ok(public) = save_public.lock() {
+                                if let Err(e) = public.save_to_file(&save_dir.join("public_rooms.json")) {
+                                    log::error!("[collab.save] Failed to save public rooms state: {}", e);
+                                }
+                            }
                         }
-                    }
-                    if let Ok(invite) = save_invite.lock() {
-                        if let Err(e) = invite.save_to_file(&save_dir.join("invites.json")) {
-                            log::error!("[collab.save] Failed to save invite state: {}", e);
-                        }
-                    }
-                    if let Ok(public) = save_public.lock() {
-                        if let Err(e) = public.save_to_file(&save_dir.join("public_rooms.json")) {
-                            log::error!("[collab.save] Failed to save public rooms state: {}", e);
+                        _ = save_shutdown_rx.changed() => {
+                            // Final save before exiting
+                            if let Ok(auth) = save_auth.lock() {
+                                let _ = auth.save_to_file(&save_dir.join("auth.json"));
+                            }
+                            if let Ok(invite) = save_invite.lock() {
+                                let _ = invite.save_to_file(&save_dir.join("invites.json"));
+                            }
+                            if let Ok(public) = save_public.lock() {
+                                let _ = public.save_to_file(&save_dir.join("public_rooms.json"));
+                            }
+                            log::info!("[collab.save] Final save completed, shutting down");
+                            break;
                         }
                     }
                 }
@@ -340,6 +380,7 @@ pub fn run() {
                 discovery: discovery.clone(),
                 app_handle: app_handle.clone(),
                 collab_dir,
+                shutdown_tx,
             };
 
             // Spawn HTTP server
@@ -399,9 +440,19 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!());
+        .build(tauri::generate_context!());
 
-    if let Err(e) = run_result {
-        log::error!("error while running lexera-backend: {}", e);
+    match build_result {
+        Ok(app) => {
+            app.run(move |_app_handle, event| {
+                if let tauri::RunEvent::Exit = event {
+                    log::info!("[lexera.shutdown] Application exiting, cancelling background tasks");
+                    let _ = shutdown_tx_for_exit.send(true);
+                }
+            });
+        }
+        Err(e) => {
+            log::error!("error while running lexera-backend: {}", e);
+        }
     }
 }
