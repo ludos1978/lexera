@@ -230,7 +230,7 @@ impl IosStorage {
 
     /// Write a board back to disk atomically (.tmp + rename).
     fn write_board_file(&self, board_id: &str) -> Result<(), StorageError> {
-        let boards = self.boards.read().unwrap_or_else(|p| {
+        let mut boards = self.boards.write().unwrap_or_else(|p| {
             log::warn!("[ios_storage.write_board_file] Lock was poisoned, recovering");
             p.into_inner()
         });
@@ -248,13 +248,7 @@ impl IosStorage {
         drop(file);
         fs::rename(&tmp_path, &path)?;
 
-        drop(boards);
-
-        // Update hash
-        let mut boards = self.boards.write().unwrap_or_else(|p| {
-            log::warn!("[ios_storage.write_board_file] Lock was poisoned, recovering");
-            p.into_inner()
-        });
+        // Update hash while still holding the write lock
         if let Some(state) = boards.get_mut(board_id) {
             state.content_hash = content_hash(&content);
         }
