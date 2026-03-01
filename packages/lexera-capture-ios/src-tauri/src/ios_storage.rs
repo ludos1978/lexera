@@ -198,7 +198,30 @@ impl IosStorage {
         Ok(board_id)
     }
 
-    /// Process pending items from the Share Sheet extension.
+    pub fn delete_board(&self, board_id: &str) -> Result<(), StorageError> {
+        let inbox_id = self.inbox_board_id();
+        if board_id == inbox_id {
+            return Err(StorageError::InvalidBoard(
+                "Cannot delete the Inbox board".to_string(),
+            ));
+        }
+
+        let mut boards = self.boards.write().unwrap_or_else(|p| {
+            log::warn!("[ios_storage.delete_board] Lock was poisoned, recovering");
+            p.into_inner()
+        });
+        let state = boards
+            .remove(board_id)
+            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+
+        let path = self.boards_dir.join(&state.filename);
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
+
+        Ok(())
+    }
+
     pub fn process_pending(&self) -> Result<usize, StorageError> {
         if !self.pending_path.exists() {
             return Ok(0);

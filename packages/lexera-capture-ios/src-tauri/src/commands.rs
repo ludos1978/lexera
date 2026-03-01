@@ -62,6 +62,14 @@ pub fn create_board(
 }
 
 #[tauri::command]
+pub fn delete_board(
+    storage: tauri::State<'_, Arc<IosStorage>>,
+    board_id: String,
+) -> Result<(), String> {
+    storage.delete_board(&board_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn search(
     storage: tauri::State<'_, Arc<IosStorage>>,
     query: String,

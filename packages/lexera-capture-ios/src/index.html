@@ -502,6 +502,7 @@
       <div class="board-detail-header">
         <button class="back-btn" id="board-back">&larr;</button>
         <div class="board-detail-title" id="board-detail-title"></div>
+        <button class="btn btn-small" id="board-delete" style="margin-left:auto; background:var(--danger); color:#fff;">Delete</button>
       </div>
       <div id="board-detail-columns"></div>
     </div>
@@ -538,6 +539,18 @@
       <div class="dialog-actions">
         <button class="btn btn-secondary" id="dialog-cancel">Cancel</button>
         <button class="btn btn-primary" id="dialog-create">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Delete Board Dialog ─── -->
+  <div id="dialog-delete-board" class="dialog-overlay">
+    <div class="dialog">
+      <h3>Delete Board</h3>
+      <p style="color:var(--text-dim); font-size:14px; margin-bottom:16px;">Are you sure you want to delete <strong id="delete-board-name"></strong>? This cannot be undone.</p>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" id="dialog-delete-cancel">Cancel</button>
+        <button class="btn btn-small" id="dialog-delete-confirm" style="background:var(--danger); color:#fff; flex:1; font-size:16px; padding:12px 24px;">Delete</button>
       </div>
     </div>
   </div>

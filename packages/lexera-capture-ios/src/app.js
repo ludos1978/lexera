@@ -3,6 +3,7 @@
     // ─── State ───
     let boards = [];
     let currentCaptureType = 'text';
+    let currentBoardId = null;
     let searchDebounce = null;
 
     // ─── Toast ───
@@ -229,12 +230,17 @@
         const board = await invoke('get_board', { boardId });
         if (!board) { showToast('Board not found', true); return; }
 
+        currentBoardId = boardId;
         document.getElementById('boards-list').style.display = 'none';
         document.querySelector('#page-boards > div:first-child').style.display = 'none';
         const detail = document.getElementById('board-detail');
         detail.classList.add('active');
 
         document.getElementById('board-detail-title').textContent = board.title || boardId;
+
+        const inboxBoard = boards.find(b => b.title === 'Inbox' || b.title === 'inbox');
+        const isInbox = inboxBoard && inboxBoard.id === boardId;
+        document.getElementById('board-delete').style.display = isInbox ? 'none' : 'inline-flex';
         const colsEl = document.getElementById('board-detail-columns');
 
         // Combine columns from flat and row-based formats
@@ -271,6 +277,35 @@
     }
 
     document.getElementById('board-back').addEventListener('click', closeBoardDetail);
+
+    document.getElementById('board-delete').addEventListener('click', () => {
+      const board = boards.find(b => b.id === currentBoardId);
+      document.getElementById('delete-board-name').textContent = board ? board.title : currentBoardId;
+      document.getElementById('dialog-delete-board').classList.add('show');
+    });
+
+    document.getElementById('dialog-delete-cancel').addEventListener('click', () => {
+      document.getElementById('dialog-delete-board').classList.remove('show');
+    });
+
+    document.getElementById('dialog-delete-confirm').addEventListener('click', async () => {
+      try {
+        await invoke('delete_board', { boardId: currentBoardId });
+        document.getElementById('dialog-delete-board').classList.remove('show');
+        closeBoardDetail();
+        showToast('Board deleted');
+        loadBoardsList();
+        loadBoards();
+      } catch (e) {
+        showToast('Error: ' + e, true);
+      }
+    });
+
+    document.getElementById('dialog-delete-board').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        document.getElementById('dialog-delete-board').classList.remove('show');
+      }
+    });
 
     function navigateToCard(boardId, cardId) {
       document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
