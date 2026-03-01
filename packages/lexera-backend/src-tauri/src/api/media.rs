@@ -5,7 +5,7 @@ use axum::{
 };
 use lexera_core::media::{content_type_for_ext, dedup_filename};
 
-use super::{has_path_traversal, insert_header_safe, ErrorResponse};
+use super::{has_path_traversal, insert_header_safe, resolve_board_file, ErrorResponse};
 use crate::state::AppState;
 
 /// POST /boards/{board_id}/media -- upload a file to the board's media folder.
@@ -129,15 +129,6 @@ pub async fn serve_media(
     State(state): State<AppState>,
     Path((board_id, filename)): Path<(String, String)>,
 ) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
-
     // Prevent path traversal (check before constructing file path)
     if has_path_traversal(&filename) {
         return Err((
@@ -146,15 +137,20 @@ pub async fn serve_media(
         ));
     }
 
-    let board_dir = board_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
+    })?;
     let board_stem = board_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("board");
-    let media_dir = board_dir.join(format!("{}-Media", board_stem));
-    let file_path = media_dir.join(&filename);
+    let media_rel_path = format!("{}-Media/{}", board_stem, filename);
+    let file_path = resolve_board_file(&state, &board_id, &media_rel_path)?;
 
     let data = std::fs::read(&file_path).map_err(|_| {
         (

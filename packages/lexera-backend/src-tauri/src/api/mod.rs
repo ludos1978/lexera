@@ -176,3 +176,44 @@ fn log_api_issue(status: StatusCode, target: &'static str, message: impl AsRef<s
         log::warn!(target: target, "{}", message);
     }
 }
+
+/// Resolve a file path relative to the board's directory, or as absolute if it starts with /.
+/// Returns the canonicalized path on success, or a NOT_FOUND error response.
+fn resolve_board_file(
+    state: &AppState,
+    board_id: &str,
+    file_path: &str,
+) -> Result<std::path::PathBuf, (StatusCode, Json<ErrorResponse>)> {
+    let path = std::path::Path::new(file_path);
+    if path.is_absolute() {
+        let canonical = path.canonicalize().map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "File not found".to_string(),
+                }),
+            )
+        })?;
+        return Ok(canonical);
+    }
+    let board_path = state.storage.get_board_path(board_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Board not found".to_string(),
+            }),
+        )
+    })?;
+    let board_dir = board_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let resolved = board_dir.join(file_path);
+    resolved.canonicalize().map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "File not found".to_string(),
+            }),
+        )
+    })
+}

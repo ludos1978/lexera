@@ -5,9 +5,8 @@ use axum::{
 };
 use lexera_core::media::{content_type_for_ext, is_previewable, media_category};
 use serde::Deserialize;
-use std::path::PathBuf;
 
-use super::{insert_header_safe, ErrorResponse};
+use super::{insert_header_safe, resolve_board_file, ErrorResponse};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -27,46 +26,6 @@ pub struct ConvertPathBody {
     card_id: String,
     path: String,
     to: String, // "relative" or "absolute"
-}
-
-/// Resolve a file path relative to the board's directory, or as absolute if starts with /.
-fn resolve_board_file(
-    state: &AppState,
-    board_id: &str,
-    file_path: &str,
-) -> Result<PathBuf, (StatusCode, Json<ErrorResponse>)> {
-    let path = std::path::Path::new(file_path);
-    if path.is_absolute() {
-        let canonical = path.canonicalize().map_err(|_| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "File not found".to_string(),
-                }),
-            )
-        })?;
-        return Ok(canonical);
-    }
-    let board_path = state.storage.get_board_path(board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
-    let board_dir = board_path
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
-    let resolved = board_dir.join(file_path);
-    resolved.canonicalize().map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "File not found".to_string(),
-            }),
-        )
-    })
 }
 
 /// GET /boards/{board_id}/file?path=... -- serve any file relative to the board directory.
@@ -108,38 +67,15 @@ pub async fn file_info(
     Path(board_id): Path<String>,
     Query(params): Query<FileQuery>,
 ) -> Json<serde_json::Value> {
-    let path = std::path::Path::new(&params.path);
-    let resolved = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        let board_path = state.storage.get_board_path(&board_id);
-        let board_dir = board_path
-            .as_ref()
-            .and_then(|p| p.parent())
-            .unwrap_or_else(|| std::path::Path::new("."));
-        board_dir.join(&params.path)
-    };
-    let canonical = resolved.canonicalize();
-
-    let (exists, file_path) = match canonical {
-        Ok(p) => (true, Some(p)),
-        Err(_) => (false, None),
-    };
-
-    if !exists {
-        return Json(serde_json::json!({
-            "exists": false,
-            "path": params.path,
-            "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
-        }));
-    }
-
-    let Some(fp) = file_path else {
-        return Json(serde_json::json!({
-            "exists": false,
-            "path": params.path,
-            "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
-        }));
+    let fp = match resolve_board_file(&state, &board_id, &params.path) {
+        Ok(p) => p,
+        Err(_) => {
+            return Json(serde_json::json!({
+                "exists": false,
+                "path": params.path,
+                "filename": std::path::Path::new(&params.path).file_name().and_then(|s| s.to_str()).unwrap_or(""),
+            }));
+        }
     };
     let ext = fp
         .extension()
