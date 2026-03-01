@@ -9,6 +9,28 @@ var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
 
+var elStatusMsg = null;
+var elStatusBar = null;
+var elLogEntriesBackend = null;
+var elLogEntriesFrontend = null;
+var elLogPanel = null;
+var elLogTabBackend = null;
+var elLogTabFrontend = null;
+var elLogRefreshBtn = null;
+var elLogClearBtn = null;
+var elLogCloseBtn = null;
+
+function getElStatusMsg() { return elStatusMsg || (elStatusMsg = document.getElementById('status-msg')); }
+function getElStatusBar() { return elStatusBar || (elStatusBar = document.getElementById('status-bar')); }
+function getElLogEntriesBackend() { return elLogEntriesBackend || (elLogEntriesBackend = document.getElementById('log-entries-backend')); }
+function getElLogEntriesFrontend() { return elLogEntriesFrontend || (elLogEntriesFrontend = document.getElementById('log-entries-frontend')); }
+function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElementById('log-panel')); }
+function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend')); }
+function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend')); }
+function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn')); }
+function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn')); }
+function getElLogCloseBtn() { return elLogCloseBtn || (elLogCloseBtn = document.getElementById('log-close-btn')); }
+
 function normalizeLogMessage(message) {
   if (message == null) return String(message);
   if (typeof message === 'string') return message;
@@ -67,7 +89,7 @@ function escapeLogHtml(value) {
 }
 
 function getLogContainer(source) {
-  return document.getElementById(source === 'backend' ? 'log-entries-backend' : 'log-entries-frontend');
+  return source === 'backend' ? getElLogEntriesBackend() : getElLogEntriesFrontend();
 }
 
 function formatLogTimestamp(entry) {
@@ -83,8 +105,8 @@ function logEntryKey(entry) {
 }
 
 function setStatusBarEntry(source, entry) {
-  var statusMsg = document.getElementById('status-msg');
-  var statusBar = document.getElementById('status-bar');
+  var statusMsg = getElStatusMsg();
+  var statusBar = getElStatusBar();
   if (!statusMsg || !statusBar) return;
   var prefix = source === 'backend' ? '[backend] ' : '';
   statusMsg.textContent = prefix + entry.message;
@@ -143,11 +165,11 @@ function setActiveLogSource(source) {
   activeLogSource = source === 'frontend' ? 'frontend' : 'backend';
   localStorage.setItem('lexera-log-source', activeLogSource);
 
-  var backendBtn = document.getElementById('log-tab-backend');
-  var frontendBtn = document.getElementById('log-tab-frontend');
+  var backendBtn = getElLogTabBackend();
+  var frontendBtn = getElLogTabFrontend();
   var backendPanel = getLogContainer('backend');
   var frontendPanel = getLogContainer('frontend');
-  var refreshBtn = document.getElementById('log-refresh-btn');
+  var refreshBtn = getElLogRefreshBtn();
 
   if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
   if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
@@ -272,13 +294,13 @@ window.addEventListener('resize', updateAppBottomInset);
 
 // Log panel + status bar UI
 document.addEventListener('DOMContentLoaded', function () {
-  var panel = document.getElementById('log-panel');
-  var statusBar = document.getElementById('status-bar');
-  var refreshBtn = document.getElementById('log-refresh-btn');
-  var clearBtn = document.getElementById('log-clear-btn');
-  var closeBtn = document.getElementById('log-close-btn');
-  var backendTab = document.getElementById('log-tab-backend');
-  var frontendTab = document.getElementById('log-tab-frontend');
+  var panel = getElLogPanel();
+  var statusBar = getElStatusBar();
+  var refreshBtn = getElLogRefreshBtn();
+  var clearBtn = getElLogClearBtn();
+  var closeBtn = getElLogCloseBtn();
+  var backendTab = getElLogTabBackend();
+  var frontendTab = getElLogTabFrontend();
   updateAppBottomInset();
 
   // Click status bar to expand/collapse log panel
@@ -317,7 +339,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function toggleLogPanel() {
-  var panel = document.getElementById('log-panel');
+  var panel = getElLogPanel();
   if (panel) panel.classList.toggle('hidden');
   updateAppBottomInset();
 }
@@ -598,6 +620,10 @@ const LexeraDashboard = (function () {
   const $dashboardResultsList = document.getElementById('dashboard-results-list');
   const $dashboardDeadlineList = document.getElementById('dashboard-deadline-list');
   const $dashboardOverdueList = document.getElementById('dashboard-overdue-list');
+  const $mgmtPanel = document.getElementById('mgmt-panel');
+  const $mgmtPanelBody = document.getElementById('mgmt-panel-body');
+  const $btnSidebarSync = document.getElementById('btn-sidebar-sync');
+  const $mgmtClose = document.getElementById('mgmt-close');
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
@@ -2351,8 +2377,7 @@ const LexeraDashboard = (function () {
     document.addEventListener('keydown', handleKeyNavigation);
 
     // Management panel close button
-    var mgmtCloseBtn = document.getElementById('mgmt-close');
-    if (mgmtCloseBtn) mgmtCloseBtn.addEventListener('click', function () {
+    if ($mgmtClose) $mgmtClose.addEventListener('click', function () {
       closeManagementPanel();
     });
 
@@ -2384,23 +2409,22 @@ const LexeraDashboard = (function () {
     });
 
     // Sidebar drop: add .md files from OS drag-and-drop when unlocked.
-    var sidebarEl = document.querySelector('.sidebar');
-    if (sidebarEl) {
-      sidebarEl.addEventListener('dragover', function (e) {
+    if ($sidebar) {
+      $sidebar.addEventListener('dragover', function (e) {
         if (hierarchyLocked) return;
         if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
-          sidebarEl.classList.add('drop-zone-active');
+          $sidebar.classList.add('drop-zone-active');
         }
       });
-      sidebarEl.addEventListener('dragleave', function (e) {
-        if (!e.relatedTarget || !sidebarEl.contains(e.relatedTarget)) {
-          sidebarEl.classList.remove('drop-zone-active');
+      $sidebar.addEventListener('dragleave', function (e) {
+        if (!e.relatedTarget || !$sidebar.contains(e.relatedTarget)) {
+          $sidebar.classList.remove('drop-zone-active');
         }
       });
-      sidebarEl.addEventListener('drop', function (e) {
-        sidebarEl.classList.remove('drop-zone-active');
+      $sidebar.addEventListener('drop', function (e) {
+        $sidebar.classList.remove('drop-zone-active');
         if (hierarchyLocked) return;
         var dt = e.dataTransfer;
         if (!dt) return;
@@ -2416,24 +2440,23 @@ const LexeraDashboard = (function () {
       tauriListen('tauri://drag-over', function (event) {
         if (hierarchyLocked) return;
         var pos = event.payload.position;
-        if (sidebarEl && pos) {
-          if (isPositionInsideElement(pos, sidebarEl)) {
-            sidebarEl.classList.add('drop-zone-active');
+        if ($sidebar && pos) {
+          if (isPositionInsideElement(pos, $sidebar)) {
+            $sidebar.classList.add('drop-zone-active');
           } else {
-            sidebarEl.classList.remove('drop-zone-active');
+            $sidebar.classList.remove('drop-zone-active');
           }
         }
       });
       tauriListen('tauri://drag-leave', function () {
-        if (sidebarEl) sidebarEl.classList.remove('drop-zone-active');
+        if ($sidebar) $sidebar.classList.remove('drop-zone-active');
       });
       tauriListen('tauri://drag-drop', function (event) {
-        if (sidebarEl) sidebarEl.classList.remove('drop-zone-active');
+        if ($sidebar) $sidebar.classList.remove('drop-zone-active');
         if (hierarchyLocked) return;
         var paths = event.payload.paths || [];
         var pos = event.payload.position;
-        // Check if drop is on sidebar
-        if (sidebarEl && pos && !isPositionInsideElement(pos, sidebarEl)) {
+        if ($sidebar && pos && !isPositionInsideElement(pos, $sidebar)) {
           return;
         }
         addBoardsByPath(paths);
@@ -3459,9 +3482,7 @@ const LexeraDashboard = (function () {
     var orderedBoards = getOrderedItems(boards, 'lexera-board-order', function (b) { return b.id; });
     var expandedIds = getSidebarExpandedBoards();
 
-    // Update sync button state
-    var syncBtn = document.getElementById('btn-sidebar-sync');
-    if (syncBtn) syncBtn.classList.toggle('active', sidebarSyncEnabled);
+    if ($btnSidebarSync) $btnSidebarSync.classList.toggle('active', sidebarSyncEnabled);
 
     for (var i = 0; i < orderedBoards.length; i++) {
       var board = orderedBoards[i];
@@ -3803,13 +3824,12 @@ const LexeraDashboard = (function () {
 
   // Sidebar sync button handler
   (function () {
-    var syncBtn = document.getElementById('btn-sidebar-sync');
-    if (syncBtn) {
-      syncBtn.addEventListener('click', function (e) {
+    if ($btnSidebarSync) {
+      $btnSidebarSync.addEventListener('click', function (e) {
         e.stopPropagation();
         sidebarSyncEnabled = !sidebarSyncEnabled;
         localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
-        syncBtn.classList.toggle('active', sidebarSyncEnabled);
+        $btnSidebarSync.classList.toggle('active', sidebarSyncEnabled);
         if (sidebarSyncEnabled) syncSidebarToView();
         else {
           var prev = $boardList.querySelector('.sync-highlight');
@@ -5117,20 +5137,17 @@ const LexeraDashboard = (function () {
     mgmtPanelOpen = true;
     if (options.boardId) mgmtExpandedBoardId = options.boardId;
     if (options.tab && options.boardId) mgmtActiveBoardTab[options.boardId] = options.tab;
-    var panel = document.getElementById('mgmt-panel');
-    if (panel) panel.classList.add('open');
+    if ($mgmtPanel) $mgmtPanel.classList.add('open');
     renderManagementPanel(options.section);
   }
 
   function closeManagementPanel() {
     mgmtPanelOpen = false;
-    var panel = document.getElementById('mgmt-panel');
-    if (panel) panel.classList.remove('open');
+    if ($mgmtPanel) $mgmtPanel.classList.remove('open');
   }
 
   async function renderManagementPanel(scrollToSection) {
-    var body = document.getElementById('mgmt-panel-body');
-    if (!body) return;
+    if (!$mgmtPanelBody) return;
 
     var html = '';
 
@@ -5218,7 +5235,7 @@ const LexeraDashboard = (function () {
 
     html += '</div>';
 
-    body.innerHTML = html;
+    $mgmtPanelBody.innerHTML = html;
 
     // ── Wire up events ──
 
@@ -5316,7 +5333,7 @@ const LexeraDashboard = (function () {
 
     // Scroll to section if requested
     if (scrollToSection) {
-      var sectionEl = body.querySelector('[data-mgmt-section="' + scrollToSection + '"]');
+      var sectionEl = $mgmtPanelBody.querySelector('[data-mgmt-section="' + scrollToSection + '"]');
       if (sectionEl) sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
