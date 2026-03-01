@@ -87,22 +87,22 @@ impl InviteService {
 
         let max_uses = req.max_uses.unwrap_or(1);
 
-        let invite = InviteLink {
-            token: token.clone(),
-            room_id: req.room_id.clone(),
-            room_title,
-            role: req.role.clone(),
-            expires_at,
-            max_uses,
-            uses: 0,
-        };
-
         log::info!(
             "[invite] Created invite {}... for room {} by {}",
             &token[..8],
             req.room_id,
             req.inviter_id
         );
+
+        let invite = InviteLink {
+            token: token.clone(),
+            room_id: req.room_id,
+            room_title,
+            role: req.role,
+            expires_at,
+            max_uses,
+            uses: 0,
+        };
 
         self.invites.insert(token, invite.clone());
 
@@ -186,17 +186,9 @@ impl InviteService {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        let to_remove: Vec<String> = self
-            .invites
-            .iter()
-            .filter(|(_, invite)| invite.expires_at < now)
-            .map(|(token, _)| token.clone())
-            .collect();
-
-        let count = to_remove.len();
-        for token in &to_remove {
-            self.invites.remove(token);
-        }
+        let before = self.invites.len();
+        self.invites.retain(|_, invite| invite.expires_at >= now);
+        let count = before - self.invites.len();
 
         if count > 0 {
             log::info!("[invite] Cleaned up {} expired invites", count);

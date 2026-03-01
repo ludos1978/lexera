@@ -71,10 +71,9 @@ impl AuthService {
         if self.users.contains_key(&user.id) {
             return Err(AuthError::UserAlreadyExists);
         }
-        let name = user.name.clone();
+        log::info!("[auth] Registered user: {} ({})", user.name, user.id);
         let id = user.id.clone();
-        self.users.insert(id.clone(), user);
-        log::info!("[auth] Registered user: {} ({})", name, id);
+        self.users.insert(id, user);
         Ok(())
     }
 
@@ -156,27 +155,26 @@ impl AuthService {
 
     /// List all members of a room
     pub fn list_room_members(&self, room_id: &str) -> Vec<RoomMember> {
-        let room_id_str = room_id.to_string();
+        let empty = Vec::new();
         let user_ids = self
             .room_members
-            .get(&room_id_str)
-            .cloned()
-            .unwrap_or_default();
+            .get(room_id)
+            .unwrap_or(&empty);
 
         user_ids
             .iter()
             .filter_map(|uid| {
-                let key = (room_id_str.clone(), uid.clone());
+                let key = (room_id.to_string(), uid.clone());
                 self.memberships.get(&key).map(|role| {
                     let user_name = self
                         .users
-                        .get(uid)
+                        .get(uid.as_str())
                         .map(|u| u.name.clone())
                         .unwrap_or_else(|| uid.clone());
                     RoomMember {
                         user_id: uid.clone(),
                         user_name,
-                        room_id: room_id_str.clone(),
+                        room_id: room_id.to_string(),
                         role: role.as_str().to_string(),
                         joined_via: "unknown".to_string(),
                     }
