@@ -27,6 +27,9 @@ struct BoardState {
 
 const MAX_BASE64_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10 MB (~7.5 MB raw)
 
+/// Number of SHA-256 bytes used for board ID (6 bytes = 12 hex chars).
+const BOARD_ID_HASH_BYTES: usize = 6;
+
 pub struct IosStorage {
     boards_dir: PathBuf,
     pending_path: PathBuf,
@@ -37,7 +40,7 @@ fn board_id_from_filename(filename: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(filename.as_bytes());
     let result = hasher.finalize();
-    hex::encode(&result[..6])
+    hex::encode(&result[..BOARD_ID_HASH_BYTES])
 }
 
 fn content_hash(content: &str) -> String {
@@ -90,7 +93,14 @@ impl IosStorage {
             };
             let content = match fs::read_to_string(&path) {
                 Ok(c) => c,
-                Err(_) => continue,
+                Err(e) => {
+                    log::warn!(
+                        "[ios_storage.scan_boards] Failed to read '{}': {}",
+                        filename,
+                        e
+                    );
+                    continue;
+                }
             };
             let mut board = parser::parse_markdown(&content);
             if !board.valid {

@@ -28,7 +28,13 @@ pub fn run() {
                 .unwrap_or_else(|_| {
                     app.path()
                         .app_data_dir()
-                        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                        .unwrap_or_else(|e| {
+                            log::warn!(
+                                "[ios_capture.setup] app_data_dir() failed ({}), falling back to '.'",
+                                e
+                            );
+                            std::path::PathBuf::from(".")
+                        })
                 });
 
             let boards_dir = storage_path.join("Documents").join("boards");
