@@ -316,7 +316,14 @@ const LexeraTemplates = (function () {
   function substituteVariables(content, values, variables) {
     return content.replace(/\{(\w+)(?::([^}]+))?\}/g, function (match, varName, format) {
       var value = values[varName];
-      if (value === undefined) return match;
+      if (value === undefined) {
+        lexeraLog('warn', '[kanban.template.substitute] Undefined variable: {' + varName + '}');
+        return match;
+      }
+
+      if (value !== null && typeof value === 'object') {
+        lexeraLog('warn', '[kanban.template.substitute] Variable {' + varName + '} has type ' + typeof value + ', converting to string');
+      }
 
       if (!format && variables) {
         for (var i = 0; i < variables.length; i++) {
