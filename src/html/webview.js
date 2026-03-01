@@ -6100,6 +6100,13 @@ window.setColumnWidth = setColumnWidth;
 window.applyColumnWidth = applyColumnWidth;
 window.setLayoutRows = setLayoutRows;
 window.setRowHeight = setRowHeight;
+window.setTaskMinHeight = setTaskMinHeight;
+window.setWhitespace = setWhitespace;
+window.setFontFamily = setFontFamily;
+window.setStickyStackMode = setStickyStackMode;
+window.setHtmlCommentRenderMode = setHtmlCommentRenderMode;
+window.setHtmlContentRenderMode = setHtmlContentRenderMode;
+window.toggleMarpSettingsVisibility = toggleMarpSettingsVisibility;
 window.applyRowHeight = applyRowHeight;
 window.currentRowHeight = currentRowHeight;
 window.setTagVisibility = setTagVisibility;
@@ -6194,13 +6201,44 @@ window.undo = undo;
 window.redo = redo;
 window.selectFile = selectFile;
 
-// Stub functions for path context menu (TODO: implement if needed)
 window.copyFullPath = function() {
-    console.warn('[webview] copyFullPath not implemented');
+    const fullPath = currentFileInfo?.filePath;
+    if (fullPath) {
+        navigator.clipboard.writeText(fullPath);
+    }
 };
 window.copyStoredPath = function() {
-    console.warn('[webview] copyStoredPath not implemented');
+    const storedPath = currentFileInfo?.fileName;
+    if (storedPath) {
+        navigator.clipboard.writeText(storedPath);
+    }
 };
+
+(function initPathContextMenu() {
+    const menu = document.getElementById('path-context-menu');
+    const fileNameEl = document.getElementById('file-name');
+    if (!menu || !fileNameEl) return;
+
+    function hideMenu() {
+        menu.classList.add('hidden');
+    }
+
+    fileNameEl.addEventListener('contextmenu', function(e) {
+        if (!currentFileInfo) return;
+        e.preventDefault();
+        e.stopPropagation();
+        menu.style.left = e.clientX + 'px';
+        menu.style.top = e.clientY + 'px';
+        menu.classList.remove('hidden');
+    });
+
+    document.addEventListener('click', hideMenu);
+    document.addEventListener('contextmenu', function(e) {
+        if (!fileNameEl.contains(e.target)) {
+            hideMenu();
+        }
+    });
+})();
 
 /**
  * Lazy load videos using IntersectionObserver for better performance
