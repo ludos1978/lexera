@@ -127,9 +127,30 @@ class ExportTreeUI {
         const node = ExportTreeBuilder.findNodeById(this.tree, nodeId);
         if (!node) return;
         this.tree = ExportTreeBuilder.toggleSelection(this.tree, nodeId, !node.selected);
-        this.render(this.tree);
+        this.updateSelectionClasses(this.tree);
         if (this.onSelectionChange) {
             this.onSelectionChange(ExportTreeBuilder.getSelectedItems(this.tree));
+        }
+    }
+
+    /**
+     * Update CSS 'selected' classes on existing DOM elements to match tree state,
+     * without rebuilding the DOM. Walks the tree and finds each node's element
+     * by its data-node-id attribute.
+     */
+    updateSelectionClasses(node) {
+        if (!this.container) return;
+        const nodeId = ExportTreeBuilder.generateNodeId(node);
+        const el = this.container.querySelector('[data-node-id="' + nodeId + '"]');
+        if (el && !node.excluded) {
+            if (node.selected) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+        }
+        if (node.children) {
+            node.children.forEach(child => this.updateSelectionClasses(child));
         }
     }
 
@@ -143,13 +164,13 @@ class ExportTreeUI {
     clearSelection() {
         if (!this.tree) return;
         this.tree = ExportTreeBuilder.toggleSelection(this.tree, 'root', false);
-        this.render(this.tree);
+        this.updateSelectionClasses(this.tree);
     }
 
     selectAll() {
         if (!this.tree) return;
         this.tree = ExportTreeBuilder.toggleSelection(this.tree, 'root', true);
-        this.render(this.tree);
+        this.updateSelectionClasses(this.tree);
     }
 }
 
