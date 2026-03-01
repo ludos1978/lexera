@@ -223,7 +223,10 @@
       border-radius: var(--radius);
       padding: 12px;
       margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s;
     }
+    .search-result:active { border-color: var(--accent); }
     .search-result-header {
       display: flex;
       justify-content: space-between;
@@ -354,6 +357,10 @@
     .board-card-item.checked {
       text-decoration: line-through;
       opacity: 0.5;
+    }
+    .board-card-item.highlight {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
     }
     .board-empty {
       color: var(--text-dim);
@@ -735,7 +742,7 @@
           if (r.dueDate) {
             tags += '<span class="tag temporal">due: ' + escHtml(r.dueDate) + '</span>';
           }
-          return '<div class="search-result">' +
+          return '<div class="search-result" data-board-id="' + escHtml(r.boardId) + '" data-card-id="' + escHtml(r.cardId) + '">' +
             '<div class="search-result-header">' +
               '<span class="search-result-board">' + escHtml(r.boardTitle) + '</span>' +
               '<span class="search-result-column">' + escHtml(r.columnTitle) + '</span>' +
@@ -744,6 +751,10 @@
             (tags ? '<div class="search-result-tags">' + tags + '</div>' : '') +
           '</div>';
         }).join('');
+
+        resultsEl.querySelectorAll('.search-result').forEach(el => {
+          el.addEventListener('click', () => navigateToCard(el.dataset.boardId, el.dataset.cardId));
+        });
       } catch (e) {
         emptyEl.style.display = 'block';
         emptyEl.textContent = 'Search error: ' + e;
@@ -778,7 +789,7 @@
     }
 
     // ─── Board detail ───
-    async function openBoardDetail(boardId) {
+    async function openBoardDetail(boardId, highlightCardId) {
       try {
         const board = await invoke('get_board', { boardId });
         if (!board) { showToast('Board not found', true); return; }
@@ -796,7 +807,7 @@
         colsEl.innerHTML = columns.map(col => {
           const cards = (col.cards || []).map(card => {
             const content = card.content.replace(/<!--\s*kid:[a-f0-9]+\s*-->/g, '').trim();
-            return '<div class="board-card-item' + (card.checked ? ' checked' : '') + '">' +
+            return '<div class="board-card-item' + (card.checked ? ' checked' : '') + '" data-card-id="' + escHtml(card.id) + '">' +
               escHtml(content) + '</div>';
           }).join('');
           return '<div class="board-column">' +
@@ -804,6 +815,14 @@
             (cards || '<div class="board-empty">No cards</div>') +
           '</div>';
         }).join('');
+
+        if (highlightCardId) {
+          const target = colsEl.querySelector('[data-card-id="' + highlightCardId + '"]');
+          if (target) {
+            target.classList.add('highlight');
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
       } catch (e) {
         showToast('Error loading board: ' + e, true);
       }
@@ -817,6 +836,14 @@
     }
 
     document.getElementById('board-back').addEventListener('click', closeBoardDetail);
+
+    function navigateToCard(boardId, cardId) {
+      document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelector('.tab-bar button[data-page="boards"]').classList.add('active');
+      document.getElementById('page-boards').classList.add('active');
+      openBoardDetail(boardId, cardId);
+    }
 
     // ─── New board dialog ───
     document.getElementById('btn-new-board').addEventListener('click', () => {
