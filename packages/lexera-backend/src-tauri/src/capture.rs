@@ -68,12 +68,16 @@ fn read_image_as_base64(ctx: &CrsContext) -> (Option<String>, Option<String>) {
     let tmp_str = tmp_path.to_str().unwrap_or("/tmp/lexera-clip.png");
 
     if image.save_to_path(tmp_str).is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
         return (None, None);
     }
 
     let png_bytes = match std::fs::read(&tmp_path) {
         Ok(bytes) => bytes,
-        Err(_) => return (None, None),
+        Err(_) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            return (None, None);
+        }
     };
 
     let _ = std::fs::remove_file(&tmp_path);
