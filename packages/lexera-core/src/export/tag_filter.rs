@@ -117,8 +117,14 @@ fn strip_configured_tags(text: &str) -> String {
     let mut result = text.to_string();
     for base in CONFIGURED_TAG_BASES {
         let pattern = format!(r"(?i){}\d*(?:\s|$)", regex::escape(base));
-        let re = Regex::new(&pattern).unwrap();
-        result = re.replace_all(&result, " ").to_string();
+        match Regex::new(&pattern) {
+            Ok(re) => {
+                result = re.replace_all(&result, " ").to_string();
+            }
+            Err(e) => {
+                log::warn!("[export.tag_filter.strip_configured_tags] Failed to compile regex for tag {}: {}", base, e);
+            }
+        }
     }
     collapse_and_trim(&result)
 }

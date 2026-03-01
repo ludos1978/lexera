@@ -81,11 +81,15 @@ impl FileWatcher {
     pub fn watch_board(&mut self, board_id: &str, path: &Path) -> Result<(), notify::Error> {
         let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 
-        self.path_mapping
-            .write()
-            .unwrap()
-            .main_files
-            .insert(canonical.clone(), board_id.to_string());
+        match self.path_mapping.write() {
+            Ok(mut mapping) => {
+                mapping.main_files.insert(canonical.clone(), board_id.to_string());
+            }
+            Err(e) => {
+                log::error!("[lexera.watcher.board] Path mapping lock poisoned: {}", e);
+                return Err(notify::Error::generic("Path mapping lock poisoned"));
+            }
+        }
 
         self.ensure_watched(&canonical)?;
         log::info!(
@@ -110,11 +114,15 @@ impl FileWatcher {
     /// Stop watching a file path.
     pub fn unwatch(&mut self, path: &Path) -> Result<(), notify::Error> {
         let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        self.path_mapping
-            .write()
-            .unwrap()
-            .main_files
-            .remove(&canonical);
+        match self.path_mapping.write() {
+            Ok(mut mapping) => {
+                mapping.main_files.remove(&canonical);
+            }
+            Err(e) => {
+                log::error!("[lexera.watcher.unwatch] Path mapping lock poisoned: {}", e);
+                return Err(notify::Error::generic("Path mapping lock poisoned"));
+            }
+        }
 
         // Note: we watch parent directories, so we don't unwatch individual files
         // The debouncer will simply ignore events for paths we don't track
@@ -129,7 +137,10 @@ impl FileWatcher {
     /// Ensure the parent directory of a file is being watched.
     fn ensure_watched(&mut self, file_path: &Path) -> Result<(), notify::Error> {
         if let Some(parent) = file_path.parent() {
-            let mut mapping = self.path_mapping.write().unwrap();
+            let mut mapping = self.path_mapping.write().map_err(|e| {
+                log::error!("[lexera.watcher.ensure_watched] Path mapping lock poisoned: {}", e);
+                notify::Error::generic("Path mapping lock poisoned")
+            })?;
             if mapping.watched_dirs.contains(parent) {
                 return Ok(());
             }
@@ -155,7 +166,13 @@ fn handle_debounced_event(
         let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
 
         // Check if this is a main board file
-        let mapping = path_mapping.read().unwrap();
+        let mapping = match path_mapping.read() {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("[lexera.watcher.event] Path mapping lock poisoned: {}", e);
+                return;
+            }
+        };
         if let Some(board_id) = mapping.main_files.get(&canonical) {
             let board_id = board_id.clone();
             drop(mapping);
@@ -180,7 +197,13 @@ fn handle_debounced_event(
         drop(mapping);
 
         // Check if this is an include file
-        let imap = include_map.read().unwrap();
+        let imap = match include_map.read() {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("[lexera.watcher.event] Include map lock poisoned: {}", e);
+                return;
+            }
+        };
         if imap.is_include_file(&canonical) {
             let board_ids = imap.get_boards_for_include(&canonical);
             drop(imap);

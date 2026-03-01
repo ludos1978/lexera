@@ -169,13 +169,15 @@ pub fn run() {
                 }
 
                 // Watch include files
-                let storage_map = storage.include_map();
-                for path in storage_map.all_include_paths() {
-                    if let Err(e) = watcher.watch_include(&path) {
-                        log::warn!("[lexera.watcher] Failed to watch include {:?}: {}", path, e);
+                if let Some(storage_map) = storage.include_map() {
+                    for path in storage_map.all_include_paths() {
+                        if let Err(e) = watcher.watch_include(&path) {
+                            log::warn!("[lexera.watcher] Failed to watch include {:?}: {}", path, e);
+                        }
                     }
+                } else {
+                    log::error!("[lexera.watcher] Include map lock poisoned, skipping include watches");
                 }
-                drop(storage_map);
 
                 // Subscribe before moving watcher into Arc
                 let mut event_rx = watcher.event_sender().subscribe();

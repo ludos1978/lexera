@@ -249,8 +249,8 @@ impl LocalStorage {
         board: &KanbanBoard,
         base_board: Option<&KanbanBoard>,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
-        let lock = self.get_write_lock(board_id);
-        let _guard = lock.lock().unwrap();
+        let lock = self.get_write_lock(board_id)?;
+        let _guard = lock.lock().map_err(|e| StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e)))?;
 
         let file_path = self
             .get_board_path(board_id)
@@ -262,7 +262,7 @@ impl LocalStorage {
 
         // Take the CRDT out for mutation
         let mut crdt = {
-            let mut boards = self.boards.write().unwrap();
+            let mut boards = self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
             boards.get_mut(board_id).and_then(|s| s.crdt.take())
         };
 
@@ -354,7 +354,7 @@ impl LocalStorage {
             let base_board = self
                 .boards
                 .read()
-                .unwrap()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?
                 .get(board_id)
                 .map(|s| s.board.clone())
                 .unwrap_or_else(|| parser::parse_markdown(""));
@@ -403,7 +403,7 @@ impl LocalStorage {
 
         self.boards
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
             .insert(board_id.to_string(), state);
 
         Ok(merge_result)
@@ -512,7 +512,7 @@ impl LocalStorage {
             crdt,
         };
 
-        self.boards.write().unwrap().insert(board_id.clone(), state);
+        self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?.insert(board_id.clone(), state);
         Ok(board_id)
     }
 
@@ -521,7 +521,7 @@ impl LocalStorage {
     pub fn reload_board(&self, board_id: &str) -> Result<(), StorageError> {
         // Take the file_path and CRDT out of the existing state
         let (file_path, old_crdt) = {
-            let mut boards = self.boards.write().unwrap();
+            let mut boards = self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
             let state = boards
                 .get_mut(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -570,7 +570,7 @@ impl LocalStorage {
 
         self.boards
             .write()
-            .unwrap()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
             .insert(board_id.to_string(), new_state);
         Ok(())
     }
@@ -580,10 +580,13 @@ impl LocalStorage {
     /// If no match, returns false (external change, propagate event).
     pub fn check_self_write(&self, path: &Path) -> bool {
         if let Ok(content) = fs::read_to_string(path) {
-            self.self_write_tracker
-                .lock()
-                .unwrap()
-                .check_and_consume(path, &content)
+            match self.self_write_tracker.lock() {
+                Ok(mut tracker) => tracker.check_and_consume(path, &content),
+                Err(e) => {
+                    log::error!("[lexera.storage.self_write] Self-write tracker lock poisoned: {}", e);
+                    false
+                }
+            }
         } else {
             false
         }
@@ -591,22 +594,31 @@ impl LocalStorage {
 
     /// Run periodic cleanup of expired fingerprints.
     pub fn cleanup_expired_fingerprints(&self) {
-        self.self_write_tracker.lock().unwrap().cleanup_expired();
+        match self.self_write_tracker.lock() {
+            Ok(mut tracker) => tracker.cleanup_expired(),
+            Err(e) => {
+                log::error!("[lexera.storage.cleanup] Self-write tracker lock poisoned: {}", e);
+            }
+        }
     }
 
     /// Remove a board from tracking. Does not delete the file on disk.
     pub fn remove_board(&self, board_id: &str) -> Result<(), StorageError> {
-        let mut boards = self.boards.write().unwrap();
+        let mut boards = self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
         if boards.remove(board_id).is_none() {
             return Err(StorageError::BoardNotFound(board_id.to_string()));
         }
         drop(boards);
 
         // Clean up write lock
-        self.write_locks.lock().unwrap().remove(board_id);
+        if let Ok(mut locks) = self.write_locks.lock() {
+            locks.remove(board_id);
+        }
 
         // Clean up include map
-        self.include_map.write().unwrap().remove_board(board_id);
+        if let Ok(mut imap) = self.include_map.write() {
+            imap.remove_board(board_id);
+        }
 
         Ok(())
     }
@@ -622,25 +634,42 @@ impl LocalStorage {
             version,
             crdt: None,
         };
-        self.boards
-            .write()
-            .unwrap()
-            .insert(board_id.to_string(), state);
-        self.remote_boards
-            .write()
-            .unwrap()
-            .insert(board_id.to_string());
+        match self.boards.write() {
+            Ok(mut boards) => { boards.insert(board_id.to_string(), state); }
+            Err(e) => {
+                log::error!("[lexera.storage.remote] Boards lock poisoned: {}", e);
+                return;
+            }
+        }
+        match self.remote_boards.write() {
+            Ok(mut remote) => { remote.insert(board_id.to_string()); }
+            Err(e) => {
+                log::error!("[lexera.storage.remote] Remote boards lock poisoned: {}", e);
+            }
+        }
     }
 
     /// Check if a board is a remote board.
     pub fn is_remote_board(&self, board_id: &str) -> bool {
-        self.remote_boards.read().unwrap().contains(board_id)
+        self.remote_boards.read().map(|r| r.contains(board_id)).unwrap_or(false)
     }
 
     /// List all remote board IDs with their titles.
     pub fn list_remote_boards(&self) -> Vec<(String, String, usize)> {
-        let remote_ids = self.remote_boards.read().unwrap();
-        let boards = self.boards.read().unwrap();
+        let remote_ids = match self.remote_boards.read() {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("[lexera.storage.remote] Remote boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("[lexera.storage.remote] Boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
         remote_ids
             .iter()
             .filter_map(|id| {
@@ -659,37 +688,44 @@ impl LocalStorage {
 
     /// Remove a remote board from tracking.
     pub fn remove_remote_board(&self, board_id: &str) {
-        self.remote_boards.write().unwrap().remove(board_id);
-        let mut boards = self.boards.write().unwrap();
-        boards.remove(board_id);
+        if let Ok(mut remote) = self.remote_boards.write() {
+            remote.remove(board_id);
+        } else {
+            log::error!("[lexera.storage.remote] Remote boards lock poisoned during remove");
+        }
+        if let Ok(mut boards) = self.boards.write() {
+            boards.remove(board_id);
+        } else {
+            log::error!("[lexera.storage.remote] Boards lock poisoned during remove");
+        }
     }
 
     /// Get the file path for a board ID.
     pub fn get_board_path(&self, board_id: &str) -> Option<PathBuf> {
         self.boards
             .read()
-            .unwrap()
+            .ok()?
             .get(board_id)
             .map(|s| s.file_path.clone())
     }
 
     /// Get the version number for a board (for ETag support).
     pub fn get_board_version(&self, board_id: &str) -> Option<u64> {
-        self.boards.read().unwrap().get(board_id).map(|s| s.version)
+        self.boards.read().ok()?.get(board_id).map(|s| s.version)
     }
 
     /// Get the content hash for a board (for conflict detection).
     pub fn get_board_content_hash(&self, board_id: &str) -> Option<String> {
         self.boards
             .read()
-            .unwrap()
+            .ok()?
             .get(board_id)
             .map(|s| s.content_hash.clone())
     }
 
     /// Get the include map (read access).
-    pub fn include_map(&self) -> std::sync::RwLockReadGuard<'_, IncludeMap> {
-        self.include_map.read().unwrap()
+    pub fn include_map(&self) -> Option<std::sync::RwLockReadGuard<'_, IncludeMap>> {
+        self.include_map.read().ok()
     }
 
     /// Parse markdown content with include support.
@@ -730,7 +766,11 @@ impl LocalStorage {
 
         if !has_includes {
             // No includes — clean up map and return simple parse
-            self.include_map.write().unwrap().remove_board(board_id);
+            if let Ok(mut map) = self.include_map.write() {
+                map.remove_board(board_id);
+            } else {
+                log::error!("[lexera.storage.include] Include map lock poisoned during remove");
+            }
             return Ok(preliminary);
         }
 
@@ -778,10 +818,11 @@ impl LocalStorage {
         }
 
         // Update include map
-        self.include_map
-            .write()
-            .unwrap()
-            .register_board(board_id, board_dir, &column_titles);
+        if let Ok(mut map) = self.include_map.write() {
+            map.register_board(board_id, board_dir, &column_titles);
+        } else {
+            log::error!("[lexera.storage.include] Include map lock poisoned during register");
+        }
 
         // Parse with include context
         let ctx = parser::ParseContext {
@@ -803,12 +844,17 @@ impl LocalStorage {
             .iter()
             .any(|(_, title)| syntax::is_include(title))
         {
-            self.include_map
-                .write()
-                .unwrap()
-                .register_board(board_id, board_dir, &column_titles);
+            if let Ok(mut map) = self.include_map.write() {
+                map.register_board(board_id, board_dir, &column_titles);
+            } else {
+                log::error!("[lexera.storage.include] Include map lock poisoned during sync register");
+            }
         } else {
-            self.include_map.write().unwrap().remove_board(board_id);
+            if let Ok(mut map) = self.include_map.write() {
+                map.remove_board(board_id);
+            } else {
+                log::error!("[lexera.storage.include] Include map lock poisoned during sync remove");
+            }
         }
     }
 
@@ -820,10 +866,10 @@ impl LocalStorage {
         let resolved_path = include_source.resolved_path.clone();
         let slide_content = slide_parser::generate_slides(&column.cards);
 
-        self.self_write_tracker
-            .lock()
-            .unwrap()
-            .register(&resolved_path, &slide_content);
+        match self.self_write_tracker.lock() {
+            Ok(mut tracker) => tracker.register(&resolved_path, &slide_content),
+            Err(e) => log::error!("[lexera.storage.write] Self-write tracker lock poisoned: {}", e),
+        }
 
         Self::atomic_write(&resolved_path, &slide_content)?;
         Ok(())
@@ -837,10 +883,10 @@ impl LocalStorage {
     ) -> Result<String, StorageError> {
         let markdown = parser::generate_markdown(board);
 
-        self.self_write_tracker
-            .lock()
-            .unwrap()
-            .register(file_path, &markdown);
+        match self.self_write_tracker.lock() {
+            Ok(mut tracker) => tracker.register(file_path, &markdown),
+            Err(e) => log::error!("[lexera.storage.write] Self-write tracker lock poisoned: {}", e),
+        }
 
         Self::atomic_write(file_path, &markdown)?;
 
@@ -859,7 +905,9 @@ impl LocalStorage {
     /// Write cards to an include file in slide format.
     /// Used when cards in an include column are modified.
     pub fn write_include_file(&self, board_id: &str, col_index: usize) -> Result<(), StorageError> {
-        let boards = self.boards.read().unwrap();
+        let boards = self.boards.read().map_err(|e| {
+            StorageError::LockPoisoned(format!("boards read in write_include_file: {}", e))
+        })?;
         let state = boards
             .get(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -887,12 +935,14 @@ impl LocalStorage {
     }
 
     /// Get a write lock for a specific board.
-    fn get_write_lock(&self, board_id: &str) -> Arc<Mutex<()>> {
-        let mut locks = self.write_locks.lock().unwrap();
-        locks
+    fn get_write_lock(&self, board_id: &str) -> Result<Arc<Mutex<()>>, StorageError> {
+        let mut locks = self.write_locks.lock().map_err(|e| {
+            StorageError::LockPoisoned(format!("write_locks in get_write_lock: {}", e))
+        })?;
+        Ok(locks
             .entry(board_id.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+            .clone())
     }
 
     /// Atomic write with fsync: write to .tmp, fsync, rename, fsync directory.
@@ -965,9 +1015,9 @@ impl LocalStorage {
     /// Get the encoded version vector for a board's CRDT (for sync handshake).
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
     pub fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
-        let lock = self.get_write_lock(board_id);
-        let _guard = lock.lock().unwrap();
-        let boards = self.boards.read().unwrap();
+        let lock = self.get_write_lock(board_id).ok()?;
+        let _guard = lock.lock().ok()?;
+        let boards = self.boards.read().ok()?;
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
         Some(crdt.oplog_vv().encode())
@@ -978,9 +1028,9 @@ impl LocalStorage {
     /// An empty `vv_bytes` slice is treated as an empty VersionVector (export all).
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
     pub fn export_crdt_updates_since(&self, board_id: &str, vv_bytes: &[u8]) -> Option<Vec<u8>> {
-        let lock = self.get_write_lock(board_id);
-        let _guard = lock.lock().unwrap();
-        let boards = self.boards.read().unwrap();
+        let lock = self.get_write_lock(board_id).ok()?;
+        let _guard = lock.lock().ok()?;
+        let boards = self.boards.read().ok()?;
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
         let vv = if vv_bytes.is_empty() {
@@ -992,9 +1042,9 @@ impl LocalStorage {
     }
 
     pub fn export_crdt_snapshot(&self, board_id: &str) -> Option<Vec<u8>> {
-        let lock = self.get_write_lock(board_id);
-        let _guard = lock.lock().unwrap();
-        let boards = self.boards.read().unwrap();
+        let lock = self.get_write_lock(board_id).ok()?;
+        let _guard = lock.lock().ok()?;
+        let boards = self.boards.read().ok()?;
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
         crdt.save().ok()
@@ -1002,8 +1052,10 @@ impl LocalStorage {
 
     /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
     pub fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
-        let lock = self.get_write_lock(board_id);
-        let _guard = lock.lock().unwrap();
+        let lock = self.get_write_lock(board_id)?;
+        let _guard = lock.lock().map_err(|e| {
+            StorageError::LockPoisoned(format!("write lock for board {} in import_crdt: {}", board_id, e))
+        })?;
 
         let file_path = self
             .get_board_path(board_id)
@@ -1011,7 +1063,9 @@ impl LocalStorage {
 
         // Take CRDT and current board from state for mutation
         let (mut crdt, current_board) = {
-            let mut boards = self.boards.write().unwrap();
+            let mut boards = self.boards.write().map_err(|e| {
+                StorageError::LockPoisoned(format!("boards write in import_crdt (take): {}", e))
+            })?;
             let state = boards
                 .get_mut(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -1026,8 +1080,12 @@ impl LocalStorage {
 
         if let Err(e) = crdt.import_updates(bytes) {
             // Put CRDT back on failure
-            if let Some(state) = self.boards.write().unwrap().get_mut(board_id) {
-                state.crdt = Some(crdt);
+            if let Ok(mut boards) = self.boards.write() {
+                if let Some(state) = boards.get_mut(board_id) {
+                    state.crdt = Some(crdt);
+                }
+            } else {
+                log::error!("[lexera.crdt] Boards lock poisoned while restoring CRDT after import failure");
             }
             return Err(StorageError::Io(e));
         }
@@ -1055,7 +1113,9 @@ impl LocalStorage {
 
         self.boards
             .write()
-            .unwrap()
+            .map_err(|e| {
+                StorageError::LockPoisoned(format!("boards write in import_crdt (save): {}", e))
+            })?
             .insert(board_id.to_string(), state);
 
         Ok(())
@@ -1067,7 +1127,13 @@ impl LocalStorage {
             return Vec::new();
         }
 
-        let boards = self.boards.read().unwrap();
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("[lexera.storage.search] Boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
         let mut results = Vec::new();
 
         for (board_id, state) in boards.iter() {
@@ -1132,8 +1198,20 @@ impl LocalStorage {
 
 impl BoardStorage for LocalStorage {
     fn list_boards(&self) -> Vec<BoardInfo> {
-        let boards = self.boards.read().unwrap();
-        let remote_ids = self.remote_boards.read().unwrap();
+        let boards = match self.boards.read() {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("[lexera.storage.list] Boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
+        let remote_ids = match self.remote_boards.read() {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("[lexera.storage.list] Remote boards lock poisoned: {}", e);
+                return Vec::new();
+            }
+        };
         boards
             .iter()
             .filter(|(id, _)| !remote_ids.contains(*id))
@@ -1176,7 +1254,7 @@ impl BoardStorage for LocalStorage {
     fn read_board(&self, board_id: &str) -> Option<KanbanBoard> {
         self.boards
             .read()
-            .unwrap()
+            .ok()?
             .get(board_id)
             .map(|s| s.board.clone())
     }
@@ -1195,8 +1273,10 @@ impl BoardStorage for LocalStorage {
         col_index: usize,
         content: &str,
     ) -> Result<(), StorageError> {
-        let lock = self.get_write_lock(board_id);
-        let _guard = lock.lock().unwrap();
+        let lock = self.get_write_lock(board_id)?;
+        let _guard = lock.lock().map_err(|e| {
+            StorageError::LockPoisoned(format!("write lock for board {} in add_card: {}", board_id, e))
+        })?;
 
         let file_path = self
             .get_board_path(board_id)
@@ -1204,7 +1284,9 @@ impl BoardStorage for LocalStorage {
 
         // Take CRDT from state for mutation
         let mut crdt = {
-            let mut boards = self.boards.write().unwrap();
+            let mut boards = self.boards.write().map_err(|e| {
+                StorageError::LockPoisoned(format!("boards write in add_card (take crdt): {}", e))
+            })?;
             boards.get_mut(board_id).and_then(|s| s.crdt.take())
         };
 
@@ -1219,8 +1301,10 @@ impl BoardStorage for LocalStorage {
         if !board.valid {
             // Put CRDT back before returning error
             if let Some(c) = crdt {
-                if let Some(state) = self.boards.write().unwrap().get_mut(board_id) {
-                    state.crdt = Some(c);
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = Some(c);
+                    }
                 }
             }
             return Err(StorageError::InvalidBoard(
@@ -1232,8 +1316,10 @@ impl BoardStorage for LocalStorage {
         if col_index >= all_cols.len() {
             // Put CRDT back before returning error
             if let Some(c) = crdt {
-                if let Some(state) = self.boards.write().unwrap().get_mut(board_id) {
-                    state.crdt = Some(c);
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = Some(c);
+                    }
                 }
             }
             return Err(StorageError::ColumnOutOfRange {
@@ -1275,17 +1361,22 @@ impl BoardStorage for LocalStorage {
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
-        self.boards.write().unwrap().insert(
-            board_id.to_string(),
-            BoardState {
-                file_path,
-                board,
-                last_modified,
-                content_hash: Self::content_hash(&markdown),
-                version: self.next_version(),
-                crdt,
-            },
-        );
+        self.boards
+            .write()
+            .map_err(|e| {
+                StorageError::LockPoisoned(format!("boards write in add_card (save): {}", e))
+            })?
+            .insert(
+                board_id.to_string(),
+                BoardState {
+                    file_path,
+                    board,
+                    last_modified,
+                    content_hash: Self::content_hash(&markdown),
+                    version: self.next_version(),
+                    crdt,
+                },
+            );
 
         Ok(())
     }

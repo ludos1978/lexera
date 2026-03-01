@@ -140,7 +140,7 @@ pub fn apply_speaker_note_transform(content: &str, mode: SpeakerNoteMode) -> Str
 
             // Collect consecutive `;;` lines.
             while i < lines.len() && lines[i].trim().starts_with(";;") {
-                let note_content = lines[i].trim().strip_prefix(";;").unwrap().trim();
+                let note_content = lines[i].trim().strip_prefix(";;").unwrap_or("").trim();
                 note_lines.push(note_content);
                 i += 1;
             }
@@ -263,7 +263,7 @@ pub fn apply_list_split_transform(content: &str) -> String {
         let is_list_item = item_match.is_some();
 
         if is_list_item && in_list_context && !blank_buffer.is_empty() {
-            let item_indent = item_match.as_ref().unwrap()[1].len();
+            let item_indent = item_match.as_ref().map(|m| m[1].len()).unwrap_or(0);
             if item_indent <= list_indent {
                 // Blank lines between same-level (or less-indented) list items:
                 // insert a comment to break the list.
@@ -287,7 +287,7 @@ pub fn apply_list_split_transform(content: &str) -> String {
 
         if is_list_item {
             in_list_context = true;
-            list_indent = item_match.unwrap()[1].len();
+            list_indent = item_match.map(|m| m[1].len()).unwrap_or(0);
         } else {
             let line_indent = re_leading_whitespace()
                 .find(line)

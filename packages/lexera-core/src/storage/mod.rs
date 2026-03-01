@@ -49,6 +49,9 @@ pub enum StorageError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("Internal lock poisoned: {0}")]
+    LockPoisoned(String),
+
     #[error("Conflict detected on board {board_id}: {conflicts} unresolved conflicts")]
     ConflictDetected {
         board_id: String,
