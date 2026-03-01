@@ -1929,4 +1929,242 @@ kanban-plugin: board
             assert_eq!(board.columns[1].cards.len(), 1);
         }
     }
+
+    #[test]
+    fn test_write_board_atomic_safety() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("atomic-test.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        // Modify the board and write it back
+        let mut board = storage.read_board(&id).unwrap();
+        board.columns[0].cards[0].content = "Modified task".to_string();
+        storage.write_board(&id, &board).unwrap();
+
+        // Verify file content on disk matches what we wrote
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("Modified task"), "disk content should contain modified card");
+        assert!(!on_disk.contains("Buy groceries"), "old card content should be replaced");
+
+        // Verify no .tmp files are left behind
+        let tmp_path = board_path.with_extension("lexera-sync.tmp");
+        assert!(!tmp_path.exists(), "temp file should be cleaned up after atomic write");
+    }
+
+    #[test]
+    fn test_add_card_to_specific_column_index() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("col-idx.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        // Add a card to the second column (index 1 = "Done")
+        storage.add_card(&id, 1, "Newly done task").unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        // "Done" column should now have 2 cards (original "Laundry" + new one)
+        assert_eq!(board.columns[1].cards.len(), 2);
+        assert!(
+            board.columns[1].cards[1].content.starts_with("Newly done task"),
+            "new card should appear in the Done column"
+        );
+        // "Todo" column should be unchanged
+        assert_eq!(board.columns[0].cards.len(), 2);
+
+        // Verify on disk
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("Newly done task"));
+    }
+
+    #[test]
+    fn test_remove_board() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("remove-test.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        // Board should be listed
+        assert_eq!(storage.list_boards().len(), 1);
+        assert!(storage.read_board(&id).is_some());
+
+        // Remove the board
+        storage.remove_board(&id).unwrap();
+
+        // Board should no longer be listed or readable
+        assert!(storage.list_boards().is_empty());
+        assert!(storage.read_board(&id).is_none());
+        assert!(storage.get_board_path(&id).is_none());
+
+        // The file on disk should still exist (remove_board only untracks)
+        assert!(board_path.exists(), "remove_board should not delete the file on disk");
+
+        // Removing again should return BoardNotFound
+        let result = storage.remove_board(&id);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_board_with_empty_columns() {
+        let empty_col_md = "\
+---
+kanban-plugin: board
+---
+
+## Backlog
+
+## In Progress
+
+## Done
+- [x] Shipped feature
+";
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("empty-cols.md");
+        fs::write(&board_path, empty_col_md).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        assert_eq!(board.columns.len(), 3);
+        assert_eq!(board.columns[0].title, "Backlog");
+        assert!(board.columns[0].cards.is_empty(), "Backlog should have no cards");
+        assert_eq!(board.columns[1].title, "In Progress");
+        assert!(board.columns[1].cards.is_empty(), "In Progress should have no cards");
+        assert_eq!(board.columns[2].title, "Done");
+        assert_eq!(board.columns[2].cards.len(), 1);
+
+        // Write back and verify round-trip preserves empty columns
+        storage.write_board(&id, &board).unwrap();
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("## Backlog"));
+        assert!(on_disk.contains("## In Progress"));
+        assert!(on_disk.contains("## Done"));
+
+        // Re-read and verify structure is preserved
+        let board2 = storage.read_board(&id).unwrap();
+        assert_eq!(board2.columns.len(), 3);
+        assert!(board2.columns[0].cards.is_empty());
+        assert!(board2.columns[1].cards.is_empty());
+        assert_eq!(board2.columns[2].cards.len(), 1);
+    }
+
+    #[test]
+    fn test_write_board_new_format_round_trip() {
+        let new_format_md = "\
+---
+kanban-plugin: board
+---
+
+# Sprint 1
+
+## Frontend
+
+### Todo
+- [ ] Build login page
+
+### Done
+- [x] Setup React
+
+## Backend
+
+### Todo
+- [ ] Create API endpoints
+
+# Sprint 2
+
+## Design
+
+### Backlog
+- [ ] Wireframes
+";
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("new-format.md");
+        fs::write(&board_path, new_format_md).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        // New format should populate rows, not flat columns
+        assert_eq!(board.rows.len(), 2, "should have 2 rows (Sprint 1, Sprint 2)");
+        assert_eq!(board.rows[0].title, "Sprint 1");
+        assert_eq!(board.rows[0].stacks.len(), 2, "Sprint 1 should have 2 stacks");
+        assert_eq!(board.rows[0].stacks[0].title, "Frontend");
+        assert_eq!(board.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(board.rows[0].stacks[0].columns[0].title, "Todo");
+        assert_eq!(board.rows[0].stacks[0].columns[1].title, "Done");
+        assert_eq!(board.rows[0].stacks[1].title, "Backend");
+        assert_eq!(board.rows[0].stacks[1].columns.len(), 1);
+        assert_eq!(board.rows[1].title, "Sprint 2");
+        assert_eq!(board.rows[1].stacks.len(), 1);
+        assert_eq!(board.rows[1].stacks[0].title, "Design");
+
+        // all_columns should flatten all of them
+        let all_cols = board.all_columns();
+        assert_eq!(all_cols.len(), 4);
+
+        // Write back and re-read — the structure should survive the round-trip
+        storage.write_board(&id, &board).unwrap();
+
+        let board2 = storage.read_board(&id).unwrap();
+        assert!(board2.valid);
+        assert_eq!(board2.rows.len(), 2);
+        assert_eq!(board2.rows[0].title, "Sprint 1");
+        assert_eq!(board2.rows[0].stacks.len(), 2);
+        assert_eq!(board2.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(board2.rows[0].stacks[1].columns.len(), 1);
+        assert_eq!(board2.rows[1].stacks.len(), 1);
+        assert_eq!(board2.rows[1].stacks[0].columns.len(), 1);
+
+        // Card content should survive
+        let all_cols2 = board2.all_columns();
+        assert_eq!(all_cols2.len(), 4);
+        assert!(all_cols2[0].cards[0].content.contains("Build login page"));
+        assert!(all_cols2[1].cards[0].content.contains("Setup React"));
+        assert!(all_cols2[2].cards[0].content.contains("Create API endpoints"));
+        assert!(all_cols2[3].cards[0].content.contains("Wireframes"));
+
+        // Verify disk content uses # / ## / ### headers
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("# Sprint 1"));
+        assert!(on_disk.contains("## Frontend"));
+        assert!(on_disk.contains("### Todo"));
+        assert!(on_disk.contains("# Sprint 2"));
+    }
+
+    #[test]
+    fn test_get_board_path() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("path-test.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let returned_path = storage.get_board_path(&id);
+        assert!(returned_path.is_some(), "get_board_path should return Some for a known board");
+
+        // add_board canonicalizes the path, so compare canonical forms
+        let canonical = fs::canonicalize(&board_path).unwrap();
+        assert_eq!(
+            returned_path.unwrap(),
+            canonical,
+            "get_board_path should return the canonicalized file path"
+        );
+
+        // Unknown board ID should return None
+        assert!(
+            storage.get_board_path("nonexistent_id").is_none(),
+            "get_board_path should return None for unknown board ID"
+        );
+    }
 }
