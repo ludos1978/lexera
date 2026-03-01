@@ -1,6 +1,7 @@
 use chrono::{Datelike, Duration, Local, NaiveDate, Weekday};
 use regex::Regex;
 use std::sync::OnceLock;
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SearchOptions {
@@ -321,16 +322,26 @@ fn parse_due_term(value: &str, today: NaiveDate) -> Option<SearchTerm> {
     }
 }
 
+/// Unicode-aware normalization for search: lowercases, NFD-decomposes, and
+/// strips combining marks (accents). This lets "resume" match "resume" etc.
+fn normalize_for_search(value: &str) -> String {
+    value
+        .to_lowercase()
+        .nfd()
+        .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
+        .collect()
+}
+
 fn normalize_case(value: &str, case_sensitive: bool) -> String {
     if case_sensitive {
         value.to_string()
     } else {
-        value.to_ascii_lowercase()
+        normalize_for_search(value)
     }
 }
 
 fn normalize_hash_tag(value: &str) -> String {
-    let mut tag = value.trim().trim_matches('"').to_ascii_lowercase();
+    let mut tag = normalize_for_search(value.trim().trim_matches('"'));
     if !tag.starts_with('#') {
         tag.insert(0, '#');
     }
@@ -338,7 +349,7 @@ fn normalize_hash_tag(value: &str) -> String {
 }
 
 fn normalize_temporal_tag(value: &str) -> String {
-    let mut tag = value.trim().trim_matches('"').to_ascii_lowercase();
+    let mut tag = normalize_for_search(value.trim().trim_matches('"'));
     if !tag.starts_with('@') {
         tag.insert(0, '@');
     }
@@ -349,7 +360,7 @@ fn equals_text(left: &str, right: &str, case_sensitive: bool) -> bool {
     if case_sensitive {
         left == right
     } else {
-        left.eq_ignore_ascii_case(right)
+        normalize_for_search(left) == normalize_for_search(right)
     }
 }
 
@@ -357,9 +368,7 @@ fn contains_text(haystack: &str, needle: &str, case_sensitive: bool) -> bool {
     if case_sensitive {
         haystack.contains(needle)
     } else {
-        haystack
-            .to_ascii_lowercase()
-            .contains(&needle.to_ascii_lowercase())
+        normalize_for_search(haystack).contains(&normalize_for_search(needle))
     }
 }
 
