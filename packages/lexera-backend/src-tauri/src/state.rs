@@ -9,7 +9,6 @@ use lexera_core::storage::local::LocalStorage;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
 use std::path::PathBuf;
-/// Shared application state passed to axum handlers.
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -20,6 +19,49 @@ pub struct ResolvedIncoming {
     pub column: usize,
 }
 
+/// Shared application state passed to all axum handlers and Tauri commands.
+///
+/// # Mutex fields and lock ordering
+///
+/// **std::sync::Mutex** — used for fields that only need short, synchronous access
+/// (read/write a value, no `.await` while held):
+///
+/// | Field              | Contents                        |
+/// |--------------------|---------------------------------|
+/// | `live_port`        | Actual server port (u16)        |
+/// | `server_shutdown`  | HTTP server shutdown handle      |
+/// | `config`           | Persisted sync configuration     |
+/// | `watcher`          | File-system watcher instance     |
+/// | `invite_service`   | Invite link management           |
+/// | `public_service`   | Public room management           |
+/// | `auth_service`     | User/board authorization         |
+/// | `discovery`        | UDP LAN peer discovery           |
+///
+/// **tokio::sync::Mutex** — used for fields that perform async I/O while locked
+/// (WebSocket send/receive, network operations):
+///
+/// | Field         | Contents                                  |
+/// |---------------|-------------------------------------------|
+/// | `sync_hub`    | Server-side CRDT sync (incoming WS conns) |
+/// | `sync_client` | Client-side CRDT sync (outgoing WS conns) |
+///
+/// # Lock ordering rules
+///
+/// **Never hold two locks simultaneously.** All current call sites acquire one
+/// lock at a time and drop the guard before acquiring the next. When multiple
+/// locks are needed in the same function, use scoping blocks or explicit
+/// `drop()` to ensure the previous guard is released first.
+///
+/// Observed acquisition sequences (always sequential, never overlapping):
+/// - `config` → (drop) → `auth_service`   (collab_api: update_server_config)
+/// - `config` → (drop) → `live_port`      (collab_api: connection_settings)
+/// - `auth_service` → (drop) → `sync_hub` (sync_ws: ws_handler)
+/// - `watcher` → (drop) → `config`        (api/board: add/remove board)
+/// - `server_shutdown` → (drop) → `live_port` (server: restart, lib: startup)
+/// - `auth_service` → `invite_service` → `public_service` (lib: periodic save, each dropped before next)
+///
+/// If future code must hold two locks at once, define and document a strict
+/// total order here and update all call sites to follow it.
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Arc<LocalStorage>,
