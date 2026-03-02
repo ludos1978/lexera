@@ -400,3 +400,204 @@ async fn handle_sync_session(
         board_id
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc::error::TryRecvError;
+
+    // ── Registration & Room lifecycle ────────────────────────────────────
+
+    #[test]
+    fn register_creates_room_and_assigns_unique_peer_ids() {
+        let mut hub = BoardSyncHub::new();
+        let (p1, _rx1) = hub.register("board-a", "alice");
+        let (p2, _rx2) = hub.register("board-a", "bob");
+        assert_ne!(p1, p2);
+        assert!(hub.has_clients("board-a"));
+    }
+
+    #[test]
+    fn register_separate_boards_get_independent_peer_id_sequences() {
+        let mut hub = BoardSyncHub::new();
+        let (p_a1, _) = hub.register("board-a", "alice");
+        let (p_b1, _) = hub.register("board-b", "bob");
+        // Each board room starts its own peer_id counter at 1
+        assert_eq!(p_a1, 1);
+        assert_eq!(p_b1, 1);
+    }
+
+    #[test]
+    fn unregister_removes_client_and_cleans_empty_room() {
+        let mut hub = BoardSyncHub::new();
+        let (p1, _rx1) = hub.register("board-a", "alice");
+        assert!(hub.has_clients("board-a"));
+
+        hub.unregister("board-a", p1);
+        assert!(!hub.has_clients("board-a"));
+        // Room itself should be removed
+        assert!(!hub.rooms.contains_key("board-a"));
+    }
+
+    #[test]
+    fn unregister_keeps_room_when_other_clients_remain() {
+        let mut hub = BoardSyncHub::new();
+        let (p1, _rx1) = hub.register("board-a", "alice");
+        let (_p2, _rx2) = hub.register("board-a", "bob");
+
+        hub.unregister("board-a", p1);
+        assert!(hub.has_clients("board-a"));
+    }
+
+    #[test]
+    fn unregister_nonexistent_board_is_noop() {
+        let mut hub = BoardSyncHub::new();
+        // Should not panic
+        hub.unregister("nonexistent", 99);
+    }
+
+    // ── Board isolation: broadcast ──────────────────────────────────────
+
+    #[test]
+    fn broadcast_delivers_only_to_same_board_peers() {
+        let mut hub = BoardSyncHub::new();
+        let (p_a1, _rx_a1) = hub.register("board-a", "alice");
+        let (_p_a2, mut rx_a2) = hub.register("board-a", "bob");
+        let (_p_b1, mut rx_b1) = hub.register("board-b", "carol");
+
+        hub.broadcast("board-a", p_a1, "msg-for-board-a");
+
+        // Peer on board-a (not sender) should receive the message
+        assert_eq!(rx_a2.try_recv().unwrap(), "msg-for-board-a");
+
+        // Peer on board-b should NOT receive the message
+        assert_eq!(rx_b1.try_recv(), Err(TryRecvError::Empty));
+    }
+
+    #[test]
+    fn broadcast_excludes_sender() {
+        let mut hub = BoardSyncHub::new();
+        let (p1, mut rx1) = hub.register("board-a", "alice");
+        let (_p2, mut rx2) = hub.register("board-a", "bob");
+
+        hub.broadcast("board-a", p1, "hello");
+
+        // Sender should NOT receive
+        assert_eq!(rx1.try_recv(), Err(TryRecvError::Empty));
+        // Other peer should receive
+        assert_eq!(rx2.try_recv().unwrap(), "hello");
+    }
+
+    #[test]
+    fn broadcast_all_delivers_to_all_peers_on_same_board() {
+        let mut hub = BoardSyncHub::new();
+        let (_p1, mut rx1) = hub.register("board-a", "alice");
+        let (_p2, mut rx2) = hub.register("board-a", "bob");
+        let (_p_b, mut rx_b) = hub.register("board-b", "carol");
+
+        hub.broadcast_all("board-a", "presence-update");
+
+        assert_eq!(rx1.try_recv().unwrap(), "presence-update");
+        assert_eq!(rx2.try_recv().unwrap(), "presence-update");
+        // Board-b peer should NOT receive
+        assert_eq!(rx_b.try_recv(), Err(TryRecvError::Empty));
+    }
+
+    #[test]
+    fn broadcast_to_nonexistent_board_is_noop() {
+        let hub = BoardSyncHub::new();
+        // Should not panic
+        hub.broadcast("nonexistent", 1, "msg");
+        hub.broadcast_all("nonexistent", "msg");
+    }
+
+    // ── Board isolation: multi-board scenario ───────────────────────────
+
+    #[test]
+    fn three_boards_fully_isolated() {
+        let mut hub = BoardSyncHub::new();
+
+        let (p_a, mut rx_a) = hub.register("alpha", "user-a");
+        let (p_b, mut rx_b) = hub.register("beta", "user-b");
+        let (_p_g, mut rx_g) = hub.register("gamma", "user-g");
+
+        // Broadcast on alpha
+        hub.broadcast_all("alpha", "alpha-msg");
+        assert_eq!(rx_a.try_recv().unwrap(), "alpha-msg");
+        assert_eq!(rx_b.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(rx_g.try_recv(), Err(TryRecvError::Empty));
+
+        // Broadcast on beta (exclude sender)
+        hub.broadcast("beta", p_b, "beta-msg");
+        // Only peer in beta is p_b itself, so no one receives (excluded)
+        assert_eq!(rx_a.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(rx_b.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(rx_g.try_recv(), Err(TryRecvError::Empty));
+
+        // Add second peer to beta, broadcast again
+        let (_p_b2, mut rx_b2) = hub.register("beta", "user-b2");
+        hub.broadcast("beta", p_b, "beta-msg-2");
+        assert_eq!(rx_b2.try_recv().unwrap(), "beta-msg-2");
+        assert_eq!(rx_b.try_recv(), Err(TryRecvError::Empty)); // sender excluded
+        assert_eq!(rx_a.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(rx_g.try_recv(), Err(TryRecvError::Empty));
+
+        // Cleanup one board, others unaffected
+        hub.unregister("alpha", p_a);
+        assert!(!hub.has_clients("alpha"));
+        assert!(hub.has_clients("beta"));
+        assert!(hub.has_clients("gamma"));
+
+        // Gamma still receives
+        hub.broadcast_all("gamma", "gamma-msg");
+        assert_eq!(rx_g.try_recv().unwrap(), "gamma-msg");
+        assert_eq!(rx_b.try_recv(), Err(TryRecvError::Empty));
+        assert_eq!(rx_b2.try_recv(), Err(TryRecvError::Empty));
+    }
+
+    // ── Online users ────────────────────────────────────────────────────
+
+    #[test]
+    fn online_users_scoped_to_board() {
+        let mut hub = BoardSyncHub::new();
+        hub.register("board-a", "alice");
+        hub.register("board-a", "bob");
+        hub.register("board-b", "carol");
+
+        let users_a = hub.online_users("board-a");
+        assert_eq!(users_a, vec!["alice", "bob"]);
+
+        let users_b = hub.online_users("board-b");
+        assert_eq!(users_b, vec!["carol"]);
+
+        let users_none = hub.online_users("nonexistent");
+        assert!(users_none.is_empty());
+    }
+
+    #[test]
+    fn online_users_deduplicates_same_user_multiple_connections() {
+        let mut hub = BoardSyncHub::new();
+        hub.register("board-a", "alice");
+        hub.register("board-a", "alice"); // same user, second connection
+
+        let users = hub.online_users("board-a");
+        assert_eq!(users, vec!["alice"]); // deduped
+    }
+
+    // ── Channel backpressure ────────────────────────────────────────────
+
+    #[test]
+    fn broadcast_drops_messages_when_channel_full_without_panic() {
+        let mut hub = BoardSyncHub::new();
+        let (p1, _rx_sender) = hub.register("board-a", "alice");
+        let (_p2, _rx_full) = hub.register("board-a", "bob");
+        // Note: _rx_full is never drained, so after CLIENT_CHANNEL_CAPACITY
+        // messages the channel will be full.
+
+        // Send CLIENT_CHANNEL_CAPACITY + 10 messages — should not panic
+        for i in 0..(CLIENT_CHANNEL_CAPACITY + 10) {
+            hub.broadcast("board-a", p1, &format!("msg-{}", i));
+        }
+        // If we got here, backpressure handling works (try_send doesn't block/panic)
+    }
+}
