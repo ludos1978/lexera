@@ -8015,9 +8015,13 @@ const LexeraDashboard = (function () {
     if (!column || !Array.isArray(column.cards)) return false;
     pushUndo();
     var card = { id: 'card-' + Date.now(), content: '', checked: false };
-    var insertAt = typeof atCardIndex === 'number' ? atCardIndex : column.cards.length;
-    if (insertAt < 0) insertAt = 0;
-    if (insertAt > column.cards.length) insertAt = column.cards.length;
+    var insertAt;
+    if (typeof atCardIndex === 'number') {
+      var fullIdx = getFullCardIndex(column, atCardIndex);
+      insertAt = fullIdx !== -1 ? fullIdx : column.cards.length;
+    } else {
+      insertAt = column.cards.length;
+    }
     column.cards.splice(insertAt, 0, card);
     return await persistBoardMutation();
   }
