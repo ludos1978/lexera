@@ -987,6 +987,22 @@ const LexeraDashboard = (function () {
     return parts.join(' ').trim();
   }
 
+  async function toggleColumnWidth(colIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var title = col.title || '';
+    var layout = getColumnLayoutTags(title);
+    var currentSpan = layout.span ? parseInt(layout.span.match(/\d+/)[0], 10) : 1;
+    var nextSpan = (currentSpan % 4) + 1;
+    var newTitle = title.replace(/#span\d+\b/gi, '').replace(/\s+/g, ' ').trim();
+    if (nextSpan > 1) newTitle = newTitle + ' #span' + nextSpan;
+    if (newTitle === title) return;
+    pushUndo();
+    col.title = newTitle;
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+  }
+
   function getOrderedItems(items, storageKey, idFn) {
     var saved = localStorage.getItem(storageKey);
     if (!saved) return items;
@@ -7779,6 +7795,28 @@ const LexeraDashboard = (function () {
     await setRowHiddenTag(rowIdx, '#hidden-internal-deleted');
   }
 
+  async function duplicateRow(rowIdx) {
+    if (!fullBoardData || !activeBoardId) return;
+    var row = findFullDataRow(rowIdx);
+    if (!row) return;
+    pushUndo();
+    var clone = JSON.parse(JSON.stringify(row));
+    var ts = Date.now();
+    clone.id = 'row-' + ts;
+    for (var s = 0; s < clone.stacks.length; s++) {
+      clone.stacks[s].id = 'stack-' + ts + '-' + s;
+      for (var c = 0; c < clone.stacks[s].columns.length; c++) {
+        clone.stacks[s].columns[c].id = 'col-' + ts + '-' + s + '-' + c;
+        for (var k = 0; k < clone.stacks[s].columns[c].cards.length; k++) {
+          clone.stacks[s].columns[c].cards[k].id = 'dup-' + ts + '-' + s + '-' + c + '-' + k;
+          clone.stacks[s].columns[c].cards[k].kid = null;
+        }
+      }
+    }
+    fullBoardData.rows.splice(rowIdx + 1, 0, clone);
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
   async function addStackToRow(rowIdx, atStackIdx) {
 
     var row = findFullDataRow(rowIdx);
@@ -7846,6 +7884,26 @@ const LexeraDashboard = (function () {
       if (!(await showConfirmDialog('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and all ' + totalCards + ' cards to trash?'))) return;
     }
     await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-deleted');
+  }
+
+  async function duplicateStack(rowIdx, stackIdx) {
+    if (!fullBoardData || !activeBoardId) return;
+    var row = findFullDataRow(rowIdx);
+    var stack = findFullDataStack(rowIdx, stackIdx);
+    if (!row || !stack) return;
+    pushUndo();
+    var clone = JSON.parse(JSON.stringify(stack));
+    var ts = Date.now();
+    clone.id = 'stack-' + ts;
+    for (var c = 0; c < clone.columns.length; c++) {
+      clone.columns[c].id = 'col-' + ts + '-' + c;
+      for (var k = 0; k < clone.columns[c].cards.length; k++) {
+        clone.columns[c].cards[k].id = 'dup-' + ts + '-' + c + '-' + k;
+        clone.columns[c].cards[k].kid = null;
+      }
+    }
+    row.stacks.splice(stackIdx + 1, 0, clone);
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   async function addColumnToStack(rowIdx, stackIdx, atColIdx) {
@@ -7946,6 +8004,19 @@ const LexeraDashboard = (function () {
       cardCountAfter: column.cards.length
     });
     return saved;
+  }
+
+  async function insertCardAtIndex(colIndex, atCardIndex) {
+    if (colIndex == null || !activeBoardId || !fullBoardData) return false;
+    var column = getFullColumn(colIndex);
+    if (!column || !Array.isArray(column.cards)) return false;
+    pushUndo();
+    var card = { id: 'card-' + Date.now(), content: '', checked: false };
+    var insertAt = typeof atCardIndex === 'number' ? atCardIndex : column.cards.length;
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > column.cards.length) insertAt = column.cards.length;
+    column.cards.splice(insertAt, 0, card);
+    return await persistBoardMutation();
   }
 
   async function submitCard(colIndex, content) {
@@ -12223,6 +12294,24 @@ const LexeraDashboard = (function () {
     await setColumnHiddenTag(colIndex, '#hidden-internal-deleted');
   }
 
+  async function duplicateColumn(colIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    var container = findColumnContainer(colIndex);
+    if (!container) return;
+    var col = container.arr[container.localIdx];
+    if (!col) return;
+    pushUndo();
+    var clone = JSON.parse(JSON.stringify(col));
+    var ts = Date.now();
+    clone.id = 'col-' + ts;
+    for (var k = 0; k < clone.cards.length; k++) {
+      clone.cards[k].id = 'dup-' + ts + '-' + k;
+      clone.cards[k].kid = null;
+    }
+    container.arr.splice(container.localIdx + 1, 0, clone);
+    await persistBoardMutation({ refreshSidebar: true });
+  }
+
   function toggleColCards(colIndex, collapse) {
     var cards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
     for (var i = 0; i < cards.length; i++) {
@@ -12238,6 +12327,60 @@ const LexeraDashboard = (function () {
       }
     }
     saveCardCollapseState(activeBoardId);
+  }
+
+  function revealCardContent(colIndex, cardIndex) {
+    var card = getElColumnsContainer().querySelector('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+    if (!card) return;
+    if (card.hasAttribute('data-hidden-revealed')) {
+      card.removeAttribute('data-hidden-revealed');
+    } else {
+      card.setAttribute('data-hidden-revealed', '');
+    }
+  }
+
+  function revealColumnContent(colIndex) {
+    var cards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
+    var allRevealed = true;
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
+    }
+    for (var j = 0; j < cards.length; j++) {
+      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
+      else cards[j].setAttribute('data-hidden-revealed', '');
+    }
+  }
+
+  function revealRowContent(rowIdx) {
+    var columnsContainer = getElColumnsContainer();
+    var rowEl = columnsContainer.querySelectorAll('.kanban-row')[rowIdx];
+    if (!rowEl) return;
+    var cards = rowEl.querySelectorAll('.card');
+    var allRevealed = true;
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
+    }
+    for (var j = 0; j < cards.length; j++) {
+      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
+      else cards[j].setAttribute('data-hidden-revealed', '');
+    }
+  }
+
+  function revealStackContent(rowIdx, stackIdx) {
+    var columnsContainer = getElColumnsContainer();
+    var rowEl = columnsContainer.querySelectorAll('.kanban-row')[rowIdx];
+    if (!rowEl) return;
+    var stackEl = rowEl.querySelectorAll('.kanban-column-stack')[stackIdx];
+    if (!stackEl) return;
+    var cards = stackEl.querySelectorAll('.card');
+    var allRevealed = true;
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i].hasAttribute('data-hidden-revealed')) { allRevealed = false; break; }
+    }
+    for (var j = 0; j < cards.length; j++) {
+      if (allRevealed) cards[j].removeAttribute('data-hidden-revealed');
+      else cards[j].setAttribute('data-hidden-revealed', '');
+    }
   }
 
   // Close context menus on outside click
@@ -14902,6 +15045,58 @@ const LexeraDashboard = (function () {
       if (failureMessage) showNotification(failureMessage);
       return false;
     });
+  }
+
+  function copyElementAsMarkdown(elementType, indices) {
+    if (!fullBoardData || !activeBoardId) return;
+    var md = '';
+    if (elementType === 'card') {
+      var col = getFullColumn(indices.colIndex);
+      if (!col) return;
+      var fullIdx = getFullCardIndex(col, indices.cardIndex);
+      if (fullIdx === -1) return;
+      md = col.cards[fullIdx].content || '';
+    } else if (elementType === 'column') {
+      var col = getFullColumn(indices.colIndex);
+      if (!col) return;
+      md = '## ' + (col.title || '') + '\n\n';
+      for (var k = 0; k < col.cards.length; k++) {
+        md += (col.cards[k].content || '') + '\n\n';
+      }
+    } else if (elementType === 'row') {
+      var row = findFullDataRow(indices.rowIdx);
+      if (!row) return;
+      md = '# ' + (row.title || '') + '\n\n';
+      for (var s = 0; s < row.stacks.length; s++) {
+        for (var c = 0; c < row.stacks[s].columns.length; c++) {
+          var rcol = row.stacks[s].columns[c];
+          md += '## ' + (rcol.title || '') + '\n\n';
+          for (var k = 0; k < rcol.cards.length; k++) {
+            md += (rcol.cards[k].content || '') + '\n\n';
+          }
+        }
+      }
+    } else if (elementType === 'stack') {
+      var stack = findFullDataStack(indices.rowIdx, indices.stackIdx);
+      if (!stack) return;
+      md = '# ' + (stack.title || '') + '\n\n';
+      for (var c = 0; c < stack.columns.length; c++) {
+        var scol = stack.columns[c];
+        md += '## ' + (scol.title || '') + '\n\n';
+        for (var k = 0; k < scol.cards.length; k++) {
+          md += (scol.cards[k].content || '') + '\n\n';
+        }
+      }
+    }
+    md = md.trim();
+    if (md) copyTextToClipboard(md, 'Copied as markdown', 'Copy failed');
+  }
+
+  async function exportColumn(colIndex) {
+    if (!window.ExportUI) return;
+    if (!window._exportUI) window._exportUI = new ExportUI();
+    await window._exportUI.init(activeBoardId, fullBoardData);
+    window._exportUI.show();
   }
 
   function isExternalEmbedContainer(container) {

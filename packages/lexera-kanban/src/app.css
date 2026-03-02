@@ -2521,6 +2521,12 @@ u {
   font-style: italic;
 }
 
+.card[data-hidden-revealed] .html-comment,
+.card[data-hidden-revealed] [data-hidden-content] {
+  display: block !important;
+  opacity: 1 !important;
+}
+
 /* Embed containers */
 .embed-container {
   position: relative;
