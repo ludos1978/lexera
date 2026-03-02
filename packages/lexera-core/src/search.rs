@@ -382,7 +382,7 @@ fn temporal_tag_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(?i)(?:^|\s)(@[^\s]+)").expect("valid temporal tag regex"))
 }
 
-fn extract_hash_tags(content: &str) -> Vec<String> {
+pub fn extract_hash_tags(content: &str) -> Vec<String> {
     let mut tags = Vec::new();
     for captures in hash_tag_regex().captures_iter(content) {
         if let Some(raw) = captures.get(1).map(|m| m.as_str()) {
@@ -395,7 +395,7 @@ fn extract_hash_tags(content: &str) -> Vec<String> {
     tags
 }
 
-fn extract_temporal_tags(content: &str) -> Vec<String> {
+pub fn extract_temporal_tags(content: &str) -> Vec<String> {
     let mut tags = Vec::new();
     for captures in temporal_tag_regex().captures_iter(content) {
         if let Some(raw) = captures.get(1).map(|m| m.as_str()) {
@@ -452,7 +452,7 @@ fn month_with_optional_year_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"^(?:(\d{4})[-_/ ]?)?([a-z]{3,9})$").expect("valid month regex"))
 }
 
-fn parse_temporal_to_date(raw_value: &str, today: NaiveDate) -> Option<NaiveDate> {
+pub fn parse_temporal_to_date(raw_value: &str, today: NaiveDate) -> Option<NaiveDate> {
     let mut token = raw_value.trim().trim_matches('"').to_ascii_lowercase();
     if token.starts_with('@') {
         token = token[1..].to_string();
