@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 463 | Good |
+| lexera-core | ~9,925 | - | - | 574 | Good |
 | lexera-backend | ~5,887 | ~1,330 | ~200 | 132 | Good |
 | lexera-kanban | ~700 | ~17,000 | ~4,100 | 264 (JS) | Good |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 42 | Good |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **901** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **1,012** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -507,14 +507,14 @@ Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalo
 5. **Board Registry Service** — Extend `LocalStorage` with `src/services/BoardRegistryService.ts` features
    - Custom board ordering, search history (recent + pinned), per-board file watchers
 
-6. **Link Handling** — Port `src/services/LinkHandler.ts` (~800 LOC) to `lexera-core/src/links.rs`
-   - Wiki link resolution `[[filename]]`, relative paths, link validation, link replacement on rename
+6. ~~**Link Handling** — Port `src/services/LinkHandler.ts` (~800 LOC) to `lexera-core/src/links.rs`~~ DONE: wiki link parsing, resolution, replacement, validation (commit 1bf74bfc)
+   - ~~Wiki link resolution `[[filename]]`, relative paths, link validation, link replacement on rename~~
 
 7. **Clipboard Commands** — Port `src/commands/ClipboardCommands.ts` (~1,200 LOC) to frontend
    - Copy/paste cards with markdown formatting, cross-board movement, multi-select
 
-8. **Backup Manager** — Port `src/services/BackupManager.ts` (~400 LOC) to `LocalStorage::write_board`
-   - Automatic backup before saves, rotation (keep last N), restoration
+8. ~~**Backup Manager** — Port `src/services/BackupManager.ts` (~400 LOC) to `LocalStorage::write_board`~~ DONE: BackupManager with timestamped .lexera-backups/, rotation, restore (commit fb86fa76)
+   - ~~Automatic backup before saves, rotation (keep last N), restoration~~
 
 9. **Card Editor Enhanced** — Port `src/html/cardEditor.js` features
    - Checkbox toggle, inline date picker, tag autocomplete, content preview
@@ -526,9 +526,9 @@ Source: GLM5 analysis comparing V1 (VS Code extension, `src/`) with V2 (standalo
 
 11. **Keybinding Service** — Configurable keyboard shortcuts (`KeyboardManager` module)
 12. **Diagram Commands** — Mermaid/PlantUML generation (implement via plugin system)
-13. **Archive Commands** — Archive completed cards, bulk archive, date-based archiving
+13. ~~**Archive Commands** — Archive completed cards, bulk archive, date-based archiving~~ DONE: is_completed, archive_completed_cards, archive_cards_by_date (commit 6af948ec)
 14. **Workspace Media Index** — Scan workspace for media files, track usage, autocomplete
-15. **iCal Export** — Temporal tag to VEVENT mapping, calendar subscription (`lexera-core/src/export/ical.rs`)
+15. ~~**iCal Export** — Temporal tag to VEVENT mapping, calendar subscription (`lexera-core/src/export/ical.rs`)~~ DONE: RFC 5545 VCALENDAR/VEVENT, date ranges, categories, status (commit db06564e)
 16. **Webview Update Service** — Debounced updates, message batching (add if performance issues arise)
 17. **PDF/PPTX Export** — Port Python scripts or implement in Rust
 
