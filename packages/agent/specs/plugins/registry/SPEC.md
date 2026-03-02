@@ -1,9 +1,9 @@
 # Plugin Registry Specification
 
-**File**: `src/plugins/registry/PluginRegistry.ts`
-**Lines**: ~500
-**Purpose**: Central registry for import, export, diagram, and markdown plugins
-**Dependencies**: Plugin interfaces from `src/plugins/interfaces/`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-core` (manifests), `packages/lexera-kanban` (runtime)  
+**V1 Reference**: `src/plugins/registry/PluginRegistry.ts` (~500 lines)  
+**Dependencies**: [Content Plugins](../plugins/content/SPEC.md)
 
 ---
 

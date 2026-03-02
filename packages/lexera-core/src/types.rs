@@ -144,6 +144,33 @@ impl Default for BoardFormat {
 }
 
 impl KanbanBoard {
+    /// Returns true when the board carries an explicit row/stack hierarchy that
+    /// cannot be faithfully represented by the legacy flat-column markdown format.
+    pub fn has_explicit_hierarchy(&self) -> bool {
+        if self.rows.is_empty() {
+            return false;
+        }
+        if self.rows.len() != 1 {
+            return true;
+        }
+        let row = &self.rows[0];
+        if row.title != "Default" {
+            return true;
+        }
+        if row.stacks.len() != 1 {
+            return true;
+        }
+        row.stacks[0].title != "Default"
+    }
+
+    /// Promotes stale legacy format hints when the board already contains an
+    /// explicit row/stack hierarchy.
+    pub fn reconcile_format_hint(&mut self) {
+        if self.has_explicit_hierarchy() {
+            self.format_hint = BoardFormat::New;
+        }
+    }
+
     /// Get all columns from the board, regardless of format.
     /// For new format: flattens rows→stacks→columns.
     /// For legacy format: returns columns directly.

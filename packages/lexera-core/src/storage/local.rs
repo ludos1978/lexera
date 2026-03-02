@@ -197,6 +197,7 @@ impl LocalStorage {
     fn normalize_board_for_write(board: &KanbanBoard, board_dir: &Path) -> KanbanBoard {
         let mut normalized = Self::ensure_board_card_kids(board);
         Self::sync_board_include_sources(&mut normalized, board_dir);
+        normalized.reconcile_format_hint();
         normalized
     }
 
@@ -250,7 +251,9 @@ impl LocalStorage {
         base_board: Option<&KanbanBoard>,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
         let lock = self.get_write_lock(board_id)?;
-        let _guard = lock.lock().map_err(|e| StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e)))?;
+        let _guard = lock.lock().map_err(|e| {
+            StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e))
+        })?;
 
         let file_path = self
             .get_board_path(board_id)
@@ -262,7 +265,10 @@ impl LocalStorage {
 
         // Take the CRDT out for mutation
         let mut crdt = {
-            let mut boards = self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+            let mut boards = self
+                .boards
+                .write()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
             boards.get_mut(board_id).and_then(|s| s.crdt.take())
         };
 
@@ -515,15 +521,27 @@ impl LocalStorage {
                 Err(e) => {
                     log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
                     match CrdtStore::from_board(&board) {
-                        Ok(c) => { let _ = c.save_to_file(&crdt_path); Some(c) }
-                        Err(e) => { log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e); None }
+                        Ok(c) => {
+                            let _ = c.save_to_file(&crdt_path);
+                            Some(c)
+                        }
+                        Err(e) => {
+                            log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                            None
+                        }
                     }
                 }
             }
         } else {
             match CrdtStore::from_board(&board) {
-                Ok(c) => { let _ = c.save_to_file(&crdt_path); Some(c) }
-                Err(e) => { log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e); None }
+                Ok(c) => {
+                    let _ = c.save_to_file(&crdt_path);
+                    Some(c)
+                }
+                Err(e) => {
+                    log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                    None
+                }
             }
         };
 
@@ -536,7 +554,10 @@ impl LocalStorage {
             crdt,
         };
 
-        self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?.insert(board_id.clone(), state);
+        self.boards
+            .write()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
+            .insert(board_id.clone(), state);
         Ok(board_id)
     }
 
@@ -545,7 +566,10 @@ impl LocalStorage {
     pub fn reload_board(&self, board_id: &str) -> Result<(), StorageError> {
         // Take the file_path and CRDT out of the existing state
         let (file_path, old_crdt) = {
-            let mut boards = self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+            let mut boards = self
+                .boards
+                .write()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
             let state = boards
                 .get_mut(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -578,8 +602,14 @@ impl LocalStorage {
             Some(c)
         } else {
             match CrdtStore::from_board(&board) {
-                Ok(c) => { let _ = c.save_to_file(&crdt_path); Some(c) }
-                Err(e) => { log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e); None }
+                Ok(c) => {
+                    let _ = c.save_to_file(&crdt_path);
+                    Some(c)
+                }
+                Err(e) => {
+                    log::error!("[lexera.crdt] Failed to build CRDT from board: {}", e);
+                    None
+                }
             }
         };
 
@@ -607,7 +637,10 @@ impl LocalStorage {
             match self.self_write_tracker.lock() {
                 Ok(mut tracker) => tracker.check_and_consume(path, &content),
                 Err(e) => {
-                    log::error!("[lexera.storage.self_write] Self-write tracker lock poisoned: {}", e);
+                    log::error!(
+                        "[lexera.storage.self_write] Self-write tracker lock poisoned: {}",
+                        e
+                    );
                     false
                 }
             }
@@ -621,14 +654,20 @@ impl LocalStorage {
         match self.self_write_tracker.lock() {
             Ok(mut tracker) => tracker.cleanup_expired(),
             Err(e) => {
-                log::error!("[lexera.storage.cleanup] Self-write tracker lock poisoned: {}", e);
+                log::error!(
+                    "[lexera.storage.cleanup] Self-write tracker lock poisoned: {}",
+                    e
+                );
             }
         }
     }
 
     /// Remove a board from tracking. Does not delete the file on disk.
     pub fn remove_board(&self, board_id: &str) -> Result<(), StorageError> {
-        let mut boards = self.boards.write().map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+        let mut boards = self
+            .boards
+            .write()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
         if boards.remove(board_id).is_none() {
             return Err(StorageError::BoardNotFound(board_id.to_string()));
         }
@@ -659,14 +698,18 @@ impl LocalStorage {
             crdt: None,
         };
         match self.boards.write() {
-            Ok(mut boards) => { boards.insert(board_id.to_string(), state); }
+            Ok(mut boards) => {
+                boards.insert(board_id.to_string(), state);
+            }
             Err(e) => {
                 log::error!("[lexera.storage.remote] Boards lock poisoned: {}", e);
                 return;
             }
         }
         match self.remote_boards.write() {
-            Ok(mut remote) => { remote.insert(board_id.to_string()); }
+            Ok(mut remote) => {
+                remote.insert(board_id.to_string());
+            }
             Err(e) => {
                 log::error!("[lexera.storage.remote] Remote boards lock poisoned: {}", e);
             }
@@ -675,7 +718,10 @@ impl LocalStorage {
 
     /// Check if a board is a remote board.
     pub fn is_remote_board(&self, board_id: &str) -> bool {
-        self.remote_boards.read().map(|r| r.contains(board_id)).unwrap_or(false)
+        self.remote_boards
+            .read()
+            .map(|r| r.contains(board_id))
+            .unwrap_or(false)
     }
 
     /// List all remote board IDs with their titles.
@@ -765,8 +811,8 @@ impl LocalStorage {
     ) -> Result<KanbanBoard, StorageError> {
         // Seed the visited set with the board file's canonical path
         let mut visited = HashSet::new();
-        let canonical = fs::canonicalize(board_file_path)
-            .unwrap_or_else(|_| board_file_path.to_path_buf());
+        let canonical =
+            fs::canonicalize(board_file_path).unwrap_or_else(|_| board_file_path.to_path_buf());
         visited.insert(canonical);
         self.parse_with_includes_inner(content, board_id, board_dir, &mut visited)
     }
@@ -871,13 +917,17 @@ impl LocalStorage {
             if let Ok(mut map) = self.include_map.write() {
                 map.register_board(board_id, board_dir, &column_titles);
             } else {
-                log::error!("[lexera.storage.include] Include map lock poisoned during sync register");
+                log::error!(
+                    "[lexera.storage.include] Include map lock poisoned during sync register"
+                );
             }
         } else {
             if let Ok(mut map) = self.include_map.write() {
                 map.remove_board(board_id);
             } else {
-                log::error!("[lexera.storage.include] Include map lock poisoned during sync remove");
+                log::error!(
+                    "[lexera.storage.include] Include map lock poisoned during sync remove"
+                );
             }
         }
     }
@@ -892,7 +942,10 @@ impl LocalStorage {
 
         match self.self_write_tracker.lock() {
             Ok(mut tracker) => tracker.register(&resolved_path, &slide_content),
-            Err(e) => log::error!("[lexera.storage.write] Self-write tracker lock poisoned: {}", e),
+            Err(e) => log::error!(
+                "[lexera.storage.write] Self-write tracker lock poisoned: {}",
+                e
+            ),
         }
 
         Self::atomic_write(&resolved_path, &slide_content)?;
@@ -909,7 +962,10 @@ impl LocalStorage {
 
         match self.self_write_tracker.lock() {
             Ok(mut tracker) => tracker.register(file_path, &markdown),
-            Err(e) => log::error!("[lexera.storage.write] Self-write tracker lock poisoned: {}", e),
+            Err(e) => log::error!(
+                "[lexera.storage.write] Self-write tracker lock poisoned: {}",
+                e
+            ),
         }
 
         Self::atomic_write(file_path, &markdown)?;
@@ -1078,7 +1134,10 @@ impl LocalStorage {
     pub fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id)?;
         let _guard = lock.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!("write lock for board {} in import_crdt: {}", board_id, e))
+            StorageError::LockPoisoned(format!(
+                "write lock for board {} in import_crdt: {}",
+                board_id, e
+            ))
         })?;
 
         let file_path = self
@@ -1109,7 +1168,9 @@ impl LocalStorage {
                     state.crdt = Some(crdt);
                 }
             } else {
-                log::error!("[lexera.crdt] Boards lock poisoned while restoring CRDT after import failure");
+                log::error!(
+                    "[lexera.crdt] Boards lock poisoned while restoring CRDT after import failure"
+                );
             }
             return Err(StorageError::Io(e));
         }
@@ -1299,7 +1360,10 @@ impl BoardStorage for LocalStorage {
     ) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id)?;
         let _guard = lock.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!("write lock for board {} in add_card: {}", board_id, e))
+            StorageError::LockPoisoned(format!(
+                "write lock for board {} in add_card: {}",
+                board_id, e
+            ))
         })?;
 
         let file_path = self
@@ -1849,7 +1913,10 @@ kanban-plugin: board
         // CRDT should have been rebuilt (check it exists in state)
         let boards = storage.boards.read().unwrap();
         let state = boards.get(&id).unwrap();
-        assert!(state.crdt.is_some(), "CRDT should be rebuilt from .md after corrupt .crdt");
+        assert!(
+            state.crdt.is_some(),
+            "CRDT should be rebuilt from .md after corrupt .crdt"
+        );
 
         // The rebuilt CRDT should produce a board matching the .md
         let crdt_board = state.crdt.as_ref().unwrap().to_board();
@@ -1879,10 +1946,16 @@ kanban-plugin: board
         // CRDT should have been created fresh
         let boards = storage.boards.read().unwrap();
         let state = boards.get(&id).unwrap();
-        assert!(state.crdt.is_some(), "CRDT should be created fresh when .crdt file is missing");
+        assert!(
+            state.crdt.is_some(),
+            "CRDT should be created fresh when .crdt file is missing"
+        );
 
         // .crdt file should now exist on disk (saved during add_board)
-        assert!(crdt_path.exists(), ".crdt file should be written to disk after creation");
+        assert!(
+            crdt_path.exists(),
+            ".crdt file should be written to disk after creation"
+        );
     }
 
     #[test]
@@ -2023,7 +2096,8 @@ kanban-plugin: board
         }
 
         for h in handles {
-            h.join().expect("thread panicked during concurrent write/read");
+            h.join()
+                .expect("thread panicked during concurrent write/read");
         }
     }
 
@@ -2077,12 +2151,21 @@ kanban-plugin: board
 
         // Verify file content on disk matches what we wrote
         let on_disk = fs::read_to_string(&board_path).unwrap();
-        assert!(on_disk.contains("Modified task"), "disk content should contain modified card");
-        assert!(!on_disk.contains("Buy groceries"), "old card content should be replaced");
+        assert!(
+            on_disk.contains("Modified task"),
+            "disk content should contain modified card"
+        );
+        assert!(
+            !on_disk.contains("Buy groceries"),
+            "old card content should be replaced"
+        );
 
         // Verify no .tmp files are left behind
         let tmp_path = board_path.with_extension("lexera-sync.tmp");
-        assert!(!tmp_path.exists(), "temp file should be cleaned up after atomic write");
+        assert!(
+            !tmp_path.exists(),
+            "temp file should be cleaned up after atomic write"
+        );
     }
 
     #[test]
@@ -2135,7 +2218,10 @@ kanban-plugin: board
         assert!(storage.get_board_path(&id).is_none());
 
         // The file on disk should still exist (remove_board only untracks)
-        assert!(board_path.exists(), "remove_board should not delete the file on disk");
+        assert!(
+            board_path.exists(),
+            "remove_board should not delete the file on disk"
+        );
 
         // Removing again should return BoardNotFound
         let result = storage.remove_board(&id);
@@ -2229,9 +2315,17 @@ kanban-plugin: board
         let board = storage.read_board(&id).unwrap();
         assert!(board.valid);
         // New format should populate rows, not flat columns
-        assert_eq!(board.rows.len(), 2, "should have 2 rows (Sprint 1, Sprint 2)");
+        assert_eq!(
+            board.rows.len(),
+            2,
+            "should have 2 rows (Sprint 1, Sprint 2)"
+        );
         assert_eq!(board.rows[0].title, "Sprint 1");
-        assert_eq!(board.rows[0].stacks.len(), 2, "Sprint 1 should have 2 stacks");
+        assert_eq!(
+            board.rows[0].stacks.len(),
+            2,
+            "Sprint 1 should have 2 stacks"
+        );
         assert_eq!(board.rows[0].stacks[0].title, "Frontend");
         assert_eq!(board.rows[0].stacks[0].columns.len(), 2);
         assert_eq!(board.rows[0].stacks[0].columns[0].title, "Todo");
@@ -2264,7 +2358,9 @@ kanban-plugin: board
         assert_eq!(all_cols2.len(), 4);
         assert!(all_cols2[0].cards[0].content.contains("Build login page"));
         assert!(all_cols2[1].cards[0].content.contains("Setup React"));
-        assert!(all_cols2[2].cards[0].content.contains("Create API endpoints"));
+        assert!(all_cols2[2].cards[0]
+            .content
+            .contains("Create API endpoints"));
         assert!(all_cols2[3].cards[0].content.contains("Wireframes"));
 
         // Verify disk content uses # / ## / ### headers
@@ -2273,6 +2369,156 @@ kanban-plugin: board
         assert!(on_disk.contains("## Frontend"));
         assert!(on_disk.contains("### Todo"));
         assert!(on_disk.contains("# Sprint 2"));
+    }
+
+    #[test]
+    fn test_write_board_new_format_preserves_empty_row_stack_and_column() {
+        let new_format_md = "\
+---
+kanban-plugin: board
+---
+
+# Sprint 1
+
+## Frontend
+
+### Todo
+- [ ] Build login page
+";
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("new-format-empty-structures.md");
+        fs::write(&board_path, new_format_md).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let mut board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        assert_eq!(board.rows.len(), 1);
+        assert_eq!(board.rows[0].stacks.len(), 1);
+        assert_eq!(board.rows[0].stacks[0].columns.len(), 1);
+        board.format_hint = BoardFormat::Legacy;
+
+        board.rows[0].stacks[0].columns.push(KanbanColumn {
+            id: "col-empty".to_string(),
+            title: "Empty Column".to_string(),
+            cards: vec![],
+            include_source: None,
+        });
+        board.rows[0].stacks.push(KanbanStack {
+            id: "stack-empty".to_string(),
+            title: "Empty Stack".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-in-empty-stack".to_string(),
+                title: "Stack Column".to_string(),
+                cards: vec![],
+                include_source: None,
+            }],
+        });
+        board.rows.push(KanbanRow {
+            id: "row-empty".to_string(),
+            title: "Empty Row".to_string(),
+            stacks: vec![KanbanStack {
+                id: "row-empty-stack".to_string(),
+                title: "Default".to_string(),
+                columns: vec![KanbanColumn {
+                    id: "row-empty-column".to_string(),
+                    title: "Row Column".to_string(),
+                    cards: vec![],
+                    include_source: None,
+                }],
+            }],
+        });
+
+        storage.write_board(&id, &board).unwrap();
+
+        let board2 = storage.read_board(&id).unwrap();
+        assert!(board2.valid);
+        assert_eq!(board2.rows.len(), 2);
+        assert_eq!(board2.rows[0].title, "Sprint 1");
+        assert_eq!(board2.rows[1].title, "Empty Row");
+        assert_eq!(board2.rows[0].stacks.len(), 2);
+        assert_eq!(board2.rows[0].stacks[1].title, "Empty Stack");
+        assert_eq!(board2.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(board2.rows[0].stacks[0].columns[1].title, "Empty Column");
+        assert_eq!(board2.rows[1].stacks.len(), 1);
+        assert_eq!(board2.rows[1].stacks[0].columns.len(), 1);
+        assert_eq!(board2.rows[1].stacks[0].columns[0].title, "Row Column");
+
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("# Empty Row"));
+        assert!(on_disk.contains("## Empty Stack"));
+        assert!(on_disk.contains("### Empty Column"));
+        assert!(on_disk.contains("### Row Column"));
+    }
+
+    #[test]
+    fn test_write_board_legacy_upgrades_when_explicit_hierarchy_is_added() {
+        let legacy_md = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] Existing task
+";
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("legacy-upgrade-to-hierarchy.md");
+        fs::write(&board_path, legacy_md).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let mut board = storage.read_board(&id).unwrap();
+        assert!(board.valid);
+        assert_eq!(board.format_hint, BoardFormat::Legacy);
+        assert_eq!(board.rows.len(), 1);
+        assert_eq!(board.rows[0].title, "Default");
+        assert_eq!(board.rows[0].stacks.len(), 1);
+        assert_eq!(board.rows[0].stacks[0].title, "Default");
+
+        board.rows[0].title = "Sprint 1".to_string();
+        board.rows[0].stacks[0].title = "Frontend".to_string();
+        board.rows[0].stacks[0].columns.push(KanbanColumn {
+            id: "col-new".to_string(),
+            title: "Done".to_string(),
+            cards: vec![],
+            include_source: None,
+        });
+        board.rows.push(KanbanRow {
+            id: "row-new".to_string(),
+            title: "Sprint 2".to_string(),
+            stacks: vec![KanbanStack {
+                id: "stack-new".to_string(),
+                title: "Backend".to_string(),
+                columns: vec![KanbanColumn {
+                    id: "col-backlog".to_string(),
+                    title: "Backlog".to_string(),
+                    cards: vec![],
+                    include_source: None,
+                }],
+            }],
+        });
+
+        storage.write_board(&id, &board).unwrap();
+
+        let board2 = storage.read_board(&id).unwrap();
+        assert!(board2.valid);
+        assert_eq!(board2.format_hint, BoardFormat::New);
+        assert_eq!(board2.rows.len(), 2);
+        assert_eq!(board2.rows[0].title, "Sprint 1");
+        assert_eq!(board2.rows[0].stacks[0].title, "Frontend");
+        assert_eq!(board2.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(board2.rows[1].title, "Sprint 2");
+        assert_eq!(board2.rows[1].stacks[0].title, "Backend");
+        assert_eq!(board2.rows[1].stacks[0].columns[0].title, "Backlog");
+
+        let on_disk = fs::read_to_string(&board_path).unwrap();
+        assert!(on_disk.contains("# Sprint 1"));
+        assert!(on_disk.contains("## Frontend"));
+        assert!(on_disk.contains("### Done"));
+        assert!(on_disk.contains("# Sprint 2"));
+        assert!(on_disk.contains("## Backend"));
     }
 
     #[test]
@@ -2285,7 +2531,10 @@ kanban-plugin: board
         let id = storage.add_board(&board_path).unwrap();
 
         let returned_path = storage.get_board_path(&id);
-        assert!(returned_path.is_some(), "get_board_path should return Some for a known board");
+        assert!(
+            returned_path.is_some(),
+            "get_board_path should return Some for a known board"
+        );
 
         // add_board canonicalizes the path, so compare canonical forms
         let canonical = fs::canonicalize(&board_path).unwrap();

@@ -1,15 +1,15 @@
 # Dashboard Scanner Specification
 
-**File**: `src/dashboard/DashboardScanner.ts`
-**Lines**: ~600
-**Purpose**: Scan boards for upcoming items, extract tags, classify recurring states
-**Dependencies**: `@ludos/shared` (temporal parsing), `KanbanTypes`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-core` (scanning), `packages/lexera-kanban` (UI)  
+**V1 Reference**: `src/dashboard/DashboardScanner.ts` (~600 lines)  
+**Dependencies**: [Types](../shared/types/SPEC.md), DateTime utilities
 
 ---
 
 ## UX Requirements
 
-### Tracked elements
+### Tracked elements #Reto
 - Tasks : lines that start with "- [ ] "
 - Deadlines : lines that start with "- [ ] " and contain any date tag @kw23
 - Dates : lines with date tags @kw21

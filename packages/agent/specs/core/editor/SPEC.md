@@ -1,9 +1,9 @@
 # Card Editor Specification
 
-**File**: `src/html/cardEditor.js`
-**Lines**: ~3,135
-**Purpose**: Manage inline editing of titles and descriptions
-**Dependencies**: `boardRenderer.js`, WYSIWYG editor
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-kanban`  
+**V1 Reference**: `src/html/cardEditor.js` (~3,135 lines)  
+**Dependencies**: [Board Renderer](../core/board/SPEC.md), WYSIWYG editor, [Markdown Renderer](../shared/markdown/SPEC.md)
 
 ---
 

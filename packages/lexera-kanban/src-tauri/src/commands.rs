@@ -1,7 +1,7 @@
 /// Tauri commands for the kanban viewer.
-
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, LogicalPosition, Position, Window};
 
@@ -13,8 +13,8 @@ pub fn get_backend_url() -> Result<String, String> {
         .join("lexera")
         .join("sync.json");
 
-    let content = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Cannot read config: {}", e))?;
+    let content =
+        std::fs::read_to_string(&config_path).map_err(|e| format!("Cannot read config: {}", e))?;
 
     #[derive(serde::Deserialize)]
     struct MinConfig {
@@ -23,11 +23,15 @@ pub fn get_backend_url() -> Result<String, String> {
         #[serde(default = "default_bind")]
         bind_address: String,
     }
-    fn default_port() -> u16 { 13080 }
-    fn default_bind() -> String { "127.0.0.1".to_string() }
+    fn default_port() -> u16 {
+        13080
+    }
+    fn default_bind() -> String {
+        "127.0.0.1".to_string()
+    }
 
-    let cfg: MinConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("Cannot parse config: {}", e))?;
+    let cfg: MinConfig =
+        serde_json::from_str(&content).map_err(|e| format!("Cannot parse config: {}", e))?;
 
     // If bound to 0.0.0.0, connect via localhost
     let host = if cfg.bind_address == "0.0.0.0" {
@@ -107,7 +111,10 @@ pub fn rename_path(from: String, to: String) -> Result<String, String> {
     };
 
     if !from_resolved.exists() {
-        return Err(format!("Source file not found: {}", from_resolved.to_string_lossy()));
+        return Err(format!(
+            "Source file not found: {}",
+            from_resolved.to_string_lossy()
+        ));
     }
     if to_resolved.exists() {
         return Err(format!(
@@ -117,8 +124,13 @@ pub fn rename_path(from: String, to: String) -> Result<String, String> {
     }
 
     if let Some(parent) = to_resolved.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create destination directory '{}': {}", parent.to_string_lossy(), e))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create destination directory '{}': {}",
+                parent.to_string_lossy(),
+                e
+            )
+        })?;
     }
 
     std::fs::rename(&from_resolved, &to_resolved).map_err(|e| {
@@ -173,6 +185,16 @@ pub async fn show_context_menu(
 ) -> Result<Option<String>, String> {
     let selected: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let sel = selected.clone();
+    let menu_labels: Vec<String> = items
+        .iter()
+        .filter(|item| !item.separator)
+        .map(|item| item.id.clone().or(item.label.clone()).unwrap_or_default())
+        .collect();
+
+    eprintln!(
+        "[lexera-kanban.menu] open x={} y={} items={:?}",
+        x, y, menu_labels
+    );
 
     // Build menu items on this thread (menu building is thread-safe)
     let mut builder = MenuBuilder::new(&app);
@@ -219,6 +241,7 @@ pub async fn show_context_menu(
         if let Ok(mut s) = sel.lock() {
             *s = Some(event.id().0.to_string());
         }
+        eprintln!("[lexera-kanban.menu] selected id={}", event.id().0);
     });
 
     // popup_menu_at must run on the main thread on macOS
@@ -235,8 +258,22 @@ pub async fn show_context_menu(
     // Wait for the popup to complete (blocking recv is fine here)
     rx.recv().map_err(|e| e.to_string())??;
 
-    // After popup returns, check what was selected
-    let result = selected.lock().map_err(|e| e.to_string())?.clone();
+    // On macOS the menu event can land a tick after popup_menu_at returns.
+    let mut result = selected.lock().map_err(|e| e.to_string())?.clone();
+    if result.is_none() {
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(10));
+            result = selected.lock().map_err(|e| e.to_string())?.clone();
+            if result.is_some() {
+                break;
+            }
+        }
+    }
+
+    match &result {
+        Some(action) => eprintln!("[lexera-kanban.menu] returning selection={}", action),
+        None => eprintln!("[lexera-kanban.menu] closed without selection after wait"),
+    }
 
     Ok(result)
 }

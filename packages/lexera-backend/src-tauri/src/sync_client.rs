@@ -157,7 +157,9 @@ impl SyncClientManager {
         // 4. Spawn WS sync task
         let ws_url = format!(
             "{}/sync/{}?user={}",
-            server_url.replace("http://", "ws://").replace("https://", "wss://"),
+            server_url
+                .replace("http://", "ws://")
+                .replace("https://", "wss://"),
             remote_board_id,
             user_id
         );
@@ -170,11 +172,7 @@ impl SyncClientManager {
             if let Err(e) =
                 run_sync_client(ws_url, user_id, local_bid.clone(), storage_ws, event_tx_ws).await
             {
-                log::error!(
-                    "[sync_client] WS connection to {} failed: {}",
-                    local_bid,
-                    e
-                );
+                log::error!("[sync_client] WS connection to {} failed: {}", local_bid, e);
             }
         });
 
@@ -283,10 +281,7 @@ async fn run_sync_client(
                 let bytes = b64().decode(&updates).unwrap_or_default();
                 if !bytes.is_empty() {
                     if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
-                        log::warn!(
-                            "[sync_client] Failed to import ServerHello updates: {}",
-                            e
-                        );
+                        log::warn!("[sync_client] Failed to import ServerHello updates: {}", e);
                     }
                 }
                 // Fire SSE event so frontend reloads
@@ -298,10 +293,7 @@ async fn run_sync_client(
                 let bytes = b64().decode(&updates).unwrap_or_default();
                 if !bytes.is_empty() {
                     if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
-                        log::warn!(
-                            "[sync_client] Failed to import ServerUpdate: {}",
-                            e
-                        );
+                        log::warn!("[sync_client] Failed to import ServerUpdate: {}", e);
                     }
                 }
                 let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
@@ -316,8 +308,7 @@ async fn run_sync_client(
                 );
                 break;
             }
-            ServerMessage::ServerPresence { .. }
-            | ServerMessage::ServerEditingPresence { .. } => {
+            ServerMessage::ServerPresence { .. } | ServerMessage::ServerEditingPresence { .. } => {
                 // Presence updates are handled by the frontend, not the backend sync client
             }
         }

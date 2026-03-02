@@ -94,8 +94,7 @@ pub fn resolve_wiki_link(
     }
 
     // Try base_dir first, then each search dir
-    let dirs = std::iter::once(base_dir.to_path_buf())
-        .chain(search_dirs.iter().cloned());
+    let dirs = std::iter::once(base_dir.to_path_buf()).chain(search_dirs.iter().cloned());
 
     for dir in dirs {
         // 1. Exact match
@@ -206,10 +205,7 @@ pub fn find_all_wiki_links_in_board(board: &KanbanBoard) -> Vec<(CardRef, WikiLi
 /// Validate all wiki links in a board and return broken (unresolvable) ones.
 ///
 /// Each broken link includes its card location and the unresolvable WikiLink.
-pub fn validate_wiki_links(
-    board: &KanbanBoard,
-    base_dir: &Path,
-) -> Vec<BrokenLink> {
+pub fn validate_wiki_links(board: &KanbanBoard, base_dir: &Path) -> Vec<BrokenLink> {
     let all_links = find_all_wiki_links_in_board(board);
     let mut broken = Vec::new();
 
@@ -225,7 +221,7 @@ pub fn validate_wiki_links(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{KanbanCard, KanbanColumn, KanbanBoard};
+    use crate::types::{KanbanBoard, KanbanCard, KanbanColumn};
     use std::fs;
     use tempfile::tempdir;
 
@@ -360,11 +356,7 @@ mod tests {
         let file_path = search1.path().join("found.md");
         fs::write(&file_path, "content").unwrap();
 
-        let result = resolve_wiki_link(
-            "found.md",
-            base.path(),
-            &[search1.path().to_path_buf()],
-        );
+        let result = resolve_wiki_link("found.md", base.path(), &[search1.path().to_path_buf()]);
         assert_eq!(result, Some(file_path));
     }
 
@@ -377,11 +369,7 @@ mod tests {
         fs::write(&base_file, "base").unwrap();
         fs::write(&search_file, "search").unwrap();
 
-        let result = resolve_wiki_link(
-            "note.md",
-            base.path(),
-            &[search.path().to_path_buf()],
-        );
+        let result = resolve_wiki_link("note.md", base.path(), &[search.path().to_path_buf()]);
         assert_eq!(result, Some(base_file));
     }
 
@@ -688,11 +676,7 @@ mod tests {
         let file_path = search.path().join("MyDoc.md");
         fs::write(&file_path, "content").unwrap();
 
-        let result = resolve_wiki_link(
-            "mydoc",
-            base.path(),
-            &[search.path().to_path_buf()],
-        );
+        let result = resolve_wiki_link("mydoc", base.path(), &[search.path().to_path_buf()]);
         assert!(result.is_some());
     }
 

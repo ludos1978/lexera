@@ -109,9 +109,7 @@ mod tests {
                 crate::public::PublicRoomService::new(),
             )),
             auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_ws::BoardSyncHub::new(),
-            )),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
             sync_client: Arc::new(tokio::sync::Mutex::new(
                 crate::sync_client::SyncClientManager::new(),
             )),

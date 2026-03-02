@@ -83,7 +83,9 @@ impl FileWatcher {
 
         match self.path_mapping.write() {
             Ok(mut mapping) => {
-                mapping.main_files.insert(canonical.clone(), board_id.to_string());
+                mapping
+                    .main_files
+                    .insert(canonical.clone(), board_id.to_string());
             }
             Err(e) => {
                 log::error!("[lexera.watcher.board] Path mapping lock poisoned: {}", e);
@@ -138,7 +140,10 @@ impl FileWatcher {
     fn ensure_watched(&mut self, file_path: &Path) -> Result<(), notify::Error> {
         if let Some(parent) = file_path.parent() {
             let mut mapping = self.path_mapping.write().map_err(|e| {
-                log::error!("[lexera.watcher.ensure_watched] Path mapping lock poisoned: {}", e);
+                log::error!(
+                    "[lexera.watcher.ensure_watched] Path mapping lock poisoned: {}",
+                    e
+                );
                 notify::Error::generic("Path mapping lock poisoned")
             })?;
             if mapping.watched_dirs.contains(parent) {

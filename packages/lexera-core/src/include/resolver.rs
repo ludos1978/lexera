@@ -251,10 +251,7 @@ mod tests {
         // The ./ prefix is stripped before joining
         let board_dir = Path::new("/home/user/boards");
         let resolved = resolve_include_path("./../up/file.md", board_dir);
-        assert_eq!(
-            resolved,
-            PathBuf::from("/home/user/boards/../up/file.md")
-        );
+        assert_eq!(resolved, PathBuf::from("/home/user/boards/../up/file.md"));
     }
 
     #[test]
@@ -569,11 +566,7 @@ mod tests {
     #[test]
     fn test_register_board_with_only_non_include_columns() {
         let mut map = IncludeMap::new();
-        let titles: Vec<(usize, &str)> = vec![
-            (0, "Todo"),
-            (1, "In Progress"),
-            (2, "Done"),
-        ];
+        let titles: Vec<(usize, &str)> = vec![(0, "Todo"), (1, "In Progress"), (2, "Done")];
         map.register_board("board1", Path::new("/boards"), &titles);
 
         assert!(map.get_includes_for_board("board1").is_empty());

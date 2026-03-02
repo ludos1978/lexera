@@ -43,22 +43,14 @@ fn build_app(state: AppState) -> Router {
 }
 
 /// Try to bind a TCP listener on the given address:port.
-async fn try_bind(
-    bind_addr: &str,
-    port: u16,
-) -> Option<(tokio::net::TcpListener, u16)> {
+async fn try_bind(bind_addr: &str, port: u16) -> Option<(tokio::net::TcpListener, u16)> {
     match tokio::net::TcpListener::bind(format!("{}:{}", bind_addr, port)).await {
         Ok(listener) => {
             let actual_port = listener.local_addr().ok()?.port();
             Some((listener, actual_port))
         }
         Err(e) => {
-            log::warn!(
-                "[server] Cannot bind {}:{} — {}",
-                bind_addr,
-                port,
-                e
-            );
+            log::warn!("[server] Cannot bind {}:{} — {}", bind_addr, port, e);
             None
         }
     }
@@ -164,14 +156,10 @@ pub async fn restart_server(
         }
     }
 
-    let (listener, actual_port) = listener_and_port
-        .ok_or_else(|| format!("All ports exhausted ({:?})", candidates))?;
+    let (listener, actual_port) =
+        listener_and_port.ok_or_else(|| format!("All ports exhausted ({:?})", candidates))?;
 
-    log::info!(
-        "[server] Restarted on http://{}:{}",
-        new_bind,
-        actual_port
-    );
+    log::info!("[server] Restarted on http://{}:{}", new_bind, actual_port);
 
     // Build a new app with the same shared state
     let app = build_app(state.clone());

@@ -79,7 +79,10 @@ pub fn api_router() -> Router<AppState> {
 
     // All other routes without rate limiting
     Router::new()
-        .route("/boards", get(board::list_boards).post(board::add_board_endpoint))
+        .route(
+            "/boards",
+            get(board::list_boards).post(board::add_board_endpoint),
+        )
         .route("/remote-boards", get(board::list_remote_boards))
         .route("/boards/{board_id}/columns", get(board::get_board_columns))
         .route(
@@ -118,7 +121,10 @@ pub fn api_router() -> Router<AppState> {
             "/boards/{board_id}/media",
             axum::routing::post(media::upload_media),
         )
-        .route("/boards/{board_id}/media/{filename}", get(media::serve_media))
+        .route(
+            "/boards/{board_id}/media/{filename}",
+            get(media::serve_media),
+        )
         .route("/boards/{board_id}/file", get(file_ops::serve_file))
         .route("/boards/{board_id}/file-info", get(file_ops::file_info))
         .route(
@@ -265,7 +271,11 @@ mod tests {
         assert!(result.is_err());
         let (status, body) = result.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body.error.contains("empty"), "error should mention empty: {}", body.error);
+        assert!(
+            body.error.contains("empty"),
+            "error should mention empty: {}",
+            body.error
+        );
     }
 
     #[test]
@@ -275,13 +285,20 @@ mod tests {
         assert!(result.is_err());
         let (status, body) = result.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(body.error.contains("long"), "error should mention length: {}", body.error);
+        assert!(
+            body.error.contains("long"),
+            "error should mention length: {}",
+            body.error
+        );
     }
 
     #[test]
     fn validate_board_id_accepts_max_length() {
         let id = "b".repeat(256);
-        assert!(validate_board_id(&id).is_ok(), "256-char ID should be accepted");
+        assert!(
+            validate_board_id(&id).is_ok(),
+            "256-char ID should be accepted"
+        );
     }
 
     #[test]

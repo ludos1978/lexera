@@ -4,7 +4,8 @@
 var frontendLogEntries = [];
 var backendLogEntries = [];
 var LOG_MAX = 1000;
-var activeLogSource = localStorage.getItem('lexera-log-source') === 'frontend' ? 'frontend' : 'backend';
+var storedLogSource = localStorage.getItem('lexera-log-source');
+var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
 var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
@@ -253,6 +254,55 @@ function logFrontendIssue(level, target, context, error) {
   var detail = error == null ? '' : formatErrorDetails(error);
   var message = detail ? (context + ': ' + detail) : context;
   lexeraLogWithTarget(level, target, message);
+}
+
+function formatTraceDetails(details) {
+  if (details == null) return '';
+  var normalized = normalizeLogMessage(details);
+  return normalized ? (' ' + normalized) : '';
+}
+
+function traceFrontendAction(level, target, message, details) {
+  lexeraLogWithTarget(level, target, message + formatTraceDetails(details));
+}
+
+function summarizeMenuItems(items) {
+  var result = [];
+  if (!Array.isArray(items)) return result;
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (!item) continue;
+    if (item.separator) {
+      result.push('---');
+      continue;
+    }
+    var label = item.id || item.label || ('item-' + i);
+    if (Array.isArray(item.items) && item.items.length > 0) {
+      result.push(label + '[' + item.items.length + ']');
+    } else {
+      result.push(label);
+    }
+  }
+  return result;
+}
+
+function summarizeBoardHierarchy(boardData) {
+  var summary = { rows: 0, stacks: 0, columns: 0, cards: 0 };
+  if (!boardData || !Array.isArray(boardData.rows)) return summary;
+  summary.rows = boardData.rows.length;
+  for (var r = 0; r < boardData.rows.length; r++) {
+    var row = boardData.rows[r];
+    var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+    summary.stacks += stacks.length;
+    for (var s = 0; s < stacks.length; s++) {
+      var cols = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+      summary.columns += cols.length;
+      for (var c = 0; c < cols.length; c++) {
+        summary.cards += Array.isArray(cols[c].cards) ? cols[c].cards.length : 0;
+      }
+    }
+  }
+  return summary;
 }
 
 function lexeraBackendLog(entry) {
@@ -4319,6 +4369,15 @@ const LexeraDashboard = (function () {
 
   async function permanentlyDeleteHiddenItem(item) {
     if (!item || !fullBoardData || !activeBoardId) return false;
+    traceFrontendAction('info', 'trash.delete', 'Permanently deleting hidden item', {
+      boardId: activeBoardId || null,
+      kind: item.kind,
+      rowIndex: item.rowIndex,
+      stackIndex: item.stackIndex,
+      colIndex: item.colIndex,
+      cardIndex: item.cardIndex,
+      title: item.title || ''
+    });
     pushUndo();
     if (item.kind === 'row') {
       if (item.rowIndex < 0 || item.rowIndex >= fullBoardData.rows.length) return false;
@@ -4348,6 +4407,10 @@ const LexeraDashboard = (function () {
 
   async function permanentlyDeleteHiddenItems(items) {
     if (!items || items.length === 0 || !fullBoardData || !activeBoardId) return false;
+    traceFrontendAction('info', 'trash.empty', 'Permanently deleting all trash items', {
+      boardId: activeBoardId || null,
+      itemCount: items.length
+    });
     var sorted = items.slice().sort(function (a, b) {
       if (a.rowIndex !== b.rowIndex) return b.rowIndex - a.rowIndex;
       if (a.stackIndex !== b.stackIndex) return b.stackIndex - a.stackIndex;
@@ -4438,9 +4501,13 @@ const LexeraDashboard = (function () {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
+    function closeDialog() {
+      if (overlay && overlay.parentNode) overlay.remove();
+    }
+
     overlay.addEventListener('click', async function (e) {
       if (e.target === overlay || e.target.id === 'close-hidden-items') {
-        overlay.remove();
+        closeDialog();
         return;
       }
       var itemBtn = e.target.closest('[data-item-action]');
@@ -4451,8 +4518,20 @@ const LexeraDashboard = (function () {
         if (!selectedItem) return;
         for (var a = 0; a < actions.length; a++) {
           if (actions[a].id === itemAction && typeof actions[a].handler === 'function') {
-            await actions[a].handler(selectedItem);
-            overlay.remove();
+            try {
+              traceFrontendAction('info', 'hidden.items', 'Running hidden item action', {
+                boardId: activeBoardId || null,
+                dialogTitle: title,
+                action: itemAction,
+                kind: selectedItem.kind,
+                itemTitle: selectedItem.title || ''
+              });
+              var shouldClose = await actions[a].handler(selectedItem, { closeDialog: closeDialog });
+              if (shouldClose !== false) closeDialog();
+            } catch (err) {
+              logFrontendIssue('error', 'hidden.items', 'Hidden item action failed', err);
+              showNotification('Action failed');
+            }
             return;
           }
         }
@@ -4463,8 +4542,19 @@ const LexeraDashboard = (function () {
         if (!footerActions) return;
         for (var f = 0; f < footerActions.length; f++) {
           if (footerActions[f].id === footerId && typeof footerActions[f].handler === 'function') {
-            var shouldClose = await footerActions[f].handler(items);
-            if (shouldClose !== false) overlay.remove();
+            try {
+              traceFrontendAction('info', 'hidden.items', 'Running hidden items footer action', {
+                boardId: activeBoardId || null,
+                dialogTitle: title,
+                action: footerId,
+                itemCount: items.length
+              });
+              var shouldClose = await footerActions[f].handler(items, { closeDialog: closeDialog });
+              if (shouldClose !== false) closeDialog();
+            } catch (err) {
+              logFrontendIssue('error', 'hidden.items', 'Hidden items footer action failed', err);
+              showNotification('Action failed');
+            }
             return;
           }
         }
@@ -4850,11 +4940,25 @@ const LexeraDashboard = (function () {
           id: 'empty-trash',
           label: 'Empty Trash',
           danger: true,
-          handler: async function (items) {
+          handler: async function (items, controls) {
             if (!items || items.length === 0) return true;
-            if (!(await showConfirmDialog('Permanently delete all items in trash? This cannot be undone.'))) return false;
-            await permanentlyDeleteHiddenItems(items);
-            return true;
+            traceFrontendAction('info', 'trash.empty', 'Requested empty trash', {
+              boardId: activeBoardId || null,
+              itemCount: items.length
+            });
+            if (controls && typeof controls.closeDialog === 'function') {
+              controls.closeDialog();
+              await new Promise(function (resolve) {
+                requestAnimationFrame(function () {
+                  resolve();
+                });
+              });
+            }
+            var success = await permanentlyDeleteHiddenItems(items);
+            if (!success) {
+              showNotification('Failed to empty trash');
+            }
+            return false;
           }
         }
       ]
@@ -4913,6 +5017,13 @@ const LexeraDashboard = (function () {
 
   async function persistBoardMutation(options) {
     options = options || {};
+    traceFrontendAction('info', 'board.persist', 'Persist board mutation start', {
+      boardId: activeBoardId || null,
+      refreshMainView: !!options.refreshMainView,
+      refreshSidebar: !!options.refreshSidebar,
+      skipRender: !!options.skipRender,
+      summaryBefore: summarizeBoardHierarchy(fullBoardData)
+    });
     try {
       await saveFullBoard();
       if (typeof options.beforeRefresh === 'function') {
@@ -4932,6 +5043,13 @@ const LexeraDashboard = (function () {
         options.afterRefresh();
       }
       scheduleDashboardRefresh(80);
+      traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
+        boardId: activeBoardId || null,
+        refreshMainView: !!options.refreshMainView,
+        refreshSidebar: !!options.refreshSidebar,
+        skipRender: !!options.skipRender,
+        summaryAfter: summarizeBoardHierarchy(fullBoardData)
+      });
       return true;
     } catch (err) {
       logFrontendIssue('error', 'persistBoardMutation', 'Save failed, reloading board', err);
@@ -6495,7 +6613,11 @@ const LexeraDashboard = (function () {
       header.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showColumnContextMenu(e.clientX, e.clientY, colIdx);
+        showColumnContextMenu(e.clientX, e.clientY, colIdx, {
+          rowIdx: rIdx,
+          stackIdx: sIdx,
+          colLocalIdx: cIdx
+        });
       });
       header.querySelector('.column-edit-btn').addEventListener('click', function (e) {
         e.stopPropagation();
@@ -6504,7 +6626,11 @@ const LexeraDashboard = (function () {
       header.querySelector('.column-menu-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         var rect = this.getBoundingClientRect();
-        showColumnContextMenu(rect.right, rect.bottom, colIdx);
+        showColumnContextMenu(rect.right, rect.bottom, colIdx, {
+          rowIdx: rIdx,
+          stackIdx: sIdx,
+          colLocalIdx: cIdx
+        });
       });
     })(colEl, col.index, rowIdx, stackIdx, colLocalIdx);
     colEl.appendChild(header);
@@ -7099,6 +7225,46 @@ const LexeraDashboard = (function () {
     return insertBefore ? visible[displayColIdx] : (visible[displayColIdx] + 1);
   }
 
+  async function addColumnRelativeToDisplayPosition(displayRowIdx, displayStackIdx, displayColIdx, insertBefore) {
+    var stack = findFullDataStack(displayRowIdx, displayStackIdx);
+    if (!stack) {
+      traceFrontendAction('warn', 'column.insert.relative', 'Failed to resolve stack for display-relative insert', {
+        boardId: activeBoardId || null,
+        displayRowIdx: displayRowIdx,
+        displayStackIdx: displayStackIdx,
+        displayColIdx: displayColIdx,
+        insertBefore: !!insertBefore
+      });
+      return false;
+    }
+    var visibleIndices = visibleColumnIndicesInStack(stack);
+    var insertAt = findInsertColumnIndexInStack(stack, displayColIdx, insertBefore);
+    if (insertAt < 0) {
+      traceFrontendAction('warn', 'column.insert.relative', 'Failed to compute insert index for display-relative insert', {
+        boardId: activeBoardId || null,
+        displayRowIdx: displayRowIdx,
+        displayStackIdx: displayStackIdx,
+        displayColIdx: displayColIdx,
+        insertBefore: !!insertBefore,
+        stackId: stack.id || null,
+        visibleIndices: visibleIndices
+      });
+      return false;
+    }
+    traceFrontendAction('info', 'column.insert.relative', 'Resolved display-relative insert position', {
+      boardId: activeBoardId || null,
+      displayRowIdx: displayRowIdx,
+      displayStackIdx: displayStackIdx,
+      displayColIdx: displayColIdx,
+      insertBefore: !!insertBefore,
+      stackId: stack.id || null,
+      stackTitle: stack.title || '',
+      insertAt: insertAt,
+      visibleIndices: visibleIndices
+    });
+    return addColumnToStack(displayRowIdx, displayStackIdx, insertAt);
+  }
+
   function removeEmptyStacksAndRowsInBoard(boardData) {
     if (!boardData || !boardData.rows) return;
     for (var r = boardData.rows.length - 1; r >= 0; r--) {
@@ -7127,6 +7293,12 @@ const LexeraDashboard = (function () {
     closeRowStackMenu();
     closeColumnContextMenu();
     closeCardContextMenu();
+    traceFrontendAction('info', 'row.menu', 'Opening row context menu', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      x: x,
+      y: y
+    });
     showNativeMenu([
       { id: 'rename', label: 'Rename Row' },
       { id: 'add-stack', label: 'Add Stack' },
@@ -7137,8 +7309,15 @@ const LexeraDashboard = (function () {
       { id: 'archive', label: 'Archive Row' },
       { id: 'park', label: 'Park Row' },
       { id: 'delete', label: 'Move Row to Trash' },
-    ], x, y).then(function (action) {
-      if (action) handleRowAction(action, rowIdx);
+    ], x, y, 'row.menu').then(function (action) {
+      if (!action) {
+        traceFrontendAction('warn', 'row.menu', 'Row context menu closed without selection', {
+          boardId: activeBoardId || null,
+          rowIdx: rowIdx
+        });
+        return;
+      }
+      handleRowAction(action, rowIdx);
     });
   }
 
@@ -7146,6 +7325,13 @@ const LexeraDashboard = (function () {
     closeRowStackMenu();
     closeColumnContextMenu();
     closeCardContextMenu();
+    traceFrontendAction('info', 'stack.menu', 'Opening stack context menu', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      stackIdx: stackIdx,
+      x: x,
+      y: y
+    });
     showNativeMenu([
       { id: 'rename', label: 'Rename Stack' },
       { id: 'add-column', label: 'Add Column' },
@@ -7156,12 +7342,25 @@ const LexeraDashboard = (function () {
       { id: 'archive', label: 'Archive Stack' },
       { id: 'park', label: 'Park Stack' },
       { id: 'delete', label: 'Move Stack to Trash' },
-    ], x, y).then(function (action) {
-      if (action) handleStackAction(action, rowIdx, stackIdx);
+    ], x, y, 'stack.menu').then(function (action) {
+      if (!action) {
+        traceFrontendAction('warn', 'stack.menu', 'Stack context menu closed without selection', {
+          boardId: activeBoardId || null,
+          rowIdx: rowIdx,
+          stackIdx: stackIdx
+        });
+        return;
+      }
+      handleStackAction(action, rowIdx, stackIdx);
     });
   }
 
   function handleRowAction(action, rowIdx) {
+    traceFrontendAction('info', 'row.action', 'Dispatching row action', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      action: action
+    });
     if (action === 'rename') {
       renameRowOrStack('row', rowIdx);
     } else if (action === 'add-stack') {
@@ -7180,6 +7379,12 @@ const LexeraDashboard = (function () {
   }
 
   function handleStackAction(action, rowIdx, stackIdx) {
+    traceFrontendAction('info', 'stack.action', 'Dispatching stack action', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      stackIdx: stackIdx,
+      action: action
+    });
     if (action === 'rename') {
       renameRowOrStack('stack', rowIdx, stackIdx);
     } else if (action === 'add-column') {
@@ -7287,51 +7492,53 @@ const LexeraDashboard = (function () {
     btn.textContent = options.btnText || ('+ Add ' + entityType);
     wrapper.appendChild(btn);
 
-    var dropdown = document.createElement('div');
-    dropdown.className = 'creation-dropdown';
+    if (entityType !== 'card') {
+      var dropdown = document.createElement('div');
+      dropdown.className = 'creation-dropdown';
 
-    // "Empty" item — always present
-    var emptyItem = document.createElement('div');
-    emptyItem.className = 'creation-item';
-    emptyItem.textContent = 'Empty ' + entityType.charAt(0).toUpperCase() + entityType.slice(1);
-    emptyItem.addEventListener('click', function (e) {
-      e.stopPropagation();
-      handleCreationAction(entityType, 'empty', context);
-    });
-    dropdown.appendChild(emptyItem);
+      // "Empty" item — always present
+      var emptyItem = document.createElement('div');
+      emptyItem.className = 'creation-item';
+      emptyItem.textContent = 'Empty ' + entityType.charAt(0).toUpperCase() + entityType.slice(1);
+      emptyItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        handleCreationAction(entityType, 'empty', context);
+      });
+      dropdown.appendChild(emptyItem);
 
-    // "From Clipboard" item
-    var clipItem = document.createElement('div');
-    clipItem.className = 'creation-item';
-    clipItem.textContent = 'From Clipboard';
-    clipItem.addEventListener('click', function (e) {
-      e.stopPropagation();
-      handleCreationAction(entityType, 'clipboard', context);
-    });
-    dropdown.appendChild(clipItem);
+      // "From Clipboard" item
+      var clipItem = document.createElement('div');
+      clipItem.className = 'creation-item';
+      clipItem.textContent = 'From Clipboard';
+      clipItem.addEventListener('click', function (e) {
+        e.stopPropagation();
+        handleCreationAction(entityType, 'clipboard', context);
+      });
+      dropdown.appendChild(clipItem);
 
-    // Template items
-    var templates = LexeraTemplates.getTemplatesForType(entityType);
-    if (templates.length > 0) {
-      var sep = document.createElement('div');
-      sep.className = 'creation-sep';
-      dropdown.appendChild(sep);
+      // Template items
+      var templates = LexeraTemplates.getTemplatesForType(entityType);
+      if (templates.length > 0) {
+        var sep = document.createElement('div');
+        sep.className = 'creation-sep';
+        dropdown.appendChild(sep);
 
-      for (var i = 0; i < templates.length; i++) {
-        (function (tpl) {
-          var tplItem = document.createElement('div');
-          tplItem.className = 'creation-item';
-          tplItem.textContent = tpl.name;
-          tplItem.addEventListener('click', function (e) {
-            e.stopPropagation();
-            handleCreationAction(entityType, 'template:' + tpl.id, context);
-          });
-          dropdown.appendChild(tplItem);
-        })(templates[i]);
+        for (var i = 0; i < templates.length; i++) {
+          (function (tpl) {
+            var tplItem = document.createElement('div');
+            tplItem.className = 'creation-item';
+            tplItem.textContent = tpl.name;
+            tplItem.addEventListener('click', function (e) {
+              e.stopPropagation();
+              handleCreationAction(entityType, 'template:' + tpl.id, context);
+            });
+            dropdown.appendChild(tplItem);
+          })(templates[i]);
+        }
       }
-    }
 
-    wrapper.appendChild(dropdown);
+      wrapper.appendChild(dropdown);
+    }
 
     // Direct click on button = empty creation (original behavior)
     btn.addEventListener('click', function (e) {
@@ -7346,11 +7553,24 @@ const LexeraDashboard = (function () {
    * Dispatch creation action for a given entity type.
    */
   async function handleCreationAction(entityType, action, context) {
+    traceFrontendAction('info', 'creation.action', 'Dispatching creation action', {
+      boardId: activeBoardId || null,
+      entityType: entityType,
+      action: action,
+      context: context || null
+    });
+    if (entityType === 'card') {
+      if (action !== 'empty') {
+        traceFrontendAction('warn', 'card.create', 'Ignoring non-empty card creation action and creating a blank card instead', {
+          boardId: activeBoardId || null,
+          action: action,
+          context: context || null
+        });
+      }
+      return addEmptyCardToActiveBoard(context && context.colIndex);
+    }
     if (action === 'empty') {
-      if (entityType === 'card') {
-        addCardColumn = context.colIndex;
-        renderColumns();
-      } else if (entityType === 'row') {
+      if (entityType === 'row') {
         addRow(context.atIndex);
       } else if (entityType === 'stack') {
         addStackToRow(context.rowIdx);
@@ -7496,7 +7716,13 @@ const LexeraDashboard = (function () {
   }
 
   async function addRow(atIndex) {
-    if (!fullBoardData) return;
+    if (!fullBoardData) {
+      traceFrontendAction('warn', 'row.create', 'Aborted add row because fullBoardData is missing', {
+        boardId: activeBoardId || null,
+        atIndex: atIndex
+      });
+      return false;
+    }
     if (!Array.isArray(fullBoardData.rows)) fullBoardData.rows = [];
 
     pushUndo();
@@ -7509,8 +7735,21 @@ const LexeraDashboard = (function () {
     if (typeof atIndex !== 'number' || isNaN(atIndex)) atIndex = fullBoardData.rows.length;
     if (atIndex < 0) atIndex = 0;
     if (atIndex > fullBoardData.rows.length) atIndex = fullBoardData.rows.length;
+    traceFrontendAction('info', 'row.create', 'Inserting new row', {
+      boardId: activeBoardId || null,
+      atIndex: atIndex,
+      rowId: newRow.id,
+      summaryBefore: summarizeBoardHierarchy(fullBoardData)
+    });
     fullBoardData.rows.splice(atIndex, 0, newRow);
-    await persistBoardMutation({ refreshSidebar: true });
+    var saved = await persistBoardMutation({ refreshSidebar: true });
+    traceFrontendAction(saved ? 'info' : 'warn', 'row.create', saved ? 'Persisted new row' : 'Row persist reported failure', {
+      boardId: activeBoardId || null,
+      atIndex: atIndex,
+      rowId: newRow.id,
+      summaryAfter: summarizeBoardHierarchy(fullBoardData)
+    });
+    return saved;
   }
 
   async function setRowHiddenTag(displayRowIdx, tag) {
@@ -7543,7 +7782,14 @@ const LexeraDashboard = (function () {
   async function addStackToRow(rowIdx, atStackIdx) {
 
     var row = findFullDataRow(rowIdx);
-    if (!row) return;
+    if (!row) {
+      traceFrontendAction('warn', 'stack.create', 'Aborted add stack because row could not be resolved', {
+        boardId: activeBoardId || null,
+        rowIdx: rowIdx,
+        atStackIdx: atStackIdx
+      });
+      return false;
+    }
     if (!Array.isArray(row.stacks)) row.stacks = [];
     pushUndo();
     var ts = Date.now();
@@ -7556,8 +7802,24 @@ const LexeraDashboard = (function () {
     if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) insertAt = atStackIdx;
     if (insertAt < 0) insertAt = 0;
     if (insertAt > row.stacks.length) insertAt = row.stacks.length;
+    traceFrontendAction('info', 'stack.create', 'Inserting new stack', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      rowId: row.id || null,
+      rowTitle: row.title || '',
+      insertAt: insertAt,
+      stackId: newStack.id
+    });
     row.stacks.splice(insertAt, 0, newStack);
-    await persistBoardMutation({ refreshSidebar: true });
+    var saved = await persistBoardMutation({ refreshSidebar: true });
+    traceFrontendAction(saved ? 'info' : 'warn', 'stack.create', saved ? 'Persisted new stack' : 'Stack persist reported failure', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      rowId: row.id || null,
+      insertAt: insertAt,
+      stackId: newStack.id
+    });
+    return saved;
   }
 
   async function setStackHiddenTag(displayRowIdx, displayStackIdx, tag) {
@@ -7589,15 +7851,44 @@ const LexeraDashboard = (function () {
   async function addColumnToStack(rowIdx, stackIdx, atColIdx) {
 
     var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!stack) return;
+    if (!stack) {
+      traceFrontendAction('warn', 'column.create', 'Aborted add column because stack could not be resolved', {
+        boardId: activeBoardId || null,
+        rowIdx: rowIdx,
+        stackIdx: stackIdx,
+        atColIdx: atColIdx
+      });
+      return false;
+    }
     if (!Array.isArray(stack.columns)) stack.columns = [];
     pushUndo();
     var insertAt = stack.columns.length;
     if (typeof atColIdx === 'number' && !isNaN(atColIdx)) insertAt = atColIdx;
     if (insertAt < 0) insertAt = 0;
     if (insertAt > stack.columns.length) insertAt = stack.columns.length;
-    stack.columns.splice(insertAt, 0, { id: 'col-' + Date.now(), title: 'New Column', cards: [] });
-    await persistBoardMutation({ refreshSidebar: true });
+    var newColumn = { id: 'col-' + Date.now(), title: 'New Column', cards: [] };
+    traceFrontendAction('info', 'column.create', 'Inserting new column into stack', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      stackIdx: stackIdx,
+      stackId: stack.id || null,
+      stackTitle: stack.title || '',
+      insertAt: insertAt,
+      columnId: newColumn.id,
+      stackColumnCountBefore: stack.columns.length
+    });
+    stack.columns.splice(insertAt, 0, newColumn);
+    var saved = await persistBoardMutation({ refreshSidebar: true });
+    traceFrontendAction(saved ? 'info' : 'warn', 'column.create', saved ? 'Persisted new column in stack' : 'Column persist reported failure', {
+      boardId: activeBoardId || null,
+      rowIdx: rowIdx,
+      stackIdx: stackIdx,
+      stackId: stack.id || null,
+      insertAt: insertAt,
+      columnId: newColumn.id,
+      stackColumnCountAfter: stack.columns.length
+    });
+    return saved;
   }
 
   async function addCardToActiveBoard(colIndex, content) {
@@ -7614,6 +7905,47 @@ const LexeraDashboard = (function () {
     addCardColumn = null;
     await persistBoardMutation();
     return true;
+  }
+
+  async function addEmptyCardToActiveBoard(colIndex) {
+    if (colIndex == null || !activeBoardId || !fullBoardData) {
+      traceFrontendAction('warn', 'card.create', 'Aborted empty card creation because board or column context is missing', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex
+      });
+      return false;
+    }
+    var column = getFullColumn(colIndex);
+    if (!column || !Array.isArray(column.cards)) {
+      traceFrontendAction('warn', 'card.create', 'Aborted empty card creation because column could not be resolved', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex
+      });
+      return false;
+    }
+    pushUndo();
+    var card = {
+      id: 'card-' + Date.now(),
+      content: '',
+      checked: false
+    };
+    traceFrontendAction('info', 'card.create', 'Creating blank card', {
+      boardId: activeBoardId || null,
+      colIndex: colIndex,
+      columnId: column.id || null,
+      cardId: card.id,
+      cardCountBefore: column.cards.length
+    });
+    column.cards.push(card);
+    var saved = await persistBoardMutation();
+    traceFrontendAction(saved ? 'info' : 'warn', 'card.create', saved ? 'Persisted blank card' : 'Blank card persist reported failure', {
+      boardId: activeBoardId || null,
+      colIndex: colIndex,
+      columnId: column.id || null,
+      cardId: card.id,
+      cardCountAfter: column.cards.length
+    });
+    return saved;
   }
 
   async function submitCard(colIndex, content) {
@@ -11236,8 +11568,7 @@ const LexeraDashboard = (function () {
 
   function handleCardMenuAction(action, colIndex, cardIndex) {
     if (action === 'add-card') {
-      addCardColumn = colIndex;
-      renderColumns();
+      addEmptyCardToActiveBoard(colIndex);
     } else if (action === 'edit') {
       var cardsEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
       if (cardsEls.length > 0) {
@@ -11309,7 +11640,7 @@ const LexeraDashboard = (function () {
     if (activeColMenu) { activeColMenu.remove(); activeColMenu = null; }
   }
 
-  function showColumnContextMenu(x, y, colIndex) {
+  function showColumnContextMenu(x, y, colIndex, context) {
     closeColumnContextMenu();
     closeCardContextMenu();
     var col = getFullColumn(colIndex);
@@ -11365,14 +11696,42 @@ const LexeraDashboard = (function () {
     nativeItems.push({ id: 'park', label: 'Park Column' });
     nativeItems.push({ id: 'delete', label: 'Delete Column' });
 
-    showNativeMenu(nativeItems, x, y).then(function (action) {
-      if (!action) return;
+    traceFrontendAction('info', 'column.menu', 'Opening column context menu', {
+      boardId: activeBoardId || null,
+      colIndex: colIndex,
+      columnId: col && col.id ? col.id : null,
+      columnTitle: col && col.title ? col.title : '',
+      x: x,
+      y: y,
+      context: context || null
+    });
+    showNativeMenu(nativeItems, x, y, 'column.menu').then(function (action) {
+      if (!action) {
+        traceFrontendAction('warn', 'column.menu', 'Column context menu closed without selection', {
+          boardId: activeBoardId || null,
+          colIndex: colIndex,
+          context: context || null
+        });
+        return;
+      }
+      traceFrontendAction('info', 'column.menu', 'Column context menu selected action', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex,
+        action: action,
+        context: context || null
+      });
       var moveMatch = action.match(/^move-to-stack-(\d+)-(\d+)$/);
       if (moveMatch) {
+        traceFrontendAction('info', 'column.move', 'Requested move-to-stack action from menu', {
+          boardId: activeBoardId || null,
+          colIndex: colIndex,
+          targetRowIdx: parseInt(moveMatch[1], 10),
+          targetStackIdx: parseInt(moveMatch[2], 10)
+        });
         moveColumnToStack(colIndex, parseInt(moveMatch[1]), parseInt(moveMatch[2]));
         return;
       }
-      handleColumnAction(action, colIndex);
+      handleColumnAction(action, colIndex, context);
     });
   }
 
@@ -11438,16 +11797,68 @@ const LexeraDashboard = (function () {
   }
 
   function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) {
-    if (!fullBoardData || !fullBoardData.rows) return;
+    if (!fullBoardData || !fullBoardData.rows) {
+      traceFrontendAction('warn', 'column.move', 'Aborted move because fullBoardData is missing', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex,
+        targetRowIdx: targetRowIdx,
+        targetStackIdx: targetStackIdx
+      });
+      return;
+    }
     // Find and remove column from current location
     var col = getFullColumn(colIndex);
-    if (!col) return;
+    if (!col) {
+      traceFrontendAction('warn', 'column.move', 'Aborted move because source column could not be resolved', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex,
+        targetRowIdx: targetRowIdx,
+        targetStackIdx: targetStackIdx
+      });
+      return;
+    }
     var container = findColumnContainer(colIndex);
-    if (!container) return;
+    if (!container) {
+      traceFrontendAction('warn', 'column.move', 'Aborted move because source container could not be resolved', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex,
+        targetRowIdx: targetRowIdx,
+        targetStackIdx: targetStackIdx,
+        columnId: col.id || null
+      });
+      return;
+    }
     // Add to target stack
     var targetStack = fullBoardData.rows[targetRowIdx] && fullBoardData.rows[targetRowIdx].stacks[targetStackIdx];
-    if (!targetStack) return;
-    if (container.stack === targetStack) return;
+    if (!targetStack) {
+      traceFrontendAction('warn', 'column.move', 'Aborted move because target stack could not be resolved', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex,
+        columnId: col.id || null,
+        targetRowIdx: targetRowIdx,
+        targetStackIdx: targetStackIdx
+      });
+      return;
+    }
+    if (container.stack === targetStack) {
+      traceFrontendAction('warn', 'column.move', 'Skipping move because source and target stack are identical', {
+        boardId: activeBoardId || null,
+        colIndex: colIndex,
+        columnId: col.id || null,
+        rowIdx: container.rowIdx,
+        stackIdx: container.stackIdx
+      });
+      return;
+    }
+    traceFrontendAction('info', 'column.move', 'Moving column to stack', {
+      boardId: activeBoardId || null,
+      colIndex: colIndex,
+      columnId: col.id || null,
+      sourceRowIdx: container.rowIdx,
+      sourceStackIdx: container.stackIdx,
+      targetRowIdx: targetRowIdx,
+      targetStackIdx: targetStackIdx
+    });
     pushUndo();
     var removed = container.arr.splice(container.localIdx, 1)[0];
     targetStack.columns.push(removed);
@@ -11455,19 +11866,38 @@ const LexeraDashboard = (function () {
     persistBoardMutation({ refreshSidebar: true });
   }
 
-  async function handleColumnAction(action, colIndex) {
+  async function handleColumnAction(action, colIndex, context) {
+    traceFrontendAction('info', 'column.action', 'Dispatching column action', {
+      boardId: activeBoardId || null,
+      colIndex: colIndex,
+      action: action,
+      context: context || null
+    });
     if (action === 'rename') {
       var col = getFullColumn(colIndex);
       if (!col) return;
       var colEl = getElColumnsContainer().querySelector('.column[data-col-title="' + escapeAttr(col.title) + '"]');
       if (colEl) enterColumnRename(colEl, colIndex);
     } else if (action === 'add-card') {
-      addCardColumn = colIndex;
-      renderColumns();
+      await addEmptyCardToActiveBoard(colIndex);
     } else if (action === 'add-before') {
-      addColumn(colIndex);
+      if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, true))) {
+        traceFrontendAction('warn', 'column.action', 'Falling back to flat add-before insertion', {
+          boardId: activeBoardId || null,
+          colIndex: colIndex,
+          context: context || null
+        });
+        await addColumn(colIndex);
+      }
     } else if (action === 'add-after') {
-      addColumn(colIndex + 1);
+      if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, false))) {
+        traceFrontendAction('warn', 'column.action', 'Falling back to flat add-after insertion', {
+          boardId: activeBoardId || null,
+          colIndex: colIndex,
+          context: context || null
+        });
+        await addColumn(colIndex + 1);
+      }
     } else if (action === 'fold-all') {
       toggleColCards(colIndex, true);
     } else if (action === 'unfold-all') {
@@ -11631,10 +12061,32 @@ const LexeraDashboard = (function () {
   }
 
   async function addColumn(atIndex) {
-    if (!fullBoardData || !activeBoardId) return;
+    if (!fullBoardData || !activeBoardId) {
+      traceFrontendAction('warn', 'column.create.flat', 'Aborted flat add column because board data is missing', {
+        boardId: activeBoardId || null,
+        atIndex: atIndex
+      });
+      return false;
+    }
     pushUndo();
     var newCol = { id: 'col-' + Date.now(), title: 'New Column', cards: [] };
     var container = findColumnContainer(atIndex);
+    if (container) {
+      traceFrontendAction('info', 'column.create.flat', 'Resolved flat insertion container', {
+        boardId: activeBoardId || null,
+        atIndex: atIndex,
+        rowIdx: container.rowIdx,
+        stackIdx: container.stackIdx,
+        localIdx: container.localIdx,
+        columnId: newCol.id
+      });
+    } else {
+      traceFrontendAction('warn', 'column.create.flat', 'Flat insertion fell back to last visible stack', {
+        boardId: activeBoardId || null,
+        atIndex: atIndex,
+        columnId: newCol.id
+      });
+    }
     if (container) {
       container.arr.splice(container.localIdx, 0, newCol);
     } else {
@@ -11657,7 +12109,13 @@ const LexeraDashboard = (function () {
       }
       lastRow.stacks[lastRow.stacks.length - 1].columns.push(newCol);
     }
-    await persistBoardMutation();
+    var saved = await persistBoardMutation();
+    traceFrontendAction(saved ? 'info' : 'warn', 'column.create.flat', saved ? 'Persisted flat column insertion' : 'Flat column insertion persist reported failure', {
+      boardId: activeBoardId || null,
+      atIndex: atIndex,
+      columnId: newCol.id
+    });
+    return saved;
   }
 
   async function deleteColumn(colIndex) {
@@ -13573,15 +14031,44 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function showNativeMenu(items, x, y) {
+  function showNativeMenu(items, x, y, traceTarget) {
+    var target = traceTarget || 'menu.native';
+    var summary = {
+      x: x,
+      y: y,
+      itemIds: summarizeMenuItems(items),
+      mode: hasTauri ? 'tauri' : 'html'
+    };
     if (!hasTauri) {
-      return showHtmlMenu(items, x, y);
+      traceFrontendAction('info', target, 'Opening HTML menu', summary);
+      return showHtmlMenu(items, x, y).then(function (result) {
+        if (result) {
+          traceFrontendAction('info', target, 'HTML menu selected action', { action: result });
+        } else {
+          traceFrontendAction('warn', target, 'HTML menu closed without selection', summary);
+        }
+        return result;
+      });
     }
+    traceFrontendAction('info', target, 'Opening native menu', summary);
     return tauriInvoke('show_context_menu', { items: items, x: x, y: y }).then(function (result) {
+      if (result) {
+        traceFrontendAction('info', target, 'Native menu selected action', { action: result });
+      } else {
+        traceFrontendAction('warn', target, 'Native menu closed without selection', summary);
+      }
       return result;
     }).catch(function (err) {
-      lexeraLog('error', '[menu] Error: ' + err);
-      return showHtmlMenu(items, x, y);
+      logFrontendIssue('error', target, 'Native menu failed, falling back to HTML menu', err);
+      traceFrontendAction('info', target, 'Opening HTML fallback menu', summary);
+      return showHtmlMenu(items, x, y).then(function (result) {
+        if (result) {
+          traceFrontendAction('info', target, 'HTML fallback menu selected action', { action: result });
+        } else {
+          traceFrontendAction('warn', target, 'HTML fallback menu closed without selection', summary);
+        }
+        return result;
+      });
     });
   }
 

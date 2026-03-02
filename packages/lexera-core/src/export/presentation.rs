@@ -5,8 +5,8 @@ use std::sync::OnceLock;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{KanbanBoard, KanbanColumn, IncludeSource};
-use super::tag_filter::{TagVisibility, process_markdown_content, has_exclude_tag};
+use super::tag_filter::{has_exclude_tag, process_markdown_content, TagVisibility};
+use crate::types::{IncludeSource, KanbanBoard, KanbanColumn};
 
 // ---------------------------------------------------------------------------
 // Compiled regexes (allocated once via OnceLock)
@@ -270,9 +270,7 @@ pub fn to_document(
             let mut content = normalize_crlf(&raw_content);
 
             if options.strip_includes {
-                content = include_syntax_re()
-                    .replace_all(&content, "")
-                    .to_string();
+                content = include_syntax_re().replace_all(&content, "").to_string();
                 content = content.trim().to_string();
             }
 
@@ -316,10 +314,18 @@ fn normalize_crlf(s: &str) -> String {
 /// Check whether a path is a relative resource path (not absolute, not external).
 fn is_relative_resource_path(path: &str) -> bool {
     let trimmed = path.trim();
-    if trimmed.is_empty() { return false; }
-    if trimmed.starts_with('#') { return false; }
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") { return false; }
-    if trimmed.starts_with("mailto:") || trimmed.starts_with("data:") { return false; }
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with('#') {
+        return false;
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return false;
+    }
+    if trimmed.starts_with("mailto:") || trimmed.starts_with("data:") {
+        return false;
+    }
     !Path::new(trimmed).is_absolute()
 }
 
@@ -332,8 +338,12 @@ fn join_relative_path(base_dir: &str, rel_path: &str) -> String {
     for component in joined.components() {
         match component {
             std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => { parts.pop(); }
-            other => { parts.push(other.as_os_str()); }
+            std::path::Component::ParentDir => {
+                parts.pop();
+            }
+            other => {
+                parts.push(other.as_os_str());
+            }
         }
     }
     let result: std::path::PathBuf = parts.iter().collect();
@@ -353,16 +363,18 @@ fn resolve_include_card_paths(content: &str, include_source: &IncludeSource) -> 
     }
 
     // Rewrite image embeds: ![alt](path){attrs}
-    let result = md_image_re().replace_all(content, |caps: &regex::Captures| {
-        let alt = &caps[1];
-        let raw_target = &caps[2];
-        let attrs = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-        if !is_relative_resource_path(raw_target) {
-            return caps[0].to_string();
-        }
-        let resolved = join_relative_path(&include_dir, raw_target);
-        format!("![{alt}]({resolved}){attrs}")
-    }).into_owned();
+    let result = md_image_re()
+        .replace_all(content, |caps: &regex::Captures| {
+            let alt = &caps[1];
+            let raw_target = &caps[2];
+            let attrs = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+            if !is_relative_resource_path(raw_target) {
+                return caps[0].to_string();
+            }
+            let resolved = join_relative_path(&include_dir, raw_target);
+            format!("![{alt}]({resolved}){attrs}")
+        })
+        .into_owned();
 
     // Rewrite links: [label](path)
     // Must avoid re-matching already rewritten image embeds — images start with `!`
@@ -370,14 +382,16 @@ fn resolve_include_card_paths(content: &str, include_source: &IncludeSource) -> 
     let result = rewrite_markdown_links(&result, &include_dir);
 
     // Rewrite include directives: !!!include(path)!!!
-    let result = md_include_re().replace_all(&result, |caps: &regex::Captures| {
-        let raw_path = &caps[1];
-        if !is_relative_resource_path(raw_path) {
-            return caps[0].to_string();
-        }
-        let resolved = join_relative_path(&include_dir, raw_path);
-        format!("!!!include({resolved})!!!")
-    }).into_owned();
+    let result = md_include_re()
+        .replace_all(&result, |caps: &regex::Captures| {
+            let raw_path = &caps[1];
+            if !is_relative_resource_path(raw_path) {
+                return caps[0].to_string();
+            }
+            let resolved = join_relative_path(&include_dir, raw_path);
+            format!("!!!include({resolved})!!!")
+        })
+        .into_owned();
 
     result
 }
@@ -430,7 +444,9 @@ fn rewrite_markdown_links(content: &str, include_dir: &str) -> String {
 fn find_markdown_link_end(s: &str) -> Option<usize> {
     let close_bracket = s.find(']')?;
     let after = close_bracket + 1;
-    if s.as_bytes().get(after) != Some(&b'(') { return None; }
+    if s.as_bytes().get(after) != Some(&b'(') {
+        return None;
+    }
     let close_paren = s[after..].find(')')? + after + 1;
     Some(close_paren)
 }
@@ -438,11 +454,15 @@ fn find_markdown_link_end(s: &str) -> Option<usize> {
 /// Parse a markdown link `[label](path)` at the start of `s`.
 /// Returns (label, path, total_bytes_consumed).
 fn parse_md_link(s: &str) -> Option<(String, String, usize)> {
-    if !s.starts_with('[') { return None; }
+    if !s.starts_with('[') {
+        return None;
+    }
     let close_bracket = s.find(']')?;
     let label = &s[1..close_bracket];
     let after = close_bracket + 1;
-    if s.as_bytes().get(after) != Some(&b'(') { return None; }
+    if s.as_bytes().get(after) != Some(&b'(') {
+        return None;
+    }
     let paren_content_start = after + 1;
     let close_paren = s[paren_content_start..].find(')')? + paren_content_start;
     let path = &s[paren_content_start..close_paren];
@@ -491,9 +511,7 @@ fn task_to_slide_content(content: &str, options: &PresentationOptions) -> String
         // Strip include syntax from first line only (matches TS behaviour)
         if let Some(newline_pos) = result.find('\n') {
             let first_line = &result[..newline_pos];
-            let cleaned = include_syntax_re()
-                .replace_all(first_line, "")
-                .to_string();
+            let cleaned = include_syntax_re().replace_all(first_line, "").to_string();
             let cleaned = cleaned.trim();
             result = format!("{cleaned}{}", &result[newline_pos..]);
         } else {
@@ -544,8 +562,7 @@ fn format_output(slide_contents: &[String], options: &PresentationOptions) -> St
             if let Some(ref per_slide) = options.per_slide_classes {
                 if let Some(classes) = per_slide.get(&index) {
                     if !classes.is_empty() {
-                        let directive =
-                            format!("<!-- _class: {} -->\n\n", classes.join(" "));
+                        let directive = format!("<!-- _class: {} -->\n\n", classes.join(" "));
                         result = format!("{directive}{result}");
                     }
                 }
@@ -779,8 +796,7 @@ mod tests {
 
     #[test]
     fn round_trip_with_html_comments() {
-        let original =
-            "<!-- kid:a --> Slide 1\n\n---\n\n<!-- kid:b --> Slide 2\n\n---\n\nSlide 3";
+        let original = "<!-- kid:a --> Slide 1\n\n---\n\n<!-- kid:b --> Slide 2\n\n---\n\nSlide 3";
         let slides = parse_presentation(original);
         let rejoined = slides
             .iter()
@@ -977,10 +993,7 @@ mod tests {
         };
         let b = board_with(vec![column_with(
             "Ch",
-            vec![
-                card("Visible card"),
-                card("Line 1\nLine 2 #secret\nLine 3"),
-            ],
+            vec![card("Visible card"), card("Line 1\nLine 2 #secret\nLine 3")],
         )]);
         let output = to_document(&b, PageBreaks::Continuous, &opts);
         assert!(output.contains("Visible card"));
@@ -1339,10 +1352,7 @@ mod tests {
             tag_visibility: TagVisibility::MentionsOnly,
             ..default_opts()
         };
-        let b = board_with(vec![column_with(
-            "Col",
-            vec![card("Task #todo @alice")],
-        )]);
+        let b = board_with(vec![column_with("Col", vec![card("Task #todo @alice")])]);
         let output = from_board(&b, &opts);
         assert!(!output.contains("#todo"));
         assert!(output.contains("@alice"));
@@ -1672,10 +1682,7 @@ mod tests {
     #[test]
     fn filter_excluded_lines_multiple_tags() {
         let content = "keep\nremove1 #tag1\nremove2 #tag2\nalso keep";
-        let result = filter_excluded_lines(
-            content,
-            &["#tag1".to_string(), "#tag2".to_string()],
-        );
+        let result = filter_excluded_lines(content, &["#tag1".to_string(), "#tag2".to_string()]);
         assert_eq!(result, "keep\nalso keep");
     }
 

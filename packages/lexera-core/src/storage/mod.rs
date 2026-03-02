@@ -1,5 +1,6 @@
 pub mod backup;
 pub mod local;
+pub mod registry;
 
 use crate::merge::merge::MergeResult;
 use crate::search::SearchOptions;

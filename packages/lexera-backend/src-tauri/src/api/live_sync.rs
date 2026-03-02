@@ -44,13 +44,13 @@ fn normalize_board(mut board: KanbanBoard, board_dir: &Path) -> KanbanBoard {
             }
         }
 
-        column.include_source = syntax::extract_include_path(&column.title).map(|raw_path| {
-            IncludeSource {
+        column.include_source =
+            syntax::extract_include_path(&column.title).map(|raw_path| IncludeSource {
                 resolved_path: resolver::resolve_include_path(&raw_path, board_dir),
                 raw_path,
-            }
-        });
+            });
     }
+    board.reconcile_format_hint();
     board
 }
 
@@ -92,7 +92,11 @@ fn session_peer_id(session_id: &Uuid) -> u64 {
     let mut bytes = [0u8; 8];
     bytes.copy_from_slice(&session_id.as_bytes()[..8]);
     let raw = u64::from_le_bytes(bytes);
-    if raw <= 1 { raw + 2 } else { raw }
+    if raw <= 1 {
+        raw + 2
+    } else {
+        raw
+    }
 }
 
 pub fn open_session(
@@ -199,18 +203,15 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
     let current_ids = card_id_map(&current_board);
     let before_vv = encode_vv(&session.crdt);
 
-    session
-        .crdt
-        .import_updates(bytes)
-        .map_err(|e| {
-            log::warn!(
-                target: "lexera.live_sync",
-                "Failed to import live sync updates for session {}: {}",
-                session_id,
-                e
-            );
-            e.to_string()
-        })?;
+    session.crdt.import_updates(bytes).map_err(|e| {
+        log::warn!(
+            target: "lexera.live_sync",
+            "Failed to import live sync updates for session {}: {}",
+            session_id,
+            e
+        );
+        e.to_string()
+    })?;
 
     let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
     restore_card_ids(&mut next_board, &[&current_ids]);

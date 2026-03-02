@@ -93,7 +93,10 @@ mod tests {
         let limiter = RateLimiter::new(2);
         assert!(limiter.check(), "1st request should be allowed");
         assert!(limiter.check(), "2nd request should be allowed");
-        assert!(!limiter.check(), "3rd request should be blocked (limit is 2)");
+        assert!(
+            !limiter.check(),
+            "3rd request should be blocked (limit is 2)"
+        );
         assert!(!limiter.check(), "4th request should also be blocked");
     }
 
@@ -101,7 +104,10 @@ mod tests {
     fn window_purges_old_entries_and_allows_again() {
         let limiter = RateLimiter::new(1);
         assert!(limiter.check(), "1st request should be allowed");
-        assert!(!limiter.check(), "2nd request should be blocked immediately");
+        assert!(
+            !limiter.check(),
+            "2nd request should be blocked immediately"
+        );
 
         // Wait for the window to expire (1 second + small buffer)
         thread::sleep(Duration::from_millis(1100));
@@ -161,7 +167,10 @@ mod tests {
             }
         }
 
-        assert_eq!(allowed, 5, "exactly max_per_window requests should be allowed");
+        assert_eq!(
+            allowed, 5,
+            "exactly max_per_window requests should be allowed"
+        );
         assert_eq!(blocked, 5, "remaining requests should be blocked");
     }
 

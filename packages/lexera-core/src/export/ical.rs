@@ -327,10 +327,7 @@ fn render_vevent(info: &VEventInfo) -> String {
         "DTSTART;VALUE=DATE:{}",
         format_ical_date(info.dtstart)
     ));
-    lines.push(format!(
-        "DTEND;VALUE=DATE:{}",
-        format_ical_date(info.dtend)
-    ));
+    lines.push(format!("DTEND;VALUE=DATE:{}", format_ical_date(info.dtend)));
     lines.push(format!("SUMMARY:{}", ical_escape(&info.summary)));
     lines.push(format!("DESCRIPTION:{}", ical_escape(&info.description)));
 
@@ -458,10 +455,7 @@ mod tests {
     fn parse_relative_date_tomorrow() {
         let today = NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
         let info = parse_date_info("@tomorrow", today);
-        assert_eq!(
-            info,
-            Some(DateInfo::Single(today + Duration::days(1)))
-        );
+        assert_eq!(info, Some(DateInfo::Single(today + Duration::days(1))));
     }
 
     // -------------------------------------------------------------------

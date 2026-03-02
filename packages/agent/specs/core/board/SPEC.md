@@ -1,23 +1,27 @@
 # Board Renderer Specification
 
-**File**: `src/html/boardRenderer.js`
-**Lines**: ~3,935
-**Purpose**: Render KanbanBoard to DOM, handle updates
-**Dependencies**: `markdownRenderer.js`, `dragDrop.js`, `cardEditor.js`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-kanban`  
+**V1 Reference**: `src/html/boardRenderer.js` (~3,935 lines)  
+**Dependencies**: [Markdown Renderer](../shared/markdown/SPEC.md), [Drag/Drop](../ux/dragdrop/SPEC.md), [Editor](../core/editor/SPEC.md)
 
 ---
 
 ## UX Requirements
 
 ### Board Display
-- User sees board as columns with cards
-- Columns flow horizontally (or in grid for multi-row layout)
-- Cards stack vertically within columns
-- Board respects settings (column width, row height, colors)
+
+- Rows flow vertically within Boards
+- Stacks flow horizontally within Rows
+- Columns flow vertically within Stacks
+- Cards flow vertically within Columns
+
+### Pin
+
+- Headers of Columns can be made Sticky, so only the title is sticky to the bottom or top of the view! This is toggled at the top row.
 
 ### Folding State
-- User can collapse/expand columns (click column header)
-- User can collapse/expand cards (click chevron)
+- User can collapse/expand Rows, Stacks, Columns and Cards (click column header)
 - State persists across re-renders (stored in `window.collapsedColumns`, `window.collapsedTasks`)
 
 ### Scroll Position

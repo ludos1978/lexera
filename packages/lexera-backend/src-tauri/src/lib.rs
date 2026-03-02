@@ -486,7 +486,9 @@ pub fn run() {
         Ok(app) => {
             app.run(move |_app_handle, event| {
                 if let tauri::RunEvent::Exit = event {
-                    log::info!("[lexera.shutdown] Application exiting, cancelling background tasks");
+                    log::info!(
+                        "[lexera.shutdown] Application exiting, cancelling background tasks"
+                    );
                     let _ = shutdown_tx_for_exit.send(true);
                 }
             });

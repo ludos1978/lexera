@@ -1,9 +1,9 @@
 # Drag & Drop System Specification
 
-**File**: `src/html/dragDrop.js`
-**Lines**: ~6,514
-**Purpose**: Handle all drag/drop operations for cards, columns, templates, and external files
-**Dependencies**: `boardRenderer.js`, `menuOperations.js`, VS Code API
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-kanban`  
+**V1 Reference**: `src/html/dragDrop.js` (~6,514 lines)  
+**Dependencies**: [Board Renderer](../core/board/SPEC.md), [Menus](../ux/menus/SPEC.md), Backend API
 
 ---
 

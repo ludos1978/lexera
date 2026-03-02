@@ -207,7 +207,10 @@ pub fn apply_html_content_transform(content: &str, mode: HtmlContentMode) -> Str
         .replace_all(content, |caps: &regex::Captures| {
             let idx = code_blocks.len();
             code_blocks.push(caps[0].to_string());
-            format!("___CODE_BLOCK_PLACEHOLDER___{}___CODE_BLOCK_PLACEHOLDER___", idx)
+            format!(
+                "___CODE_BLOCK_PLACEHOLDER___{}___CODE_BLOCK_PLACEHOLDER___",
+                idx
+            )
         })
         .into_owned();
 
@@ -477,10 +480,7 @@ mod tests {
     fn html_content_preserves_fenced_code() {
         let input = "before\n```html\n<div>keep</div>\n```\nafter <span>remove</span>";
         let out = apply_html_content_transform(input, HtmlContentMode::Remove);
-        assert_eq!(
-            out,
-            "before\n```html\n<div>keep</div>\n```\nafter remove"
-        );
+        assert_eq!(out, "before\n```html\n<div>keep</div>\n```\nafter remove");
     }
 
     #[test]

@@ -140,7 +140,14 @@ pub async fn find_file(
     let matches = tokio::task::spawn_blocking(move || {
         let mut matches = Vec::new();
 
-        fn walk(dir: &std::path::Path, target: &str, matches: &mut Vec<String>, depth: usize, max_depth: usize, max_results: usize) {
+        fn walk(
+            dir: &std::path::Path,
+            target: &str,
+            matches: &mut Vec<String>,
+            depth: usize,
+            max_depth: usize,
+            max_results: usize,
+        ) {
             if depth > max_depth {
                 return;
             }
@@ -163,7 +170,14 @@ pub async fn find_file(
             }
         }
 
-        walk(&board_dir, &target, &mut matches, 0, FILE_SEARCH_MAX_DEPTH, FILE_SEARCH_MAX_RESULTS);
+        walk(
+            &board_dir,
+            &target,
+            &mut matches,
+            0,
+            FILE_SEARCH_MAX_DEPTH,
+            FILE_SEARCH_MAX_RESULTS,
+        );
         matches
     })
     .await
@@ -200,14 +214,16 @@ pub async fn convert_path(
                 serde_json::json!({ "path": body.path, "changed": false }),
             ));
         }
-        let abs = tokio::fs::canonicalize(board_dir.join(&body.path)).await.map_err(|_| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Cannot resolve path".to_string(),
-                }),
-            )
-        })?;
+        let abs = tokio::fs::canonicalize(board_dir.join(&body.path))
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "Cannot resolve path".to_string(),
+                    }),
+                )
+            })?;
         abs.to_string_lossy().to_string()
     } else {
         // to relative
@@ -281,9 +297,7 @@ mod tests {
                 crate::public::PublicRoomService::new(),
             )),
             auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_ws::BoardSyncHub::new(),
-            )),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
             sync_client: Arc::new(tokio::sync::Mutex::new(
                 crate::sync_client::SyncClientManager::new(),
             )),

@@ -1,7 +1,8 @@
 # Core Types Specification
 
-**File**: `src/board/KanbanTypes.ts`
-**Purpose**: Define core data structures for Kanban boards
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-core`  
+**V1 Reference**: `src/board/KanbanTypes.ts`  
 **Dependencies**: None (base types)
 
 ---

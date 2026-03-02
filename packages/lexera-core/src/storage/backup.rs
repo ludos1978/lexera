@@ -236,9 +236,7 @@ mod tests {
 
         assert!(backup_path.exists(), "Backup file should exist on disk");
         assert!(
-            backup_path
-                .to_string_lossy()
-                .contains(".lexera-backups"),
+            backup_path.to_string_lossy().contains(".lexera-backups"),
             "Backup should be inside .lexera-backups/"
         );
 
@@ -320,17 +318,9 @@ mod tests {
         fs::create_dir_all(&backup_dir).unwrap();
 
         // A backup for a different board file
-        fs::write(
-            backup_dir.join("other.md.2026-01-01T10-00-00"),
-            "other",
-        )
-        .unwrap();
+        fs::write(backup_dir.join("other.md.2026-01-01T10-00-00"), "other").unwrap();
         // A matching backup
-        fs::write(
-            backup_dir.join("board.md.2026-01-01T10-00-00"),
-            "mine",
-        )
-        .unwrap();
+        fs::write(backup_dir.join("board.md.2026-01-01T10-00-00"), "mine").unwrap();
 
         let mgr = BackupManager::new();
         let entries = mgr.list_backups(&board).unwrap();
@@ -381,22 +371,18 @@ mod tests {
         fs::create_dir_all(&backup_dir).unwrap();
 
         // Only 2 backups, keep is 5
-        fs::write(
-            backup_dir.join("board.md.2026-01-01T01-00-00"),
-            "backup",
-        )
-        .unwrap();
-        fs::write(
-            backup_dir.join("board.md.2026-01-02T01-00-00"),
-            "backup",
-        )
-        .unwrap();
+        fs::write(backup_dir.join("board.md.2026-01-01T01-00-00"), "backup").unwrap();
+        fs::write(backup_dir.join("board.md.2026-01-02T01-00-00"), "backup").unwrap();
 
         let mgr = BackupManager::new(); // keep = 5
         mgr.rotate_backups(&board).unwrap();
 
         let remaining = mgr.list_backups(&board).unwrap();
-        assert_eq!(remaining.len(), 2, "Should not delete anything when under the limit");
+        assert_eq!(
+            remaining.len(),
+            2,
+            "Should not delete anything when under the limit"
+        );
     }
 
     #[test]
@@ -430,7 +416,9 @@ mod tests {
     fn test_restore_nonexistent_backup_returns_error() {
         let dir = tempdir().unwrap();
         let board = write_board(dir.path(), "board.md", "content");
-        let fake_backup = dir.path().join(".lexera-backups/nonexistent.md.2026-01-01T00-00-00");
+        let fake_backup = dir
+            .path()
+            .join(".lexera-backups/nonexistent.md.2026-01-01T00-00-00");
 
         let mgr = BackupManager::new();
         let result = mgr.restore_backup(&fake_backup, &board);

@@ -1,8 +1,9 @@
 # Markdown Parser Specification
 
-**File**: `src/markdownParser.ts`
-**Purpose**: Parse markdown files into KanbanBoard structures
-**Dependencies**: `KanbanTypes`, `PluginRegistry`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-core`  
+**V1 Reference**: `src/markdownParser.ts`  
+**Dependencies**: [Types](../shared/types/SPEC.md), [Plugin Registry](../plugins/registry/SPEC.md)
 
 ---
 

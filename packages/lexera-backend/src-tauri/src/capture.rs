@@ -128,7 +128,9 @@ pub fn capture_selection_and_open(app: &AppHandle) {
 
 #[cfg(not(target_os = "macos"))]
 pub fn capture_selection_and_open(app: &AppHandle) {
-    log::warn!("[lexera.capture] Selection capture via AppleScript is not supported on this platform");
+    log::warn!(
+        "[lexera.capture] Selection capture via AppleScript is not supported on this platform"
+    );
     open_capture_popup(app);
 }
 

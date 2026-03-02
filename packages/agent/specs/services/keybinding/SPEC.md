@@ -1,141 +1,398 @@
-# Keybinding Service Specification
+# Keybinding System Specification
 
-**File**: `src/services/KeybindingService.ts`
-**Lines**: ~340
-**Purpose**: VS Code keybinding discovery and management
-**Dependencies**: VS Code extension API
-
----
-
-## UX Requirements
-
-### Shortcut Discovery
-- Load user keybindings from VS Code
-- Load extension shortcuts
-- Merge with proper priority
-- Cache for performance
-
-### Snippet Support
-- Resolve snippets by name
-- Cache snippet definitions
-- Support VS Code snippet syntax
-
-### Webview Integration
-- Send shortcuts to webview on focus
-- Handle shortcut execution from webview
-- Normalize key formats
+**Status**: Base-plan critical for v2  
+**V2 Targets**: `packages/lexera-backend`, `packages/lexera-kanban`  
+**V1 Reference**: `src/services/KeybindingService.ts`, `src/html/*`
 
 ---
 
-## Data Structures
+## Purpose
 
-### VSCodeKeybinding
+Define the v2 keyboard interaction system across host-level shortcuts and in-app shortcuts.
+
+This is not a direct port of the v1 VS Code keybinding service. In v2, Lexera owns shortcut behavior explicitly.
+
+---
+
+## Product Goals
+
+- Preserve keyboard-first workflows from v1.
+- Make shortcuts predictable across desktop app and embedded editing modes.
+- Separate global host shortcuts from board-local shortcuts.
+- Avoid relying on editor-host discovery logic like VS Code `keybindings.json`.
+- Keep shortcut behavior testable and visible in code.
+
+---
+
+## Ownership Split
+
+### `packages/lexera-backend`
+
+Owns host-level and system-level shortcuts:
+
+- App-global accelerators
+- Quick capture launch/focus
+- Desktop-only actions that must work even when the board window is unfocused
+- Platform registration through Tauri
+
+### `packages/lexera-kanban`
+
+Owns in-app shortcuts:
+
+- Board navigation
+- Save, undo, redo
+- Search and dashboard interactions
+- Log/inspector toggles
+- Editor-mode switching
+- Modal and overlay shortcut behavior
+
+### Not owned by the system anymore
+
+- Discovery of shortcuts from VS Code user settings
+- VS Code command probing
+- VS Code snippet-command indirection
+
+---
+
+## Current V2 Implementation Baseline
+
+### Backend shortcuts already present
+
+From `packages/lexera-backend/src-tauri/src/lib.rs`:
+
+- `CmdOrCtrl+Shift+C`: capture selection and open quick capture
+- `CmdOrCtrl+B`: focus capture popup
+
+### Client shortcuts already present
+
+From `packages/lexera-kanban/src/app.js`:
+
+- `CmdOrCtrl+Shift+L`: toggle log panel
+- `CmdOrCtrl+F`: expand/focus board search
+- `CmdOrCtrl+Z`: undo
+- `CmdOrCtrl+Y`
+- `CmdOrCtrl+Shift+Z`: redo
+- `CmdOrCtrl+S`: save board
+- `F12`, `CmdOrCtrl+Shift+I`, `Alt+I`: inspector toggle variants
+- `Alt+Enter`: close transient UI helper path
+- Overlay editor:
+  - `CmdOrCtrl+Enter`: save
+  - `CmdOrCtrl+S`: save
+  - `Escape`: cancel
+  - `CmdOrCtrl+1/2/3/4`: switch editor mode
+
+### Gaps in the current baseline
+
+- No centralized declarative registry for client shortcuts
+- No unified conflict-resolution policy when multiple UI layers are active
+- No documented scope model for global vs board vs editor shortcuts
+- No explicit shortcut help surface yet
+
+---
+
+## Required Shortcut Categories
+
+### 1. Host-global shortcuts
+
+Used when the app is unfocused or when the action is outside board editing.
+
+Examples:
+
+- quick capture
+- focus capture window
+- future system-wide capture or board launch commands
+
+Rules:
+
+- Registered only by `lexera-backend`
+- Must remain minimal
+- Must avoid colliding with common OS shortcuts where possible
+- Must degrade safely if registration fails
+
+### 2. App-shell shortcuts
+
+Used at the main `lexera-kanban` shell level.
+
+Examples:
+
+- toggle logs
+- open search
+- open inspector
+- open management/network panes
+
+Rules:
+
+- Work only when the Kanban client is focused
+- Must not override text-entry behavior unless intentional
+- Should be disabled or re-routed while modal dialogs own focus
+
+### 3. Board-operation shortcuts
+
+Used for active board state changes.
+
+Examples:
+
+- save board
+- undo
+- redo
+- future archive/park/move commands
+
+Rules:
+
+- Operate on `activeBoardId`
+- Must no-op safely when no board is open
+- Must preserve save-base and merge semantics
+
+### 4. Editor shortcuts
+
+Used inside inline or overlay card editing flows.
+
+Examples:
+
+- save editor
+- cancel editor
+- switch editor mode
+- formatting shortcuts
+
+Rules:
+
+- Highest priority inside editor scope
+- Must not leak to shell-level handlers
+- Must preserve user text input expectations
+
+### 5. Modal and transient-UI shortcuts
+
+Used when dialogs, menus, or drag states are active.
+
+Examples:
+
+- `Escape` to cancel dialog/editor/drag
+- future arrow/enter navigation in menus and search results
+
+Rules:
+
+- Modal scope wins over board scope
+- Escape handling must unwind the most local active interaction first
+- Drag cancellation must clean up state and cross-view bridges
+
+---
+
+## Scope Model
+
+Shortcut dispatch should resolve through explicit scopes in this order:
+
+1. Native host/global
+2. Modal/dialog
+3. Overlay editor
+4. Inline editor
+5. Board interaction
+6. App shell
+
+If a higher scope handles the event, lower scopes must not run.
+
+---
+
+## Data Model
+
+### ShortcutScope
 
 ```typescript
-interface VSCodeKeybinding {
-  key: string;        // e.g., "ctrl+shift+a"
-  command: string;    // e.g., "markdown-kanban.card.add"
-  when?: string;      // Context condition
-  args?: unknown;     // Optional command arguments
+type ShortcutScope =
+  | 'global'
+  | 'app'
+  | 'board'
+  | 'inline-editor'
+  | 'overlay-editor'
+  | 'modal';
+```
+
+### ShortcutDefinition
+
+```typescript
+interface ShortcutDefinition {
+  id: string;
+  combo: string;
+  scope: ShortcutScope;
+  description: string;
+  enabledWhen?: string;
+  preventDefault?: boolean;
 }
 ```
 
-### ShortcutEntry
+### ShortcutDispatchContext
 
 ```typescript
-interface ShortcutEntry {
-  command: string;
-  args?: unknown;
+interface ShortcutDispatchContext {
+  hasActiveBoard: boolean;
+  hasInlineEditor: boolean;
+  hasOverlayEditor: boolean;
+  hasModal: boolean;
+  hasDragOperation: boolean;
+  platform: 'mac' | 'windows' | 'linux';
+}
+```
+
+### Backend shortcut config
+
+```rust
+struct GlobalShortcutDefinition {
+    id: String,
+    accelerator: String,
+    action: String,
 }
 ```
 
 ---
 
-## Functions
+## Normalization Rules
 
-### Singleton
+- Normalize `Cmd` and `Ctrl` into a platform-aware `CmdOrCtrl` model in docs and registry definitions.
+- Compare physical combinations consistently regardless of key capitalization.
+- Use symbolic ownership, not ad-hoc event checks spread across the UI.
+- Prefer stable action IDs over anonymous inline handlers.
 
-```typescript
-class KeybindingService {
-  static getInstance(): KeybindingService
-}
+---
+
+## Event Flow
+
+### Host-global shortcut flow
+
+```text
+OS shortcut
+  -> Tauri global shortcut plugin
+  -> backend action handler
+  -> quick capture / focus / system action
+  -> optional event or notification to client
 ```
 
-### Shortcut Loading
+### Client shortcut flow
 
-```typescript
-// Get all shortcuts as map (shortcut -> command)
-async getAllShortcuts(): Promise<Record<string, ShortcutEntry>>
-
-// Load user keybindings from VS Code
-async loadVSCodeKeybindings(): Promise<VSCodeKeybinding[]>
-
-// Get extension-defined shortcuts
-async getExtensionShortcuts(): Promise<Record<string, ShortcutEntry>>
+```text
+DOM keydown
+  -> resolve active scope
+  -> match shortcut definition
+  -> prevent default if configured
+  -> execute action
+  -> trigger save / navigation / dialog / toast / log as needed
 ```
 
-### Snippet Handling
+### Escape flow
 
-```typescript
-// Resolve snippet by name
-async resolveSnippetByName(name: string): Promise<string | null>
-
-// Load VS Code snippets
-private async _loadVSCodeSnippets(): Promise<Map<string, string>>
-```
-
-### Key Normalization
-
-```typescript
-// Normalize key format for consistent lookup
-private _normalizeKeybinding(key: string): string
+```text
+Escape
+  -> modal?
+  -> overlay editor?
+  -> inline editor?
+  -> drag operation?
+  -> shell fallback?
 ```
 
 ---
 
-## Shortcut Priority
+## Detailed Behavior Requirements
 
-```
-1. Extension shortcuts (highest)
-   └── Defined in package.json contributes.keybindings
+### Save
 
-2. User keybindings (lowest)
-   └── Defined in user's keybindings.json
-```
+- `CmdOrCtrl+S` saves the active board.
+- If save fails, client reload behavior must stay defensive.
+- Save shortcut must respect merge/live-sync state instead of bypassing it.
 
----
+### Undo / Redo
 
-## Cache Strategy
+- `CmdOrCtrl+Z` and redo equivalents operate on the board delta stack.
+- Undo/redo must preserve board save-base metadata.
+- Undo/redo must be disabled safely when no active board data exists.
 
-| Cache | TTL | Purpose |
-|-------|-----|---------|
-| Commands | 5 min | Available VS Code commands |
-| Snippets | 5 min | Snippet definitions |
+### Search
+
+- `CmdOrCtrl+F` opens and focuses the header search UI.
+- Search shortcut should not break text editing inside dedicated textareas.
+- Search result navigation should eventually have its own keyboard layer.
+
+### Inspector / diagnostics
+
+- Inspector shortcut must remain developer-only behavior.
+- Failure to open the inspector should surface a user-facing notification.
+- Log panel toggle should stay separate from inspector toggle.
+
+### Editor mode switching
+
+- `CmdOrCtrl+1/2/3/4` switches between markdown, dual, preview, and wysiwyg modes.
+- Switching modes must not discard unsaved editor state.
+- Mode switching is only valid in editor scope.
 
 ---
 
 ## Integration Points
 
-### Called By
-- `MessageHandler` → shortcut requests from webview
-- `KanbanWebviewPanel` → on focus gain
+### Backend integrations
 
-### Calls
-- VS Code API → `vscode.commands.getCommands()`
-- File system → read keybindings.json
+- `tauri-plugin-global-shortcut`
+- quick capture
+- tray/background app lifecycle
+- possible future native menu bindings
+
+### Client integrations
+
+- board save pipeline
+- undo/redo state
+- search UI
+- log panel
+- card editor overlay
+- inline editor
+- drag/drop cancellation
 
 ---
 
-## Migration Notes for V2
+## Migration From V1
 
-### Keep Same
-- Key normalization logic
-- Priority system
+### Keep
 
-### Port to Rust
-- Not needed - Tauri has native keybinding support
-- Use `tauri-plugin-global-shortcut`
+- Keyboard-first interaction philosophy
+- Key normalization discipline
+- Command-oriented behavior naming
 
 ### Replace
-- Use Tauri's accelerator system
-- Define shortcuts in `tauri.conf.json`
+
+- VS Code shortcut discovery
+- VS Code command availability probing
+- snippet lookup as a keybinding concern
+
+### Add in v2
+
+- explicit scope model
+- backend/global vs client/local split
+- shortcut registry that can power help/docs/tests
+
+---
+
+## Testing Requirements
+
+### Backend
+
+- global shortcuts register successfully on supported platforms
+- registration failure is logged cleanly
+- quick capture shortcut routes to the correct action
+
+### Client
+
+- shell shortcuts do not fire while editor scopes own the event
+- editor save/cancel shortcuts work in overlay and inline modes
+- Escape unwinds the correct active interaction
+- save/undo/redo shortcuts no-op safely without an active board
+- search shortcut focuses the correct control
+
+### Regression checks
+
+- shortcut collisions between shell and editor scopes
+- browser default behavior leakage where preventDefault is required
+- platform-specific modifier mismatches
+
+---
+
+## Open Design Work
+
+- create a declarative client shortcut registry instead of scattered listeners
+- add discoverability UI for available shortcuts
+- decide whether user-customizable shortcuts are a v2 goal or a post-base-plan feature
+- define which shortcuts are disabled in embedded/mobile contexts

@@ -32,7 +32,9 @@ impl std::fmt::Debug for CrdtStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let root = self.doc.get_map("root");
         let meta = get_sub_map(&root, "metadata");
-        let yaml = meta.as_ref().and_then(|m| get_optional_string(m, "yaml_header"));
+        let yaml = meta
+            .as_ref()
+            .and_then(|m| get_optional_string(m, "yaml_header"));
         let footer = meta.as_ref().and_then(|m| get_optional_string(m, "footer"));
         f.debug_struct("CrdtStore")
             .field("yaml_header", &yaml)
@@ -91,10 +93,7 @@ fn get_optional_string(map: &LoroMap, key: &str) -> Option<String> {
 // ── Metadata helpers ─────────────────────────────────────────────────────────
 
 /// Write board metadata (yaml_header, footer, settings) into a CRDT metadata map.
-fn write_metadata_to_map(
-    meta: &LoroMap,
-    board: &KanbanBoard,
-) -> io::Result<()> {
+fn write_metadata_to_map(meta: &LoroMap, board: &KanbanBoard) -> io::Result<()> {
     // Store yaml_header (empty string = None)
     let yaml = board.yaml_header.as_deref().unwrap_or("");
     meta.insert("yaml_header", yaml).map_err(loro_err)?;
@@ -125,11 +124,11 @@ fn write_settings_to_map(map: &LoroMap, settings: &BoardSettings) -> io::Result<
 }
 
 /// Read board metadata from the CRDT metadata map.
-fn read_metadata_from_map(meta: &LoroMap) -> (Option<String>, Option<String>, Option<BoardSettings>) {
-    let yaml_header = get_optional_string(meta, "yaml_header")
-        .filter(|s| !s.is_empty());
-    let footer = get_optional_string(meta, "footer")
-        .filter(|s| !s.is_empty());
+fn read_metadata_from_map(
+    meta: &LoroMap,
+) -> (Option<String>, Option<String>, Option<BoardSettings>) {
+    let yaml_header = get_optional_string(meta, "yaml_header").filter(|s| !s.is_empty());
+    let footer = get_optional_string(meta, "footer").filter(|s| !s.is_empty());
     let settings = get_sub_map(meta, "settings")
         .map(|sm| read_settings_from_map(&sm))
         .filter(|s| s != &BoardSettings::default());
@@ -150,11 +149,15 @@ fn read_settings_from_map(map: &LoroMap) -> BoardSettings {
 // ── Building CRDT from Board ─────────────────────────────────────────────────
 
 fn insert_card(cards_list: &LoroMovableList, card: &KanbanCard) -> io::Result<()> {
-    let card_map: LoroMap = cards_list.push_container(LoroMap::new()).map_err(loro_err)?;
+    let card_map: LoroMap = cards_list
+        .push_container(LoroMap::new())
+        .map_err(loro_err)?;
     let kid = card_identity::resolve_kid(&card.content, card.kid.as_deref());
     let content = card_identity::strip_kid(&card.content);
     card_map.insert("kid", kid.as_str()).map_err(loro_err)?;
-    card_map.insert("content", content.as_str()).map_err(loro_err)?;
+    card_map
+        .insert("content", content.as_str())
+        .map_err(loro_err)?;
     card_map.insert("checked", card.checked).map_err(loro_err)?;
     Ok(())
 }
@@ -181,13 +184,14 @@ fn populate_columns_list_from_refs(
     Ok(())
 }
 
-fn populate_single_column(
-    columns_list: &LoroMovableList,
-    col: &KanbanColumn,
-) -> io::Result<()> {
-    let col_map: LoroMap = columns_list.push_container(LoroMap::new()).map_err(loro_err)?;
+fn populate_single_column(columns_list: &LoroMovableList, col: &KanbanColumn) -> io::Result<()> {
+    let col_map: LoroMap = columns_list
+        .push_container(LoroMap::new())
+        .map_err(loro_err)?;
     col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-    col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+    col_map
+        .insert("title", col.title.as_str())
+        .map_err(loro_err)?;
     let cards_list: LoroMovableList = col_map
         .insert_container("cards", LoroMovableList::new())
         .map_err(loro_err)?;
@@ -247,7 +251,8 @@ impl CrdtStore {
         doc.set_peer_id(1).map_err(loro_err)?;
 
         let root = doc.get_map("root");
-        root.insert("title", board.title.as_str()).map_err(loro_err)?;
+        root.insert("title", board.title.as_str())
+            .map_err(loro_err)?;
 
         let is_new_format = board.format_hint == BoardFormat::New;
         root.insert("format", if is_new_format { "new" } else { "legacy" })
@@ -258,17 +263,25 @@ impl CrdtStore {
                 .insert_container("rows", LoroMovableList::new())
                 .map_err(loro_err)?;
             for row in &board.rows {
-                let row_map: LoroMap = rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                let row_map: LoroMap =
+                    rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
                 row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                row_map
+                    .insert("title", row.title.as_str())
+                    .map_err(loro_err)?;
                 let stacks_list: LoroMovableList = row_map
                     .insert_container("stacks", LoroMovableList::new())
                     .map_err(loro_err)?;
                 for stack in &row.stacks {
-                    let stack_map: LoroMap =
-                        stacks_list.push_container(LoroMap::new()).map_err(loro_err)?;
-                    stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
-                    stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                    let stack_map: LoroMap = stacks_list
+                        .push_container(LoroMap::new())
+                        .map_err(loro_err)?;
+                    stack_map
+                        .insert("id", stack.id.as_str())
+                        .map_err(loro_err)?;
+                    stack_map
+                        .insert("title", stack.title.as_str())
+                        .map_err(loro_err)?;
                     let columns_list: LoroMovableList = stack_map
                         .insert_container("columns", LoroMovableList::new())
                         .map_err(loro_err)?;
@@ -294,10 +307,7 @@ impl CrdtStore {
         doc.commit();
         let undo_mgr = UndoManager::new(&doc);
 
-        Ok(CrdtStore {
-            doc,
-            undo_mgr,
-        })
+        Ok(CrdtStore { doc, undo_mgr })
     }
 
     /// Reconstruct a KanbanBoard from the CRDT state.
@@ -385,23 +395,21 @@ impl CrdtStore {
     }
 
     /// Apply changes from an incoming board by diffing against the current CRDT state.
-    pub fn apply_board(
-        &mut self,
-        incoming: &KanbanBoard,
-        current: &KanbanBoard,
-    ) -> io::Result<()> {
+    pub fn apply_board(&mut self, incoming: &KanbanBoard, current: &KanbanBoard) -> io::Result<()> {
         let changes = diff::diff_boards(current, incoming);
         let has_structural_change = self.has_structural_diff(incoming);
         let has_metadata_change = self.has_metadata_diff(incoming);
         let has_title_change = incoming.title != current.title;
-        if changes.is_empty() && !has_structural_change && !has_metadata_change && !has_title_change {
+        if changes.is_empty() && !has_structural_change && !has_metadata_change && !has_title_change
+        {
             return Ok(());
         }
 
         // Update title if changed
         if has_title_change {
             let root = self.doc.get_map("root");
-            root.insert("title", incoming.title.as_str()).map_err(loro_err)?;
+            root.insert("title", incoming.title.as_str())
+                .map_err(loro_err)?;
         }
 
         // Sync metadata into CRDT
@@ -417,11 +425,14 @@ impl CrdtStore {
                     card,
                 } => {
                     if let Some(cards_list) = self.find_column_cards_list(column_title) {
-                        let card_map: LoroMap =
-                            cards_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                        let card_map: LoroMap = cards_list
+                            .push_container(LoroMap::new())
+                            .map_err(loro_err)?;
                         let content = card_identity::strip_kid(&card.content);
                         card_map.insert("kid", kid.as_str()).map_err(loro_err)?;
-                        card_map.insert("content", content.as_str()).map_err(loro_err)?;
+                        card_map
+                            .insert("content", content.as_str())
+                            .map_err(loro_err)?;
                         card_map.insert("checked", card.checked).map_err(loro_err)?;
                     }
                 }
@@ -467,10 +478,13 @@ impl CrdtStore {
 
                     if let Some((kid_val, content, checked)) = old_data {
                         if let Some(target_cards) = self.find_column_cards_list(new_column) {
-                            let card_map: LoroMap =
-                                target_cards.push_container(LoroMap::new()).map_err(loro_err)?;
+                            let card_map: LoroMap = target_cards
+                                .push_container(LoroMap::new())
+                                .map_err(loro_err)?;
                             card_map.insert("kid", kid_val.as_str()).map_err(loro_err)?;
-                            card_map.insert("content", content.as_str()).map_err(loro_err)?;
+                            card_map
+                                .insert("content", content.as_str())
+                                .map_err(loro_err)?;
                             card_map.insert("checked", checked).map_err(loro_err)?;
                         }
                     }
@@ -571,8 +585,7 @@ impl CrdtStore {
                                     if get_string(&stack_map, "title") != stack.title {
                                         return true;
                                     }
-                                    if let Some(cols_list) =
-                                        get_movable_list(&stack_map, "columns")
+                                    if let Some(cols_list) = get_movable_list(&stack_map, "columns")
                                     {
                                         if cols_list.len() != stack.columns.len() {
                                             return true;
@@ -612,15 +625,22 @@ impl CrdtStore {
                         let row_map: LoroMap =
                             rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
                         row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                        row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                        row_map
+                            .insert("title", row.title.as_str())
+                            .map_err(loro_err)?;
                         let stacks_list: LoroMovableList = row_map
                             .insert_container("stacks", LoroMovableList::new())
                             .map_err(loro_err)?;
                         for stack in &row.stacks {
-                            let stack_map: LoroMap =
-                                stacks_list.push_container(LoroMap::new()).map_err(loro_err)?;
-                            stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
-                            stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                            let stack_map: LoroMap = stacks_list
+                                .push_container(LoroMap::new())
+                                .map_err(loro_err)?;
+                            stack_map
+                                .insert("id", stack.id.as_str())
+                                .map_err(loro_err)?;
+                            stack_map
+                                .insert("title", stack.title.as_str())
+                                .map_err(loro_err)?;
                             let cols_list: LoroMovableList = stack_map
                                 .insert_container("columns", LoroMovableList::new())
                                 .map_err(loro_err)?;
@@ -628,7 +648,9 @@ impl CrdtStore {
                                 let col_map: LoroMap =
                                     cols_list.push_container(LoroMap::new()).map_err(loro_err)?;
                                 col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-                                col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+                                col_map
+                                    .insert("title", col.title.as_str())
+                                    .map_err(loro_err)?;
                                 let _: LoroMovableList = col_map
                                     .insert_container("cards", LoroMovableList::new())
                                     .map_err(loro_err)?;
@@ -640,7 +662,9 @@ impl CrdtStore {
                     if let Some(row_map) = get_map_at(&rows_list, ri) {
                         // Update row title/id if changed
                         row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                        row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                        row_map
+                            .insert("title", row.title.as_str())
+                            .map_err(loro_err)?;
 
                         if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
                             for (si, stack) in row.stacks.iter().enumerate() {
@@ -661,9 +685,7 @@ impl CrdtStore {
                                         let col_map: LoroMap = cols_list
                                             .push_container(LoroMap::new())
                                             .map_err(loro_err)?;
-                                        col_map
-                                            .insert("id", col.id.as_str())
-                                            .map_err(loro_err)?;
+                                        col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
                                         col_map
                                             .insert("title", col.title.as_str())
                                             .map_err(loro_err)?;
@@ -745,15 +767,22 @@ impl CrdtStore {
                 let row_map: LoroMap =
                     rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
                 row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+                row_map
+                    .insert("title", row.title.as_str())
+                    .map_err(loro_err)?;
                 let stacks_list: LoroMovableList = row_map
                     .insert_container("stacks", LoroMovableList::new())
                     .map_err(loro_err)?;
                 for stack in &row.stacks {
-                    let stack_map: LoroMap =
-                        stacks_list.push_container(LoroMap::new()).map_err(loro_err)?;
-                    stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
-                    stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                    let stack_map: LoroMap = stacks_list
+                        .push_container(LoroMap::new())
+                        .map_err(loro_err)?;
+                    stack_map
+                        .insert("id", stack.id.as_str())
+                        .map_err(loro_err)?;
+                    stack_map
+                        .insert("title", stack.title.as_str())
+                        .map_err(loro_err)?;
                     let cols_list: LoroMovableList = stack_map
                         .insert_container("columns", LoroMovableList::new())
                         .map_err(loro_err)?;
@@ -761,18 +790,23 @@ impl CrdtStore {
                         let col_map: LoroMap =
                             cols_list.push_container(LoroMap::new()).map_err(loro_err)?;
                         col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-                        col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+                        col_map
+                            .insert("title", col.title.as_str())
+                            .map_err(loro_err)?;
                         let cards_list: LoroMovableList = col_map
                             .insert_container("cards", LoroMovableList::new())
                             .map_err(loro_err)?;
                         // Populate cards from the incoming board
                         for card in &col.cards {
-                            let card_map: LoroMap =
-                                cards_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                            let card_map: LoroMap = cards_list
+                                .push_container(LoroMap::new())
+                                .map_err(loro_err)?;
                             let kid = card.kid.as_deref().unwrap_or("");
                             let content = card_identity::strip_kid(&card.content);
                             card_map.insert("kid", kid).map_err(loro_err)?;
-                            card_map.insert("content", content.as_str()).map_err(loro_err)?;
+                            card_map
+                                .insert("content", content.as_str())
+                                .map_err(loro_err)?;
                             card_map.insert("checked", card.checked).map_err(loro_err)?;
                         }
                     }
@@ -788,10 +822,13 @@ impl CrdtStore {
 
                 for col in incoming.all_columns() {
                     if !existing_titles.contains(&col.title) {
-                        let col_map: LoroMap =
-                            columns_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                        let col_map: LoroMap = columns_list
+                            .push_container(LoroMap::new())
+                            .map_err(loro_err)?;
                         col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-                        col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+                        col_map
+                            .insert("title", col.title.as_str())
+                            .map_err(loro_err)?;
                         let _: LoroMovableList = col_map
                             .insert_container("cards", LoroMovableList::new())
                             .map_err(loro_err)?;
@@ -1379,7 +1416,9 @@ mod tests {
     }
 
     fn collect_kids(board: &KanbanBoard) -> std::collections::HashSet<String> {
-        board.all_columns().iter()
+        board
+            .all_columns()
+            .iter()
             .flat_map(|col| col.cards.iter())
             .filter_map(|card| card.kid.clone())
             .collect()
@@ -1388,10 +1427,13 @@ mod tests {
     #[test]
     fn test_concurrent_edit_different_cards() {
         let base = make_legacy_board(vec![
-            ("Todo", vec![
-                make_card("aaaa0001", "Card A", false),
-                make_card("aaaa0002", "Card B", false),
-            ]),
+            (
+                "Todo",
+                vec![
+                    make_card("aaaa0001", "Card A", false),
+                    make_card("aaaa0002", "Card B", false),
+                ],
+            ),
             ("Done", vec![]),
         ]);
         let (mut peer_a, mut peer_b) = make_two_peers(&base);
@@ -1414,8 +1456,16 @@ mod tests {
         assert_eq!(result_a.columns[0].cards.len(), 2);
         assert_eq!(result_b.columns[0].cards.len(), 2);
 
-        let a_contents: Vec<&str> = result_a.columns[0].cards.iter().map(|c| c.content.as_str()).collect();
-        let b_contents: Vec<&str> = result_b.columns[0].cards.iter().map(|c| c.content.as_str()).collect();
+        let a_contents: Vec<&str> = result_a.columns[0]
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
+        let b_contents: Vec<&str> = result_b.columns[0]
+            .cards
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect();
 
         assert!(a_contents.contains(&"Card A edited by peer A"));
         assert!(a_contents.contains(&"Card B edited by peer B"));
@@ -1424,9 +1474,10 @@ mod tests {
 
     #[test]
     fn test_concurrent_edit_same_card_lww() {
-        let base = make_legacy_board(vec![
-            ("Todo", vec![make_card("aaaa0001", "Original content", false)]),
-        ]);
+        let base = make_legacy_board(vec![(
+            "Todo",
+            vec![make_card("aaaa0001", "Original content", false)],
+        )]);
         let (mut peer_a, mut peer_b) = make_two_peers(&base);
 
         let base_a = peer_a.to_board();
@@ -1450,7 +1501,10 @@ mod tests {
 
         let content_a = &result_a.columns[0].cards[0].content;
         let content_b = &result_b.columns[0].cards[0].content;
-        assert_eq!(content_a, content_b, "both peers must converge to the same content");
+        assert_eq!(
+            content_a, content_b,
+            "both peers must converge to the same content"
+        );
         assert!(
             content_a == "Peer A version" || content_a == "Peer B version",
             "converged content must be one of the two writes, got: {}",
@@ -1459,12 +1513,18 @@ mod tests {
 
         let checked_a = result_a.columns[0].cards[0].checked;
         let checked_b = result_b.columns[0].cards[0].checked;
-        assert_eq!(checked_a, checked_b, "both peers must converge to the same checked state");
+        assert_eq!(
+            checked_a, checked_b,
+            "both peers must converge to the same checked state"
+        );
 
         let kids_a = collect_kids(&result_a);
         let kids_b = collect_kids(&result_b);
         assert_eq!(kids_a, kids_b, "card identities must match after merge");
-        assert!(kids_a.contains("aaaa0001"), "original card identity must survive");
+        assert!(
+            kids_a.contains("aaaa0001"),
+            "original card identity must survive"
+        );
     }
 
     #[test]
@@ -1477,10 +1537,13 @@ mod tests {
 
         let base_a = peer_a.to_board();
         let board_a = make_legacy_board(vec![
-            ("Todo", vec![
-                make_card("aaaa0001", "Movable card", false),
-                make_card("aaaa0002", "New card by peer A", false),
-            ]),
+            (
+                "Todo",
+                vec![
+                    make_card("aaaa0001", "Movable card", false),
+                    make_card("aaaa0002", "New card by peer A", false),
+                ],
+            ),
             ("Done", vec![]),
         ]);
         peer_a.apply_board(&board_a, &base_a).unwrap();
@@ -1511,20 +1574,20 @@ mod tests {
 
     #[test]
     fn test_concurrent_delete_and_edit_same_card() {
-        let base = make_legacy_board(vec![
-            ("Todo", vec![
+        let base = make_legacy_board(vec![(
+            "Todo",
+            vec![
                 make_card("aaaa0001", "Card to conflict", false),
                 make_card("aaaa0002", "Survivor card", false),
-            ]),
-        ]);
+            ],
+        )]);
         let (mut peer_a, mut peer_b) = make_two_peers(&base);
 
         let base_a = peer_a.to_board();
-        let board_a = make_legacy_board(vec![
-            ("Todo", vec![
-                make_card("aaaa0002", "Survivor card", false),
-            ]),
-        ]);
+        let board_a = make_legacy_board(vec![(
+            "Todo",
+            vec![make_card("aaaa0002", "Survivor card", false)],
+        )]);
         peer_a.apply_board(&board_a, &base_a).unwrap();
 
         let base_b = peer_b.to_board();
@@ -1540,13 +1603,19 @@ mod tests {
 
         let kids_a = collect_kids(&result_a);
         let kids_b = collect_kids(&result_b);
-        assert_eq!(kids_a, kids_b, "both peers must converge to the same card set");
+        assert_eq!(
+            kids_a, kids_b,
+            "both peers must converge to the same card set"
+        );
 
         assert!(kids_a.contains("aaaa0002"), "uncontested card must survive");
 
         let total_a: usize = result_a.all_columns().iter().map(|c| c.cards.len()).sum();
         let total_b: usize = result_b.all_columns().iter().map(|c| c.cards.len()).sum();
-        assert_eq!(total_a, total_b, "both peers must have the same total card count");
+        assert_eq!(
+            total_a, total_b,
+            "both peers must have the same total card count"
+        );
     }
 
     #[test]

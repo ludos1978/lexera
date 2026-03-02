@@ -63,11 +63,7 @@ impl BoardSyncHub {
     }
 
     /// Register a new client for a board room. Returns (peer_id, receiver).
-    fn register(
-        &mut self,
-        board_id: &str,
-        user_id: &str,
-    ) -> (u64, mpsc::Receiver<String>) {
+    fn register(&mut self, board_id: &str, user_id: &str) -> (u64, mpsc::Receiver<String>) {
         let room = self
             .rooms
             .entry(board_id.to_string())
@@ -172,14 +168,17 @@ async fn handle_sync_session(
     let (mut ws_tx, mut ws_rx) = socket.split();
 
     // 1. Wait for ClientHello (10s timeout)
-    let hello = tokio::time::timeout(std::time::Duration::from_secs(WS_HELLO_TIMEOUT_SECS), async {
-        while let Some(Ok(msg)) = ws_rx.next().await {
-            if let Message::Text(text) = msg {
-                return serde_json::from_str::<ClientMessage>(&text).ok();
+    let hello = tokio::time::timeout(
+        std::time::Duration::from_secs(WS_HELLO_TIMEOUT_SECS),
+        async {
+            while let Some(Ok(msg)) = ws_rx.next().await {
+                if let Message::Text(text) = msg {
+                    return serde_json::from_str::<ClientMessage>(&text).ok();
+                }
             }
-        }
-        None
-    })
+            None
+        },
+    )
     .await;
 
     let (client_user_id, client_vv_b64) = match hello {
@@ -244,10 +243,7 @@ async fn handle_sync_session(
         .storage
         .export_crdt_updates_since(&board_id, &client_vv_bytes)
         .unwrap_or_default();
-    let server_vv = state
-        .storage
-        .get_crdt_vv(&board_id)
-        .unwrap_or_default();
+    let server_vv = state.storage.get_crdt_vv(&board_id).unwrap_or_default();
 
     // 5. Send ServerHello
     let hello_msg = serde_json::to_string(&ServerMessage::ServerHello {
@@ -269,7 +265,8 @@ async fn handle_sync_session(
 
     // Write task: forward hub messages to WebSocket + periodic ping keepalive
     let write_task = tokio::spawn(async move {
-        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(WS_PING_INTERVAL_SECS));
+        let mut ping_interval =
+            tokio::time::interval(std::time::Duration::from_secs(WS_PING_INTERVAL_SECS));
         ping_interval.tick().await; // consume the immediate first tick
         loop {
             tokio::select! {
@@ -315,8 +312,9 @@ async fn handle_sync_session(
                     };
 
                     // Import into storage CRDT
-                    if let Err(e) =
-                        state_read.storage.import_crdt_updates(&board_id_read, &bytes)
+                    if let Err(e) = state_read
+                        .storage
+                        .import_crdt_updates(&board_id_read, &bytes)
                     {
                         log::warn!(
                             "[sync_ws] Failed to import updates from peer {}: {}",
@@ -327,11 +325,10 @@ async fn handle_sync_session(
                     }
 
                     // Broadcast to other peers
-                    let broadcast_msg =
-                        serde_json::to_string(&ServerMessage::ServerUpdate {
-                            updates: updates.clone(),
-                        })
-                        .unwrap_or_default();
+                    let broadcast_msg = serde_json::to_string(&ServerMessage::ServerUpdate {
+                        updates: updates.clone(),
+                    })
+                    .unwrap_or_default();
                     let hub = state_read.sync_hub.lock().await;
                     hub.broadcast(&board_id_read, peer_id, &broadcast_msg);
 
@@ -348,15 +345,13 @@ async fn handle_sync_session(
                     cursor_pos,
                     is_typing,
                 } => {
-                    let msg = serde_json::to_string(
-                        &ServerMessage::ServerEditingPresence {
-                            user_id: auth_user_read.clone(),
-                            user_name,
-                            card_kid,
-                            cursor_pos,
-                            is_typing,
-                        },
-                    )
+                    let msg = serde_json::to_string(&ServerMessage::ServerEditingPresence {
+                        user_id: auth_user_read.clone(),
+                        user_name,
+                        card_kid,
+                        cursor_pos,
+                        is_typing,
+                    })
                     .unwrap_or_default();
                     let hub = state_read.sync_hub.lock().await;
                     hub.broadcast(&board_id_read, peer_id, &msg);

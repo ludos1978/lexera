@@ -12,8 +12,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
-    ClientHello { user_id: String, vv: String },
-    ClientUpdate { updates: String },
+    ClientHello {
+        user_id: String,
+        vv: String,
+    },
+    ClientUpdate {
+        updates: String,
+    },
     /// Ephemeral editing presence: which card this user is editing, cursor position, typing state.
     /// Send with `card_kid: None` to signal "stopped editing".
     ClientEditingPresence {

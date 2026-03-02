@@ -58,12 +58,7 @@ pub fn find_completed_cards(board: &KanbanBoard) -> Vec<CompletedCardInfo> {
                 for (_, col) in stack.columns.iter().enumerate() {
                     for (card_idx, card) in col.cards.iter().enumerate() {
                         if is_completed_card(card) {
-                            let title = card
-                                .content
-                                .lines()
-                                .next()
-                                .unwrap_or("")
-                                .to_string();
+                            let title = card.content.lines().next().unwrap_or("").to_string();
                             results.push(CompletedCardInfo {
                                 card_index: card_idx,
                                 column_index: flat_col_index,
@@ -149,10 +144,7 @@ pub fn archive_cards_by_date(
             return ArchiveResult {
                 moved_count: 0,
                 archive_column: archive_column_title.to_string(),
-                errors: vec![format!(
-                    "Could not parse date threshold: '{}'",
-                    before_date
-                )],
+                errors: vec![format!("Could not parse date threshold: '{}'", before_date)],
             };
         }
     };
@@ -274,13 +266,7 @@ fn collect_by_date_from_rows(
 ) {
     for row in rows.iter_mut() {
         for stack in row.stacks.iter_mut() {
-            collect_by_date_from_columns(
-                &mut stack.columns,
-                archive_title,
-                threshold,
-                today,
-                out,
-            );
+            collect_by_date_from_columns(&mut stack.columns, archive_title, threshold, today, out);
         }
     }
 }

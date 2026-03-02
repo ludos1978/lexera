@@ -160,7 +160,10 @@ fn build_marp_args(opts: &MarpExportOptions) -> Vec<String> {
 
 fn find_marp_cli() -> Option<PathBuf> {
     // Try npx first (most common for @marp-team/marp-cli)
-    if let Ok(output) = Command::new("npx").args(["--yes", "@marp-team/marp-cli", "--version"]).output() {
+    if let Ok(output) = Command::new("npx")
+        .args(["--yes", "@marp-team/marp-cli", "--version"])
+        .output()
+    {
         if output.status.success() {
             return Some(PathBuf::from("npx"));
         }
@@ -224,7 +227,10 @@ pub async fn marp_export(opts: MarpExportOptions) -> Result<MarpResult, String> 
 
     // Determine CLI command
     let (cmd_name, extra_args) = if find_marp_cli() == Some(PathBuf::from("npx")) {
-        ("npx", vec!["--yes".to_string(), "@marp-team/marp-cli".to_string()])
+        (
+            "npx",
+            vec!["--yes".to_string(), "@marp-team/marp-cli".to_string()],
+        )
     } else {
         ("marp", vec![])
     };
@@ -266,7 +272,10 @@ pub async fn marp_watch(
 
     // Determine CLI command
     let (cmd_name, extra_args) = if find_marp_cli() == Some(PathBuf::from("npx")) {
-        ("npx", vec!["--yes".to_string(), "@marp-team/marp-cli".to_string()])
+        (
+            "npx",
+            vec!["--yes".to_string(), "@marp-team/marp-cli".to_string()],
+        )
     } else {
         ("marp", vec![])
     };
@@ -375,9 +384,7 @@ pub async fn marp_stop_watch(
 
 /// Stop all running Marp watch processes.
 #[tauri::command]
-pub async fn marp_stop_all_watches(
-    watch_state: State<'_, MarpWatchState>,
-) -> Result<u32, String> {
+pub async fn marp_stop_all_watches(watch_state: State<'_, MarpWatchState>) -> Result<u32, String> {
     let pids: Vec<u32> = watch_state
         .pids
         .lock()
@@ -411,8 +418,9 @@ pub async fn marp_stop_all_watches(
 /// Export using Pandoc CLI.
 #[tauri::command]
 pub async fn pandoc_export(opts: PandocExportOptions) -> Result<MarpResult, String> {
-    let pandoc = find_pandoc()
-        .ok_or_else(|| "Pandoc not found. Install from https://pandoc.org/installing.html".to_string())?;
+    let pandoc = find_pandoc().ok_or_else(|| {
+        "Pandoc not found. Install from https://pandoc.org/installing.html".to_string()
+    })?;
 
     let mut args = vec![
         opts.input_path.clone(),
@@ -602,8 +610,7 @@ pub async fn write_export_file(path: String, content: String) -> Result<(), Stri
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
-    std::fs::write(&path, &content)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    std::fs::write(&path, &content).map_err(|e| format!("Failed to write file: {}", e))?;
     Ok(())
 }
 

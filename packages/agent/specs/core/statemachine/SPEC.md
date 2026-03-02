@@ -1,9 +1,9 @@
 # Change State Machine Specification
 
-**File**: `src/core/ChangeStateMachine.ts`
-**Lines**: ~730
-**Purpose**: Unified entry point for all file changes with state machine flow
-**Dependencies**: `FileSaveService`, `IncludeLoadingProcessor`, `MarkdownFileRegistry`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-core`  
+**V1 Reference**: `src/core/ChangeStateMachine.ts` (~730 lines)  
+**Dependencies**: [Parser](../shared/parser/SPEC.md), [Types](../shared/types/SPEC.md), File/Include services
 
 ---
 

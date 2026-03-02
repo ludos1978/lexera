@@ -15,8 +15,10 @@ boardColorLight: #f5f5ff
 ## Stack 1
 
 ### # Heading 1 in Columntitle #footer #header
-- [ ] drawio
-  ![](./kanban-presentation-1-MEDIA/drawio.drawio)
+- [ ] ## Heading 2 in Tasktitle #exclude
+  some long text
+  
+  Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 - [ ] Test 2: Class Diagram #note #hidden
   
   
@@ -35,10 +37,8 @@ boardColorLight: #f5f5ff
   
   User <|-- Admin
   ```
-- [ ] ## Heading 2 in Tasktitle #exclude
-  some long text
-  
-  Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+- [ ] drawio
+  ![](./kanban-presentation-1-MEDIA/drawio.drawio)
 - [ ] Test 7: Pie Chart #idea
   
   ```mermaid
@@ -49,75 +49,75 @@ boardColorLight: #f5f5ff
       "Edge" : 8
   ```
 
-## Stack 2 #red
-
-### !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0 #hidden-internal-deleted
-
-### Row 1 - Stack 2 - Col 2 - something
-- [ ] Task 4
-  4
-- [ ] Task 1
-  1 comment test
-- [ ] 
-- [ ] Task 3
-  3
-
 ## Stack 3
 
 ### # A #1 #red
-- [ ] ![screenshot.png](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947){height="650px"}
-- [ ] #pink
-  ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
-- [ ] a
-- [ ] ## Include # #orange
-  !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-1.md)!!!
-- [ ] Search
-  ![test media]()
+- [ ] Killing existing instances...
+  Starting lexera-backend...
+  Waiting for backend...
+  [backend]      Running DevCommand (`cargo  run --no-default-features --color always --`)
+  [backend]         Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-backend/src-tauri for changes...
+  [backend]         Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-core for changes...
+  [backend]    Compiling lexera-backend v0.1.0 (/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-backend/src-tauri)
+  Starting lexera-kanban...
+  
+  Both services running. Press Ctrl+C to stop.
+  
+  [kanban]       Running DevCommand (`cargo  run --no-default-features --color always --`)
+  [kanban]          Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-kanban/src-tauri for changes...
+  [kanban]          Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-core for changes...
+      Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.03s
+  [backend]      Running `/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/target/debug/lexera-backend`
+  [kanban]  warning: unused import: `std::time::Duration`
+  [kanban]   --> lexera-kanban/src-tauri/src/commands.rs:5:5
+  [kanban]    |
+  [kanban]  5 | use std::time::Duration;
+  [kanban]    |     ^^^^^^^^^^^^^^^^^^^
+  [kanban]    |
+  [kanban]    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+  [kanban]  
+  [kanban]  warning: unused import: `Manager`
+  [kanban]   --> lexera-kanban/src-tauri/src/commands.rs:7:41
+  [kanban]    |
+  [kanban]  7 | use tauri::{AppHandle, LogicalPosition, Manager, Position, Window};
+  [kanban]    |                                         ^^^^^^^
+  [kanban]  
+  [kanban]  warning: `lexera-kanban` (bin "lexera-kanban") generated 2 warnings (run `cargo fix --bin "lexera-kanban" -p lexera-kanban` to apply 2 suggestions)
+  [kanban]      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.44s
+  [kanban]       Running `/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/target/debug/lexera-kanban`
 
 ## Stack 2
 
 ### Row 1 - Stack 2 - Col 1
-- [ ] Task 1
-  1
-- [ ] Task 2
-  2
-
-## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
-
-### Row 1 - Stack 1 - Col 2
-- [ ] Task 3
-  3
-- [ ] Task 1
-  1
-- [ ] Task 2
-  2
-
-## Stack 4
-
-### Column Title #footer #header
-- [ ] ![](Media/Proteus-Nodeland_preview-%5Bh2OqQ6-ESp4%5D-480p.mp4 "Proteus-Nodeland_preview-[h2OqQ6-ESp4]-480p")
-- [ ] #exclude
-  
-  ![](Media/jon-flobrant-rB7-LCa_diU-unsplash.jpg "test")
-- [ ] a
-- [ ] ![clipboard-1771932416797.png](kanban-presentation-Media/clipboard-1771932416797.png)
-- [ ] Connecting to Lexera Backend...
-
-## 
-
-### !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
-
-## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
-
-### !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
-
-# Board 2
-
-## 1
-
-### 2
-- [ ] asdf
+- [ ] Search
+  ![test media]()
+- [ ] a #hidden-internal-deleted
 - [ ] ## Include # #orange
   !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-1.md)!!!
+- [ ] ![screenshot.png](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947){height="650px"}
+- [ ] #pink
+  ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
+
+## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
+
+### New Column
+- [ ] Task 1 #hidden-internal-deleted
+  1
+- [ ] a
+- [ ] Task 3
+  3
+- [ ] Task 2 #hidden-internal-deleted
+  2
+- [ ] 
+- [ ] Task 2
+  2
+- [ ] cargo fix --bin "lexera-kanban" -p lexera-kanban
+- [ ] #hidden-internal-deleted
+- [ ] Task 1
+  1
+
+### New Column
+
+### New Column
 
 

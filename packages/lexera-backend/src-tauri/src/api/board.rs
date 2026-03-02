@@ -219,26 +219,23 @@ pub async fn write_board(
     Json(board): Json<lexera_core::types::KanbanBoard>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
-    let result = state
-        .storage
-        .write_board(&board_id, &board)
-        .map_err(|e| {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            log_api_issue(
-                status,
-                "lexera.api.write_board",
-                format!("Failed to write board {}: {}", board_id, e),
-            );
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-        })?;
+    let result = state.storage.write_board(&board_id, &board).map_err(|e| {
+        let status = match &e {
+            lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        log_api_issue(
+            status,
+            "lexera.api.write_board",
+            format!("Failed to write board {}: {}", board_id, e),
+        );
+        (
+            status,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
     Ok(Json(build_write_board_response(
         &state, &board_id, result, &board,
@@ -263,7 +260,10 @@ pub async fn write_board_with_base(
             log_api_issue(
                 status,
                 "lexera.api.write_board_with_base",
-                format!("Failed to write board {} from base snapshot: {}", board_id, e),
+                format!(
+                    "Failed to write board {} from base snapshot: {}",
+                    board_id, e
+                ),
             );
             (
                 status,
@@ -299,15 +299,19 @@ pub async fn open_live_sync_session(
         .unwrap_or_else(|| PathBuf::from("."));
     let snapshot = state.storage.export_crdt_snapshot(&board_id);
 
-    let snapshot = live_sync::open_session(&board_id, board, board_dir, snapshot).map_err(|error| {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
-        log_api_issue(
-            status,
-            "lexera.api.live_sync.open",
-            format!("Failed to open live sync session for board {}: {}", board_id, error),
-        );
-        (status, Json(ErrorResponse { error }))
-    })?;
+    let snapshot =
+        live_sync::open_session(&board_id, board, board_dir, snapshot).map_err(|error| {
+            let status = StatusCode::INTERNAL_SERVER_ERROR;
+            log_api_issue(
+                status,
+                "lexera.api.live_sync.open",
+                format!(
+                    "Failed to open live sync session for board {}: {}",
+                    board_id, error
+                ),
+            );
+            (status, Json(ErrorResponse { error }))
+        })?;
 
     Ok(Json(serde_json::json!({
         "sessionId": snapshot.session_id,
@@ -325,7 +329,10 @@ pub async fn apply_live_sync_board(
         log_api_issue(
             status,
             "lexera.api.live_sync.apply",
-            format!("Failed to apply live sync board for session {}: {}", session_id, error),
+            format!(
+                "Failed to apply live sync board for session {}: {}",
+                session_id, error
+            ),
         );
         (status, Json(ErrorResponse { error }))
     })?;
@@ -437,7 +444,9 @@ pub async fn add_board_endpoint(
     })?;
 
     // Watch the new board file
-    let canonical = tokio::fs::canonicalize(&path).await.unwrap_or_else(|_| path.clone());
+    let canonical = tokio::fs::canonicalize(&path)
+        .await
+        .unwrap_or_else(|_| path.clone());
     if let Ok(mut watcher_guard) = state.watcher.lock() {
         if let Some(ref mut watcher) = *watcher_guard {
             if let Err(e) = watcher.watch_board(&board_id, &canonical) {
@@ -565,9 +574,7 @@ pub async fn get_board_settings(
         )
     })?;
 
-    let settings = board
-        .board_settings
-        .unwrap_or_default();
+    let settings = board.board_settings.unwrap_or_default();
 
     Ok(Json(serde_json::json!({
         "boardId": board_id,
@@ -714,9 +721,7 @@ mod tests {
                 crate::public::PublicRoomService::new(),
             )),
             auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_ws::BoardSyncHub::new(),
-            )),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
             sync_client: Arc::new(tokio::sync::Mutex::new(
                 crate::sync_client::SyncClientManager::new(),
             )),

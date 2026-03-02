@@ -2,7 +2,6 @@ use crate::auth::{RoomMember as AuthRoomMember, RoomRole};
 use crate::invite::{CreateInviteRequest, InviteLink, RoomJoin};
 use crate::public::{MakePublicRequest, PublicRoom};
 use crate::state::AppState;
-use lexera_core::watcher::types::BoardChangeEvent;
 /// Collaboration API: invitations, public rooms, user management.
 use axum::{
     extract::{Path, Query, State},
@@ -11,6 +10,7 @@ use axum::{
     Json, Router,
 };
 use lexera_core::storage::BoardStorage;
+use lexera_core::watcher::types::BoardChangeEvent;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -675,7 +675,9 @@ async fn connect_remote(
             )
         })?;
 
-    let _ = state.event_tx.send(BoardChangeEvent::CollabConnectionChanged);
+    let _ = state
+        .event_tx
+        .send(BoardChangeEvent::CollabConnectionChanged);
 
     Ok(Json(
         serde_json::json!({ "success": true, "local_board_id": local_board_id }),
@@ -689,7 +691,9 @@ async fn disconnect_remote(
 ) -> Result<Json<SuccessResponse>> {
     let mut client = state.sync_client.lock().await;
     client.disconnect(&local_board_id, &state.storage);
-    let _ = state.event_tx.send(BoardChangeEvent::CollabConnectionChanged);
+    let _ = state
+        .event_tx
+        .send(BoardChangeEvent::CollabConnectionChanged);
     Ok(Json(SuccessResponse { success: true }))
 }
 
@@ -721,9 +725,7 @@ fn classify_interface(name: &str, is_loopback: bool) -> &'static str {
 }
 
 /// GET /collab/network-interfaces — list available network interfaces for bind address selection
-async fn list_network_interfaces(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
+async fn list_network_interfaces(State(state): State<AppState>) -> Json<serde_json::Value> {
     let mut interfaces = Vec::new();
 
     // Always offer "All interfaces"
@@ -748,7 +750,10 @@ async fn list_network_interfaces(
     }
 
     let cfg = lock_arc(&state.config, "config").ok();
-    let current_bind = cfg.as_ref().map(|c| c.bind_address.clone()).unwrap_or_else(|| state.bind_address.clone());
+    let current_bind = cfg
+        .as_ref()
+        .map(|c| c.bind_address.clone())
+        .unwrap_or_else(|| state.bind_address.clone());
     let configured_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
     let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
 
@@ -774,19 +779,24 @@ async fn update_server_config(
 ) -> Result<Json<serde_json::Value>> {
     // Validate bind_address
     if body.bind_address != "0.0.0.0" {
-        body.bind_address.parse::<std::net::Ipv4Addr>().map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::bad_request("Invalid IP address")),
-            )
-        })?;
+        body.bind_address
+            .parse::<std::net::Ipv4Addr>()
+            .map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse::bad_request("Invalid IP address")),
+                )
+            })?;
     }
 
     // Validate port
     if body.port < MIN_CONFIGURABLE_PORT {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::bad_request(&format!("Port must be >= {}", MIN_CONFIGURABLE_PORT))),
+            Json(ErrorResponse::bad_request(&format!(
+                "Port must be >= {}",
+                MIN_CONFIGURABLE_PORT
+            ))),
         ));
     }
 
@@ -800,7 +810,9 @@ async fn update_server_config(
         drop(cfg);
 
         let uid = state.local_user_id.clone();
-        let uname = state.auth_service.lock()
+        let uname = state
+            .auth_service
+            .lock()
             .ok()
             .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
             .unwrap_or_else(|| "Unknown".to_string());
@@ -852,9 +864,7 @@ async fn update_server_config(
 // ============================================================================
 
 /// GET /collab/discovered-peers — list peers found via UDP broadcast
-async fn discovered_peers(
-    State(state): State<AppState>,
-) -> Json<Vec<serde_json::Value>> {
+async fn discovered_peers(State(state): State<AppState>) -> Json<Vec<serde_json::Value>> {
     let peers = lock_arc(&state.discovery, "discovery")
         .map(|d| d.list_peers())
         .unwrap_or_default();
@@ -908,7 +918,10 @@ pub fn collab_router() -> Router<AppState> {
         // Server info + config
         .route("/collab/server-info", get(server_info))
         .route("/collab/network-interfaces", get(list_network_interfaces))
-        .route("/collab/server-config", axum::routing::put(update_server_config))
+        .route(
+            "/collab/server-config",
+            axum::routing::put(update_server_config),
+        )
         // LAN discovery
         .route("/collab/discovered-peers", get(discovered_peers))
         // Sync client (backend-to-backend connections)
@@ -954,9 +967,7 @@ mod tests {
                 crate::public::PublicRoomService::new(),
             )),
             auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_ws::BoardSyncHub::new(),
-            )),
+            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
             sync_client: Arc::new(tokio::sync::Mutex::new(
                 crate::sync_client::SyncClientManager::new(),
             )),

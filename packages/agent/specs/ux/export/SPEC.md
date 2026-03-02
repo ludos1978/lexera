@@ -1,15 +1,15 @@
 # Export UI Specification
 
-**File**: `src/html/exportMarpUI.js`
-**Lines**: ~2,147
-**Purpose**: Export dialog, Marp presentation settings, auto-export functionality
-**Dependencies**: `exportService.js`, `marp-engine`, `pandoc`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-kanban` (UI), `packages/lexera-backend` (pipeline)  
+**V1 Reference**: `src/html/exportMarpUI.js` (~2,147 lines)  
+**Dependencies**: [Content Plugins](../plugins/content/SPEC.md), Marp engine, Pandoc
 
 ---
 
 ## UX Requirements
 
-### Export Dialog
+### Export Dialog #Reto
 - User opens export dialog using export from board main menu or from rows, stacks, columns (which then selects them directly)
 - dropdown - "export presets"
   - marp presentation

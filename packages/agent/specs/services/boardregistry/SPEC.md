@@ -1,9 +1,9 @@
 # Board Registry Service Specification
 
-**File**: `src/services/BoardRegistryService.ts`
-**Lines**: ~995
-**Purpose**: Singleton shared data layer for board management
-**Dependencies**: VS Code workspace state, configuration API
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-backend`  
+**V1 Reference**: `src/services/BoardRegistryService.ts` (~995 lines)  
+**Dependencies**: [API](../services/api/SPEC.md), VS Code workspace state (v1)
 
 ---
 

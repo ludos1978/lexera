@@ -1,9 +1,9 @@
 # Menu Operations Specification
 
-**File**: `src/html/menuOperations.js`
-**Lines**: ~3,989
-**Purpose**: Unified menu system for tag clicks, card/column context menus
-**Dependencies**: `boardRenderer.js`, `cardEditor.js`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-kanban`  
+**V1 Reference**: `src/html/menuOperations.js` (~3,989 lines)  
+**Dependencies**: [Board Renderer](../core/board/SPEC.md), [Editor](../core/editor/SPEC.md), Backend API
 
 ---
 

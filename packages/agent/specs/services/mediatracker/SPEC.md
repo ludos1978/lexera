@@ -1,9 +1,9 @@
 # Media Tracker Service Specification
 
-**File**: `src/services/MediaTracker.ts`
-**Lines**: ~555
-**Purpose**: Track modification times of media files for change detection
-**Dependencies**: VS Code file watchers, FileExtensions constants
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-backend`  
+**V1 Reference**: `src/services/MediaTracker.ts` (~555 lines)  
+**Dependencies**: File watchers, [Content Plugins](../plugins/content/SPEC.md)
 
 ---
 

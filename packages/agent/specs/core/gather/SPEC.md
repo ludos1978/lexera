@@ -1,9 +1,9 @@
 # Gather Query Engine Specification
 
-**File**: `src/board/GatherQueryEngine.ts`
-**Lines**: ~400
-**Purpose**: Automatic card sorting based on gather rules in column titles
-**Dependencies**: `DateTimeUtils`, `KanbanTypes`
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-core`  
+**V1 Reference**: `src/board/GatherQueryEngine.ts` (~400 lines)  
+**Dependencies**: [Types](../shared/types/SPEC.md), DateTime utilities
 
 ---
 

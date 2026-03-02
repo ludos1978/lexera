@@ -156,10 +156,7 @@ impl AuthService {
     /// List all members of a room
     pub fn list_room_members(&self, room_id: &str) -> Vec<RoomMember> {
         let empty = Vec::new();
-        let user_ids = self
-            .room_members
-            .get(room_id)
-            .unwrap_or(&empty);
+        let user_ids = self.room_members.get(room_id).unwrap_or(&empty);
 
         user_ids
             .iter()
@@ -230,7 +227,10 @@ impl AuthService {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                log::info!("[auth.load] No auth file at {}, starting empty", path.display());
+                log::info!(
+                    "[auth.load] No auth file at {}, starting empty",
+                    path.display()
+                );
                 return Ok(Self::new());
             }
             Err(e) => return Err(e),
@@ -239,7 +239,11 @@ impl AuthService {
         let data: AuthData = match serde_json::from_str(&content) {
             Ok(d) => d,
             Err(e) => {
-                log::warn!("[auth.load] Corrupt auth file at {}: {}, starting empty", path.display(), e);
+                log::warn!(
+                    "[auth.load] Corrupt auth file at {}: {}, starting empty",
+                    path.display(),
+                    e
+                );
                 return Ok(Self::new());
             }
         };
@@ -247,10 +251,7 @@ impl AuthService {
         // Rebuild the tuple-keyed memberships map from the list
         let mut memberships = HashMap::new();
         for entry in &data.memberships {
-            memberships.insert(
-                (entry.room_id.clone(), entry.user_id.clone()),
-                entry.role,
-            );
+            memberships.insert((entry.room_id.clone(), entry.user_id.clone()), entry.role);
         }
 
         log::info!(
@@ -435,8 +436,10 @@ mod tests {
         let mut svc = AuthService::new();
         svc.register_user(make_user("u1", "Alice", None)).unwrap();
         svc.register_user(make_user("u2", "Bob", None)).unwrap();
-        svc.add_to_room("r1", "u1", RoomRole::Owner, "invite").unwrap();
-        svc.add_to_room("r1", "u2", RoomRole::Editor, "link").unwrap();
+        svc.add_to_room("r1", "u1", RoomRole::Owner, "invite")
+            .unwrap();
+        svc.add_to_room("r1", "u2", RoomRole::Editor, "link")
+            .unwrap();
 
         let members = svc.list_room_members("r1");
         assert_eq!(members.len(), 2);
@@ -454,8 +457,10 @@ mod tests {
     fn add_to_room_updates_role_without_duplicating() {
         let mut svc = AuthService::new();
         svc.register_user(make_user("u1", "Alice", None)).unwrap();
-        svc.add_to_room("r1", "u1", RoomRole::Viewer, "invite").unwrap();
-        svc.add_to_room("r1", "u1", RoomRole::Editor, "upgrade").unwrap();
+        svc.add_to_room("r1", "u1", RoomRole::Viewer, "invite")
+            .unwrap();
+        svc.add_to_room("r1", "u1", RoomRole::Editor, "upgrade")
+            .unwrap();
 
         // Role should be updated
         assert_eq!(svc.get_role("r1", "u1"), Some(RoomRole::Editor));
@@ -486,7 +491,8 @@ mod tests {
         let mut svc = AuthService::new();
         svc.register_user(make_user("u1", "Alice", None)).unwrap();
         assert!(!svc.is_member("r1", "u1"));
-        svc.add_to_room("r1", "u1", RoomRole::Viewer, "test").unwrap();
+        svc.add_to_room("r1", "u1", RoomRole::Viewer, "test")
+            .unwrap();
         assert!(svc.is_member("r1", "u1"));
     }
 
@@ -499,11 +505,15 @@ mod tests {
 
         // Build state
         let mut svc = AuthService::new();
-        svc.register_user(make_user("u1", "Alice", Some("alice@test.com"))).unwrap();
+        svc.register_user(make_user("u1", "Alice", Some("alice@test.com")))
+            .unwrap();
         svc.register_user(make_user("u2", "Bob", None)).unwrap();
-        svc.add_to_room("r1", "u1", RoomRole::Owner, "create").unwrap();
-        svc.add_to_room("r1", "u2", RoomRole::Editor, "invite").unwrap();
-        svc.add_to_room("r2", "u1", RoomRole::Viewer, "link").unwrap();
+        svc.add_to_room("r1", "u1", RoomRole::Owner, "create")
+            .unwrap();
+        svc.add_to_room("r1", "u2", RoomRole::Editor, "invite")
+            .unwrap();
+        svc.add_to_room("r2", "u1", RoomRole::Viewer, "link")
+            .unwrap();
 
         // Save
         svc.save_to_file(&path).unwrap();

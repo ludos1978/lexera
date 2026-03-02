@@ -49,7 +49,13 @@ impl DiscoveryService {
 
     /// Start the discovery announcer and listener.
     /// Must be called from a tokio runtime context.
-    pub fn start(&mut self, http_port: u16, user_id: String, user_name: String, event_tx: broadcast::Sender<BoardChangeEvent>) {
+    pub fn start(
+        &mut self,
+        http_port: u16,
+        user_id: String,
+        user_name: String,
+        event_tx: broadcast::Sender<BoardChangeEvent>,
+    ) {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
         self.shutdown = Some(shutdown_tx);
 
@@ -128,10 +134,7 @@ impl DiscoveryService {
                 }
             };
 
-            log::info!(
-                "[discovery] Listener started on port {}",
-                DISCOVERY_PORT
-            );
+            log::info!("[discovery] Listener started on port {}", DISCOVERY_PORT);
 
             let mut buf = [0u8; UDP_RECV_BUFFER_SIZE];
             loop {
@@ -425,10 +428,7 @@ mod tests {
 
         // Replicate the listener's filtering condition
         let should_ignore = beacon.app != "lexera" || beacon.user_id == own_user_id;
-        assert!(
-            should_ignore,
-            "Own beacons must be ignored by the listener"
-        );
+        assert!(should_ignore, "Own beacons must be ignored by the listener");
 
         // Verify no peer was added
         let peers = svc.list_peers();
@@ -495,7 +495,11 @@ mod tests {
         }
 
         let peers = svc.list_peers();
-        assert_eq!(peers.len(), 1, "Duplicate beacon must not create a second entry");
+        assert_eq!(
+            peers.len(),
+            1,
+            "Duplicate beacon must not create a second entry"
+        );
         assert_eq!(peers[0].user_id, "peer-dup");
 
         // The last_seen should be the more recent time

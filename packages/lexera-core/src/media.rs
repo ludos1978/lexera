@@ -12,9 +12,7 @@ pub fn dedup_filename(dir: &Path, filename: &str) -> PathBuf {
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or(filename);
-    let ext = Path::new(filename)
-        .extension()
-        .and_then(|s| s.to_str());
+    let ext = Path::new(filename).extension().and_then(|s| s.to_str());
 
     for i in 1..1000 {
         let new_name = match ext {
@@ -99,9 +97,7 @@ pub fn is_previewable(ext: Option<&str>) -> bool {
 
 /// Compute the media folder path for a board file: `{stem}-Media/` in the same directory.
 pub fn media_folder_for_board(board_path: &Path) -> PathBuf {
-    let dir = board_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
+    let dir = board_path.parent().unwrap_or_else(|| Path::new("."));
     let stem = board_path
         .file_stem()
         .and_then(|s| s.to_str())

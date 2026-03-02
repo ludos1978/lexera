@@ -481,10 +481,7 @@ mod tests {
     fn tag_visibility_from_str_loose_roundtrip() {
         assert_eq!(TagVisibility::from_str_loose("none"), TagVisibility::None);
         assert_eq!(TagVisibility::from_str_loose("NONE"), TagVisibility::None);
-        assert_eq!(
-            TagVisibility::from_str_loose("unknown"),
-            TagVisibility::All
-        );
+        assert_eq!(TagVisibility::from_str_loose("unknown"), TagVisibility::All);
     }
 
     // ---- filter_tags_from_text -----------------------------------------------
@@ -620,8 +617,7 @@ mod tests {
 
     #[test]
     fn presentation_drops_slide_with_excluded_title() {
-        let content =
-            "# Slide 1\nContent\n---\n# Slide 2 #exclude\nSecret\n---\n# Slide 3\nMore";
+        let content = "# Slide 1\nContent\n---\n# Slide 2 #exclude\nSecret\n---\n# Slide 3\nMore";
         let result = filter_excluded_from_presentation(content, &[s("#exclude")]);
         assert!(result.contains("Slide 1"));
         assert!(!result.contains("Slide 2"));
@@ -750,8 +746,11 @@ mod tests {
 
     #[test]
     fn board_filter_empty_tags_returns_clone() {
-        let board =
-            make_legacy_board(vec![make_column("c1", "Todo", vec![make_card("1", "task")])]);
+        let board = make_legacy_board(vec![make_column(
+            "c1",
+            "Todo",
+            vec![make_card("1", "task")],
+        )]);
         let result = filter_excluded_from_board(&board, &[]);
         assert_eq!(result.columns.len(), 1);
         assert_eq!(result.columns[0].cards.len(), 1);
@@ -790,8 +789,11 @@ mod tests {
         // Exclude tag is in the body (after the empty line), not the header,
         // so the card survives but the tagged line is stripped.
         let card_content = "first line\n\nsecond #exclude\nthird line";
-        let board =
-            make_legacy_board(vec![make_column("c1", "Col", vec![make_card("1", card_content)])]);
+        let board = make_legacy_board(vec![make_column(
+            "c1",
+            "Col",
+            vec![make_card("1", card_content)],
+        )]);
         let result = filter_excluded_from_board(&board, &[s("#exclude")]);
         assert_eq!(
             result.columns[0].cards[0].content,
@@ -803,8 +805,11 @@ mod tests {
     fn board_filter_drops_card_when_header_has_exclude_tag() {
         // Exclude tag is in the card header (contiguous non-empty lines from start).
         let card_content = "title #exclude\nmore header\n\nbody text";
-        let board =
-            make_legacy_board(vec![make_column("c1", "Col", vec![make_card("1", card_content)])]);
+        let board = make_legacy_board(vec![make_column(
+            "c1",
+            "Col",
+            vec![make_card("1", card_content)],
+        )]);
         let result = filter_excluded_from_board(&board, &[s("#exclude")]);
         assert_eq!(result.columns[0].cards.len(), 0);
     }

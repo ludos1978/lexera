@@ -634,6 +634,7 @@ fn write_column_cards(markdown: &mut String, column: &KanbanColumn) {
 /// For columns with include_source, only the column header is written (no inline cards).
 pub fn generate_markdown(board: &KanbanBoard) -> String {
     let mut markdown = String::new();
+    let use_new_format = board.format_hint == BoardFormat::New || board.has_explicit_hierarchy();
 
     if board.yaml_header.is_some() || board.board_settings.is_some() {
         let updated_yaml = update_yaml_with_board_settings(
@@ -644,8 +645,8 @@ pub fn generate_markdown(board: &KanbanBoard) -> String {
         markdown.push_str("\n\n");
     }
 
-    match board.format_hint {
-        BoardFormat::New => {
+    match use_new_format {
+        true => {
             // New format: # row / ## stack / ### column
             for row in &board.rows {
                 markdown.push_str(&format!("# {}\n\n", row.title));
@@ -660,7 +661,7 @@ pub fn generate_markdown(board: &KanbanBoard) -> String {
                 }
             }
         }
-        BoardFormat::Legacy => {
+        false => {
             // Legacy format: ## column headers only (no row/stack headings).
             // Columns come from rows hierarchy (parser always wraps in Default row/stack)
             // or from board.columns for programmatically constructed boards.
@@ -833,10 +834,7 @@ columnWidth: 450px
         assert!(!cols[0].cards[0].checked);
         assert_eq!(cols[0].cards[0].content, "First task");
         assert!(cols[0].cards[1].checked);
-        assert_eq!(
-            cols[0].cards[1].content,
-            "Completed task\nwith description"
-        );
+        assert_eq!(cols[0].cards[1].content, "Completed task\nwith description");
         assert_eq!(cols[1].title, "Done");
         assert_eq!(cols[1].cards.len(), 1);
         assert!(board.kanban_footer.is_some());

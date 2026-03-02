@@ -205,7 +205,11 @@ impl InviteService {
         std::fs::write(&tmp_path, &json)?;
         std::fs::rename(&tmp_path, path)?;
 
-        log::info!("[invite.save] Saved {} invites to {}", self.invites.len(), path.display());
+        log::info!(
+            "[invite.save] Saved {} invites to {}",
+            self.invites.len(),
+            path.display()
+        );
         Ok(())
     }
 
@@ -214,7 +218,10 @@ impl InviteService {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                log::info!("[invite.load] No invite file at {}, starting empty", path.display());
+                log::info!(
+                    "[invite.load] No invite file at {}, starting empty",
+                    path.display()
+                );
                 return Ok(Self::new());
             }
             Err(e) => return Err(e),

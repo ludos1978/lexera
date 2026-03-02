@@ -388,7 +388,11 @@ if (!isEditing) {
 - lexera_kanban_app-selectBoard - Select and load a board by ID
 - lexera_kanban_app-loadBoard - Fetch board column data from API and render
 - lexera_kanban_app-renderMainView - Render main view (board, search results, or empty state)
-- lexera_kanban_app-renderColumns - Render columns grouped by #stack tag with DnD reordering
+- lexera_kanban_app-renderColumns - Render columns grouped by #stack tag with DnD reordering; activates virtual scrolling for large columns
+- lexera_kanban_app-vsActivate - Activate virtual scrolling on columns with >50 cards using IntersectionObserver
+- lexera_kanban_app-vsTeardown - Disconnect IntersectionObserver and clear virtual scrolling state
+- lexera_kanban_app-vsMaterialiseAll - Restore all virtualised cards to DOM during drag for hit-testing
+- lexera_kanban_app-vsRestoreAfterDrag - Re-virtualise off-screen cards after drag ends
 - lexera_kanban_app-submitCard - Submit new card to a column via API
 - lexera_kanban_app-hasStackTag - Check if column title contains #stack tag
 - lexera_kanban_app-stripStackTag - Remove #stack tag from title for display

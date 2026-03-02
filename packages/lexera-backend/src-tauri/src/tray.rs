@@ -23,13 +23,8 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
     )?;
     let quick_capture =
         MenuItem::with_id(app, "quick_capture", "Quick Capture", true, None::<&str>)?;
-    let connection_settings = MenuItem::with_id(
-        app,
-        "connection_settings",
-        "Management",
-        true,
-        None::<&str>,
-    )?;
+    let connection_settings =
+        MenuItem::with_id(app, "connection_settings", "Management", true, None::<&str>)?;
     let open_browser = MenuItem::with_id(
         app,
         "open_browser",
@@ -41,7 +36,13 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
 
     let menu = Menu::with_items(
         app,
-        &[&status_item, &quick_capture, &connection_settings, &open_browser, &quit],
+        &[
+            &status_item,
+            &quick_capture,
+            &connection_settings,
+            &open_browser,
+            &quit,
+        ],
     )?;
 
     let mut builder = TrayIconBuilder::with_id(BACKEND_TRAY_ID)
@@ -82,7 +83,10 @@ pub fn setup_tray(app: &AppHandle, port: u16) -> Result<TrayIcon, tauri::Error> 
                     log::error!(target: "lexera.tray", "Failed to open backend status: {}", e);
                 }
                 #[cfg(target_os = "windows")]
-                if let Err(e) = std::process::Command::new("cmd").args(["/C", "start", &url]).spawn() {
+                if let Err(e) = std::process::Command::new("cmd")
+                    .args(["/C", "start", &url])
+                    .spawn()
+                {
                     log::error!(target: "lexera.tray", "Failed to open backend status: {}", e);
                 }
             }

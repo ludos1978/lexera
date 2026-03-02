@@ -1,9 +1,9 @@
 # Markdown Renderer Specification
 
-**File**: `src/html/markdownRenderer.js`
-**Lines**: ~3,806
-**Purpose**: Render markdown content with plugins, media handling, and diagram support
-**Dependencies**: markdown-it, 20+ markdown-it plugins, Mermaid, PlantUML
+**Status**: ✅ Baseline  
+**V2 Target**: `packages/lexera-kanban` (rendering), `packages/lexera-core` (transforms)  
+**V1 Reference**: `src/html/markdownRenderer.js` (~3,806 lines)  
+**Dependencies**: markdown-it, 20+ markdown-it plugins, Mermaid, PlantUML, [Content Plugins](../plugins/content/SPEC.md)
 
 ---
 

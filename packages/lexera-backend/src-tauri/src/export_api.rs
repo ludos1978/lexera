@@ -106,10 +106,7 @@ pub fn export_router() -> Router<AppState> {
             "/boards/{board_id}/export/presentation",
             post(export_presentation),
         )
-        .route(
-            "/boards/{board_id}/export/document",
-            post(export_document),
-        )
+        .route("/boards/{board_id}/export/document", post(export_document))
         .route("/boards/{board_id}/export/filter", post(export_filter))
         .route("/export/transform", post(export_transform))
 }
@@ -137,7 +134,10 @@ async fn export_presentation(
 
     // Always add #hidden to exclude tags
     let mut exclude_tags = body.exclude_tags;
-    if !exclude_tags.iter().any(|t| t.eq_ignore_ascii_case("#hidden")) {
+    if !exclude_tags
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case("#hidden"))
+    {
         exclude_tags.push("#hidden".to_string());
     }
 
@@ -190,7 +190,10 @@ async fn export_document(
     })?;
 
     let mut exclude_tags = body.exclude_tags;
-    if !exclude_tags.iter().any(|t| t.eq_ignore_ascii_case("#hidden")) {
+    if !exclude_tags
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case("#hidden"))
+    {
         exclude_tags.push("#hidden".to_string());
     }
 
@@ -226,7 +229,10 @@ async fn export_filter(
     })?;
 
     let mut exclude_tags = body.exclude_tags;
-    if !exclude_tags.iter().any(|t| t.eq_ignore_ascii_case("#hidden")) {
+    if !exclude_tags
+        .iter()
+        .any(|t| t.eq_ignore_ascii_case("#hidden"))
+    {
         exclude_tags.push("#hidden".to_string());
     }
 
@@ -253,9 +259,7 @@ async fn export_filter(
 ///
 /// Applies content transformations (speaker notes, HTML comments, HTML content, list split).
 /// Not board-specific — operates on raw markdown content.
-async fn export_transform(
-    Json(body): Json<TransformBody>,
-) -> Json<serde_json::Value> {
+async fn export_transform(Json(body): Json<TransformBody>) -> Json<serde_json::Value> {
     let options = TransformOptions {
         speaker_note_mode: body.speaker_note_mode,
         html_comment_mode: body.html_comment_mode,
