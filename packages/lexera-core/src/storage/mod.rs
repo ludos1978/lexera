@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod local;
 
 use crate::merge::merge::MergeResult;

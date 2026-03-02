@@ -381,7 +381,31 @@ impl LocalStorage {
             (normalized_board.clone(), None)
         };
 
+        // Create a backup of the current file before overwriting
+        if file_path.exists() {
+            let backup_mgr = super::backup::BackupManager::new();
+            if let Err(e) = backup_mgr.create_backup(&file_path) {
+                log::warn!(
+                    "[lexera.storage.backup] Failed to create backup for board {}: {}",
+                    board_id,
+                    e
+                );
+            }
+        }
+
         let markdown = self.persist_board_files(board_id, &file_path, &board_to_write)?;
+
+        // Rotate old backups after successful write
+        if file_path.exists() {
+            let backup_mgr = super::backup::BackupManager::new();
+            if let Err(e) = backup_mgr.rotate_backups(&file_path) {
+                log::warn!(
+                    "[lexera.storage.backup] Failed to rotate backups for board {}: {}",
+                    board_id,
+                    e
+                );
+            }
+        }
 
         // Save CRDT state alongside the markdown file
         if let Some(ref c) = crdt {
