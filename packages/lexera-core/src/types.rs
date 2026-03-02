@@ -58,7 +58,7 @@ pub struct KanbanRow {
     pub stacks: Vec<KanbanStack>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BoardSettings {
     #[serde(skip_serializing_if = "Option::is_none")]

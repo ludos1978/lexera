@@ -19,20 +19,24 @@ fn loro_err(e: impl std::fmt::Display) -> io::Error {
 }
 
 /// CRDT-backed board storage that wraps a Loro document.
+///
+/// Board metadata (yaml_header, kanban_footer, board_settings) is stored
+/// inside the CRDT document in a "metadata" sub-map, enabling collaborative
+/// conflict resolution at the field level.
 pub struct CrdtStore {
     doc: LoroDoc,
     undo_mgr: UndoManager,
-    /// Markdown-only metadata not tracked in the CRDT (Phase 1).
-    yaml_header: Option<String>,
-    kanban_footer: Option<String>,
-    board_settings: Option<BoardSettings>,
 }
 
 impl std::fmt::Debug for CrdtStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let root = self.doc.get_map("root");
+        let meta = get_sub_map(&root, "metadata");
+        let yaml = meta.as_ref().and_then(|m| get_optional_string(m, "yaml_header"));
+        let footer = meta.as_ref().and_then(|m| get_optional_string(m, "footer"));
         f.debug_struct("CrdtStore")
-            .field("yaml_header", &self.yaml_header)
-            .field("kanban_footer", &self.kanban_footer)
+            .field("yaml_header", &yaml)
+            .field("kanban_footer", &footer)
             .finish_non_exhaustive()
     }
 }
@@ -71,6 +75,76 @@ fn get_map_at(list: &LoroMovableList, index: usize) -> Option<LoroMap> {
         ValueOrContainer::Container(Container::Map(m)) => Some(m),
         _ => None,
     }
+}
+
+fn get_sub_map(map: &LoroMap, key: &str) -> Option<LoroMap> {
+    match map.get(key)? {
+        ValueOrContainer::Container(Container::Map(m)) => Some(m),
+        _ => None,
+    }
+}
+
+fn get_optional_string(map: &LoroMap, key: &str) -> Option<String> {
+    map.get(key).and_then(|v| read_string(&v))
+}
+
+// ── Metadata helpers ─────────────────────────────────────────────────────────
+
+/// Write board metadata (yaml_header, footer, settings) into a CRDT metadata map.
+fn write_metadata_to_map(
+    meta: &LoroMap,
+    board: &KanbanBoard,
+) -> io::Result<()> {
+    // Store yaml_header (empty string = None)
+    let yaml = board.yaml_header.as_deref().unwrap_or("");
+    meta.insert("yaml_header", yaml).map_err(loro_err)?;
+
+    // Store footer (empty string = None)
+    let footer = board.kanban_footer.as_deref().unwrap_or("");
+    meta.insert("footer", footer).map_err(loro_err)?;
+
+    // Store settings as a sub-map with individual keys for field-level CRDT resolution
+    let settings_map: LoroMap = meta
+        .insert_container("settings", LoroMap::new())
+        .map_err(loro_err)?;
+    if let Some(ref settings) = board.board_settings {
+        write_settings_to_map(&settings_map, settings)?;
+    }
+
+    Ok(())
+}
+
+/// Write individual BoardSettings fields into a LoroMap.
+fn write_settings_to_map(map: &LoroMap, settings: &BoardSettings) -> io::Result<()> {
+    for key in BOARD_SETTING_KEYS {
+        if let Some(val) = settings.get_by_key(key) {
+            map.insert(*key, val.as_str()).map_err(loro_err)?;
+        }
+    }
+    Ok(())
+}
+
+/// Read board metadata from the CRDT metadata map.
+fn read_metadata_from_map(meta: &LoroMap) -> (Option<String>, Option<String>, Option<BoardSettings>) {
+    let yaml_header = get_optional_string(meta, "yaml_header")
+        .filter(|s| !s.is_empty());
+    let footer = get_optional_string(meta, "footer")
+        .filter(|s| !s.is_empty());
+    let settings = get_sub_map(meta, "settings")
+        .map(|sm| read_settings_from_map(&sm))
+        .filter(|s| s != &BoardSettings::default());
+    (yaml_header, footer, settings)
+}
+
+/// Read BoardSettings from a LoroMap of individual setting keys.
+fn read_settings_from_map(map: &LoroMap) -> BoardSettings {
+    let mut settings = BoardSettings::default();
+    for key in BOARD_SETTING_KEYS {
+        if let Some(val) = get_optional_string(map, key) {
+            settings.set_by_key(key, &val);
+        }
+    }
+    settings
 }
 
 // ── Building CRDT from Board ─────────────────────────────────────────────────
@@ -188,15 +262,18 @@ impl CrdtStore {
             populate_columns_list(&columns_list, &board.columns)?;
         }
 
+        // Store board metadata in the CRDT
+        let metadata_map: LoroMap = root
+            .insert_container("metadata", LoroMap::new())
+            .map_err(loro_err)?;
+        write_metadata_to_map(&metadata_map, board)?;
+
         doc.commit();
         let undo_mgr = UndoManager::new(&doc);
 
         Ok(CrdtStore {
             doc,
             undo_mgr,
-            yaml_header: board.yaml_header.clone(),
-            kanban_footer: board.kanban_footer.clone(),
-            board_settings: board.board_settings.clone(),
         })
     }
 
@@ -205,6 +282,14 @@ impl CrdtStore {
         let root = self.doc.get_map("root");
         let title = get_string(&root, "title");
         let format = get_string(&root, "format");
+
+        // Read metadata from CRDT (backwards compatible: returns None if missing)
+        let (yaml_header, kanban_footer, board_settings) =
+            if let Some(meta) = get_sub_map(&root, "metadata") {
+                read_metadata_from_map(&meta)
+            } else {
+                (None, None, None)
+            };
 
         if format == "new" {
             let rows = if let Some(rows_list) = get_movable_list(&root, "rows") {
@@ -251,9 +336,9 @@ impl CrdtStore {
                 title,
                 columns: Vec::new(),
                 rows,
-                yaml_header: self.yaml_header.clone(),
-                kanban_footer: self.kanban_footer.clone(),
-                board_settings: self.board_settings.clone(),
+                yaml_header,
+                kanban_footer,
+                board_settings,
             }
         } else {
             let columns = if let Some(columns_list) = get_movable_list(&root, "columns") {
@@ -267,9 +352,9 @@ impl CrdtStore {
                 title,
                 columns,
                 rows: Vec::new(),
-                yaml_header: self.yaml_header.clone(),
-                kanban_footer: self.kanban_footer.clone(),
-                board_settings: self.board_settings.clone(),
+                yaml_header,
+                kanban_footer,
+                board_settings,
             }
         }
     }
@@ -282,20 +367,22 @@ impl CrdtStore {
     ) -> io::Result<()> {
         let changes = diff::diff_boards(current, incoming);
         let has_structural_change = self.has_structural_diff(incoming);
-        if changes.is_empty() && !has_structural_change {
+        let has_metadata_change = self.has_metadata_diff(incoming);
+        let has_title_change = incoming.title != current.title;
+        if changes.is_empty() && !has_structural_change && !has_metadata_change && !has_title_change {
             return Ok(());
         }
 
         // Update title if changed
-        if incoming.title != current.title {
+        if has_title_change {
             let root = self.doc.get_map("root");
             root.insert("title", incoming.title.as_str()).map_err(loro_err)?;
         }
 
-        // Update markdown metadata
-        self.yaml_header = incoming.yaml_header.clone();
-        self.kanban_footer = incoming.kanban_footer.clone();
-        self.board_settings = incoming.board_settings.clone();
+        // Sync metadata into CRDT
+        if has_metadata_change {
+            self.sync_metadata(incoming)?;
+        }
 
         for change in &changes {
             match change {
@@ -373,8 +460,61 @@ impl CrdtStore {
         Ok(())
     }
 
+    /// Check whether the incoming board has different metadata than the CRDT.
+    fn has_metadata_diff(&self, incoming: &KanbanBoard) -> bool {
+        let root = self.doc.get_map("root");
+        let (crdt_yaml, crdt_footer, crdt_settings) =
+            if let Some(meta) = get_sub_map(&root, "metadata") {
+                read_metadata_from_map(&meta)
+            } else {
+                // No metadata map in CRDT: any non-None incoming metadata is a diff
+                return incoming.yaml_header.is_some()
+                    || incoming.kanban_footer.is_some()
+                    || incoming.board_settings.is_some();
+            };
+
+        crdt_yaml != incoming.yaml_header
+            || crdt_footer != incoming.kanban_footer
+            || crdt_settings != incoming.board_settings
+    }
+
+    /// Sync metadata from the incoming board into the CRDT metadata map.
+    /// Creates the metadata map if it does not exist (legacy CRDT upgrade).
+    /// Reuses existing sub-maps (especially "settings") to preserve CRDT lineage
+    /// so that concurrent field-level changes merge correctly.
+    fn sync_metadata(&self, incoming: &KanbanBoard) -> io::Result<()> {
+        let root = self.doc.get_map("root");
+        let metadata_map: LoroMap = if let Some(meta) = get_sub_map(&root, "metadata") {
+            meta
+        } else {
+            // Legacy CRDT: create metadata map on first access
+            root.insert_container("metadata", LoroMap::new())
+                .map_err(loro_err)?
+        };
+
+        // Update scalar metadata fields
+        let yaml = incoming.yaml_header.as_deref().unwrap_or("");
+        metadata_map.insert("yaml_header", yaml).map_err(loro_err)?;
+        let footer = incoming.kanban_footer.as_deref().unwrap_or("");
+        metadata_map.insert("footer", footer).map_err(loro_err)?;
+
+        // Update settings in-place (reuse existing LoroMap for CRDT merge)
+        let settings_map: LoroMap = if let Some(sm) = get_sub_map(&metadata_map, "settings") {
+            sm
+        } else {
+            metadata_map
+                .insert_container("settings", LoroMap::new())
+                .map_err(loro_err)?
+        };
+        if let Some(ref settings) = incoming.board_settings {
+            write_settings_to_map(&settings_map, settings)?;
+        }
+
+        Ok(())
+    }
+
     /// Check whether the incoming board has a different structure than the CRDT.
-    /// Detects format upgrade (legacy→new), row/stack/column count changes, and
+    /// Detects format upgrade (legacy->new), row/stack/column count changes, and
     /// title/id changes that `diff_boards` (card-level only) would miss.
     fn has_structural_diff(&self, incoming: &KanbanBoard) -> bool {
         let root = self.doc.get_map("root");
@@ -748,13 +888,7 @@ impl CrdtStore {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         doc.set_peer_id(1).map_err(loro_err)?;
         let undo_mgr = UndoManager::new(&doc);
-        Ok(CrdtStore {
-            doc,
-            undo_mgr,
-            yaml_header: None,
-            kanban_footer: None,
-            board_settings: None,
-        })
+        Ok(CrdtStore { doc, undo_mgr })
     }
 
     /// Save CRDT state to a file.
@@ -769,16 +903,26 @@ impl CrdtStore {
         Self::load(&bytes)
     }
 
-    /// Update the stored markdown metadata (yaml_header, kanban_footer, board_settings).
+    /// Update the stored board metadata (yaml_header, kanban_footer, board_settings)
+    /// by writing it into the CRDT metadata map.
     pub fn set_metadata(
         &mut self,
         yaml_header: Option<String>,
         kanban_footer: Option<String>,
         board_settings: Option<BoardSettings>,
     ) {
-        self.yaml_header = yaml_header;
-        self.kanban_footer = kanban_footer;
-        self.board_settings = board_settings;
+        let board_for_meta = KanbanBoard {
+            valid: true,
+            title: String::new(),
+            columns: Vec::new(),
+            rows: Vec::new(),
+            yaml_header,
+            kanban_footer,
+            board_settings,
+        };
+        // Write into CRDT; ignore errors since this is a best-effort setter
+        let _ = self.sync_metadata(&board_for_meta);
+        self.doc.commit();
     }
 
     pub fn set_peer_id(&self, peer_id: u64) -> io::Result<()> {
@@ -1082,13 +1226,8 @@ mod tests {
         let store = CrdtStore::from_board(&board).unwrap();
         let bytes = store.save().unwrap();
 
-        let mut restored_store = CrdtStore::load(&bytes).unwrap();
-        // Set metadata since it's not persisted in the CRDT bytes
-        restored_store.set_metadata(
-            board.yaml_header.clone(),
-            board.kanban_footer.clone(),
-            board.board_settings.clone(),
-        );
+        // Metadata is now in the CRDT, so no need for set_metadata after load
+        let restored_store = CrdtStore::load(&bytes).unwrap();
         let restored_board = restored_store.to_board();
 
         assert_eq!(restored_board.title, "Test Board");
@@ -1144,7 +1283,6 @@ mod tests {
         // Client gets the initial state (shared history via snapshot)
         let snapshot = server_store.save().unwrap();
         let mut client_store = CrdtStore::load(&snapshot).unwrap();
-        client_store.set_metadata(base.yaml_header.clone(), None, None);
 
         let server_vv = server_store.oplog_vv();
 
@@ -1180,8 +1318,8 @@ mod tests {
         let tmp = tempfile::NamedTempFile::new().unwrap();
         store.save_to_file(tmp.path()).unwrap();
 
-        let mut restored = CrdtStore::load_from_file(tmp.path()).unwrap();
-        restored.set_metadata(board.yaml_header.clone(), None, None);
+        // Metadata now persists in CRDT, no need for set_metadata
+        let restored = CrdtStore::load_from_file(tmp.path()).unwrap();
         let restored_board = restored.to_board();
 
         assert_eq!(restored_board.columns[0].cards.len(), 1);
@@ -1193,8 +1331,8 @@ mod tests {
     fn make_two_peers(board: &KanbanBoard) -> (CrdtStore, CrdtStore) {
         let peer_a = CrdtStore::from_board(board).unwrap();
         let snapshot = peer_a.save().unwrap();
-        let mut peer_b = CrdtStore::load(&snapshot).unwrap();
-        peer_b.set_metadata(board.yaml_header.clone(), board.kanban_footer.clone(), board.board_settings.clone());
+        let peer_b = CrdtStore::load(&snapshot).unwrap();
+        // Metadata is now in the CRDT snapshot, no set_metadata needed
         peer_b.set_peer_id(2).unwrap();
         (peer_a, peer_b)
     }
@@ -1497,5 +1635,267 @@ mod tests {
         assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
         assert_eq!(result.rows[1].stacks[0].columns.len(), 1);
         assert_eq!(result.rows[1].stacks[0].columns[0].title, "New Column");
+    }
+
+    // ── Metadata CRDT tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_metadata_title_syncs_through_crdt() {
+        let mut board =
+            make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task", false)])]);
+        board.title = "Original Title".to_string();
+        let (mut peer_a, mut peer_b) = make_two_peers(&board);
+
+        // Peer A changes the title
+        let base_a = peer_a.to_board();
+        let mut updated_a = base_a.clone();
+        updated_a.title = "Title from Peer A".to_string();
+        peer_a.apply_board(&updated_a, &base_a).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+        assert_eq!(
+            result_a.title, result_b.title,
+            "title must converge across peers"
+        );
+        assert_eq!(result_a.title, "Title from Peer A");
+    }
+
+    #[test]
+    fn test_metadata_settings_sync_through_crdt() {
+        let mut board =
+            make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task", false)])]);
+        board.board_settings = Some(BoardSettings {
+            column_width: Some("200px".to_string()),
+            ..Default::default()
+        });
+
+        let (mut peer_a, mut peer_b) = make_two_peers(&board);
+
+        // Verify initial settings roundtrip
+        let initial_a = peer_a.to_board();
+        let initial_b = peer_b.to_board();
+        assert_eq!(
+            initial_a.board_settings.as_ref().unwrap().column_width,
+            Some("200px".to_string())
+        );
+        assert_eq!(
+            initial_b.board_settings.as_ref().unwrap().column_width,
+            Some("200px".to_string())
+        );
+
+        // Peer A changes column_width
+        let base_a = peer_a.to_board();
+        let mut updated_a = base_a.clone();
+        updated_a.board_settings = Some(BoardSettings {
+            column_width: Some("300px".to_string()),
+            font_size: Some("14px".to_string()),
+            ..Default::default()
+        });
+        peer_a.apply_board(&updated_a, &base_a).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+        assert_eq!(
+            result_a.board_settings, result_b.board_settings,
+            "settings must converge across peers"
+        );
+        let settings = result_a.board_settings.unwrap();
+        assert_eq!(settings.column_width, Some("300px".to_string()));
+        assert_eq!(settings.font_size, Some("14px".to_string()));
+    }
+
+    #[test]
+    fn test_metadata_footer_syncs_through_crdt() {
+        let mut board =
+            make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task", false)])]);
+        board.kanban_footer = Some("Original footer".to_string());
+
+        let (mut peer_a, mut peer_b) = make_two_peers(&board);
+
+        // Verify initial footer roundtrip
+        assert_eq!(
+            peer_a.to_board().kanban_footer,
+            Some("Original footer".to_string())
+        );
+
+        // Peer A changes footer
+        let base_a = peer_a.to_board();
+        let mut updated_a = base_a.clone();
+        updated_a.kanban_footer = Some("Updated footer from A".to_string());
+        peer_a.apply_board(&updated_a, &base_a).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+        assert_eq!(
+            result_a.kanban_footer, result_b.kanban_footer,
+            "footer must converge across peers"
+        );
+        assert_eq!(
+            result_a.kanban_footer,
+            Some("Updated footer from A".to_string())
+        );
+    }
+
+    #[test]
+    fn test_metadata_yaml_header_syncs_through_crdt() {
+        let mut board =
+            make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task", false)])]);
+        board.yaml_header = Some("---\nkanban-plugin: board\n---".to_string());
+
+        let (mut peer_a, mut peer_b) = make_two_peers(&board);
+
+        // Peer A changes yaml header
+        let base_a = peer_a.to_board();
+        let mut updated_a = base_a.clone();
+        updated_a.yaml_header =
+            Some("---\nkanban-plugin: board\ncustomKey: value\n---".to_string());
+        peer_a.apply_board(&updated_a, &base_a).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+        assert_eq!(
+            result_a.yaml_header, result_b.yaml_header,
+            "yaml_header must converge across peers"
+        );
+        assert_eq!(
+            result_a.yaml_header,
+            Some("---\nkanban-plugin: board\ncustomKey: value\n---".to_string())
+        );
+    }
+
+    #[test]
+    fn test_metadata_persists_through_save_load() {
+        let mut board =
+            make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task", false)])]);
+        board.yaml_header = Some("---\nkanban-plugin: board\n---".to_string());
+        board.kanban_footer = Some("My footer".to_string());
+        board.board_settings = Some(BoardSettings {
+            column_width: Some("250px".to_string()),
+            font_size: Some("16px".to_string()),
+            board_color: Some("#ff0000".to_string()),
+            ..Default::default()
+        });
+
+        let store = CrdtStore::from_board(&board).unwrap();
+        let bytes = store.save().unwrap();
+
+        // Load from snapshot -- metadata should be in CRDT, no set_metadata needed
+        let restored = CrdtStore::load(&bytes).unwrap();
+        let restored_board = restored.to_board();
+
+        assert_eq!(restored_board.yaml_header, board.yaml_header);
+        assert_eq!(restored_board.kanban_footer, board.kanban_footer);
+        assert_eq!(restored_board.board_settings, board.board_settings);
+    }
+
+    #[test]
+    fn test_legacy_crdt_without_metadata_upgrades_gracefully() {
+        // Board with no metadata
+        let board_no_meta = KanbanBoard {
+            valid: true,
+            title: "Legacy".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-1".to_string(),
+                title: "Todo".to_string(),
+                cards: vec![make_card("aaaa0001", "Task", false)],
+                include_source: None,
+            }],
+            rows: vec![],
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+        };
+
+        let mut store = CrdtStore::from_board(&board_no_meta).unwrap();
+
+        // to_board should work fine with empty metadata
+        let current = store.to_board();
+        assert!(current.yaml_header.is_none());
+        assert!(current.kanban_footer.is_none());
+        assert!(current.board_settings.is_none());
+
+        // Now apply a board that has metadata
+        let incoming = KanbanBoard {
+            valid: true,
+            title: "Legacy".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-1".to_string(),
+                title: "Todo".to_string(),
+                cards: vec![make_card("aaaa0001", "Task", false)],
+                include_source: None,
+            }],
+            rows: vec![],
+            yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
+            kanban_footer: Some("New footer".to_string()),
+            board_settings: Some(BoardSettings {
+                column_width: Some("300px".to_string()),
+                ..Default::default()
+            }),
+        };
+
+        store.apply_board(&incoming, &current).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(
+            result.yaml_header,
+            Some("---\nkanban-plugin: board\n---".to_string())
+        );
+        assert_eq!(result.kanban_footer, Some("New footer".to_string()));
+        assert_eq!(
+            result.board_settings.as_ref().unwrap().column_width,
+            Some("300px".to_string())
+        );
+    }
+
+    #[test]
+    fn test_concurrent_settings_changes_merge() {
+        // Two peers change different settings fields concurrently.
+        // Since each field is its own key in the CRDT map, both changes should merge.
+        let mut board =
+            make_legacy_board(vec![("Todo", vec![make_card("aaaa0001", "Task", false)])]);
+        board.board_settings = Some(BoardSettings::default());
+
+        let (mut peer_a, mut peer_b) = make_two_peers(&board);
+
+        // Peer A changes font_size
+        let base_a = peer_a.to_board();
+        let mut updated_a = base_a.clone();
+        updated_a.board_settings = Some(BoardSettings {
+            font_size: Some("18px".to_string()),
+            ..Default::default()
+        });
+        peer_a.apply_board(&updated_a, &base_a).unwrap();
+
+        // Peer B changes column_width
+        let base_b = peer_b.to_board();
+        let mut updated_b = base_b.clone();
+        updated_b.board_settings = Some(BoardSettings {
+            column_width: Some("400px".to_string()),
+            ..Default::default()
+        });
+        peer_b.apply_board(&updated_b, &base_b).unwrap();
+
+        sync_peers(&mut peer_a, &mut peer_b);
+
+        let result_a = peer_a.to_board();
+        let result_b = peer_b.to_board();
+
+        // Both peers should see both settings
+        assert_eq!(
+            result_a.board_settings, result_b.board_settings,
+            "settings must converge across peers"
+        );
+        let settings = result_a.board_settings.unwrap();
+        assert_eq!(settings.font_size, Some("18px".to_string()));
+        assert_eq!(settings.column_width, Some("400px".to_string()));
     }
 }
