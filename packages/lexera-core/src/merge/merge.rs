@@ -62,7 +62,9 @@ pub fn three_way_merge(
     let mut conflicts = Vec::new();
     let mut auto_merged: usize = 0;
 
-    // Build merged columns based on theirs (disk) as the structural base
+    // Build merged columns based on theirs (disk) as the structural base.
+    // Cards are collected as (KanbanCard, resolved_position) pairs so we can
+    // sort each column by position after all cards have been placed.
     let mut merged_columns: Vec<KanbanColumn> = theirs
         .all_columns()
         .iter()
@@ -73,6 +75,9 @@ pub fn three_way_merge(
             include_source: col.include_source.clone(),
         })
         .collect();
+
+    // Parallel vec: for each merged column, store the resolved position per card
+    let mut column_positions: Vec<Vec<usize>> = vec![Vec::new(); merged_columns.len()];
 
     // Add any columns that exist only in ours
     for our_col in ours.all_columns() {
@@ -95,6 +100,7 @@ pub fn three_way_merge(
                     include_source: our_col.include_source.clone(),
                 });
             }
+            column_positions.push(Vec::new());
         }
     }
 
@@ -175,6 +181,48 @@ pub fn three_way_merge(
                     o.column_title.clone()
                 };
 
+                // Position merge: only meaningful when the card stays in the same column
+                // across all three versions. When a card is moved to a different column,
+                // position in the new column is determined by the side that moved it.
+                let merged_position;
+                let same_column_all = b.column_title == t.column_title
+                    && b.column_title == o.column_title;
+
+                if same_column_all {
+                    let pos_changed_theirs = b.position != t.position;
+                    let pos_changed_ours = b.position != o.position;
+
+                    if pos_changed_theirs && pos_changed_ours && t.position != o.position {
+                        // Both sides reordered differently -> theirs wins, report conflict
+                        conflicts.push(CardConflict {
+                            card_id: kid.clone(),
+                            column_title: t.column_title.clone(),
+                            field: ConflictField::Position,
+                            base_value: b.position.to_string(),
+                            theirs_value: t.position.to_string(),
+                            ours_value: o.position.to_string(),
+                        });
+                        merged_position = t.position;
+                    } else if pos_changed_theirs {
+                        merged_position = t.position;
+                        if pos_changed_ours {
+                            // Both changed to same position -> auto-merge
+                            auto_merged += 1;
+                        }
+                    } else {
+                        // Only ours changed, or neither changed
+                        merged_position = o.position;
+                    }
+                } else {
+                    // Card moved columns: use the position from whichever side determined
+                    // the target column
+                    if b.column_title != t.column_title {
+                        merged_position = t.position;
+                    } else {
+                        merged_position = o.position;
+                    }
+                }
+
                 let merged_card = KanbanCard {
                     id: String::new(),
                     content: merged_content,
@@ -182,7 +230,13 @@ pub fn three_way_merge(
                     kid: Some(kid.clone()),
                 };
 
-                add_card_to_column(&mut merged_columns, &target_col, merged_card);
+                add_card_to_column_with_position(
+                    &mut merged_columns,
+                    &mut column_positions,
+                    &target_col,
+                    merged_card,
+                    merged_position,
+                );
             }
 
             // In base and theirs, not in ours -> user deleted
@@ -198,7 +252,13 @@ pub fn three_way_merge(
                     checked: o.checked,
                     kid: Some(kid.clone()),
                 };
-                add_card_to_column(&mut merged_columns, &o.column_title, card);
+                add_card_to_column_with_position(
+                    &mut merged_columns,
+                    &mut column_positions,
+                    &o.column_title,
+                    card,
+                    o.position,
+                );
             }
 
             // Only in theirs -> externally added
@@ -209,7 +269,13 @@ pub fn three_way_merge(
                     checked: t.checked,
                     kid: Some(kid.clone()),
                 };
-                add_card_to_column(&mut merged_columns, &t.column_title, card);
+                add_card_to_column_with_position(
+                    &mut merged_columns,
+                    &mut column_positions,
+                    &t.column_title,
+                    card,
+                    t.position,
+                );
             }
 
             // Only in ours -> user added
@@ -220,7 +286,13 @@ pub fn three_way_merge(
                     checked: o.checked,
                     kid: Some(kid.clone()),
                 };
-                add_card_to_column(&mut merged_columns, &o.column_title, card);
+                add_card_to_column_with_position(
+                    &mut merged_columns,
+                    &mut column_positions,
+                    &o.column_title,
+                    card,
+                    o.position,
+                );
             }
 
             // In theirs and ours, not in base -> both added independently
@@ -233,7 +305,13 @@ pub fn three_way_merge(
                         checked: t.checked,
                         kid: Some(kid.clone()),
                     };
-                    add_card_to_column(&mut merged_columns, &t.column_title, card);
+                    add_card_to_column_with_position(
+                        &mut merged_columns,
+                        &mut column_positions,
+                        &t.column_title,
+                        card,
+                        t.position,
+                    );
                 } else {
                     // Different content with same kid is unusual, keep theirs version
                     let card = KanbanCard {
@@ -242,7 +320,13 @@ pub fn three_way_merge(
                         checked: t.checked,
                         kid: Some(kid.clone()),
                     };
-                    add_card_to_column(&mut merged_columns, &t.column_title, card);
+                    add_card_to_column_with_position(
+                        &mut merged_columns,
+                        &mut column_positions,
+                        &t.column_title,
+                        card,
+                        t.position,
+                    );
                     auto_merged += 1;
                 }
             }
@@ -251,6 +335,18 @@ pub fn three_way_merge(
             (Some(_), None, None) | (None, None, None) => {
                 // Card removed by both sides or doesn't exist
             }
+        }
+    }
+
+    // Sort cards within each column by their resolved position
+    for (col_idx, col) in merged_columns.iter_mut().enumerate() {
+        if col.cards.len() > 1 {
+            let positions = &column_positions[col_idx];
+            // Build (index, position) pairs and sort by position, stable
+            let mut indices: Vec<usize> = (0..col.cards.len()).collect();
+            indices.sort_by_key(|&i| positions[i]);
+            let sorted_cards: Vec<KanbanCard> = indices.iter().map(|&i| col.cards[i].clone()).collect();
+            col.cards = sorted_cards;
         }
     }
 
@@ -302,13 +398,21 @@ pub fn three_way_merge(
     }
 }
 
-/// Add a card to the appropriate column in the merged columns list.
-fn add_card_to_column(columns: &mut [KanbanColumn], column_title: &str, card: KanbanCard) {
-    if let Some(col) = columns.iter_mut().find(|c| c.title == column_title) {
-        col.cards.push(card);
-    } else if let Some(first) = columns.first_mut() {
+/// Add a card to the appropriate column with a resolved position for later sorting.
+fn add_card_to_column_with_position(
+    columns: &mut [KanbanColumn],
+    column_positions: &mut [Vec<usize>],
+    column_title: &str,
+    card: KanbanCard,
+    position: usize,
+) {
+    if let Some(idx) = columns.iter().position(|c| c.title == column_title) {
+        columns[idx].cards.push(card);
+        column_positions[idx].push(position);
+    } else if !columns.is_empty() {
         // Fallback: if target column doesn't exist, put in first column
-        first.cards.push(card);
+        columns[0].cards.push(card);
+        column_positions[0].push(position);
     }
 }
 
@@ -870,7 +974,7 @@ mod tests {
 
     #[test]
     fn test_add_card_to_column_fallback_first() {
-        // Directly test add_card_to_column with a missing target column
+        // Directly test add_card_to_column_with_position with a missing target column
         let mut columns = vec![
             KanbanColumn {
                 id: "c1".into(),
@@ -885,8 +989,9 @@ mod tests {
                 include_source: None,
             },
         ];
+        let mut positions = vec![Vec::new(), Vec::new()];
         let card = make_card("aaa00001", "Orphan card", false);
-        add_card_to_column(&mut columns, "Nonexistent", card);
+        add_card_to_column_with_position(&mut columns, &mut positions, "Nonexistent", card, 0);
 
         // Should fall back to the first column
         assert_eq!(columns[0].cards.len(), 1);
@@ -1095,5 +1200,325 @@ mod tests {
 
         // Total: c001-c008 present (c003 kept conservatively) = 8 cards
         assert_eq!(all_cards.len(), 8);
+    }
+
+    // ---------------------------------------------------------------
+    // Position-aware merge tests
+    // ---------------------------------------------------------------
+
+    /// Helper to get the ordered kids from a column in the merge result.
+    fn get_column_kids(result: &MergeResult, col_title: &str) -> Vec<String> {
+        let col = result
+            .board
+            .columns
+            .iter()
+            .find(|c| c.title == col_title);
+        match col {
+            Some(c) => c
+                .cards
+                .iter()
+                .filter_map(|card| card.kid.clone())
+                .collect(),
+            None => {
+                // Check in rows format
+                for row in &result.board.rows {
+                    for stack in &row.stacks {
+                        for c in &stack.columns {
+                            if c.title == col_title {
+                                return c
+                                    .cards
+                                    .iter()
+                                    .filter_map(|card| card.kid.clone())
+                                    .collect();
+                            }
+                        }
+                    }
+                }
+                Vec::new()
+            }
+        }
+    }
+
+    #[test]
+    fn test_merge_position_one_side_reorders_theirs() {
+        // Base: A, B, C in Todo
+        // Theirs: C, A, B (theirs reordered)
+        // Ours: A, B, C (unchanged)
+        // Expected: C, A, B (theirs reorder applied)
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c003", "Card C", false),
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+            ],
+        )]);
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c003", "c001", "c002"]);
+    }
+
+    #[test]
+    fn test_merge_position_one_side_reorders_ours() {
+        // Base: A, B, C in Todo
+        // Theirs: A, B, C (unchanged)
+        // Ours: B, C, A (ours reordered)
+        // Expected: B, C, A (ours reorder applied)
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let theirs = base.clone();
+        let ours = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+                make_card("c001", "Card A", false),
+            ],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c002", "c003", "c001"]);
+    }
+
+    #[test]
+    fn test_merge_position_both_reorder_differently_theirs_wins() {
+        // Base: A(0), B(1), C(2)
+        // Theirs: B(0), C(1), A(2) -- theirs reordered
+        // Ours: C(0), A(1), B(2) -- ours reordered differently
+        // For each card, both sides changed position and differ -> theirs wins:
+        //   c001(A): base=0, theirs=2, ours=1 -> theirs=2
+        //   c002(B): base=1, theirs=0, ours=2 -> theirs=0
+        //   c003(C): base=2, theirs=1, ours=0 -> theirs=1
+        // Sorted by theirs' positions: B(0), C(1), A(2)
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+                make_card("c001", "Card A", false),
+            ],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c003", "Card C", false),
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+            ],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        // Position conflicts should be reported for all 3 cards (all moved differently)
+        let pos_conflicts: Vec<_> = result
+            .conflicts
+            .iter()
+            .filter(|c| c.field == ConflictField::Position)
+            .collect();
+        assert_eq!(pos_conflicts.len(), 3);
+        // Theirs wins: B(0), C(1), A(2)
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c002", "c003", "c001"]);
+    }
+
+    #[test]
+    fn test_merge_position_reorder_plus_content_change() {
+        // Base: A, B, C in Todo
+        // Theirs: C, A, B (reordered) AND content of A changed
+        // Ours: A, B, C (unchanged)
+        // Expected: C, A, B order AND A has theirs' content
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c003", "Card C", false),
+                make_card("c001", "Card A updated", false),
+                make_card("c002", "Card B", false),
+            ],
+        )]);
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c003", "c001", "c002"]);
+        // Verify content was updated
+        let card_a = result.board.columns[0]
+            .cards
+            .iter()
+            .find(|c| c.kid.as_deref() == Some("c001"))
+            .unwrap();
+        assert_eq!(card_a.content, "Card A updated");
+    }
+
+    #[test]
+    fn test_merge_position_reorder_ours_content_theirs() {
+        // Base: A, B, C in Todo
+        // Theirs: A, B, C (unchanged order) BUT content of B changed
+        // Ours: C, A, B (reordered)
+        // Expected: C, A, B order AND B has theirs' content
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B edited", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let ours = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c003", "Card C", false),
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+            ],
+        )]);
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c003", "c001", "c002"]);
+        // Verify content merge: B should have theirs' edited content
+        let card_b = result.board.columns[0]
+            .cards
+            .iter()
+            .find(|c| c.kid.as_deref() == Some("c002"))
+            .unwrap();
+        assert_eq!(card_b.content, "Card B edited");
+    }
+
+    #[test]
+    fn test_merge_position_complex_multiple_cards_reordered() {
+        // Base: A(0), B(1), C(2), D(3), E(4) in Todo
+        // Theirs: E, D, C, B, A (fully reversed)
+        // Ours: A, B, C, D, E (unchanged)
+        // Expected: E, D, C, B, A (theirs reorder applied)
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "A", false),
+                make_card("c002", "B", false),
+                make_card("c003", "C", false),
+                make_card("c004", "D", false),
+                make_card("c005", "E", false),
+            ],
+        )]);
+        let theirs = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c005", "E", false),
+                make_card("c004", "D", false),
+                make_card("c003", "C", false),
+                make_card("c002", "B", false),
+                make_card("c001", "A", false),
+            ],
+        )]);
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c005", "c004", "c003", "c002", "c001"]);
+    }
+
+    #[test]
+    fn test_merge_position_unchanged_preserves_order() {
+        // Base: A, B, C -- neither side changes anything
+        // Order should be preserved as A, B, C
+        let base = make_board(vec![(
+            "Todo",
+            vec![
+                make_card("c001", "Card A", false),
+                make_card("c002", "Card B", false),
+                make_card("c003", "Card C", false),
+            ],
+        )]);
+        let theirs = base.clone();
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c001", "c002", "c003"]);
+    }
+
+    #[test]
+    fn test_merge_position_new_format_reorder() {
+        // Same reorder test but with new format (rows/stacks)
+        let base = make_new_format_board(vec![(
+            "Row 1",
+            vec![(
+                "Stack A",
+                vec![(
+                    "Todo",
+                    vec![
+                        make_card("c001", "Card A", false),
+                        make_card("c002", "Card B", false),
+                        make_card("c003", "Card C", false),
+                    ],
+                )],
+            )],
+        )]);
+        let theirs = make_new_format_board(vec![(
+            "Row 1",
+            vec![(
+                "Stack A",
+                vec![(
+                    "Todo",
+                    vec![
+                        make_card("c003", "Card C", false),
+                        make_card("c001", "Card A", false),
+                        make_card("c002", "Card B", false),
+                    ],
+                )],
+            )],
+        )]);
+        let ours = base.clone();
+
+        let result = three_way_merge(&base, &theirs, &ours);
+        assert!(result.conflicts.is_empty());
+        let kids = get_column_kids(&result, "Todo");
+        assert_eq!(kids, vec!["c003", "c001", "c002"]);
     }
 }
