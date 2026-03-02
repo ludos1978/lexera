@@ -167,10 +167,10 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 ### lexera-core
 1. ~~41+ unwrap() calls in crdt/bridge.rs~~ FIXED (commit f41165c8)
 2. ~~No include file cycle detection~~ FIXED (commit e84fb78f)
-3. Dual parser paths (legacy vs new format) - maintenance burden, 2x test cases
+3. ~~Dual parser paths (legacy vs new format)~~ FIXED: single internal path, legacy wraps in default row/stack (commit 76d5e370)
 4. ~~CRDT metadata limitation: YAML header, footer, settings stored outside CRDT~~ FIXED: metadata LoroMap in CRDT root (commit 96d60e60)
 5. ~~Merge ignores card reordering within columns~~ FIXED: position-aware 3-way merge (commit fd7f70f3)
-6. Include files merged as atomic chunks, not card-level - concurrent edits cause full conflict
+6. ~~Include files merged as atomic chunks~~ VERIFIED: already card-level merge via kid tracking; 5 tests added (commit d4b833a6)
 7. ~~Search uses ASCII case sensitivity, no Unicode/accent normalization~~ FIXED: unicode-normalization crate (commit a984c536)
 8. ~~has_structural_mismatch() may false-trigger on implicit Default rows/stacks~~ FIXED: normalize defaults (commit 70813a75)
 9. ~~No CRDT corruption recovery tests~~ FIXED: 3 test cases (commit 84a4e565)
@@ -216,7 +216,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 3. ~~Startup panics with .expect() - no graceful fallback~~ FIXED: graceful error handling (commit ee3dd8a2)
 4. ~~write_board() returns Ok(None) - merge infrastructure unused~~ BY DESIGN: iOS is append-only (add_card), no concurrent editing or merge needed
 5. ~~No board deletion/card editing commands~~ FIXED: board deletion (commit 07f12371) + card edit/delete (commit d714fc30)
-6. No data encryption in App Group container
+6. ~~No data encryption in App Group container~~ FIXED: AES-256-GCM encryption at rest with auto-migration (commit ce3a1fdf)
 7. ~~Base64 images in JSON could exhaust memory for large images~~ FIXED: 10MB base64 limit in process_pending (commit 95e8c6a2)
 8. ~~Race condition window between lock releases in write_board_file()~~ FIXED: single write lock scope (commit fe63b8fa)
 9. ~~Unused `base64` dependency in Cargo.toml~~ FIXED (commit 4f67f5ce)
@@ -315,7 +315,7 @@ Why: CRDT exists but could be more robust for edge cases.
 Tasks:
 1. Add vector clock support (currently uses monotonic counter)
 2. ~~Improve structural change handling in sync_column_structure~~ FIXED: has_structural_diff() + format upgrade branch (commit b0d05a1a)
-3. Add conflict resolution strategies beyond last-write-wins
+3. ~~Add conflict resolution strategies beyond last-write-wins~~ DONE: MergeStrategy enum with TheirsWins/OursWins/MostRecent/KeepBoth (commit d4b833a6)
 4. ~~Test concurrent edits from multiple peers~~ DONE: 4 concurrent edit scenarios (commit 1f6270ec)
 5. ~~Move YAML/settings into CRDT for collaborative consistency~~ DONE: metadata LoroMap with field-level settings merge (commit 96d60e60)
 
@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 444 | Good |
+| lexera-core | ~9,925 | - | - | 463 | Good |
 | lexera-backend | ~5,887 | ~1,330 | ~200 | 132 | Good |
 | lexera-kanban | ~700 | ~17,000 | ~4,100 | 264 (JS) | Good |
-| lexera-capture-ios | ~609 | ~320 | ~200 | 28 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **868** | - |
+| lexera-capture-ios | ~609 | ~320 | ~200 | 42 | Good |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **901** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -467,9 +467,9 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
 | Code Quality | 5/5 (zero production unwrap) | 4/5 (zero production unwrap, named constants) | 2/5 | 4/5 (zero production unwrap, named constants) |
-| Testing | 5/5 (444 tests) | 4/5 (132 tests, full service + sync coverage) | 3/5 (264 tests across 5 files) | 3/5 (+: 28 unit tests) |
+| Testing | 5/5 (463 tests) | 4/5 (132 tests, full service + sync coverage) | 3/5 (264 tests across 5 files) | 4/5 (42 tests, encryption coverage) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
-| Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
+| Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 3/5 (+: AES-256-GCM encryption at rest) |
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
 | API Design | 4/5 | 3/5 | 3/5 | 3/5 |
 | Collaboration | 5/5 (CRDT + metadata sync + position merge) | 4/5 (presence, persistence, board isolation) | 3/5 (presence UI, virtual scrolling) | - |
