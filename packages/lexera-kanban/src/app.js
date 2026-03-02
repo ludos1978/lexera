@@ -7309,30 +7309,33 @@ const LexeraDashboard = (function () {
     closeRowStackMenu();
     closeColumnContextMenu();
     closeCardContextMenu();
-    traceFrontendAction('info', 'row.menu', 'Opening row context menu', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      x: x,
-      y: y
-    });
-    showNativeMenu([
-      { id: 'rename', label: 'Rename Row' },
-      { id: 'add-stack', label: 'Add Stack' },
+    var row = findFullDataRow(rowIdx);
+    var rowTitle = row ? (row.title || '') : '';
+
+    var nativeItems = [
+      { id: 'reveal-all', label: 'Reveal all' },
+      { id: 'insert-before', label: 'Insert row before' },
+      { id: 'insert-after', label: 'Insert row after' },
+      { id: 'duplicate', label: 'Duplicate row' },
       { separator: true },
-      { id: 'add-row-before', label: 'Add Row Above' },
-      { id: 'add-row-after', label: 'Add Row Below' },
+      { id: 'park', label: 'Park row' },
+      { id: 'archive', label: 'Archive row' },
+      { id: 'delete', label: 'Delete row' },
       { separator: true },
-      { id: 'archive', label: 'Archive Row' },
-      { id: 'park', label: 'Park Row' },
-      { id: 'delete', label: 'Move Row to Trash' },
-    ], x, y, 'row.menu').then(function (action) {
-      if (!action) {
-        traceFrontendAction('warn', 'row.menu', 'Row context menu closed without selection', {
-          boardId: activeBoardId || null,
-          rowIdx: rowIdx
-        });
-        return;
-      }
+      buildTagSubmenu('Special', TAG_CATEGORIES.special, rowTitle, 'tag-special-'),
+      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, rowTitle, 'tag-pos-'),
+      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, rowTitle, 'tag-color-'),
+      buildTagSubmenu('Workflow', TAG_CATEGORIES.workflow, rowTitle, 'tag-wf-'),
+      buildTagSubmenu('Complexity', TAG_CATEGORIES.complexity, rowTitle, 'tag-cx-'),
+    ];
+    var customSub = buildCustomTagsSubmenu(rowTitle, 'tag-custom-');
+    if (customSub) nativeItems.push(customSub);
+    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems.push({ separator: true });
+    nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
+
+    showNativeMenu(nativeItems, x, y, 'row.menu').then(function (action) {
+      if (!action) return;
       handleRowAction(action, rowIdx);
     });
   }
@@ -7341,80 +7344,80 @@ const LexeraDashboard = (function () {
     closeRowStackMenu();
     closeColumnContextMenu();
     closeCardContextMenu();
-    traceFrontendAction('info', 'stack.menu', 'Opening stack context menu', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      stackIdx: stackIdx,
-      x: x,
-      y: y
-    });
-    showNativeMenu([
-      { id: 'rename', label: 'Rename Stack' },
-      { id: 'add-column', label: 'Add Column' },
+    var stack = findFullDataStack(rowIdx, stackIdx);
+    var stackTitle = stack ? (stack.title || '') : '';
+
+    var nativeItems = [
+      { id: 'reveal-all', label: 'Reveal all' },
+      { id: 'insert-before', label: 'Insert stack before' },
+      { id: 'insert-after', label: 'Insert stack after' },
+      { id: 'duplicate', label: 'Duplicate stack' },
       { separator: true },
-      { id: 'add-stack-before', label: 'Add Stack Before' },
-      { id: 'add-stack-after', label: 'Add Stack After' },
+      { id: 'park', label: 'Park stack' },
+      { id: 'archive', label: 'Archive stack' },
+      { id: 'delete', label: 'Delete stack' },
       { separator: true },
-      { id: 'archive', label: 'Archive Stack' },
-      { id: 'park', label: 'Park Stack' },
-      { id: 'delete', label: 'Move Stack to Trash' },
-    ], x, y, 'stack.menu').then(function (action) {
-      if (!action) {
-        traceFrontendAction('warn', 'stack.menu', 'Stack context menu closed without selection', {
-          boardId: activeBoardId || null,
-          rowIdx: rowIdx,
-          stackIdx: stackIdx
-        });
-        return;
-      }
+      buildTagSubmenu('Special', TAG_CATEGORIES.special, stackTitle, 'tag-special-'),
+      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, stackTitle, 'tag-pos-'),
+      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, stackTitle, 'tag-color-'),
+      buildTagSubmenu('Workflow', TAG_CATEGORIES.workflow, stackTitle, 'tag-wf-'),
+      buildTagSubmenu('Complexity', TAG_CATEGORIES.complexity, stackTitle, 'tag-cx-'),
+    ];
+    var customSub = buildCustomTagsSubmenu(stackTitle, 'tag-custom-');
+    if (customSub) nativeItems.push(customSub);
+    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems.push({ separator: true });
+    nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
+
+    showNativeMenu(nativeItems, x, y, 'stack.menu').then(function (action) {
+      if (!action) return;
       handleStackAction(action, rowIdx, stackIdx);
     });
   }
 
   function handleRowAction(action, rowIdx) {
-    traceFrontendAction('info', 'row.action', 'Dispatching row action', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      action: action
-    });
-    if (action === 'rename') {
-      renameRowOrStack('row', rowIdx);
-    } else if (action === 'add-stack') {
-      addStackToRow(rowIdx);
-    } else if (action === 'add-row-before') {
+    if (action === 'reveal-all') {
+      revealRowContent(rowIdx);
+    } else if (action === 'insert-before') {
       addRow(rowIdx);
-    } else if (action === 'add-row-after') {
+    } else if (action === 'insert-after') {
       addRow(rowIdx + 1);
-    } else if (action === 'archive') {
-      setRowHiddenTag(rowIdx, '#hidden-internal-archived');
+    } else if (action === 'duplicate') {
+      duplicateRow(rowIdx);
     } else if (action === 'park') {
       setRowHiddenTag(rowIdx, '#hidden-internal-parked');
+    } else if (action === 'archive') {
+      setRowHiddenTag(rowIdx, '#hidden-internal-archived');
     } else if (action === 'delete') {
       deleteRow(rowIdx);
+    } else if (action === 'copy-markdown') {
+      copyElementAsMarkdown('row', { rowIdx: rowIdx });
+    } else if (action.indexOf('tag-') === 0) {
+      var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
+      if (tagMatch) toggleTag('row', { rowIdx: rowIdx }, '#' + tagMatch[1]);
     }
   }
 
   function handleStackAction(action, rowIdx, stackIdx) {
-    traceFrontendAction('info', 'stack.action', 'Dispatching stack action', {
-      boardId: activeBoardId || null,
-      rowIdx: rowIdx,
-      stackIdx: stackIdx,
-      action: action
-    });
-    if (action === 'rename') {
-      renameRowOrStack('stack', rowIdx, stackIdx);
-    } else if (action === 'add-column') {
-      addColumnToStack(rowIdx, stackIdx);
-    } else if (action === 'add-stack-before') {
+    if (action === 'reveal-all') {
+      revealStackContent(rowIdx, stackIdx);
+    } else if (action === 'insert-before') {
       addStackToRow(rowIdx, stackIdx);
-    } else if (action === 'add-stack-after') {
+    } else if (action === 'insert-after') {
       addStackToRow(rowIdx, stackIdx + 1);
-    } else if (action === 'archive') {
-      setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-archived');
+    } else if (action === 'duplicate') {
+      duplicateStack(rowIdx, stackIdx);
     } else if (action === 'park') {
       setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-parked');
+    } else if (action === 'archive') {
+      setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-archived');
     } else if (action === 'delete') {
       deleteStack(rowIdx, stackIdx);
+    } else if (action === 'copy-markdown') {
+      copyElementAsMarkdown('stack', { rowIdx: rowIdx, stackIdx: stackIdx });
+    } else if (action.indexOf('tag-') === 0) {
+      var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
+      if (tagMatch) toggleTag('stack', { rowIdx: rowIdx, stackIdx: stackIdx }, '#' + tagMatch[1]);
     }
   }
 
@@ -11656,67 +11659,64 @@ const LexeraDashboard = (function () {
   function showCardContextMenu(x, y, colIndex, cardIndex) {
     closeCardContextMenu();
 
-    // Build native menu items
-    var nativeItems = [
-      { id: 'add-card', label: 'Add Card' },
-      { separator: true },
-      { id: 'edit', label: 'Edit Inline' },
-      { id: 'edit-overlay', label: 'Open Overlay Editor' },
-      { id: 'duplicate', label: 'Duplicate' },
-      { id: 'move-up', label: 'Move Up' },
-      { id: 'move-down', label: 'Move Down' },
-    ];
-    // "Move to Column" submenu
-    var moveSubItems = [];
-    if (activeBoardData) {
-      for (var i = 0; i < activeBoardData.columns.length; i++) {
-        var c = activeBoardData.columns[i];
-        if (c.index === colIndex) continue;
-        moveSubItems.push({ id: 'move-to:' + c.index, label: stripStackTag(c.title) });
-      }
+    var col = getFullColumn(colIndex);
+    var cardText = '';
+    if (col) {
+      var fullIdx = getFullCardIndex(col, cardIndex);
+      if (fullIdx !== -1 && col.cards[fullIdx]) cardText = col.cards[fullIdx].content || '';
     }
-    if (moveSubItems.length > 0) {
-      nativeItems.push({ separator: true });
-      nativeItems.push({ id: 'move-sub', label: 'Move to Column', items: moveSubItems });
-    }
-    nativeItems.push({ separator: true });
-    nativeItems.push({ id: 'archive', label: 'Archive' });
-    nativeItems.push({ id: 'park', label: 'Park' });
-    nativeItems.push({ id: 'delete', label: 'Delete' });
 
-    showNativeMenu(nativeItems, x, y).then(function (action) {
-    if (action) handleCardMenuAction(action, colIndex, cardIndex);
-  });
-}
+    var nativeItems = [
+      { id: 'edit-overlay', label: 'Edit task (overlay)' },
+      { id: 'reveal', label: 'Reveal content' },
+      { id: 'copy-markdown', label: 'Copy as markdown' },
+      { separator: true },
+      { id: 'insert-before', label: 'Insert card before' },
+      { id: 'insert-after', label: 'Insert card after' },
+      { id: 'duplicate', label: 'Duplicate card' },
+      { separator: true },
+      { id: 'park', label: 'Park card' },
+      { id: 'archive', label: 'Archive card' },
+      { id: 'delete', label: 'Delete card' },
+      { separator: true },
+      buildTagSubmenu('Special', TAG_CATEGORIES.special, cardText, 'tag-special-'),
+      buildTagSubmenu('Status', TAG_CATEGORIES.status, cardText, 'tag-status-'),
+      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, cardText, 'tag-pos-'),
+      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, cardText, 'tag-color-'),
+      buildTagSubmenu('Impact', TAG_CATEGORIES.impact, cardText, 'tag-impact-'),
+    ];
+    var customSub = buildCustomTagsSubmenu(cardText, 'tag-custom-');
+    if (customSub) nativeItems.push(customSub);
+    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+
+    showNativeMenu(nativeItems, x, y, 'card.menu').then(function (action) {
+      if (action) handleCardMenuAction(action, colIndex, cardIndex);
+    });
+  }
 
   function handleCardMenuAction(action, colIndex, cardIndex) {
-    if (action === 'add-card') {
-      addEmptyCardToActiveBoard(colIndex);
-    } else if (action === 'edit') {
-      var cardsEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
-      if (cardsEls.length > 0) {
-        openCardEditor(cardsEls[0], colIndex, cardIndex, 'inline');
-      }
-    } else if (action === 'edit-overlay') {
-      var overlayCardsEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
-      if (overlayCardsEls.length > 0) {
-        openCardEditor(overlayCardsEls[0], colIndex, cardIndex, 'overlay');
-      }
+    if (action === 'edit-overlay') {
+      var cardEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+      if (cardEls.length > 0) openCardEditor(cardEls[0], colIndex, cardIndex, 'overlay');
+    } else if (action === 'reveal') {
+      revealCardContent(colIndex, cardIndex);
+    } else if (action === 'copy-markdown') {
+      copyElementAsMarkdown('card', { colIndex: colIndex, cardIndex: cardIndex });
+    } else if (action === 'insert-before') {
+      insertCardAtIndex(colIndex, cardIndex);
+    } else if (action === 'insert-after') {
+      insertCardAtIndex(colIndex, cardIndex + 1);
     } else if (action === 'duplicate') {
       duplicateCard(colIndex, cardIndex);
-    } else if (action === 'move-up') {
-      if (cardIndex > 0) moveCard(colIndex, cardIndex, colIndex, cardIndex - 1);
-    } else if (action === 'move-down') {
-      moveCard(colIndex, cardIndex, colIndex, cardIndex + 2);
-    } else if (action.indexOf('move-to:') === 0) {
-      var targetCol = parseInt(action.substring(8), 10);
-      moveCard(colIndex, cardIndex, targetCol, 0);
-    } else if (action === 'archive') {
-      tagCard(colIndex, cardIndex, '#hidden-internal-archived');
     } else if (action === 'park') {
       tagCard(colIndex, cardIndex, '#hidden-internal-parked');
+    } else if (action === 'archive') {
+      tagCard(colIndex, cardIndex, '#hidden-internal-archived');
     } else if (action === 'delete') {
       deleteCard(colIndex, cardIndex);
+    } else if (action.indexOf('tag-') === 0) {
+      var tagMatch = action.match(/^tag-(?:special|status|pos|color|impact|custom)-(.+)$/);
+      if (tagMatch) toggleTag('card', { colIndex: colIndex, cardIndex: cardIndex }, '#' + tagMatch[1]);
     }
   }
 
@@ -11810,93 +11810,55 @@ const LexeraDashboard = (function () {
     closeColumnContextMenu();
     closeCardContextMenu();
     var col = getFullColumn(colIndex);
+    var colTitle = col ? (col.title || '') : '';
+    var layout = getColumnLayoutTags(colTitle);
+    var isStacked = layout.stack;
+    var currentSpan = layout.span ? parseInt(layout.span.match(/\d+/)[0], 10) : 1;
     var includePath = col && col.includeSource && col.includeSource.rawPath
       ? String(col.includeSource.rawPath)
-      : extractIncludePathFromTitle(col && col.title ? col.title : '');
+      : extractIncludePathFromTitle(colTitle);
 
     var nativeItems = [
-      { id: 'rename', label: 'Rename' },
-      { id: 'add-card', label: 'Add Card' },
+      { id: 'reveal-all', label: 'Reveal all' },
+      { id: 'add-before', label: 'Insert column before' },
+      { id: 'add-after', label: 'Insert column after' },
+      { id: 'duplicate', label: 'Duplicate column' },
       { separator: true },
-      { id: 'add-before', label: 'Add Column Before' },
-      { id: 'add-after', label: 'Add Column After' },
+      { id: 'park', label: 'Park column' },
+      { id: 'archive', label: 'Archive column' },
+      { id: 'delete', label: 'Delete column' },
       { separator: true },
-      { id: 'fold-all', label: 'Fold All Cards' },
-      { id: 'unfold-all', label: 'Unfold All Cards' },
-      { separator: true },
-      { id: 'sort-title', label: 'Sort by Title' },
-      { id: 'sort-tag', label: 'Sort by Tag Value' },
+      buildTagSubmenu('Special', TAG_CATEGORIES.special, colTitle, 'tag-special-'),
+      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, colTitle, 'tag-pos-'),
+      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, colTitle, 'tag-color-'),
+      buildTagSubmenu('Workflow', TAG_CATEGORIES.workflow, colTitle, 'tag-wf-'),
+      buildTagSubmenu('Complexity', TAG_CATEGORIES.complexity, colTitle, 'tag-cx-'),
     ];
-    // "Move to Stack" submenu
-    if (fullBoardData && fullBoardData.rows) {
-      var stackSubItems = [];
-      for (var r = 0; r < fullBoardData.rows.length; r++) {
-        var row = fullBoardData.rows[r];
-        if (is_archived_or_deleted(row && row.title ? row.title : '')) continue;
-        for (var s = 0; s < row.stacks.length; s++) {
-          var stack = row.stacks[s];
-          if (is_archived_or_deleted(stack && stack.title ? stack.title : '')) continue;
-          stackSubItems.push({
-            id: 'move-to-stack-' + r + '-' + s,
-            label: stripInternalHiddenTags(row.title || '') + ' / ' + stripInternalHiddenTags(stack.title || '')
-          });
-        }
-      }
-      if (stackSubItems.length > 0) {
-        nativeItems.push({ separator: true });
-        nativeItems.push({ id: 'move-sub', label: 'Move to Stack', items: stackSubItems });
-      }
-    }
+    var customSub = buildCustomTagsSubmenu(colTitle, 'tag-custom-');
+    if (customSub) nativeItems.push(customSub);
+    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems.push({ separator: true });
+    nativeItems.push({ id: 'toggle-width', label: 'Width (span ' + currentSpan + ')' });
+    nativeItems.push({ id: 'toggle-stacked', label: (isStacked ? '\u2713 ' : '') + 'Stacked column' });
+    nativeItems.push({ id: 'sort-sub', label: 'Sort by', items: [
+      { id: 'sort-title', label: 'Title' },
+      { id: 'sort-tag', label: 'Tag Value' }
+    ]});
+    nativeItems.push({ separator: true });
+    nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
+    nativeItems.push({ id: 'export-column', label: 'Export column' });
     nativeItems.push({ separator: true });
     if (includePath) {
       nativeItems.push({ id: 'preview-include', label: 'Preview Include File' });
       nativeItems.push({ id: 'open-include', label: 'Open Include in System App' });
       nativeItems.push({ id: 'edit-include', label: 'Edit Include File' });
       nativeItems.push({ id: 'disable-include', label: 'Disable Include Mode' });
-      nativeItems.push({ separator: true });
     } else {
       nativeItems.push({ id: 'enable-include', label: 'Enable Include Mode' });
-      nativeItems.push({ separator: true });
     }
-    nativeItems.push({ id: 'archive', label: 'Archive Column' });
-    nativeItems.push({ id: 'park', label: 'Park Column' });
-    nativeItems.push({ id: 'delete', label: 'Delete Column' });
 
-    traceFrontendAction('info', 'column.menu', 'Opening column context menu', {
-      boardId: activeBoardId || null,
-      colIndex: colIndex,
-      columnId: col && col.id ? col.id : null,
-      columnTitle: col && col.title ? col.title : '',
-      x: x,
-      y: y,
-      context: context || null
-    });
     showNativeMenu(nativeItems, x, y, 'column.menu').then(function (action) {
-      if (!action) {
-        traceFrontendAction('warn', 'column.menu', 'Column context menu closed without selection', {
-          boardId: activeBoardId || null,
-          colIndex: colIndex,
-          context: context || null
-        });
-        return;
-      }
-      traceFrontendAction('info', 'column.menu', 'Column context menu selected action', {
-        boardId: activeBoardId || null,
-        colIndex: colIndex,
-        action: action,
-        context: context || null
-      });
-      var moveMatch = action.match(/^move-to-stack-(\d+)-(\d+)$/);
-      if (moveMatch) {
-        traceFrontendAction('info', 'column.move', 'Requested move-to-stack action from menu', {
-          boardId: activeBoardId || null,
-          colIndex: colIndex,
-          targetRowIdx: parseInt(moveMatch[1], 10),
-          targetStackIdx: parseInt(moveMatch[2], 10)
-        });
-        moveColumnToStack(colIndex, parseInt(moveMatch[1]), parseInt(moveMatch[2]));
-        return;
-      }
+      if (!action) return;
       handleColumnAction(action, colIndex, context);
     });
   }
@@ -12033,45 +11995,36 @@ const LexeraDashboard = (function () {
   }
 
   async function handleColumnAction(action, colIndex, context) {
-    traceFrontendAction('info', 'column.action', 'Dispatching column action', {
-      boardId: activeBoardId || null,
-      colIndex: colIndex,
-      action: action,
-      context: context || null
-    });
-    if (action === 'rename') {
-      var col = getFullColumn(colIndex);
-      if (!col) return;
-      var colEl = getElColumnsContainer().querySelector('.column[data-col-title="' + escapeAttr(col.title) + '"]');
-      if (colEl) enterColumnRename(colEl, colIndex);
-    } else if (action === 'add-card') {
-      await addEmptyCardToActiveBoard(colIndex);
+    if (action === 'reveal-all') {
+      revealColumnContent(colIndex);
     } else if (action === 'add-before') {
       if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, true))) {
-        traceFrontendAction('warn', 'column.action', 'Falling back to flat add-before insertion', {
-          boardId: activeBoardId || null,
-          colIndex: colIndex,
-          context: context || null
-        });
         await addColumn(colIndex);
       }
     } else if (action === 'add-after') {
       if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, false))) {
-        traceFrontendAction('warn', 'column.action', 'Falling back to flat add-after insertion', {
-          boardId: activeBoardId || null,
-          colIndex: colIndex,
-          context: context || null
-        });
         await addColumn(colIndex + 1);
       }
-    } else if (action === 'fold-all') {
-      toggleColCards(colIndex, true);
-    } else if (action === 'unfold-all') {
-      toggleColCards(colIndex, false);
+    } else if (action === 'duplicate') {
+      duplicateColumn(colIndex);
+    } else if (action === 'park') {
+      setColumnHiddenTag(colIndex, '#hidden-internal-parked');
+    } else if (action === 'archive') {
+      setColumnHiddenTag(colIndex, '#hidden-internal-archived');
+    } else if (action === 'delete') {
+      deleteColumn(colIndex);
+    } else if (action === 'toggle-width') {
+      toggleColumnWidth(colIndex);
+    } else if (action === 'toggle-stacked') {
+      toggleTag('column', { colIndex: colIndex }, '#stack');
     } else if (action === 'sort-title') {
       sortColumnCards(colIndex, 'title');
     } else if (action === 'sort-tag') {
       sortColumnCards(colIndex, 'tag');
+    } else if (action === 'copy-markdown') {
+      copyElementAsMarkdown('column', { colIndex: colIndex });
+    } else if (action === 'export-column') {
+      exportColumn(colIndex);
     } else if (action === 'preview-include') {
       var previewCol = getFullColumn(colIndex);
       var previewPath = previewCol && previewCol.includeSource && previewCol.includeSource.rawPath
@@ -12090,12 +12043,9 @@ const LexeraDashboard = (function () {
       await editColumnIncludeFile(colIndex);
     } else if (action === 'disable-include') {
       await disableColumnIncludeMode(colIndex);
-    } else if (action === 'archive') {
-      setColumnHiddenTag(colIndex, '#hidden-internal-archived');
-    } else if (action === 'park') {
-      setColumnHiddenTag(colIndex, '#hidden-internal-parked');
-    } else if (action === 'delete') {
-      deleteColumn(colIndex);
+    } else if (action.indexOf('tag-') === 0) {
+      var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
+      if (tagMatch) toggleTag('column', { colIndex: colIndex }, '#' + tagMatch[1]);
     }
   }
 
