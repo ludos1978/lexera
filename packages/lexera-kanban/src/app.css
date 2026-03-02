@@ -2199,7 +2199,7 @@ u {
   font-size: 12px;
   min-width: 20px;
   height: 20px;
-  opacity: 0;
+  opacity: 0.5;
   transition: opacity 0.15s;
 }
 .card:hover .card-menu-btn,

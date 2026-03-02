@@ -3440,6 +3440,11 @@ const LexeraDashboard = (function () {
   function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
     options = options || {};
     if (!boardData || boardId !== activeBoardId) return;
+    traceFrontendAction('info', 'liveSync.snapshot', 'Replacing fullBoardData with live sync response', {
+      boardId: boardId,
+      incomingSummary: summarizeBoardHierarchy(boardData),
+      currentSummary: summarizeBoardHierarchy(fullBoardData)
+    });
     if (liveSyncState && liveSyncState.boardId === boardId) {
       liveSyncState.board = boardData;
     }
@@ -4632,12 +4637,8 @@ const LexeraDashboard = (function () {
     if (parkedCount > 0) {
       html += '<button class="board-action-btn has-items" id="btn-parked" title="Show parked items">Parked (' + parkedCount + ')</button>';
     }
-    if (archivedCount > 0) {
-      html += '<button class="board-action-btn has-items" id="btn-archived" title="Show archived items">Archived (' + archivedCount + ')</button>';
-    }
-    if (deletedCount > 0) {
-      html += '<button class="board-action-btn has-items danger" id="btn-trash" title="Show deleted items">Trash (' + deletedCount + ')</button>';
-    }
+    html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archived' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
+    html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
     html += '<span id="btn-add-row-wrap" class="creation-source creation-source-header"></span>';
     html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold All</button>';
     html += '<button class="board-action-btn" id="btn-export" title="Export board">Export</button>';
@@ -4999,7 +5000,7 @@ const LexeraDashboard = (function () {
     // Ensure columns field exists (backend requires it)
     if (!fullBoardData.columns) fullBoardData.columns = [];
     try {
-      if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: false })) {
+      if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true })) {
         if (pendingRefresh) {
           pendingRefresh = false;
           await flushPendingLiveSyncUpdates({ refreshSidebar: true });
@@ -7336,7 +7337,9 @@ const LexeraDashboard = (function () {
 
     showNativeMenu(nativeItems, x, y, 'row.menu').then(function (action) {
       if (!action) return;
-      handleRowAction(action, rowIdx);
+      return handleRowAction(action, rowIdx);
+    }).catch(function (err) {
+      logFrontendIssue('error', 'row.menu', 'handleRowAction failed', err);
     });
   }
 
@@ -7371,53 +7374,55 @@ const LexeraDashboard = (function () {
 
     showNativeMenu(nativeItems, x, y, 'stack.menu').then(function (action) {
       if (!action) return;
-      handleStackAction(action, rowIdx, stackIdx);
+      return handleStackAction(action, rowIdx, stackIdx);
+    }).catch(function (err) {
+      logFrontendIssue('error', 'stack.menu', 'handleStackAction failed', err);
     });
   }
 
-  function handleRowAction(action, rowIdx) {
+  async function handleRowAction(action, rowIdx) {
     if (action === 'reveal-all') {
       revealRowContent(rowIdx);
     } else if (action === 'insert-before') {
-      addRow(rowIdx);
+      await addRow(rowIdx);
     } else if (action === 'insert-after') {
-      addRow(rowIdx + 1);
+      await addRow(rowIdx + 1);
     } else if (action === 'duplicate') {
-      duplicateRow(rowIdx);
+      await duplicateRow(rowIdx);
     } else if (action === 'park') {
-      setRowHiddenTag(rowIdx, '#hidden-internal-parked');
+      await setRowHiddenTag(rowIdx, '#hidden-internal-parked');
     } else if (action === 'archive') {
-      setRowHiddenTag(rowIdx, '#hidden-internal-archived');
+      await setRowHiddenTag(rowIdx, '#hidden-internal-archived');
     } else if (action === 'delete') {
-      deleteRow(rowIdx);
+      await deleteRow(rowIdx);
     } else if (action === 'copy-markdown') {
       copyElementAsMarkdown('row', { rowIdx: rowIdx });
     } else if (action.indexOf('tag-') === 0) {
       var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
-      if (tagMatch) toggleTag('row', { rowIdx: rowIdx }, '#' + tagMatch[1]);
+      if (tagMatch) await toggleTag('row', { rowIdx: rowIdx }, '#' + tagMatch[1]);
     }
   }
 
-  function handleStackAction(action, rowIdx, stackIdx) {
+  async function handleStackAction(action, rowIdx, stackIdx) {
     if (action === 'reveal-all') {
       revealStackContent(rowIdx, stackIdx);
     } else if (action === 'insert-before') {
-      addStackToRow(rowIdx, stackIdx);
+      await addStackToRow(rowIdx, stackIdx);
     } else if (action === 'insert-after') {
-      addStackToRow(rowIdx, stackIdx + 1);
+      await addStackToRow(rowIdx, stackIdx + 1);
     } else if (action === 'duplicate') {
-      duplicateStack(rowIdx, stackIdx);
+      await duplicateStack(rowIdx, stackIdx);
     } else if (action === 'park') {
-      setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-parked');
+      await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-parked');
     } else if (action === 'archive') {
-      setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-archived');
+      await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-archived');
     } else if (action === 'delete') {
-      deleteStack(rowIdx, stackIdx);
+      await deleteStack(rowIdx, stackIdx);
     } else if (action === 'copy-markdown') {
       copyElementAsMarkdown('stack', { rowIdx: rowIdx, stackIdx: stackIdx });
     } else if (action.indexOf('tag-') === 0) {
       var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
-      if (tagMatch) toggleTag('stack', { rowIdx: rowIdx, stackIdx: stackIdx }, '#' + tagMatch[1]);
+      if (tagMatch) await toggleTag('stack', { rowIdx: rowIdx, stackIdx: stackIdx }, '#' + tagMatch[1]);
     }
   }
 
@@ -7783,17 +7788,24 @@ const LexeraDashboard = (function () {
   }
 
   async function deleteRow(rowIdx) {
-
+    traceFrontendAction('info', 'row.delete', 'deleteRow called', { rowIdx: rowIdx });
     var row = findFullDataRow(rowIdx);
-    if (!row) return;
-    var totalCards = 0;
+    if (!row) {
+      traceFrontendAction('warn', 'row.delete', 'findFullDataRow returned null', { rowIdx: rowIdx });
+      return;
+    }
+    var visibleCards = 0;
     for (var s = 0; s < row.stacks.length; s++) {
       for (var c = 0; c < row.stacks[s].columns.length; c++) {
-        totalCards += row.stacks[s].columns[c].cards.length;
+        var cards = row.stacks[s].columns[c].cards || [];
+        for (var k = 0; k < cards.length; k++) {
+          if (!is_archived_or_deleted(cards[k].content || '')) visibleCards++;
+        }
       }
     }
-    if (totalCards > 0) {
-      if (!(await showConfirmDialog('Move row "' + stripInternalHiddenTags(row.title || '') + '" and all ' + totalCards + ' cards to trash?'))) return;
+    if (visibleCards > 0) {
+      var confirmed = await showConfirmDialog('Move row "' + stripInternalHiddenTags(row.title || '') + '" and ' + visibleCards + ' card(s) to trash?');
+      if (!confirmed) return;
     }
     await setRowHiddenTag(rowIdx, '#hidden-internal-deleted');
   }
@@ -7875,16 +7887,23 @@ const LexeraDashboard = (function () {
   }
 
   async function deleteStack(rowIdx, stackIdx) {
-
+    traceFrontendAction('info', 'stack.delete', 'deleteStack called', { rowIdx: rowIdx, stackIdx: stackIdx });
     var row = findFullDataRow(rowIdx);
     var stack = findFullDataStack(rowIdx, stackIdx);
-    if (!row || !stack) return;
-    var totalCards = 0;
-    for (var c = 0; c < stack.columns.length; c++) {
-      totalCards += stack.columns[c].cards.length;
+    if (!row || !stack) {
+      traceFrontendAction('warn', 'stack.delete', 'findFullDataRow/Stack returned null', { rowIdx: rowIdx, stackIdx: stackIdx });
+      return;
     }
-    if (totalCards > 0) {
-      if (!(await showConfirmDialog('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and all ' + totalCards + ' cards to trash?'))) return;
+    var visibleCards = 0;
+    for (var c = 0; c < stack.columns.length; c++) {
+      var cards = stack.columns[c].cards || [];
+      for (var k = 0; k < cards.length; k++) {
+        if (!is_archived_or_deleted(cards[k].content || '')) visibleCards++;
+      }
+    }
+    if (visibleCards > 0) {
+      var confirmed = await showConfirmDialog('Move stack "' + stripInternalHiddenTags(stack.title || '') + '" and ' + visibleCards + ' card(s) to trash?');
+      if (!confirmed) return;
     }
     await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-deleted');
   }
@@ -8343,6 +8362,16 @@ const LexeraDashboard = (function () {
   }
 
   function resolveCardDropTarget(mx, my) {
+    // Header drop targets: Archive / Trash buttons
+    var archiveBtn = document.getElementById('btn-archived');
+    var trashBtn = document.getElementById('btn-trash');
+    if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) {
+      return { kind: 'header-archive', sidebarNode: null, container: null };
+    }
+    if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) {
+      return { kind: 'header-trash', sidebarNode: null, container: null };
+    }
+
     var isTreeCardDrag = ptrDrag && ptrDrag.type === 'tree-card';
 
     // Tree card-to-card: precise between-card positioning in hierarchy
@@ -8473,7 +8502,19 @@ const LexeraDashboard = (function () {
     clearDropZoneIndicatorHighlights();
 
     var target = resolveCardDropTarget(mx, my);
+    // Clear header drop target highlights
+    var hdrArchive = document.getElementById('btn-archived');
+    var hdrTrash = document.getElementById('btn-trash');
+    if (hdrArchive) hdrArchive.classList.remove('drop-target');
+    if (hdrTrash) hdrTrash.classList.remove('drop-target');
+
     if (!target) return false;
+
+    if (target.kind === 'header-archive' || target.kind === 'header-trash') {
+      var hdrBtn = target.kind === 'header-archive' ? hdrArchive : hdrTrash;
+      if (hdrBtn) hdrBtn.classList.add('drop-target');
+      return true;
+    }
 
     if (target.kind === 'sidebar') {
       if (target.sidebarNode) target.sidebarNode.classList.add('drop-target');
@@ -8492,6 +8533,18 @@ const LexeraDashboard = (function () {
   function applyCardDropByPoint(source, mx, my) {
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
+
+    // Header drop targets: archive or trash the dragged card
+    if (target.kind === 'header-archive' || target.kind === 'header-trash') {
+      var tag = target.kind === 'header-archive' ? '#hidden-internal-archived' : '#hidden-internal-deleted';
+      var srcColIndex = source.flatColIndex;
+      var srcCardIndex = source.cardIndex;
+      if (typeof srcColIndex === 'number' && typeof srcCardIndex === 'number') {
+        tagCard(srcColIndex, srcCardIndex, tag);
+      }
+      return true;
+    }
+
     moveCard(source, target).catch(function (err) {
       logFrontendIssue('error', 'moveCard', 'Drop failed', err);
     });
@@ -11694,11 +11747,13 @@ const LexeraDashboard = (function () {
     nativeItems = nativeItems.concat(buildMarpPlaceholders());
 
     showNativeMenu(nativeItems, x, y, 'card.menu').then(function (action) {
-      if (action) handleCardMenuAction(action, colIndex, cardIndex);
+      if (action) return handleCardMenuAction(action, colIndex, cardIndex);
+    }).catch(function (err) {
+      logFrontendIssue('error', 'card.menu', 'handleCardMenuAction failed', err);
     });
   }
 
-  function handleCardMenuAction(action, colIndex, cardIndex) {
+  async function handleCardMenuAction(action, colIndex, cardIndex) {
     if (action === 'edit-overlay') {
       var cardEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
       if (cardEls.length > 0) openCardEditor(cardEls[0], colIndex, cardIndex, 'overlay');
@@ -11707,20 +11762,20 @@ const LexeraDashboard = (function () {
     } else if (action === 'copy-markdown') {
       copyElementAsMarkdown('card', { colIndex: colIndex, cardIndex: cardIndex });
     } else if (action === 'insert-before') {
-      insertCardAtIndex(colIndex, cardIndex);
+      await insertCardAtIndex(colIndex, cardIndex);
     } else if (action === 'insert-after') {
-      insertCardAtIndex(colIndex, cardIndex + 1);
+      await insertCardAtIndex(colIndex, cardIndex + 1);
     } else if (action === 'duplicate') {
-      duplicateCard(colIndex, cardIndex);
+      await duplicateCard(colIndex, cardIndex);
     } else if (action === 'park') {
-      tagCard(colIndex, cardIndex, '#hidden-internal-parked');
+      await tagCard(colIndex, cardIndex, '#hidden-internal-parked');
     } else if (action === 'archive') {
-      tagCard(colIndex, cardIndex, '#hidden-internal-archived');
+      await tagCard(colIndex, cardIndex, '#hidden-internal-archived');
     } else if (action === 'delete') {
-      deleteCard(colIndex, cardIndex);
+      await deleteCard(colIndex, cardIndex);
     } else if (action.indexOf('tag-') === 0) {
       var tagMatch = action.match(/^tag-(?:special|status|pos|color|impact|custom)-(.+)$/);
-      if (tagMatch) toggleTag('card', { colIndex: colIndex, cardIndex: cardIndex }, '#' + tagMatch[1]);
+      if (tagMatch) await toggleTag('card', { colIndex: colIndex, cardIndex: cardIndex }, '#' + tagMatch[1]);
     }
   }
 
@@ -11863,7 +11918,9 @@ const LexeraDashboard = (function () {
 
     showNativeMenu(nativeItems, x, y, 'column.menu').then(function (action) {
       if (!action) return;
-      handleColumnAction(action, colIndex, context);
+      return handleColumnAction(action, colIndex, context);
+    }).catch(function (err) {
+      logFrontendIssue('error', 'column.menu', 'handleColumnAction failed', err);
     });
   }
 
@@ -12010,17 +12067,17 @@ const LexeraDashboard = (function () {
         await addColumn(colIndex + 1);
       }
     } else if (action === 'duplicate') {
-      duplicateColumn(colIndex);
+      await duplicateColumn(colIndex);
     } else if (action === 'park') {
-      setColumnHiddenTag(colIndex, '#hidden-internal-parked');
+      await setColumnHiddenTag(colIndex, '#hidden-internal-parked');
     } else if (action === 'archive') {
-      setColumnHiddenTag(colIndex, '#hidden-internal-archived');
+      await setColumnHiddenTag(colIndex, '#hidden-internal-archived');
     } else if (action === 'delete') {
-      deleteColumn(colIndex);
+      await deleteColumn(colIndex);
     } else if (action === 'toggle-width') {
-      toggleColumnWidth(colIndex);
+      await toggleColumnWidth(colIndex);
     } else if (action === 'toggle-stacked') {
-      toggleTag('column', { colIndex: colIndex }, '#stack');
+      await toggleTag('column', { colIndex: colIndex }, '#stack');
     } else if (action === 'sort-title') {
       sortColumnCards(colIndex, 'title');
     } else if (action === 'sort-tag') {
@@ -12049,19 +12106,34 @@ const LexeraDashboard = (function () {
       await disableColumnIncludeMode(colIndex);
     } else if (action.indexOf('tag-') === 0) {
       var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
-      if (tagMatch) toggleTag('column', { colIndex: colIndex }, '#' + tagMatch[1]);
+      if (tagMatch) await toggleTag('column', { colIndex: colIndex }, '#' + tagMatch[1]);
     }
   }
 
   async function setColumnHiddenTag(colIndex, tag) {
+    traceFrontendAction('info', 'column.hiddenTag', 'setColumnHiddenTag called', { colIndex: colIndex, tag: tag });
     if (!fullBoardData || !activeBoardId) return;
     var col = getFullColumn(colIndex);
-    if (!col) return;
+    if (!col) {
+      traceFrontendAction('warn', 'column.hiddenTag', 'getFullColumn returned null', { colIndex: colIndex });
+      return;
+    }
     var nextTitle = applyInternalHiddenTag(col.title || '', tag);
+    traceFrontendAction('info', 'column.hiddenTag', 'Title transformation', { oldTitle: col.title, nextTitle: nextTitle, same: nextTitle === col.title });
     if (nextTitle === col.title) return;
     pushUndo();
     col.title = nextTitle;
     await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    // Post-save verification: check if the tag survived the save round-trip
+    var postSaveCol = getFullColumn(colIndex);
+    var postTitle = postSaveCol ? postSaveCol.title : '(col gone)';
+    var tagSurvived = postTitle.indexOf(tag) !== -1;
+    traceFrontendAction(tagSurvived ? 'info' : 'error', 'column.hiddenTag', 'Post-save verification', {
+      colIndex: colIndex,
+      expectedTag: tag,
+      postSaveTitle: postTitle,
+      tagSurvived: tagSurvived
+    });
   }
 
   function sortColumnCards(colIndex, mode) {
@@ -12239,12 +12311,24 @@ const LexeraDashboard = (function () {
   }
 
   async function deleteColumn(colIndex) {
-    if (!fullBoardData || !activeBoardId) return;
-    var col = getFullColumn(colIndex);
-    if (!col) return;
-    if (col.cards.length > 0) {
-      if (!(await showConfirmDialog('Move column "' + stripStackTag(col.title) + '" and all ' + col.cards.length + ' cards to trash?'))) return;
+    traceFrontendAction('info', 'column.delete', 'deleteColumn called', { colIndex: colIndex });
+    if (!fullBoardData || !activeBoardId) {
+      traceFrontendAction('warn', 'column.delete', 'No fullBoardData or activeBoardId');
+      return;
     }
+    var col = getFullColumn(colIndex);
+    if (!col) {
+      traceFrontendAction('warn', 'column.delete', 'getFullColumn returned null', { colIndex: colIndex });
+      return;
+    }
+    var visibleCards = (col.cards || []).filter(function (c) { return !is_archived_or_deleted(c.content || ''); });
+    traceFrontendAction('info', 'column.delete', 'Column found', { title: col.title, totalCards: col.cards.length, visibleCards: visibleCards.length });
+    if (visibleCards.length > 0) {
+      var confirmed = await showConfirmDialog('Move column "' + stripStackTag(col.title) + '" and ' + visibleCards.length + ' card(s) to trash?');
+      traceFrontendAction('info', 'column.delete', 'Confirm dialog result', { confirmed: confirmed });
+      if (!confirmed) return;
+    }
+    traceFrontendAction('info', 'column.delete', 'Calling setColumnHiddenTag');
     await setColumnHiddenTag(colIndex, '#hidden-internal-deleted');
   }
 
