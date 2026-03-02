@@ -9,20 +9,33 @@
 
 ## UX Requirements
 
-### Tag Click Menus
-- User clicks on `#tag` in card content
-- Menu appears with options: Filter, Search, Rename, Color
-- Click outside or ESC closes menu
-
 ### Card Context Menus
-- User right-clicks or clicks donut menu (⋮) on card
-- Menu shows: Edit, Duplicate, Move to column, Archive, Delete
-- Keyboard navigation supported
 
-### Column Context Menus
-- User clicks column header menu
-- Menu shows: Add card, Sort, Archive, Delete, Settings
-- Column span controls included
+- User right-clicks or clicks donut menu (⋮) on card
+- Menu shows:
+  - Edit task (overlay)
+  - Reveal content (unhides #hidden/#hide tags)
+  - ---
+  - Insert Card (before / after, duplicate )
+  - ---
+  - Park, Park Copy, Archive, Delete
+  - ---
+  - Add, Remove, Clear All - Tags, Show all Categories
+  - ---
+  - Marp / Pandoc options
+
+### Column, Stack, Row Context Menus
+- User right-clicks or clicks donut menu (⋮)  for same Element
+- Menu shows:
+  - Insert Column (before / after, duplicate)
+  - ---
+  - Park, Park Copy, Archive, Delete
+  - ---
+  - Add, Remove, Clear All - Tags, Show all Categories
+  - ---
+  - Marp / Pandoc options for same Element
+  - Export
+
 
 ### Move Operations
 - User can move card to top/bottom/up/down
@@ -37,36 +50,36 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    MENU TYPES                                    │
+│                    MENU TYPES                              │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   1. TAG MENU (on #tag click)                                   │
-│   ┌─────────────────────┐                                       │
-│   │ Filter by #tag      │                                       │
-│   │ Search for #tag     │                                       │
-│   │ Rename #tag         │                                       │
-│   │ Change color        │                                       │
-│   └─────────────────────┘                                       │
-│                                                                  │
-│   2. CARD DONUT MENU (⋮ button)                                 │
-│   ┌─────────────────────┐                                       │
-│   │ Edit                │                                       │
-│   │ Duplicate           │                                       │
-│   │ Move to column ►    │                                       │
-│   │ Archive             │                                       │
-│   │ Delete              │                                       │
-│   └─────────────────────┘                                       │
-│                                                                  │
-│   3. COLUMN MENU (header)                                       │
-│   ┌─────────────────────┐                                       │
-│   │ Add card            │                                       │
-│   │ Sort by date        │                                       │
-│   │ Sort by name        │                                       │
-│   │ Span: ◀ ▶          │                                       │
-│   │ Archive             │                                       │
-│   │ Delete              │                                       │
-│   └─────────────────────┘                                       │
-│                                                                  │
+│                                                            │
+│   1. TAG MENU (on #tag click)                              │
+│   ┌─────────────────────┐                                    │
+│   │ Filter by #tag    │                                    │
+│   │ Search for #tag   │                                    │
+│   │ Rename #tag       │                                    │
+│   │ Change color      │                                    │
+│   └─────────────────────┘                                    │
+│                                                            │
+│   2. CARD DONUT MENU (⋮ button)                            │
+│   ┌─────────────────────┐                                    │
+│   │ Edit              │                                    │
+│   │ Duplicate         │                                    │
+│   │ Move to column ►  │                                    │
+│   │ Archive           │                                    │
+│   │ Delete            │                                    │
+│   └─────────────────────┘                                    │
+│                                                            │
+│   3. COLUMN MENU (header)                                  │
+│   ┌─────────────────────┐                                    │
+│   │ Add card          │                                    │
+│   │ Sort by date      │                                    │
+│   │ Sort by name      │                                    │
+│   │ Span: ◀ ▶         │                                    │
+│   │ Archive           │                                    │
+│   │ Delete            │                                    │
+│   └─────────────────────┘                                    │
+│                                                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

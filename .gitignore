@@ -53,3 +53,4 @@ packages/lexera-kanban/src-tauri/icons/
 .fingerprint/
 *.crdt
 builds/windows
+.claude

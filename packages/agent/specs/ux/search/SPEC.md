@@ -67,51 +67,51 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    DASHBOARD SCAN FLOW                           │
+│                    DASHBOARD SCAN FLOW                     │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   scanForUpcomingItems(board, options)                          │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌──────────────────┐                                          │
-│   │ For each column  │  Skip archived/deleted                   │
-│   └────────┬─────────┘                                          │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌──────────────────┐                                          │
-│   │ For each card    │  Skip checked (if configured)            │
-│   └────────┬─────────┘                                          │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌──────────────────┐                                          │
-│   │ Resolve          │  resolveTaskTemporals()                  │
-│   │ temporals        │  Column → Card → Line inheritance        │
-│   └────────┬─────────┘                                          │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌──────────────────┐                                          │
-│   │ For each         │                                          │
-│   │ temporal         │                                          │
-│   └────────┬─────────┘                                          │
-│            │                                                     │
-│       ┌────┴────────────────┐                                    │
-│       │ Within timeframe?   │                                    │
-│       ▼                      ▼                                   │
-│   ┌───────┐          ┌───────────────┐                          │
-│   │ Add   │          │ Past date?    │                          │
-│   │ to    │          └───────┬───────┘                          │
-│   │ items │                  │                                   │
-│   └───────┘          ┌───────┴───────┐                          │
-│                      │ Recurring?    │                          │
-│                      ▼               ▼                          │
-│                  ┌───────┐     ┌───────────┐                    │
-│                  │ Skip  │     │ Classify  │                    │
-│                  │       │     │ recurring │                    │
-│                  │       │     │ state     │                    │
-│                  └───────┘     └───────────┘                    │
-│                                                                  │
-│   Return UpcomingItem[]                                         │
-│                                                                  │
+│                                                            │
+│   scanForUpcomingItems(board, options)                     │
+│            │                                               │
+│            ▼                                               │
+│   ┌──────────────────┐                                      │
+│   │ For each column │  Skip archived/deleted               │
+│   └────────┬─────────┘                                      │
+│            │                                               │
+│            ▼                                               │
+│   ┌──────────────────┐                                      │
+│   │ For each card   │  Skip checked (if configured)        │
+│   └────────┬─────────┘                                      │
+│            │                                               │
+│            ▼                                               │
+│   ┌──────────────────┐                                      │
+│   │ Resolve         │  resolveTaskTemporals()              │
+│   │ temporals       │  Column → Card → Line inheritance    │
+│   └────────┬─────────┘                                      │
+│            │                                               │
+│            ▼                                               │
+│   ┌──────────────────┐                                      │
+│   │ For each        │                                      │
+│   │ temporal        │                                      │
+│   └────────┬─────────┘                                      │
+│            │                                               │
+│       ┌────┴────────────────┐                                │
+│       │ Within timeframe?  │                               │
+│       ▼                      ▼                             │
+│   ┌───────┐          ┌───────────────┐                       │
+│   │ Add   │          │ Past date?   │                      │
+│   │ to    │          └───────┬───────┘                      │
+│   │ items │                  │                             │
+│   └───────┘          ┌───────┴───────┐                       │
+│                      │ Recurring?    │                     │
+│                      ▼               ▼                     │
+│                  ┌───────┐     ┌───────────┐                │
+│                  │ Skip │     │ Classify  │                │
+│                  │      │     │ recurring │                │
+│                  │      │     │ state     │                │
+│                  └───────┘     └───────────┘                 │
+│                                                            │
+│   Return UpcomingItem[]                                    │
+│                                                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -259,28 +259,28 @@ Age > 3 days     → future (adjust to next week)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    TEMPORAL INHERITANCE                          │
+│                    TEMPORAL INHERITANCE                    │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   Column Title: "Sprint @2024-03-15"                            │
-│   │                                                              │
-│   ├─ Card: "Task @09:00"                                        │
-│   │         └─ Inherits date from column → 2024-03-15 09:00    │
-│   │                                                              │
-│   ├─ Card: "Task @2024-03-20 @10:00"                            │
-│   │         └─ Has own date, uses own → 2024-03-20 10:00       │
-│   │                                                              │
-│   └─ Card: "Multi-line                                          │
-│             Line 1 @2024-03-16"                                 │
-│             Line 2 @14:00"                                      │
-│             └─ Line 1: 2024-03-16 (own date)                    │
+│                                                            │
+│   Column Title: "Sprint @2024-03-15"                       │
+│   │                                                        │
+│   ├─ Card: "Task @09:00"                                   │
+│   │         └─ Inherits date from column → 2024-03-15 09:00│
+│   │                                                        │
+│   ├─ Card: "Task @2024-03-20 @10:00"                       │
+│   │         └─ Has own date, uses own → 2024-03-20 10:00   │
+│   │                                                        │
+│   └─ Card: "Multi-line                                     │
+│             Line 1 @2024-03-16"                            │
+│             Line 2 @14:00"                                 │
+│             └─ Line 1: 2024-03-16 (own date)               │
 │             └─ Line 2: 2024-03-16 14:00 (inherits from line 1) │
-│                                                                  │
-│   Resolution order:                                             │
-│   1. Line-level temporal (highest priority)                     │
-│   2. Card-level temporal                                        │
-│   3. Column-level temporal (lowest priority)                    │
-│                                                                  │
+│                                                            │
+│   Resolution order:                                        │
+│   1. Line-level temporal (highest priority)                │
+│   2. Card-level temporal                                   │
+│   3. Column-level temporal (lowest priority)               │
+│                                                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

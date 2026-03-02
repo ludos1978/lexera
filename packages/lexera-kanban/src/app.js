@@ -11530,6 +11530,58 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function buildTagSubmenu(label, tags, text, idPrefix) {
+    var items = [];
+    for (var i = 0; i < tags.length; i++) {
+      var tagName = '#' + tags[i];
+      var active = hasTag(text, tagName);
+      items.push({
+        id: idPrefix + tags[i],
+        label: (active ? '\u2713 ' : '') + tagName
+      });
+    }
+    return { id: idPrefix + '_sub', label: label, items: items };
+  }
+
+  function buildCustomTagsSubmenu(text, idPrefix) {
+    var allTags = extractAllTags(text);
+    var knownTags = {};
+    var catKeys = Object.keys(TAG_CATEGORIES);
+    for (var c = 0; c < catKeys.length; c++) {
+      var arr = TAG_CATEGORIES[catKeys[c]];
+      for (var t = 0; t < arr.length; t++) knownTags['#' + arr[t]] = true;
+    }
+    var custom = [];
+    for (var i = 0; i < allTags.length; i++) {
+      var tag = allTags[i];
+      if (knownTags[tag]) continue;
+      if (/^#hidden-internal-/.test(tag)) continue;
+      if (isLayoutTagName(tag)) continue;
+      custom.push(tag);
+    }
+    if (custom.length === 0) return null;
+    var items = [];
+    for (var j = 0; j < custom.length; j++) {
+      items.push({ id: idPrefix + custom[j].replace(/^#/, ''), label: '\u2713 ' + custom[j] });
+    }
+    return { id: idPrefix + '_sub', label: 'Custom Tags', items: items };
+  }
+
+  function buildMarpPlaceholders() {
+    return [
+      { separator: true },
+      { id: 'marp-classes', label: 'Marp Classes', items: [
+        { id: 'marp-na', label: 'Not yet available', disabled: true }
+      ]},
+      { id: 'marp-colors', label: 'Marp Colors', items: [
+        { id: 'marp-na', label: 'Not yet available', disabled: true }
+      ]},
+      { id: 'marp-hf', label: 'Marp Header & Footer', items: [
+        { id: 'marp-na', label: 'Not yet available', disabled: true }
+      ]}
+    ];
+  }
+
   function showCardContextMenu(x, y, colIndex, cardIndex) {
     closeCardContextMenu();
 
@@ -11630,6 +11682,49 @@ const LexeraDashboard = (function () {
 
   async function deleteCard(colIndex, cardIndex) {
     await tagCard(colIndex, cardIndex, '#hidden-internal-deleted');
+  }
+
+  async function toggleTag(elementType, indices, tagName) {
+    if (!fullBoardData || !activeBoardId) return;
+    var text, setFn;
+    if (elementType === 'card') {
+      var col = getFullColumn(indices.colIndex);
+      if (!col) return;
+      var fullIdx = getFullCardIndex(col, indices.cardIndex);
+      if (fullIdx === -1) return;
+      text = col.cards[fullIdx].content || '';
+      setFn = function (val) { col.cards[fullIdx].content = val; };
+    } else if (elementType === 'column') {
+      var col = getFullColumn(indices.colIndex);
+      if (!col) return;
+      text = col.title || '';
+      setFn = function (val) { col.title = val; };
+    } else if (elementType === 'row') {
+      var row = findFullDataRow(indices.rowIdx);
+      if (!row) return;
+      text = row.title || '';
+      setFn = function (val) { row.title = val; };
+    } else if (elementType === 'stack') {
+      var stack = findFullDataStack(indices.rowIdx, indices.stackIdx);
+      if (!stack) return;
+      text = stack.title || '';
+      setFn = function (val) { stack.title = val; };
+    } else {
+      return;
+    }
+    var re = new RegExp('(^|\\s)' + escapeRegex(tagName) + '(?=\\s|$)');
+    var newText;
+    if (re.test(text)) {
+      newText = text.replace(re, '$1').replace(/  +/g, ' ').trim();
+    } else {
+      var lines = text.split('\n');
+      lines[0] = (lines[0] || '') + ' ' + tagName;
+      newText = lines.join('\n');
+    }
+    if (newText === text) return;
+    pushUndo();
+    setFn(newText);
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
   }
 
   // --- Column Context Menu & Operations ---
@@ -15102,6 +15197,16 @@ const LexeraDashboard = (function () {
     '#7ed47e', '#d45c8c', '#4ec9b0', '#d4644e',
   ];
 
+  var TAG_CATEGORIES = {
+    special:    ['header', 'footer', 'hide', 'exclude'],
+    status:     ['todo', 'inprogress', 'done', 'transferred', 'blocked', 'review', 'testing', 'wip'],
+    positivity: ['++', '+', '\u00f8', '-', '--'],
+    colors:     ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'brown', 'gray', 'teal', 'indigo'],
+    impact:     ['minor', 'moderate', 'major', 'breaking'],
+    workflow:   ['ideas', 'outline', 'draft', 'reviewing', 'polish', 'ready', 'published'],
+    complexity: ['trivial', 'beginner', 'intermediate', 'advanced-level', 'expert']
+  };
+
   var EMOJI_SHORTCODES = {
     smile: '\u{1F604}',
     grin: '\u{1F601}',
@@ -15162,6 +15267,36 @@ const LexeraDashboard = (function () {
       if (match) return match[2];
     }
     return null;
+  }
+
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function extractAllTags(text) {
+    var tags = [];
+    var lines = (text || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '') break;
+      var matches = lines[i].match(/(^|\s)(#[^\s]+)/g);
+      if (matches) {
+        for (var j = 0; j < matches.length; j++) {
+          var tag = matches[j].trim();
+          if (tags.indexOf(tag) === -1) tags.push(tag);
+        }
+      }
+    }
+    return tags;
+  }
+
+  function hasTag(text, tagName) {
+    var lines = (text || '').split('\n');
+    var re = new RegExp('(^|\\s)' + escapeRegex(tagName) + '(?=\\s|$)');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '') break;
+      if (re.test(lines[i])) return true;
+    }
+    return false;
   }
 
   function getCardTitle(content) {
