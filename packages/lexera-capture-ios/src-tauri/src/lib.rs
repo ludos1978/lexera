@@ -1,4 +1,5 @@
 mod commands;
+mod encryption;
 mod ios_storage;
 
 use std::sync::Arc;

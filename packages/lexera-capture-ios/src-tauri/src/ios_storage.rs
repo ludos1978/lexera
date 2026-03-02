@@ -1,11 +1,11 @@
 /// iOS storage backend.
 ///
 /// Simplified BoardStorage impl for the iOS sandbox.
-/// Boards stored as .md files in the App Group container.
+/// Boards stored as encrypted .md files in the App Group container.
 /// Board ID = SHA-256(filename) first 12 hex chars.
+/// Files are encrypted at rest with AES-256-GCM (see encryption.rs).
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::RwLock;
 
@@ -17,6 +17,8 @@ use lexera_core::parser;
 use lexera_core::search::{SearchCardMeta, SearchDocument, SearchEngine, SearchOptions};
 use lexera_core::storage::{BoardStorage, StorageError};
 use lexera_core::types::*;
+
+use crate::encryption::FileEncryptor;
 
 /// State for a single tracked board.
 struct BoardState {
@@ -33,6 +35,7 @@ const BOARD_ID_HASH_BYTES: usize = 6;
 pub struct IosStorage {
     boards_dir: PathBuf,
     pending_path: PathBuf,
+    encryptor: FileEncryptor,
     boards: RwLock<HashMap<String, BoardState>>,
 }
 
@@ -56,9 +59,12 @@ impl IosStorage {
             fs::create_dir_all(parent)?;
         }
 
+        let encryptor = FileEncryptor::new(&boards_dir)?;
+
         let storage = Self {
             boards_dir,
             pending_path,
+            encryptor,
             boards: RwLock::new(HashMap::new()),
         };
 
@@ -91,7 +97,7 @@ impl IosStorage {
                 Some(n) => n.to_string(),
                 None => continue,
             };
-            let content = match fs::read_to_string(&path) {
+            let content = match self.encryptor.read_and_migrate(&path) {
                 Ok(c) => c,
                 Err(e) => {
                     log::warn!(
@@ -136,7 +142,7 @@ impl IosStorage {
 
         let content = "---\nkanban-plugin: board\n---\n\n## Captured\n\n## Tagged\n\n## Archived\n";
         let path = self.boards_dir.join("inbox.md");
-        if let Err(e) = fs::write(&path, content) {
+        if let Err(e) = self.encryptor.write_encrypted(&path, content) {
             log::error!("[ios_storage] Failed to create inbox board: {}", e);
             return;
         }
@@ -188,7 +194,7 @@ impl IosStorage {
 
         let content = "---\nkanban-plugin: board\n---\n\n## Inbox\n\n## Done\n".to_string();
         let path = self.boards_dir.join(&filename);
-        fs::write(&path, &content)?;
+        self.encryptor.write_encrypted(&path, &content)?;
 
         let mut board = parser::parse_markdown(&content);
         board.title = title.to_string();
@@ -348,7 +354,7 @@ impl IosStorage {
         Ok(processed)
     }
 
-    /// Write a board back to disk atomically (.tmp + rename).
+    /// Write a board back to disk atomically, encrypted (.tmp + rename).
     fn write_board_file(&self, board_id: &str) -> Result<(), StorageError> {
         let mut boards = self.boards.write().unwrap_or_else(|p| {
             log::warn!("[ios_storage.write_board_file] Lock was poisoned, recovering");
@@ -360,13 +366,7 @@ impl IosStorage {
 
         let content = parser::generate_markdown(&state.board);
         let path = self.boards_dir.join(&state.filename);
-        let tmp_path = path.with_extension("md.tmp");
-
-        let mut file = fs::File::create(&tmp_path)?;
-        file.write_all(content.as_bytes())?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&tmp_path, &path)?;
+        self.encryptor.write_encrypted(&path, &content)?;
 
         // Update hash while still holding the write lock
         if let Some(state) = boards.get_mut(board_id) {
@@ -963,5 +963,133 @@ mod tests {
         assert_eq!(board.title, "My Board! @#$%");
         // Special characters (except space, hyphen, alphanumeric) become underscores in filename
         assert_eq!(storage.list_boards().len(), 2);
+    }
+
+    // ---------------------------------------------------------------
+    // Encryption at rest
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_encrypted_write_read_roundtrip() {
+        let (storage, _dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+        storage.add_card(&inbox_id, 0, "encrypted roundtrip card").unwrap();
+
+        // Read it back from the in-memory cache
+        let board = storage.read_board(&inbox_id).unwrap();
+        let cols = board.all_columns();
+        assert!(cols[0].cards[0].content.contains("encrypted roundtrip card"));
+    }
+
+    #[test]
+    fn test_encrypted_file_on_disk_is_not_plaintext() {
+        let (storage, dir) = temp_storage();
+        let inbox_id = storage.inbox_board_id();
+        storage.add_card(&inbox_id, 0, "super secret content").unwrap();
+
+        // Read the raw bytes of the inbox file on disk
+        let raw = fs::read(dir.path().join("boards").join("inbox.md")).unwrap();
+
+        // The file should start with the encryption magic header
+        assert_eq!(
+            &raw[..4], b"LEXE",
+            "File on disk should start with encryption magic header"
+        );
+
+        // The raw bytes should not contain any plaintext board content
+        let raw_str = String::from_utf8_lossy(&raw);
+        assert!(
+            !raw_str.contains("super secret content"),
+            "Encrypted file should not contain plaintext card content"
+        );
+        assert!(
+            !raw_str.contains("kanban-plugin"),
+            "Encrypted file should not contain plaintext frontmatter"
+        );
+    }
+
+    #[test]
+    fn test_encrypted_board_persists_across_restarts() {
+        let dir = tempfile::tempdir().unwrap();
+        let boards_dir = dir.path().join("boards");
+        let pending_path = dir.path().join("ShareExtension/pending.json");
+
+        // First session: create storage and add card
+        {
+            let storage = IosStorage::new(boards_dir.clone(), pending_path.clone()).unwrap();
+            let inbox_id = storage.inbox_board_id();
+            storage.add_card(&inbox_id, 0, "encrypted persisted card").unwrap();
+        }
+
+        // Verify file on disk is encrypted
+        let raw = fs::read(boards_dir.join("inbox.md")).unwrap();
+        assert_eq!(&raw[..4], b"LEXE", "File should be encrypted on disk");
+
+        // Second session: reload from encrypted disk
+        {
+            let storage = IosStorage::new(boards_dir, pending_path).unwrap();
+            let inbox_id = storage.inbox_board_id();
+            let board = storage.read_board(&inbox_id).unwrap();
+            let cols = board.all_columns();
+            assert_eq!(cols[0].cards.len(), 1);
+            assert!(cols[0].cards[0].content.contains("encrypted persisted card"));
+        }
+    }
+
+    #[test]
+    fn test_legacy_unencrypted_files_migrated_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let boards_dir = dir.path().join("boards");
+        let pending_path = dir.path().join("ShareExtension/pending.json");
+        fs::create_dir_all(&boards_dir).unwrap();
+
+        // Write a legacy unencrypted board file using the same format that
+        // IosStorage produces (frontmatter + columns, no cards yet).
+        let legacy_content =
+            "---\nkanban-plugin: board\n---\n\n## Captured\n\n## Tagged\n\n## Archived\n";
+        fs::write(boards_dir.join("inbox.md"), legacy_content).unwrap();
+
+        // Verify the file is plaintext before loading
+        let raw_before = fs::read(boards_dir.join("inbox.md")).unwrap();
+        assert!(
+            !crate::encryption::FileEncryptor::is_encrypted(&raw_before),
+            "File should be unencrypted before migration"
+        );
+        assert!(
+            String::from_utf8_lossy(&raw_before).contains("kanban-plugin"),
+            "File should contain plaintext frontmatter"
+        );
+
+        // Load storage: should detect unencrypted file, parse it, and migrate it
+        let storage = IosStorage::new(boards_dir.clone(), pending_path).unwrap();
+        let inbox_id = storage.inbox_board_id();
+        let board = storage.read_board(&inbox_id).unwrap();
+        // Board should have 3 columns from the legacy content
+        assert_eq!(board.all_columns().len(), 3);
+
+        // Verify the file on disk was migrated to encrypted format
+        let raw = fs::read(boards_dir.join("inbox.md")).unwrap();
+        assert_eq!(
+            &raw[..4], b"LEXE",
+            "Legacy file should be migrated to encrypted format"
+        );
+        assert!(
+            !String::from_utf8_lossy(&raw).contains("kanban-plugin"),
+            "Migrated file should not contain plaintext"
+        );
+
+        // Adding a card should still work after migration
+        storage.add_card(&inbox_id, 0, "post-migration card").unwrap();
+        let board = storage.read_board(&inbox_id).unwrap();
+        assert!(board.all_columns()[0].cards[0].content.contains("post-migration card"));
+    }
+
+    #[test]
+    fn test_key_file_created_in_boards_dir() {
+        let (_storage, dir) = temp_storage();
+        let key_path = dir.path().join("boards").join(".lexera.key");
+        assert!(key_path.exists(), "Encryption key file should be created");
+        let key_data = fs::read(&key_path).unwrap();
+        assert_eq!(key_data.len(), 32, "Key should be 256 bits (32 bytes)");
     }
 }
