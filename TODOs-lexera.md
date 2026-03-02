@@ -168,8 +168,8 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 1. ~~41+ unwrap() calls in crdt/bridge.rs~~ FIXED (commit f41165c8)
 2. ~~No include file cycle detection~~ FIXED (commit e84fb78f)
 3. Dual parser paths (legacy vs new format) - maintenance burden, 2x test cases
-4. CRDT metadata limitation: YAML header, footer, settings stored outside CRDT (Phase 1 known limitation)
-5. Merge ignores card reordering within columns - only tracks content/checked/column changes
+4. ~~CRDT metadata limitation: YAML header, footer, settings stored outside CRDT~~ FIXED: metadata LoroMap in CRDT root (commit 96d60e60)
+5. ~~Merge ignores card reordering within columns~~ FIXED: position-aware 3-way merge (commit fd7f70f3)
 6. Include files merged as atomic chunks, not card-level - concurrent edits cause full conflict
 7. ~~Search uses ASCII case sensitivity, no Unicode/accent normalization~~ FIXED: unicode-normalization crate (commit a984c536)
 8. ~~has_structural_mismatch() may false-trigger on implicit Default rows/stacks~~ FIXED: normalize defaults (commit 70813a75)
@@ -207,7 +207,7 @@ Deep Analysis Summary (2026-03-01, updated 2026-03-01)
 12. ~~Template variable substitution has no type checking, fails silently~~ FIXED: lexeraLog warnings (commit 6d354ee8)
 13. ~~WebSocket reconnection: fixed 1.5s interval~~ FIXED: exponential backoff (commit 39f0efe6)
 14. ~~273 uncached DOM queries (querySelector/getElementById)~~ FIXED: all static HTML elements cached with lazy getters; remaining queries are for dynamic elements (commits dfd92d0a, 68ca877e, 3a0ac18f)
-15. No virtual scrolling for large boards
+15. ~~No virtual scrolling for large boards~~ FIXED: IntersectionObserver-based virtual scrolling for columns with >50 cards (commit 78c62b07)
 16. ~~Export pipeline has no rollback on partial failure~~ FIXED: createdFiles tracking + remove_export_files cleanup (commit 065c7b70)
 
 ### lexera-capture-ios
@@ -285,7 +285,7 @@ Completed:
 
 Remaining:
 3. ~~Add backpressure handling to sync channels~~ DONE: bounded channels with try_send (commit 7c6cd2ae)
-4. Implement per-board subscriptions properly
+4. ~~Implement per-board subscriptions properly~~ ALREADY DONE: URL-path scoped rooms with broadcast isolation (verified with 14 tests, commit 5f77aba0)
 5. ~~Add version catch-up on reconnect (client sends last known VV)~~ DONE: VV protocol in ClientHello/ServerHello
 
 Impact: Core value proposition - real-time collaboration
@@ -317,7 +317,7 @@ Tasks:
 2. ~~Improve structural change handling in sync_column_structure~~ FIXED: has_structural_diff() + format upgrade branch (commit b0d05a1a)
 3. Add conflict resolution strategies beyond last-write-wins
 4. ~~Test concurrent edits from multiple peers~~ DONE: 4 concurrent edit scenarios (commit 1f6270ec)
-5. Move YAML/settings into CRDT for collaborative consistency
+5. ~~Move YAML/settings into CRDT for collaborative consistency~~ DONE: metadata LoroMap with field-level settings merge (commit 96d60e60)
 
 Impact: Better merge quality, fewer conflicts
 
@@ -430,11 +430,11 @@ Impact: Enables safe refactoring and regression prevention across both frontend 
 
 | Package | Rust LOC | JS LOC | CSS LOC | Tests | Rating |
 |---------|----------|--------|---------|-------|--------|
-| lexera-core | ~9,925 | - | - | 429 | Good |
-| lexera-backend | ~5,887 | ~1,330 | ~200 | 119 | Good |
+| lexera-core | ~9,925 | - | - | 444 | Good |
+| lexera-backend | ~5,887 | ~1,330 | ~200 | 132 | Good |
 | lexera-kanban | ~700 | ~17,000 | ~4,100 | 264 (JS) | Good |
 | lexera-capture-ios | ~609 | ~320 | ~200 | 28 | Medium |
-| **Total** | **~17,121** | **~18,650** | **~4,500** | **840** | - |
+| **Total** | **~17,121** | **~18,650** | **~4,500** | **868** | - |
 
 ### Button/Menu Audit (2026-03-01) — 27 broken inline onclick handlers fixed
 
@@ -467,12 +467,12 @@ verifyContentSync, closeVerificationResults, forceWriteAllContent, cancelForceWr
 |--------|------|---------|--------|-----|
 | Architecture | 4/5 | 4/5 (+1: api split, persistence) | 2/5 | 3/5 |
 | Code Quality | 5/5 (zero production unwrap) | 4/5 (zero production unwrap, named constants) | 2/5 | 4/5 (zero production unwrap, named constants) |
-| Testing | 5/5 (429 tests) | 4/5 (119 tests, full service coverage) | 3/5 (264 tests across 5 files) | 3/5 (+: 28 unit tests) |
+| Testing | 5/5 (444 tests) | 4/5 (132 tests, full service + sync coverage) | 3/5 (264 tests across 5 files) | 3/5 (+: 28 unit tests) |
 | Error Handling | 4/5 (+1: CRDT bridge) | 2/5 | 2/5 | 3/5 (+1: I/O logging) |
 | Security | 3/5 | 2/5 (+1: CORS, path traversal) | 2/5 | 2/5 |
 | Maintainability | 3/5 | 3/5 (+1: api modules) | 1/5 | 3/5 |
 | API Design | 4/5 | 3/5 | 3/5 | 3/5 |
-| Collaboration | 4/5 (CRDT) | 4/5 (presence, persistence) | 3/5 (presence UI) | - |
+| Collaboration | 5/5 (CRDT + metadata sync + position merge) | 4/5 (presence, persistence, board isolation) | 3/5 (presence UI, virtual scrolling) | - |
 
 ────────────────────────────────────────────────────────────────────────────────
 
