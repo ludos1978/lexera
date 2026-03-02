@@ -360,6 +360,7 @@ pub fn filter_excluded_from_board(board: &KanbanBoard, exclude_tags: &[String]) 
         yaml_header: board.yaml_header.clone(),
         kanban_footer: board.kanban_footer.clone(),
         board_settings: board.board_settings.clone(),
+        format_hint: board.format_hint,
     }
 }
 
@@ -730,6 +731,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: crate::types::BoardFormat::Legacy,
         }
     }
 
@@ -742,6 +744,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: crate::types::BoardFormat::New,
         }
     }
 

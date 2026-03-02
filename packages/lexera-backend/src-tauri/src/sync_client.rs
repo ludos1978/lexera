@@ -150,6 +150,7 @@ impl SyncClientManager {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: lexera_core::types::BoardFormat::Legacy,
         };
         storage.add_remote_board(&local_board_id, placeholder_board);
 

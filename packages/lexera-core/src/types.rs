@@ -1,6 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Indicates whether the board was parsed from legacy (## columns) or new (# / ## / ### hierarchy) format.
+/// Used by `generate_markdown()` to preserve round-trip fidelity: legacy boards are written back
+/// with `## Column` headings, new-format boards with `# Row` / `## Stack` / `### Column`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BoardFormat {
+    /// Legacy flat format: `## Column Title` at heading level 2.
+    /// Internally stored as a single Default row / Default stack wrapping the columns.
+    Legacy,
+    /// Hierarchical format: `# Row` / `## Stack` / `### Column`.
+    New,
+}
+
 /// Internal tags applied by the kanban board to mark hidden items.
 pub const HIDDEN_TAG_PARKED: &str = "#hidden-internal-parked";
 pub const HIDDEN_TAG_DELETED: &str = "#hidden-internal-deleted";
@@ -102,6 +115,10 @@ pub struct BoardSettings {
 pub struct KanbanBoard {
     pub valid: bool,
     pub title: String,
+    /// Legacy flat columns. After parser consolidation this is only populated by
+    /// code that constructs boards programmatically (CRDT bridge, merge, tests).
+    /// The parser always populates `rows` instead, wrapping legacy columns in a
+    /// Default row / Default stack.
     pub columns: Vec<KanbanColumn>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<KanbanRow>,
@@ -109,6 +126,21 @@ pub struct KanbanBoard {
     pub kanban_footer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_settings: Option<BoardSettings>,
+    /// Tracks the original markdown format for round-trip fidelity.
+    /// Defaults to Legacy when not set (e.g. programmatically constructed boards).
+    #[serde(default = "default_board_format")]
+    pub format_hint: BoardFormat,
+}
+
+/// Default board format for serde deserialization.
+fn default_board_format() -> BoardFormat {
+    BoardFormat::Legacy
+}
+
+impl Default for BoardFormat {
+    fn default() -> Self {
+        BoardFormat::Legacy
+    }
 }
 
 impl KanbanBoard {

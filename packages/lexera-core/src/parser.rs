@@ -16,8 +16,8 @@ use crate::include::slide_parser;
 use crate::include::syntax;
 use crate::merge::card_identity;
 use crate::types::{
-    BoardSettings, IncludeSource, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack,
-    BOARD_SETTING_KEYS,
+    BoardFormat, BoardSettings, IncludeSource, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow,
+    KanbanStack, BOARD_SETTING_KEYS,
 };
 
 /// Context for parsing boards with include file support.
@@ -52,6 +52,7 @@ pub fn parse_markdown(content: &str) -> KanbanBoard {
         yaml_header: None,
         kanban_footer: None,
         board_settings: None,
+        format_hint: BoardFormat::Legacy,
     };
 
     // First pass: detect format by scanning for h1 headings (# but not ## or ###)
@@ -59,8 +60,10 @@ pub fn parse_markdown(content: &str) -> KanbanBoard {
     let new_format = detect_new_format(&lines);
 
     if new_format {
+        board.format_hint = BoardFormat::New;
         parse_new_format(&lines, &mut board);
     } else {
+        board.format_hint = BoardFormat::Legacy;
         parse_legacy_format(&lines, &mut board);
     }
 
@@ -161,7 +164,10 @@ fn is_description_boundary(lines: &[&str], i: usize, new_format: bool) -> bool {
 }
 
 /// Parse legacy format: ## = column header, cards as list items.
+/// Columns are wrapped in a Default row / Default stack so that the board
+/// always uses the rows/stacks/columns hierarchy internally.
 fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
+    let mut parsed_columns: Vec<KanbanColumn> = Vec::new();
     let mut current_column: Option<KanbanColumn> = None;
     let mut current_task: Option<KanbanCard> = None;
     let mut collecting_description = false;
@@ -231,7 +237,7 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
                 &mut collecting_description,
             );
             if let Some(col) = current_column.take() {
-                board.columns.push(col);
+                parsed_columns.push(col);
             }
 
             let column_title = &line[3..];
@@ -297,7 +303,21 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
         &mut collecting_description,
     );
     if let Some(col) = current_column.take() {
-        board.columns.push(col);
+        parsed_columns.push(col);
+    }
+
+    // Wrap parsed columns in a Default row / Default stack so the board
+    // always uses the unified rows hierarchy. board.columns stays empty.
+    if !parsed_columns.is_empty() {
+        board.rows.push(KanbanRow {
+            id: generate_id("row"),
+            title: "Default".to_string(),
+            stacks: vec![KanbanStack {
+                id: generate_id("stack"),
+                title: "Default".to_string(),
+                columns: parsed_columns,
+            }],
+        });
     }
 
     if !footer_lines.is_empty() {
@@ -624,25 +644,31 @@ pub fn generate_markdown(board: &KanbanBoard) -> String {
         markdown.push_str("\n\n");
     }
 
-    if !board.rows.is_empty() {
-        // New format: # row / ## stack / ### column
-        for row in &board.rows {
-            markdown.push_str(&format!("# {}\n\n", row.title));
+    match board.format_hint {
+        BoardFormat::New => {
+            // New format: # row / ## stack / ### column
+            for row in &board.rows {
+                markdown.push_str(&format!("# {}\n\n", row.title));
 
-            for stack in &row.stacks {
-                markdown.push_str(&format!("## {}\n\n", stack.title));
+                for stack in &row.stacks {
+                    markdown.push_str(&format!("## {}\n\n", stack.title));
 
-                for column in &stack.columns {
-                    markdown.push_str(&format!("### {}\n", column.title));
-                    write_column_cards(&mut markdown, column);
+                    for column in &stack.columns {
+                        markdown.push_str(&format!("### {}\n", column.title));
+                        write_column_cards(&mut markdown, column);
+                    }
                 }
             }
         }
-    } else {
-        // Legacy format: ## column
-        for column in &board.columns {
-            markdown.push_str(&format!("## {}\n", column.title));
-            write_column_cards(&mut markdown, column);
+        BoardFormat::Legacy => {
+            // Legacy format: ## column headers only (no row/stack headings).
+            // Columns come from rows hierarchy (parser always wraps in Default row/stack)
+            // or from board.columns for programmatically constructed boards.
+            let columns = board.all_columns();
+            for column in columns {
+                markdown.push_str(&format!("## {}\n", column.title));
+                write_column_cards(&mut markdown, column);
+            }
         }
     }
 
@@ -799,18 +825,20 @@ columnWidth: 450px
     fn test_parse_basic_board() {
         let board = parse_markdown(SAMPLE_BOARD);
         assert!(board.valid);
-        assert_eq!(board.columns.len(), 2);
-        assert_eq!(board.columns[0].title, "Todo");
-        assert_eq!(board.columns[0].cards.len(), 2);
-        assert!(!board.columns[0].cards[0].checked);
-        assert_eq!(board.columns[0].cards[0].content, "First task");
-        assert!(board.columns[0].cards[1].checked);
+        assert_eq!(board.format_hint, BoardFormat::Legacy);
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 2);
+        assert_eq!(cols[0].title, "Todo");
+        assert_eq!(cols[0].cards.len(), 2);
+        assert!(!cols[0].cards[0].checked);
+        assert_eq!(cols[0].cards[0].content, "First task");
+        assert!(cols[0].cards[1].checked);
         assert_eq!(
-            board.columns[0].cards[1].content,
+            cols[0].cards[1].content,
             "Completed task\nwith description"
         );
-        assert_eq!(board.columns[1].title, "Done");
-        assert_eq!(board.columns[1].cards.len(), 1);
+        assert_eq!(cols[1].title, "Done");
+        assert_eq!(cols[1].cards.len(), 1);
         assert!(board.kanban_footer.is_some());
     }
 
@@ -825,8 +853,9 @@ columnWidth: 450px
         let board = parse_markdown(
             "---\nkanban-plugin: board\n---\n\n## Todo\n- [ ] Task <!-- kid:a1b2c3d4 -->\n",
         );
-        assert_eq!(board.columns[0].cards[0].content, "Task");
-        assert_eq!(board.columns[0].cards[0].kid, Some("a1b2c3d4".to_string()));
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards[0].content, "Task");
+        assert_eq!(cols[0].cards[0].kid, Some("a1b2c3d4".to_string()));
     }
 
     #[test]
@@ -845,8 +874,10 @@ columnWidth: 450px
         let reparsed = parse_markdown(&regenerated);
 
         assert!(reparsed.valid);
-        assert_eq!(reparsed.columns.len(), board.columns.len());
-        for (orig, re) in board.columns.iter().zip(reparsed.columns.iter()) {
+        let orig_cols = board.all_columns();
+        let re_cols = reparsed.all_columns();
+        assert_eq!(re_cols.len(), orig_cols.len());
+        for (orig, re) in orig_cols.iter().zip(re_cols.iter()) {
             assert_eq!(orig.title, re.title);
             assert_eq!(orig.cards.len(), re.cards.len());
             for (oc, rc) in orig.cards.iter().zip(re.cards.iter()) {
@@ -890,7 +921,7 @@ columnWidth: 450px
     fn test_empty_board() {
         let board = parse_markdown("---\nkanban-plugin: board\n---\n");
         assert!(board.valid);
-        assert_eq!(board.columns.len(), 0);
+        assert_eq!(board.all_columns().len(), 0);
     }
 
     #[test]
@@ -898,7 +929,8 @@ columnWidth: 450px
         let md =
             "---\nkanban-plugin: board\n---\n\n## Col\n- [ ] Task\n  line1\n  line2\n\n## Next\n";
         let board = parse_markdown(md);
-        assert_eq!(board.columns[0].cards[0].content, "Task\nline1\nline2");
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards[0].content, "Task\nline1\nline2");
     }
 
     // --- New format tests (h1/h2/h3 hierarchy) ---
@@ -1028,12 +1060,20 @@ kanban-plugin: board
     }
 
     #[test]
-    fn test_legacy_format_unchanged() {
-        // Make sure legacy boards with ## headers still work
+    fn test_legacy_format_uses_default_wrapper() {
+        // Legacy boards with ## headers are wrapped in a Default row/stack
         let board = parse_markdown(SAMPLE_BOARD);
         assert!(board.valid);
-        assert!(board.rows.is_empty(), "legacy boards should have no rows");
-        assert_eq!(board.columns.len(), 2);
+        assert_eq!(board.format_hint, BoardFormat::Legacy);
+        // Columns are accessible via all_columns()
+        assert_eq!(board.all_columns().len(), 2);
+        // Internally stored in a Default row/stack
+        assert_eq!(board.rows.len(), 1);
+        assert_eq!(board.rows[0].title, "Default");
+        assert_eq!(board.rows[0].stacks.len(), 1);
+        assert_eq!(board.rows[0].stacks[0].title, "Default");
+        // board.columns is empty (columns live in the rows hierarchy)
+        assert!(board.columns.is_empty());
     }
 
     #[test]
@@ -1042,10 +1082,11 @@ kanban-plugin: board
         let md = "---\nkanban-plugin: board\n# not a heading\n---\n\n## Col\n- [ ] Task\n";
         let board = parse_markdown(md);
         assert!(board.valid);
-        assert!(
-            board.rows.is_empty(),
+        assert_eq!(
+            board.format_hint,
+            BoardFormat::Legacy,
             "# inside YAML should not trigger new format"
         );
-        assert_eq!(board.columns.len(), 1);
+        assert_eq!(board.all_columns().len(), 1);
     }
 }

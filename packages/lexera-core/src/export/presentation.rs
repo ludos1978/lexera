@@ -665,6 +665,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: crate::types::BoardFormat::Legacy,
         }
     }
 

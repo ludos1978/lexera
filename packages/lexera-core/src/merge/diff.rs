@@ -130,7 +130,7 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{KanbanBoard, KanbanColumn, KanbanRow, KanbanStack};
+    use crate::types::{BoardFormat, KanbanBoard, KanbanColumn, KanbanRow, KanbanStack};
 
     fn make_card(kid: &str, content: &str, checked: bool) -> KanbanCard {
         KanbanCard {
@@ -158,6 +158,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::Legacy,
         }
     }
 
@@ -252,6 +253,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::New,
         }
     }
 

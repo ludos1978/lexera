@@ -1482,7 +1482,7 @@ kanban-plugin: board
 
         let board = storage.read_board(&id).unwrap();
         assert!(board.valid);
-        assert_eq!(board.columns.len(), 2);
+        assert_eq!(board.all_columns().len(), 2);
     }
 
     #[test]
@@ -1496,9 +1496,10 @@ kanban-plugin: board
         storage.add_card(&id, 0, "New task").unwrap();
 
         let board = storage.read_board(&id).unwrap();
-        assert_eq!(board.columns[0].cards.len(), 3);
-        assert!(board.columns[0].cards[2].content.starts_with("New task"));
-        assert!(board.columns[0].cards[2].kid.is_some());
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards.len(), 3);
+        assert!(cols[0].cards[2].content.starts_with("New task"));
+        assert!(cols[0].cards[2].kid.is_some());
 
         // Verify it was written to disk
         let on_disk = fs::read_to_string(tmp.path()).unwrap();
@@ -1519,8 +1520,9 @@ kanban-plugin: board
         let id = storage.add_board(tmp.path()).unwrap();
 
         let board = storage.read_board(&id).unwrap();
-        assert_eq!(board.columns[0].cards[0].content, "Existing");
-        assert_eq!(board.columns[0].cards[0].kid, Some("a1b2c3d4".to_string()));
+        let cols = board.all_columns();
+        assert_eq!(cols[0].cards[0].content, "Existing");
+        assert_eq!(cols[0].cards[0].kid, Some("a1b2c3d4".to_string()));
 
         storage.write_board(&id, &board).unwrap();
 
@@ -1632,11 +1634,14 @@ kanban-plugin: board
         let id = storage.add_board(&board_path).unwrap();
 
         let mut board = storage.read_board(&id).unwrap();
-        assert_eq!(board.columns.len(), 1);
-        assert_eq!(board.columns[0].cards.len(), 1);
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 1);
+        assert_eq!(cols[0].cards.len(), 1);
+        drop(cols);
 
-        board.columns[0].cards[0].content = "# Slide 1\n\nUpdated content".to_string();
-        board.columns[0].cards.push(KanbanCard {
+        let mut cols_mut = board.all_columns_mut();
+        cols_mut[0].cards[0].content = "# Slide 1\n\nUpdated content".to_string();
+        cols_mut[0].cards.push(KanbanCard {
             id: "slide-added".to_string(),
             content: "# Slide 2\n\nSecond slide".to_string(),
             checked: false,
@@ -1703,8 +1708,11 @@ kanban-plugin: board
         let id = storage.add_board(&board_path).unwrap();
 
         let mut board = storage.read_board(&id).unwrap();
-        board.columns[0].title = "Todo !!!include(./slides.md)!!!".to_string();
-        board.columns[0].include_source = None;
+        {
+            let mut cols_mut = board.all_columns_mut();
+            cols_mut[0].title = "Todo !!!include(./slides.md)!!!".to_string();
+            cols_mut[0].include_source = None;
+        }
 
         storage.write_board(&id, &board).unwrap();
 
@@ -1727,7 +1735,7 @@ kanban-plugin: board
         let base = storage.read_board(&id).unwrap();
 
         let mut remote = base.clone();
-        remote.columns[0].cards.push(KanbanCard {
+        remote.all_columns_mut()[0].cards.push(KanbanCard {
             id: "remote-card".to_string(),
             content: "Remote addition".to_string(),
             checked: false,
@@ -1736,11 +1744,12 @@ kanban-plugin: board
         storage.write_board(&id, &remote).unwrap();
 
         let mut ours = base.clone();
-        ours.columns[0].cards[0].content = "Buy groceries and fruit".to_string();
+        ours.all_columns_mut()[0].cards[0].content = "Buy groceries and fruit".to_string();
         storage.write_board_from_base(&id, &base, &ours).unwrap();
 
         let merged = storage.read_board(&id).unwrap();
-        let contents: Vec<String> = merged.columns[0]
+        let merged_cols = merged.all_columns();
+        let contents: Vec<String> = merged_cols[0]
             .cards
             .iter()
             .map(|card| card.content.clone())
@@ -1748,7 +1757,7 @@ kanban-plugin: board
 
         assert!(contents.contains(&"Buy groceries and fruit".to_string()));
         assert!(contents.contains(&"Remote addition".to_string()));
-        assert_eq!(merged.columns[0].cards.len(), 3);
+        assert_eq!(merged_cols[0].cards.len(), 3);
     }
 
     #[test]
@@ -1787,9 +1796,10 @@ kanban-plugin: board
         let board = storage.read_board(&id).unwrap();
         assert!(board.valid);
         // The self-including column should have no cards (cycle was skipped)
-        assert_eq!(board.columns.len(), 1);
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 1);
         assert!(
-            board.columns[0].cards.is_empty(),
+            cols[0].cards.is_empty(),
             "self-including column should have no cards due to cycle detection"
         );
     }
@@ -1819,9 +1829,10 @@ kanban-plugin: board
 
         // The rebuilt CRDT should produce a board matching the .md
         let crdt_board = state.crdt.as_ref().unwrap().to_board();
-        assert_eq!(crdt_board.columns.len(), 2);
-        assert_eq!(crdt_board.columns[0].title, "Todo");
-        assert_eq!(crdt_board.columns[1].title, "Done");
+        let crdt_cols = crdt_board.all_columns();
+        assert_eq!(crdt_cols.len(), 2);
+        assert_eq!(crdt_cols[0].title, "Todo");
+        assert_eq!(crdt_cols[1].title, "Done");
     }
 
     #[test]
@@ -1866,32 +1877,34 @@ kanban-plugin: board
 
         let board = storage.read_board(&id).unwrap();
         assert!(board.valid);
-        assert_eq!(board.columns.len(), 2);
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 2);
 
         // Verify column titles
-        assert_eq!(board.columns[0].title, "Todo");
-        assert_eq!(board.columns[1].title, "Done");
+        assert_eq!(cols[0].title, "Todo");
+        assert_eq!(cols[1].title, "Done");
 
         // Verify card contents
-        assert_eq!(board.columns[0].cards.len(), 2);
-        assert_eq!(board.columns[0].cards[0].content, "Buy groceries");
-        assert!(!board.columns[0].cards[0].checked);
-        assert_eq!(board.columns[0].cards[1].content, "Walk the dog");
-        assert!(!board.columns[0].cards[1].checked);
+        assert_eq!(cols[0].cards.len(), 2);
+        assert_eq!(cols[0].cards[0].content, "Buy groceries");
+        assert!(!cols[0].cards[0].checked);
+        assert_eq!(cols[0].cards[1].content, "Walk the dog");
+        assert!(!cols[0].cards[1].checked);
 
-        assert_eq!(board.columns[1].cards.len(), 1);
-        assert_eq!(board.columns[1].cards[0].content, "Laundry");
-        assert!(board.columns[1].cards[0].checked);
+        assert_eq!(cols[1].cards.len(), 1);
+        assert_eq!(cols[1].cards[0].content, "Laundry");
+        assert!(cols[1].cards[0].checked);
 
         // Verify the CRDT also produces the same content
         let boards = storage.boards.read().unwrap();
         let state = boards.get(&id).unwrap();
         let crdt_board = state.crdt.as_ref().unwrap().to_board();
-        assert_eq!(crdt_board.columns.len(), 2);
-        assert_eq!(crdt_board.columns[0].cards.len(), 2);
-        assert_eq!(crdt_board.columns[1].cards.len(), 1);
-        assert!(crdt_board.columns[0].cards[0].content.contains("Buy groceries"));
-        assert!(crdt_board.columns[1].cards[0].content.contains("Laundry"));
+        let crdt_cols = crdt_board.all_columns();
+        assert_eq!(crdt_cols.len(), 2);
+        assert_eq!(crdt_cols[0].cards.len(), 2);
+        assert_eq!(crdt_cols[1].cards.len(), 1);
+        assert!(crdt_cols[0].cards[0].content.contains("Buy groceries"));
+        assert!(crdt_cols[1].cards[0].content.contains("Laundry"));
     }
 
     #[test]
@@ -1914,10 +1927,11 @@ kanban-plugin: board
 
         let board = storage.read_board(&id).unwrap();
         assert!(board.valid);
-        assert_eq!(board.columns.len(), 2);
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 2);
         // Both columns should get the same cards from the shared include file
-        assert_eq!(board.columns[0].cards.len(), 1);
-        assert_eq!(board.columns[1].cards.len(), 1);
+        assert_eq!(cols[0].cards.len(), 1);
+        assert_eq!(cols[1].cards.len(), 1);
     }
 
     #[test]
@@ -1940,9 +1954,10 @@ kanban-plugin: board
                 b.wait();
                 let board = s.read_board(&bid).unwrap();
                 assert!(board.valid);
-                assert_eq!(board.columns.len(), 2);
-                assert_eq!(board.columns[0].cards.len(), 2);
-                assert_eq!(board.columns[1].cards.len(), 1);
+                let cols = board.all_columns();
+                assert_eq!(cols.len(), 2);
+                assert_eq!(cols[0].cards.len(), 2);
+                assert_eq!(cols[1].cards.len(), 1);
             }));
         }
 
@@ -1978,7 +1993,7 @@ kanban-plugin: board
                     let board = s.read_board("board-rw");
                     assert!(board.is_some());
                     let board = board.unwrap();
-                    assert_eq!(board.columns.len(), 2);
+                    assert_eq!(board.all_columns().len(), 2);
                 }
             }));
         }
@@ -2015,9 +2030,10 @@ kanban-plugin: board
             let board = storage.read_board(&format!("board-mw-{}", i));
             assert!(board.is_some(), "board-mw-{} should exist", i);
             let board = board.unwrap();
-            assert_eq!(board.columns.len(), 2);
-            assert_eq!(board.columns[0].cards.len(), 2);
-            assert_eq!(board.columns[1].cards.len(), 1);
+            let cols = board.all_columns();
+            assert_eq!(cols.len(), 2);
+            assert_eq!(cols[0].cards.len(), 2);
+            assert_eq!(cols[1].cards.len(), 1);
         }
     }
 
@@ -2032,7 +2048,7 @@ kanban-plugin: board
 
         // Modify the board and write it back
         let mut board = storage.read_board(&id).unwrap();
-        board.columns[0].cards[0].content = "Modified task".to_string();
+        board.all_columns_mut()[0].cards[0].content = "Modified task".to_string();
         storage.write_board(&id, &board).unwrap();
 
         // Verify file content on disk matches what we wrote
@@ -2058,14 +2074,15 @@ kanban-plugin: board
         storage.add_card(&id, 1, "Newly done task").unwrap();
 
         let board = storage.read_board(&id).unwrap();
+        let cols = board.all_columns();
         // "Done" column should now have 2 cards (original "Laundry" + new one)
-        assert_eq!(board.columns[1].cards.len(), 2);
+        assert_eq!(cols[1].cards.len(), 2);
         assert!(
-            board.columns[1].cards[1].content.starts_with("Newly done task"),
+            cols[1].cards[1].content.starts_with("Newly done task"),
             "new card should appear in the Done column"
         );
         // "Todo" column should be unchanged
-        assert_eq!(board.columns[0].cards.len(), 2);
+        assert_eq!(cols[0].cards.len(), 2);
 
         // Verify on disk
         let on_disk = fs::read_to_string(&board_path).unwrap();
@@ -2124,13 +2141,14 @@ kanban-plugin: board
 
         let board = storage.read_board(&id).unwrap();
         assert!(board.valid);
-        assert_eq!(board.columns.len(), 3);
-        assert_eq!(board.columns[0].title, "Backlog");
-        assert!(board.columns[0].cards.is_empty(), "Backlog should have no cards");
-        assert_eq!(board.columns[1].title, "In Progress");
-        assert!(board.columns[1].cards.is_empty(), "In Progress should have no cards");
-        assert_eq!(board.columns[2].title, "Done");
-        assert_eq!(board.columns[2].cards.len(), 1);
+        let cols = board.all_columns();
+        assert_eq!(cols.len(), 3);
+        assert_eq!(cols[0].title, "Backlog");
+        assert!(cols[0].cards.is_empty(), "Backlog should have no cards");
+        assert_eq!(cols[1].title, "In Progress");
+        assert!(cols[1].cards.is_empty(), "In Progress should have no cards");
+        assert_eq!(cols[2].title, "Done");
+        assert_eq!(cols[2].cards.len(), 1);
 
         // Write back and verify round-trip preserves empty columns
         storage.write_board(&id, &board).unwrap();
@@ -2141,10 +2159,11 @@ kanban-plugin: board
 
         // Re-read and verify structure is preserved
         let board2 = storage.read_board(&id).unwrap();
-        assert_eq!(board2.columns.len(), 3);
-        assert!(board2.columns[0].cards.is_empty());
-        assert!(board2.columns[1].cards.is_empty());
-        assert_eq!(board2.columns[2].cards.len(), 1);
+        let cols2 = board2.all_columns();
+        assert_eq!(cols2.len(), 3);
+        assert!(cols2[0].cards.is_empty());
+        assert!(cols2[1].cards.is_empty());
+        assert_eq!(cols2[2].cards.len(), 1);
     }
 
     #[test]

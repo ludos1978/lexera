@@ -164,15 +164,35 @@ fn populate_columns_list(
     columns: &[KanbanColumn],
 ) -> io::Result<()> {
     for col in columns {
-        let col_map: LoroMap = columns_list.push_container(LoroMap::new()).map_err(loro_err)?;
-        col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-        col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
-        let cards_list: LoroMovableList = col_map
-            .insert_container("cards", LoroMovableList::new())
-            .map_err(loro_err)?;
-        for card in &col.cards {
-            insert_card(&cards_list, card)?;
-        }
+        populate_single_column(columns_list, col)?;
+    }
+    Ok(())
+}
+
+/// Populate a CRDT columns list from a Vec of column references.
+/// Used when columns come from `all_columns()` which returns `Vec<&KanbanColumn>`.
+fn populate_columns_list_from_refs(
+    columns_list: &LoroMovableList,
+    columns: &[&KanbanColumn],
+) -> io::Result<()> {
+    for col in columns {
+        populate_single_column(columns_list, col)?;
+    }
+    Ok(())
+}
+
+fn populate_single_column(
+    columns_list: &LoroMovableList,
+    col: &KanbanColumn,
+) -> io::Result<()> {
+    let col_map: LoroMap = columns_list.push_container(LoroMap::new()).map_err(loro_err)?;
+    col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
+    col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+    let cards_list: LoroMovableList = col_map
+        .insert_container("cards", LoroMovableList::new())
+        .map_err(loro_err)?;
+    for card in &col.cards {
+        insert_card(&cards_list, card)?;
     }
     Ok(())
 }
@@ -229,7 +249,7 @@ impl CrdtStore {
         let root = doc.get_map("root");
         root.insert("title", board.title.as_str()).map_err(loro_err)?;
 
-        let is_new_format = !board.rows.is_empty();
+        let is_new_format = board.format_hint == BoardFormat::New;
         root.insert("format", if is_new_format { "new" } else { "legacy" })
             .map_err(loro_err)?;
 
@@ -256,10 +276,13 @@ impl CrdtStore {
                 }
             }
         } else {
+            // Legacy format: store columns flat. Use all_columns() to handle
+            // both flat columns and Default row/stack wrapping from the parser.
             let columns_list: LoroMovableList = root
                 .insert_container("columns", LoroMovableList::new())
                 .map_err(loro_err)?;
-            populate_columns_list(&columns_list, &board.columns)?;
+            let cols: Vec<&KanbanColumn> = board.all_columns();
+            populate_columns_list_from_refs(&columns_list, &cols)?;
         }
 
         // Store board metadata in the CRDT
@@ -339,6 +362,7 @@ impl CrdtStore {
                 yaml_header,
                 kanban_footer,
                 board_settings,
+                format_hint: BoardFormat::New,
             }
         } else {
             let columns = if let Some(columns_list) = get_movable_list(&root, "columns") {
@@ -355,6 +379,7 @@ impl CrdtStore {
                 yaml_header,
                 kanban_footer,
                 board_settings,
+                format_hint: BoardFormat::Legacy,
             }
         }
     }
@@ -520,8 +545,10 @@ impl CrdtStore {
         let root = self.doc.get_map("root");
         let format = get_string(&root, "format");
 
-        // Format upgrade: legacy CRDT but incoming has rows
-        if format != "new" && !incoming.rows.is_empty() {
+        // Format upgrade: legacy CRDT but incoming has actual new-format rows
+        // (not just the Default wrapper from the parser's legacy path).
+        if format != "new" && incoming.format_hint == BoardFormat::New && !incoming.rows.is_empty()
+        {
             return true;
         }
 
@@ -558,9 +585,10 @@ impl CrdtStore {
                 }
             }
         } else {
-            // Legacy format: check column count
+            // Legacy format: check column count using all_columns() which
+            // handles both flat columns and Default row/stack wrapping.
             if let Some(columns_list) = get_movable_list(&root, "columns") {
-                if columns_list.len() != incoming.columns.len() {
+                if columns_list.len() != incoming.all_columns().len() {
                     return true;
                 }
             }
@@ -704,8 +732,8 @@ impl CrdtStore {
                     let _ = rows_list.delete(rows_list.len() - 1, 1);
                 }
             }
-        } else if !incoming.rows.is_empty() {
-            // Legacy CRDT but incoming board has rows — upgrade format.
+        } else if incoming.format_hint == BoardFormat::New && !incoming.rows.is_empty() {
+            // Legacy CRDT but incoming board has actual new-format rows — upgrade format.
             // Rebuild the entire CRDT structure as "new" format, populating
             // card lists from the incoming board data.
             root.insert("format", "new").map_err(loro_err)?;
@@ -751,13 +779,14 @@ impl CrdtStore {
                 }
             }
         } else {
-            // Legacy format — add missing columns
+            // Legacy format — add missing columns.
+            // Use all_columns() to handle both flat columns and Default row/stack wrapping.
             if let Some(columns_list) = get_movable_list(&root, "columns") {
                 let existing_titles: Vec<String> = (0..columns_list.len())
                     .filter_map(|i| get_map_at(&columns_list, i).map(|m| get_string(&m, "title")))
                     .collect();
 
-                for col in &incoming.columns {
+                for col in incoming.all_columns() {
                     if !existing_titles.contains(&col.title) {
                         let col_map: LoroMap =
                             columns_list.push_container(LoroMap::new()).map_err(loro_err)?;
@@ -919,6 +948,7 @@ impl CrdtStore {
             yaml_header,
             kanban_footer,
             board_settings,
+            format_hint: BoardFormat::Legacy,
         };
         // Write into CRDT; ignore errors since this is a best-effort setter
         let _ = self.sync_metadata(&board_for_meta);
@@ -1003,6 +1033,7 @@ mod tests {
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::Legacy,
         }
     }
 
@@ -1039,6 +1070,7 @@ mod tests {
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::New,
         }
     }
 
@@ -1547,6 +1579,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::Legacy,
         };
 
         let mut store = CrdtStore::from_board(&legacy_board).unwrap();
@@ -1609,6 +1642,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::New,
         };
 
         store.apply_board(&incoming, &current).unwrap();
@@ -1813,6 +1847,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            format_hint: BoardFormat::Legacy,
         };
 
         let mut store = CrdtStore::from_board(&board_no_meta).unwrap();
@@ -1840,6 +1875,7 @@ mod tests {
                 column_width: Some("300px".to_string()),
                 ..Default::default()
             }),
+            format_hint: BoardFormat::Legacy,
         };
 
         store.apply_board(&incoming, &current).unwrap();
