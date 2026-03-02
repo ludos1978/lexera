@@ -5135,5 +5135,13 @@ select.export-input {
   border-color: var(--accent);
 }
 
+/* ── Virtual Scrolling ────────────────────────────────────────────── */
+
+.vs-placeholder {
+  /* Lightweight stand-in for off-screen cards */
+  box-sizing: border-box;
+  margin-bottom: 4px;
+}
+
 /* ── Utility: must be last to win by source order at (0,1,0) ─────── */
 .hidden { display: none; }
