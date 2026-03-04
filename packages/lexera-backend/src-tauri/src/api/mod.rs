@@ -8,6 +8,7 @@ use serde::Serialize;
 
 mod board;
 mod events;
+mod external_embed;
 mod file_ops;
 mod live_sync;
 mod media;
@@ -142,6 +143,10 @@ pub fn api_router() -> Router<AppState> {
         .route("/logs", get(events::list_logs))
         .route("/logs/stream", get(events::stream_logs))
         .route("/events", get(events::sse_events))
+        .route(
+            "/external-embeds/probe",
+            get(external_embed::probe_external_embed),
+        )
         .route("/status", get(events::status))
         .route(
             "/open-connection-window",
@@ -156,7 +161,7 @@ pub fn api_router() -> Router<AppState> {
 
 // ── Shared types and helpers used across sub-modules ────────────────────
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
 }

@@ -54,3 +54,4 @@ packages/lexera-kanban/src-tauri/icons/
 *.crdt
 builds/windows
 .claude
+builds/windows-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]

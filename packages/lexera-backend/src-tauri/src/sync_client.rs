@@ -8,7 +8,9 @@ use futures_util::{SinkExt, StreamExt};
 use lexera_core::storage::local::LocalStorage;
 pub use lexera_core::sync::RemoteConnectionInfo;
 use lexera_core::sync::{ClientMessage, ServerMessage};
+use lexera_core::types::KanbanBoard;
 use lexera_core::watcher::types::BoardChangeEvent;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -23,6 +25,12 @@ struct RemoteConnection {
     remote_board_id: String,
     local_board_id: String,
     ws_task: JoinHandle<()>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteBoardColumnsResponse {
+    full_board: KanbanBoard,
 }
 
 fn friendly_error(context: &str, err: reqwest::Error) -> String {
@@ -141,19 +149,47 @@ impl SyncClientManager {
             ));
         }
 
-        // 3. Add as remote board with placeholder data
-        let placeholder_board = lexera_core::types::KanbanBoard {
-            valid: true,
-            title: room_title,
-            columns: vec![],
-            rows: vec![],
-            yaml_header: None,
-            kanban_footer: None,
-            board_settings: None,
-            generation_meta: None,
-            format_hint: lexera_core::types::BoardFormat::Legacy,
-        };
-        storage.add_remote_board(&local_board_id, placeholder_board);
+        // 3. Fetch the initial remote board snapshot before registering the local mirror.
+        log::info!(
+            "[sync_client] Fetching initial board snapshot remote_board_id={} server={}",
+            remote_board_id,
+            server_url
+        );
+        let board_resp = client
+            .get(format!("{}/boards/{}/columns", server_url, remote_board_id))
+            .send()
+            .await
+            .map_err(|e| friendly_error("Initial board fetch", e))?;
+
+        if !board_resp.status().is_success() {
+            let status = board_resp.status();
+            let text = board_resp.text().await.unwrap_or_default();
+            return Err(format!(
+                "Initial board fetch failed (HTTP {}): {}",
+                status,
+                text
+            ));
+        }
+
+        let mut initial_board = board_resp
+            .json::<RemoteBoardColumnsResponse>()
+            .await
+            .map_err(|e| format!("Parse initial board response: {}", e))?
+            .full_board;
+        log::info!(
+            "[sync_client] Initial snapshot loaded remote_board_id={} title={} cards={}",
+            remote_board_id,
+            initial_board.title,
+            initial_board
+                .all_columns()
+                .iter()
+                .map(|col| col.cards.len())
+                .sum::<usize>()
+        );
+        if initial_board.title.trim().is_empty() {
+            initial_board.title = room_title;
+        }
+        storage.add_remote_board(&local_board_id, initial_board);
 
         // 4. Spawn WS sync task
         let ws_url = format!(

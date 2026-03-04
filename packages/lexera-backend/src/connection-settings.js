@@ -8,6 +8,12 @@
 
   var baseUrl = '';
   var me = null;
+  var initialBackendUrl = '';
+  var discoveryRetryTimer = null;
+  var isInitializing = false;
+  var hasInitializedConnectedState = false;
+  var eventListenersBound = false;
+  var discoveryAttemptCount = 0;
 
   // Board settings field definitions (shared with kanban)
   var BOARD_SETTINGS_FIELDS = [
@@ -58,55 +64,201 @@
     joinStatus: document.getElementById('join-status'),
   };
 
+  function fetchWithTimeout(url, options, timeoutMs) {
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timeoutId = null;
+    var requestOptions = Object.assign({}, options || {});
+    if (controller) {
+      requestOptions.signal = controller.signal;
+      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+        timeoutId = setTimeout(function () {
+          controller.abort();
+        }, timeoutMs);
+      }
+    }
+    return fetch(url, requestOptions).finally(function () {
+      if (timeoutId) clearTimeout(timeoutId);
+    });
+  }
+
   // --- Init ---
 
   async function init() {
-    baseUrl = await discoverBackend();
-    if (!baseUrl) {
-      els.myBoardsList.innerHTML = '<div class="list-empty">Cannot connect to backend</div>';
-      return;
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      initialBackendUrl = params.get('backend') || '';
+    } catch (e) {
+      initialBackendUrl = '';
+    }
+    if (!eventListenersBound) {
+      setupEventListeners();
+      eventListenersBound = true;
+    }
+    await ensureBackendConnection('init');
+  }
+
+  function clearDiscoveryRetry() {
+    if (discoveryRetryTimer) {
+      clearTimeout(discoveryRetryTimer);
+      discoveryRetryTimer = null;
+    }
+  }
+
+  function scheduleDiscoveryRetry(reason) {
+    if (discoveryRetryTimer) return;
+    discoveryRetryTimer = setTimeout(async function () {
+      discoveryRetryTimer = null;
+      await ensureBackendConnection(reason || 'retry');
+    }, 2000);
+  }
+
+  function normalizeBackendUrl(url) {
+    if (!url) return '';
+    try {
+      var parsed = new URL(url);
+      var port = parsed.port ? ':' + parsed.port : '';
+      return parsed.protocol + '//' + parsed.hostname + port;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function buildBackendUrlVariants(url) {
+    var normalized = normalizeBackendUrl(url);
+    if (!normalized) return [];
+    var variants = [];
+    var seen = Object.create(null);
+
+    function push(candidate) {
+      var key = normalizeBackendUrl(candidate);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      variants.push(key);
     }
 
-    await loadIdentity();
-    await loadServerInfo();
-    await loadNetworkInterfaces();
-    await loadMyBoards();
-    await loadConnections();
-    await loadDiscoveredPeers();
+    push(normalized);
+    try {
+      var parsed = new URL(normalized);
+      if (parsed.hostname === 'localhost') {
+        parsed.hostname = '127.0.0.1';
+        push(parsed.toString());
+      } else if (parsed.hostname === '127.0.0.1') {
+        parsed.hostname = 'localhost';
+        push(parsed.toString());
+      }
+    } catch (e) { /* ignore malformed candidate */ }
 
-    setupEventListeners();
-    connectSSE();
+    return variants;
+  }
+
+  async function probeBackendCandidate(url, source, timeoutMs) {
+    var variants = buildBackendUrlVariants(url);
+    for (var i = 0; i < variants.length; i++) {
+      var candidate = variants[i];
+      try {
+        console.info('[management.discover] probing', { source: source, url: candidate });
+        var res = await fetchWithTimeout(candidate + '/status', {}, timeoutMs);
+        if (res.ok) {
+          var data = await res.json();
+          if (data.status === 'running') {
+            var resolved = normalizeBackendUrl(candidate);
+            if (data.port) {
+              try {
+                var resolvedParsed = new URL(resolved);
+                resolvedParsed.port = String(data.port);
+                resolved = normalizeBackendUrl(resolvedParsed.toString());
+              } catch (_) { /* keep candidate */ }
+            }
+            console.info('[management.discover] connected', {
+              source: source,
+              probed: candidate,
+              resolved: resolved
+            });
+            return resolved;
+          }
+        }
+        console.warn('[management.discover] status probe returned non-running response', {
+          source: source,
+          url: candidate
+        });
+      } catch (e) {
+        console.warn('[management.discover] probe failed', {
+          source: source,
+          url: candidate,
+          error: e && e.message ? e.message : String(e)
+        });
+      }
+    }
+    return null;
   }
 
   async function discoverBackend() {
+    if (initialBackendUrl) {
+      var initialMatch = await probeBackendCandidate(initialBackendUrl, 'query', 2000);
+      if (initialMatch) return initialMatch;
+    }
+
     // Try Tauri command first (reads shared config)
     try {
       if (window.__TAURI_INTERNALS__) {
         var url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
-        if (url) {
-          var res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
-          if (res.ok) {
-            var data = await res.json();
-            if (data.status === 'running') return url;
-          }
-        }
+        var tauriMatch = await probeBackendCandidate(url, 'tauri-invoke', 2000);
+        if (tauriMatch) return tauriMatch;
       }
-    } catch (e) { /* fall through */ }
+    } catch (e) {
+      console.warn('[management.discover] tauri invoke failed', e);
+    }
 
     // Fallback: port scanning
     var ports = [13080, 12080, 14080, 11080, 15080];
     for (var i = 0; i < ports.length; i++) {
-      try {
-        var res = await fetch('http://localhost:' + ports[i] + '/status', { signal: AbortSignal.timeout(1000) });
-        if (res.ok) {
-          var data = await res.json();
-          if (data.status === 'running' && data.port) {
-            return 'http://localhost:' + data.port;
-          }
-        }
-      } catch (e) { /* next port */ }
+      var scanned = await probeBackendCandidate('http://localhost:' + ports[i], 'port-scan', 1000);
+      if (scanned) return scanned;
     }
     return null;
+  }
+
+  async function ensureBackendConnection(reason) {
+    if (isInitializing) return;
+    isInitializing = true;
+    discoveryAttemptCount += 1;
+    try {
+      var discovered = await discoverBackend();
+      if (!discovered) {
+        baseUrl = '';
+        populateFallbackNetworkOptions('backend discovery failed');
+        els.serverAddress.textContent = 'Could not connect to local backend (retrying...)';
+        if (!hasInitializedConnectedState) {
+          els.myBoardsList.innerHTML = '<div class="list-empty">Cannot connect to backend yet</div>';
+        }
+        console.warn('[management.discover] backend unavailable', {
+          reason: reason,
+          attempt: discoveryAttemptCount,
+          initialBackendUrl: initialBackendUrl || null
+        });
+        scheduleDiscoveryRetry('backend unavailable');
+        return;
+      }
+
+      baseUrl = discovered;
+      clearDiscoveryRetry();
+      console.info('[management.discover] using backend', {
+        baseUrl: baseUrl,
+        reason: reason,
+        attempt: discoveryAttemptCount
+      });
+
+      await loadIdentity();
+      await loadServerInfo();
+      await loadNetworkInterfaces();
+      await loadMyBoards();
+      await loadConnections();
+      await loadDiscoveredPeers();
+      connectSSE();
+      hasInitializedConnectedState = true;
+    } finally {
+      isInitializing = false;
+    }
   }
 
   var sseSource = null;
@@ -163,12 +315,14 @@
   }
 
   async function apiGet(path) {
+    if (!baseUrl) throw new Error('Backend unavailable');
     var res = await fetch(baseUrl + path);
     if (!res.ok) throw new Error(res.status + ': ' + (await res.text()));
     return res.json();
   }
 
   async function apiPost(path, body) {
+    if (!baseUrl) throw new Error('Backend unavailable');
     var res = await fetch(baseUrl + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -179,12 +333,14 @@
   }
 
   async function apiDelete(path) {
+    if (!baseUrl) throw new Error('Backend unavailable');
     var res = await fetch(baseUrl + path, { method: 'DELETE' });
     if (!res.ok) throw new Error(res.status + ': ' + (await res.text()));
     return res.json();
   }
 
   async function apiPut(path, body) {
+    if (!baseUrl) throw new Error('Backend unavailable');
     var res = await fetch(baseUrl + path, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -259,20 +415,60 @@
     }
   }
 
+  function buildFallbackBindOptions(currentBind) {
+    var options = [];
+    var seen = Object.create(null);
+
+    function push(address, name, label) {
+      var key = String(address || '').trim();
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      options.push({
+        address: key,
+        name: name || key,
+        label: label || key
+      });
+    }
+
+    push('0.0.0.0', 'all', 'All interfaces');
+    push('127.0.0.1', 'loopback', 'Localhost');
+    if (currentBind && currentBind !== '0.0.0.0' && currentBind !== '127.0.0.1') {
+      push(currentBind, 'current', 'Current bind address');
+    }
+    return options;
+  }
+
+  function populateFallbackNetworkOptions(reason) {
+    var currentBind = (currentConfig && currentConfig.bind_address) || '0.0.0.0';
+    var currentPort = (currentConfig && currentConfig.port) || 13080;
+    console.warn('Using fallback network interface options:', reason || 'unknown reason');
+    populateBindSelect(buildFallbackBindOptions(currentBind), currentBind);
+    populatePortSelect(13080, currentPort);
+  }
+
   async function loadNetworkInterfaces() {
     try {
       var data = await apiGet('/collab/network-interfaces');
       var interfaces = data.interfaces || [];
-      populateBindSelect(interfaces, data.current_bind_address);
-      populatePortSelect(data.default_port || 8080, data.current_port);
+      var currentBind = data.current_bind_address || (currentConfig && currentConfig.bind_address) || '0.0.0.0';
+      var defaultPort = data.default_port || 13080;
+      var currentPort = data.current_port || (currentConfig && currentConfig.port) || defaultPort;
+      if (!interfaces.length) {
+        populateFallbackNetworkOptions('backend returned no interfaces');
+        return;
+      }
+      populateBindSelect(interfaces, currentBind);
+      populatePortSelect(defaultPort, currentPort);
     } catch (e) {
       console.warn('Failed to load network interfaces:', e);
+      populateFallbackNetworkOptions(e && e.message ? e.message : String(e));
     }
   }
 
   function populateBindSelect(interfaces, currentBind) {
     var select = els.selectBind;
     select.innerHTML = '';
+    els.customBindRow.style.display = 'none';
 
     var found = false;
     for (var i = 0; i < interfaces.length; i++) {
@@ -299,12 +495,15 @@
       select.value = '__custom__';
       els.inputBindCustom.value = currentBind;
       els.customBindRow.style.display = '';
+    } else {
+      select.value = interfaces.length ? interfaces[0].address : '__custom__';
     }
   }
 
   function populatePortSelect(defaultPort, currentPort) {
     var select = els.selectPort;
     select.innerHTML = '';
+    els.customPortRow.style.display = 'none';
 
     var defaultOpt = document.createElement('option');
     defaultOpt.value = String(defaultPort);
@@ -321,6 +520,8 @@
       select.value = '__custom__';
       els.inputPortCustom.value = currentPort;
       els.customPortRow.style.display = '';
+    } else {
+      select.value = String(defaultPort);
     }
   }
 
@@ -362,7 +563,7 @@
       for (var attempt = 0; attempt < 10; attempt++) {
         await new Promise(function(r) { setTimeout(r, 500); });
         try {
-          var res = await fetch('http://' + host + ':' + port + '/status', { signal: AbortSignal.timeout(1000) });
+          var res = await fetchWithTimeout('http://' + host + ':' + port + '/status', {}, 1000);
           if (res.ok) {
             var data = await res.json();
             if (data.status === 'running') {

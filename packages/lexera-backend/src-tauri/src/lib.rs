@@ -446,6 +446,8 @@ pub fn run() {
                 shutdown_tx,
             };
 
+            app.manage(app_state.clone());
+
             // Spawn HTTP server
             let discovery_for_start = discovery.clone();
             let discovery_user_id = local_user.id.clone();

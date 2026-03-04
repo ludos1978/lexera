@@ -11,6 +11,31 @@ const FALLBACK_PORTS: &[u16] = &[13080, 12080, 14080, 11080, 15080];
 /// Milliseconds to wait after shutting down the old server before rebinding.
 const RESTART_REBIND_DELAY_MS: u64 = 200;
 
+fn is_allowed_app_origin(origin_str: &str) -> bool {
+    if origin_str == "tauri://localhost" {
+        return true;
+    }
+    if origin_str == "http://tauri.localhost" || origin_str == "https://tauri.localhost" {
+        return true;
+    }
+    if origin_str == "http://ipc.localhost" || origin_str == "https://ipc.localhost" {
+        return true;
+    }
+    if let Some(rest) = origin_str.strip_prefix("http://localhost") {
+        return rest.is_empty() || rest.starts_with(':');
+    }
+    if let Some(rest) = origin_str.strip_prefix("http://127.0.0.1") {
+        return rest.is_empty() || rest.starts_with(':');
+    }
+    if let Some(rest) = origin_str.strip_prefix("https://localhost") {
+        return rest.is_empty() || rest.starts_with(':');
+    }
+    if let Some(rest) = origin_str.strip_prefix("https://127.0.0.1") {
+        return rest.is_empty() || rest.starts_with(':');
+    }
+    false
+}
+
 fn build_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
@@ -18,19 +43,7 @@ fn build_app(state: AppState) -> Router {
                 Ok(s) => s,
                 Err(_) => return false,
             };
-            // Allow tauri://localhost (Tauri webview on macOS)
-            if origin_str == "tauri://localhost" {
-                return true;
-            }
-            // Allow http://localhost and http://localhost:<port>
-            if let Some(rest) = origin_str.strip_prefix("http://localhost") {
-                return rest.is_empty() || rest.starts_with(':');
-            }
-            // Allow http://127.0.0.1 and http://127.0.0.1:<port>
-            if let Some(rest) = origin_str.strip_prefix("http://127.0.0.1") {
-                return rest.is_empty() || rest.starts_with(':');
-            }
-            false
+            is_allowed_app_origin(origin_str)
         }))
         .allow_methods(Any)
         .allow_headers(Any);
@@ -40,6 +53,35 @@ fn build_app(state: AppState) -> Router {
         .merge(sync_router())
         .layer(cors)
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_app_origin;
+
+    #[test]
+    fn allows_tauri_window_origins() {
+        assert!(is_allowed_app_origin("tauri://localhost"));
+        assert!(is_allowed_app_origin("http://tauri.localhost"));
+        assert!(is_allowed_app_origin("https://tauri.localhost"));
+        assert!(is_allowed_app_origin("http://ipc.localhost"));
+        assert!(is_allowed_app_origin("https://ipc.localhost"));
+    }
+
+    #[test]
+    fn allows_loopback_http_origins() {
+        assert!(is_allowed_app_origin("http://localhost"));
+        assert!(is_allowed_app_origin("http://localhost:1431"));
+        assert!(is_allowed_app_origin("http://127.0.0.1"));
+        assert!(is_allowed_app_origin("http://127.0.0.1:1431"));
+        assert!(is_allowed_app_origin("https://localhost:1431"));
+    }
+
+    #[test]
+    fn rejects_unrelated_origins() {
+        assert!(!is_allowed_app_origin("http://example.com"));
+        assert!(!is_allowed_app_origin("https://192.168.1.5:1431"));
+    }
 }
 
 /// Try to bind a TCP listener on the given address:port.

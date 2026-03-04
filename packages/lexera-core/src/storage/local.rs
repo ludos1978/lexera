@@ -750,12 +750,56 @@ impl LocalStorage {
         Ok(())
     }
 
+    fn commit_remote_board_state(
+        &self,
+        board_id: &str,
+        board: KanbanBoard,
+        crdt: Option<CrdtStore>,
+    ) -> Result<(), StorageError> {
+        let existing_path = self
+            .boards
+            .read()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?
+            .get(board_id)
+            .map(|state| state.file_path.clone())
+            .unwrap_or_else(|| PathBuf::from(format!("<remote>/{}", board_id)));
+
+        let markdown = parser::generate_markdown(&board);
+        let generation = board
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
+
+        let state = BoardState {
+            file_path: existing_path,
+            board,
+            last_modified: SystemTime::now(),
+            content_hash: Self::content_hash(&markdown),
+            version: self.next_version(),
+            generation,
+            crdt,
+        };
+
+        self.boards
+            .write()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
+            .insert(board_id.to_string(), state);
+
+        Ok(())
+    }
+
     pub fn create_crashsave(
         &self,
         board_id: &str,
         board: &KanbanBoard,
         reason: &str,
     ) -> Result<super::backup::CrashsaveEntry, StorageError> {
+        if self.is_remote_board(board_id) {
+            return Err(StorageError::InvalidBoard(
+                "Remote boards do not have a local file path for crashsaves".to_string(),
+            ));
+        }
         let file_path = self
             .get_board_path(board_id)
             .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
@@ -768,6 +812,11 @@ impl LocalStorage {
         board: &KanbanBoard,
         base_board: Option<&KanbanBoard>,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+        if self.is_remote_board(board_id) {
+            return Err(StorageError::InvalidBoard(
+                "Remote boards are read-only mirrors and cannot be saved locally".to_string(),
+            ));
+        }
         let lock = self.get_write_lock(board_id)?;
         let _guard = lock.lock().map_err(|e| {
             StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e))
@@ -1376,15 +1425,22 @@ impl LocalStorage {
 
     /// Add a remote board (synced from another server, not backed by a local file).
     pub fn add_remote_board(&self, board_id: &str, board: KanbanBoard) {
+        let normalized_board = Self::ensure_board_card_kids(&board);
+        let content_hash = Self::content_hash(&parser::generate_markdown(&normalized_board));
+        let generation = normalized_board
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
         let version = self.next_version();
         let state = BoardState {
             file_path: PathBuf::from(format!("<remote>/{}", board_id)),
-            board,
+            board: normalized_board.clone(),
             last_modified: SystemTime::now(),
-            content_hash: String::new(),
+            content_hash,
             version,
-            generation: 0,
-            crdt: None,
+            generation,
+            crdt: CrdtStore::from_board(&normalized_board).ok(),
         };
         match self.boards.write() {
             Ok(mut boards) => {
@@ -1846,10 +1902,15 @@ impl LocalStorage {
                 board_id, e
             ))
         })?;
-
-        let file_path = self
-            .get_board_path(board_id)
-            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+        let is_remote = self.is_remote_board(board_id);
+        let file_path = if is_remote {
+            None
+        } else {
+            Some(
+                self.get_board_path(board_id)
+                    .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?,
+            )
+        };
 
         // Take CRDT and current board from state for mutation
         let (mut crdt, current_board) = {
@@ -1859,12 +1920,14 @@ impl LocalStorage {
             let state = boards
                 .get_mut(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            let current_board = state.board.clone();
             (
                 state
                     .crdt
                     .take()
+                    .or_else(|| CrdtStore::from_board(&current_board).ok())
                     .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?,
-                state.board.clone(),
+                current_board,
             )
         };
 
@@ -1893,7 +1956,11 @@ impl LocalStorage {
             board_card_summary(&current_board),
             board_card_summary(&board)
         );
-        self.commit_board_state(board_id, &file_path, board, Some(crdt), false)
+        if is_remote {
+            self.commit_remote_board_state(board_id, board, Some(crdt))
+        } else {
+            self.commit_board_state(board_id, file_path.as_ref().unwrap(), board, Some(crdt), false)
+        }
     }
 
     pub fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
@@ -2323,6 +2390,43 @@ kanban-plugin: board
             .iter()
             .flat_map(|column| column.cards.iter())
             .any(|card| card.content == "Remote CRDT addition"));
+    }
+
+    #[test]
+    fn test_import_crdt_updates_remote_board_updates_in_memory_without_local_file_writes() {
+        let storage = LocalStorage::new();
+        let base_board = parser::parse_markdown(TEST_BOARD);
+        let remote_id = "remote-sync-board";
+        storage.add_remote_board(remote_id, base_board.clone());
+
+        let snapshot = storage.export_crdt_snapshot(remote_id).unwrap();
+        let mut remote_store = CrdtStore::load(&snapshot).unwrap();
+        remote_store.set_peer_id(99).unwrap();
+
+        let mut remote_board = base_board.clone();
+        remote_board.title = "Shared Remote Board".to_string();
+        remote_board.all_columns_mut()[0].cards.push(KanbanCard {
+            id: "remote-card".to_string(),
+            content: "Remote mirror card".to_string(),
+            checked: false,
+            kid: Some("remote-card-kid".to_string()),
+        });
+        remote_store
+            .apply_board(&remote_board, &base_board)
+            .unwrap();
+
+        let updates = remote_store
+            .export_updates_since(&loro::VersionVector::default())
+            .unwrap();
+        storage.import_crdt_updates(remote_id, &updates).unwrap();
+
+        let updated = storage.read_board(remote_id).unwrap();
+        assert_eq!(updated.title, "Shared Remote Board");
+        assert!(updated
+            .all_columns()
+            .iter()
+            .flat_map(|column| column.cards.iter())
+            .any(|card| card.content == "Remote mirror card"));
     }
 
     #[test]

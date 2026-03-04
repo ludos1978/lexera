@@ -31,6 +31,7 @@ BACKEND_DIR="$SCRIPT_DIR/packages/lexera-backend"
 KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
 BUILDS_DIR="$SCRIPT_DIR/builds"
 TARGET="x86_64-pc-windows-msvc"
+BUILD_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 ONLY=""
 BUILD_MODE=""
@@ -134,7 +135,7 @@ if should_build "kanban"; then
 fi
 
 # ── Collect artifacts into builds/ ───────────────────────────────
-WIN_OUT="$BUILDS_DIR/windows"
+WIN_OUT="$BUILDS_DIR/windows-$BUILD_TIMESTAMP"
 mkdir -p "$WIN_OUT"
 
 echo "── Collecting build artifacts ──"
@@ -188,7 +189,7 @@ echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo "  Build complete!"
 echo ""
-echo "  Output: builds/windows/"
+echo "  Output: builds/$(basename "$WIN_OUT")/"
 ls -lh "$WIN_OUT/" 2>/dev/null | tail -n +2
 echo ""
 echo "═══════════════════════════════════════════════════════════"

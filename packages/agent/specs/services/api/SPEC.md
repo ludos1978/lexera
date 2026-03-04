@@ -212,6 +212,29 @@ Response 201:
 
 This endpoint exists for recovery paths where canonical save cannot complete safely but the current draft must still be preserved durably.
 
+### Probe External Embed Policy
+
+```
+GET /api/external-embeds/probe?url=...&parentOrigin=...&forceRefresh=true|false
+
+Response 200:
+{
+  "url": "string",
+  "parentOrigin": "string | null",
+  "finalUrl": "string | null",
+  "embeddable": true,
+  "action": "open_page | open_in_browser",
+  "reason": "string",
+  "checkedAt": 0,
+  "fromCache": false,
+  "statusCode": 200,
+  "xFrameOptions": "string | null",
+  "frameAncestors": "string | null"
+}
+```
+
+This endpoint performs a backend-controlled header probe and stores the result in a persistent global cache file. The frontend must use the returned `action` to decide whether to show `Open page` or `Open in browser`, and must not eagerly load the iframe before the user clicks.
+
 ### Server-Sent Events
 
 ```

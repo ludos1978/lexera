@@ -2604,6 +2604,91 @@ u {
   display: block;
   margin: 8px 0;
   max-width: 100%;
+  position: relative;
+}
+
+.external-embed-stage {
+  display: block;
+}
+
+.external-embed-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 160px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,246,239,0.96)),
+    var(--bg-secondary);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+}
+
+.external-embed-shell-browser {
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.96), rgba(248,243,232,0.98)),
+    var(--bg-secondary);
+}
+
+.external-embed-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.external-embed-heading {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.external-embed-url {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.external-embed-message,
+.external-embed-reason {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.external-embed-actions,
+.external-embed-inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.external-embed-open-btn,
+.external-embed-secondary-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.external-embed-secondary-btn {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.external-embed-open-btn:hover,
+.external-embed-secondary-btn:hover {
+  filter: brightness(0.98);
 }
 
 .external-embed-frame {
@@ -2613,6 +2698,10 @@ u {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #fff;
+}
+
+.external-embed-inline-actions {
+  margin-top: 8px;
 }
 
 .external-embed-caption {

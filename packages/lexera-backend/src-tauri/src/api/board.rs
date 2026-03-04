@@ -59,6 +59,7 @@ pub async fn list_remote_boards(State(state): State<AppState>) -> Json<serde_jso
                 "id": id,
                 "title": title,
                 "card_count": card_count,
+                "isRemote": true,
             })
         })
         .collect();
@@ -79,6 +80,7 @@ pub async fn get_board_columns(
     })?;
 
     let version = state.storage.get_board_version(&board_id).unwrap_or(0);
+    let is_remote = state.storage.is_remote_board(&board_id);
     let revision = state
         .storage
         .get_board_revision_token(&board_id)
@@ -139,6 +141,7 @@ pub async fn get_board_columns(
             "version": version,
             "revision": revision,
             "generation": state.storage.get_board_generation(&board_id).unwrap_or(0),
+            "isRemote": is_remote,
             "fullBoard": board,
         })),
     ))
@@ -235,6 +238,7 @@ pub async fn write_board(
         let status = match &e {
             lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
             lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
+            lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         log_api_issue(
@@ -269,6 +273,7 @@ pub async fn create_board_crashsave(
         .map_err(|e| {
             let status = match &e {
                 lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             log_api_issue(
@@ -313,6 +318,7 @@ pub async fn write_board_with_base(
             let status = match &e {
                 lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
                 lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
+                lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             log_api_issue(
@@ -352,6 +358,7 @@ pub async fn rebase_board_with_base(
         .map_err(|e| {
             let status = match &e {
                 lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             log_api_issue(

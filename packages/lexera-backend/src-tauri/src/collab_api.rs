@@ -610,18 +610,24 @@ async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
         .and_then(|auth| auth.get_user(&state.local_user_id).map(|u| u.name.clone()))
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
+    let cfg = lock_arc(&state.config, "config").ok();
+    let configured_bind = cfg
+        .as_ref()
+        .map(|c| c.bind_address.clone())
+        .unwrap_or_else(|| state.bind_address.clone());
+    let configured_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
+    let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(configured_port);
 
     // Determine the address to share: if bound to 0.0.0.0, try to detect a LAN IP
-    let address = if state.bind_address == "0.0.0.0" {
-        local_ip().unwrap_or_else(|| state.bind_address.clone())
+    let address = if configured_bind == "0.0.0.0" {
+        local_ip().unwrap_or_else(|| configured_bind.clone())
     } else {
-        state.bind_address.clone()
+        configured_bind.clone()
     };
 
     Json(serde_json::json!({
         "address": address,
-        "bind_address": state.bind_address,
+        "bind_address": configured_bind,
         "port": actual_port,
         "user_id": state.local_user_id,
         "user_name": user_name,
@@ -724,31 +730,26 @@ fn classify_interface(name: &str, is_loopback: bool) -> &'static str {
     }
 }
 
+fn push_interface_entry(
+    interfaces: &mut Vec<serde_json::Value>,
+    seen: &mut std::collections::HashSet<String>,
+    address: &str,
+    name: &str,
+    label: &str,
+) {
+    let normalized = address.trim();
+    if normalized.is_empty() || !seen.insert(normalized.to_string()) {
+        return;
+    }
+    interfaces.push(serde_json::json!({
+        "address": normalized,
+        "name": name,
+        "label": label,
+    }));
+}
+
 /// GET /collab/network-interfaces — list available network interfaces for bind address selection
 async fn list_network_interfaces(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let mut interfaces = Vec::new();
-
-    // Always offer "All interfaces"
-    interfaces.push(serde_json::json!({
-        "address": "0.0.0.0",
-        "name": "all",
-        "label": "All interfaces",
-    }));
-
-    if let Ok(addrs) = if_addrs::get_if_addrs() {
-        for iface in &addrs {
-            // IPv4 only
-            if let std::net::IpAddr::V4(ipv4) = iface.addr.ip() {
-                let label = classify_interface(&iface.name, iface.addr.is_loopback());
-                interfaces.push(serde_json::json!({
-                    "address": ipv4.to_string(),
-                    "name": iface.name,
-                    "label": format!("{} ({})", label, iface.name),
-                }));
-            }
-        }
-    }
-
     let cfg = lock_arc(&state.config, "config").ok();
     let current_bind = cfg
         .as_ref()
@@ -756,6 +757,55 @@ async fn list_network_interfaces(State(state): State<AppState>) -> Json<serde_js
         .unwrap_or_else(|| state.bind_address.clone());
     let configured_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
     let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
+
+    let mut interfaces = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // Always offer reliable fallback choices even if interface enumeration fails.
+    push_interface_entry(&mut interfaces, &mut seen, "0.0.0.0", "all", "All interfaces");
+    push_interface_entry(&mut interfaces, &mut seen, "127.0.0.1", "loopback", "Localhost");
+    if current_bind != "0.0.0.0" && current_bind != "127.0.0.1" {
+        push_interface_entry(
+            &mut interfaces,
+            &mut seen,
+            &current_bind,
+            "current",
+            "Current bind address",
+        );
+    }
+    if let Some(lan_ip) = local_ip() {
+        push_interface_entry(
+            &mut interfaces,
+            &mut seen,
+            &lan_ip,
+            "detected",
+            "Detected LAN address",
+        );
+    }
+
+    match if_addrs::get_if_addrs() {
+        Ok(addrs) => {
+            for iface in &addrs {
+                if let std::net::IpAddr::V4(ipv4) = iface.addr.ip() {
+                    let label = classify_interface(&iface.name, iface.addr.is_loopback());
+                    push_interface_entry(
+                        &mut interfaces,
+                        &mut seen,
+                        &ipv4.to_string(),
+                        &iface.name,
+                        &format!("{} ({})", label, iface.name),
+                    );
+                }
+            }
+        }
+        Err(err) => {
+            log::warn!(
+                target: "lexera.collab.network_interfaces",
+                "Failed to enumerate network interfaces: {}",
+                err
+            );
+        }
+    }
 
     Json(serde_json::json!({
         "interfaces": interfaces,
@@ -1288,5 +1338,73 @@ mod tests {
         let members = members.as_array().unwrap();
         assert_eq!(members.len(), 1);
         assert_eq!(members[0]["user_id"], "test-user");
+    }
+
+    #[tokio::test]
+    async fn network_interfaces_always_include_fallback_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = test_state(tmp.path());
+        state.bind_address = "192.168.1.77".into();
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.bind_address = "192.168.1.77".into();
+            cfg.port = 1431;
+        }
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/network-interfaces")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let interfaces = json["interfaces"].as_array().unwrap();
+        assert!(!interfaces.is_empty());
+        assert!(interfaces.iter().any(|entry| entry["address"] == "0.0.0.0"));
+        assert!(interfaces.iter().any(|entry| entry["address"] == "127.0.0.1"));
+        assert!(interfaces
+            .iter()
+            .any(|entry| entry["address"] == "192.168.1.77"));
+        assert_eq!(json["current_bind_address"], "192.168.1.77");
+        assert_eq!(json["configured_port"], 1431);
+    }
+
+    #[tokio::test]
+    async fn server_info_uses_current_config_bind_address_and_live_port() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = test_state(tmp.path());
+        state.bind_address = "0.0.0.0".into();
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.bind_address = "127.0.0.1".into();
+            cfg.port = 1431;
+        }
+        {
+            let mut live = state.live_port.lock().unwrap();
+            *live = 1555;
+        }
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/collab/server-info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        assert_eq!(json["bind_address"], "127.0.0.1");
+        assert_eq!(json["address"], "127.0.0.1");
+        assert_eq!(json["port"], 1555);
     }
 }

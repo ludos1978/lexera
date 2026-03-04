@@ -1,9 +1,11 @@
 /// Configuration for the Lexera Backend.
 /// Reads sync.json from ~/.config/lexera/sync.json (or platform equivalent).
+use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 /// Re-export shared config types from lexera-core.
@@ -46,6 +48,14 @@ fn default_bind_address() -> String {
     DEFAULT_BIND_ADDRESS.to_string()
 }
 
+fn backend_host_for_bind(bind_address: &str) -> String {
+    if bind_address == "0.0.0.0" {
+        DEFAULT_BIND_ADDRESS.to_string()
+    } else {
+        bind_address.to_string()
+    }
+}
+
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
@@ -74,14 +84,32 @@ pub fn resolve_templates_path(config_value: &Option<String>) -> PathBuf {
 /// Tauri command: return the backend's own URL from the config file.
 /// Used by backend webviews (quick-capture, connection-settings) to find the local server.
 #[tauri::command]
-pub fn get_backend_url() -> Result<String, String> {
+pub fn get_backend_url(app: AppHandle) -> Result<String, String> {
+    if let Some(state) = app.try_state::<AppState>() {
+        let cfg = state.config.lock().ok();
+        let bind_address = cfg
+            .as_ref()
+            .map(|guard| guard.bind_address.clone())
+            .unwrap_or_else(|| state.bind_address.clone());
+        let configured_port = cfg.as_ref().map(|guard| guard.port).unwrap_or(state.port);
+        let live_port = state
+            .live_port
+            .lock()
+            .map(|guard| *guard)
+            .unwrap_or(configured_port);
+        return Ok(format!(
+            "http://{}:{}",
+            backend_host_for_bind(&bind_address),
+            live_port
+        ));
+    }
+
     let config = load_config(&default_config_path());
-    let host = if config.bind_address == "0.0.0.0" {
-        DEFAULT_BIND_ADDRESS.to_string()
-    } else {
-        config.bind_address
-    };
-    Ok(format!("http://{}:{}", host, config.port))
+    Ok(format!(
+        "http://{}:{}",
+        backend_host_for_bind(&config.bind_address),
+        config.port
+    ))
 }
 
 /// Default config path: ~/.config/lexera/sync.json

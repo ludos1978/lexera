@@ -733,10 +733,25 @@ const LexeraDashboard = (function () {
 
   function findBoardMeta(boardId) {
     if (!boardId) return null;
-    for (var i = 0; i < boards.length; i++) {
-      if (boards[i].id === boardId) return boards[i];
+    var groups = [boards, remoteBoards];
+    for (var g = 0; g < groups.length; g++) {
+      var list = groups[g] || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === boardId) return list[i];
+      }
     }
     return null;
+  }
+
+  function isRemoteBoardId(boardId) {
+    var meta = findBoardMeta(boardId);
+    return !!(meta && meta.isRemote);
+  }
+
+  function isActiveRemoteBoard() {
+    if (!activeBoardId) return false;
+    if (activeBoardData && activeBoardData.isRemote) return true;
+    return isRemoteBoardId(activeBoardId);
   }
 
   function stripPathSearchAndHash(path) {
@@ -2956,6 +2971,11 @@ const LexeraDashboard = (function () {
       await closeLiveSyncSession();
       return;
     }
+    if (isRemoteBoardId(boardId)) {
+      LexeraApi.disconnectSync();
+      await closeLiveSyncSession(boardId);
+      return;
+    }
     try {
       await ensureLiveSyncSession(boardId);
     } catch (err) {
@@ -3203,13 +3223,16 @@ const LexeraDashboard = (function () {
     try {
       const data = await LexeraApi.getBoards();
       boards = data.boards || [];
-      // Fetch remote boards (non-blocking)
-      LexeraApi.getRemoteBoards().then(function (rb) {
-        remoteBoards = rb.boards || [];
-      }).catch(function (err) {
+      try {
+        var rb = await LexeraApi.getRemoteBoards();
+        remoteBoards = (rb.boards || []).map(function (board) {
+          if (board) board.isRemote = true;
+          return board;
+        });
+      } catch (err) {
         logFrontendIssue('warn', 'boards.remote', 'Failed to load remote boards', err);
         remoteBoards = [];
-      });
+      }
       await refreshBoardHierarchyCache(boards);
       renderBoardList();
       if (!embeddedMode && splitViewMode !== 'single') {
@@ -3217,7 +3240,7 @@ const LexeraDashboard = (function () {
       }
 
       if (activeBoardId && !searchMode) {
-        const stillExists = boards.find(b => b.id === activeBoardId);
+        const stillExists = !!findBoardMeta(activeBoardId);
         if (stillExists) {
           // Never reload the board if there are unsaved changes — that would
           // discard the user's work.  Only reload when the board is clean.
@@ -3238,7 +3261,7 @@ const LexeraDashboard = (function () {
       } else if (!activeBoardId && !searchMode) {
         var lastBoard = embeddedMode ? embeddedPreferredBoardId : localStorage.getItem('lexera-last-board');
         if (lastBoard) {
-          var found = boards.find(b => b.id === lastBoard);
+          var found = findBoardMeta(lastBoard);
           if (found) {
             await selectBoard(lastBoard);
           }
@@ -3582,6 +3605,7 @@ const LexeraDashboard = (function () {
 
   function saveLocalBoardDraft(boardId, boardData) {
     if (!boardId || !boardData) return;
+    if (isRemoteBoardId(boardId)) return;
     try {
       var baseBoard = getBoardSaveBase(boardData) || boardData;
       localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
@@ -4368,7 +4392,11 @@ const LexeraDashboard = (function () {
       if (seq !== boardLoadSeq) return; // stale response, a newer load was started
       if (response && response.notModified) {
         loadStage = 'connect-sync-not-modified';
-        connectSyncForBoard(boardId);
+        if (!isRemoteBoardId(boardId)) {
+          connectSyncForBoard(boardId);
+        } else {
+          LexeraApi.disconnectSync();
+        }
         return;
       }
       loadStage = 'prepare-board-meta';
@@ -4379,6 +4407,7 @@ const LexeraDashboard = (function () {
       loadStage = 'assign-board-data';
       fullBoardData = response.fullBoard || null;
       if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
+      var isRemoteBoard = !!(response && response.isRemote);
       if (fullBoardData) {
         traceFrontendAction('info', 'board.load.identity', 'Loaded board from backend', {
           boardId: boardId,
@@ -4387,14 +4416,16 @@ const LexeraDashboard = (function () {
       }
       activeBoardData = response;
       pendingExternalRebaseConflict = null;
-      var draftSnapshot = loadLocalBoardDraft(boardId);
-      var shouldPrepareLiveSync = true;
+      var draftSnapshot = isRemoteBoard ? null : loadLocalBoardDraft(boardId);
+      var shouldPrepareLiveSync = !isRemoteBoard;
       if (response && typeof response.generation === 'number') {
         _lastLoadedGeneration = response.generation;
       }
       _lastLoadedRevision = response && response.revision ? response.revision : null;
       // Auto-convert legacy boards and save immediately
-      if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
+      if (isRemoteBoard) {
+        clearLocalBoardDraft(boardId);
+      } else if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
         loadStage = 'migrate-legacy-board';
         migrateLegacyBoard();
         try {
@@ -4507,6 +4538,7 @@ const LexeraDashboard = (function () {
             }
           } else {
             liveSyncState = null;
+            LexeraApi.disconnectSync();
           }
         } catch (e) {
           logFrontendIssue('warn', 'board.load.live-sync', 'Failed to prepare live sync session for board ' + boardId, e);
@@ -4524,7 +4556,11 @@ const LexeraDashboard = (function () {
       scheduleDashboardRefresh(80);
       // Connect WS sync for this board (no-op if already connected)
       loadStage = 'connect-sync';
-      connectSyncForBoard(boardId);
+      if (!isRemoteBoard) {
+        connectSyncForBoard(boardId);
+      } else {
+        LexeraApi.disconnectSync();
+      }
     } catch (err) {
       if (seq !== boardLoadSeq) return; // stale error, ignore
       logFrontendIssue('error', 'board.load', 'Failed to load board ' + boardId + ' during ' + loadStage, err);
@@ -5710,6 +5746,13 @@ const LexeraDashboard = (function () {
   }
 
   async function saveFullBoard() {
+    if (isActiveRemoteBoard()) {
+      traceFrontendAction('warn', 'board.remote.readOnly', 'Blocked save for remote mirror board', {
+        boardId: activeBoardId || null
+      });
+      showNotification('Remote boards are read-only mirrors for now.');
+      return false;
+    }
     if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
       showExternalRebaseConflictDialog(pendingExternalRebaseConflict.result);
       return false;
@@ -5896,6 +5939,16 @@ const LexeraDashboard = (function () {
 
   function persistBoardMutation(options) {
     options = options || {};
+    if (isActiveRemoteBoard()) {
+      traceFrontendAction('warn', 'board.remote.readOnly', 'Blocked local mutation for remote mirror board', {
+        boardId: activeBoardId || null
+      });
+      showNotification('Remote boards are read-only mirrors for now.');
+      if (activeBoardId) {
+        loadBoard(activeBoardId);
+      }
+      return false;
+    }
     traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no save)', {
       boardId: activeBoardId || null,
       refreshMainView: !!options.refreshMainView,
@@ -6009,6 +6062,10 @@ const LexeraDashboard = (function () {
         var boardId = boardIds[i];
         var boardData = changedBoards[boardId];
         if (!boardData) continue;
+        if (isRemoteBoardId(boardId)) {
+          showNotification('Remote boards are read-only mirrors for now.');
+          return false;
+        }
 
         if (boardId === activeBoardId) {
           // Active board: don't save — user saves explicitly with Cmd+S.
@@ -6229,7 +6286,7 @@ const LexeraDashboard = (function () {
     var identity = '';
     try {
       var info = await LexeraApi.getServerInfo();
-      identity = (info && info.displayName) || '';
+      identity = (info && (info.user_name || info.displayName || info.display_name || info.name)) || '';
     } catch (e) { /* ignore */ }
     html += '<div class="mgmt-field-row">';
     html += '<label class="mgmt-field-label">Display Name</label>';
@@ -6315,7 +6372,7 @@ const LexeraDashboard = (function () {
       saveNameBtn.addEventListener('click', async function () {
         var name = document.getElementById('mgmt-display-name').value.trim();
         try {
-          await LexeraApi.updateServerConfig({ displayName: name });
+          await LexeraApi.updateMe(name);
           showNotification('Display name saved');
         } catch (err) {
           showNotification('Failed to save name: ' + err.message);
@@ -6355,7 +6412,7 @@ const LexeraDashboard = (function () {
         var statusEl = document.getElementById('mgmt-server-status');
         try {
           await LexeraApi.updateServerConfig({ bindAddress: addr, port: port });
-          if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Saved (restart required)'; }
+          if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Saved'; }
         } catch (err) {
           if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = err.message; }
         }
@@ -13722,6 +13779,8 @@ const LexeraDashboard = (function () {
 
   var activeEmbedMenu = null;
   var embedPreviewCache = {};
+  var externalEmbedPolicyCache = {};
+  var pendingExternalEmbedPolicyCache = {};
   var fileInfoCache = {};
   var pendingFileInfoCache = {};
   var MAX_INCLUDE_PREVIEW_DEPTH = 2;
@@ -13861,6 +13920,191 @@ const LexeraDashboard = (function () {
     Object.keys(pendingFileInfoCache).forEach(function (key) {
       if (key.indexOf(prefix) === 0) delete pendingFileInfoCache[key];
     });
+  }
+
+  function normalizeExternalEmbedUrlForCache(url) {
+    var value = String(url || '').trim();
+    if (!value) return '';
+    try {
+      var parsed = new URL(value);
+      parsed.hash = '';
+      return parsed.toString();
+    } catch (err) {
+      return value;
+    }
+  }
+
+  function getExternalEmbedParentOrigin() {
+    try {
+      if (window.location && typeof window.location.origin === 'string') {
+        return window.location.origin || '';
+      }
+    } catch (err) {
+      // Fall through to empty origin.
+    }
+    return '';
+  }
+
+  function getExternalEmbedPolicyCacheKey(url, parentOrigin) {
+    return String(parentOrigin || '') + '::' + normalizeExternalEmbedUrlForCache(url);
+  }
+
+  function clearExternalEmbedPolicyCache(url, parentOrigin) {
+    var cacheKey = getExternalEmbedPolicyCacheKey(url, parentOrigin || getExternalEmbedParentOrigin());
+    delete externalEmbedPolicyCache[cacheKey];
+    delete pendingExternalEmbedPolicyCache[cacheKey];
+  }
+
+  function getExternalEmbedPolicyButtonLabel(policy) {
+    return policy && policy.action === 'open_page' ? 'Open page' : 'Open in browser';
+  }
+
+  function getExternalEmbedPolicyButtonAction(policy) {
+    return policy && policy.action === 'open_page' ? 'open-page' : 'open-browser';
+  }
+
+  function getExternalEmbedSourceUrl(container) {
+    if (!container) return '';
+    return container.getAttribute('data-embed-url') || '';
+  }
+
+  function getExternalEmbedFrameUrl(container) {
+    if (!container) return '';
+    return container.getAttribute('data-embed-frame-url') || getExternalEmbedSourceUrl(container);
+  }
+
+  function getExternalEmbedProbeUrl(container) {
+    if (!container) return '';
+    return container.getAttribute('data-embed-probe-url') || getExternalEmbedFrameUrl(container) || getExternalEmbedSourceUrl(container);
+  }
+
+  function buildExternalEmbedFrameHtml(container) {
+    var embedUrl = getExternalEmbedFrameUrl(container);
+    var embedWidth = sanitizeCssLength(container.getAttribute('data-embed-width')) || '100%';
+    var embedHeight = sanitizeCssLength(container.getAttribute('data-embed-height')) || '500px';
+    var titleText = decodeHtmlEntities(
+      container.getAttribute('data-embed-title') ||
+      container.getAttribute('data-alt-text') ||
+      embedUrl
+    );
+    return '<iframe class="external-embed-frame" src="' + escapeAttr(embedUrl) + '"' +
+      ' title="' + escapeAttr(titleText || embedUrl) + '"' +
+      ' loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0"' +
+      ' style="' + escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>';
+  }
+
+  function getExternalEmbedStage(container) {
+    if (!container) return null;
+    var stage = container.querySelector('.external-embed-stage');
+    if (stage) return stage;
+    stage = document.createElement('span');
+    stage.className = 'external-embed-stage';
+    container.insertBefore(stage, container.firstChild || null);
+    return stage;
+  }
+
+  function renderExternalEmbedPrompt(container, state) {
+    if (!container) return;
+    var stage = getExternalEmbedStage(container);
+    if (!stage) return;
+    var embedUrl = getExternalEmbedSourceUrl(container);
+    var displayUrl = embedUrl;
+    try {
+      displayUrl = (new URL(embedUrl)).hostname || embedUrl;
+    } catch (err) {
+      displayUrl = embedUrl;
+    }
+    var titleText = decodeHtmlEntities(container.getAttribute('data-embed-title') || '');
+    var heading = titleText || displayUrl || 'External page';
+    var buttonHtml = '';
+    var reasonHtml = '';
+    if (state && state.ready) {
+      buttonHtml = '<button class="external-embed-open-btn" type="button" data-external-embed-action="' +
+        escapeAttr(getExternalEmbedPolicyButtonAction(state.policy)) + '">' +
+        escapeHtml(getExternalEmbedPolicyButtonLabel(state.policy)) +
+        '</button>';
+      if (state.policy && state.policy.reason) {
+        reasonHtml = '<div class="external-embed-reason">' + escapeHtml(state.policy.reason) + '</div>';
+      }
+      container.setAttribute('data-external-policy-action', state.policy && state.policy.action ? state.policy.action : '');
+      if (state.policy && state.policy.reason) {
+        container.setAttribute('data-external-policy-reason', state.policy.reason);
+      } else {
+        container.removeAttribute('data-external-policy-reason');
+      }
+    } else {
+      container.removeAttribute('data-external-policy-action');
+      container.removeAttribute('data-external-policy-reason');
+    }
+    stage.innerHTML =
+      '<div class="external-embed-shell external-embed-shell-' + escapeAttr((state && state.mode) || 'loading') + '">' +
+        '<div class="external-embed-label">External page</div>' +
+        '<div class="external-embed-heading">' + escapeHtml(heading) + '</div>' +
+        '<div class="external-embed-url">' + escapeHtml(embedUrl) + '</div>' +
+        '<div class="external-embed-message">' + escapeHtml((state && state.message) || 'Checking whether the page can be embedded…') + '</div>' +
+        (buttonHtml ? '<div class="external-embed-actions">' + buttonHtml + '</div>' : '') +
+        reasonHtml +
+      '</div>';
+  }
+
+  function openExternalEmbedInPlace(container) {
+    if (!container) return;
+    var embedUrl = getExternalEmbedFrameUrl(container);
+    if (!embedUrl) return;
+    container.setAttribute('data-external-opened', '1');
+    var stage = getExternalEmbedStage(container);
+    if (!stage) return;
+    stage.innerHTML =
+      buildExternalEmbedFrameHtml(container) +
+      '<div class="external-embed-inline-actions">' +
+        '<button class="external-embed-secondary-btn" type="button" data-external-embed-action="open-browser">Open in browser</button>' +
+      '</div>';
+    traceFrontendAction('info', 'embed.external.open', 'Opened external page inside embed', {
+      url: getExternalEmbedSourceUrl(container),
+      frameUrl: embedUrl
+    });
+  }
+
+  function requestExternalEmbedPolicy(url, options) {
+    options = options || {};
+    var normalizedUrl = normalizeExternalEmbedUrlForCache(url);
+    var parentOrigin = options.parentOrigin || getExternalEmbedParentOrigin();
+    var forceRefresh = !!options.forceRefresh;
+    var cacheKey = getExternalEmbedPolicyCacheKey(normalizedUrl, parentOrigin);
+    if (!forceRefresh && Object.prototype.hasOwnProperty.call(externalEmbedPolicyCache, cacheKey)) {
+      return Promise.resolve(externalEmbedPolicyCache[cacheKey]);
+    }
+    if (!forceRefresh && pendingExternalEmbedPolicyCache[cacheKey]) {
+      return pendingExternalEmbedPolicyCache[cacheKey];
+    }
+    pendingExternalEmbedPolicyCache[cacheKey] = LexeraApi.probeExternalEmbed(normalizedUrl, parentOrigin, forceRefresh)
+      .then(function (policy) {
+        externalEmbedPolicyCache[cacheKey] = policy || null;
+        delete pendingExternalEmbedPolicyCache[cacheKey];
+        traceFrontendAction('info', 'embed.external.policy', 'Resolved external embed policy', {
+          url: normalizedUrl,
+          parentOrigin: parentOrigin,
+          action: policy && policy.action,
+          embeddable: !!(policy && policy.embeddable),
+          fromCache: !!(policy && policy.fromCache),
+          reason: policy && policy.reason
+        });
+        return externalEmbedPolicyCache[cacheKey];
+      })
+      .catch(function (err) {
+        delete pendingExternalEmbedPolicyCache[cacheKey];
+        logFrontendIssue('warn', 'embed.external.policy', 'Failed to probe external embed policy for ' + normalizedUrl, err);
+        var fallback = {
+          url: normalizedUrl,
+          parentOrigin: parentOrigin,
+          embeddable: false,
+          action: 'open_in_browser',
+          reason: 'Could not verify iframe policy. Open in browser instead.'
+        };
+        externalEmbedPolicyCache[cacheKey] = fallback;
+        return fallback;
+      });
+    return pendingExternalEmbedPolicyCache[cacheKey];
   }
 
   function encodeUtf8Base64(value) {
@@ -14394,12 +14638,109 @@ const LexeraDashboard = (function () {
     return false;
   }
 
-  function shouldRenderExternalEmbed(url, imageAttrs) {
-    if (isKnownExternalEmbedUrl(url)) return true;
+  function hasForcedExternalEmbedFlag(imageAttrs) {
     if (!imageAttrs) return false;
     if (imageAttrs.classes.indexOf('embed') !== -1) return true;
     var embedValue = imageAttrs.values.embed;
     return embedValue != null && embedValue !== '' && embedValue !== 'false' && embedValue !== '0';
+  }
+
+  function parseExternalEmbedStartSeconds(rawValue) {
+    var value = String(rawValue || '').trim();
+    if (!value) return 0;
+    if (/^\d+$/.test(value)) return Math.max(0, parseInt(value, 10));
+    var match = value.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i);
+    if (!match) return 0;
+    var hours = parseInt(match[1] || '0', 10);
+    var minutes = parseInt(match[2] || '0', 10);
+    var seconds = parseInt(match[3] || '0', 10);
+    return Math.max(0, (hours * 3600) + (minutes * 60) + seconds);
+  }
+
+  function buildYouTubeEmbedUrl(parsedUrl, videoId) {
+    if (!videoId) return '';
+    var embedUrl = new URL('https://www.youtube.com/embed/' + encodeURIComponent(videoId));
+    var listValue = parsedUrl && parsedUrl.searchParams ? parsedUrl.searchParams.get('list') : '';
+    var startSeconds = parsedUrl && parsedUrl.searchParams
+      ? parseExternalEmbedStartSeconds(parsedUrl.searchParams.get('start') || parsedUrl.searchParams.get('t'))
+      : 0;
+    if (listValue) embedUrl.searchParams.set('list', listValue);
+    if (startSeconds > 0) embedUrl.searchParams.set('start', String(startSeconds));
+    return embedUrl.toString();
+  }
+
+  function getCanonicalExternalEmbedFrameUrl(url) {
+    if (!isExternalHttpUrl(url)) return '';
+    try {
+      var parsed = new URL(url);
+      var host = (parsed.hostname || '').toLowerCase();
+      var pathname = parsed.pathname || '';
+      var pathParts = pathname.split('/').filter(Boolean);
+      var videoId = '';
+
+      if (host === 'youtu.be') {
+        videoId = pathParts[0] || '';
+        return buildYouTubeEmbedUrl(parsed, videoId);
+      }
+
+      if (
+        host === 'youtube.com' ||
+        host === 'www.youtube.com' ||
+        host === 'm.youtube.com' ||
+        host === 'music.youtube.com' ||
+        host === 'youtube-nocookie.com' ||
+        host === 'www.youtube-nocookie.com'
+      ) {
+        if (pathParts[0] === 'embed' && pathParts[1]) {
+          return parsed.toString();
+        }
+        if (pathParts[0] === 'watch') {
+          videoId = parsed.searchParams.get('v') || '';
+          return buildYouTubeEmbedUrl(parsed, videoId);
+        }
+        if ((pathParts[0] === 'shorts' || pathParts[0] === 'live') && pathParts[1]) {
+          return buildYouTubeEmbedUrl(parsed, pathParts[1]);
+        }
+      }
+
+      if (host === 'vimeo.com' || host === 'www.vimeo.com') {
+        if (pathParts.length === 1 && /^\d+$/.test(pathParts[0])) {
+          return 'https://player.vimeo.com/video/' + pathParts[0];
+        }
+      }
+
+      if ((host === 'loom.com' || host === 'www.loom.com') && pathParts[0] === 'share' && pathParts[1]) {
+        return 'https://www.loom.com/embed/' + encodeURIComponent(pathParts[1]);
+      }
+    } catch (err) {
+      return '';
+    }
+    return '';
+  }
+
+  function getExternalEmbedConfig(url, imageAttrs) {
+    if (!isExternalHttpUrl(url)) return null;
+    var normalizedSourceUrl = normalizeExternalEmbedUrlForCache(url) || String(url || '').trim();
+    var frameUrl = getCanonicalExternalEmbedFrameUrl(normalizedSourceUrl);
+    if (frameUrl) {
+      return {
+        sourceUrl: normalizedSourceUrl,
+        frameUrl: frameUrl,
+        probeUrl: frameUrl
+      };
+    }
+    if (isKnownExternalEmbedUrl(normalizedSourceUrl) || hasForcedExternalEmbedFlag(imageAttrs)) {
+      return {
+        sourceUrl: normalizedSourceUrl,
+        frameUrl: normalizedSourceUrl,
+        probeUrl: normalizedSourceUrl
+      };
+    }
+    return null;
+  }
+
+  function shouldRenderExternalEmbed(url, imageAttrs) {
+    return !!getExternalEmbedConfig(url, imageAttrs);
   }
 
   function renderInlineFileEmbedHtml(filePath, boardId, altText, titleText, extension, embedIndex) {
@@ -14606,6 +14947,10 @@ const LexeraDashboard = (function () {
 
   async function enhanceEmbeddedContent(root) {
     if (!root || !root.querySelectorAll) return;
+    var externalContainers = root.querySelectorAll('.external-embed-container[data-embed-url]');
+    for (var h = 0; h < externalContainers.length; h++) {
+      enhanceSingleExternalEmbedContainer(externalContainers[h]);
+    }
     var containers = root.querySelectorAll('.embed-container[data-file-path][data-board-id]');
     for (var i = 0; i < containers.length; i++) {
       enhanceSingleEmbedContainer(containers[i]);
@@ -14614,6 +14959,53 @@ const LexeraDashboard = (function () {
     for (var j = 0; j < inlineContainers.length; j++) {
       enhanceSingleInlineFileEmbed(inlineContainers[j]);
     }
+  }
+
+  async function enhanceSingleExternalEmbedContainer(container, options) {
+    options = options || {};
+    if (!container) return;
+    var embedUrl = getExternalEmbedSourceUrl(container);
+    var probeUrl = getExternalEmbedProbeUrl(container);
+    var lastEnhancedUrl = container.getAttribute('data-external-enhanced-url') || '';
+    var lastEnhancedProbeUrl = container.getAttribute('data-external-enhanced-probe-url') || '';
+    if (
+      !options.forceRefresh &&
+      container.getAttribute('data-external-enhanced') === '1' &&
+      lastEnhancedUrl === embedUrl &&
+      lastEnhancedProbeUrl === probeUrl
+    ) return;
+    if (!embedUrl || !probeUrl) return;
+    container.setAttribute('data-external-enhanced', '1');
+    container.setAttribute('data-external-enhanced-url', embedUrl);
+    container.setAttribute('data-external-enhanced-probe-url', probeUrl);
+    container.removeAttribute('data-external-opened');
+    traceFrontendAction('info', 'embed.external.prepare', 'Preparing external embed check', {
+      url: embedUrl,
+      frameUrl: getExternalEmbedFrameUrl(container),
+      probeUrl: probeUrl,
+      forceRefresh: !!options.forceRefresh
+    });
+    renderExternalEmbedPrompt(container, {
+      mode: 'loading',
+      ready: false,
+      message: 'Checking whether this page can be embedded…'
+    });
+    var currentUrl = embedUrl;
+    var currentProbeUrl = probeUrl;
+    var policy = await requestExternalEmbedPolicy(probeUrl, {
+      forceRefresh: !!options.forceRefresh
+    });
+    if (!container.isConnected) return;
+    if (getExternalEmbedSourceUrl(container) !== currentUrl) return;
+    if (getExternalEmbedProbeUrl(container) !== currentProbeUrl) return;
+    renderExternalEmbedPrompt(container, {
+      mode: policy && policy.action === 'open_page' ? 'ready' : 'browser',
+      ready: true,
+      policy: policy,
+      message: policy && policy.action === 'open_page'
+        ? 'This page appears to allow embedding. It will only load after you confirm.'
+        : 'This page should be opened in your browser instead of being embedded here.'
+    });
   }
 
   async function enhanceFileLinks(root) {
@@ -15085,6 +15477,22 @@ const LexeraDashboard = (function () {
       }
     }
 
+    var externalEmbedActionBtn = e.target.closest('.external-embed-open-btn, .external-embed-secondary-btn');
+    if (externalEmbedActionBtn) {
+      var externalEmbedContainer = externalEmbedActionBtn.closest('.external-embed-container[data-embed-url]');
+      if (externalEmbedContainer) {
+        e.preventDefault();
+        e.stopPropagation();
+        var externalAction = externalEmbedActionBtn.getAttribute('data-external-embed-action') || '';
+        if (externalAction === 'open-page') {
+          openExternalEmbedInPlace(externalEmbedContainer);
+        } else if (externalAction === 'open-browser') {
+          openUrlInSystem(externalEmbedContainer.getAttribute('data-embed-url') || '');
+        }
+        return;
+      }
+    }
+
     var diagramMenuBtn = e.target.closest('.diagram-menu-btn');
     if (diagramMenuBtn) {
       e.preventDefault();
@@ -15185,6 +15593,9 @@ const LexeraDashboard = (function () {
 
     var isExternalEmbed = !!container && isExternalEmbedContainer(container);
     var isIncludeContainer = !!container && isIncludeDirectiveContainer(container);
+    var externalPolicyAction = isExternalEmbed
+      ? (container.getAttribute('data-external-policy-action') || '')
+      : '';
     var menuItems = isIncludeContainer
       ? [
           { id: 'preview', label: 'Preview Include File' },
@@ -15201,10 +15612,12 @@ const LexeraDashboard = (function () {
         ]
       : isExternalEmbed
       ? [
+          { id: 'open-page', label: 'Open Page Here', disabled: externalPolicyAction !== 'open_page' },
           { id: 'open-url', label: 'Open URL in Browser' },
           { id: 'copy-url', label: 'Copy URL' },
-          { id: 'edit-url', label: 'Edit URL' },
+          { id: 'recheck-policy', label: 'Recheck Embed Permission' },
           { separator: true },
+          { id: 'edit-url', label: 'Edit URL' },
           { id: 'delete', label: 'Delete Embed' },
         ]
       : [
@@ -15742,14 +16155,17 @@ const LexeraDashboard = (function () {
     var filePath = container.getAttribute('data-file-path') || '';
     var embedUrl = container.getAttribute('data-embed-url') || '';
     var isExternal = isExternalEmbedContainer(container);
+    var externalPolicyAction = container.getAttribute('data-external-policy-action') || '';
     var isAbsolute = filePath && isAbsoluteFilePath(parseLocalFileReference(filePath).path);
     var btnRect = btn.getBoundingClientRect();
     var items = isExternal
       ? [
+          { id: 'open-page', label: 'Open Page Here', disabled: externalPolicyAction !== 'open_page' },
           { id: 'open-url', label: 'Open URL in Browser' },
           { id: 'copy-url', label: 'Copy URL' },
-          { id: 'edit-url', label: 'Edit URL' },
+          { id: 'recheck-policy', label: 'Recheck Embed Permission' },
           { separator: true },
+          { id: 'edit-url', label: 'Edit URL' },
           { id: 'delete', label: 'Delete Embed' },
         ]
       : [
@@ -15780,18 +16196,31 @@ const LexeraDashboard = (function () {
       return;
     }
     var filePath = container.getAttribute('data-file-path') || '';
-    var embedUrl = container.getAttribute('data-embed-url') || '';
+    var embedUrl = getExternalEmbedSourceUrl(container);
+    var probeUrl = getExternalEmbedProbeUrl(container);
     var boardId = container.getAttribute('data-board-id') || '';
     var isExternal = isExternalEmbedContainer(container);
     var fileRef = parseLocalFileReference(filePath);
 
-    if (action === 'open-url') {
+    if (action === 'open-page') {
+      closeEmbedMenu();
+      if (!isExternal || !embedUrl) return;
+      openExternalEmbedInPlace(container);
+
+    } else if (action === 'open-url') {
       closeEmbedMenu();
       openUrlInSystem(embedUrl);
 
     } else if (action === 'copy-url') {
       closeEmbedMenu();
       copyTextToClipboard(embedUrl, 'Embed URL copied to clipboard', 'Failed to copy embed URL');
+
+    } else if (action === 'recheck-policy') {
+      closeEmbedMenu();
+      clearExternalEmbedPolicyCache(probeUrl || embedUrl);
+      container.removeAttribute('data-external-enhanced');
+      container.removeAttribute('data-external-opened');
+      enhanceSingleExternalEmbedContainer(container, { forceRefresh: true });
 
     } else if (action === 'edit-url') {
       closeEmbedMenu();
@@ -17104,19 +17533,32 @@ const LexeraDashboard = (function () {
       var ext = getFileExtension(fileRef.path);
       var isExternalHttp = isExternalHttpUrl(filePath);
       var isExternal = isExternalHttp || filePath.indexOf('data:') === 0;
+      var externalEmbedConfig = isExternalHttp ? getExternalEmbedConfig(filePath, imageAttrs) : null;
       var inlineFileExtension = !isExternal ? getInlineFileEmbedExtension(fileRef.path) : '';
       var category = getMediaCategory(ext);
 
-      if (isExternalHttp && shouldRenderExternalEmbed(filePath, imageAttrs)) {
+      if (externalEmbedConfig) {
         var embedWidth = sanitizeCssLength(imageAttrs.values.width) || '100%';
         var embedHeight = sanitizeCssLength(imageAttrs.values.height) || '500px';
         var externalCaptionHtml = titleText ? '<figcaption class="media-caption external-embed-caption">' + renderInline(titleText, boardId, renderState) + '</figcaption>' : '';
-        var externalEmbedHtml = '<span class="external-embed-container" data-embed-url="' + escapeAttr(filePath) + '"' +
+        var externalEmbedHtml = '<span class="external-embed-container" data-embed-url="' + escapeAttr(externalEmbedConfig.sourceUrl) + '"' +
+          ' data-embed-frame-url="' + escapeAttr(externalEmbedConfig.frameUrl) + '"' +
+          ' data-embed-probe-url="' + escapeAttr(externalEmbedConfig.probeUrl) + '"' +
           ' data-embed-index="' + escapeAttr(String(renderState.embedCounter++)) + '"' +
           ' data-alt-text="' + escapeAttr(decodeHtmlEntities(alt || titleText || '')) + '"' +
           ' data-embed-caption="' + escapeAttr(titleText || '') + '"' +
+          ' data-embed-title="' + escapeAttr(decodeHtmlEntities(alt || titleText || externalEmbedConfig.sourceUrl)) + '"' +
+          ' data-embed-width="' + escapeAttr(embedWidth) + '"' +
+          ' data-embed-height="' + escapeAttr(embedHeight) + '"' +
           ' style="' + escapeAttr('position:relative;display:block;max-width:100%') + '">' +
-          '<iframe class="external-embed-frame" src="' + escapeAttr(filePath) + '" title="' + escapeAttr(decodeHtmlEntities(alt || titleText || filePath)) + '" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen frameborder="0" style="' + escapeAttr('width:' + embedWidth + ';height:' + embedHeight) + '"></iframe>' +
+          '<span class="external-embed-stage">' +
+            '<div class="external-embed-shell external-embed-shell-loading">' +
+              '<div class="external-embed-label">External page</div>' +
+              '<div class="external-embed-heading">' + escapeHtml(decodeHtmlEntities(alt || titleText || externalEmbedConfig.sourceUrl)) + '</div>' +
+              '<div class="external-embed-url">' + escapeHtml(externalEmbedConfig.sourceUrl) + '</div>' +
+              '<div class="external-embed-message">Checking whether this page can be embedded…</div>' +
+            '</div>' +
+          '</span>' +
           '<button class="embed-menu-btn" title="Embed actions" style="opacity:1">&#8942;</button>' +
           '</span>';
         if (externalCaptionHtml) {

@@ -278,6 +278,16 @@ const LexeraApi = (function () {
     });
   }
 
+  async function probeExternalEmbed(url, parentOrigin, forceRefresh) {
+    var params = new URLSearchParams();
+    params.set('url', String(url || ''));
+    if (parentOrigin) params.set('parentOrigin', String(parentOrigin));
+    if (forceRefresh) params.set('forceRefresh', 'true');
+    return request('/external-embeds/probe?' + params.toString(), {
+      timeoutMs: LONG_TIMEOUT_MS,
+    });
+  }
+
   async function openLiveSyncSession(boardId) {
     return request('/boards/' + boardId + '/live-sync/open', {
       method: 'POST',
@@ -716,11 +726,29 @@ const LexeraApi = (function () {
   }
 
   async function updateServerConfig(config) {
-    return request('/collab/server-config', {
+    var payload = {
+      bind_address: config && typeof config.bind_address === 'string'
+        ? config.bind_address
+        : (config && typeof config.bindAddress === 'string' ? config.bindAddress : ''),
+      port: config && typeof config.port === 'number'
+        ? config.port
+        : Number(config && config.port)
+    };
+    var result = await request('/collab/server-config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
+      body: JSON.stringify(payload),
     });
+    if (result && typeof result.port === 'number') {
+      try {
+        var current = new URL(await discover());
+        current.port = String(result.port);
+        baseUrl = current.origin;
+      } catch (err) {
+        baseUrl = null;
+      }
+    }
+    return result;
   }
 
   async function getConnections() {
@@ -745,6 +773,7 @@ const LexeraApi = (function () {
 
   return {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
+    probeExternalEmbed,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,

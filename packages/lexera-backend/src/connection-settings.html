@@ -38,7 +38,11 @@
       <div class="section-title">Server</div>
       <div class="field-row">
         <label class="field-label">Bind Address</label>
-        <select id="select-bind" class="field-select"></select>
+        <select id="select-bind" class="field-select">
+          <option value="0.0.0.0">All interfaces (0.0.0.0)</option>
+          <option value="127.0.0.1">Localhost (127.0.0.1)</option>
+          <option value="__custom__">Custom...</option>
+        </select>
       </div>
       <div id="custom-bind-row" class="field-row" style="display:none;">
         <label class="field-label"></label>
@@ -46,7 +50,10 @@
       </div>
       <div class="field-row">
         <label class="field-label">Port</label>
-        <select id="select-port" class="field-select"></select>
+        <select id="select-port" class="field-select">
+          <option value="13080">Default (13080)</option>
+          <option value="__custom__">Custom...</option>
+        </select>
       </div>
       <div id="custom-port-row" class="field-row" style="display:none;">
         <label class="field-label"></label>

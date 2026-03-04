@@ -33,8 +33,10 @@
 
 ### Embeds
 - User includes YouTube, Vimeo, other embed URLs
-- System shows web preview iframe
-- Sites blocking iframe show fallback with link
+- System does not load the page immediately
+- System probes remote headers first and then shows an explicit action button
+- If embedding is allowed, user gets `Open page`
+- If embedding is blocked or uncertain, user gets `Open in browser`
 
 ---
 
@@ -63,9 +65,10 @@
 │   └──────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │   ┌──────────────────────────────────────────────────────────┐  │
-│   │  Blocked Origins Cache (session-level)                    │  │
+│   │  External Embed Policy Cache (global persistent file)     │  │
 │   │                                                            │  │
-│   │  _iframeBlockedOrigins: Set<string>                       │  │
+│   │  Stores embed-policy probe results by parent-origin+URL   │  │
+│   │  Shared across sessions to avoid repeated header probes   │  │
 │   └──────────────────────────────────────────────────────────┘  │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -92,7 +95,7 @@ renderMarkdown(text, includeContext)
 │ md.render()      │  Custom renderers intercept:
 │                  │  - image/video/audio → resolvePath()
 │                  │  - fence → diagram handling
-│                  │  - embed → iframe with fallback
+│                  │  - embed → placeholder shell
 └────────┬─────────┘
          │
          ▼
@@ -163,14 +166,12 @@ function isKnownEmbedUrl(url)
 function detectEmbed(src, alt, title, token)
 function renderEmbed(embedInfo, originalSrc, alt, title)
 function renderWebPreview(url, alt, title)
+function enhanceSingleExternalEmbedContainer(container, options)
+function requestExternalEmbedPolicy(url, options)
+function openExternalEmbedInPlace(container)
 ```
 
-### Iframe Fallback
-```javascript
-function _isIframeBlocked(url)
-function _renderIframeFallback(url, reason)
-function _replaceIframeWithFallback(element, url)
-```
+Embed policy probing is backend-driven and uses the response headers from the target site. The markdown renderer must not trust prior inline metadata or session-only iframe failures.
 
 ---
 
