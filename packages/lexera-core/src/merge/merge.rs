@@ -435,6 +435,7 @@ pub fn three_way_merge_with_options(
         yaml_header: ours.yaml_header.clone(),
         kanban_footer: ours.kanban_footer.clone(),
         board_settings: ours.board_settings.clone(),
+        generation_meta: ours.generation_meta.clone(),
         format_hint: ours.format_hint,
     };
 
@@ -536,6 +537,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         }
     }
@@ -689,6 +691,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::New,
         }
     }
@@ -1671,6 +1674,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         }
     }

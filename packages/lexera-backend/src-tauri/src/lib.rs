@@ -203,7 +203,7 @@ pub fn run() {
                                     Ok(event) => {
                                         // Check self-write before propagating
                                         match &event {
-                                            BoardChangeEvent::MainFileChanged { board_id } => {
+                                            BoardChangeEvent::MainFileChanged { board_id, .. } => {
                                                 if let Some(path) = storage_for_events.get_board_path(board_id) {
                                                     if storage_for_events.check_self_write(&path) {
                                                         log::info!("[lexera.events] Suppressed self-write for board {}", board_id);
@@ -227,6 +227,18 @@ pub fn run() {
                                             }
                                             _ => {}
                                         }
+
+                                        // Enrich MainFileChanged events with generation after reload
+                                        let event = match event {
+                                            BoardChangeEvent::MainFileChanged { board_id, .. } => {
+                                                BoardChangeEvent::MainFileChanged {
+                                                    generation: storage_for_events.get_board_generation(&board_id),
+                                                    writer_id: None,
+                                                    board_id,
+                                                }
+                                            }
+                                            other => other,
+                                        };
 
                                         // Forward event to SSE clients
                                         let _ = event_tx_for_forward.send(event);

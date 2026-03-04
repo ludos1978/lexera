@@ -2823,7 +2823,8 @@ const LexeraDashboard = (function () {
     if (hasLiveSyncSession(activeBoardId)) {
       return flushPendingLiveSyncUpdates(options);
     }
-    if (activeBoardId) {
+    // Never reload from disk if there are unsaved changes
+    if (activeBoardId && !isBoardDirty()) {
       await loadBoard(activeBoardId);
       return true;
     }
@@ -3077,33 +3078,27 @@ const LexeraDashboard = (function () {
     var boardId = event.board_id || event.boardId || '';
     if (boardId && boardId !== activeBoardId) return;
     if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
-      // Skip reloads caused by our own saves
+      // Skip echoes caused by our own saves
       if (Date.now() - lastSaveTime < SAVE_DEBOUNCE_MS) return;
-      if (canUseLiveSync(activeBoardId)) {
-        if (Date.now() - liveSyncLastLocalBroadcastAt < SAVE_DEBOUNCE_MS) return;
-        if (isEditing) {
-          pendingRefresh = true;
-        } else {
-          reopenLiveSyncSession(activeBoardId).then(function (session) {
-            if (session && session.board) {
-              applyLiveSyncBoardSnapshot(activeBoardId, cloneBoardData(session.board), { refreshSidebar: true });
-            } else {
-              loadBoard(activeBoardId);
-            }
-          }).catch(function (err) {
-            logFrontendIssue('warn', 'sse.live-sync', 'Failed to reopen live sync session after SSE change for board ' + activeBoardId, err);
-            loadBoard(activeBoardId);
-          });
-        }
+      if (canUseLiveSync(activeBoardId) && Date.now() - liveSyncLastLocalBroadcastAt < SAVE_DEBOUNCE_MS) return;
+      // Generation-based staleness check: ignore events for same or older generation
+      var eventGen = event.generation;
+      if (kind === 'MainFileChanged' && typeof eventGen === 'number' && _lastLoadedGeneration !== null && eventGen <= _lastLoadedGeneration) {
+        traceFrontendAction('info', 'sse.fileChanged.stale', 'Ignoring stale file change event', {
+          eventGeneration: eventGen,
+          loadedGeneration: _lastLoadedGeneration
+        });
         return;
       }
-      // When sync-connected without a live session, the WS ServerUpdate handles reloads
-      if (LexeraApi.isSyncConnected() && LexeraApi.getSyncBoardId() === activeBoardId) return;
-      if (isEditing) {
-        pendingRefresh = true;
-      } else {
-        loadBoard(activeBoardId);
-      }
+      // Never auto-reload — notify the user so they can decide
+      traceFrontendAction('info', 'sse.fileChanged', 'File changed on disk, notifying user', {
+        boardId: activeBoardId,
+        kind: kind,
+        dirty: _boardDirty,
+        eventGeneration: eventGen,
+        loadedGeneration: _lastLoadedGeneration
+      });
+      showNotification('Board file changed on disk. Press Cmd+R or reload to pick up external changes.');
     }
     } catch (err) {
       logFrontendIssue('error', 'sse', 'Error in handleSSEEvent', err);
@@ -3145,13 +3140,18 @@ const LexeraDashboard = (function () {
       if (activeBoardId && !searchMode) {
         const stillExists = boards.find(b => b.id === activeBoardId);
         if (stillExists) {
-          await loadBoard(activeBoardId);
+          // Never reload the board if there are unsaved changes — that would
+          // discard the user's work.  Only reload when the board is clean.
+          if (!isBoardDirty()) {
+            await loadBoard(activeBoardId);
+          }
         } else {
           await closeLiveSyncSession(activeBoardId);
           LexeraApi.disconnectSync();
           activeBoardId = null;
           activeBoardData = null;
           fullBoardData = null;
+          _lastLoadedGeneration = null;
           if (!embeddedMode) localStorage.removeItem('lexera-last-board');
           renderMainView();
         }
@@ -3440,7 +3440,7 @@ const LexeraDashboard = (function () {
   function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
     options = options || {};
     if (!boardData || boardId !== activeBoardId) return;
-    traceFrontendAction('info', 'liveSync.snapshot', 'Replacing fullBoardData with live sync response', {
+    traceFrontendAction('info', 'liveSync.snapshot', 'Updating save base from live sync response (fullBoardData preserved)', {
       boardId: boardId,
       incomingSummary: summarizeBoardHierarchy(boardData),
       currentSummary: summarizeBoardHierarchy(fullBoardData)
@@ -3448,20 +3448,13 @@ const LexeraDashboard = (function () {
     if (liveSyncState && liveSyncState.boardId === boardId) {
       liveSyncState.board = boardData;
     }
-    fullBoardData = resolveLiveSyncBoardData(boardData, boardId);
-    if (!activeBoardData) {
-      activeBoardData = {
-        boardId: boardId,
-        title: fullBoardData.title,
-        columns: [],
-        rows: [],
-        fullBoard: fullBoardData,
-      };
-    } else {
-      activeBoardData.fullBoard = fullBoardData;
-      activeBoardData.title = fullBoardData.title;
+    // DESIGN INVARIANT: fullBoardData is NEVER replaced by an external response.
+    // Only update the save base so the next save can three-way merge correctly.
+    var canonicalBoard = resolveLiveSyncBoardData(boardData, boardId);
+    setBoardSaveBase(fullBoardData, canonicalBoard);
+    if (activeBoardData) {
+      delete activeBoardData.version;
     }
-    delete activeBoardData.version;
     updateDisplayFromFullBoard();
     setBoardHierarchyRows(boardId, fullBoardData, fullBoardData.title || '');
     if (options.skipRender) return;
@@ -3985,6 +3978,7 @@ const LexeraDashboard = (function () {
       activeBoardId = boardId;
       activeBoardData = null;
       fullBoardData = null;
+      _lastLoadedGeneration = null;
       addCardColumn = null;
       localStorage.setItem('lexera-last-board', boardId);
       renderBoardList();
@@ -3998,6 +3992,7 @@ const LexeraDashboard = (function () {
     activeBoardId = boardId;
     activeBoardData = null;
     fullBoardData = null;
+    _lastLoadedGeneration = null;
     addCardColumn = null;
     if (!embeddedMode) {
       localStorage.setItem('lexera-last-board', boardId);
@@ -4051,6 +4046,10 @@ const LexeraDashboard = (function () {
       fullBoardData = response.fullBoard || null;
       if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
       activeBoardData = response;
+      // Track generation for staleness detection
+      if (response && typeof response.generation === 'number') {
+        _lastLoadedGeneration = response.generation;
+      }
       if (fullBoardData) {
         try {
           loadStage = 'prepare-live-sync';
@@ -4095,6 +4094,7 @@ const LexeraDashboard = (function () {
       }
       activeBoardData = null;
       fullBoardData = null;
+      _lastLoadedGeneration = null;
       renderMainView();
       scheduleDashboardRefresh(80);
     }
@@ -4475,6 +4475,236 @@ const LexeraDashboard = (function () {
     });
   }
 
+  // ── Hidden Items Dropdown Panel ──────────────────────────────────────
+  var activeHiddenDropdown = null;
+
+  function closeHiddenItemsDropdown() {
+    if (activeHiddenDropdown) {
+      if (activeHiddenDropdown.el && activeHiddenDropdown.el.parentNode) activeHiddenDropdown.el.remove();
+      if (activeHiddenDropdown.closeListener) document.removeEventListener('mousedown', activeHiddenDropdown.closeListener, true);
+      if (activeHiddenDropdown.keyListener) document.removeEventListener('keydown', activeHiddenDropdown.keyListener, true);
+      activeHiddenDropdown = null;
+    }
+  }
+
+  function showHiddenItemsDropdown(btnElement, tag, title, emptyMessage, actions, footerActions) {
+    closeHiddenItemsDropdown();
+    var items = collectHiddenItems(tag);
+    if (!items || items.length === 0) {
+      showNotification(emptyMessage);
+      return;
+    }
+
+    var panel = document.createElement('div');
+    panel.className = 'hidden-items-dropdown';
+
+    // Build HTML
+    var html = '<div class="hidden-items-dropdown-header">' + escapeHtml(title) + ' (' + items.length + ')</div>';
+    html += '<div class="hidden-items-dropdown-list">';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var kindLabel = item.kind === 'row' ? 'Row' : item.kind === 'stack' ? 'Stack' : item.kind === 'column' ? 'Column' : 'Card';
+      html += '<div class="hidden-items-dropdown-item" data-idx="' + i + '">';
+      html += '<span class="drag-grip">\u22EE\u22EE</span>';
+      html += '<span class="hidden-item-kind">' + kindLabel + '</span>';
+      html += '<span class="hidden-item-title">' + escapeHtml(item.title) + '</span>';
+      html += '<span class="hidden-item-loc">' + escapeHtml(buildHiddenItemLocation(item)) + '</span>';
+      for (var a = 0; a < actions.length; a++) {
+        html += '<button class="board-action-btn' + (actions[a].danger ? ' danger' : '') + '" data-item-action="' +
+          escapeAttr(actions[a].id) + '" data-item-index="' + i + '">' + escapeHtml(actions[a].label) + '</button>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    if (footerActions && footerActions.length > 0) {
+      html += '<div class="hidden-items-dropdown-footer">';
+      for (var f = 0; f < footerActions.length; f++) {
+        html += '<button class="board-action-btn' + (footerActions[f].danger ? ' danger' : '') + '" data-footer-action="' +
+          escapeAttr(footerActions[f].id) + '">' + escapeHtml(footerActions[f].label) + '</button>';
+      }
+      html += '</div>';
+    }
+    panel.innerHTML = html;
+
+    // Position below button, right-aligned
+    document.body.appendChild(panel);
+    var btnRect = btnElement.getBoundingClientRect();
+    var panelRect = panel.getBoundingClientRect();
+    var left = btnRect.right - panelRect.width;
+    var top = btnRect.bottom + 4;
+    if (left < 4) left = 4;
+    if (top + panelRect.height > window.innerHeight - 4) top = Math.max(4, window.innerHeight - panelRect.height - 4);
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+
+    // Action button clicks
+    panel.addEventListener('click', async function (e) {
+      var itemBtn = e.target.closest('[data-item-action]');
+      if (itemBtn) {
+        var idx = parseInt(itemBtn.getAttribute('data-item-index'), 10);
+        var actionId = itemBtn.getAttribute('data-item-action');
+        var selectedItem = items[idx];
+        if (!selectedItem) return;
+        for (var a = 0; a < actions.length; a++) {
+          if (actions[a].id === actionId && typeof actions[a].handler === 'function') {
+            try {
+              var shouldClose = await actions[a].handler(selectedItem, { closeDialog: closeHiddenItemsDropdown });
+              if (shouldClose !== false) closeHiddenItemsDropdown();
+            } catch (err) {
+              logFrontendIssue('error', 'hidden.dropdown', 'Action failed', err);
+              showNotification('Action failed');
+            }
+            return;
+          }
+        }
+      }
+      var footerBtn = e.target.closest('[data-footer-action]');
+      if (footerBtn && footerActions) {
+        var footerId = footerBtn.getAttribute('data-footer-action');
+        for (var f = 0; f < footerActions.length; f++) {
+          if (footerActions[f].id === footerId && typeof footerActions[f].handler === 'function') {
+            try {
+              var shouldClose = await footerActions[f].handler(items, { closeDialog: closeHiddenItemsDropdown });
+              if (shouldClose !== false) closeHiddenItemsDropdown();
+            } catch (err) {
+              logFrontendIssue('error', 'hidden.dropdown', 'Footer action failed', err);
+              showNotification('Action failed');
+            }
+            return;
+          }
+        }
+      }
+    });
+
+    // Drag-out support on grip handles — type-aware drop zones
+    var grips = panel.querySelectorAll('.drag-grip');
+    for (var g = 0; g < grips.length; g++) {
+      (function (grip) {
+        grip.addEventListener('pointerdown', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var itemEl = grip.closest('.hidden-items-dropdown-item');
+          if (!itemEl) return;
+          var idx = parseInt(itemEl.getAttribute('data-idx'), 10);
+          var dragItem = items[idx];
+          if (!dragItem) return;
+          var startX = e.clientX, startY = e.clientY;
+          var ghost = null;
+          var dragging = false;
+          // Map item kind to ptrDrag type for drop zone indicators
+          var ptrType = dragItem.kind === 'row' ? 'tree-row'
+            : dragItem.kind === 'stack' ? 'tree-stack'
+            : dragItem.kind === 'column' ? 'column'
+            : null; // cards use their own system
+
+          function onMove(ev) {
+            var dx = ev.clientX - startX, dy = ev.clientY - startY;
+            if (!dragging && (dx * dx + dy * dy) < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+            if (!dragging) {
+              dragging = true;
+              ghost = document.createElement('div');
+              ghost.className = 'hidden-items-drag-ghost';
+              ghost.textContent = (dragItem.kind !== 'card' ? dragItem.kind.charAt(0).toUpperCase() + dragItem.kind.slice(1) + ': ' : '') + dragItem.title;
+              document.body.appendChild(ghost);
+              itemEl.style.opacity = '0.3';
+              // Insert type-specific drop zone indicators for non-card items
+              if (ptrType) insertDropZoneIndicators(ptrType);
+            }
+            ghost.style.left = (ev.clientX + 10) + 'px';
+            ghost.style.top = (ev.clientY - 10) + 'px';
+            // Show type-appropriate drop highlights
+            if (dragItem.kind === 'card') {
+              clearCardDropIndicators();
+              clearCardDragOverHighlights();
+              clearHeaderDropTargetHighlights();
+              var target = resolveCardDropTarget(ev.clientX, ev.clientY);
+              if (target && target.kind !== 'header-park' && target.kind !== 'header-archive' && target.kind !== 'header-trash') {
+                if (target.container) {
+                  target.container.classList.add('card-drag-over');
+                  showCardDropIndicator(target.container, target.insertIdx);
+                } else if (target.kind === 'sidebar' && target.sidebarNode) {
+                  target.sidebarNode.classList.add('drop-target');
+                }
+              }
+            } else {
+              // Use ptrDrag visual feedback for row/stack/column items
+              updatePtrDropTargetByType(ptrType, ev.clientX, ev.clientY);
+            }
+          }
+
+          function onUp(ev) {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            if (!dragging) return;
+            if (ghost) ghost.remove();
+            itemEl.style.opacity = '';
+            // Clean up all drop indicators
+            clearCardDropIndicators();
+            clearCardDragOverHighlights();
+            clearHeaderDropTargetHighlights();
+            clearSidebarDropHighlights();
+            if (ptrType) {
+              removeDropZoneIndicators();
+              clearPtrDropIndicators();
+            }
+
+            if (dragItem.kind === 'card') {
+              var target = resolveCardDropTarget(ev.clientX, ev.clientY);
+              if (target && target.kind !== 'header-park' && target.kind !== 'header-archive' && target.kind !== 'header-trash') {
+                // Restore card first (remove hidden tag), then move to target
+                updateHiddenItemTag(dragItem, null).then(function () {
+                  // After restoring, the card is back in its original column — now move it
+                  var source = {
+                    boardId: activeBoardId,
+                    rowIndex: dragItem.rowIndex,
+                    stackIndex: dragItem.stackIndex,
+                    colIndex: dragItem.colIndex,
+                    cardIndex: dragItem.cardIndex,
+                    cardIndexMode: 'full',
+                    indexMode: 'full'
+                  };
+                  return moveCard(source, target);
+                }).catch(function (err) {
+                  logFrontendIssue('error', 'hidden.dropdown.drag', 'Card drag-out failed', err);
+                });
+                closeHiddenItemsDropdown();
+              }
+            } else {
+              // Non-card items: check if dropped on board area — restore in original position
+              var boardRect = getElColumnsContainer().getBoundingClientRect();
+              if (isPointInsideRect(ev.clientX, ev.clientY, boardRect)) {
+                updateHiddenItemTag(dragItem, null).catch(function (err) {
+                  logFrontendIssue('error', 'hidden.dropdown.drag', 'Non-card drag-out failed', err);
+                });
+                closeHiddenItemsDropdown();
+              }
+            }
+          }
+
+          document.addEventListener('pointermove', onMove);
+          document.addEventListener('pointerup', onUp);
+        });
+      })(grips[g]);
+    }
+
+    // Close on click-outside
+    function closeListener(e) {
+      if (!panel.contains(e.target) && e.target !== btnElement) {
+        closeHiddenItemsDropdown();
+      }
+    }
+    function keyListener(e) {
+      if (e.key === 'Escape') closeHiddenItemsDropdown();
+    }
+    // Delay to avoid the opening click from closing
+    setTimeout(function () {
+      document.addEventListener('mousedown', closeListener, true);
+      document.addEventListener('keydown', keyListener, true);
+    }, 0);
+
+    activeHiddenDropdown = { el: panel, closeListener: closeListener, keyListener: keyListener };
+  }
+
   function showHiddenItemsDialog(title, emptyMessage, items, actions, footerActions) {
     if (!items || items.length === 0) {
       showNotification(emptyMessage);
@@ -4634,9 +4864,7 @@ const LexeraDashboard = (function () {
     html += '</div>';
     html += '<span id="saving-indicator" class="saving-indicator">Saving...</span>';
     html += '<div class="board-header-actions">';
-    if (parkedCount > 0) {
-      html += '<button class="board-action-btn has-items" id="btn-parked" title="Show parked items">Parked (' + parkedCount + ')</button>';
-    }
+    html += '<button class="board-action-btn header-drop-target' + (parkedCount > 0 ? ' has-items' : '') + '" id="btn-parked" title="Show parked items — drop cards here to park">Parked' + (parkedCount > 0 ? ' (' + parkedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archived' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
     html += '<span id="btn-add-row-wrap" class="creation-source creation-source-header"></span>';
@@ -4717,19 +4945,19 @@ const LexeraDashboard = (function () {
     var parkedBtn = document.getElementById('btn-parked');
     if (parkedBtn) {
       parkedBtn.addEventListener('click', function () {
-        showParkedItems();
+        showParkedItems(parkedBtn);
       });
     }
     var archivedBtn = document.getElementById('btn-archived');
     if (archivedBtn) {
       archivedBtn.addEventListener('click', function () {
-        showArchivedItems();
+        showArchivedItems(archivedBtn);
       });
     }
     var trashBtn = document.getElementById('btn-trash');
     if (trashBtn) {
       trashBtn.addEventListener('click', function () {
-        showDeletedItems();
+        showDeletedItems(trashBtn);
       });
     }
     var addRowWrap = document.getElementById('btn-add-row-wrap');
@@ -4869,27 +5097,12 @@ const LexeraDashboard = (function () {
     if ($foldAllBtn) $foldAllBtn.textContent = allFolded ? 'Fold All' : 'Unfold All';
   }
 
-  function showParkedItems() {
-    showHiddenItemsDialog(
-      'Parked Items',
-      'No parked items',
-      collectHiddenItems('#hidden-internal-parked'),
+  function showParkedItems(btnElement) {
+    var btn = btnElement || document.getElementById('btn-parked');
+    showHiddenItemsDropdown(btn, '#hidden-internal-parked', 'Parked', 'No parked items',
       [
-        {
-          id: 'restore',
-          label: 'Unpark',
-          handler: function (item) {
-            return updateHiddenItemTag(item, null);
-          }
-        },
-        {
-          id: 'trash',
-          label: 'Trash',
-          danger: true,
-          handler: function (item) {
-            return updateHiddenItemTag(item, '#hidden-internal-deleted');
-          }
-        }
+        { id: 'restore', label: 'Unpark', handler: function (item) { return updateHiddenItemTag(item, null); } },
+        { id: 'trash', label: 'Trash', danger: true, handler: function (item) { return updateHiddenItemTag(item, '#hidden-internal-deleted'); } }
       ]
     );
   }
@@ -4905,76 +5118,35 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshMainView: true });
   }
 
-  function showArchivedItems() {
-    showHiddenItemsDialog(
-      'Archived Items',
-      'No archived items',
-      collectHiddenItems('#hidden-internal-archived'),
+  function showArchivedItems(btnElement) {
+    var btn = btnElement || document.getElementById('btn-archived');
+    showHiddenItemsDropdown(btn, '#hidden-internal-archived', 'Archived', 'No archived items',
       [
-        {
-          id: 'restore',
-          label: 'Restore',
-          handler: function (item) {
-            return updateHiddenItemTag(item, null);
-          }
-        },
-        {
-          id: 'delete-forever',
-          label: 'Delete Forever',
-          danger: true,
-          handler: function (item) {
-            return permanentlyDeleteHiddenItem(item);
-          }
-        }
+        { id: 'restore', label: 'Restore', handler: function (item) { return updateHiddenItemTag(item, null); } },
+        { id: 'delete-forever', label: 'Delete Forever', danger: true, handler: function (item) { return permanentlyDeleteHiddenItem(item); } }
       ]
     );
   }
 
-  function showDeletedItems() {
-    showHiddenItemsDialog(
-      'Trash',
-      'Trash is empty',
-      collectHiddenItems('#hidden-internal-deleted'),
+  function showDeletedItems(btnElement) {
+    var btn = btnElement || document.getElementById('btn-trash');
+    showHiddenItemsDropdown(btn, '#hidden-internal-deleted', 'Trash', 'Trash is empty',
       [
-        {
-          id: 'restore',
-          label: 'Restore',
-          handler: function (item) {
-            return updateHiddenItemTag(item, null);
-          }
-        },
-        {
-          id: 'delete-forever',
-          label: 'Delete Forever',
-          danger: true,
-          handler: function (item) {
-            return permanentlyDeleteHiddenItem(item);
-          }
-        }
+        { id: 'restore', label: 'Restore', handler: function (item) { return updateHiddenItemTag(item, null); } },
+        { id: 'delete-forever', label: 'Delete Forever', danger: true, handler: function (item) { return permanentlyDeleteHiddenItem(item); } }
       ],
       [
         {
-          id: 'empty-trash',
-          label: 'Empty Trash',
-          danger: true,
+          id: 'empty-trash', label: 'Empty Trash', danger: true,
           handler: async function (items, controls) {
             if (!items || items.length === 0) return true;
-            traceFrontendAction('info', 'trash.empty', 'Requested empty trash', {
-              boardId: activeBoardId || null,
-              itemCount: items.length
-            });
+            traceFrontendAction('info', 'trash.empty', 'Requested empty trash', { boardId: activeBoardId || null, itemCount: items.length });
             if (controls && typeof controls.closeDialog === 'function') {
               controls.closeDialog();
-              await new Promise(function (resolve) {
-                requestAnimationFrame(function () {
-                  resolve();
-                });
-              });
+              await new Promise(function (resolve) { requestAnimationFrame(resolve); });
             }
             var success = await permanentlyDeleteHiddenItems(items);
-            if (!success) {
-              showNotification('Failed to empty trash');
-            }
+            if (!success) showNotification('Failed to empty trash');
             return false;
           }
         }
@@ -4994,88 +5166,140 @@ const LexeraDashboard = (function () {
     }, 500);
   }
 
+  // Save coalescing: when a save is already in-flight, new requests are
+  // deferred and coalesced into a single follow-up save.  This is purely
+  // an optimisation to avoid redundant network round-trips.
+  //
+  // DESIGN INVARIANT — fullBoardData is the single source of truth and is
+  // NEVER replaced by a save response.  The server's merged board is only
+  // adopted as __lexeraSaveBase (the three-way-merge anchor for the next
+  // save).  This makes data-loss race conditions impossible by design:
+  // no matter how many saves overlap or how long the network takes, every
+  // local mutation survives.
+  var _saveInFlight = false;
+  var _savePending = false;
+
   async function saveFullBoard() {
+    if (_saveInFlight) {
+      _savePending = true;
+      return;
+    }
+    _saveInFlight = true;
     showSaving();
-    lastSaveTime = Date.now();
-    // Ensure columns field exists (backend requires it)
-    if (!fullBoardData.columns) fullBoardData.columns = [];
     try {
-      if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true })) {
-        if (pendingRefresh) {
-          pendingRefresh = false;
-          await flushPendingLiveSyncUpdates({ refreshSidebar: true });
+      do {
+        _savePending = false;
+        lastSaveTime = Date.now();
+        // Ensure columns field exists (backend requires it)
+        if (!fullBoardData.columns) fullBoardData.columns = [];
+
+        if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true })) {
+          if (pendingRefresh) {
+            pendingRefresh = false;
+            await flushPendingLiveSyncUpdates({ refreshSidebar: true });
+          }
+          break;
         }
-        return;
-      }
-      var baseBoardData = getBoardSaveBase(fullBoardData);
-      var result = baseBoardData
-        ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
-        : await LexeraApi.saveBoard(activeBoardId, fullBoardData);
-      fullBoardData = resolveSavedBoardData(fullBoardData, result, activeBoardId);
-      if (activeBoardData) {
-        activeBoardData.fullBoard = fullBoardData;
-        if (typeof fullBoardData.title === 'string') activeBoardData.title = fullBoardData.title;
-        if (typeof result.version === 'number') activeBoardData.version = result.version;
-      }
-      try {
-        await reopenLiveSyncSession(activeBoardId);
-      } catch (e) {
-        // Leave REST save successful even if the local live session cannot be refreshed.
-      }
-      if (result && result.hasConflicts) {
-        showConflictDialog(result.conflicts, result.autoMerged);
-      } else if (result && result.merged && result.autoMerged > 0) {
-        showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
-      }
+        var baseBoardData = getBoardSaveBase(fullBoardData);
+        var result = baseBoardData
+          ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
+          : await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+
+        // Never replace fullBoardData — only update the save base.
+        var savedBoard = result && result.board ? result.board : null;
+        if (savedBoard) {
+          ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
+          setBoardSaveBase(fullBoardData, savedBoard);
+        } else {
+          setBoardSaveBase(fullBoardData, fullBoardData);
+        }
+        if (activeBoardData && result && typeof result.version === 'number') {
+          activeBoardData.version = result.version;
+        }
+        // Track generation for staleness detection
+        if (result && typeof result.generation === 'number') {
+          _lastLoadedGeneration = result.generation;
+        }
+
+        try {
+          await reopenLiveSyncSession(activeBoardId);
+        } catch (e) {
+          // REST save succeeded even if the live session cannot be refreshed.
+        }
+        if (result && result.hasConflicts) {
+          showConflictDialog(result.conflicts, result.autoMerged);
+        } else if (result && result.merged && result.autoMerged > 0) {
+          showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
+        }
+      } while (_savePending);
     } finally {
+      _saveInFlight = false;
       hideSaving();
     }
   }
 
-  async function persistBoardMutation(options) {
+  // Generation tracking: the last generation number received from the backend
+  // (set on load and save). Used to ignore stale SSE file-change events.
+  var _lastLoadedGeneration = null;
+
+  // Board dirty state: tracks whether fullBoardData has unsaved changes.
+  var _boardDirty = false;
+
+  function markBoardDirty() {
+    if (_boardDirty) return;
+    _boardDirty = true;
+    if ($savingIndicator) {
+      $savingIndicator.textContent = 'Unsaved';
+      $savingIndicator.classList.add('visible', 'dirty');
+    }
+  }
+
+  function clearBoardDirty() {
+    _boardDirty = false;
+    if ($savingIndicator) {
+      $savingIndicator.classList.remove('dirty');
+    }
+  }
+
+  function isBoardDirty() {
+    return _boardDirty;
+  }
+
+  function persistBoardMutation(options) {
     options = options || {};
-    traceFrontendAction('info', 'board.persist', 'Persist board mutation start', {
+    traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no save)', {
       boardId: activeBoardId || null,
       refreshMainView: !!options.refreshMainView,
       refreshSidebar: !!options.refreshSidebar,
       skipRender: !!options.skipRender,
       summaryBefore: summarizeBoardHierarchy(fullBoardData)
     });
-    try {
-      await saveFullBoard();
-      if (typeof options.beforeRefresh === 'function') {
-        options.beforeRefresh();
-      }
-      updateDisplayFromFullBoard();
-      if (activeBoardId && fullBoardData) {
-        setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
-      }
-      if (options.refreshMainView) {
-        renderMainView();
-      } else if (!options.skipRender) {
-        renderColumns();
-        if (options.refreshSidebar) renderBoardList();
-      }
-      if (typeof options.afterRefresh === 'function') {
-        options.afterRefresh();
-      }
-      scheduleDashboardRefresh(80);
-      traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
-        boardId: activeBoardId || null,
-        refreshMainView: !!options.refreshMainView,
-        refreshSidebar: !!options.refreshSidebar,
-        skipRender: !!options.skipRender,
-        summaryAfter: summarizeBoardHierarchy(fullBoardData)
-      });
-      return true;
-    } catch (err) {
-      logFrontendIssue('error', 'persistBoardMutation', 'Save failed, reloading board', err);
-      await loadBoard(activeBoardId);
-      if (typeof options.onError === 'function') {
-        options.onError(err);
-      }
-      return false;
+    if (typeof options.beforeRefresh === 'function') {
+      options.beforeRefresh();
     }
+    updateDisplayFromFullBoard();
+    if (activeBoardId && fullBoardData) {
+      setBoardHierarchyRows(activeBoardId, fullBoardData, activeBoardData ? activeBoardData.title : '');
+    }
+    if (options.refreshMainView) {
+      renderMainView();
+    } else if (!options.skipRender) {
+      renderColumns();
+      if (options.refreshSidebar) renderBoardList();
+    }
+    if (typeof options.afterRefresh === 'function') {
+      options.afterRefresh();
+    }
+    scheduleDashboardRefresh(80);
+    markBoardDirty();
+    traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
+      boardId: activeBoardId || null,
+      refreshMainView: !!options.refreshMainView,
+      refreshSidebar: !!options.refreshSidebar,
+      skipRender: !!options.skipRender,
+      summaryAfter: summarizeBoardHierarchy(fullBoardData)
+    });
+    return true;
   }
 
   function ensureBoardRowsForMutation(boardData, fallbackTitle) {
@@ -5140,49 +5364,32 @@ const LexeraDashboard = (function () {
     var boardIds = Object.keys(changedBoards || {});
     if (boardIds.length === 0) return true;
 
-    showSaving();
-    lastSaveTime = Date.now();
     try {
       for (var i = 0; i < boardIds.length; i++) {
         var boardId = boardIds[i];
         var boardData = changedBoards[boardId];
         if (!boardData) continue;
+
+        if (boardId === activeBoardId) {
+          // Active board: don't save — user saves explicitly with Cmd+S.
+          // Just refresh the UI and mark dirty.
+          updateDisplayFromFullBoard();
+          markBoardDirty();
+          setBoardHierarchyRows(boardId, fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+          continue;
+        }
+
+        // Non-active boards: must save since they're not kept in memory.
+        showSaving();
+        lastSaveTime = Date.now();
         ensureBoardRowsForMutation(boardData, getMutationBoardTitle(boardId, boardData));
         if (!boardData.columns) boardData.columns = [];
-        var savedBoardData = null;
-        var result = null;
-        if (boardId === activeBoardId && await applyBoardToLiveSyncSession(boardId, boardData, { skipBoardReplace: true })) {
-          savedBoardData = resolveLiveSyncBoardData(cloneBoardData(boardData), boardId);
-        } else {
-          var baseBoardData = getBoardSaveBase(boardData);
-          result = baseBoardData
-            ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
-            : await LexeraApi.saveBoard(boardId, boardData);
-          savedBoardData = resolveSavedBoardData(boardData, result, boardId);
-        }
+        var baseBoardData = getBoardSaveBase(boardData);
+        var result = baseBoardData
+          ? await LexeraApi.saveBoardWithBase(boardId, baseBoardData, boardData)
+          : await LexeraApi.saveBoard(boardId, boardData);
+        var savedBoardData = resolveSavedBoardData(boardData, result, boardId);
         changedBoards[boardId] = savedBoardData;
-        if (boardId === activeBoardId) {
-          fullBoardData = savedBoardData;
-          if (activeBoardData) {
-            activeBoardData.fullBoard = savedBoardData;
-            if (typeof savedBoardData.title === 'string') activeBoardData.title = savedBoardData.title;
-            if (result && typeof result.version === 'number') activeBoardData.version = result.version;
-            else delete activeBoardData.version;
-          }
-          if (result) {
-            try {
-              await reopenLiveSyncSession(boardId);
-            } catch (e) {
-              // Keep the REST save result even if the local live session refresh fails.
-            }
-          }
-          updateDisplayFromFullBoard();
-          if (result && result.hasConflicts) {
-            showConflictDialog(result.conflicts, result.autoMerged);
-          } else if (result && result.merged && result.autoMerged > 0) {
-            showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
-          }
-        }
         setBoardHierarchyRows(boardId, savedBoardData, getMutationBoardTitle(boardId, savedBoardData));
       }
       if (typeof options.beforeRefresh === 'function') options.beforeRefresh();
@@ -5197,8 +5404,7 @@ const LexeraDashboard = (function () {
       scheduleDashboardRefresh(80);
       return true;
     } catch (err) {
-      logFrontendIssue('error', 'commitBoardMutations', 'Save failed', err);
-      await poll();
+      logFrontendIssue('error', 'commitBoardMutations', 'Save failed for non-active board', err);
       if (typeof options.onError === 'function') options.onError(err);
       return false;
     } finally {
@@ -6319,9 +6525,11 @@ const LexeraDashboard = (function () {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (fullBoardData && activeBoardId) {
-        saveFullBoard().catch(function (err) {
-          logFrontendIssue('warn', 'keyboard.save', 'Failed to save board from keyboard shortcut, reloading board ' + activeBoardId, err);
-          loadBoard(activeBoardId);
+        saveFullBoard().then(function () {
+          clearBoardDirty();
+        }).catch(function (err) {
+          logFrontendIssue('warn', 'keyboard.save', 'Failed to save board — your changes are still in memory, try Cmd+S again', err);
+          showNotification('Save failed. Your changes are preserved — try saving again.');
         });
       }
       return;
@@ -7105,7 +7313,9 @@ const LexeraDashboard = (function () {
       columns: [moved]
     };
     if (insertAtStackIdx != null) {
-      toRow.stacks.splice(insertAtStackIdx, 0, newStack);
+      // insertAtStackIdx is a display index — convert to fullBoardData index
+      var fullInsertAt = findInsertStackIndexInRow(toRow, toRowIdx, insertAtStackIdx);
+      toRow.stacks.splice(fullInsertAt, 0, newStack);
     } else {
       toRow.stacks.push(newStack);
     }
@@ -7194,6 +7404,29 @@ const LexeraDashboard = (function () {
     return -1;
   }
 
+  function findInsertRowIndex(displayInsertAtIdx) {
+    if (!fullBoardData || !fullBoardData.rows) return 0;
+    if (!activeBoardData || !activeBoardData.rows || displayInsertAtIdx >= activeBoardData.rows.length) {
+      return fullBoardData.rows.length;
+    }
+    if (displayInsertAtIdx <= 0) {
+      var first = activeBoardData.rows[0];
+      if (first && first.id) {
+        for (var i = 0; i < fullBoardData.rows.length; i++) {
+          if (fullBoardData.rows[i].id === first.id) return i;
+        }
+      }
+      return 0;
+    }
+    var target = activeBoardData.rows[displayInsertAtIdx];
+    if (target && target.id) {
+      for (var i = 0; i < fullBoardData.rows.length; i++) {
+        if (fullBoardData.rows[i].id === target.id) return i;
+      }
+    }
+    return fullBoardData.rows.length;
+  }
+
   function visibleColumnIndicesInStack(stack) {
     var result = [];
     if (!stack || !stack.columns) return result;
@@ -7231,6 +7464,35 @@ const LexeraDashboard = (function () {
     if (!stack || displayColIdx < 0) return -1;
     var visible = visibleColumnIndicesInStack(stack);
     return displayColIdx < visible.length ? visible[displayColIdx] : -1;
+  }
+
+  function findInsertStackIndexInRow(fullRow, displayRowIdx, displayInsertAtIdx) {
+    if (!fullRow || !fullRow.stacks) return 0;
+    if (!activeBoardData || !activeBoardData.rows || displayRowIdx < 0 || displayRowIdx >= activeBoardData.rows.length) {
+      return fullRow.stacks.length;
+    }
+    var displayRow = activeBoardData.rows[displayRowIdx];
+    if (!displayRow || !displayRow.stacks || displayInsertAtIdx >= displayRow.stacks.length) {
+      return fullRow.stacks.length;
+    }
+    if (displayInsertAtIdx <= 0) {
+      // Insert before the first visible stack
+      var first = displayRow.stacks[0];
+      if (first && first.id) {
+        for (var i = 0; i < fullRow.stacks.length; i++) {
+          if (fullRow.stacks[i].id === first.id) return i;
+        }
+      }
+      return 0;
+    }
+    // Insert before the display stack at displayInsertAtIdx
+    var target = displayRow.stacks[displayInsertAtIdx];
+    if (target && target.id) {
+      for (var i = 0; i < fullRow.stacks.length; i++) {
+        if (fullRow.stacks[i].id === target.id) return i;
+      }
+    }
+    return fullRow.stacks.length;
   }
 
   function findInsertColumnIndexInStack(stack, displayColIdx, insertBefore) {
@@ -7516,7 +7778,7 @@ const LexeraDashboard = (function () {
     btn.textContent = options.btnText || ('+ Add ' + entityType);
     wrapper.appendChild(btn);
 
-    if (entityType !== 'card') {
+    if (entityType !== 'card' && entityType !== 'column') {
       var dropdown = document.createElement('div');
       dropdown.className = 'creation-dropdown';
 
@@ -7756,16 +8018,22 @@ const LexeraDashboard = (function () {
       title: 'New Row',
       stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }] }]
     };
-    if (typeof atIndex !== 'number' || isNaN(atIndex)) atIndex = fullBoardData.rows.length;
-    if (atIndex < 0) atIndex = 0;
-    if (atIndex > fullBoardData.rows.length) atIndex = fullBoardData.rows.length;
+    var insertAt;
+    if (typeof atIndex !== 'number' || isNaN(atIndex)) {
+      insertAt = fullBoardData.rows.length;
+    } else {
+      // atIndex is a display index — convert to fullBoardData index
+      insertAt = findInsertRowIndex(atIndex);
+    }
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > fullBoardData.rows.length) insertAt = fullBoardData.rows.length;
     traceFrontendAction('info', 'row.create', 'Inserting new row', {
       boardId: activeBoardId || null,
-      atIndex: atIndex,
+      atIndex: insertAt,
       rowId: newRow.id,
       summaryBefore: summarizeBoardHierarchy(fullBoardData)
     });
-    fullBoardData.rows.splice(atIndex, 0, newRow);
+    fullBoardData.rows.splice(insertAt, 0, newRow);
     var saved = await persistBoardMutation({ refreshSidebar: true });
     traceFrontendAction(saved ? 'info' : 'warn', 'row.create', saved ? 'Persisted new row' : 'Row persist reported failure', {
       boardId: activeBoardId || null,
@@ -7828,7 +8096,9 @@ const LexeraDashboard = (function () {
         }
       }
     }
-    fullBoardData.rows.splice(rowIdx + 1, 0, clone);
+    var fullRowIdx = fullBoardData.rows.indexOf(row);
+    if (fullRowIdx === -1) fullRowIdx = fullBoardData.rows.length - 1;
+    fullBoardData.rows.splice(fullRowIdx + 1, 0, clone);
     await persistBoardMutation({ refreshSidebar: true });
   }
 
@@ -7852,7 +8122,10 @@ const LexeraDashboard = (function () {
       columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }]
     };
     var insertAt = row.stacks.length;
-    if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) insertAt = atStackIdx;
+    if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) {
+      // atStackIdx is a display index — convert to fullBoardData index
+      insertAt = findInsertStackIndexInRow(row, rowIdx, atStackIdx);
+    }
     if (insertAt < 0) insertAt = 0;
     if (insertAt > row.stacks.length) insertAt = row.stacks.length;
     traceFrontendAction('info', 'stack.create', 'Inserting new stack', {
@@ -7924,7 +8197,11 @@ const LexeraDashboard = (function () {
         clone.columns[c].cards[k].kid = null;
       }
     }
-    row.stacks.splice(stackIdx + 1, 0, clone);
+    // stackIdx is a display index — find the fullBoardData index of the source
+    // stack and insert the clone right after it.
+    var fullStackIdx = findFullDataStackIndex(row, rowIdx, stackIdx);
+    if (fullStackIdx === -1) fullStackIdx = row.stacks.length - 1;
+    row.stacks.splice(fullStackIdx + 1, 0, clone);
     await persistBoardMutation({ refreshSidebar: true });
   }
 
@@ -8362,9 +8639,13 @@ const LexeraDashboard = (function () {
   }
 
   function resolveCardDropTarget(mx, my) {
-    // Header drop targets: Archive / Trash buttons
+    // Header drop targets: Park / Archive / Trash buttons
+    var parkedBtn = document.getElementById('btn-parked');
     var archiveBtn = document.getElementById('btn-archived');
     var trashBtn = document.getElementById('btn-trash');
+    if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) {
+      return { kind: 'header-park', sidebarNode: null, container: null };
+    }
     if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) {
       return { kind: 'header-archive', sidebarNode: null, container: null };
     }
@@ -8503,15 +8784,13 @@ const LexeraDashboard = (function () {
 
     var target = resolveCardDropTarget(mx, my);
     // Clear header drop target highlights
-    var hdrArchive = document.getElementById('btn-archived');
-    var hdrTrash = document.getElementById('btn-trash');
-    if (hdrArchive) hdrArchive.classList.remove('drop-target');
-    if (hdrTrash) hdrTrash.classList.remove('drop-target');
+    clearHeaderDropTargetHighlights();
 
     if (!target) return false;
 
-    if (target.kind === 'header-archive' || target.kind === 'header-trash') {
-      var hdrBtn = target.kind === 'header-archive' ? hdrArchive : hdrTrash;
+    if (target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
+      var hdrBtnId = target.kind === 'header-park' ? 'btn-parked' : target.kind === 'header-archive' ? 'btn-archived' : 'btn-trash';
+      var hdrBtn = document.getElementById(hdrBtnId);
       if (hdrBtn) hdrBtn.classList.add('drop-target');
       return true;
     }
@@ -8534,9 +8813,11 @@ const LexeraDashboard = (function () {
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
 
-    // Header drop targets: archive or trash the dragged card
-    if (target.kind === 'header-archive' || target.kind === 'header-trash') {
-      var tag = target.kind === 'header-archive' ? '#hidden-internal-archived' : '#hidden-internal-deleted';
+    // Header drop targets: park, archive, or trash the dragged card
+    if (target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
+      var tag = target.kind === 'header-park' ? '#hidden-internal-parked'
+        : target.kind === 'header-archive' ? '#hidden-internal-archived'
+        : '#hidden-internal-deleted';
       var srcColIndex = source.flatColIndex;
       var srcCardIndex = source.cardIndex;
       if (typeof srcColIndex === 'number' && typeof srcCardIndex === 'number') {
@@ -8582,11 +8863,22 @@ const LexeraDashboard = (function () {
     clearCardDropIndicators();
     clearSidebarDropHighlights();
     clearCardDragOverHighlights();
+    clearHeaderDropTargetHighlights();
     cleanupCardDrag();
+  }
+
+  function clearHeaderDropTargetHighlights() {
+    var p = document.getElementById('btn-parked');
+    var a = document.getElementById('btn-archived');
+    var t = document.getElementById('btn-trash');
+    if (p) p.classList.remove('drop-target');
+    if (a) a.classList.remove('drop-target');
+    if (t) t.classList.remove('drop-target');
   }
 
   function cleanupCardDrag() {
     removeDropZoneIndicators();
+    clearHeaderDropTargetHighlights();
     if (cardDrag) {
       if (cardDrag.el) cardDrag.el.classList.remove('dragging');
       if (cardDrag.ghost) cardDrag.ghost.remove();
@@ -9288,6 +9580,20 @@ const LexeraDashboard = (function () {
   function updatePtrDropTargetByType(type, mx, my) {
     clearPtrDropIndicators();
     clearDropZoneIndicatorHighlights();
+    clearHeaderDropTargetHighlights();
+
+    // Check header drop targets (Park/Archive/Trash) for all non-board types
+    if (type !== 'board') {
+      var headerTag = resolveHeaderDropTag(mx, my);
+      if (headerTag) {
+        var hdrBtnId = headerTag === '#hidden-internal-parked' ? 'btn-parked'
+          : headerTag === '#hidden-internal-archived' ? 'btn-archived' : 'btn-trash';
+        var hdrBtn = document.getElementById(hdrBtnId);
+        if (hdrBtn) hdrBtn.classList.add('drop-target');
+        return true;
+      }
+    }
+
     if (type === 'tree-row' || type === 'board-row') {
       var rowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
       var rowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
@@ -9655,9 +9961,55 @@ const LexeraDashboard = (function () {
     clearSidebarDropHighlights();
   }
 
+  // Resolve header drop target (Park/Archive/Trash) at the given point.
+  // Returns the hidden tag string or null if not over a header button.
+  function resolveHeaderDropTag(mx, my) {
+    var parkedBtn = document.getElementById('btn-parked');
+    var archiveBtn = document.getElementById('btn-archived');
+    var trashBtn = document.getElementById('btn-trash');
+    if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) return '#hidden-internal-parked';
+    if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) return '#hidden-internal-archived';
+    if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) return '#hidden-internal-deleted';
+    return null;
+  }
+
+  // Apply a hidden tag to the ptrDrag source element (row/stack/column/card).
+  async function applyPtrDragHiddenTag(type, src, tag) {
+    if (type === 'tree-row' || type === 'board-row') {
+      await setRowHiddenTag(src.rowIndex, tag);
+    } else if (type === 'tree-stack' || type === 'board-stack') {
+      await setStackHiddenTag(src.rowIndex, src.stackIndex, tag);
+    } else if (type === 'column' || type === 'tree-column') {
+      // Convert display (row, stack, col) indices to full data column
+      var stack = findFullDataStack(src.rowIndex, src.stackIndex);
+      if (stack) {
+        var fullColIdx = findFullColumnIndexInStack(stack, src.colIndex);
+        if (fullColIdx >= 0 && stack.columns[fullColIdx]) {
+          pushUndo();
+          stack.columns[fullColIdx].title = applyInternalHiddenTag(stack.columns[fullColIdx].title || '', tag);
+          await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+        }
+      }
+    } else if (type === 'tree-card') {
+      // Tree-card has flatColIndex and cardIndex
+      if (typeof src.flatColIndex === 'number' && typeof src.cardIndex === 'number') {
+        tagCard(src.flatColIndex, src.cardIndex, tag);
+      }
+    }
+  }
+
   function executePtrDrop(mx, my) {
     var type = ptrDrag.type;
     var src = ptrDrag.source;
+
+    // Check header drop targets (Park/Archive/Trash) for all non-board types
+    if (type !== 'board') {
+      var headerTag = resolveHeaderDropTag(mx, my);
+      if (headerTag) {
+        applyPtrDragHiddenTag(type, src, headerTag);
+        return;
+      }
+    }
 
     if (type === 'tree-row' || type === 'board-row') {
       applyRowDropByPoint(src, mx, my);
@@ -10068,9 +10420,14 @@ const LexeraDashboard = (function () {
         title: '',
         columns: [movedColumn]
       };
-      var stackInsertIdx = typeof target.insertAtStackIdx === 'number'
-        ? target.insertAtStackIdx
-        : targetRowInfo.row.stacks.length;
+      var stackInsertIdx;
+      if (typeof target.insertAtStackIdx === 'number' && (target.indexMode || 'full') === 'display' && targetBoardId === activeBoardId) {
+        stackInsertIdx = findInsertStackIndexInRow(targetRowInfo.row, target.rowIndex, target.insertAtStackIdx);
+      } else if (typeof target.insertAtStackIdx === 'number') {
+        stackInsertIdx = target.insertAtStackIdx;
+      } else {
+        stackInsertIdx = targetRowInfo.row.stacks.length;
+      }
       if (stackInsertIdx < 0) stackInsertIdx = 0;
       if (stackInsertIdx > targetRowInfo.row.stacks.length) stackInsertIdx = targetRowInfo.row.stacks.length;
       targetRowInfo.row.stacks.splice(stackInsertIdx, 0, newStack);
@@ -10392,6 +10749,7 @@ const LexeraDashboard = (function () {
   function cleanupPtrDrag() {
     removeStackDropZones();
     removeDropZoneIndicators();
+    clearHeaderDropTargetHighlights();
     stopCrossViewBridge();
     unlockBoardLayoutForDrag();
     if (ptrDrag) {
@@ -11985,7 +12343,7 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
   }
 
-  function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) {
+  async function moveColumnToStack(colIndex, targetRowIdx, targetStackIdx) {
     if (!fullBoardData || !fullBoardData.rows) {
       traceFrontendAction('warn', 'column.move', 'Aborted move because fullBoardData is missing', {
         boardId: activeBoardId || null,
@@ -12017,8 +12375,8 @@ const LexeraDashboard = (function () {
       });
       return;
     }
-    // Add to target stack
-    var targetStack = fullBoardData.rows[targetRowIdx] && fullBoardData.rows[targetRowIdx].stacks[targetStackIdx];
+    // Add to target stack — targetRowIdx/targetStackIdx are display indices
+    var targetStack = findFullDataStack(targetRowIdx, targetStackIdx);
     if (!targetStack) {
       traceFrontendAction('warn', 'column.move', 'Aborted move because target stack could not be resolved', {
         boardId: activeBoardId || null,
@@ -12052,7 +12410,7 @@ const LexeraDashboard = (function () {
     var removed = container.arr.splice(container.localIdx, 1)[0];
     targetStack.columns.push(removed);
     removeEmptyStacksAndRows();
-    persistBoardMutation({ refreshSidebar: true });
+    await persistBoardMutation({ refreshSidebar: true });
   }
 
   async function handleColumnAction(action, colIndex, context) {
@@ -12136,7 +12494,7 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function sortColumnCards(colIndex, mode) {
+  async function sortColumnCards(colIndex, mode) {
     var col = getFullColumn(colIndex);
     if (!col || col.cards.length < 2) return;
     pushUndo();
@@ -12156,7 +12514,7 @@ const LexeraDashboard = (function () {
       }
       return 0;
     });
-    persistBoardMutation();
+    await persistBoardMutation();
   }
 
   function extractNumericTag(content) {

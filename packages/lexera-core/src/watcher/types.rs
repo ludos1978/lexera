@@ -23,6 +23,10 @@ impl ContentFingerprint {
 pub enum BoardChangeEvent {
     MainFileChanged {
         board_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        generation: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        writer_id: Option<String>,
     },
     IncludeFileChanged {
         board_ids: Vec<String>,

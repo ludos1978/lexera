@@ -503,6 +503,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: Default::default(),
         }
     }
@@ -541,6 +542,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: Default::default(),
         };
         let results = find_all_wiki_links_in_board(&board);
@@ -567,6 +569,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: Default::default(),
         };
         let results = find_all_wiki_links_in_board(&board);
@@ -625,6 +628,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: Default::default(),
         };
 
@@ -710,6 +714,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: Default::default(),
         };
 

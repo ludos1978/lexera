@@ -36,6 +36,8 @@ pub struct BoardState {
     pub content_hash: String,
     /// Monotonic version counter, incremented on every change
     pub version: u64,
+    /// Persisted generation counter from YAML front matter (staleness detection)
+    pub generation: u64,
     /// CRDT document for collaborative merge (Phase 1: initialized on load)
     pub crdt: Option<CrdtStore>,
 }
@@ -48,6 +50,7 @@ impl Clone for BoardState {
             last_modified: self.last_modified,
             content_hash: self.content_hash.clone(),
             version: self.version,
+            generation: self.generation,
             crdt: None, // CRDT is not cloned — reconstructed when needed
         }
     }
@@ -76,6 +79,8 @@ pub struct LocalStorage {
     next_version: std::sync::atomic::AtomicU64,
     /// Board IDs that are synced from remote servers (not backed by a local file)
     remote_boards: RwLock<HashSet<String>>,
+    /// Per-process unique writer identifier for generation metadata
+    writer_id: String,
 }
 
 /// Check if two boards have different row/stack/column structure (count or IDs).
@@ -277,7 +282,7 @@ impl LocalStorage {
         let disk_content = fs::read_to_string(&file_path)?;
         let disk_hash = Self::content_hash(&disk_content);
 
-        let (board_to_write, merge_result) = if let Some(ref mut c) = crdt {
+        let (mut board_to_write, merge_result) = if let Some(ref mut c) = crdt {
             let mut current = Self::normalize_board_for_write(&c.to_board(), &board_dir);
             if Self::board_has_missing_kids(&current) {
                 log::info!(
@@ -387,6 +392,25 @@ impl LocalStorage {
             (normalized_board.clone(), None)
         };
 
+        // Bump generation counter and set generation metadata
+        let current_gen = self
+            .boards
+            .read()
+            .ok()
+            .and_then(|b| b.get(board_id).map(|s| s.generation))
+            .unwrap_or(0);
+        let new_gen = current_gen + 1;
+
+        // Compute body hash from a preview render (body is stable across YAML changes)
+        let preview_md = parser::generate_markdown(&board_to_write);
+        let content_hash_body = parser::body_hash(&preview_md);
+
+        board_to_write.generation_meta = Some(crate::types::GenerationMeta {
+            generation: Some(new_gen),
+            content_hash: Some(content_hash_body),
+            writer_id: Some(self.writer_id.clone()),
+        });
+
         // Create a backup of the current file before overwriting
         if file_path.exists() {
             let backup_mgr = super::backup::BackupManager::new();
@@ -428,6 +452,7 @@ impl LocalStorage {
             last_modified,
             content_hash: Self::content_hash(&markdown),
             version: self.next_version(),
+            generation: new_gen,
             crdt,
         };
 
@@ -456,6 +481,7 @@ impl LocalStorage {
             include_map: RwLock::new(IncludeMap::new()),
             next_version: std::sync::atomic::AtomicU64::new(1),
             remote_boards: RwLock::new(HashSet::new()),
+            writer_id: uuid::Uuid::new_v4().to_string(),
         }
     }
 
@@ -545,12 +571,18 @@ impl LocalStorage {
             }
         };
 
+        let generation = board
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
         let state = BoardState {
             file_path,
             board,
             last_modified,
             content_hash: Self::content_hash(&content),
             version: self.next_version(),
+            generation,
             crdt,
         };
 
@@ -583,6 +615,67 @@ impl LocalStorage {
             &board_dir,
         );
 
+        // Staleness check: reject loads with a lower generation than what we have in memory
+        let new_gen = board
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
+        let current_gen = self
+            .boards
+            .read()
+            .ok()
+            .and_then(|b| b.get(board_id).map(|s| s.generation))
+            .unwrap_or(0);
+        if new_gen < current_gen {
+            log::warn!(
+                "[lexera.storage.reload] Stale file for board {} (gen {} < {}), skipping reload",
+                board_id,
+                new_gen,
+                current_gen
+            );
+            // Put the CRDT back before returning
+            if let Some(crdt) = old_crdt {
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = Some(crdt);
+                    }
+                }
+            }
+            return Ok(());
+        }
+        if new_gen == current_gen && new_gen > 0 {
+            let new_body_hash = parser::body_hash(&content);
+            let existing_body_hash = self
+                .boards
+                .read()
+                .ok()
+                .and_then(|b| {
+                    b.get(board_id)?
+                        .board
+                        .generation_meta
+                        .as_ref()?
+                        .content_hash
+                        .clone()
+                });
+            if existing_body_hash.as_deref() == Some(&new_body_hash) {
+                // Same generation, same content — no real change
+                if let Some(crdt) = old_crdt {
+                    if let Ok(mut boards) = self.boards.write() {
+                        if let Some(state) = boards.get_mut(board_id) {
+                            state.crdt = Some(crdt);
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            log::warn!(
+                "[lexera.storage.reload] Same generation ({}) but different content for board {}, accepting external edit",
+                new_gen,
+                board_id
+            );
+        }
+
         let metadata = fs::metadata(&file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
@@ -613,12 +706,18 @@ impl LocalStorage {
             }
         };
 
+        let new_generation = board
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
         let new_state = BoardState {
             file_path,
             board,
             last_modified,
             content_hash: Self::content_hash(&content),
             version: self.next_version(),
+            generation: new_generation,
             crdt,
         };
 
@@ -695,6 +794,7 @@ impl LocalStorage {
             last_modified: SystemTime::now(),
             content_hash: String::new(),
             version,
+            generation: 0,
             crdt: None,
         };
         match self.boards.write() {
@@ -782,6 +882,15 @@ impl LocalStorage {
     /// Get the version number for a board (for ETag support).
     pub fn get_board_version(&self, board_id: &str) -> Option<u64> {
         self.boards.read().ok()?.get(board_id).map(|s| s.version)
+    }
+
+    /// Get the persisted generation counter for a board (for staleness detection).
+    pub fn get_board_generation(&self, board_id: &str) -> Option<u64> {
+        self.boards
+            .read()
+            .ok()?
+            .get(board_id)
+            .map(|s| s.generation)
     }
 
     /// Get the content hash for a board (for conflict detection).
@@ -1193,6 +1302,7 @@ impl LocalStorage {
             last_modified,
             content_hash: Self::content_hash(&markdown),
             version: self.next_version(),
+            generation: 0,
             crdt: Some(crdt),
         };
 
@@ -1462,6 +1572,7 @@ impl BoardStorage for LocalStorage {
                     last_modified,
                     content_hash: Self::content_hash(&markdown),
                     version: self.next_version(),
+                    generation: 0,
                     crdt,
                 },
             );

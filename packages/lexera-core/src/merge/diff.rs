@@ -159,6 +159,7 @@ mod tests {
             kanban_footer: None,
             board_settings: None,
             format_hint: BoardFormat::Legacy,
+            generation_meta: None,
         }
     }
 
@@ -253,6 +254,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::New,
         }
     }

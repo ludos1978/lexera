@@ -336,6 +336,8 @@ async fn handle_sync_session(
                     let _ = state_read.event_tx.send(
                         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
                             board_id: board_id_read.clone(),
+                            generation: None,
+                            writer_id: None,
                         },
                     );
                 }

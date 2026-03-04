@@ -110,6 +110,22 @@ pub struct BoardSettings {
     pub board_color_light: Option<String>,
 }
 
+/// Generation metadata for staleness detection.
+/// Persisted in YAML front matter alongside board settings.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerationMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub writer_id: Option<String>,
+}
+
+/// The YAML keys for generation metadata. Order determines output order.
+pub const GENERATION_META_KEYS: &[&str] = &["generation", "contentHash", "writerId"];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KanbanBoard {
@@ -126,6 +142,8 @@ pub struct KanbanBoard {
     pub kanban_footer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_settings: Option<BoardSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_meta: Option<GenerationMeta>,
     /// Tracks the original markdown format for round-trip fidelity.
     /// Defaults to Legacy when not set (e.g. programmatically constructed boards).
     #[serde(default = "default_board_format")]

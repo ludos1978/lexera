@@ -16,8 +16,8 @@ use crate::include::slide_parser;
 use crate::include::syntax;
 use crate::merge::card_identity;
 use crate::types::{
-    BoardFormat, BoardSettings, IncludeSource, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow,
-    KanbanStack, BOARD_SETTING_KEYS,
+    BoardFormat, BoardSettings, GenerationMeta, IncludeSource, KanbanBoard, KanbanCard,
+    KanbanColumn, KanbanRow, KanbanStack, BOARD_SETTING_KEYS, GENERATION_META_KEYS,
 };
 
 /// Context for parsing boards with include file support.
@@ -52,6 +52,7 @@ pub fn parse_markdown(content: &str) -> KanbanBoard {
         yaml_header: None,
         kanban_footer: None,
         board_settings: None,
+        generation_meta: None,
         format_hint: BoardFormat::Legacy,
     };
 
@@ -68,6 +69,9 @@ pub fn parse_markdown(content: &str) -> KanbanBoard {
     }
 
     board.board_settings = Some(parse_board_settings(
+        board.yaml_header.as_deref().unwrap_or(""),
+    ));
+    board.generation_meta = Some(parse_generation_meta(
         board.yaml_header.as_deref().unwrap_or(""),
     ));
 
@@ -637,10 +641,13 @@ pub fn generate_markdown(board: &KanbanBoard) -> String {
     let use_new_format = board.format_hint == BoardFormat::New || board.has_explicit_hierarchy();
 
     if board.yaml_header.is_some() || board.board_settings.is_some() {
-        let updated_yaml = update_yaml_with_board_settings(
+        let mut updated_yaml = update_yaml_with_board_settings(
             board.yaml_header.as_deref(),
             board.board_settings.as_ref().cloned().unwrap_or_default(),
         );
+        if let Some(ref meta) = board.generation_meta {
+            updated_yaml = update_yaml_with_generation_meta(&updated_yaml, meta);
+        }
         markdown.push_str(&updated_yaml);
         markdown.push_str("\n\n");
     }
@@ -795,6 +802,120 @@ fn clear_setting(settings: &mut BoardSettings, key: &str) {
         "boardColorDark" => settings.board_color_dark = None,
         "boardColorLight" => settings.board_color_light = None,
         _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Generation metadata (staleness detection)
+// ---------------------------------------------------------------------------
+
+/// Strip the YAML front matter from content, returning only the body.
+fn strip_yaml_header(content: &str) -> &str {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("---") {
+        return content;
+    }
+    // Skip the opening "---" line
+    let after_open = match trimmed.strip_prefix("---") {
+        Some(rest) => rest.strip_prefix('\n').unwrap_or(rest),
+        None => return content,
+    };
+    // Find the closing "---"
+    if let Some(end_pos) = after_open.find("\n---") {
+        let after_close = &after_open[end_pos + 4..]; // skip "\n---"
+        after_close.strip_prefix('\n').unwrap_or(after_close)
+    } else {
+        content // No closing ---, return everything
+    }
+}
+
+/// Compute SHA-256 hash of the board body (everything after the YAML front matter).
+/// If no YAML header is present, hashes the entire content.
+pub fn body_hash(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let body = strip_yaml_header(content);
+    let mut hasher = Sha256::new();
+    hasher.update(body.replace("\r\n", "\n").as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Parse generation metadata from a YAML header string.
+pub fn parse_generation_meta(yaml_header: &str) -> GenerationMeta {
+    let mut meta = GenerationMeta::default();
+    if yaml_header.is_empty() {
+        return meta;
+    }
+    for line in yaml_header.lines() {
+        if let Some(colon_pos) = line.find(':') {
+            let key = line[..colon_pos].trim();
+            let value = line[colon_pos + 1..].trim();
+            if value.is_empty() {
+                continue;
+            }
+            match key {
+                "generation" => meta.generation = value.parse().ok(),
+                "contentHash" => meta.content_hash = Some(value.to_string()),
+                "writerId" => meta.writer_id = Some(value.to_string()),
+                _ => {}
+            }
+        }
+    }
+    meta
+}
+
+/// Update or insert generation metadata keys in a YAML header string.
+/// Expects a complete YAML header (with opening and closing `---`).
+pub fn update_yaml_with_generation_meta(yaml_header: &str, meta: &GenerationMeta) -> String {
+    if yaml_header.is_empty() {
+        return yaml_header.to_string();
+    }
+
+    let lines: Vec<&str> = yaml_header.split('\n').collect();
+    let mut result: Vec<String> = Vec::new();
+    let mut written_keys: Vec<&str> = Vec::new();
+
+    for line in &lines {
+        if let Some(colon_pos) = line.find(':') {
+            let key = line[..colon_pos].trim();
+            if GENERATION_META_KEYS.contains(&key) {
+                // Replace with current value (or drop if None)
+                if let Some(val) = meta_value_for_key(meta, key) {
+                    result.push(format!("{}: {}", key, val));
+                }
+                written_keys.push(key);
+                continue;
+            }
+        }
+        result.push(line.to_string());
+    }
+
+    // Insert missing keys before closing ---
+    if let Some(closing_index) = result.iter().rposition(|l| l.trim() == "---") {
+        if closing_index > 0 {
+            let mut new_entries: Vec<String> = Vec::new();
+            for key in GENERATION_META_KEYS {
+                if !written_keys.contains(key) {
+                    if let Some(val) = meta_value_for_key(meta, key) {
+                        new_entries.push(format!("{}: {}", key, val));
+                    }
+                }
+            }
+            for (j, s) in new_entries.into_iter().enumerate() {
+                result.insert(closing_index + j, s);
+            }
+        }
+    }
+
+    result.join("\n")
+}
+
+/// Get the string value for a generation meta key.
+fn meta_value_for_key(meta: &GenerationMeta, key: &str) -> Option<String> {
+    match key {
+        "generation" => meta.generation.map(|g| g.to_string()),
+        "contentHash" => meta.content_hash.clone(),
+        "writerId" => meta.writer_id.clone(),
+        _ => None,
     }
 }
 

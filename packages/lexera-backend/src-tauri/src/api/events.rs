@@ -185,6 +185,8 @@ mod tests {
         // Broadcast an event after the SSE stream is established
         let sent_event = BoardChangeEvent::MainFileChanged {
             board_id: "test-board-42".into(),
+            generation: None,
+            writer_id: None,
         };
         event_tx.send(sent_event.clone()).unwrap();
 
@@ -202,6 +204,8 @@ mod tests {
         // The event should be serialised as JSON with serde tag = "type"
         let expected_json = serde_json::to_string(&BoardChangeEvent::MainFileChanged {
             board_id: "test-board-42".into(),
+            generation: None,
+            writer_id: None,
         })
         .unwrap();
 
@@ -235,11 +239,15 @@ mod tests {
         event_tx
             .send(BoardChangeEvent::MainFileChanged {
                 board_id: "board-a".into(),
+                generation: None,
+                writer_id: None,
             })
             .unwrap();
         event_tx
             .send(BoardChangeEvent::MainFileChanged {
                 board_id: "board-b".into(),
+                generation: None,
+                writer_id: None,
             })
             .unwrap();
 

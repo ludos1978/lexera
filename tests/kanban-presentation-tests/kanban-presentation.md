@@ -48,76 +48,41 @@ boardColorLight: #f5f5ff
       "Safari" : 12
       "Edge" : 8
   ```
-
-## Stack 3
-
-### # A #1 #red
-- [ ] Killing existing instances...
-  Starting lexera-backend...
-  Waiting for backend...
-  [backend]      Running DevCommand (`cargo  run --no-default-features --color always --`)
-  [backend]         Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-backend/src-tauri for changes...
-  [backend]         Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-core for changes...
-  [backend]    Compiling lexera-backend v0.1.0 (/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-backend/src-tauri)
-  Starting lexera-kanban...
-  
-  Both services running. Press Ctrl+C to stop.
-  
-  [kanban]       Running DevCommand (`cargo  run --no-default-features --color always --`)
-  [kanban]          Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-kanban/src-tauri for changes...
-  [kanban]          Info Watching /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/lexera-core for changes...
-      Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.03s
-  [backend]      Running `/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/target/debug/lexera-backend`
-  [kanban]  warning: unused import: `std::time::Duration`
-  [kanban]   --> lexera-kanban/src-tauri/src/commands.rs:5:5
-  [kanban]    |
-  [kanban]  5 | use std::time::Duration;
-  [kanban]    |     ^^^^^^^^^^^^^^^^^^^
-  [kanban]    |
-  [kanban]    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-  [kanban]  
-  [kanban]  warning: unused import: `Manager`
-  [kanban]   --> lexera-kanban/src-tauri/src/commands.rs:7:41
-  [kanban]    |
-  [kanban]  7 | use tauri::{AppHandle, LogicalPosition, Manager, Position, Window};
-  [kanban]    |                                         ^^^^^^^
-  [kanban]  
-  [kanban]  warning: `lexera-kanban` (bin "lexera-kanban") generated 2 warnings (run `cargo fix --bin "lexera-kanban" -p lexera-kanban` to apply 2 suggestions)
-  [kanban]      Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.44s
-  [kanban]       Running `/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages/target/debug/lexera-kanban`
-
-## Stack 2
-
-### Row 1 - Stack 2 - Col 1
 - [ ] Search
   ![test media]()
-- [ ] a #hidden-internal-deleted
-- [ ] ## Include # #orange
-  !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-1.md)!!!
-- [ ] ![screenshot.png](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947){height="650px"}
 - [ ] #pink
   ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
+- [ ] ![screenshot.png](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947){height="650px"}
+
+## Stack 2 #hidden-internal-deleted
+
+### Row 1 - Stack 2 - Col 1
 
 ## !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-2.md)!!! #0
 
 ### New Column
-- [ ] Task 1 #hidden-internal-deleted
-  1
+- [ ] #pink
+  ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
+- [ ] ## Include # #orange
+  !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-1.md)!!!
+- [ ] Search
+  ![test media]()
 - [ ] a
-- [ ] Task 3
-  3
-- [ ] Task 2 #hidden-internal-deleted
-  2
 - [ ] 
-- [ ] Task 2
-  2
-- [ ] cargo fix --bin "lexera-kanban" -p lexera-kanban
-- [ ] #hidden-internal-deleted
-- [ ] Task 1
-  1
+- [ ] ![screenshot.png](https://miro.com/app/live-embed/uXjVLewdNZE=/?moveToViewport=-956,-2765,1912,1595&embedId=344522680947){height="650px"}
+
+### New Column #hidden-internal-deleted
+
+## New Stack
 
 ### New Column
-
-### New Column
+- [ ] #pink
+  ![photo-1756244866467-f4682840070c](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/Media/photo-1756244866467-f4682840070c.avif)
+- [ ] ## Include # #orange
+  !!!include(/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-presentation-tests/root-include-1.md)!!!
+- [ ] Search
+  ![test media]()
+- [ ] a
+- [ ] 
 
 

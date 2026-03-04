@@ -150,6 +150,7 @@ impl SyncClientManager {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: lexera_core::types::BoardFormat::Legacy,
         };
         storage.add_remote_board(&local_board_id, placeholder_board);
@@ -287,6 +288,8 @@ async fn run_sync_client(
                 // Fire SSE event so frontend reloads
                 let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
                     board_id: local_board_id.clone(),
+                    generation: None,
+                    writer_id: None,
                 });
             }
             ServerMessage::ServerUpdate { updates } => {
@@ -298,6 +301,8 @@ async fn run_sync_client(
                 }
                 let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
                     board_id: local_board_id.clone(),
+                    generation: None,
+                    writer_id: None,
                 });
             }
             ServerMessage::ServerError { message } => {

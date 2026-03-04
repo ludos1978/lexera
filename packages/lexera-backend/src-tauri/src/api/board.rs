@@ -127,6 +127,7 @@ pub async fn get_board_columns(
             "title": board.title,
             "columns": columns,
             "version": version,
+            "generation": state.storage.get_board_generation(&board_id).unwrap_or(0),
             "fullBoard": board,
         })),
     ))
@@ -477,6 +478,8 @@ pub async fn add_board_endpoint(
     let _ = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.clone(),
+            generation: state.storage.get_board_generation(&board_id),
+            writer_id: None,
         },
     );
 
@@ -621,6 +624,8 @@ pub async fn update_board_settings(
     let _ = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.clone(),
+            generation: state.storage.get_board_generation(&board_id),
+            writer_id: None,
         },
     );
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
@@ -642,6 +647,7 @@ fn build_write_board_response(
         .read_board(board_id)
         .unwrap_or_else(|| fallback_board.clone());
     let version = state.storage.get_board_version(board_id).unwrap_or(0);
+    let generation = state.storage.get_board_generation(board_id).unwrap_or(0);
     if let Some(merge_result) = result {
         let has_conflicts = !merge_result.conflicts.is_empty();
         serde_json::json!({
@@ -652,6 +658,7 @@ fn build_write_board_response(
             "hasConflicts": has_conflicts,
             "board": saved_board,
             "version": version,
+            "generation": generation,
         })
     } else {
         serde_json::json!({
@@ -662,6 +669,7 @@ fn build_write_board_response(
             "hasConflicts": false,
             "board": saved_board,
             "version": version,
+            "generation": generation,
         })
     }
 }

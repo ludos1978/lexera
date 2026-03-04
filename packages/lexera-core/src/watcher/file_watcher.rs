@@ -191,7 +191,11 @@ fn handle_debounced_event(
                     board_id,
                     path: canonical,
                 },
-                _ => BoardChangeEvent::MainFileChanged { board_id },
+                _ => BoardChangeEvent::MainFileChanged {
+                    board_id,
+                    generation: None,
+                    writer_id: None,
+                },
             };
 
             if let Err(e) = tx.send(change_event) {

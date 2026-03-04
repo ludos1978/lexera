@@ -2,6 +2,7 @@
 ///
 /// Converts boards to/from a Loro CRDT representation, applies diffs as
 /// minimal CRDT operations, and provides undo/redo and persistence.
+use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 
@@ -88,6 +89,148 @@ fn get_sub_map(map: &LoroMap, key: &str) -> Option<LoroMap> {
 
 fn get_optional_string(map: &LoroMap, key: &str) -> Option<String> {
     map.get(key).and_then(|v| read_string(&v))
+}
+
+/// Reorder a LoroMovableList to match the target ID order.
+/// Elements not found in the target list remain at the end (will be removed by caller).
+/// Target IDs not found in the list are skipped (will be added by caller).
+fn reorder_list_by_id(
+    list: &LoroMovableList,
+    target_ids: &[String],
+    id_key: &str,
+) -> io::Result<()> {
+    let list_len = list.len();
+    let mut write_pos = 0;
+
+    for target_id in target_ids {
+        if write_pos >= list_len {
+            break;
+        }
+        // Check if correct element is already at write_pos
+        let current_id = get_map_at(list, write_pos)
+            .map(|m| get_string(&m, id_key))
+            .unwrap_or_default();
+        if current_id == *target_id {
+            write_pos += 1;
+            continue;
+        }
+        // Find target_id in remaining positions
+        let found = ((write_pos + 1)..list_len).find(|&i| {
+            get_map_at(list, i)
+                .map(|m| get_string(&m, id_key) == *target_id)
+                .unwrap_or(false)
+        });
+        if let Some(from) = found {
+            list.mov(from, write_pos).map_err(loro_err)?;
+            write_pos += 1;
+        }
+        // If not found in CRDT, skip — will be added by caller
+    }
+    Ok(())
+}
+
+// ── Cross-container move helpers ─────────────────────────────────────────────
+
+/// Card data extracted from a CRDT LoroMap for cross-container move.
+struct CardData {
+    kid: String,
+    content: String,
+    checked: bool,
+}
+
+/// Column data extracted from a CRDT LoroMap for cross-container move.
+struct ColumnData {
+    id: String,
+    title: String,
+    cards: Vec<CardData>,
+}
+
+/// Stack data extracted from a CRDT LoroMap for cross-container move.
+struct StackData {
+    id: String,
+    title: String,
+    columns: Vec<ColumnData>,
+}
+
+/// Extract all data from a column LoroMap (id, title, all cards).
+fn extract_column_data(col_map: &LoroMap) -> ColumnData {
+    let id = get_string(col_map, "id");
+    let title = get_string(col_map, "title");
+    let cards = if let Some(cards_list) = get_movable_list(col_map, "cards") {
+        (0..cards_list.len())
+            .filter_map(|i| {
+                get_map_at(&cards_list, i).map(|cm| CardData {
+                    kid: get_string(&cm, "kid"),
+                    content: get_string(&cm, "content"),
+                    checked: get_bool(&cm, "checked"),
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    ColumnData { id, title, cards }
+}
+
+/// Extract all data from a stack LoroMap (id, title, all columns with cards).
+fn extract_stack_data(stack_map: &LoroMap) -> StackData {
+    let id = get_string(stack_map, "id");
+    let title = get_string(stack_map, "title");
+    let columns = if let Some(cols_list) = get_movable_list(stack_map, "columns") {
+        (0..cols_list.len())
+            .filter_map(|i| get_map_at(&cols_list, i).map(|cm| extract_column_data(&cm)))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    StackData { id, title, columns }
+}
+
+/// Insert extracted column data (with cards) into a columns LoroMovableList.
+fn insert_column_data(cols_list: &LoroMovableList, data: &ColumnData) -> io::Result<()> {
+    let col_map: LoroMap = cols_list.push_container(LoroMap::new()).map_err(loro_err)?;
+    col_map.insert("id", data.id.as_str()).map_err(loro_err)?;
+    col_map
+        .insert("title", data.title.as_str())
+        .map_err(loro_err)?;
+    let cards_list: LoroMovableList = col_map
+        .insert_container("cards", LoroMovableList::new())
+        .map_err(loro_err)?;
+    for card in &data.cards {
+        let card_map: LoroMap = cards_list
+            .push_container(LoroMap::new())
+            .map_err(loro_err)?;
+        card_map
+            .insert("kid", card.kid.as_str())
+            .map_err(loro_err)?;
+        card_map
+            .insert("content", card.content.as_str())
+            .map_err(loro_err)?;
+        card_map
+            .insert("checked", card.checked)
+            .map_err(loro_err)?;
+    }
+    Ok(())
+}
+
+/// Insert extracted stack data (with columns and cards) into a stacks LoroMovableList.
+fn insert_stack_data(stacks_list: &LoroMovableList, data: &StackData) -> io::Result<()> {
+    let stack_map: LoroMap = stacks_list
+        .push_container(LoroMap::new())
+        .map_err(loro_err)?;
+    stack_map
+        .insert("id", data.id.as_str())
+        .map_err(loro_err)?;
+    stack_map
+        .insert("title", data.title.as_str())
+        .map_err(loro_err)?;
+    let cols_list: LoroMovableList = stack_map
+        .insert_container("columns", LoroMovableList::new())
+        .map_err(loro_err)?;
+    for col in &data.columns {
+        insert_column_data(&cols_list, col)?;
+    }
+    Ok(())
 }
 
 // ── Metadata helpers ─────────────────────────────────────────────────────────
@@ -372,6 +515,7 @@ impl CrdtStore {
                 yaml_header,
                 kanban_footer,
                 board_settings,
+                generation_meta: None,
                 format_hint: BoardFormat::New,
             }
         } else {
@@ -389,6 +533,7 @@ impl CrdtStore {
                 yaml_header,
                 kanban_footer,
                 board_settings,
+                generation_meta: None,
                 format_hint: BoardFormat::Legacy,
             }
         }
@@ -400,10 +545,6 @@ impl CrdtStore {
         let has_structural_change = self.has_structural_diff(incoming);
         let has_metadata_change = self.has_metadata_diff(incoming);
         let has_title_change = incoming.title != current.title;
-        if changes.is_empty() && !has_structural_change && !has_metadata_change && !has_title_change
-        {
-            return Ok(());
-        }
 
         // Update title if changed
         if has_title_change {
@@ -417,6 +558,21 @@ impl CrdtStore {
             self.sync_metadata(incoming)?;
         }
 
+        // Move stacks/columns that changed parent containers (e.g., column moved
+        // from one stack to another). Must run before structural sync so elements
+        // are in the correct parent before index-based operations.
+        self.execute_cross_container_moves(incoming)?;
+
+        // Sync column structure/titles BEFORE card diffs so that column lookups
+        // by title (used by Added/Moved handlers) resolve correctly even when
+        // a column has been renamed.
+        if has_structural_change {
+            self.sync_column_structure(incoming)?;
+        } else {
+            self.sync_column_order(incoming)?;
+        }
+
+        // Apply card-level diffs (add/remove/modify/move between columns)
         for change in &changes {
             match change {
                 CardChange::Added {
@@ -492,11 +648,309 @@ impl CrdtStore {
             }
         }
 
-        // Handle structural changes: new columns added in incoming
-        self.sync_column_structure(incoming)?;
+        // Always sync card ordering to match the incoming board exactly.
+        // This is a cheap no-op when the order already matches, but critical
+        // when the only change is a reorder (which diff_boards does not detect).
+        self.sync_card_order(incoming)?;
 
         self.doc.commit();
         Ok(())
+    }
+
+    /// Reorder cards within each column to match the incoming board's card order.
+    fn sync_card_order(&self, incoming: &KanbanBoard) -> io::Result<()> {
+        for col in incoming.all_columns() {
+            let incoming_kids: Vec<String> = col
+                .cards
+                .iter()
+                .filter_map(|c| {
+                    c.kid
+                        .clone()
+                        .or_else(|| card_identity::extract_kid(&c.content))
+                })
+                .collect();
+            if incoming_kids.is_empty() {
+                continue;
+            }
+            if let Some(cards_list) = self.find_column_cards_list(&col.title) {
+                reorder_list_by_id(&cards_list, &incoming_kids, "kid")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Lightweight reorder of rows/stacks/columns to match the incoming board.
+    /// Unlike sync_column_structure, this does NOT add or remove elements — only
+    /// reorders existing ones.  Used when counts match but order differs.
+    fn sync_column_order(&self, incoming: &KanbanBoard) -> io::Result<()> {
+        let root = self.doc.get_map("root");
+        let format = get_string(&root, "format");
+
+        if format == "new" {
+            if let Some(rows_list) = get_movable_list(&root, "rows") {
+                let row_ids: Vec<String> = incoming.rows.iter().map(|r| r.id.clone()).collect();
+                reorder_list_by_id(&rows_list, &row_ids, "id")?;
+
+                for (ri, row) in incoming.rows.iter().enumerate() {
+                    if let Some(row_map) = get_map_at(&rows_list, ri) {
+                        // Sync title
+                        let _ = row_map.insert("title", row.title.as_str());
+
+                        if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
+                            let stack_ids: Vec<String> =
+                                row.stacks.iter().map(|s| s.id.clone()).collect();
+                            reorder_list_by_id(&stacks_list, &stack_ids, "id")?;
+
+                            for (si, stack) in row.stacks.iter().enumerate() {
+                                if let Some(stack_map) = get_map_at(&stacks_list, si) {
+                                    // Sync title
+                                    let _ = stack_map.insert("title", stack.title.as_str());
+
+                                    if let Some(cols_list) =
+                                        get_movable_list(&stack_map, "columns")
+                                    {
+                                        let col_ids: Vec<String> =
+                                            stack.columns.iter().map(|c| c.id.clone()).collect();
+                                        reorder_list_by_id(&cols_list, &col_ids, "id")?;
+
+                                        for (ci, col) in stack.columns.iter().enumerate() {
+                                            if let Some(col_map) = get_map_at(&cols_list, ci) {
+                                                let _ = col_map
+                                                    .insert("title", col.title.as_str());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Legacy format: reorder flat columns by ID and sync titles
+            if let Some(columns_list) = get_movable_list(&root, "columns") {
+                let col_ids: Vec<String> =
+                    incoming.all_columns().iter().map(|c| c.id.clone()).collect();
+                reorder_list_by_id(&columns_list, &col_ids, "id")?;
+
+                for (ci, col) in incoming.all_columns().iter().enumerate() {
+                    if let Some(col_map) = get_map_at(&columns_list, ci) {
+                        let _ = col_map.insert("title", col.title.as_str());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Detect and execute cross-container moves for stacks and columns.
+    ///
+    /// Must run BEFORE sync_column_structure/sync_column_order so that elements
+    /// are in the correct parent containers before index-based sync runs.
+    /// Only applies to "new" format boards (legacy has flat columns, no parents).
+    fn execute_cross_container_moves(&self, incoming: &KanbanBoard) -> io::Result<()> {
+        let root = self.doc.get_map("root");
+        let format = get_string(&root, "format");
+        if format != "new" {
+            return Ok(());
+        }
+
+        let rows_list = match get_movable_list(&root, "rows") {
+            Some(rl) => rl,
+            None => return Ok(()),
+        };
+
+        // ── Phase 1: Stack moves between rows ──────────────────────────
+        let crdt_stack_index = Self::build_crdt_stack_index(&rows_list);
+
+        let mut incoming_stack_index: HashMap<String, usize> = HashMap::new();
+        for (ri, row) in incoming.rows.iter().enumerate() {
+            for stack in &row.stacks {
+                incoming_stack_index.insert(stack.id.clone(), ri);
+            }
+        }
+
+        // Find stacks that are in the wrong row
+        let mut stack_moves: Vec<(String, usize, usize)> = Vec::new();
+        for (stack_id, &target_row) in &incoming_stack_index {
+            if let Some(&crdt_row) = crdt_stack_index.get(stack_id) {
+                if crdt_row != target_row {
+                    stack_moves.push((stack_id.clone(), crdt_row, target_row));
+                }
+            }
+        }
+
+        for (stack_id, from_row_idx, to_row_idx) in &stack_moves {
+            // Only execute if target row exists in CRDT. If not, the stack stays
+            // in its current location and sync_column_structure will handle the
+            // full rebuild (creating the new row with all content from incoming).
+            if *to_row_idx >= rows_list.len() {
+                continue;
+            }
+            // Verify target row has a stacks list we can insert into
+            let target_ok = get_map_at(&rows_list, *to_row_idx)
+                .and_then(|m| get_movable_list(&m, "stacks"))
+                .is_some();
+            if !target_ok {
+                continue;
+            }
+
+            if let Some(source_row_map) = get_map_at(&rows_list, *from_row_idx) {
+                if let Some(source_stacks_list) = get_movable_list(&source_row_map, "stacks") {
+                    let stack_pos = (0..source_stacks_list.len()).find(|&i| {
+                        get_map_at(&source_stacks_list, i)
+                            .map(|m| get_string(&m, "id") == *stack_id)
+                            .unwrap_or(false)
+                    });
+                    if let Some(pos) = stack_pos {
+                        let stack_map = get_map_at(&source_stacks_list, pos).unwrap();
+                        let data = extract_stack_data(&stack_map);
+                        source_stacks_list.delete(pos, 1).map_err(loro_err)?;
+
+                        if let Some(target_row_map) = get_map_at(&rows_list, *to_row_idx) {
+                            if let Some(target_stacks_list) =
+                                get_movable_list(&target_row_map, "stacks")
+                            {
+                                insert_stack_data(&target_stacks_list, &data)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Phase 2: Column moves between stacks ───────────────────────
+        // Rebuild index after stack moves (positions may have changed)
+        let crdt_col_index = Self::build_crdt_column_index(&rows_list);
+
+        let mut incoming_col_index: HashMap<String, (usize, usize)> = HashMap::new();
+        for (ri, row) in incoming.rows.iter().enumerate() {
+            for (si, stack) in row.stacks.iter().enumerate() {
+                for col in &stack.columns {
+                    incoming_col_index.insert(col.id.clone(), (ri, si));
+                }
+            }
+        }
+
+        let mut col_moves: Vec<(String, (usize, usize), (usize, usize))> = Vec::new();
+        for (col_id, &(target_ri, target_si)) in &incoming_col_index {
+            if let Some(&(crdt_ri, crdt_si)) = crdt_col_index.get(col_id) {
+                if crdt_ri != target_ri || crdt_si != target_si {
+                    col_moves.push((col_id.clone(), (crdt_ri, crdt_si), (target_ri, target_si)));
+                }
+            }
+        }
+
+        for (col_id, (from_ri, from_si), (to_ri, to_si)) in &col_moves {
+            // Only execute if target stack exists in CRDT. If not, the column
+            // stays in its current location and sync_column_structure will handle
+            // the full rebuild (creating the new stack with content from incoming).
+            let target_ok = if *to_ri < rows_list.len() {
+                get_map_at(&rows_list, *to_ri)
+                    .and_then(|rm| get_movable_list(&rm, "stacks"))
+                    .and_then(|sl| {
+                        if *to_si < sl.len() {
+                            get_map_at(&sl, *to_si)
+                        } else {
+                            None
+                        }
+                    })
+                    .and_then(|sm| get_movable_list(&sm, "columns"))
+                    .is_some()
+            } else {
+                false
+            };
+            if !target_ok {
+                continue;
+            }
+
+            if let Some(src_row_map) = get_map_at(&rows_list, *from_ri) {
+                if let Some(src_stacks_list) = get_movable_list(&src_row_map, "stacks") {
+                    if let Some(src_stack_map) = get_map_at(&src_stacks_list, *from_si) {
+                        if let Some(src_cols_list) =
+                            get_movable_list(&src_stack_map, "columns")
+                        {
+                            let col_pos = (0..src_cols_list.len()).find(|&i| {
+                                get_map_at(&src_cols_list, i)
+                                    .map(|m| get_string(&m, "id") == *col_id)
+                                    .unwrap_or(false)
+                            });
+                            if let Some(pos) = col_pos {
+                                let col_map = get_map_at(&src_cols_list, pos).unwrap();
+                                let data = extract_column_data(&col_map);
+                                src_cols_list.delete(pos, 1).map_err(loro_err)?;
+
+                                if let Some(tgt_row_map) = get_map_at(&rows_list, *to_ri) {
+                                    if let Some(tgt_stacks_list) =
+                                        get_movable_list(&tgt_row_map, "stacks")
+                                    {
+                                        if let Some(tgt_stack_map) =
+                                            get_map_at(&tgt_stacks_list, *to_si)
+                                        {
+                                            if let Some(tgt_cols_list) =
+                                                get_movable_list(&tgt_stack_map, "columns")
+                                            {
+                                                insert_column_data(&tgt_cols_list, &data)?;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Build a map of stack_id -> row_index from the CRDT's rows list.
+    fn build_crdt_stack_index(rows_list: &LoroMovableList) -> HashMap<String, usize> {
+        let mut index = HashMap::new();
+        for ri in 0..rows_list.len() {
+            if let Some(row_map) = get_map_at(rows_list, ri) {
+                if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
+                    for si in 0..stacks_list.len() {
+                        if let Some(stack_map) = get_map_at(&stacks_list, si) {
+                            let id = get_string(&stack_map, "id");
+                            if !id.is_empty() {
+                                index.insert(id, ri);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        index
+    }
+
+    /// Build a map of column_id -> (row_index, stack_index) from the CRDT's rows list.
+    fn build_crdt_column_index(
+        rows_list: &LoroMovableList,
+    ) -> HashMap<String, (usize, usize)> {
+        let mut index = HashMap::new();
+        for ri in 0..rows_list.len() {
+            if let Some(row_map) = get_map_at(rows_list, ri) {
+                if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
+                    for si in 0..stacks_list.len() {
+                        if let Some(stack_map) = get_map_at(&stacks_list, si) {
+                            if let Some(cols_list) = get_movable_list(&stack_map, "columns") {
+                                for ci in 0..cols_list.len() {
+                                    if let Some(col_map) = get_map_at(&cols_list, ci) {
+                                        let id = get_string(&col_map, "id");
+                                        if !id.is_empty() {
+                                            index.insert(id, (ri, si));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        index
     }
 
     /// Check whether the incoming board has different metadata than the CRDT.
@@ -618,7 +1072,11 @@ impl CrdtStore {
 
         if format == "new" {
             if let Some(rows_list) = get_movable_list(&root, "rows") {
-                // First pass: add missing rows and sync stacks/columns within each row
+                // Reorder existing rows to match incoming order by ID
+                let row_ids: Vec<String> = incoming.rows.iter().map(|r| r.id.clone()).collect();
+                reorder_list_by_id(&rows_list, &row_ids, "id")?;
+
+                // Sync rows: add missing, update existing, remove extra
                 for (ri, row) in incoming.rows.iter().enumerate() {
                     // Add missing rows
                     if ri >= rows_list.len() {
@@ -645,15 +1103,20 @@ impl CrdtStore {
                                 .insert_container("columns", LoroMovableList::new())
                                 .map_err(loro_err)?;
                             for col in &stack.columns {
-                                let col_map: LoroMap =
-                                    cols_list.push_container(LoroMap::new()).map_err(loro_err)?;
-                                col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-                                col_map
-                                    .insert("title", col.title.as_str())
-                                    .map_err(loro_err)?;
-                                let _: LoroMovableList = col_map
-                                    .insert_container("cards", LoroMovableList::new())
-                                    .map_err(loro_err)?;
+                                let data = ColumnData {
+                                    id: col.id.clone(),
+                                    title: col.title.clone(),
+                                    cards: col
+                                        .cards
+                                        .iter()
+                                        .map(|c| CardData {
+                                            kid: c.kid.clone().unwrap_or_default(),
+                                            content: card_identity::strip_kid(&c.content),
+                                            checked: c.checked,
+                                        })
+                                        .collect(),
+                                };
+                                insert_column_data(&cols_list, &data)?;
                             }
                         }
                         continue;
@@ -667,6 +1130,11 @@ impl CrdtStore {
                             .map_err(loro_err)?;
 
                         if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
+                            // Reorder existing stacks to match incoming order by ID
+                            let stack_ids: Vec<String> =
+                                row.stacks.iter().map(|s| s.id.clone()).collect();
+                            reorder_list_by_id(&stacks_list, &stack_ids, "id")?;
+
                             for (si, stack) in row.stacks.iter().enumerate() {
                                 if si >= stacks_list.len() {
                                     let stack_map: LoroMap = stacks_list
@@ -682,16 +1150,20 @@ impl CrdtStore {
                                         .insert_container("columns", LoroMovableList::new())
                                         .map_err(loro_err)?;
                                     for col in &stack.columns {
-                                        let col_map: LoroMap = cols_list
-                                            .push_container(LoroMap::new())
-                                            .map_err(loro_err)?;
-                                        col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-                                        col_map
-                                            .insert("title", col.title.as_str())
-                                            .map_err(loro_err)?;
-                                        let _: LoroMovableList = col_map
-                                            .insert_container("cards", LoroMovableList::new())
-                                            .map_err(loro_err)?;
+                                        let data = ColumnData {
+                                            id: col.id.clone(),
+                                            title: col.title.clone(),
+                                            cards: col
+                                                .cards
+                                                .iter()
+                                                .map(|c| CardData {
+                                                    kid: c.kid.clone().unwrap_or_default(),
+                                                    content: card_identity::strip_kid(&c.content),
+                                                    checked: c.checked,
+                                                })
+                                                .collect(),
+                                        };
+                                        insert_column_data(&cols_list, &data)?;
                                     }
                                     continue;
                                 }
@@ -707,23 +1179,29 @@ impl CrdtStore {
 
                                     if let Some(cols_list) = get_movable_list(&stack_map, "columns")
                                     {
+                                        // Reorder existing columns to match incoming order by ID
+                                        let col_ids: Vec<String> =
+                                            stack.columns.iter().map(|c| c.id.clone()).collect();
+                                        reorder_list_by_id(&cols_list, &col_ids, "id")?;
+
                                         for (ci, col) in stack.columns.iter().enumerate() {
                                             if ci >= cols_list.len() {
-                                                let col_map: LoroMap = cols_list
-                                                    .push_container(LoroMap::new())
-                                                    .map_err(loro_err)?;
-                                                col_map
-                                                    .insert("id", col.id.as_str())
-                                                    .map_err(loro_err)?;
-                                                col_map
-                                                    .insert("title", col.title.as_str())
-                                                    .map_err(loro_err)?;
-                                                let _: LoroMovableList = col_map
-                                                    .insert_container(
-                                                        "cards",
-                                                        LoroMovableList::new(),
-                                                    )
-                                                    .map_err(loro_err)?;
+                                                let data = ColumnData {
+                                                    id: col.id.clone(),
+                                                    title: col.title.clone(),
+                                                    cards: col
+                                                        .cards
+                                                        .iter()
+                                                        .map(|c| CardData {
+                                                            kid: c.kid.clone().unwrap_or_default(),
+                                                            content: card_identity::strip_kid(
+                                                                &c.content,
+                                                            ),
+                                                            checked: c.checked,
+                                                        })
+                                                        .collect(),
+                                                };
+                                                insert_column_data(&cols_list, &data)?;
                                             } else if let Some(col_map) = get_map_at(&cols_list, ci)
                                             {
                                                 // Update column title/id if changed
@@ -822,16 +1300,20 @@ impl CrdtStore {
 
                 for col in incoming.all_columns() {
                     if !existing_titles.contains(&col.title) {
-                        let col_map: LoroMap = columns_list
-                            .push_container(LoroMap::new())
-                            .map_err(loro_err)?;
-                        col_map.insert("id", col.id.as_str()).map_err(loro_err)?;
-                        col_map
-                            .insert("title", col.title.as_str())
-                            .map_err(loro_err)?;
-                        let _: LoroMovableList = col_map
-                            .insert_container("cards", LoroMovableList::new())
-                            .map_err(loro_err)?;
+                        let data = ColumnData {
+                            id: col.id.clone(),
+                            title: col.title.clone(),
+                            cards: col
+                                .cards
+                                .iter()
+                                .map(|c| CardData {
+                                    kid: c.kid.clone().unwrap_or_default(),
+                                    content: card_identity::strip_kid(&c.content),
+                                    checked: c.checked,
+                                })
+                                .collect(),
+                        };
+                        insert_column_data(&columns_list, &data)?;
                     }
                 }
             }
@@ -985,6 +1467,7 @@ impl CrdtStore {
             yaml_header,
             kanban_footer,
             board_settings,
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         };
         // Write into CRDT; ignore errors since this is a best-effort setter
@@ -1070,6 +1553,7 @@ mod tests {
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         }
     }
@@ -1107,6 +1591,7 @@ mod tests {
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::New,
         }
     }
@@ -1648,6 +2133,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         };
 
@@ -1711,6 +2197,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::New,
         };
 
@@ -1916,6 +2403,7 @@ mod tests {
             yaml_header: None,
             kanban_footer: None,
             board_settings: None,
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         };
 
@@ -1944,6 +2432,7 @@ mod tests {
                 column_width: Some("300px".to_string()),
                 ..Default::default()
             }),
+            generation_meta: None,
             format_hint: BoardFormat::Legacy,
         };
 
@@ -2002,5 +2491,1462 @@ mod tests {
         let settings = result_a.board_settings.unwrap();
         assert_eq!(settings.font_size, Some("18px".to_string()));
         assert_eq!(settings.column_width, Some("400px".to_string()));
+    }
+
+    // ── Round-trip ordering tests ────────────────────────────────────────
+    // These test the exact scenario that causes the "content moves after save"
+    // bug: apply_board → to_board must produce the SAME ordering as the input.
+
+    /// Helper: extract ordered card kids from a board (flattened across all columns).
+    fn card_order(board: &KanbanBoard) -> Vec<String> {
+        board
+            .all_columns()
+            .iter()
+            .flat_map(|col| col.cards.iter())
+            .filter_map(|c| c.kid.clone())
+            .collect()
+    }
+
+    /// Helper: extract ordered column titles from a board (flattened).
+    fn column_order(board: &KanbanBoard) -> Vec<String> {
+        board
+            .all_columns()
+            .iter()
+            .map(|col| col.title.clone())
+            .collect()
+    }
+
+    /// Helper: extract ordered card kids per column.
+    fn cards_per_column(board: &KanbanBoard) -> Vec<(String, Vec<String>)> {
+        board
+            .all_columns()
+            .iter()
+            .map(|col| {
+                let kids: Vec<String> = col
+                    .cards
+                    .iter()
+                    .filter_map(|c| c.kid.clone())
+                    .collect();
+                (col.title.clone(), kids)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_roundtrip_card_reorder_within_column() {
+        // Cards [A, B, C] in a column → reorder to [C, A, B]
+        let original = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("k001", "Card A", false),
+                make_card("k002", "Card B", false),
+                make_card("k003", "Card C", false),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let reordered = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("k003", "Card C", false),
+                make_card("k001", "Card A", false),
+                make_card("k002", "Card B", false),
+            ],
+        )]);
+
+        store.apply_board(&reordered, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(
+            card_order(&result),
+            vec!["k003", "k001", "k002"],
+            "CRDT must preserve card reorder within a column"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_card_move_to_specific_position() {
+        // Move last card to the front of another column
+        let original = make_legacy_board(vec![
+            (
+                "Todo",
+                vec![
+                    make_card("k001", "Card A", false),
+                    make_card("k002", "Card B", false),
+                ],
+            ),
+            (
+                "Done",
+                vec![
+                    make_card("k003", "Card C", true),
+                    make_card("k004", "Card D", true),
+                ],
+            ),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Move k002 from Todo to the front of Done
+        let updated = make_legacy_board(vec![
+            ("Todo", vec![make_card("k001", "Card A", false)]),
+            (
+                "Done",
+                vec![
+                    make_card("k002", "Card B", false),
+                    make_card("k003", "Card C", true),
+                    make_card("k004", "Card D", true),
+                ],
+            ),
+        ]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(
+            cards_per_column(&result),
+            vec![
+                ("Todo".to_string(), vec!["k001".to_string()]),
+                (
+                    "Done".to_string(),
+                    vec!["k002".to_string(), "k003".to_string(), "k004".to_string()]
+                ),
+            ],
+            "CRDT must place moved card at exact position"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_column_reorder_legacy() {
+        let original = make_legacy_board(vec![
+            ("Alpha", vec![make_card("k001", "A1", false)]),
+            ("Beta", vec![make_card("k002", "B1", false)]),
+            ("Gamma", vec![make_card("k003", "G1", false)]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Reorder columns: Gamma, Alpha, Beta
+        let reordered = make_legacy_board(vec![
+            ("Gamma", vec![make_card("k003", "G1", false)]),
+            ("Alpha", vec![make_card("k001", "A1", false)]),
+            ("Beta", vec![make_card("k002", "B1", false)]),
+        ]);
+
+        store.apply_board(&reordered, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(
+            column_order(&result),
+            vec!["Gamma", "Alpha", "Beta"],
+            "CRDT must preserve column reorder (legacy format)"
+        );
+        // Cards stay with their columns
+        assert_eq!(
+            cards_per_column(&result),
+            vec![
+                ("Gamma".to_string(), vec!["k003".to_string()]),
+                ("Alpha".to_string(), vec!["k001".to_string()]),
+                ("Beta".to_string(), vec!["k002".to_string()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_column_reorder_new_format() {
+        let original = make_new_format_board(vec![(
+            "Main",
+            vec![(
+                "Stack1",
+                vec![
+                    ("Col-A", vec![make_card("k001", "A1", false)]),
+                    ("Col-B", vec![make_card("k002", "B1", false)]),
+                    ("Col-C", vec![make_card("k003", "C1", false)]),
+                ],
+            )],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Reorder columns within the stack: C, A, B
+        let reordered = make_new_format_board(vec![(
+            "Main",
+            vec![(
+                "Stack1",
+                vec![
+                    ("Col-C", vec![make_card("k003", "C1", false)]),
+                    ("Col-A", vec![make_card("k001", "A1", false)]),
+                    ("Col-B", vec![make_card("k002", "B1", false)]),
+                ],
+            )],
+        )]);
+
+        store.apply_board(&reordered, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(
+            column_order(&result),
+            vec!["Col-C", "Col-A", "Col-B"],
+            "CRDT must preserve column reorder (new format)"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_row_reorder() {
+        let original = make_new_format_board(vec![
+            (
+                "Row1",
+                vec![("S1", vec![("C1", vec![make_card("k001", "R1", false)])])],
+            ),
+            (
+                "Row2",
+                vec![("S2", vec![("C2", vec![make_card("k002", "R2", false)])])],
+            ),
+            (
+                "Row3",
+                vec![("S3", vec![("C3", vec![make_card("k003", "R3", false)])])],
+            ),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Reorder rows: Row3, Row1, Row2
+        let reordered = make_new_format_board(vec![
+            (
+                "Row3",
+                vec![("S3", vec![("C3", vec![make_card("k003", "R3", false)])])],
+            ),
+            (
+                "Row1",
+                vec![("S1", vec![("C1", vec![make_card("k001", "R1", false)])])],
+            ),
+            (
+                "Row2",
+                vec![("S2", vec![("C2", vec![make_card("k002", "R2", false)])])],
+            ),
+        ]);
+
+        store.apply_board(&reordered, &original).unwrap();
+        let result = store.to_board();
+
+        let row_titles: Vec<String> = result.rows.iter().map(|r| r.title.clone()).collect();
+        assert_eq!(
+            row_titles,
+            vec!["Row3", "Row1", "Row2"],
+            "CRDT must preserve row reorder"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_stack_reorder() {
+        let original = make_new_format_board(vec![(
+            "Row1",
+            vec![
+                ("StackA", vec![("CA", vec![make_card("k001", "A", false)])]),
+                ("StackB", vec![("CB", vec![make_card("k002", "B", false)])]),
+                ("StackC", vec![("CC", vec![make_card("k003", "C", false)])]),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Reorder stacks: C, A, B
+        let reordered = make_new_format_board(vec![(
+            "Row1",
+            vec![
+                ("StackC", vec![("CC", vec![make_card("k003", "C", false)])]),
+                ("StackA", vec![("CA", vec![make_card("k001", "A", false)])]),
+                ("StackB", vec![("CB", vec![make_card("k002", "B", false)])]),
+            ],
+        )]);
+
+        store.apply_board(&reordered, &original).unwrap();
+        let result = store.to_board();
+
+        let stack_titles: Vec<String> = result.rows[0]
+            .stacks
+            .iter()
+            .map(|s| s.title.clone())
+            .collect();
+        assert_eq!(
+            stack_titles,
+            vec!["StackC", "StackA", "StackB"],
+            "CRDT must preserve stack reorder"
+        );
+    }
+
+    #[test]
+    fn test_repeated_apply_is_idempotent() {
+        // Applying the same board twice must produce the same result.
+        let original = make_legacy_board(vec![
+            (
+                "Todo",
+                vec![
+                    make_card("k001", "Card A", false),
+                    make_card("k002", "Card B", false),
+                    make_card("k003", "Card C", false),
+                ],
+            ),
+            ("Done", vec![make_card("k004", "Card D", true)]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Reorder cards
+        let v2 = make_legacy_board(vec![
+            (
+                "Todo",
+                vec![
+                    make_card("k003", "Card C", false),
+                    make_card("k001", "Card A", false),
+                ],
+            ),
+            (
+                "Done",
+                vec![
+                    make_card("k002", "Card B", true),
+                    make_card("k004", "Card D", true),
+                ],
+            ),
+        ]);
+
+        store.apply_board(&v2, &original).unwrap();
+        let after_first = store.to_board();
+
+        // Apply the exact same board again (simulates double-save)
+        store.apply_board(&v2, &v2).unwrap();
+        let after_second = store.to_board();
+
+        assert_eq!(
+            cards_per_column(&after_first),
+            cards_per_column(&after_second),
+            "applying the same board twice must be idempotent"
+        );
+    }
+
+    #[test]
+    fn test_write_board_internal_roundtrip_preserves_order() {
+        // Simulates the full write_board_internal path:
+        // 1. Create CRDT from base board
+        // 2. apply_board with reordered cards
+        // 3. to_board must match the reordered input
+        let base = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("k001", "First", false),
+                make_card("k002", "Second", false),
+                make_card("k003", "Third", false),
+                make_card("k004", "Fourth", false),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // User reverses the card order
+        let user_board = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("k004", "Fourth", false),
+                make_card("k003", "Third", false),
+                make_card("k002", "Second", false),
+                make_card("k001", "First", false),
+            ],
+        )]);
+
+        // This is what write_board_internal does:
+        let current = store.to_board();
+        store.apply_board(&user_board, &current).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(
+            card_order(&result),
+            vec!["k004", "k003", "k002", "k001"],
+            "CRDT must preserve reversed card order after write_board_internal flow"
+        );
+    }
+
+    #[test]
+    fn test_add_card_preserves_existing_order() {
+        // Adding a new card must not disturb existing card order
+        let original = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("k003", "Third", false),
+                make_card("k001", "First", false),
+                make_card("k002", "Second", false),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Add a new card at position 1 (between Third and First)
+        let updated = make_legacy_board(vec![(
+            "Todo",
+            vec![
+                make_card("k003", "Third", false),
+                make_card("k005", "New card", false),
+                make_card("k001", "First", false),
+                make_card("k002", "Second", false),
+            ],
+        )]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(
+            card_order(&result),
+            vec!["k003", "k005", "k001", "k002"],
+            "new card must appear at correct position without disturbing order"
+        );
+    }
+
+    // ── Cross-container move tests ───────────────────────────────────
+
+    #[test]
+    fn test_column_move_between_stacks_preserves_cards() {
+        let original = make_new_format_board(vec![(
+            "Row1",
+            vec![
+                (
+                    "StackA",
+                    vec![
+                        (
+                            "ColX",
+                            vec![
+                                make_card("k001", "Card 1", false),
+                                make_card("k002", "Card 2", true),
+                            ],
+                        ),
+                        ("ColY", vec![make_card("k003", "Card 3", false)]),
+                    ],
+                ),
+                ("StackB", vec![("ColZ", vec![make_card("k004", "Card 4", false)])]),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Move ColX from StackA to StackB
+        let updated = make_new_format_board(vec![(
+            "Row1",
+            vec![
+                ("StackA", vec![("ColY", vec![make_card("k003", "Card 3", false)])]),
+                (
+                    "StackB",
+                    vec![
+                        ("ColZ", vec![make_card("k004", "Card 4", false)]),
+                        (
+                            "ColX",
+                            vec![
+                                make_card("k001", "Card 1", false),
+                                make_card("k002", "Card 2", true),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 1, "StackA should have 1 column");
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "ColY");
+        assert_eq!(result.rows[0].stacks[1].columns.len(), 2, "StackB should have 2 columns");
+        assert_eq!(result.rows[0].stacks[1].columns[0].title, "ColZ");
+        assert_eq!(result.rows[0].stacks[1].columns[1].title, "ColX");
+        // Verify cards preserved
+        let col_x = &result.rows[0].stacks[1].columns[1];
+        assert_eq!(col_x.cards.len(), 2, "ColX must keep its 2 cards");
+        assert_eq!(col_x.cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(col_x.cards[1].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_stack_move_between_rows_preserves_columns_and_cards() {
+        let original = make_new_format_board(vec![
+            (
+                "Row1",
+                vec![
+                    ("StackA", vec![("ColA", vec![make_card("k001", "A", false)])]),
+                    ("StackB", vec![("ColB", vec![make_card("k002", "B", false)])]),
+                ],
+            ),
+            (
+                "Row2",
+                vec![("StackC", vec![("ColC", vec![make_card("k003", "C", false)])])],
+            ),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Move StackB from Row1 to Row2
+        let updated = make_new_format_board(vec![
+            (
+                "Row1",
+                vec![("StackA", vec![("ColA", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "Row2",
+                vec![
+                    ("StackC", vec![("ColC", vec![make_card("k003", "C", false)])]),
+                    ("StackB", vec![("ColB", vec![make_card("k002", "B", false)])]),
+                ],
+            ),
+        ]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 1, "Row1 should have 1 stack");
+        assert_eq!(result.rows[0].stacks[0].title, "StackA");
+        assert_eq!(result.rows[1].stacks.len(), 2, "Row2 should have 2 stacks");
+        assert_eq!(result.rows[1].stacks[0].title, "StackC");
+        assert_eq!(result.rows[1].stacks[1].title, "StackB");
+        // Verify cards preserved in moved stack
+        let stack_b = &result.rows[1].stacks[1];
+        assert_eq!(stack_b.columns[0].title, "ColB");
+        assert_eq!(stack_b.columns[0].cards.len(), 1);
+        assert_eq!(stack_b.columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_column_move_with_simultaneous_card_edit() {
+        let original = make_new_format_board(vec![(
+            "Row1",
+            vec![
+                (
+                    "SA",
+                    vec![("C1", vec![make_card("k001", "Old content", false)])],
+                ),
+                ("SB", vec![("C2", vec![])]),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Move C1 to SB AND change card content
+        let updated = make_new_format_board(vec![(
+            "Row1",
+            vec![
+                ("SA", vec![]),
+                (
+                    "SB",
+                    vec![
+                        ("C2", vec![]),
+                        ("C1", vec![make_card("k001", "New content", true)]),
+                    ],
+                ),
+            ],
+        )]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 0, "SA should be empty");
+        assert_eq!(result.rows[0].stacks[1].columns.len(), 2, "SB should have 2 columns");
+        let c1 = &result.rows[0].stacks[1].columns[1];
+        assert_eq!(c1.title, "C1");
+        assert_eq!(c1.cards.len(), 1);
+        // Card content may be from CRDT extract (Old) or from diff (New) — either
+        // is acceptable since the diff handler will update it. The key is the card
+        // exists and the column moved.
+        assert_eq!(c1.cards[0].kid.as_deref(), Some("k001"));
+    }
+
+    #[test]
+    fn test_multiple_columns_swap_stacks() {
+        let original = make_new_format_board(vec![(
+            "R1",
+            vec![
+                ("SA", vec![("C1", vec![make_card("k001", "A", false)])]),
+                ("SB", vec![("C2", vec![make_card("k002", "B", false)])]),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Swap: C1 goes to SB, C2 goes to SA
+        let updated = make_new_format_board(vec![(
+            "R1",
+            vec![
+                ("SA", vec![("C2", vec![make_card("k002", "B", false)])]),
+                ("SB", vec![("C1", vec![make_card("k001", "A", false)])]),
+            ],
+        )]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "C2");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k002"));
+        assert_eq!(result.rows[0].stacks[1].columns[0].title, "C1");
+        assert_eq!(result.rows[0].stacks[1].columns[0].cards[0].kid.as_deref(), Some("k001"));
+    }
+
+    #[test]
+    fn test_column_move_to_newly_created_stack() {
+        let original = make_new_format_board(vec![(
+            "R1",
+            vec![(
+                "SA",
+                vec![
+                    ("C1", vec![make_card("k001", "A", false)]),
+                    ("C2", vec![make_card("k002", "B", false)]),
+                ],
+            )],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Move C2 to a new stack SB (that didn't exist before)
+        let updated = make_new_format_board(vec![(
+            "R1",
+            vec![
+                ("SA", vec![("C1", vec![make_card("k001", "A", false)])]),
+                ("SB", vec![("C2", vec![make_card("k002", "B", false)])]),
+            ],
+        )]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "C1");
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(result.rows[0].stacks[1].columns[0].title, "C2");
+        assert_eq!(
+            result.rows[0].stacks[1].columns[0].cards[0].kid.as_deref(),
+            Some("k002")
+        );
+    }
+
+    #[test]
+    fn test_stack_move_to_newly_created_row() {
+        let original = make_new_format_board(vec![(
+            "R1",
+            vec![
+                ("SA", vec![("C1", vec![make_card("k001", "A", false)])]),
+                ("SB", vec![("C2", vec![make_card("k002", "B", false)])]),
+            ],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Move SB to a new row R2 (that didn't exist before)
+        let updated = make_new_format_board(vec![
+            (
+                "R1",
+                vec![("SA", vec![("C1", vec![make_card("k001", "A", false)])])],
+            ),
+            (
+                "R2",
+                vec![("SB", vec![("C2", vec![make_card("k002", "B", false)])])],
+            ),
+        ]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0].stacks.len(), 1);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[1].stacks.len(), 1);
+        assert_eq!(result.rows[1].stacks[0].title, "SB");
+        assert_eq!(result.rows[1].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_no_cross_container_move_is_noop() {
+        let original = make_new_format_board(vec![(
+            "R1",
+            vec![("SA", vec![("C1", vec![make_card("k001", "A", false)])])],
+        )]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Same structure, just modify card content
+        let updated = make_new_format_board(vec![(
+            "R1",
+            vec![("SA", vec![("C1", vec![make_card("k001", "A modified", false)])])],
+        )]);
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 1);
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 1);
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards.len(), 1);
+    }
+
+    #[test]
+    fn test_unpark_last_stack_preserves_position() {
+        // Simulates unparking: the last stack has a hidden tag in its title.
+        // Unpark = remove the tag. Stack must stay at the last position.
+        // IMPORTANT: IDs stay the same (only title changes), matching real app behavior.
+        let parked = KanbanBoard {
+            valid: true,
+            title: "Test Board".to_string(),
+            columns: Vec::new(),
+            rows: vec![KanbanRow {
+                id: "row-1".to_string(),
+                title: "Row1".to_string(),
+                stacks: vec![
+                    KanbanStack {
+                        id: "stack-1".to_string(),
+                        title: "SA".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-1".to_string(),
+                            title: "C1".to_string(),
+                            cards: vec![make_card("k001", "A", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-2".to_string(),
+                        title: "SB".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-2".to_string(),
+                            title: "C2".to_string(),
+                            cards: vec![make_card("k002", "B", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-3".to_string(),
+                        title: "SC !!!park!!!".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-3".to_string(),
+                            title: "C3".to_string(),
+                            cards: vec![make_card("k003", "C", false)],
+                            include_source: None,
+                        }],
+                    },
+                ],
+            }],
+            yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        };
+        let mut store = CrdtStore::from_board(&parked).unwrap();
+
+        // Unpark: same board but title changed from "SC !!!park!!!" to "SC"
+        // All IDs stay the same.
+        let mut unparked = parked.clone();
+        unparked.rows[0].stacks[2].title = "SC".to_string();
+
+        store.apply_board(&unparked, &parked).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 3);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(
+            result.rows[0].stacks[2].title, "SC",
+            "Unparked stack must remain at the last position"
+        );
+        assert_eq!(
+            result.rows[0].stacks[2].columns[0].cards[0].kid.as_deref(),
+            Some("k003")
+        );
+    }
+
+    #[test]
+    fn test_unpark_last_stack_with_real_tag_preserves_position() {
+        // Uses #hidden-internal-parked (the actual tag used by the frontend).
+        // Verifies the CRDT handles the # character in titles correctly.
+        let parked = KanbanBoard {
+            valid: true,
+            title: "Test Board".to_string(),
+            columns: Vec::new(),
+            rows: vec![KanbanRow {
+                id: "row-1".to_string(),
+                title: "Row1".to_string(),
+                stacks: vec![
+                    KanbanStack {
+                        id: "stack-1".to_string(),
+                        title: "SA".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-1".to_string(),
+                            title: "C1".to_string(),
+                            cards: vec![make_card("k001", "A", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-2".to_string(),
+                        title: "SB".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-2".to_string(),
+                            title: "C2".to_string(),
+                            cards: vec![make_card("k002", "B", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-3".to_string(),
+                        title: "SC #hidden-internal-parked".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-3".to_string(),
+                            title: "C3".to_string(),
+                            cards: vec![make_card("k003", "C", false)],
+                            include_source: None,
+                        }],
+                    },
+                ],
+            }],
+            yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        };
+        let mut store = CrdtStore::from_board(&parked).unwrap();
+
+        // Unpark: remove the tag
+        let mut unparked = parked.clone();
+        unparked.rows[0].stacks[2].title = "SC".to_string();
+
+        store.apply_board(&unparked, &parked).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 3);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(result.rows[0].stacks[2].title, "SC",
+            "Unparked stack with #hidden-internal-parked must remain at the last position");
+        assert_eq!(result.rows[0].stacks[2].columns[0].cards[0].kid.as_deref(), Some("k003"));
+    }
+
+    #[test]
+    fn test_unpark_after_new_stack_added_preserves_order() {
+        // Scenario: [SA, SB, SC-parked], user adds SD at end, then unparks SC
+        // After: [SA, SB, SC-parked, SD] → unpark SC → [SA, SB, SC, SD]
+        // SC must stay at position 2, SD at position 3.
+        let initial = KanbanBoard {
+            valid: true,
+            title: "Test Board".to_string(),
+            columns: Vec::new(),
+            rows: vec![KanbanRow {
+                id: "row-1".to_string(),
+                title: "Row1".to_string(),
+                stacks: vec![
+                    KanbanStack {
+                        id: "stack-1".to_string(),
+                        title: "SA".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-1".to_string(),
+                            title: "C1".to_string(),
+                            cards: vec![make_card("k001", "A", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-2".to_string(),
+                        title: "SB".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-2".to_string(),
+                            title: "C2".to_string(),
+                            cards: vec![make_card("k002", "B", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-3".to_string(),
+                        title: "SC #hidden-internal-parked".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-3".to_string(),
+                            title: "C3".to_string(),
+                            cards: vec![make_card("k003", "C", false)],
+                            include_source: None,
+                        }],
+                    },
+                ],
+            }],
+            yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        };
+        let mut store = CrdtStore::from_board(&initial).unwrap();
+
+        // Step 1: User adds SD at the end (while SC is still parked)
+        let mut with_sd = initial.clone();
+        with_sd.rows[0].stacks.push(KanbanStack {
+            id: "stack-4".to_string(),
+            title: "SD".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-4".to_string(),
+                title: "C4".to_string(),
+                cards: vec![make_card("k004", "D", false)],
+                include_source: None,
+            }],
+        });
+        store.apply_board(&with_sd, &initial).unwrap();
+        let after_add = store.to_board();
+        assert_eq!(after_add.rows[0].stacks.len(), 4);
+        assert_eq!(after_add.rows[0].stacks[3].title, "SD");
+
+        // Step 2: Unpark SC
+        let mut unparked = after_add.clone();
+        unparked.rows[0].stacks[2].title = "SC".to_string();
+
+        store.apply_board(&unparked, &after_add).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 4);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(result.rows[0].stacks[2].title, "SC",
+            "Unparked SC must stay at original position 2");
+        assert_eq!(result.rows[0].stacks[3].title, "SD",
+            "SD must remain at position 3 (last)");
+    }
+
+    #[test]
+    fn test_park_then_unpark_last_stack_multi_step_roundtrip() {
+        // Full multi-step roundtrip: park → save → unpark → save
+        // The last stack should stay at the last position throughout.
+        let original = KanbanBoard {
+            valid: true,
+            title: "Test Board".to_string(),
+            columns: Vec::new(),
+            rows: vec![KanbanRow {
+                id: "row-1".to_string(),
+                title: "Row1".to_string(),
+                stacks: vec![
+                    KanbanStack {
+                        id: "stack-1".to_string(),
+                        title: "SA".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-1".to_string(),
+                            title: "C1".to_string(),
+                            cards: vec![make_card("k001", "A", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-2".to_string(),
+                        title: "SB".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-2".to_string(),
+                            title: "C2".to_string(),
+                            cards: vec![make_card("k002", "B", false)],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-3".to_string(),
+                        title: "SC".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-3".to_string(),
+                            title: "C3".to_string(),
+                            cards: vec![make_card("k003", "C", false)],
+                            include_source: None,
+                        }],
+                    },
+                ],
+            }],
+            yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        };
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Step 1: Park SC (last stack)
+        let mut parked = original.clone();
+        parked.rows[0].stacks[2].title = "SC #hidden-internal-parked".to_string();
+        store.apply_board(&parked, &original).unwrap();
+        let after_park = store.to_board();
+        assert_eq!(after_park.rows[0].stacks[2].title, "SC #hidden-internal-parked");
+
+        // Step 2: Unpark SC
+        let mut unparked = after_park.clone();
+        unparked.rows[0].stacks[2].title = "SC".to_string();
+        store.apply_board(&unparked, &after_park).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 3);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(result.rows[0].stacks[2].title, "SC",
+            "After park→unpark roundtrip, SC must remain at position 2 (last)");
+        assert_eq!(result.rows[0].stacks[2].columns[0].cards[0].kid.as_deref(), Some("k003"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Column lifecycle
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_column_add_preserves_existing_cards() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("ColA", vec![make_card("k001", "Task 1", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks[0].columns.push(KanbanColumn {
+            id: "col-ColB".to_string(),
+            title: "ColB".to_string(),
+            cards: vec![make_card("k002", "Task 2", false)],
+            include_source: None,
+        });
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "ColA");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[0].columns[1].title, "ColB");
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_column_delete_preserves_sibling_columns() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("ColA", vec![make_card("k001", "A1", false)]),
+                ("ColB", vec![make_card("k002", "B1", false)]),
+                ("ColC", vec![make_card("k003", "C1", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks[0].columns.remove(1); // Remove ColB
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "ColA");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[0].columns[1].title, "ColC");
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards[0].kid.as_deref(), Some("k003"));
+    }
+
+    #[test]
+    fn test_column_title_rename_preserves_cards() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("Todo", vec![make_card("k001", "Task", false), make_card("k002", "Task2", true)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks[0].columns[0].title = "Done".to_string();
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "Done");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[1].checked, true);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Stack lifecycle
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_stack_add_preserves_existing_stacks() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("SA", vec![
+                ("ColA", vec![make_card("k001", "Task", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks.push(KanbanStack {
+            id: "stack-SB".to_string(),
+            title: "SB".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-ColB".to_string(),
+                title: "ColB".to_string(),
+                cards: vec![make_card("k002", "New", false)],
+                include_source: None,
+            }],
+        });
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(result.rows[0].stacks[1].columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_stack_delete_preserves_sibling_stacks() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![
+                ("SA", vec![("ColA", vec![make_card("k001", "A", false)])]),
+                ("SB", vec![("ColB", vec![make_card("k002", "B", false)])]),
+                ("SC", vec![("ColC", vec![make_card("k003", "C", false)])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks.remove(1); // Remove SB
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[1].title, "SC");
+        assert_eq!(result.rows[0].stacks[1].columns[0].cards[0].kid.as_deref(), Some("k003"));
+    }
+
+    #[test]
+    fn test_stack_title_rename_preserves_columns() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("OldName", vec![
+                ("ColA", vec![make_card("k001", "Task", false)]),
+                ("ColB", vec![make_card("k002", "Task2", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks[0].title = "NewName".to_string();
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].title, "NewName");
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Row lifecycle
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_row_add_preserves_existing_rows() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("Col1", vec![make_card("k001", "T1", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows.push(KanbanRow {
+            id: "row-R2".to_string(),
+            title: "R2".to_string(),
+            stacks: vec![KanbanStack {
+                id: "stack-S2".to_string(),
+                title: "S2".to_string(),
+                columns: vec![KanbanColumn {
+                    id: "col-Col2".to_string(),
+                    title: "Col2".to_string(),
+                    cards: vec![make_card("k002", "T2", false)],
+                    include_source: None,
+                }],
+            }],
+        });
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0].title, "R1");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[1].title, "R2");
+        assert_eq!(result.rows[1].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_row_delete_preserves_sibling_rows() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("Col1", vec![make_card("k001", "A", false)])])]),
+            ("R2", vec![("S2", vec![("Col2", vec![make_card("k002", "B", false)])])]),
+            ("R3", vec![("S3", vec![("Col3", vec![make_card("k003", "C", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows.remove(1); // Remove R2
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0].title, "R1");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[1].title, "R3");
+        assert_eq!(result.rows[1].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k003"));
+    }
+
+    #[test]
+    fn test_row_title_rename_preserves_stacks() {
+        let original = make_new_format_board(vec![
+            ("OldRow", vec![
+                ("SA", vec![("Col1", vec![make_card("k001", "T", false)])]),
+                ("SB", vec![("Col2", vec![make_card("k002", "T2", false)])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].title = "NewRow".to_string();
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].title, "NewRow");
+        assert_eq!(result.rows[0].stacks.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[1].title, "SB");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Duplicate operations
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_column_duplicate_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("ColA", vec![make_card("k001", "Task", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        // Simulate duplication: clone ColA as ColA-Copy with new IDs and title
+        updated.rows[0].stacks[0].columns.push(KanbanColumn {
+            id: "col-ColA-Copy".to_string(),
+            title: "ColA Copy".to_string(),
+            cards: vec![make_card("k001-dup", "Task", false)],
+            include_source: None,
+        });
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "ColA");
+        assert_eq!(result.rows[0].stacks[0].columns[1].title, "ColA Copy");
+        // Edit original column's card → clone should not change
+        let step2 = result.clone();
+        let mut edited = step2.clone();
+        edited.rows[0].stacks[0].columns[0].cards[0] = make_card("k001", "Modified", false);
+        store.apply_board(&edited, &step2).unwrap();
+        let result2 = store.to_board();
+        assert_eq!(result2.rows[0].stacks[0].columns[0].cards[0].content, "Modified");
+        assert_eq!(result2.rows[0].stacks[0].columns[1].cards[0].content, "Task"); // unchanged
+    }
+
+    #[test]
+    fn test_stack_duplicate_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("SA", vec![
+                ("ColA", vec![make_card("k001", "Task", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows[0].stacks.push(KanbanStack {
+            id: "stack-SA-Copy".to_string(),
+            title: "SA Copy".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-ColA-Copy".to_string(),
+                title: "ColA Copy".to_string(),
+                cards: vec![make_card("k002", "Task copy", false)],
+                include_source: None,
+            }],
+        });
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].title, "SA");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[1].title, "SA Copy");
+        assert_eq!(result.rows[0].stacks[1].columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_row_duplicate_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("Col1", vec![make_card("k001", "Task", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.rows.push(KanbanRow {
+            id: "row-R1-Copy".to_string(),
+            title: "R1 Copy".to_string(),
+            stacks: vec![KanbanStack {
+                id: "stack-S1-Copy".to_string(),
+                title: "S1 Copy".to_string(),
+                columns: vec![KanbanColumn {
+                    id: "col-Col1-Copy".to_string(),
+                    title: "Col1 Copy".to_string(),
+                    cards: vec![make_card("k002", "Task copy", false)],
+                    include_source: None,
+                }],
+            }],
+        });
+
+        store.apply_board(&updated, &original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0].title, "R1");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[1].title, "R1 Copy");
+        assert_eq!(result.rows[1].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Hidden items survive CRDT round-trip
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_hidden_card_survives_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("Col1", vec![
+                    make_card("k001", "Visible task", false),
+                    make_card("k002", "Deleted task #hidden-internal-deleted", false),
+                    make_card("k003", "Another visible", false),
+                ]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards.len(), 3);
+        assert!(result.rows[0].stacks[0].columns[0].cards[1].content.contains("#hidden-internal-deleted"));
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[2].kid.as_deref(), Some("k003"));
+    }
+
+    #[test]
+    fn test_hidden_column_survives_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("Visible #tag", vec![make_card("k001", "T1", false)]),
+                ("Hidden #hidden-internal-parked", vec![make_card("k002", "T2", false)]),
+                ("Also Visible", vec![make_card("k003", "T3", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 3);
+        assert!(result.rows[0].stacks[0].columns[1].title.contains("#hidden-internal-parked"));
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_hidden_stack_survives_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![
+                ("Active", vec![("Col1", vec![make_card("k001", "T1", false)])]),
+                ("Archived #hidden-internal-archived", vec![("Col2", vec![make_card("k002", "T2", false)])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks.len(), 2);
+        assert!(result.rows[0].stacks[1].title.contains("#hidden-internal-archived"));
+        assert_eq!(result.rows[0].stacks[1].columns[0].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_hidden_row_survives_roundtrip() {
+        let original = make_new_format_board(vec![
+            ("Visible", vec![("S1", vec![("Col1", vec![make_card("k001", "T1", false)])])]),
+            ("Deleted #hidden-internal-deleted", vec![("S2", vec![("Col2", vec![make_card("k002", "T2", false)])])]),
+            ("Also Visible", vec![("S3", vec![("Col3", vec![make_card("k003", "T3", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows.len(), 3);
+        assert!(result.rows[1].title.contains("#hidden-internal-deleted"));
+        assert_eq!(result.rows[1].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k002"));
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[2].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k003"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Multi-step operations
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_add_column_then_add_card_to_it() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("ColA", vec![make_card("k001", "Task1", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Step 1: Add ColB
+        let mut step1 = original.clone();
+        step1.rows[0].stacks[0].columns.push(KanbanColumn {
+            id: "col-ColB".to_string(),
+            title: "ColB".to_string(),
+            cards: vec![],
+            include_source: None,
+        });
+        store.apply_board(&step1, &original).unwrap();
+        let after_step1 = store.to_board();
+        assert_eq!(after_step1.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(after_step1.rows[0].stacks[0].columns[1].cards.len(), 0);
+
+        // Step 2: Add card to ColB
+        let mut step2 = after_step1.clone();
+        step2.rows[0].stacks[0].columns[1].cards.push(make_card("k002", "NewCard", false));
+        store.apply_board(&step2, &after_step1).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k001"));
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards.len(), 1);
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards[0].kid.as_deref(), Some("k002"));
+    }
+
+    #[test]
+    fn test_delete_column_then_reorder_remaining() {
+        let original = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("ColA", vec![make_card("k001", "A", false)]),
+                ("ColB", vec![make_card("k002", "B", false)]),
+                ("ColC", vec![make_card("k003", "C", false)]),
+            ])]),
+        ]);
+        let mut store = CrdtStore::from_board(&original).unwrap();
+
+        // Step 1: Delete ColB
+        let mut step1 = original.clone();
+        step1.rows[0].stacks[0].columns.remove(1);
+        store.apply_board(&step1, &original).unwrap();
+        let after_step1 = store.to_board();
+        assert_eq!(after_step1.rows[0].stacks[0].columns.len(), 2);
+
+        // Step 2: Reorder ColC before ColA
+        let mut step2 = after_step1.clone();
+        let col_c = step2.rows[0].stacks[0].columns.remove(1);
+        step2.rows[0].stacks[0].columns.insert(0, col_c);
+        store.apply_board(&step2, &after_step1).unwrap();
+        let result = store.to_board();
+
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(result.rows[0].stacks[0].columns[0].title, "ColC");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards[0].kid.as_deref(), Some("k003"));
+        assert_eq!(result.rows[0].stacks[0].columns[1].title, "ColA");
+        assert_eq!(result.rows[0].stacks[0].columns[1].cards[0].kid.as_deref(), Some("k001"));
     }
 }
