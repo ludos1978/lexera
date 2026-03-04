@@ -102,6 +102,14 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::post(board::write_board_with_base),
         )
         .route(
+            "/boards/{board_id}/crashsave",
+            axum::routing::post(board::create_board_crashsave),
+        )
+        .route(
+            "/boards/{board_id}/rebase",
+            axum::routing::post(board::rebase_board_with_base),
+        )
+        .route(
             "/boards/{board_id}/live-sync/open",
             axum::routing::post(board::open_live_sync_session),
         )

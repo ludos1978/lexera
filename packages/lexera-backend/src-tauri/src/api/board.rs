@@ -39,6 +39,12 @@ pub struct LiveSyncImportBody {
     updates: String,
 }
 
+#[derive(Deserialize)]
+pub struct CrashsaveBoardBody {
+    board: lexera_core::types::KanbanBoard,
+    reason: Option<String>,
+}
+
 pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boards = state.storage.list_boards();
     Json(serde_json::json!({ "boards": boards }))
@@ -73,7 +79,11 @@ pub async fn get_board_columns(
     })?;
 
     let version = state.storage.get_board_version(&board_id).unwrap_or(0);
-    let etag = format!("\"{}\"", version);
+    let revision = state
+        .storage
+        .get_board_revision_token(&board_id)
+        .unwrap_or_else(|| format!("v{}", version));
+    let etag = format!("\"{}\"", revision);
 
     // Check If-None-Match for conditional response
     if let Some(if_none_match) = headers.get("if-none-match") {
@@ -127,6 +137,7 @@ pub async fn get_board_columns(
             "title": board.title,
             "columns": columns,
             "version": version,
+            "revision": revision,
             "generation": state.storage.get_board_generation(&board_id).unwrap_or(0),
             "fullBoard": board,
         })),
@@ -223,6 +234,7 @@ pub async fn write_board(
     let result = state.storage.write_board(&board_id, &board).map_err(|e| {
         let status = match &e {
             lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+            lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         log_api_issue(
@@ -243,6 +255,50 @@ pub async fn write_board(
     )))
 }
 
+/// POST /boards/{board_id}/crashsave -- persist the current draft as a recovery markdown file.
+pub async fn create_board_crashsave(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<CrashsaveBoardBody>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    let reason = body.reason.unwrap_or_else(|| "manual-recovery".to_string());
+    let crashsave = state
+        .storage
+        .create_crashsave(&board_id, &body.board, &reason)
+        .map_err(|e| {
+            let status = match &e {
+                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            log_api_issue(
+                status,
+                "lexera.api.create_board_crashsave",
+                format!(
+                    "Failed to create crashsave for board {} (reason={}): {}",
+                    board_id, reason, e
+                ),
+            );
+            (
+                status,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "success": true,
+            "path": crashsave.path.to_string_lossy(),
+            "filename": crashsave.filename,
+            "savedAt": crashsave.timestamp,
+            "reason": reason,
+        })),
+    ))
+}
+
 /// POST /boards/{board_id}/sync-save -- write a board relative to a client base snapshot.
 pub async fn write_board_with_base(
     State(state): State<AppState>,
@@ -256,6 +312,7 @@ pub async fn write_board_with_base(
         .map_err(|e| {
             let status = match &e {
                 lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
             log_api_issue(
@@ -279,6 +336,45 @@ pub async fn write_board_with_base(
         &board_id,
         result,
         &body.board,
+    )))
+}
+
+/// POST /boards/{board_id}/rebase -- merge a client draft against the latest board without saving.
+pub async fn rebase_board_with_base(
+    State(state): State<AppState>,
+    Path(board_id): Path<String>,
+    Json(body): Json<SyncSaveBoardBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    let (current_board, merged_board, result) = state
+        .storage
+        .rebase_board_from_base(&board_id, &body.base_board, &body.board)
+        .map_err(|e| {
+            let status = match &e {
+                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            log_api_issue(
+                status,
+                "lexera.api.rebase_board_with_base",
+                format!(
+                    "Failed to rebase board {} from base snapshot: {}",
+                    board_id, e
+                ),
+            );
+            (
+                status,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(Json(build_rebase_board_response(
+        &state,
+        &board_id,
+        current_board,
+        merged_board,
+        result,
     )))
 }
 
@@ -478,6 +574,7 @@ pub async fn add_board_endpoint(
     let _ = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.clone(),
+            revision: state.storage.get_board_revision_token(&board_id),
             generation: state.storage.get_board_generation(&board_id),
             writer_id: None,
         },
@@ -624,6 +721,7 @@ pub async fn update_board_settings(
     let _ = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.clone(),
+            revision: state.storage.get_board_revision_token(&board_id),
             generation: state.storage.get_board_generation(&board_id),
             writer_id: None,
         },
@@ -648,6 +746,10 @@ fn build_write_board_response(
         .unwrap_or_else(|| fallback_board.clone());
     let version = state.storage.get_board_version(board_id).unwrap_or(0);
     let generation = state.storage.get_board_generation(board_id).unwrap_or(0);
+    let revision = state
+        .storage
+        .get_board_revision_token(board_id)
+        .unwrap_or_else(|| format!("v{}", version));
     if let Some(merge_result) = result {
         let has_conflicts = !merge_result.conflicts.is_empty();
         serde_json::json!({
@@ -658,6 +760,7 @@ fn build_write_board_response(
             "hasConflicts": has_conflicts,
             "board": saved_board,
             "version": version,
+            "revision": revision,
             "generation": generation,
         })
     } else {
@@ -669,6 +772,50 @@ fn build_write_board_response(
             "hasConflicts": false,
             "board": saved_board,
             "version": version,
+            "revision": revision,
+            "generation": generation,
+        })
+    }
+}
+
+fn build_rebase_board_response(
+    state: &AppState,
+    board_id: &str,
+    current_board: lexera_core::types::KanbanBoard,
+    merged_board: lexera_core::types::KanbanBoard,
+    result: Option<lexera_core::merge::merge::MergeResult>,
+) -> serde_json::Value {
+    let version = state.storage.get_board_version(board_id).unwrap_or(0);
+    let generation = state.storage.get_board_generation(board_id).unwrap_or(0);
+    let revision = state
+        .storage
+        .get_board_revision_token(board_id)
+        .unwrap_or_else(|| format!("v{}", version));
+    if let Some(merge_result) = result {
+        let has_conflicts = !merge_result.conflicts.is_empty();
+        serde_json::json!({
+            "success": true,
+            "merged": true,
+            "autoMerged": merge_result.auto_merged,
+            "conflicts": merge_result.conflicts.len(),
+            "hasConflicts": has_conflicts,
+            "board": merged_board,
+            "currentBoard": current_board,
+            "version": version,
+            "revision": revision,
+            "generation": generation,
+        })
+    } else {
+        serde_json::json!({
+            "success": true,
+            "merged": false,
+            "autoMerged": 0,
+            "conflicts": 0,
+            "hasConflicts": false,
+            "board": merged_board,
+            "currentBoard": current_board,
+            "version": version,
+            "revision": revision,
             "generation": generation,
         })
     }

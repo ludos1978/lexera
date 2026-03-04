@@ -3,6 +3,7 @@
 /// Creates timestamped backups in a `.lexera-backups/` directory alongside
 /// each board file and rotates old backups beyond a configurable keep count.
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
@@ -24,6 +25,17 @@ pub struct BackupEntry {
     pub timestamp: String,
     /// Size of the backup file in bytes.
     pub size: u64,
+}
+
+/// A crashsave entry written beside the original board file.
+#[derive(Debug, Clone)]
+pub struct CrashsaveEntry {
+    /// Full path to the crashsave file.
+    pub path: PathBuf,
+    /// Filename of the crashsave.
+    pub filename: String,
+    /// Timestamp embedded in the crashsave filename.
+    pub timestamp: String,
 }
 
 /// Manages creation, rotation, listing, and restoration of board backups.
@@ -61,6 +73,13 @@ impl BackupManager {
         Local::now().format("%Y-%m-%dT%H-%M-%S").to_string()
     }
 
+    /// Generate a timestamp string for crashsave filenames.
+    ///
+    /// Format: `YYYYMMDD-HHmmss`.
+    fn crashsave_timestamp_now() -> String {
+        Local::now().format("%Y%m%d-%H%M%S").to_string()
+    }
+
     /// Build the backup filename for a board file with the given timestamp.
     ///
     /// Example: `board.md` + `2026-03-02T10-30-00` -> `board.md.2026-03-02T10-30-00`
@@ -70,6 +89,32 @@ impl BackupManager {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "board.md".to_string());
         format!("{}.{}", file_name, timestamp)
+    }
+
+    /// Build the crashsave filename for a board file with the given timestamp.
+    ///
+    /// Example: `board.md` + `20260304-114530` -> `board-crashsave-20260304-114530.md`
+    fn crashsave_filename(board_path: &Path, timestamp: &str) -> String {
+        let file_stem = board_path
+            .file_stem()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "board".to_string());
+        format!("{}-crashsave-{}.md", file_stem, timestamp)
+    }
+
+    /// Atomically write text content to a file path.
+    fn atomic_write_text(path: &Path, content: &str) -> Result<(), std::io::Error> {
+        let tmp_path = path.with_extension("lexera-crashsave.tmp");
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(content.as_bytes())?;
+        file.sync_all()?;
+        fs::rename(&tmp_path, path)?;
+        if let Some(dir) = path.parent() {
+            if let Ok(d) = fs::File::open(dir) {
+                let _ = d.sync_all();
+            }
+        }
+        Ok(())
     }
 
     /// Extract the timestamp suffix from a backup filename, given the original
@@ -107,6 +152,29 @@ impl BackupManager {
         fs::copy(board_path, &backup_path)?;
 
         Ok(backup_path)
+    }
+
+    /// Create a crashsave file beside the original board file using the
+    /// required `{filename}-crashsave-{YYYYMMDD-HHmmss}.md` format.
+    pub fn create_crashsave(
+        board_path: &Path,
+        content: &str,
+    ) -> Result<CrashsaveEntry, std::io::Error> {
+        let parent = board_path.parent().unwrap_or(Path::new("."));
+        if !parent.exists() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let timestamp = Self::crashsave_timestamp_now();
+        let filename = Self::crashsave_filename(board_path, &timestamp);
+        let crashsave_path = parent.join(&filename);
+        Self::atomic_write_text(&crashsave_path, content)?;
+
+        Ok(CrashsaveEntry {
+            path: crashsave_path,
+            filename,
+            timestamp,
+        })
     }
 
     /// Rotate backups for the given board file, keeping only the `keep` most
@@ -244,6 +312,40 @@ mod tests {
         let original = fs::read_to_string(&board).unwrap();
         let backed_up = fs::read_to_string(&backup_path).unwrap();
         assert_eq!(original, backed_up);
+    }
+
+    #[test]
+    fn test_create_crashsave_creates_named_markdown_file_next_to_board() {
+        let dir = tempdir().unwrap();
+        let board = write_board(dir.path(), "board.md", "# My Board\n## Todo\n- [ ] Task\n");
+
+        let crashsave = BackupManager::create_crashsave(&board, "# Recovered Board\n").unwrap();
+
+        assert!(
+            crashsave.path.exists(),
+            "Crashsave file should exist on disk"
+        );
+        assert_eq!(
+            crashsave.filename,
+            crashsave
+                .path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        );
+        assert!(
+            crashsave.filename.starts_with("board-crashsave-"),
+            "Crashsave filename should start with board-crashsave-"
+        );
+        assert!(
+            crashsave.filename.ends_with(".md"),
+            "Crashsave filename should end with .md"
+        );
+        assert_eq!(
+            fs::read_to_string(&crashsave.path).unwrap(),
+            "# Recovered Board\n"
+        );
     }
 
     #[test]

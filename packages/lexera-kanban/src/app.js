@@ -2729,6 +2729,15 @@ const LexeraDashboard = (function () {
       board: response.board || null,
       pendingRemoteUpdates: []
     };
+    traceFrontendAction('info', 'liveSync.session', 'Opened live sync session', {
+      boardId: boardId,
+      sessionId: response.sessionId,
+      vvLength: response && response.vv ? response.vv.length : 0,
+      sessionIdentity: summarizeBoardIdentity(response.board)
+    });
+    if (activeBoardId === boardId && fullBoardData && response && response.board) {
+      traceBoardIdentityPair('info', 'liveSync.session', 'Identity comparison after live sync session open', boardId, 'local', fullBoardData, 'session', response.board);
+    }
     return liveSyncState;
   }
 
@@ -2749,13 +2758,31 @@ const LexeraDashboard = (function () {
     var session = getLiveSyncSession(boardId);
     if (!session) return false;
 
+    console.log('[applyBoardToLiveSync] sending board=' + boardCardSummary(boardData) + ' session_board=' + boardCardSummary(session.board));
+    traceBoardIdentityPair('info', 'liveSync.apply', 'Applying local board into live sync session', boardId, 'local', boardData, 'session', session.board, {
+      vvLength: session.vv ? session.vv.length : 0
+    });
     var response = await LexeraApi.applyLiveSyncBoard(session.sessionId, boardData);
     if (response && response.vv) session.vv = response.vv;
     if (response && response.board) session.board = response.board;
+    console.log('[applyBoardToLiveSync] response changed=' + (response && response.changed) + ' response_board=' + boardCardSummary(response && response.board) + ' updates_len=' + (response && response.updates ? response.updates.length : 0));
+    if (response && response.board && options.syncSaveBase && boardId === activeBoardId && fullBoardData) {
+      var savedLiveBoard = resolveLiveSyncBoardData(cloneBoardData(response.board), boardId);
+      setBoardSaveBase(fullBoardData, savedLiveBoard);
+      pendingExternalRebaseConflict = null;
+      traceFrontendAction('info', 'liveSync.saveBase', 'Updated local save base from live sync save result', {
+        boardId: boardId,
+        liveSummary: summarizeBoardHierarchy(savedLiveBoard),
+        workingSummary: summarizeBoardHierarchy(fullBoardData)
+      });
+      traceBoardIdentityPair('info', 'liveSync.saveBase', 'Identity comparison after live sync save result', boardId, 'local', fullBoardData, 'saveBase', savedLiveBoard);
+    }
     if (response && response.changed && response.updates) {
       if (!LexeraApi.sendSyncUpdate(response.updates)) {
+        console.log('[applyBoardToLiveSync] sendSyncUpdate FAILED');
         return false;
       }
+      console.log('[applyBoardToLiveSync] sent WS update');
       liveSyncLastLocalBroadcastAt = Date.now();
       lastSaveTime = liveSyncLastLocalBroadcastAt;
     }
@@ -2780,7 +2807,20 @@ const LexeraDashboard = (function () {
     if (response && response.vv) session.vv = response.vv;
     if (response && response.board) session.board = response.board;
     if (response && response.changed && response.board && boardId === activeBoardId) {
-      applyLiveSyncBoardSnapshot(boardId, response.board, options);
+      traceBoardIdentityPair('info', 'liveSync.import', 'Received remote live sync board update', boardId, 'local', fullBoardData, 'remote', response.board, {
+        updateBytes: updates ? updates.length : 0,
+        dirty: isBoardDirty()
+      });
+      if (isBoardDirty()) {
+        traceFrontendAction('info', 'liveSync.rebase', 'Rebasing dirty local board after remote live sync update', {
+          boardId: boardId,
+          incomingSummary: summarizeBoardHierarchy(response.board),
+          workingSummary: summarizeBoardHierarchy(fullBoardData)
+        });
+        await rebaseDirtyBoardFromServer('live-sync');
+      } else {
+        applyLiveSyncBoardSnapshot(boardId, response.board, options);
+      }
     }
     return !!(response && response.changed);
   }
@@ -2811,7 +2851,20 @@ const LexeraDashboard = (function () {
       }
     }
     if (changed && lastBoard && session.boardId === activeBoardId) {
-      applyLiveSyncBoardSnapshot(session.boardId, lastBoard, options);
+      traceBoardIdentityPair('info', 'liveSync.import', 'Applying queued remote live sync updates', session.boardId, 'local', fullBoardData, 'remote', lastBoard, {
+        batchCount: pending.length,
+        dirty: isBoardDirty()
+      });
+      if (isBoardDirty()) {
+        traceFrontendAction('info', 'liveSync.rebase', 'Rebasing dirty local board after queued remote live sync updates', {
+          boardId: session.boardId,
+          incomingSummary: summarizeBoardHierarchy(lastBoard),
+          workingSummary: summarizeBoardHierarchy(fullBoardData)
+        });
+        await rebaseDirtyBoardFromServer('live-sync-pending');
+      } else {
+        applyLiveSyncBoardSnapshot(session.boardId, lastBoard, options);
+      }
     }
     return changed;
   }
@@ -3076,29 +3129,55 @@ const LexeraDashboard = (function () {
     if (!activeBoardId || searchMode) return;
     var kind = event.kind || event.type || '';
     var boardId = event.board_id || event.boardId || '';
+    var includeBoardIds = event.board_ids || event.boardIds || [];
     if (boardId && boardId !== activeBoardId) return;
+    if (kind === 'IncludeFileChanged' && Array.isArray(includeBoardIds) && includeBoardIds.length > 0 && includeBoardIds.indexOf(activeBoardId) === -1) {
+      traceFrontendAction('info', 'sse.fileChanged.ignore', 'Ignoring include change for unrelated board', {
+        activeBoardId: activeBoardId,
+        includeBoardIds: includeBoardIds
+      });
+      return;
+    }
     if (kind === 'MainFileChanged' || kind === 'IncludeFileChanged') {
       // Skip echoes caused by our own saves
       if (Date.now() - lastSaveTime < SAVE_DEBOUNCE_MS) return;
       if (canUseLiveSync(activeBoardId) && Date.now() - liveSyncLastLocalBroadcastAt < SAVE_DEBOUNCE_MS) return;
-      // Generation-based staleness check: ignore events for same or older generation
       var eventGen = event.generation;
-      if (kind === 'MainFileChanged' && typeof eventGen === 'number' && _lastLoadedGeneration !== null && eventGen <= _lastLoadedGeneration) {
+      var eventRevision = typeof event.revision === 'string' && event.revision ? event.revision : null;
+      if (kind === 'MainFileChanged' && eventRevision && _lastLoadedRevision && eventRevision === _lastLoadedRevision) {
         traceFrontendAction('info', 'sse.fileChanged.stale', 'Ignoring stale file change event', {
+          eventRevision: eventRevision,
+          loadedRevision: _lastLoadedRevision,
           eventGeneration: eventGen,
           loadedGeneration: _lastLoadedGeneration
         });
         return;
       }
-      // Never auto-reload — notify the user so they can decide
-      traceFrontendAction('info', 'sse.fileChanged', 'File changed on disk, notifying user', {
+      traceFrontendAction('info', 'sse.fileChanged', 'File changed on disk, reconciling with active board', {
         boardId: activeBoardId,
         kind: kind,
         dirty: _boardDirty,
+        eventRevision: eventRevision,
+        loadedRevision: _lastLoadedRevision,
         eventGeneration: eventGen,
-        loadedGeneration: _lastLoadedGeneration
+        loadedGeneration: _lastLoadedGeneration,
+        includeBoardIds: includeBoardIds
       });
-      showNotification('Board file changed on disk. Press Cmd+R or reload to pick up external changes.');
+      if (!_boardDirty) {
+        Promise.resolve()
+          .then(function () { return loadBoard(activeBoardId); })
+          .catch(function (err) {
+            logFrontendIssue('warn', 'sse.fileChanged.reload', 'Failed to reload clean board after external change', err);
+            showNotification('Board file changed on disk. Reload failed.');
+          });
+        return;
+      }
+      Promise.resolve()
+        .then(function () { return rebaseDirtyBoardFromServer(kind); })
+        .catch(function (err) {
+          logFrontendIssue('warn', 'sse.fileChanged.rebase', 'Failed to rebase dirty board after external change', err);
+          showNotification('Board file changed on disk. Rebase failed; your local draft was kept.');
+        });
     }
     } catch (err) {
       logFrontendIssue('error', 'sse', 'Error in handleSSEEvent', err);
@@ -3152,6 +3231,7 @@ const LexeraDashboard = (function () {
           activeBoardData = null;
           fullBoardData = null;
           _lastLoadedGeneration = null;
+          _lastLoadedRevision = null;
           if (!embeddedMode) localStorage.removeItem('lexera-last-board');
           renderMainView();
         }
@@ -3408,6 +3488,146 @@ const LexeraDashboard = (function () {
     return JSON.parse(JSON.stringify(boardData));
   }
 
+  function boardDraftStorageKey(boardId) {
+    return boardId ? ('lexera-board-draft:' + boardId) : '';
+  }
+
+  function getBoardCardKids(boardData) {
+    var kids = [];
+    var cols = getAllColumnsFromBoardData(boardData);
+    for (var i = 0; i < cols.length; i++) {
+      var cards = cols[i] && cols[i].cards ? cols[i].cards : [];
+      for (var j = 0; j < cards.length; j++) {
+        if (cards[j] && cards[j].kid) kids.push(cards[j].kid);
+      }
+    }
+    return kids;
+  }
+
+  function getBoardCardIdentityStats(boardA, boardB) {
+    var aKids = getBoardCardKids(boardA);
+    var bKids = getBoardCardKids(boardB);
+    var seen = Object.create(null);
+    var overlap = 0;
+    for (var i = 0; i < aKids.length; i++) seen[aKids[i]] = true;
+    for (var j = 0; j < bKids.length; j++) {
+      if (seen[bKids[j]]) overlap++;
+    }
+    return {
+      boardACards: aKids.length,
+      boardBCards: bKids.length,
+      overlap: overlap
+    };
+  }
+
+  function summarizeBoardIdentity(boardData, limit) {
+    var kids = getBoardCardKids(boardData);
+    var max = typeof limit === 'number' ? limit : 6;
+    return {
+      summary: summarizeBoardHierarchy(boardData),
+      cards: kids.length,
+      sampleKids: kids.slice(0, max)
+    };
+  }
+
+  function describeBoardIdentityPair(labelA, boardA, labelB, boardB, limit) {
+    var max = typeof limit === 'number' ? limit : 6;
+    var aKids = getBoardCardKids(boardA);
+    var bKids = getBoardCardKids(boardB);
+    var seenA = Object.create(null);
+    var seenB = Object.create(null);
+    var overlap = 0;
+    var onlyA = [];
+    var onlyB = [];
+    var i;
+    for (i = 0; i < aKids.length; i++) seenA[aKids[i]] = true;
+    for (i = 0; i < bKids.length; i++) seenB[bKids[i]] = true;
+    for (i = 0; i < aKids.length; i++) {
+      if (seenB[aKids[i]]) overlap++;
+      else if (onlyA.length < max) onlyA.push(aKids[i]);
+    }
+    for (i = 0; i < bKids.length; i++) {
+      if (!seenA[bKids[i]] && onlyB.length < max) onlyB.push(bKids[i]);
+    }
+    return {
+      labels: [labelA, labelB],
+      stats: {
+        boardACards: aKids.length,
+        boardBCards: bKids.length,
+        overlap: overlap
+      },
+      onlyA: onlyA,
+      onlyB: onlyB,
+      summaryA: summarizeBoardHierarchy(boardA),
+      summaryB: summarizeBoardHierarchy(boardB)
+    };
+  }
+
+  function traceBoardIdentityPair(level, target, message, boardId, labelA, boardA, labelB, boardB, extra) {
+    var details = {
+      boardId: boardId || null,
+      pair: describeBoardIdentityPair(labelA, boardA, labelB, boardB)
+    };
+    if (extra && typeof extra === 'object') {
+      for (var key in extra) details[key] = extra[key];
+    }
+    traceFrontendAction(level, target, message, details);
+  }
+
+  function hasBoardIdentityMismatch(boardA, boardB) {
+    if (!boardA || !boardB) return false;
+    var stats = getBoardCardIdentityStats(boardA, boardB);
+    return stats.boardACards > 0 && stats.boardBCards > 0 && stats.overlap === 0;
+  }
+
+  function saveLocalBoardDraft(boardId, boardData) {
+    if (!boardId || !boardData) return;
+    try {
+      var baseBoard = getBoardSaveBase(boardData) || boardData;
+      localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
+        savedAt: Date.now(),
+        revision: _lastLoadedRevision || (activeBoardData && activeBoardData.revision ? activeBoardData.revision : null),
+        board: cloneBoardData(boardData),
+        baseBoard: cloneBoardData(baseBoard)
+      }));
+    } catch (err) {
+      logFrontendIssue('warn', 'board.draft.save', 'Failed to persist local board draft', err);
+    }
+  }
+
+  function loadLocalBoardDraft(boardId) {
+    if (!boardId) return null;
+    try {
+      var raw = localStorage.getItem(boardDraftStorageKey(boardId));
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && parsed.board ? parsed : null;
+    } catch (err) {
+      logFrontendIssue('warn', 'board.draft.load', 'Failed to load local board draft', err);
+      return null;
+    }
+  }
+
+  function clearLocalBoardDraft(boardId) {
+    if (!boardId) return;
+    try {
+      localStorage.removeItem(boardDraftStorageKey(boardId));
+    } catch (err) {
+      logFrontendIssue('warn', 'board.draft.clear', 'Failed to clear local board draft', err);
+    }
+  }
+
+  function boardCardSummary(bd) {
+    if (!bd) return '(null)';
+    var cols = (bd.rows && bd.rows.length > 0)
+      ? bd.rows.flatMap(function(r) { return (r.stacks || []).flatMap(function(s) { return s.columns || []; }); })
+      : (bd.columns || []);
+    return cols.map(function(c) {
+      var kids = (c.cards || []).map(function(card) { return card.kid || '??'; });
+      return '[' + c.title + ':' + kids.join(',') + ']';
+    }).join(' ');
+  }
+
   function setBoardSaveBase(boardData, baseBoardData) {
     if (!boardData || typeof boardData !== 'object') return boardData;
     Object.defineProperty(boardData, '__lexeraSaveBase', {
@@ -3440,23 +3660,45 @@ const LexeraDashboard = (function () {
   function applyLiveSyncBoardSnapshot(boardId, boardData, options) {
     options = options || {};
     if (!boardData || boardId !== activeBoardId) return;
-    traceFrontendAction('info', 'liveSync.snapshot', 'Updating save base from live sync response (fullBoardData preserved)', {
+    var replaceLocalBoard = !!options.replaceLocalBoard || !isBoardDirty();
+    traceFrontendAction('info', 'liveSync.snapshot', replaceLocalBoard
+      ? 'Adopting live sync snapshot into active board'
+      : 'Updating save base from live sync response while preserving dirty local board', {
       boardId: boardId,
+      replaceLocalBoard: replaceLocalBoard,
       incomingSummary: summarizeBoardHierarchy(boardData),
       currentSummary: summarizeBoardHierarchy(fullBoardData)
     });
+    var canonicalBoard = resolveLiveSyncBoardData(cloneBoardData(boardData), boardId);
     if (liveSyncState && liveSyncState.boardId === boardId) {
-      liveSyncState.board = boardData;
+      liveSyncState.board = canonicalBoard;
     }
-    // DESIGN INVARIANT: fullBoardData is NEVER replaced by an external response.
-    // Only update the save base so the next save can three-way merge correctly.
-    var canonicalBoard = resolveLiveSyncBoardData(boardData, boardId);
-    setBoardSaveBase(fullBoardData, canonicalBoard);
+    if (fullBoardData) {
+      traceBoardIdentityPair(replaceLocalBoard ? 'info' : 'warn', 'liveSync.snapshot', 'Identity comparison before applying live sync snapshot', boardId, 'local', fullBoardData, 'incoming', canonicalBoard, {
+        replaceLocalBoard: replaceLocalBoard
+      });
+    }
+    if (replaceLocalBoard) {
+      fullBoardData = cloneBoardData(canonicalBoard);
+      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+      if (!fullBoardData.columns) fullBoardData.columns = [];
+      setBoardSaveBase(fullBoardData, canonicalBoard);
+      clearBoardDirty();
+    } else if (fullBoardData) {
+      setBoardSaveBase(fullBoardData, canonicalBoard);
+    }
+    if (fullBoardData) {
+      traceBoardIdentityPair('info', 'liveSync.snapshot', 'Identity comparison after applying live sync snapshot', boardId, 'local', fullBoardData, 'saveBase', getBoardSaveBase(fullBoardData));
+      if (liveSyncState && liveSyncState.boardId === boardId) {
+        traceBoardIdentityPair('info', 'liveSync.snapshot', 'Identity comparison after syncing live sync snapshot into session', boardId, 'local', fullBoardData, 'session', liveSyncState.board);
+      }
+    }
     if (activeBoardData) {
       delete activeBoardData.version;
+      delete activeBoardData.revision;
     }
     updateDisplayFromFullBoard();
-    setBoardHierarchyRows(boardId, fullBoardData, fullBoardData.title || '');
+    setBoardHierarchyRows(boardId, fullBoardData, fullBoardData ? (fullBoardData.title || '') : '');
     if (options.skipRender) return;
     if (options.refreshMainView) {
       renderMainView();
@@ -3466,6 +3708,94 @@ const LexeraDashboard = (function () {
     }
     refreshHeaderFileControls();
     scheduleDashboardRefresh(80);
+  }
+
+  var pendingExternalRebaseConflict = null;
+  var _rebaseInFlight = null;
+
+  function applyRebasedBoardSnapshot(boardId, workingBoard, currentBoard, result, options) {
+    options = options || {};
+    if (!workingBoard || boardId !== activeBoardId) return;
+    fullBoardData = workingBoard;
+    ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+    if (!fullBoardData.columns) fullBoardData.columns = [];
+    setBoardSaveBase(fullBoardData, currentBoard || workingBoard);
+    pendingExternalRebaseConflict = null;
+    if (activeBoardData) {
+      if (result && typeof result.version === 'number') activeBoardData.version = result.version;
+      if (result && result.revision) activeBoardData.revision = result.revision;
+    }
+    if (result && typeof result.generation === 'number') {
+      _lastLoadedGeneration = result.generation;
+    }
+    _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
+    updateDisplayFromFullBoard();
+    setBoardHierarchyRows(boardId, fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+    renderColumns();
+    renderBoardList();
+    refreshHeaderFileControls();
+    scheduleDashboardRefresh(80);
+    markBoardDirty();
+    saveLocalBoardDraft(boardId, fullBoardData);
+    if (!options.silent) {
+      if (result && result.merged && result.autoMerged > 0) {
+        showNotification('Integrated external changes into your draft (' + result.autoMerged + ' auto-merge(s)).');
+      } else {
+        showNotification('Integrated external changes into your draft.');
+      }
+    }
+  }
+
+  async function rebaseDirtyBoardFromServer(triggerKind) {
+    if (!activeBoardId || !fullBoardData) return false;
+    if (_rebaseInFlight) return _rebaseInFlight;
+    var baseBoardData = getBoardSaveBase(fullBoardData);
+    if (!baseBoardData) {
+      setBoardSaveBase(fullBoardData, fullBoardData);
+      baseBoardData = getBoardSaveBase(fullBoardData);
+    }
+    _rebaseInFlight = (async function () {
+      try {
+        traceFrontendAction('info', 'board.rebase', 'Rebasing dirty board against latest external state', {
+          boardId: activeBoardId,
+          trigger: triggerKind || null,
+          baseSummary: summarizeBoardHierarchy(baseBoardData),
+          workingSummary: summarizeBoardHierarchy(fullBoardData)
+        });
+        traceBoardIdentityPair('info', 'board.rebase', 'Identity comparison before rebase request', activeBoardId, 'working', fullBoardData, 'base', baseBoardData, {
+          trigger: triggerKind || null
+        });
+        var result = await LexeraApi.rebaseBoardWithBase(activeBoardId, baseBoardData, fullBoardData);
+        var currentBoard = result && result.currentBoard ? result.currentBoard : null;
+        if (!result || !currentBoard) return false;
+        traceBoardIdentityPair('info', 'board.rebase', 'Identity comparison between rebase current board and working board', activeBoardId, 'working', fullBoardData, 'current', currentBoard, {
+          trigger: triggerKind || null,
+          hasConflicts: !!(result && result.hasConflicts)
+        });
+        if (result.hasConflicts) {
+          pendingExternalRebaseConflict = {
+            result: result,
+            savedAt: Date.now()
+          };
+          traceFrontendAction('warn', 'board.rebase.conflict', 'External changes conflict with local draft; preserving local draft', {
+            boardId: activeBoardId,
+            trigger: triggerKind || null,
+            conflicts: result.conflicts || 0,
+            autoMerged: result.autoMerged || 0
+          });
+          showExternalRebaseConflictDialog(result);
+          return false;
+        }
+        applyRebasedBoardSnapshot(activeBoardId, result.board || fullBoardData, currentBoard, result);
+        return true;
+      } catch (err) {
+        logFrontendIssue('error', 'board.rebase', 'Failed to rebase dirty board against latest external state', err);
+        return false;
+      } finally {
+        _rebaseInFlight = null;
+      }
+    })();
+    return _rebaseInFlight;
   }
 
   function rowsFromLegacyColumns(columns, boardTitle) {
@@ -3978,7 +4308,9 @@ const LexeraDashboard = (function () {
       activeBoardId = boardId;
       activeBoardData = null;
       fullBoardData = null;
+      pendingExternalRebaseConflict = null;
       _lastLoadedGeneration = null;
+      _lastLoadedRevision = null;
       addCardColumn = null;
       localStorage.setItem('lexera-last-board', boardId);
       renderBoardList();
@@ -3992,7 +4324,9 @@ const LexeraDashboard = (function () {
     activeBoardId = boardId;
     activeBoardData = null;
     fullBoardData = null;
+    pendingExternalRebaseConflict = null;
     _lastLoadedGeneration = null;
+    _lastLoadedRevision = null;
     addCardColumn = null;
     if (!embeddedMode) {
       localStorage.setItem('lexera-last-board', boardId);
@@ -4024,12 +4358,12 @@ const LexeraDashboard = (function () {
       loadStage = 'clear-caches';
       clearBoardPreviewCaches(boardId);
       editingPresenceMap = {};
-      var cachedVersion = (boardId === activeBoardId && activeBoardData && typeof activeBoardData.version === 'number')
-        ? activeBoardData.version
+      var cachedRevision = (boardId === activeBoardId && (_lastLoadedRevision || (activeBoardData && activeBoardData.revision)))
+        ? (_lastLoadedRevision || activeBoardData.revision)
         : null;
-      loadStage = cachedVersion != null ? 'fetch-cached' : 'fetch';
-      var response = cachedVersion != null
-        ? await LexeraApi.getBoardColumnsCached(boardId, cachedVersion)
+      loadStage = cachedRevision != null ? 'fetch-cached' : 'fetch';
+      var response = cachedRevision != null
+        ? await LexeraApi.getBoardColumnsCached(boardId, cachedRevision)
         : await LexeraApi.getBoardColumns(boardId);
       if (seq !== boardLoadSeq) return; // stale response, a newer load was started
       if (response && response.notModified) {
@@ -4045,20 +4379,20 @@ const LexeraDashboard = (function () {
       loadStage = 'assign-board-data';
       fullBoardData = response.fullBoard || null;
       if (fullBoardData) setBoardSaveBase(fullBoardData, fullBoardData);
+      if (fullBoardData) {
+        traceFrontendAction('info', 'board.load.identity', 'Loaded board from backend', {
+          boardId: boardId,
+          identity: summarizeBoardIdentity(fullBoardData)
+        });
+      }
       activeBoardData = response;
-      // Track generation for staleness detection
+      pendingExternalRebaseConflict = null;
+      var draftSnapshot = loadLocalBoardDraft(boardId);
+      var shouldPrepareLiveSync = true;
       if (response && typeof response.generation === 'number') {
         _lastLoadedGeneration = response.generation;
       }
-      if (fullBoardData) {
-        try {
-          loadStage = 'prepare-live-sync';
-          await closeLiveSyncSession(boardId);
-          await ensureLiveSyncSession(boardId);
-        } catch (e) {
-          logFrontendIssue('warn', 'board.load.live-sync', 'Failed to prepare live sync session for board ' + boardId, e);
-        }
-      }
+      _lastLoadedRevision = response && response.revision ? response.revision : null;
       // Auto-convert legacy boards and save immediately
       if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
         loadStage = 'migrate-legacy-board';
@@ -4070,6 +4404,113 @@ const LexeraDashboard = (function () {
           logFrontendIssue('warn', 'board.load.migrate', 'Failed to persist migrated board ' + boardId, err);
         }
         if (seq !== boardLoadSeq) return; // check again after second await
+      }
+      if (draftSnapshot && draftSnapshot.board) {
+        var currentSerialized = JSON.stringify(cloneBoardData(fullBoardData));
+        var draftSerialized = JSON.stringify(draftSnapshot.board);
+        if (currentSerialized !== draftSerialized) {
+          var currentBoard = response.fullBoard || null;
+          var draftBaseBoard = draftSnapshot.baseBoard || null;
+          var sameRevision = !!(draftSnapshot.revision && response.revision && draftSnapshot.revision === response.revision);
+          var draftIdentity = getBoardCardIdentityStats(currentBoard, draftSnapshot.board);
+          var draftMatchesCurrentIds = !hasBoardIdentityMismatch(currentBoard, draftSnapshot.board);
+          var draftHasBase = !!draftBaseBoard;
+          var canRestoreDirectly = sameRevision && draftMatchesCurrentIds;
+          var canRestoreViaRebase = draftHasBase && !sameRevision;
+          if (!canRestoreDirectly && !canRestoreViaRebase) {
+            loadStage = 'restore-local-draft-blocked';
+            shouldPrepareLiveSync = true;
+            var discardUnrecoverableDraft = sameRevision && !draftHasBase && draftIdentity.overlap === 0;
+            if (discardUnrecoverableDraft) {
+              clearLocalBoardDraft(boardId);
+              traceFrontendAction('info', 'board.draft.discard', 'Discarded incompatible stale local draft during board load', {
+                boardId: boardId,
+                currentRevision: response.revision || null,
+                draftRevision: draftSnapshot.revision || null,
+                hasBaseBoard: draftHasBase,
+                identity: draftIdentity
+              });
+            } else {
+              traceFrontendAction('warn', 'board.draft.restore', 'Skipped unsafe local draft restore because card identities no longer match current board', {
+                boardId: boardId,
+                currentRevision: response.revision || null,
+                draftRevision: draftSnapshot.revision || null,
+                hasBaseBoard: draftHasBase,
+                discarded: false,
+                identity: draftIdentity
+              });
+              showNotification('A local draft was preserved but not restored because it no longer matches the current board revision safely.');
+            }
+          } else {
+            loadStage = 'restore-local-draft';
+            var restoreMessage = canRestoreDirectly
+              ? 'Restore the unsaved local draft for this board?\n\nIt was saved automatically on this device.'
+              : (canRestoreViaRebase
+                ? 'Restore the unsaved local draft for this board?\n\nExternal changes will be rebased against its saved base first.'
+                : 'Restore the unsaved local draft for this board?\n\nIt was saved automatically on this device.');
+            var restoreDraft = await showConfirmDialog(restoreMessage);
+          }
+          if (typeof restoreDraft !== 'undefined') {
+            if (restoreDraft) {
+              if (canRestoreViaRebase) {
+                loadStage = 'restore-local-draft-rebase';
+                try {
+                  var rebasedDraft = await LexeraApi.rebaseBoardWithBase(boardId, draftBaseBoard, draftSnapshot.board);
+                  if (rebasedDraft && rebasedDraft.currentBoard && !rebasedDraft.hasConflicts) {
+                    fullBoardData = rebasedDraft.board || draftSnapshot.board;
+                    ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+                    if (!fullBoardData.columns) fullBoardData.columns = [];
+                    setBoardSaveBase(fullBoardData, rebasedDraft.currentBoard || response.fullBoard || fullBoardData);
+                    markBoardDirty();
+                  } else if (rebasedDraft && rebasedDraft.hasConflicts) {
+                    shouldPrepareLiveSync = false;
+                    pendingExternalRebaseConflict = {
+                      result: rebasedDraft,
+                      savedAt: Date.now()
+                    };
+                    traceFrontendAction('warn', 'board.draft.restore', 'Draft restore blocked by rebase conflicts', {
+                      boardId: boardId,
+                      currentRevision: response.revision || null,
+                      draftRevision: draftSnapshot.revision || null,
+                      conflicts: rebasedDraft.conflicts || 0
+                    });
+                    showNotification('The local draft was preserved, but it conflicts with the current board and was not restored automatically.');
+                  }
+                } catch (restoreErr) {
+                  shouldPrepareLiveSync = false;
+                  logFrontendIssue('warn', 'board.draft.restore', 'Failed to rebase local draft before restore', restoreErr);
+                  showNotification('The local draft was preserved, but automatic restore failed.');
+                }
+              } else {
+                fullBoardData = draftSnapshot.board;
+                ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(boardId, fullBoardData));
+                if (!fullBoardData.columns) fullBoardData.columns = [];
+                setBoardSaveBase(fullBoardData, draftBaseBoard || response.fullBoard || fullBoardData);
+                markBoardDirty();
+              }
+            } else {
+              clearLocalBoardDraft(boardId);
+            }
+          }
+        } else {
+          clearLocalBoardDraft(boardId);
+        }
+      }
+      if (fullBoardData) {
+        try {
+          loadStage = 'prepare-live-sync';
+          await closeLiveSyncSession(boardId);
+          if (shouldPrepareLiveSync) {
+            await ensureLiveSyncSession(boardId);
+            if (liveSyncState && liveSyncState.boardId === boardId && fullBoardData) {
+              traceBoardIdentityPair('info', 'board.load.identity', 'Identity comparison after board load session prepare', boardId, 'local', fullBoardData, 'session', liveSyncState.board);
+            }
+          } else {
+            liveSyncState = null;
+          }
+        } catch (e) {
+          logFrontendIssue('warn', 'board.load.live-sync', 'Failed to prepare live sync session for board ' + boardId, e);
+        }
       }
       loadStage = 'update-display';
       updateDisplayFromFullBoard(); // populate activeBoardData.rows before sidebar render
@@ -4095,6 +4536,7 @@ const LexeraDashboard = (function () {
       activeBoardData = null;
       fullBoardData = null;
       _lastLoadedGeneration = null;
+      _lastLoadedRevision = null;
       renderMainView();
       scheduleDashboardRefresh(80);
     }
@@ -5170,21 +5612,114 @@ const LexeraDashboard = (function () {
   // deferred and coalesced into a single follow-up save.  This is purely
   // an optimisation to avoid redundant network round-trips.
   //
-  // DESIGN INVARIANT — fullBoardData is the single source of truth and is
-  // NEVER replaced by a save response.  The server's merged board is only
-  // adopted as __lexeraSaveBase (the three-way-merge anchor for the next
-  // save).  This makes data-loss race conditions impossible by design:
-  // no matter how many saves overlap or how long the network takes, every
-  // local mutation survives.
+  // DESIGN INVARIANT — local edits live in fullBoardData until they are saved
+  // or explicitly rebased. Clean boards may adopt authoritative external
+  // snapshots directly so card identities stay aligned with live sync/storage.
+  // Dirty boards keep their working copy and rebase when external changes land.
   var _saveInFlight = false;
   var _savePending = false;
 
+  async function writeBoardCrashsave(reason, boardData, extra) {
+    if (!activeBoardId || !boardData) return null;
+    var payload = boardData;
+    var crashsaveReason = reason || 'save-recovery';
+    traceFrontendAction('warn', 'board.crashsave', 'Attempting to persist crashsave for active board', {
+      boardId: activeBoardId,
+      reason: crashsaveReason,
+      summary: summarizeBoardHierarchy(boardData),
+      extra: extra || null
+    });
+    try {
+      var result = await LexeraApi.createBoardCrashsave(activeBoardId, payload, crashsaveReason);
+      traceFrontendAction('warn', 'board.crashsave', 'Crashsave persisted for active board', {
+        boardId: activeBoardId,
+        reason: crashsaveReason,
+        path: result && result.path ? result.path : null,
+        filename: result && result.filename ? result.filename : null
+      });
+      return result || null;
+    } catch (err) {
+      logFrontendIssue('error', 'board.crashsave', 'Failed to persist crashsave for active board', err);
+      return null;
+    }
+  }
+
+  async function overwriteBoardWithLocalDraft(trigger) {
+    if (!activeBoardId || !fullBoardData) return false;
+    if (_saveInFlight) return false;
+    _saveInFlight = true;
+    showSaving();
+    try {
+      lastSaveTime = Date.now();
+      ensureBoardRowsForMutation(fullBoardData, getMutationBoardTitle(activeBoardId, fullBoardData));
+      if (!fullBoardData.columns) fullBoardData.columns = [];
+      traceFrontendAction('warn', 'board.save.force', 'Overwriting external board version with local draft', {
+        boardId: activeBoardId,
+        trigger: trigger || null,
+        workingSummary: summarizeBoardHierarchy(fullBoardData),
+        conflictSummary: pendingExternalRebaseConflict && pendingExternalRebaseConflict.result
+          ? {
+              conflicts: pendingExternalRebaseConflict.result.conflicts || 0,
+              autoMerged: pendingExternalRebaseConflict.result.autoMerged || 0
+            }
+          : null
+      });
+      var result = await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+      var savedBoard = result && result.board ? result.board : null;
+      if (savedBoard) {
+        ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
+        setBoardSaveBase(fullBoardData, savedBoard);
+      } else {
+        setBoardSaveBase(fullBoardData, fullBoardData);
+      }
+      pendingExternalRebaseConflict = null;
+      if (activeBoardData && result && typeof result.version === 'number') {
+        activeBoardData.version = result.version;
+      }
+      if (activeBoardData && result && result.revision) {
+        activeBoardData.revision = result.revision;
+      }
+      if (result && typeof result.generation === 'number') {
+        _lastLoadedGeneration = result.generation;
+      }
+      _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
+      clearBoardDirty();
+      try {
+        await reopenLiveSyncSession(activeBoardId);
+      } catch (err) {
+        logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
+      }
+      showNotification('Local draft saved and overwrote the external board version.');
+      return true;
+    } catch (err) {
+      logFrontendIssue('error', 'board.save.force', 'Failed to overwrite external board version with local draft', err);
+      var overwriteCrashsave = await writeBoardCrashsave('force-overwrite-save-exception', fullBoardData, {
+        error: err && err.message ? err.message : String(err),
+        trigger: trigger || null
+      });
+      showNotification(
+        overwriteCrashsave && overwriteCrashsave.filename
+          ? ('Overwrite failed. Recovery copy written: ' + overwriteCrashsave.filename)
+          : 'Overwrite failed. The local draft remains open, but crashsave could not be written.'
+      );
+      return false;
+    } finally {
+      _saveInFlight = false;
+      hideSaving();
+    }
+  }
+
   async function saveFullBoard() {
+    if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
+      showExternalRebaseConflictDialog(pendingExternalRebaseConflict.result);
+      return false;
+    }
     if (_saveInFlight) {
       _savePending = true;
-      return;
+      return false;
     }
     _saveInFlight = true;
+    var saveSucceeded = false;
     showSaving();
     try {
       do {
@@ -5193,33 +5728,112 @@ const LexeraDashboard = (function () {
         // Ensure columns field exists (backend requires it)
         if (!fullBoardData.columns) fullBoardData.columns = [];
 
-        if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true })) {
+        var liveSession = getLiveSyncSession(activeBoardId);
+        if (liveSession) {
+          traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against live sync session', activeBoardId, 'local', fullBoardData, 'session', liveSession.board);
+        }
+        if (liveSession && hasBoardIdentityMismatch(fullBoardData, liveSession.board)) {
+          traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match live sync session', {
+            boardId: activeBoardId,
+            local: getBoardCardIdentityStats(fullBoardData, liveSession.board),
+            incomingSummary: summarizeBoardHierarchy(fullBoardData),
+            sessionSummary: summarizeBoardHierarchy(liveSession.board)
+          });
+          var liveSessionCrashsave = await writeBoardCrashsave('identity-mismatch-live-session', fullBoardData, {
+            sessionSummary: summarizeBoardHierarchy(liveSession.board)
+          });
+          showNotification(
+            liveSessionCrashsave && liveSessionCrashsave.filename
+              ? ('Save blocked. Recovery copy written: ' + liveSessionCrashsave.filename)
+              : 'Save blocked and crashsave failed. The local draft remains open in the app.'
+          );
+          return false;
+        }
+
+        console.log('[saveFullBoard] incoming=' + boardCardSummary(fullBoardData));
+        if (await applyBoardToLiveSyncSession(activeBoardId, fullBoardData, { skipBoardReplace: true, syncSaveBase: true })) {
+          console.log('[saveFullBoard] live sync path succeeded');
           if (pendingRefresh) {
             pendingRefresh = false;
             await flushPendingLiveSyncUpdates({ refreshSidebar: true });
           }
+          saveSucceeded = true;
           break;
         }
         var baseBoardData = getBoardSaveBase(fullBoardData);
-        var result = baseBoardData
-          ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
-          : await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+        if (baseBoardData) {
+          traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against save base', activeBoardId, 'local', fullBoardData, 'saveBase', baseBoardData);
+        }
+        if (baseBoardData && hasBoardIdentityMismatch(fullBoardData, baseBoardData)) {
+          traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match its save base', {
+            boardId: activeBoardId,
+            local: getBoardCardIdentityStats(fullBoardData, baseBoardData),
+            incomingSummary: summarizeBoardHierarchy(fullBoardData),
+            baseSummary: summarizeBoardHierarchy(baseBoardData)
+          });
+          var baseMismatchCrashsave = await writeBoardCrashsave('identity-mismatch-save-base', fullBoardData, {
+            baseSummary: summarizeBoardHierarchy(baseBoardData)
+          });
+          showNotification(
+            baseMismatchCrashsave && baseMismatchCrashsave.filename
+              ? ('Save blocked. Recovery copy written: ' + baseMismatchCrashsave.filename)
+              : 'Save blocked and crashsave failed. The local draft remains open in the app.'
+          );
+          return false;
+        }
+        console.log('[saveFullBoard] REST path, has_base=' + !!baseBoardData + (baseBoardData ? ' base=' + boardCardSummary(baseBoardData) : ''));
+        var result;
+        try {
+          result = baseBoardData
+            ? await LexeraApi.saveBoardWithBase(activeBoardId, baseBoardData, fullBoardData)
+            : await LexeraApi.saveBoard(activeBoardId, fullBoardData);
+        } catch (err) {
+          if (err && err.status === 409) {
+            traceFrontendAction('warn', 'board.save.conflict', 'Save blocked by external conflicting changes', {
+              boardId: activeBoardId,
+              hasBase: !!baseBoardData,
+              error: err && err.message ? err.message : String(err)
+            });
+            if (baseBoardData) {
+              try {
+                var conflictResult = await LexeraApi.rebaseBoardWithBase(activeBoardId, baseBoardData, fullBoardData);
+                if (conflictResult && conflictResult.hasConflicts) {
+                  pendingExternalRebaseConflict = {
+                    result: conflictResult,
+                    savedAt: Date.now()
+                  };
+                  showExternalRebaseConflictDialog(conflictResult);
+                  return false;
+                }
+              } catch (rebaseErr) {
+                logFrontendIssue('error', 'board.save.conflict', 'Failed to fetch rebase preview after conflict', rebaseErr);
+              }
+            }
+            showNotification('Save blocked: the board changed externally and needs to be reloaded or rebased before saving.');
+            return false;
+          }
+          throw err;
+        }
 
         // Never replace fullBoardData — only update the save base.
         var savedBoard = result && result.board ? result.board : null;
         if (savedBoard) {
           ensureBoardRowsForMutation(savedBoard, getMutationBoardTitle(activeBoardId, savedBoard));
           setBoardSaveBase(fullBoardData, savedBoard);
+          pendingExternalRebaseConflict = null;
         } else {
           setBoardSaveBase(fullBoardData, fullBoardData);
         }
         if (activeBoardData && result && typeof result.version === 'number') {
           activeBoardData.version = result.version;
         }
-        // Track generation for staleness detection
+        if (activeBoardData && result && result.revision) {
+          activeBoardData.revision = result.revision;
+        }
         if (result && typeof result.generation === 'number') {
           _lastLoadedGeneration = result.generation;
         }
+        _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
 
         try {
           await reopenLiveSyncSession(activeBoardId);
@@ -5231,16 +5845,29 @@ const LexeraDashboard = (function () {
         } else if (result && result.merged && result.autoMerged > 0) {
           showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
         }
+        saveSucceeded = true;
       } while (_savePending);
+      return saveSucceeded;
+    } catch (err) {
+      var failedSaveCrashsave = await writeBoardCrashsave('save-exception', fullBoardData, {
+        error: err && err.message ? err.message : String(err)
+      });
+      showNotification(
+        failedSaveCrashsave && failedSaveCrashsave.filename
+          ? ('Save failed. Recovery copy written: ' + failedSaveCrashsave.filename)
+          : 'Save failed. The local draft remains open, but crashsave could not be written.'
+      );
+      throw err;
     } finally {
       _saveInFlight = false;
       hideSaving();
     }
   }
 
-  // Generation tracking: the last generation number received from the backend
-  // (set on load and save). Used to ignore stale SSE file-change events.
+  // Generation is kept for diagnostics only; backend-computed revision is the
+  // authoritative freshness token for external file changes.
   var _lastLoadedGeneration = null;
+  var _lastLoadedRevision = null;
 
   // Board dirty state: tracks whether fullBoardData has unsaved changes.
   var _boardDirty = false;
@@ -5256,6 +5883,8 @@ const LexeraDashboard = (function () {
 
   function clearBoardDirty() {
     _boardDirty = false;
+    pendingExternalRebaseConflict = null;
+    clearLocalBoardDraft(activeBoardId);
     if ($savingIndicator) {
       $savingIndicator.classList.remove('dirty');
     }
@@ -5292,6 +5921,7 @@ const LexeraDashboard = (function () {
     }
     scheduleDashboardRefresh(80);
     markBoardDirty();
+    saveLocalBoardDraft(activeBoardId, fullBoardData);
     traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
       boardId: activeBoardId || null,
       refreshMainView: !!options.refreshMainView,
@@ -5299,6 +5929,16 @@ const LexeraDashboard = (function () {
       skipRender: !!options.skipRender,
       summaryAfter: summarizeBoardHierarchy(fullBoardData)
     });
+    if (activeBoardId && fullBoardData) {
+      var session = getLiveSyncSession(activeBoardId);
+      if (session && session.board) {
+        traceBoardIdentityPair('info', 'board.persist.identity', 'Identity comparison after board mutation against live sync session', activeBoardId, 'local', fullBoardData, 'session', session.board);
+      }
+      var saveBase = getBoardSaveBase(fullBoardData);
+      if (saveBase) {
+        traceBoardIdentityPair('info', 'board.persist.identity', 'Identity comparison after board mutation against save base', activeBoardId, 'local', fullBoardData, 'saveBase', saveBase);
+      }
+    }
     return true;
   }
 
@@ -5426,21 +6066,67 @@ const LexeraDashboard = (function () {
       '</div>' +
       '<div class="dialog-actions">' +
         '<button class="btn-small btn-cancel" data-conflict-action="reload">Load Server Version</button>' +
-        '<button class="btn-small btn-primary" data-conflict-action="keep">Keep My Version</button>' +
+        '<button class="btn-small btn-primary" data-conflict-action="overwrite">Overwrite With My Version</button>' +
       '</div>';
 
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
-    dialog.addEventListener('click', function (e) {
+    dialog.addEventListener('click', async function (e) {
       var btn = e.target.closest('[data-conflict-action]');
       if (!btn) return;
       var action = btn.getAttribute('data-conflict-action');
       overlay.remove();
       if (action === 'reload') {
         loadBoard(activeBoardId);
+        return;
       }
-      // 'keep' — do nothing, our version was already saved by the backend
+      if (action === 'overwrite') {
+        await overwriteBoardWithLocalDraft('merge-conflict-dialog');
+      }
+    });
+  }
+
+  function showExternalRebaseConflictDialog(result) {
+    if (!result) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    dialog.innerHTML =
+      '<div class="dialog-title">External Changes Need Resolution</div>' +
+      '<div style="margin-bottom:12px;color:var(--text-primary);font-size:13px;line-height:1.45">' +
+        'The board changed on disk while you had unsaved edits.' +
+        '<br>Your local draft was preserved and saving is blocked until you resolve this.' +
+        (result.autoMerged > 0 ? '<br>' + result.autoMerged + ' change(s) were merged automatically before conflicts were found.' : '') +
+        '<br><strong>' + (result.conflicts || 0) + ' conflict(s)</strong> still need manual resolution.' +
+        '<br>Non-conflicting changes were already merged automatically. The remaining conflict is an overlapping edit that still needs a decision.' +
+      '</div>' +
+      '<div class="dialog-actions">' +
+        '<button class="btn-small btn-cancel" data-rebase-action="keep">Keep Local Draft</button>' +
+        '<button class="btn-small btn-cancel" data-rebase-action="reload">Load Disk Version</button>' +
+        '<button class="btn-small btn-primary" data-rebase-action="overwrite">Overwrite Disk With Local Draft</button>' +
+      '</div>';
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    dialog.addEventListener('click', async function (e) {
+      var btn = e.target.closest('[data-rebase-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-rebase-action');
+      overlay.remove();
+      if (action === 'reload') {
+        pendingExternalRebaseConflict = null;
+        loadBoard(activeBoardId);
+        return;
+      }
+      if (action === 'overwrite') {
+        await overwriteBoardWithLocalDraft('external-rebase-conflict-dialog');
+        return;
+      }
+      pendingExternalRebaseConflict = pendingExternalRebaseConflict || { result: result, savedAt: Date.now() };
+      showNotification('Local draft kept. Resolve the external change before saving.');
     });
   }
 
@@ -6525,11 +7211,10 @@ const LexeraDashboard = (function () {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (fullBoardData && activeBoardId) {
-        saveFullBoard().then(function () {
-          clearBoardDirty();
+        saveFullBoard().then(function (saved) {
+          if (saved) clearBoardDirty();
         }).catch(function (err) {
-          logFrontendIssue('warn', 'keyboard.save', 'Failed to save board — your changes are still in memory, try Cmd+S again', err);
-          showNotification('Save failed. Your changes are preserved — try saving again.');
+          logFrontendIssue('warn', 'keyboard.save', 'Save shortcut failed after saveFullBoard already handled recovery', err);
         });
       }
       return;

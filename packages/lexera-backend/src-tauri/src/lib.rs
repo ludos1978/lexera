@@ -228,11 +228,23 @@ pub fn run() {
                                             _ => {}
                                         }
 
-                                        // Enrich MainFileChanged events with generation after reload
+                                        // Enrich MainFileChanged events with authoritative
+                                        // backend-computed freshness data after reload.
                                         let event = match event {
                                             BoardChangeEvent::MainFileChanged { board_id, .. } => {
+                                                let revision =
+                                                    storage_for_events.get_board_revision_token(&board_id);
+                                                let generation =
+                                                    storage_for_events.get_board_generation(&board_id);
+                                                log::info!(
+                                                    "[lexera.events] Forwarding MainFileChanged board={} revision={:?} generation={:?}",
+                                                    board_id,
+                                                    revision,
+                                                    generation
+                                                );
                                                 BoardChangeEvent::MainFileChanged {
-                                                    generation: storage_for_events.get_board_generation(&board_id),
+                                                    revision,
+                                                    generation,
                                                     writer_id: None,
                                                     board_id,
                                                 }

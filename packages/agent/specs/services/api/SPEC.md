@@ -2,7 +2,7 @@
 
 **Status**: Base-plan critical for v2  
 **V2 Target**: `packages/lexera-backend`  
-**Related**: `sync/SPEC.md`, `boardregistry/SPEC.md`, `keybinding/SPEC.md`, `notification/SPEC.md`
+**Related**: `sync/SPEC.md`, `save/SPEC.md`, `boardregistry/SPEC.md`, `keybinding/SPEC.md`, `notification/SPEC.md`
 
 ---
 
@@ -189,6 +189,58 @@ Response 200:
   "savedAt": "ISO-8601"
 }
 ```
+
+### Write Crashsave
+
+```
+POST /api/boards/{id}/crashsave
+
+Request:
+{
+  "board": KanbanBoard,
+  "reason"?: "string"
+}
+
+Response 201:
+{
+  "success": true,
+  "path": "string",
+  "filename": "string",
+  "savedAt": "ISO-8601"
+}
+```
+
+This endpoint exists for recovery paths where canonical save cannot complete safely but the current draft must still be preserved durably.
+
+### Server-Sent Events
+
+```
+GET /api/events
+```
+
+Main file-change events must carry a backend-computed revision token:
+
+```typescript
+type MainFileChanged = {
+  type: "MainFileChanged";
+  board_id: string;
+  revision?: string;
+  generation?: number;
+  writer_id?: string;
+}
+```
+
+Include change events must identify the affected boards explicitly:
+
+```typescript
+type IncludeFileChanged = {
+  type: "IncludeFileChanged";
+  board_ids: string[];
+  include_path: string;
+}
+```
+
+Frontend freshness checks must key off `revision`, not inline markdown metadata. `generation` remains diagnostic only.
 
 ---
 

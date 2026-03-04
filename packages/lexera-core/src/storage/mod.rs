@@ -2,6 +2,7 @@ pub mod backup;
 pub mod local;
 pub mod registry;
 
+use self::backup::CrashsaveEntry;
 use crate::merge::merge::MergeResult;
 use crate::search::SearchOptions;
 use crate::types::{BoardInfo, KanbanBoard, SearchResult};
@@ -59,5 +60,6 @@ pub enum StorageError {
         board_id: String,
         conflicts: usize,
         merge_result: MergeResult,
+        crashsave: Option<CrashsaveEntry>,
     },
 }

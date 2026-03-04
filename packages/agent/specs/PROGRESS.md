@@ -14,6 +14,7 @@ This file tracks the simplified v2 planning view with implementation priorities 
 | Board model (`lexera-core`) | ✅ Baseline | P0 | - |
 | Markdown parser (`lexera-core`) | ✅ Baseline | P0 | - |
 | Storage layer (`lexera-core`) | ✅ Baseline | P0 | - |
+| Save coordinator & recovery (`lexera-core` + `lexera-backend` + `lexera-kanban`) | 🚧 In Progress | P0 | Storage layer |
 | Backend API - boards (`lexera-backend`) | 📋 Spec'd | P0 | - |
 | Backend API - cards (`lexera-backend`) | 📋 Spec'd | P0 | - |
 | Kanban board render (`lexera-kanban`) | ✅ Baseline | P0 | - |
@@ -49,6 +50,7 @@ This file tracks the simplified v2 planning view with implementation priorities 
 |-----------|--------|----------|------------|
 | Content plugin system | 📋 Spec'd | P2 | Phase 2 |
 | Live sync (WebSocket) | 🔜 Planned | P3 | Phase 3 |
+| Save coordinator and recovery | 🚧 In Progress | P0 | Phase 1 |
 | Quick capture | ✅ Baseline | P2 | Phase 1 |
 | iOS capture client | 🔜 Planned | P3 | Backend API |
 
@@ -73,6 +75,7 @@ This file tracks the simplified v2 planning view with implementation priorities 
 | Board model and markdown I/O | ✅ Baseline | `packages/lexera-core` | Built from v1 parser/types behavior, but owned by Rust in v2 |
 | Storage, watcher, merge, and search | ✅ Baseline | `packages/lexera-core` | Replaces extension-side file/state handling with atomic, core-owned logic |
 | Backend runtime and API | 📋 Spec'd | `packages/lexera-backend` | API surface defined, ready for implementation |
+| Save coordinator and recovery | 🚧 In Progress | `packages/lexera-core` + `packages/lexera-backend` + `packages/lexera-kanban` | Durable drafts, revisioned commit flow, and crashsave fallback |
 | Live sync and collaboration | 🔜 Planned | `packages/lexera-backend` + `packages/lexera-core` | Sync spec complete, live-sync needs design |
 | Kanban UI | ✅ Baseline | `packages/lexera-kanban` | Port v1 board/editor UX selectively, but keep the client thinner |
 | Keybinding system | ✅ Baseline | `packages/lexera-backend` + `packages/lexera-kanban` | Native/global shortcuts in backend, in-app shortcuts in client |
@@ -125,6 +128,7 @@ This file tracks the simplified v2 planning view with implementation priorities 
 | `services/notification` | ✅ | ✅ | - | ✅ |
 | `services/boardregistry` | ✅ | ✅ | ✅ | ✅ |
 | `services/api` | ✅ | ✅ | ✅ | ✅ |
+| `services/save` | 🚧 | ✅ | ✅ | ✅ |
 | `plugins/content` | ✅ | ✅ | - | ✅ |
 | `plugins/registry` | ✅ | ✅ | - | ✅ |
 | `sync` | ✅ | ✅ | ✅ | ✅ |
@@ -133,8 +137,9 @@ This file tracks the simplified v2 planning view with implementation priorities 
 
 ## Next Actions
 
-1. **Implement Backend API** - Start with board/card CRUD endpoints
-2. **Port Core Parser to Rust** - Markdown parsing in `lexera-core`
-3. **Wire Kanban to Backend** - Replace direct file access with API calls
-4. **Implement Sync State Machine** - Offline queue + conflict detection
-5. **Build Content Plugin Registry** - Unified manifest system
+1. **Finish save coordinator phase 1** - Crashsave fallback, durable-draft contract, and recovery UX
+2. **Finish external revision freshness hardening** - watcher/SSE events must use backend-computed revision tokens and include-targeted reload/rebase
+3. **Implement Backend API** - Start with board/card CRUD endpoints
+4. **Port Core Parser to Rust** - Markdown parsing in `lexera-core`
+5. **Wire Kanban to Backend** - Replace direct file access with API calls
+6. **Implement Sync State Machine** - Offline queue + conflict detection

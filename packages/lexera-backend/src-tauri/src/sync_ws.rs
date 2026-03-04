@@ -311,6 +311,13 @@ async fn handle_sync_session(
                         Err(_) => continue,
                     };
 
+                    log::info!(
+                        "[sync_ws] ClientUpdate from peer {} for board {}, delta_bytes={}",
+                        peer_id,
+                        board_id_read,
+                        bytes.len()
+                    );
+
                     // Import into storage CRDT
                     if let Err(e) = state_read
                         .storage
@@ -336,7 +343,8 @@ async fn handle_sync_session(
                     let _ = state_read.event_tx.send(
                         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
                             board_id: board_id_read.clone(),
-                            generation: None,
+                            revision: state_read.storage.get_board_revision_token(&board_id_read),
+                            generation: state_read.storage.get_board_generation(&board_id_read),
                             writer_id: None,
                         },
                     );

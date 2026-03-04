@@ -20,6 +20,7 @@ use crate::include::resolver::IncludeMap;
 use crate::include::slide_parser;
 use crate::include::syntax;
 use crate::merge::card_identity;
+use crate::merge::diff::snapshot_board;
 use crate::merge::merge as card_merge;
 use crate::parser;
 use crate::search::{SearchCardMeta, SearchDocument, SearchEngine, SearchOptions};
@@ -54,6 +55,32 @@ impl Clone for BoardState {
             crdt: None, // CRDT is not cloned — reconstructed when needed
         }
     }
+}
+
+fn board_card_summary(board: &KanbanBoard) -> String {
+    let cols: Vec<String> = board
+        .all_columns()
+        .iter()
+        .map(|col| {
+            let kids: Vec<&str> = col
+                .cards
+                .iter()
+                .map(|c| c.kid.as_deref().unwrap_or("??"))
+                .collect();
+            format!("[{}:{}]", col.title, kids.join(","))
+        })
+        .collect();
+    cols.join(" ")
+}
+
+fn board_kid_sample(board: &KanbanBoard, limit: usize) -> Vec<String> {
+    board
+        .all_columns()
+        .iter()
+        .flat_map(|column| column.cards.iter())
+        .filter_map(|card| card.kid.clone())
+        .take(limit)
+        .collect()
 }
 
 #[derive(Clone, Copy)]
@@ -207,16 +234,106 @@ impl LocalStorage {
     }
 
     fn restore_include_sources(target: &mut KanbanBoard, source: &KanbanBoard) {
-        let source_cols = source.all_columns();
-        let mut target_cols = target.all_columns_mut();
-
-        if target_cols.len() != source_cols.len() {
-            return;
+        let mut include_by_column_id: HashMap<String, IncludeSource> = HashMap::new();
+        for source_col in source.all_columns() {
+            if let Some(include_source) = source_col.include_source.clone() {
+                include_by_column_id.insert(source_col.id.clone(), include_source);
+            }
         }
 
-        for (target_col, source_col) in target_cols.iter_mut().zip(source_cols.iter()) {
-            target_col.include_source = source_col.include_source.clone();
+        for target_col in target.all_columns_mut() {
+            if let Some(include_source) = include_by_column_id.get(&target_col.id) {
+                target_col.include_source = Some(include_source.clone());
+            }
         }
+    }
+
+    fn card_id_map(board: &KanbanBoard) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        for column in board.all_columns() {
+            for card in &column.cards {
+                if let Some(kid) = card.kid.as_ref() {
+                    if !kid.is_empty() && !card.id.is_empty() {
+                        map.insert(kid.clone(), card.id.clone());
+                    }
+                }
+            }
+        }
+        map
+    }
+
+    fn restore_card_ids(board: &mut KanbanBoard, id_map: &HashMap<String, String>) {
+        for column in board.all_columns_mut() {
+            for card in &mut column.cards {
+                let Some(kid) = card.kid.as_ref() else {
+                    continue;
+                };
+                if let Some(id) = id_map.get(kid) {
+                    card.id = id.clone();
+                }
+            }
+        }
+    }
+
+    fn board_visible_signature(board: &KanbanBoard) -> String {
+        let mut normalized = Self::board_without_generation_meta(board);
+        normalized.reconcile_format_hint();
+        parser::generate_markdown(&normalized)
+    }
+
+    fn boards_match_visible_content(a: &KanbanBoard, b: &KanbanBoard) -> bool {
+        Self::board_visible_signature(a) == Self::board_visible_signature(b)
+    }
+
+    fn board_from_crdt_if_semantically_equal(
+        board: &KanbanBoard,
+        crdt: &CrdtStore,
+        board_dir: &Path,
+    ) -> Option<KanbanBoard> {
+        let normalized_board = Self::normalize_board_for_write(board, board_dir);
+        let mut crdt_board = Self::normalize_board_for_write(&crdt.to_board(), board_dir);
+        Self::restore_include_sources(&mut crdt_board, &normalized_board);
+        if !Self::boards_match_visible_content(&normalized_board, &crdt_board) {
+            log::info!(
+                target: "lexera.storage.read_board",
+                "CRDT snapshot rejected after normalization visible_equal=false state_kids={:?} snapshot_kids={:?} state={} snapshot={}",
+                board_kid_sample(&normalized_board, 6),
+                board_kid_sample(&crdt_board, 6),
+                board_card_summary(&normalized_board),
+                board_card_summary(&crdt_board)
+            );
+            return None;
+        }
+
+        let id_map = Self::card_id_map(&normalized_board);
+        Self::restore_card_ids(&mut crdt_board, &id_map);
+        crdt_board.yaml_header = board.yaml_header.clone();
+        crdt_board.kanban_footer = board.kanban_footer.clone();
+        crdt_board.board_settings = board.board_settings.clone();
+        crdt_board.generation_meta = board.generation_meta.clone();
+        crdt_board.format_hint = board.format_hint;
+        crdt_board.reconcile_format_hint();
+        Some(crdt_board)
+    }
+
+    fn align_loaded_board_with_crdt(
+        board_id: &str,
+        board: &KanbanBoard,
+        crdt: CrdtStore,
+        board_dir: &Path,
+    ) -> Result<(KanbanBoard, CrdtStore), StorageError> {
+        if let Some(canonical_board) =
+            Self::board_from_crdt_if_semantically_equal(board, &crdt, board_dir)
+        {
+            return Ok((canonical_board, crdt));
+        }
+
+        log::warn!(
+            "[lexera.storage.crdt] Snapshot diverged from markdown for board {}, rebuilding CRDT from markdown",
+            board_id
+        );
+        let rebuilt = CrdtStore::from_board(board)?;
+        Ok((board.clone(), rebuilt))
     }
 
     fn finalize_merge_result(
@@ -230,23 +347,419 @@ impl LocalStorage {
         Some(result)
     }
 
-    fn save_conflict_backup(
+    fn describe_card_position(snapshot: &crate::merge::diff::CardSnapshot) -> String {
+        format!("{}@{}", snapshot.column_title, snapshot.position)
+    }
+
+    fn push_card_conflict(
+        conflicts: &mut Vec<card_merge::CardConflict>,
+        card_id: &str,
+        column_title: &str,
+        field: card_merge::ConflictField,
+        base_value: String,
+        theirs_value: String,
+        ours_value: String,
+    ) {
+        conflicts.push(card_merge::CardConflict {
+            card_id: card_id.to_string(),
+            column_title: column_title.to_string(),
+            field,
+            base_value,
+            theirs_value,
+            ours_value,
+        });
+    }
+
+    fn detect_card_conflicts(
+        base: &KanbanBoard,
+        current: &KanbanBoard,
+        incoming: &KanbanBoard,
+    ) -> Vec<card_merge::CardConflict> {
+        let base_snap = snapshot_board(base);
+        let current_snap = snapshot_board(current);
+        let incoming_snap = snapshot_board(incoming);
+
+        let mut kids: HashSet<String> = HashSet::new();
+        kids.extend(base_snap.keys().cloned());
+        kids.extend(current_snap.keys().cloned());
+        kids.extend(incoming_snap.keys().cloned());
+
+        let mut conflicts = Vec::new();
+
+        for kid in kids {
+            let base_card = base_snap.get(&kid);
+            let current_card = current_snap.get(&kid);
+            let incoming_card = incoming_snap.get(&kid);
+
+            let column_title = incoming_card
+                .or(current_card)
+                .or(base_card)
+                .map(|card| card.column_title.as_str())
+                .unwrap_or("");
+
+            match (base_card, current_card, incoming_card) {
+                (Some(base_card), Some(current_card), Some(incoming_card)) => {
+                    if current_card.content != base_card.content
+                        && incoming_card.content != base_card.content
+                        && current_card.content != incoming_card.content
+                    {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Content,
+                            base_card.content.clone(),
+                            current_card.content.clone(),
+                            incoming_card.content.clone(),
+                        );
+                    }
+
+                    if current_card.checked != base_card.checked
+                        && incoming_card.checked != base_card.checked
+                        && current_card.checked != incoming_card.checked
+                    {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Checked,
+                            base_card.checked.to_string(),
+                            current_card.checked.to_string(),
+                            incoming_card.checked.to_string(),
+                        );
+                    }
+
+                    let current_position_changed = current_card.column_id != base_card.column_id
+                        || current_card.position != base_card.position;
+                    let incoming_position_changed = incoming_card.column_id != base_card.column_id
+                        || incoming_card.position != base_card.position;
+                    if current_position_changed
+                        && incoming_position_changed
+                        && (current_card.column_id != incoming_card.column_id
+                            || current_card.position != incoming_card.position)
+                    {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Position,
+                            Self::describe_card_position(base_card),
+                            Self::describe_card_position(current_card),
+                            Self::describe_card_position(incoming_card),
+                        );
+                    }
+                }
+                (Some(base_card), None, Some(incoming_card)) => {
+                    if incoming_card.content != base_card.content {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Content,
+                            base_card.content.clone(),
+                            "<deleted>".to_string(),
+                            incoming_card.content.clone(),
+                        );
+                    }
+                    if incoming_card.checked != base_card.checked {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Checked,
+                            base_card.checked.to_string(),
+                            "<deleted>".to_string(),
+                            incoming_card.checked.to_string(),
+                        );
+                    }
+                    if incoming_card.column_id != base_card.column_id
+                        || incoming_card.position != base_card.position
+                    {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Position,
+                            Self::describe_card_position(base_card),
+                            "<deleted>".to_string(),
+                            Self::describe_card_position(incoming_card),
+                        );
+                    }
+                }
+                (Some(base_card), Some(current_card), None) => {
+                    if current_card.content != base_card.content {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Content,
+                            base_card.content.clone(),
+                            current_card.content.clone(),
+                            "<deleted>".to_string(),
+                        );
+                    }
+                    if current_card.checked != base_card.checked {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Checked,
+                            base_card.checked.to_string(),
+                            current_card.checked.to_string(),
+                            "<deleted>".to_string(),
+                        );
+                    }
+                    if current_card.column_id != base_card.column_id
+                        || current_card.position != base_card.position
+                    {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Position,
+                            Self::describe_card_position(base_card),
+                            Self::describe_card_position(current_card),
+                            "<deleted>".to_string(),
+                        );
+                    }
+                }
+                (None, Some(current_card), Some(incoming_card)) => {
+                    if current_card.content != incoming_card.content {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Content,
+                            "<added>".to_string(),
+                            current_card.content.clone(),
+                            incoming_card.content.clone(),
+                        );
+                    }
+                    if current_card.checked != incoming_card.checked {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Checked,
+                            "<added>".to_string(),
+                            current_card.checked.to_string(),
+                            incoming_card.checked.to_string(),
+                        );
+                    }
+                    if current_card.column_id != incoming_card.column_id
+                        || current_card.position != incoming_card.position
+                    {
+                        Self::push_card_conflict(
+                            &mut conflicts,
+                            &kid,
+                            column_title,
+                            card_merge::ConflictField::Position,
+                            "<added>".to_string(),
+                            Self::describe_card_position(current_card),
+                            Self::describe_card_position(incoming_card),
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn field_rank(field: &card_merge::ConflictField) -> u8 {
+            match field {
+                card_merge::ConflictField::Content => 0,
+                card_merge::ConflictField::Checked => 1,
+                card_merge::ConflictField::Position => 2,
+            }
+        }
+
+        conflicts.sort_by(|a, b| {
+            a.card_id
+                .cmp(&b.card_id)
+                .then_with(|| field_rank(&a.field).cmp(&field_rank(&b.field)))
+        });
+        conflicts
+    }
+
+    fn merge_boards_with_crdt(
+        base: &KanbanBoard,
+        current: &KanbanBoard,
+        incoming: &KanbanBoard,
+        board_dir: &Path,
+    ) -> Result<(KanbanBoard, CrdtStore), StorageError> {
+        let base_store = CrdtStore::from_board(base)?;
+        let snapshot = base_store.save()?;
+
+        let mut current_store = CrdtStore::load(&snapshot)?;
+        current_store.apply_board(current, base)?;
+
+        let mut incoming_store = CrdtStore::load(&snapshot)?;
+        incoming_store.set_peer_id(2)?;
+        incoming_store.apply_board(incoming, base)?;
+
+        let current_vv = current_store.oplog_vv();
+        let incoming_delta = incoming_store.export_updates_since(&current_vv)?;
+        current_store.import_updates(&incoming_delta)?;
+
+        let mut merged_board = current_store.to_board();
+        merged_board = Self::normalize_board_for_write(&merged_board, board_dir);
+        Self::restore_include_sources(&mut merged_board, current);
+        Self::restore_include_sources(&mut merged_board, incoming);
+        Ok((merged_board, current_store))
+    }
+
+    fn write_crashsave_for_file(
         &self,
         file_path: &Path,
         board: &KanbanBoard,
-    ) -> Result<(), StorageError> {
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let backup_path = file_path.with_extension(format!("conflict-{}.md", timestamp));
-        let user_markdown = parser::generate_markdown(board);
-        Self::atomic_write(&backup_path, &user_markdown)?;
+        reason: &str,
+    ) -> Result<super::backup::CrashsaveEntry, StorageError> {
+        let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let normalized = Self::normalize_board_for_write(board, &board_dir);
+        let user_markdown = parser::generate_markdown(&normalized);
+        let crashsave = super::backup::BackupManager::create_crashsave(file_path, &user_markdown)?;
         log::warn!(
-            "[lexera.storage.merge] Conflict backup saved to {:?}",
-            backup_path
+            target: "lexera.storage.crashsave",
+            "Saved crashsave for reason={} to {:?}",
+            reason,
+            crashsave.path
         );
+        Ok(crashsave)
+    }
+
+    fn board_without_generation_meta(board: &KanbanBoard) -> KanbanBoard {
+        let mut normalized = board.clone();
+        normalized.generation_meta = None;
+        normalized
+    }
+
+    fn resolved_hash(board: &KanbanBoard) -> String {
+        let board = Self::board_without_generation_meta(board);
+        let serialized =
+            serde_json::to_string(&board).unwrap_or_else(|_| parser::generate_markdown(&board));
+        Self::content_hash(&serialized)
+    }
+
+    fn dependency_hash(board: &KanbanBoard) -> Option<String> {
+        let mut fingerprint_parts = Vec::new();
+        for column in board.all_columns() {
+            let Some(include_source) = column.include_source.as_ref() else {
+                continue;
+            };
+            fingerprint_parts.push(include_source.raw_path.clone());
+            fingerprint_parts.push(slide_parser::generate_slides(&column.cards));
+        }
+        if fingerprint_parts.is_empty() {
+            None
+        } else {
+            Some(Self::content_hash(
+                &fingerprint_parts.join("\n--lexera-include--\n"),
+            ))
+        }
+    }
+
+    fn current_generation(&self, board_id: &str) -> u64 {
+        self.boards
+            .read()
+            .ok()
+            .and_then(|b| b.get(board_id).map(|s| s.generation))
+            .unwrap_or(0)
+    }
+
+    fn next_generation_meta(&self, board_id: &str, board: &KanbanBoard) -> GenerationMeta {
+        let next_generation = self.current_generation(board_id) + 1;
+        let preview_markdown = parser::generate_markdown(board);
+        GenerationMeta {
+            generation: Some(next_generation),
+            content_hash: Some(parser::body_hash(&preview_markdown)),
+            dependency_hash: Self::dependency_hash(board),
+            resolved_hash: Some(Self::resolved_hash(board)),
+            writer_id: Some(self.writer_id.clone()),
+        }
+    }
+
+    fn commit_board_state(
+        &self,
+        board_id: &str,
+        file_path: &Path,
+        mut board_to_write: KanbanBoard,
+        mut crdt: Option<CrdtStore>,
+        create_backup: bool,
+    ) -> Result<(), StorageError> {
+        board_to_write.generation_meta = Some(self.next_generation_meta(board_id, &board_to_write));
+        if let Some(ref mut c) = crdt {
+            c.set_metadata(
+                board_to_write.yaml_header.clone(),
+                board_to_write.kanban_footer.clone(),
+                board_to_write.board_settings.clone(),
+                board_to_write.generation_meta.clone(),
+            );
+        }
+
+        if create_backup && file_path.exists() {
+            let backup_mgr = super::backup::BackupManager::new();
+            if let Err(e) = backup_mgr.create_backup(file_path) {
+                log::warn!(
+                    "[lexera.storage.backup] Failed to create backup for board {}: {}",
+                    board_id,
+                    e
+                );
+            }
+        }
+
+        let markdown = self.persist_board_files(board_id, file_path, &board_to_write)?;
+
+        if create_backup && file_path.exists() {
+            let backup_mgr = super::backup::BackupManager::new();
+            if let Err(e) = backup_mgr.rotate_backups(file_path) {
+                log::warn!(
+                    "[lexera.storage.backup] Failed to rotate backups for board {}: {}",
+                    board_id,
+                    e
+                );
+            }
+        }
+
+        if let Some(ref c) = crdt {
+            let crdt_path = file_path.with_extension("md.crdt");
+            let _ = c.save_to_file(&crdt_path);
+        }
+
+        let metadata = fs::metadata(file_path)?;
+        let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
+        let generation = board_to_write
+            .generation_meta
+            .as_ref()
+            .and_then(|m| m.generation)
+            .unwrap_or(0);
+
+        let state = BoardState {
+            file_path: file_path.to_path_buf(),
+            board: board_to_write,
+            last_modified,
+            content_hash: Self::content_hash(&markdown),
+            version: self.next_version(),
+            generation,
+            crdt,
+        };
+
+        self.boards
+            .write()
+            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
+            .insert(board_id.to_string(), state);
+
         Ok(())
+    }
+
+    pub fn create_crashsave(
+        &self,
+        board_id: &str,
+        board: &KanbanBoard,
+        reason: &str,
+    ) -> Result<super::backup::CrashsaveEntry, StorageError> {
+        let file_path = self
+            .get_board_path(board_id)
+            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+        self.write_crashsave_for_file(&file_path, board, reason)
     }
 
     fn write_board_internal(
@@ -268,198 +781,185 @@ impl LocalStorage {
         let normalized_base =
             base_board.map(|base| Self::normalize_board_for_write(base, &board_dir));
 
-        // Take the CRDT out for mutation
-        let mut crdt = {
-            let mut boards = self
-                .boards
-                .write()
-                .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
-            boards.get_mut(board_id).and_then(|s| s.crdt.take())
-        };
-
         // Read current disk content to check for conflicts
         let stored_hash = self.get_board_content_hash(board_id).unwrap_or_default();
         let disk_content = fs::read_to_string(&file_path)?;
         let disk_hash = Self::content_hash(&disk_content);
+        let disk_diverged = disk_hash != stored_hash && !stored_hash.is_empty();
 
-        let (mut board_to_write, merge_result) = if let Some(ref mut c) = crdt {
-            let mut current = Self::normalize_board_for_write(&c.to_board(), &board_dir);
-            if Self::board_has_missing_kids(&current) {
-                log::info!(
-                    "[lexera.storage.crdt] Missing card identity on board {}, rebuilding CRDT",
+        let (stored_board, crdt_board, has_crdt) = {
+            let boards = self
+                .boards
+                .read()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?;
+            let state = boards
+                .get(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            (
+                state.board.clone(),
+                state.crdt.as_ref().map(|c| c.to_board()),
+                state.crdt.is_some(),
+            )
+        };
+
+        log::info!(
+            "[lexera.storage.write] board={} has_crdt={} has_base={} disk_diverged={} incoming={}",
+            board_id,
+            has_crdt,
+            normalized_base.is_some(),
+            disk_diverged,
+            board_card_summary(&normalized_board)
+        );
+
+        let current = if disk_diverged {
+            Self::normalize_board_for_write(
+                &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
+                &board_dir,
+            )
+        } else if let Some(crdt_board) = crdt_board {
+            Self::normalize_board_for_write(&crdt_board, &board_dir)
+        } else {
+            Self::normalize_board_for_write(&stored_board, &board_dir)
+        };
+
+        let merge_base = normalized_base.clone().or_else(|| {
+            if disk_diverged {
+                Some(Self::normalize_board_for_write(&stored_board, &board_dir))
+            } else {
+                None
+            }
+        });
+
+        let (board_to_write, crdt_to_write, merge_result) = if let Some(base) = merge_base {
+            log::info!(
+                "[lexera.storage.write] board={} path=CRDT_BASE_REBASE base={} current={}",
+                board_id,
+                board_card_summary(&base),
+                board_card_summary(&current)
+            );
+
+            let conflicts = Self::detect_card_conflicts(&base, &current, &normalized_board);
+            if !conflicts.is_empty() {
+                let crashsave = match self.write_crashsave_for_file(
+                    &file_path,
+                    &normalized_board,
+                    "save-conflict",
+                ) {
+                    Ok(entry) => Some(entry),
+                    Err(error) => {
+                        log::error!(
+                            target: "lexera.storage.crashsave",
+                            "Failed to create crashsave for conflicted save on board {}: {}",
+                            board_id,
+                            error
+                        );
+                        None
+                    }
+                };
+                log::warn!(
+                    "[lexera.storage.merge] {} conflicts during CRDT save on board {}",
+                    conflicts.len(),
                     board_id
                 );
-                current = Self::ensure_board_card_kids(&current);
-                *c = crate::crdt::bridge::CrdtStore::from_board(&current)?;
+                return Err(StorageError::ConflictDetected {
+                    board_id: board_id.to_string(),
+                    conflicts: conflicts.len(),
+                    merge_result: card_merge::MergeResult {
+                        board: normalized_board.clone(),
+                        conflicts,
+                        auto_merged: 0,
+                    },
+                    crashsave,
+                });
             }
 
-            if let Some(ref base) = normalized_base {
-                let merge = card_merge::three_way_merge(base, &current, &normalized_board);
-                let desired_board = Self::normalize_board_for_write(&merge.board, &board_dir);
-                c.apply_board(&desired_board, &current)?;
-                let mut merged = c.to_board();
-                Self::restore_include_sources(&mut merged, &desired_board);
+            let (board_to_write, crdt) =
+                Self::merge_boards_with_crdt(&base, &current, &normalized_board, &board_dir)?;
+            log::info!(
+                "[lexera.storage.write] board={} crdt_merged_output={}",
+                board_id,
+                board_card_summary(&board_to_write)
+            );
+            (board_to_write, Some(crdt), None)
+        } else if has_crdt {
+            let mut crdt = {
+                let mut boards = self
+                    .boards
+                    .write()
+                    .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+                boards
+                    .get_mut(board_id)
+                    .and_then(|s| s.crdt.take())
+                    .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+            };
+            let mut current = current.clone();
 
-                if has_structural_mismatch(&merged, &desired_board) {
+            let direct_result: Result<(KanbanBoard, CrdtStore), StorageError> = (|| {
+                if Self::board_has_missing_kids(&current) {
                     log::info!(
-                        "[lexera.storage.crdt] Structural mismatch after base-aware merge on board {}, rebuilding CRDT",
+                        "[lexera.storage.crdt] Missing card identity on board {}, rebuilding CRDT",
                         board_id
                     );
-                    *c = crate::crdt::bridge::CrdtStore::from_board(&desired_board)?;
-                    let board_to_write = desired_board.clone();
-                    (
-                        board_to_write.clone(),
-                        Self::finalize_merge_result(merge, board_to_write),
-                    )
-                } else {
-                    let board_to_write = merged.clone();
-                    (
-                        board_to_write.clone(),
-                        Self::finalize_merge_result(merge, board_to_write),
-                    )
+                    current = Self::ensure_board_card_kids(&current);
+                    crdt = crate::crdt::bridge::CrdtStore::from_board(&current)?;
                 }
-            } else {
-                c.apply_board(&normalized_board, &current)?;
-                let mut merged = c.to_board();
+
+                log::info!(
+                    "[lexera.storage.write] board={} path=CRDT_DIRECT current={}",
+                    board_id,
+                    board_card_summary(&current)
+                );
+
+                crdt.apply_board(&normalized_board, &current)?;
+                let mut merged = Self::normalize_board_for_write(&crdt.to_board(), &board_dir);
+                Self::restore_include_sources(&mut merged, &current);
                 Self::restore_include_sources(&mut merged, &normalized_board);
+
+                log::info!(
+                    "[lexera.storage.write] board={} crdt_output={}",
+                    board_id,
+                    board_card_summary(&merged)
+                );
 
                 if has_structural_mismatch(&merged, &normalized_board) {
                     log::info!(
                         "[lexera.storage.crdt] Structural mismatch after CRDT merge on board {}, rebuilding CRDT",
                         board_id
                     );
-                    *c = crate::crdt::bridge::CrdtStore::from_board(&normalized_board)?;
-                    (normalized_board.clone(), None)
+                    Ok((
+                        normalized_board.clone(),
+                        crate::crdt::bridge::CrdtStore::from_board(&normalized_board)?,
+                    ))
                 } else {
-                    (merged, None)
+                    Ok((merged, crdt))
+                }
+            })();
+
+            match direct_result {
+                Ok((board_to_write, crdt)) => (board_to_write, Some(crdt), None),
+                Err(err) => {
+                    let replacement_crdt =
+                        crate::crdt::bridge::CrdtStore::from_board(&current).ok();
+                    if let Ok(mut boards) = self.boards.write() {
+                        if let Some(state) = boards.get_mut(board_id) {
+                            state.crdt = replacement_crdt;
+                        }
+                    }
+                    return Err(err);
                 }
             }
-        } else if let Some(ref base) = normalized_base {
-            let current = Self::normalize_board_for_write(
-                &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
-                &board_dir,
-            );
-            let merge = card_merge::three_way_merge(base, &current, &normalized_board);
-
-            if !merge.conflicts.is_empty() {
-                self.save_conflict_backup(&file_path, &normalized_board)?;
-                log::warn!(
-                    "[lexera.storage.merge] {} conflicts during base-aware save on board {}",
-                    merge.conflicts.len(),
-                    board_id
-                );
-            }
-
-            let board_to_write = Self::normalize_board_for_write(&merge.board, &board_dir);
-            (
-                board_to_write.clone(),
-                Self::finalize_merge_result(merge, board_to_write),
-            )
-        } else if disk_hash != stored_hash && !stored_hash.is_empty() {
-            // Legacy fallback: three-way merge (no CRDT available)
-            log::info!(
-                "[lexera.storage.merge] Conflict detected on board {}, attempting merge",
-                board_id
-            );
-
-            let base_board = self
-                .boards
-                .read()
-                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?
-                .get(board_id)
-                .map(|s| s.board.clone())
-                .unwrap_or_else(|| parser::parse_markdown(""));
-
-            let theirs = parser::parse_markdown(&disk_content);
-            let result = card_merge::three_way_merge(&base_board, &theirs, &normalized_board);
-
-            if !result.conflicts.is_empty() {
-                self.save_conflict_backup(&file_path, &normalized_board)?;
-                log::warn!(
-                    "[lexera.storage.merge] {} conflicts on board {}",
-                    result.conflicts.len(),
-                    board_id
-                );
-            }
-
-            let board_to_write = Self::normalize_board_for_write(&result.board, &board_dir);
-            (
-                board_to_write.clone(),
-                Self::finalize_merge_result(result, board_to_write),
-            )
         } else {
             // No conflict — direct write
-            (normalized_board.clone(), None)
+            (normalized_board.clone(), None, None)
         };
 
-        // Bump generation counter and set generation metadata
-        let current_gen = self
-            .boards
-            .read()
-            .ok()
-            .and_then(|b| b.get(board_id).map(|s| s.generation))
-            .unwrap_or(0);
-        let new_gen = current_gen + 1;
+        log::info!(
+            "[lexera.storage.write] board={} FINAL_WRITE={}",
+            board_id,
+            board_card_summary(&board_to_write)
+        );
 
-        // Compute body hash from a preview render (body is stable across YAML changes)
-        let preview_md = parser::generate_markdown(&board_to_write);
-        let content_hash_body = parser::body_hash(&preview_md);
-
-        board_to_write.generation_meta = Some(crate::types::GenerationMeta {
-            generation: Some(new_gen),
-            content_hash: Some(content_hash_body),
-            writer_id: Some(self.writer_id.clone()),
-        });
-
-        // Create a backup of the current file before overwriting
-        if file_path.exists() {
-            let backup_mgr = super::backup::BackupManager::new();
-            if let Err(e) = backup_mgr.create_backup(&file_path) {
-                log::warn!(
-                    "[lexera.storage.backup] Failed to create backup for board {}: {}",
-                    board_id,
-                    e
-                );
-            }
-        }
-
-        let markdown = self.persist_board_files(board_id, &file_path, &board_to_write)?;
-
-        // Rotate old backups after successful write
-        if file_path.exists() {
-            let backup_mgr = super::backup::BackupManager::new();
-            if let Err(e) = backup_mgr.rotate_backups(&file_path) {
-                log::warn!(
-                    "[lexera.storage.backup] Failed to rotate backups for board {}: {}",
-                    board_id,
-                    e
-                );
-            }
-        }
-
-        // Save CRDT state alongside the markdown file
-        if let Some(ref c) = crdt {
-            let crdt_path = file_path.with_extension("md.crdt");
-            let _ = c.save_to_file(&crdt_path);
-        }
-
-        let metadata = fs::metadata(&file_path)?;
-        let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
-
-        let state = BoardState {
-            file_path,
-            board: board_to_write,
-            last_modified,
-            content_hash: Self::content_hash(&markdown),
-            version: self.next_version(),
-            generation: new_gen,
-            crdt,
-        };
-
-        self.boards
-            .write()
-            .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
-            .insert(board_id.to_string(), state);
+        self.commit_board_state(board_id, &file_path, board_to_write, crdt_to_write, true)?;
 
         Ok(merge_result)
     }
@@ -471,6 +971,72 @@ impl LocalStorage {
         board: &KanbanBoard,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
         self.write_board_internal(board_id, board, Some(base_board))
+    }
+
+    pub fn rebase_board_from_base(
+        &self,
+        board_id: &str,
+        base_board: &KanbanBoard,
+        board: &KanbanBoard,
+    ) -> Result<(KanbanBoard, KanbanBoard, Option<card_merge::MergeResult>), StorageError> {
+        let lock = self.get_write_lock(board_id)?;
+        let _guard = lock.lock().map_err(|e| {
+            StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e))
+        })?;
+
+        let file_path = self
+            .get_board_path(board_id)
+            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+        let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let normalized_board = Self::normalize_board_for_write(board, &board_dir);
+        let normalized_base = Self::normalize_board_for_write(base_board, &board_dir);
+        let stored_hash = self.get_board_content_hash(board_id).unwrap_or_default();
+        let disk_content = fs::read_to_string(&file_path)?;
+        let disk_hash = Self::content_hash(&disk_content);
+        let disk_diverged = disk_hash != stored_hash && !stored_hash.is_empty();
+        let current = {
+            let boards = self
+                .boards
+                .read()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?;
+            let state = boards
+                .get(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            if disk_diverged || state.crdt.is_none() {
+                drop(boards);
+                Self::normalize_board_for_write(
+                    &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
+                    &board_dir,
+                )
+            } else {
+                Self::normalize_board_for_write(
+                    &state.crdt.as_ref().unwrap().to_board(),
+                    &board_dir,
+                )
+            }
+        };
+
+        let conflicts = Self::detect_card_conflicts(&normalized_base, &current, &normalized_board);
+        if !conflicts.is_empty() {
+            let merge_result = card_merge::MergeResult {
+                board: normalized_board.clone(),
+                conflicts,
+                auto_merged: 0,
+            };
+            return Ok((
+                current,
+                normalized_board.clone(),
+                Self::finalize_merge_result(merge_result, normalized_board),
+            ));
+        }
+
+        let (merged_board, _) = Self::merge_boards_with_crdt(
+            &normalized_base,
+            &current,
+            &normalized_board,
+            &board_dir,
+        )?;
+        Ok((current, merged_board, None))
     }
 
     pub fn new() -> Self {
@@ -524,7 +1090,7 @@ impl LocalStorage {
         }
 
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let board = Self::normalize_board_for_write(
+        let mut board = Self::normalize_board_for_write(
             &self.parse_with_includes(&content, &board_id, &board_dir, &file_path)?,
             &board_dir,
         );
@@ -541,8 +1107,18 @@ impl LocalStorage {
                         board.yaml_header.clone(),
                         board.kanban_footer.clone(),
                         board.board_settings.clone(),
+                        board.generation_meta.clone(),
                     );
-                    Some(c)
+                    match Self::align_loaded_board_with_crdt(&board_id, &board, c, &board_dir) {
+                        Ok((canonical_board, c)) => {
+                            board = canonical_board;
+                            Some(c)
+                        }
+                        Err(e) => {
+                            log::error!("[lexera.crdt] Failed to align loaded CRDT: {}", e);
+                            None
+                        }
+                    }
                 }
                 Err(e) => {
                     log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
@@ -610,7 +1186,7 @@ impl LocalStorage {
 
         let content = fs::read_to_string(&file_path)?;
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let board = Self::normalize_board_for_write(
+        let mut board = Self::normalize_board_for_write(
             &self.parse_with_includes(&content, board_id, &board_dir, &file_path)?,
             &board_dir,
         );
@@ -646,19 +1222,26 @@ impl LocalStorage {
         }
         if new_gen == current_gen && new_gen > 0 {
             let new_body_hash = parser::body_hash(&content);
-            let existing_body_hash = self
+            let new_dependency_hash = Self::dependency_hash(&board);
+            let new_resolved_hash = Self::resolved_hash(&board);
+            let existing_revision = self
                 .boards
                 .read()
                 .ok()
-                .and_then(|b| {
-                    b.get(board_id)?
-                        .board
-                        .generation_meta
-                        .as_ref()?
-                        .content_hash
-                        .clone()
-                });
-            if existing_body_hash.as_deref() == Some(&new_body_hash) {
+                .and_then(|b| b.get(board_id)?.board.generation_meta.as_ref().cloned());
+            let existing_body_hash = existing_revision
+                .as_ref()
+                .and_then(|m| m.content_hash.clone());
+            let existing_dependency_hash = existing_revision
+                .as_ref()
+                .and_then(|m| m.dependency_hash.clone());
+            let existing_resolved_hash = existing_revision
+                .as_ref()
+                .and_then(|m| m.resolved_hash.clone());
+            if existing_body_hash.as_deref() == Some(&new_body_hash)
+                && existing_dependency_hash == new_dependency_hash
+                && existing_resolved_hash.as_deref() == Some(&new_resolved_hash)
+            {
                 // Same generation, same content — no real change
                 if let Some(crdt) = old_crdt {
                     if let Ok(mut boards) = self.boards.write() {
@@ -682,17 +1265,23 @@ impl LocalStorage {
         // Update CRDT with changes from disk
         let crdt_path = file_path.with_extension("md.crdt");
         let crdt = if let Some(mut c) = old_crdt {
-            let old_board = c.to_board();
-            if let Err(e) = c.apply_board(&board, &old_board) {
-                log::error!("[lexera.crdt] Failed to apply board to CRDT: {}", e);
-            }
             c.set_metadata(
                 board.yaml_header.clone(),
                 board.kanban_footer.clone(),
                 board.board_settings.clone(),
+                board.generation_meta.clone(),
             );
-            let _ = c.save_to_file(&crdt_path);
-            Some(c)
+            match Self::align_loaded_board_with_crdt(board_id, &board, c, &board_dir) {
+                Ok((canonical_board, c)) => {
+                    board = canonical_board;
+                    let _ = c.save_to_file(&crdt_path);
+                    Some(c)
+                }
+                Err(e) => {
+                    log::error!("[lexera.crdt] Failed to align board reload CRDT: {}", e);
+                    None
+                }
+            }
         } else {
             match CrdtStore::from_board(&board) {
                 Ok(c) => {
@@ -884,13 +1473,22 @@ impl LocalStorage {
         self.boards.read().ok()?.get(board_id).map(|s| s.version)
     }
 
-    /// Get the persisted generation counter for a board (for staleness detection).
-    pub fn get_board_generation(&self, board_id: &str) -> Option<u64> {
+    /// Get the authoritative backend-computed revision token for a board.
+    ///
+    /// This token is derived from the effective loaded board state after parse
+    /// and include resolution. It intentionally does not trust revision
+    /// metadata embedded in the editable markdown file.
+    pub fn get_board_revision_token(&self, board_id: &str) -> Option<String> {
         self.boards
             .read()
             .ok()?
             .get(board_id)
-            .map(|s| s.generation)
+            .map(|state| format!("r-{}", Self::resolved_hash(&state.board)))
+    }
+
+    /// Get the persisted generation counter for a board (for staleness detection).
+    pub fn get_board_generation(&self, board_id: &str) -> Option<u64> {
+        self.boards.read().ok()?.get(board_id).map(|s| s.generation)
     }
 
     /// Get the content hash for a board (for conflict detection).
@@ -1287,33 +1885,15 @@ impl LocalStorage {
         // Rebuild board from CRDT state
         let mut board = crdt.to_board();
         Self::restore_include_sources(&mut board, &current_board);
-        let markdown = self.persist_board_files(board_id, &file_path, &board)?;
 
-        // Save CRDT snapshot
-        let crdt_path = file_path.with_extension("md.crdt");
-        let _ = crdt.save_to_file(&crdt_path);
-
-        let metadata = fs::metadata(&file_path)?;
-        let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
-
-        let state = BoardState {
-            file_path,
-            board,
-            last_modified,
-            content_hash: Self::content_hash(&markdown),
-            version: self.next_version(),
-            generation: 0,
-            crdt: Some(crdt),
-        };
-
-        self.boards
-            .write()
-            .map_err(|e| {
-                StorageError::LockPoisoned(format!("boards write in import_crdt (save): {}", e))
-            })?
-            .insert(board_id.to_string(), state);
-
-        Ok(())
+        log::info!(
+            "[lexera.storage.import_crdt] board={} bytes={} before={} after={}",
+            board_id,
+            bytes.len(),
+            board_card_summary(&current_board),
+            board_card_summary(&board)
+        );
+        self.commit_board_state(board_id, &file_path, board, Some(crdt), false)
     }
 
     pub fn search_with_options(&self, query: &str, options: SearchOptions) -> Vec<SearchResult> {
@@ -1447,11 +2027,34 @@ impl BoardStorage for LocalStorage {
     }
 
     fn read_board(&self, board_id: &str) -> Option<KanbanBoard> {
-        self.boards
-            .read()
-            .ok()?
-            .get(board_id)
-            .map(|s| s.board.clone())
+        let boards = self.boards.read().ok()?;
+        let state = boards.get(board_id)?;
+        let board_dir = state
+            .file_path
+            .parent()
+            .unwrap_or(Path::new("."))
+            .to_path_buf();
+        if let Some(crdt) = state.crdt.as_ref() {
+            if let Some(canonical_board) =
+                Self::board_from_crdt_if_semantically_equal(&state.board, crdt, &board_dir)
+            {
+                log::info!(
+                    target: "lexera.storage.read_board",
+                    "Returning CRDT-aligned board source=crdt board_id={} state_kids={:?} returned_kids={:?}",
+                    board_id,
+                    board_kid_sample(&state.board, 6),
+                    board_kid_sample(&canonical_board, 6)
+                );
+                return Some(canonical_board);
+            }
+        }
+        log::warn!(
+            target: "lexera.storage.read_board",
+            "Returning stored board source=state board_id={} state_kids={:?}",
+            board_id,
+            board_kid_sample(&state.board, 6)
+        );
+        Some(state.board.clone())
     }
 
     fn write_board(
@@ -1548,36 +2151,7 @@ impl BoardStorage for LocalStorage {
             }
         }
 
-        let markdown = self.persist_board_files(board_id, &file_path, &board)?;
-
-        // Save CRDT state
-        if let Some(ref c) = crdt {
-            let crdt_path = file_path.with_extension("md.crdt");
-            let _ = c.save_to_file(&crdt_path);
-        }
-
-        let metadata = fs::metadata(&file_path)?;
-        let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
-
-        self.boards
-            .write()
-            .map_err(|e| {
-                StorageError::LockPoisoned(format!("boards write in add_card (save): {}", e))
-            })?
-            .insert(
-                board_id.to_string(),
-                BoardState {
-                    file_path,
-                    board,
-                    last_modified,
-                    content_hash: Self::content_hash(&markdown),
-                    version: self.next_version(),
-                    generation: 0,
-                    crdt,
-                },
-            );
-
-        Ok(())
+        self.commit_board_state(board_id, &file_path, board, crdt, true)
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {
@@ -1704,6 +2278,79 @@ kanban-plugin: board
         let on_disk = fs::read_to_string(tmp.path()).unwrap();
         assert!(on_disk.contains("New task"));
         assert!(!on_disk.contains("<!-- kid:"));
+        let revision = board.generation_meta.as_ref().unwrap();
+        assert_eq!(revision.generation, Some(1));
+        assert!(revision.content_hash.is_some());
+        assert!(revision.resolved_hash.is_some());
+        assert!(board.revision_token().is_some());
+    }
+
+    #[test]
+    fn test_import_crdt_updates_bumps_generation_and_revision() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(tmp.path()).unwrap();
+        let base_board = storage.read_board(&id).unwrap();
+        let snapshot = storage.export_crdt_snapshot(&id).unwrap();
+        let mut remote_store = CrdtStore::load(&snapshot).unwrap();
+        remote_store.set_peer_id(99).unwrap();
+
+        let mut remote_board = base_board.clone();
+        remote_board.all_columns_mut()[0].cards.push(KanbanCard {
+            id: "remote-crdt-card".to_string(),
+            content: "Remote CRDT addition".to_string(),
+            checked: false,
+            kid: Some("remote-crdt-add".to_string()),
+        });
+        remote_store
+            .apply_board(&remote_board, &base_board)
+            .unwrap();
+
+        let updates = remote_store
+            .export_updates_since(&loro::VersionVector::default())
+            .unwrap();
+        storage.import_crdt_updates(&id, &updates).unwrap();
+
+        let updated = storage.read_board(&id).unwrap();
+        let revision = updated.generation_meta.as_ref().unwrap();
+        assert_eq!(revision.generation, Some(1));
+        assert!(revision.content_hash.is_some());
+        assert!(revision.resolved_hash.is_some());
+        assert!(updated
+            .all_columns()
+            .iter()
+            .flat_map(|column| column.cards.iter())
+            .any(|card| card.content == "Remote CRDT addition"));
+    }
+
+    #[test]
+    fn test_get_board_revision_token_ignores_inline_metadata_tampering() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(tmp.path()).unwrap();
+
+        storage.add_card(&id, 0, "Revision anchor").unwrap();
+        let revision_before = storage.get_board_revision_token(&id).unwrap();
+
+        {
+            let mut boards = storage.boards.write().unwrap();
+            let state = boards.get_mut(&id).unwrap();
+            state.board.generation_meta = Some(GenerationMeta {
+                generation: Some(999),
+                content_hash: Some("tampered-content-hash".to_string()),
+                dependency_hash: Some("tampered-dependency-hash".to_string()),
+                resolved_hash: Some("tampered-resolved-hash".to_string()),
+                writer_id: Some("tampered-writer".to_string()),
+            });
+        }
+        let revision_after = storage.get_board_revision_token(&id).unwrap();
+
+        assert_eq!(revision_before, revision_after);
+        assert!(revision_after.starts_with("r-"));
     }
 
     #[test]
@@ -1924,6 +2571,31 @@ kanban-plugin: board
     }
 
     #[test]
+    fn test_reload_board_detects_include_file_change_without_generation_change() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        let include_path = dir.path().join("slides.md");
+
+        fs::write(
+            &board_path,
+            "---\nkanban-plugin: board\ngeneration: 7\ncontentHash: abc123\nresolvedHash: stale\n---\n\n## !!!include(./slides.md)!!!\n",
+        )
+        .unwrap();
+        fs::write(&include_path, "# Slide 1\n\nInitial include content\n").unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        fs::write(&include_path, "# Slide 1\n\nUpdated include content\n").unwrap();
+        storage.reload_board(&id).unwrap();
+
+        let reloaded = storage.read_board(&id).unwrap();
+        assert!(reloaded.all_columns()[0].cards[0]
+            .content
+            .contains("Updated include content"));
+    }
+
+    #[test]
     fn test_write_board_from_base_preserves_remote_cards() {
         let mut tmp = NamedTempFile::new().unwrap();
         write!(tmp, "{}", TEST_BOARD).unwrap();
@@ -1957,6 +2629,164 @@ kanban-plugin: board
         assert!(contents.contains(&"Buy groceries and fruit".to_string()));
         assert!(contents.contains(&"Remote addition".to_string()));
         assert_eq!(merged_cols[0].cards.len(), 3);
+    }
+
+    #[test]
+    fn test_write_board_from_base_same_titled_columns_do_not_duplicate_moved_cards() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(
+            tmp,
+            "{}",
+            "\
+---
+kanban-plugin: board
+---
+
+# Row 1
+
+## Stack A
+
+### Todo
+- [ ] Card 1
+
+## Stack B
+
+### Todo
+- [ ] Card 2
+"
+        )
+        .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(tmp.path()).unwrap();
+
+        let base = storage.read_board(&id).unwrap();
+        let moved_kid = base.rows[0].stacks[0].columns[0].cards[0]
+            .kid
+            .clone()
+            .unwrap();
+
+        let mut ours = base.clone();
+        let moved = ours.rows[0].stacks[0].columns[0].cards.remove(0);
+        ours.rows[0].stacks[1].columns[0].cards.insert(0, moved);
+
+        storage.write_board_from_base(&id, &base, &ours).unwrap();
+
+        let merged = storage.read_board(&id).unwrap();
+        assert_eq!(merged.rows[0].stacks[0].columns[0].cards.len(), 0);
+
+        let target_cards = &merged.rows[0].stacks[1].columns[0].cards;
+        assert_eq!(target_cards.len(), 2);
+        assert_eq!(target_cards[0].kid.as_deref(), Some(moved_kid.as_str()));
+
+        let moved_instances = merged
+            .all_columns()
+            .iter()
+            .flat_map(|col| col.cards.iter())
+            .filter(|card| card.kid.as_deref() == Some(moved_kid.as_str()))
+            .count();
+        assert_eq!(moved_instances, 1, "moved card must exist exactly once");
+    }
+
+    #[test]
+    fn test_write_board_from_base_conflicting_same_card_edit_blocks_save() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(tmp.path()).unwrap();
+
+        let base = storage.read_board(&id).unwrap();
+
+        let mut remote = base.clone();
+        remote.all_columns_mut()[0].cards[0].content = "Buy groceries from remote".to_string();
+        storage.write_board(&id, &remote).unwrap();
+
+        let mut ours = base.clone();
+        ours.all_columns_mut()[0].cards[0].content = "Buy groceries from local".to_string();
+
+        let result = storage.write_board_from_base(&id, &base, &ours);
+        match result {
+            Err(StorageError::ConflictDetected {
+                conflicts,
+                crashsave,
+                ..
+            }) => {
+                assert_eq!(conflicts, 1);
+                let crashsave = crashsave.expect("conflicted save should write a crashsave");
+                assert!(crashsave.path.exists(), "crashsave path should exist");
+                assert!(
+                    crashsave.filename.contains("-crashsave-"),
+                    "crashsave filename should use crashsave format"
+                );
+            }
+            other => panic!("expected conflict with crashsave, got {:?}", other),
+        }
+
+        let persisted = storage.read_board(&id).unwrap();
+        assert_eq!(
+            persisted.all_columns()[0].cards[0].content,
+            "Buy groceries from remote"
+        );
+    }
+
+    #[test]
+    fn test_create_crashsave_writes_recovery_file_beside_board() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("project.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+        let mut board = storage.read_board(&id).unwrap();
+        board.all_columns_mut()[0].cards[0].content = "Recovered card content".to_string();
+
+        let crashsave = storage
+            .create_crashsave(&id, &board, "manual-test")
+            .unwrap();
+
+        assert!(crashsave.path.exists());
+        assert!(crashsave.filename.starts_with("project-crashsave-"));
+        let content = fs::read_to_string(&crashsave.path).unwrap();
+        assert!(
+            content.contains("Recovered card content"),
+            "crashsave should contain board markdown content"
+        );
+    }
+
+    #[test]
+    fn test_rebase_board_from_base_conflicting_same_card_edit_reports_conflict() {
+        let mut tmp = NamedTempFile::new().unwrap();
+        write!(tmp, "{}", TEST_BOARD).unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(tmp.path()).unwrap();
+
+        let base = storage.read_board(&id).unwrap();
+
+        let mut remote = base.clone();
+        remote.all_columns_mut()[0].cards[0].content = "Buy groceries from remote".to_string();
+        storage.write_board(&id, &remote).unwrap();
+
+        let mut ours = base.clone();
+        ours.all_columns_mut()[0].cards[0].content = "Buy groceries from local".to_string();
+
+        let (current, rebased, result) = storage.rebase_board_from_base(&id, &base, &ours).unwrap();
+        let merge_result = result.expect("expected conflict result");
+
+        assert_eq!(
+            current.all_columns()[0].cards[0].content,
+            "Buy groceries from remote"
+        );
+        assert_eq!(
+            rebased.all_columns()[0].cards[0].content,
+            "Buy groceries from local"
+        );
+        assert_eq!(merge_result.conflicts.len(), 1);
+        assert_eq!(
+            merge_result.conflicts[0].field,
+            card_merge::ConflictField::Content
+        );
     }
 
     #[test]
@@ -2113,6 +2943,125 @@ kanban-plugin: board
         assert_eq!(crdt_cols[1].cards.len(), 1);
         assert!(crdt_cols[0].cards[0].content.contains("Buy groceries"));
         assert!(crdt_cols[1].cards[0].content.contains("Laundry"));
+    }
+
+    #[test]
+    fn test_add_board_reuses_matching_crdt_card_identities() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let mut snapshot_board = LocalStorage::normalize_board_for_write(
+            &parser::parse_markdown(TEST_BOARD),
+            dir.path(),
+        );
+        let expected_kids = ["a1b2c3d4", "b1c2d3e4", "c1d2e3f4"];
+        let mut next = 0usize;
+        for column in snapshot_board.all_columns_mut() {
+            for card in &mut column.cards {
+                card.kid = Some(expected_kids[next].to_string());
+                card.id = format!("seed-{}", next);
+                next += 1;
+            }
+        }
+
+        let crdt = CrdtStore::from_board(&snapshot_board).unwrap();
+        crdt.save_to_file(&board_path.with_extension("md.crdt"))
+            .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        let loaded = storage.read_board(&id).unwrap();
+        let loaded_kids: Vec<String> = loaded
+            .all_columns()
+            .iter()
+            .flat_map(|column| column.cards.iter())
+            .map(|card| card.kid.clone().unwrap())
+            .collect();
+        assert_eq!(
+            loaded_kids,
+            expected_kids
+                .iter()
+                .map(|kid| kid.to_string())
+                .collect::<Vec<_>>()
+        );
+
+        let boards = storage.boards.read().unwrap();
+        let state = boards.get(&id).unwrap();
+        let state_kids: Vec<String> = state
+            .board
+            .all_columns()
+            .iter()
+            .flat_map(|column| column.cards.iter())
+            .map(|card| card.kid.clone().unwrap())
+            .collect();
+        assert_eq!(
+            state_kids,
+            expected_kids
+                .iter()
+                .map(|kid| kid.to_string())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_read_board_normalizes_stored_board_before_reusing_matching_snapshot_kids() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, TEST_BOARD).unwrap();
+
+        let mut snapshot_board = LocalStorage::normalize_board_for_write(
+            &parser::parse_markdown(TEST_BOARD),
+            dir.path(),
+        );
+        let expected_kids = ["a1b2c3d4", "b1c2d3e4", "c1d2e3f4"];
+        let mut next = 0usize;
+        for column in snapshot_board.all_columns_mut() {
+            for card in &mut column.cards {
+                card.kid = Some(expected_kids[next].to_string());
+                card.id = format!("seed-{}", next);
+                next += 1;
+            }
+        }
+
+        let crdt = CrdtStore::from_board(&snapshot_board).unwrap();
+        crdt.save_to_file(&board_path.with_extension("md.crdt"))
+            .unwrap();
+
+        let storage = LocalStorage::new();
+        let id = storage.add_board(&board_path).unwrap();
+
+        {
+            let mut boards = storage.boards.write().unwrap();
+            let state = boards.get_mut(&id).unwrap();
+            let drift_kids = ["dead0001", "dead0002", "dead0003"];
+            let mut drift_idx = 0usize;
+            for column in state.board.all_columns_mut() {
+                for card in &mut column.cards {
+                    let drift_kid = drift_kids[drift_idx].to_string();
+                    card.content =
+                        crate::merge::card_identity::inject_kid(&card.content, &drift_kid);
+                    card.kid = Some(drift_kid);
+                    drift_idx += 1;
+                }
+            }
+        }
+
+        let loaded = storage.read_board(&id).unwrap();
+        let loaded_kids: Vec<String> = loaded
+            .all_columns()
+            .iter()
+            .flat_map(|column| column.cards.iter())
+            .map(|card| card.kid.clone().unwrap())
+            .collect();
+        assert_eq!(
+            loaded_kids,
+            expected_kids
+                .iter()
+                .map(|kid| kid.to_string())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

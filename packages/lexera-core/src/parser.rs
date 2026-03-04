@@ -855,6 +855,8 @@ pub fn parse_generation_meta(yaml_header: &str) -> GenerationMeta {
             match key {
                 "generation" => meta.generation = value.parse().ok(),
                 "contentHash" => meta.content_hash = Some(value.to_string()),
+                "dependencyHash" => meta.dependency_hash = Some(value.to_string()),
+                "resolvedHash" => meta.resolved_hash = Some(value.to_string()),
                 "writerId" => meta.writer_id = Some(value.to_string()),
                 _ => {}
             }
@@ -914,6 +916,8 @@ fn meta_value_for_key(meta: &GenerationMeta, key: &str) -> Option<String> {
     match key {
         "generation" => meta.generation.map(|g| g.to_string()),
         "contentHash" => meta.content_hash.clone(),
+        "dependencyHash" => meta.dependency_hash.clone(),
+        "resolvedHash" => meta.resolved_hash.clone(),
         "writerId" => meta.writer_id.clone(),
         _ => None,
     }

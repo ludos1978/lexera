@@ -288,7 +288,8 @@ async fn run_sync_client(
                 // Fire SSE event so frontend reloads
                 let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
                     board_id: local_board_id.clone(),
-                    generation: None,
+                    revision: storage.get_board_revision_token(&local_board_id),
+                    generation: storage.get_board_generation(&local_board_id),
                     writer_id: None,
                 });
             }
@@ -301,7 +302,8 @@ async fn run_sync_client(
                 }
                 let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
                     board_id: local_board_id.clone(),
-                    generation: None,
+                    revision: storage.get_board_revision_token(&local_board_id),
+                    generation: storage.get_board_generation(&local_board_id),
                     writer_id: None,
                 });
             }

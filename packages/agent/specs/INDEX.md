@@ -5,10 +5,10 @@
 | Category | Specs |
 |----------|-------|
 | **Core Data** | [Types](shared/types/SPEC.md), [Parser](shared/parser/SPEC.md), [Markdown](shared/markdown/SPEC.md) |
-| **Core Logic** | [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md) |
+| **Core Logic** | [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md), [Mutations](core/mutations/SPEC.md) |
 | **Board UX** | [Board Renderer](core/board/SPEC.md), [Editor](core/editor/SPEC.md) |
 | **Interaction** | [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md) |
-| **Services** | [API](services/api/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Media Tracker](services/mediatracker/SPEC.md) |
+| **Services** | [API](services/api/SPEC.md), [Save & Recovery](services/save/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Media Tracker](services/mediatracker/SPEC.md) |
 | **Plugins** | [Content System](plugins/content/SPEC.md), [Registry](plugins/registry/SPEC.md) |
 | **Sync** | [Sync & Collaboration](sync/SPEC.md) |
 | **Meta** | [Template & Guidelines](TEMPLATE.md) |
@@ -19,9 +19,9 @@
 
 | Workstream | V2 target | Main v1 base | Shared dependency | Specs |
 |------------|-----------|--------------|-------------------|-------|
-| Board model, parser, includes, search, merge, storage | `packages/lexera-core` | `src/`, mainly parser/types/state/search logic | `packages/marp-engine` for presentation/export pipeline | [Types](shared/types/SPEC.md), [Parser](shared/parser/SPEC.md), [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md) |
-| Desktop runtime, board registry, watcher, sync, collaboration, capture | `packages/lexera-backend` | `src/services/*`, `src/files/*`, `src/core/*`, `packages/ludos-sync/` | `packages/lexera-core` | [API](services/api/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Sync](sync/SPEC.md) |
-| Board UI, editor, drag/drop, menus, dashboard | `packages/lexera-kanban` | `src/html/*`, `src/kanbanWebviewPanel.ts`, board/editor UX | `packages/lexera-core`, backend API | [Board Renderer](core/board/SPEC.md), [Editor](core/editor/SPEC.md), [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md) |
+| Board model, parser, includes, search, merge, storage | `packages/lexera-core` | `src/`, mainly parser/types/state/search logic | `packages/marp-engine` for presentation/export pipeline | [Types](shared/types/SPEC.md), [Parser](shared/parser/SPEC.md), [Gather](core/gather/SPEC.md), [State Machine](core/statemachine/SPEC.md), [Save & Recovery](services/save/SPEC.md) |
+| Desktop runtime, board registry, watcher, sync, collaboration, capture | `packages/lexera-backend` | `src/services/*`, `src/files/*`, `src/core/*`, `packages/ludos-sync/` | `packages/lexera-core` | [API](services/api/SPEC.md), [Save & Recovery](services/save/SPEC.md), [Board Registry](services/boardregistry/SPEC.md), [Keybinding](services/keybinding/SPEC.md), [Notification](services/notification/SPEC.md), [Sync](sync/SPEC.md) |
+| Board UI, editor, drag/drop, menus, dashboard | `packages/lexera-kanban` | `src/html/*`, `src/kanbanWebviewPanel.ts`, board/editor UX | `packages/lexera-core`, backend API | [Board Renderer](core/board/SPEC.md), [Editor](core/editor/SPEC.md), [Drag/Drop](ux/dragdrop/SPEC.md), [Menus](ux/menus/SPEC.md), [Search](ux/search/SPEC.md), [Export](ux/export/SPEC.md), [Save & Recovery](services/save/SPEC.md) |
 | Mobile capture | `packages/lexera-capture-ios` | no direct v1 package equivalent | `packages/lexera-core` concepts | (planned) |
 | Presentation and export | `packages/lexera-core` + `packages/lexera-backend` + `packages/lexera-kanban` | `src/services/export/*`, `src/html/exportMarpUI.js` | `packages/marp-engine` | [Export](ux/export/SPEC.md), [Content Plugins](plugins/content/SPEC.md) |
 
@@ -53,9 +53,11 @@ These systems span multiple packages:
 ### Backend/runtime feeding `lexera-backend`
 
 - `services/api/SPEC.md`: **NEW** - Complete API surface definition
+- `services/save/SPEC.md`: durable save, rebase, and crash-recovery contract
 - `services/boardregistry/SPEC.md`: central board registry responsibilities
 - `services/keybinding/SPEC.md`: host/native shortcut ownership and normalization reference
 - `services/notification/SPEC.md`: native confirmation/progress flow reference
+- `services/save/SPEC.md`: canonical save coordination and crashsave policy
 - `sync/SPEC.md`: **NEW** - Sync and collaboration architecture
 - `core/statemachine/SPEC.md`: coordination patterns for save/change handling
 - v1 runtime outside this folder: `packages/ludos-sync/`
@@ -71,6 +73,7 @@ These systems span multiple packages:
 - `shared/markdown/SPEC.md`: client-side rendering details
 - `services/keybinding/SPEC.md`: in-app shortcut expectations and command mapping reference
 - `services/notification/SPEC.md`: toasts, dialogs, confirmations, and save/discard reference
+- `services/save/SPEC.md`: save guarantees, external rebase handling, and recovery UX
 
 ### Content plugin system feeding all content surfaces
 
@@ -93,17 +96,19 @@ These systems span multiple packages:
 ### For Backend Developers
 1. `BASE_PLAN.md` - Overall architecture
 2. `services/api/SPEC.md` - API surface to implement
-3. `sync/SPEC.md` - Sync architecture
-4. `shared/parser/SPEC.md` - Markdown format to support
-5. `core/statemachine/SPEC.md` - Change coordination patterns
+3. `services/save/SPEC.md` - Save coordinator and crash-recovery contract
+4. `sync/SPEC.md` - Sync architecture
+5. `shared/parser/SPEC.md` - Markdown format to support
+6. `core/statemachine/SPEC.md` - Change coordination patterns
 
 ### For Frontend Developers
 1. `BASE_PLAN.md` - Overall architecture
 2. `services/api/SPEC.md` - Available API endpoints
-3. `core/board/SPEC.md` - Board rendering
-4. `core/editor/SPEC.md` - Card editing
-5. `ux/dragdrop/SPEC.md` - Drag/drop interactions
-6. `services/keybinding/SPEC.md` - Keyboard handling
+3. `services/save/SPEC.md` - Save, rebase, and recovery behavior
+4. `core/board/SPEC.md` - Board rendering
+5. `core/editor/SPEC.md` - Card editing
+6. `ux/dragdrop/SPEC.md` - Drag/drop interactions
+7. `services/keybinding/SPEC.md` - Keyboard handling
 
 ### For Plugin/Content Developers
 1. `plugins/content/SPEC.md` - Content plugin architecture

@@ -120,11 +120,21 @@ pub struct GenerationMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub dependency_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub writer_id: Option<String>,
 }
 
 /// The YAML keys for generation metadata. Order determines output order.
-pub const GENERATION_META_KEYS: &[&str] = &["generation", "contentHash", "writerId"];
+pub const GENERATION_META_KEYS: &[&str] = &[
+    "generation",
+    "contentHash",
+    "dependencyHash",
+    "resolvedHash",
+    "writerId",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -215,6 +225,23 @@ impl KanbanBoard {
         } else {
             self.columns.iter_mut().collect()
         }
+    }
+
+    pub fn revision_token(&self) -> Option<String> {
+        self.generation_meta
+            .as_ref()
+            .and_then(GenerationMeta::revision_token)
+    }
+}
+
+impl GenerationMeta {
+    pub fn revision_token(&self) -> Option<String> {
+        let generation = self.generation?;
+        let hash = self
+            .resolved_hash
+            .as_deref()
+            .or(self.content_hash.as_deref())?;
+        Some(format!("g{}-{}", generation, hash))
     }
 }
 

@@ -193,6 +193,7 @@ fn handle_debounced_event(
                 },
                 _ => BoardChangeEvent::MainFileChanged {
                     board_id,
+                    revision: None,
                     generation: None,
                     writer_id: None,
                 },

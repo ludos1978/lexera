@@ -114,8 +114,22 @@ const LexeraApi = (function () {
     }
     clearTimeout(timeoutId);
     if (!res.ok) {
-      const text = await res.text().catch(() => res.statusText);
+      var payload = null;
+      var text = await res.text().catch(() => res.statusText);
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch (jsonError) {
+          payload = null;
+        }
+      }
+      if (!text && payload && typeof payload.error === 'string') {
+        text = payload.error;
+      }
+      if (!text) text = res.statusText || 'Request failed';
       const error = new Error(`${res.status}: ${text}`);
+      error.status = res.status;
+      if (payload) error.data = payload;
       logApiIssue(res.status >= 500 ? 'error' : 'warn', 'api.request', method + ' ' + path + ' failed', error);
       throw error;
     }
@@ -135,7 +149,7 @@ const LexeraApi = (function () {
     return request('/boards/' + boardId + '/columns');
   }
 
-  async function getBoardColumnsCached(boardId, version) {
+  async function getBoardColumnsCached(boardId, revision) {
     const url = await discover();
     if (!url) {
       const error = new Error('Backend not available');
@@ -146,7 +160,7 @@ const LexeraApi = (function () {
       throw error;
     }
     const headers = {};
-    if (version != null) headers['If-None-Match'] = '"' + version + '"';
+    if (revision != null) headers['If-None-Match'] = '"' + revision + '"';
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, DEFAULT_TIMEOUT_MS);
     let res;
@@ -164,7 +178,7 @@ const LexeraApi = (function () {
     }
     clearTimeout(timeoutId);
     if (res.status === 304) {
-      return { notModified: true, version };
+      return { notModified: true, revision };
     }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
@@ -238,6 +252,28 @@ const LexeraApi = (function () {
       body: JSON.stringify({
         baseBoard: baseBoardData,
         board: boardData,
+      }),
+    });
+  }
+
+  async function rebaseBoardWithBase(boardId, baseBoardData, boardData) {
+    return request('/boards/' + boardId + '/rebase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        baseBoard: baseBoardData,
+        board: boardData,
+      }),
+    });
+  }
+
+  async function createBoardCrashsave(boardId, boardData, reason) {
+    return request('/boards/' + boardId + '/crashsave', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        board: boardData,
+        reason: reason || null,
       }),
     });
   }
@@ -708,7 +744,7 @@ const LexeraApi = (function () {
   }
 
   return {
-    discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase,
+    discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,

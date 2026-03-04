@@ -42,6 +42,8 @@ Owns sync orchestration:
 - Conflict resolution coordination
 - Offline queue management
 
+The backend is also the trust boundary for external file edits. Editable markdown metadata is not authoritative; backend recomputation after parse/reload is authoritative.
+
 ---
 
 ## Sync Architecture
@@ -89,6 +91,8 @@ Owns sync orchestration:
 - Primary storage for single-user mode
 - Atomic writes with temp file + rename
 - Self-write suppression for watcher
+- External file changes are detected from backend-recomputed board revisions, not from inline markdown metadata alone
+- `MainFileChanged` SSE notifications carry that backend-computed revision so clients can distinguish real external changes from stale events
 
 ### 2. WebDAV (v1 Parity)
 

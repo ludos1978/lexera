@@ -1,6 +1,7 @@
 use lexera_core::crdt::bridge::CrdtStore;
 use lexera_core::include::{resolver, syntax};
 use lexera_core::merge::card_identity;
+use lexera_core::parser;
 use lexera_core::types::{IncludeSource, KanbanBoard};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -68,6 +69,16 @@ fn card_id_map(board: &KanbanBoard) -> HashMap<String, String> {
     map
 }
 
+fn board_kid_sample(board: &KanbanBoard, limit: usize) -> Vec<String> {
+    board
+        .all_columns()
+        .iter()
+        .flat_map(|column| column.cards.iter())
+        .filter_map(|card| card.kid.clone())
+        .take(limit)
+        .collect()
+}
+
 fn restore_card_ids(board: &mut KanbanBoard, preferred_ids: &[&HashMap<String, String>]) {
     for column in board.all_columns_mut() {
         for card in &mut column.cards {
@@ -82,6 +93,24 @@ fn restore_card_ids(board: &mut KanbanBoard, preferred_ids: &[&HashMap<String, S
             }
         }
     }
+}
+
+fn board_visible_signature(board: &KanbanBoard) -> String {
+    let mut normalized = board.clone();
+    normalized.generation_meta = None;
+    normalized.reconcile_format_hint();
+    parser::generate_markdown(&normalized)
+}
+
+fn boards_match_visible_content(a: &KanbanBoard, b: &KanbanBoard) -> bool {
+    board_visible_signature(a) == board_visible_signature(b)
+}
+
+fn board_identity_stats(a: &KanbanBoard, b: &KanbanBoard) -> (usize, usize, usize) {
+    let a_ids = card_id_map(a);
+    let b_ids = card_id_map(b);
+    let overlap = a_ids.keys().filter(|kid| b_ids.contains_key(*kid)).count();
+    (a_ids.len(), b_ids.len(), overlap)
 }
 
 fn encode_vv(store: &CrdtStore) -> Vec<u8> {
@@ -113,10 +142,47 @@ pub fn open_session(
     let normalized = normalize_board(board, &board_dir);
     let session_uuid = Uuid::new_v4();
     let session_id = session_uuid.to_string();
-    let mut crdt = if let Some(bytes) = snapshot {
-        CrdtStore::load(&bytes).map_err(|e| e.to_string())?
+    let normalized_ids = card_id_map(&normalized);
+    let (mut crdt, current_board) = if let Some(bytes) = snapshot {
+        let loaded = CrdtStore::load(&bytes).map_err(|e| e.to_string())?;
+        let mut snapshot_board = normalize_board(loaded.to_board(), &board_dir);
+        restore_card_ids(&mut snapshot_board, &[&normalized_ids]);
+        let (normalized_count, snapshot_count, overlap) =
+            board_identity_stats(&normalized, &snapshot_board);
+        log::info!(
+            target: "lexera.live_sync",
+            "[open_session] normalized_vs_snapshot cards=({}, {}) overlap={} normalized={} snapshot={}",
+            normalized_count,
+            snapshot_count,
+            overlap,
+            board_card_summary(&normalized),
+            board_card_summary(&snapshot_board)
+        );
+        let visible_equal = boards_match_visible_content(&normalized, &snapshot_board);
+        log::info!(
+            target: "lexera.live_sync",
+            "[open_session] source_decision visible_equal={} normalized_kids={:?} snapshot_kids={:?}",
+            visible_equal,
+            board_kid_sample(&normalized, 6),
+            board_kid_sample(&snapshot_board, 6)
+        );
+        if visible_equal {
+            (loaded, snapshot_board)
+        } else {
+            log::warn!(
+                target: "lexera.live_sync",
+                "Snapshot diverged from board markdown during session open; rebuilding session CRDT"
+            );
+            (
+                CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+                normalized.clone(),
+            )
+        }
     } else {
-        CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?
+        (
+            CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+            normalized.clone(),
+        )
     };
     crdt.set_peer_id(session_peer_id(&session_uuid))
         .map_err(|e| e.to_string())?;
@@ -124,9 +190,9 @@ pub fn open_session(
         normalized.yaml_header.clone(),
         normalized.kanban_footer.clone(),
         normalized.board_settings.clone(),
+        normalized.generation_meta.clone(),
     );
     let vv = encode_vv(&crdt);
-    let current_board = normalized.clone();
 
     let mut registry = LIVE_SESSIONS
         .lock()
@@ -136,13 +202,13 @@ pub fn open_session(
         LiveSession {
             board_dir,
             crdt,
-            current_board,
+            current_board: current_board.clone(),
         },
     );
 
     Ok(LiveSessionSnapshot {
         session_id,
-        board: normalized,
+        board: current_board,
         vv,
     })
 }
@@ -152,6 +218,22 @@ pub fn close_session(session_id: &str) -> Result<bool, String> {
         .lock()
         .map_err(|_| "Live sync session registry is unavailable".to_string())?;
     Ok(registry.sessions.remove(session_id).is_some())
+}
+
+fn board_card_summary(board: &KanbanBoard) -> String {
+    let cols: Vec<String> = board
+        .all_columns()
+        .iter()
+        .map(|col| {
+            let kids: Vec<&str> = col
+                .cards
+                .iter()
+                .map(|c| c.kid.as_deref().unwrap_or("??"))
+                .collect();
+            format!("[{}:{}]", col.title, kids.join(","))
+        })
+        .collect();
+    cols.join(" ")
 }
 
 pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionResult, String> {
@@ -168,12 +250,38 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
     let incoming = normalize_board(board, &session.board_dir);
     let incoming_ids = card_id_map(&incoming);
     let current_ids = card_id_map(&current_board);
+    let (incoming_count, current_count, overlap_before) =
+        board_identity_stats(&incoming, &current_board);
+
+    log::info!(
+        target: "lexera.live_sync",
+        "[apply_board] session={} ids_before=({}, {}, overlap={}) incoming={} current={}",
+        &session_id[..8],
+        incoming_count,
+        current_count,
+        overlap_before,
+        board_card_summary(&incoming),
+        board_card_summary(&current_board)
+    );
 
     if let Err(e) = session.crdt.apply_board(&incoming, &current_board) {
         log::error!("[live_sync.apply] Failed to apply board to CRDT: {}", e);
     }
     let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
     restore_card_ids(&mut next_board, &[&incoming_ids, &current_ids]);
+    let (next_count, _, overlap_after) = board_identity_stats(&next_board, &incoming);
+
+    log::info!(
+        target: "lexera.live_sync",
+        "[apply_board] session={} ids_after=({}, {}, overlap_with_incoming={}) crdt_output={} updates_len={}",
+        &session_id[..8],
+        next_count,
+        incoming_count,
+        overlap_after,
+        board_card_summary(&next_board),
+        session.crdt.export_updates_since(&before_vv).as_ref().map(|u| u.len()).unwrap_or(0)
+    );
+
     session.current_board = next_board.clone();
 
     let updates = session
@@ -203,6 +311,14 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
     let current_ids = card_id_map(&current_board);
     let before_vv = encode_vv(&session.crdt);
 
+    log::info!(
+        target: "lexera.live_sync",
+        "[import_updates] session={} bytes={} before={}",
+        &session_id[..8],
+        bytes.len(),
+        board_card_summary(&current_board)
+    );
+
     session.crdt.import_updates(bytes).map_err(|e| {
         log::warn!(
             target: "lexera.live_sync",
@@ -215,10 +331,24 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
 
     let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
     restore_card_ids(&mut next_board, &[&current_ids]);
-    session.current_board = next_board.clone();
 
     let vv = encode_vv(&session.crdt);
     let changed = vv != before_vv;
+    let (current_count, next_count, overlap_after) =
+        board_identity_stats(&current_board, &next_board);
+
+    log::info!(
+        target: "lexera.live_sync",
+        "[import_updates] session={} changed={} ids_after=({}, {}, overlap={}) after={}",
+        &session_id[..8],
+        changed,
+        current_count,
+        next_count,
+        overlap_after,
+        board_card_summary(&next_board)
+    );
+
+    session.current_board = next_board.clone();
 
     Ok(LiveSessionResult {
         board: next_board,
@@ -226,4 +356,61 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
         changed,
         updates: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_open_session_reuses_matching_snapshot_card_identities() {
+        let markdown = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] Buy groceries
+- [ ] Walk the dog
+
+## Done
+- [x] Laundry
+";
+        let board_dir = PathBuf::from(".");
+        let board = normalize_board(parser::parse_markdown(markdown), &board_dir);
+
+        let mut snapshot_board = board.clone();
+        let expected_kids = ["a1b2c3d4", "b1c2d3e4", "c1d2e3f4"];
+        let mut next = 0usize;
+        for column in snapshot_board.all_columns_mut() {
+            for card in &mut column.cards {
+                card.kid = Some(expected_kids[next].to_string());
+                card.id = format!("seed-{}", next);
+                next += 1;
+            }
+        }
+
+        let snapshot = CrdtStore::from_board(&snapshot_board)
+            .unwrap()
+            .save()
+            .unwrap();
+        let session = open_session("board-1", board, board_dir, Some(snapshot)).unwrap();
+
+        let kids: Vec<String> = session
+            .board
+            .all_columns()
+            .iter()
+            .flat_map(|column| column.cards.iter())
+            .map(|card| card.kid.clone().unwrap())
+            .collect();
+        assert_eq!(
+            kids,
+            expected_kids
+                .iter()
+                .map(|kid| kid.to_string())
+                .collect::<Vec<_>>()
+        );
+
+        close_session(&session.session_id).unwrap();
+    }
 }

@@ -11,15 +11,18 @@ use std::collections::HashMap;
 pub enum CardChange {
     Added {
         kid: String,
+        column_id: String,
         column_title: String,
         card: KanbanCard,
     },
     Removed {
         kid: String,
+        column_id: String,
         column_title: String,
     },
     Modified {
         kid: String,
+        column_id: String,
         column_title: String,
         old_content: String,
         new_content: String,
@@ -28,7 +31,9 @@ pub enum CardChange {
     },
     Moved {
         kid: String,
+        old_column_id: String,
         old_column: String,
+        new_column_id: String,
         new_column: String,
     },
 }
@@ -37,6 +42,7 @@ pub enum CardChange {
 #[derive(Debug, Clone)]
 pub struct CardSnapshot {
     pub kid: String,
+    pub column_id: String,
     pub column_title: String,
     pub content: String,
     pub checked: bool,
@@ -59,6 +65,7 @@ pub fn snapshot_board(board: &KanbanBoard) -> HashMap<String, CardSnapshot> {
                 kid.clone(),
                 CardSnapshot {
                     kid,
+                    column_id: col.id.clone(),
                     column_title: col.title.clone(),
                     content: card_identity::strip_kid(&card.content),
                     checked: card.checked,
@@ -82,20 +89,24 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
             None => {
                 changes.push(CardChange::Removed {
                     kid: kid.clone(),
+                    column_id: old_card.column_id.clone(),
                     column_title: old_card.column_title.clone(),
                 });
             }
             Some(new_card) => {
-                if old_card.column_title != new_card.column_title {
+                if old_card.column_id != new_card.column_id {
                     changes.push(CardChange::Moved {
                         kid: kid.clone(),
+                        old_column_id: old_card.column_id.clone(),
                         old_column: old_card.column_title.clone(),
+                        new_column_id: new_card.column_id.clone(),
                         new_column: new_card.column_title.clone(),
                     });
                 }
                 if old_card.content != new_card.content || old_card.checked != new_card.checked {
                     changes.push(CardChange::Modified {
                         kid: kid.clone(),
+                        column_id: new_card.column_id.clone(),
                         column_title: new_card.column_title.clone(),
                         old_content: old_card.content.clone(),
                         new_content: new_card.content.clone(),
@@ -113,6 +124,7 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
             // Reconstruct a minimal KanbanCard for the Added variant
             changes.push(CardChange::Added {
                 kid: kid.clone(),
+                column_id: new_card.column_id.clone(),
                 column_title: new_card.column_title.clone(),
                 card: KanbanCard {
                     id: String::new(),
@@ -215,7 +227,7 @@ mod tests {
         ]);
         let changes = diff_boards(&old, &new);
         assert!(changes.iter().any(
-            |c| matches!(c, CardChange::Moved { kid, old_column, new_column }
+            |c| matches!(c, CardChange::Moved { kid, old_column, new_column, .. }
                 if kid == "aaaa0001" && old_column == "Todo" && new_column == "Done"
             )
         ));
@@ -337,9 +349,91 @@ mod tests {
         )]);
         let changes = diff_boards(&old, &new);
         assert!(changes.iter().any(
-            |c| matches!(c, CardChange::Moved { kid, old_column, new_column }
+            |c| matches!(c, CardChange::Moved { kid, old_column, new_column, .. }
                 if kid == "aaaa0001" && old_column == "Todo" && new_column == "Done"
             )
         ));
+    }
+
+    #[test]
+    fn test_diff_detects_move_between_same_titled_columns_by_id() {
+        let card = make_card("aaaa0001", "Task 1", false);
+        let old = KanbanBoard {
+            valid: true,
+            title: "Test".to_string(),
+            columns: Vec::new(),
+            rows: vec![KanbanRow {
+                id: "row-1".to_string(),
+                title: "Row 1".to_string(),
+                stacks: vec![
+                    KanbanStack {
+                        id: "stack-a".to_string(),
+                        title: "Stack A".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-a".to_string(),
+                            title: "Todo".to_string(),
+                            cards: vec![card.clone()],
+                            include_source: None,
+                        }],
+                    },
+                    KanbanStack {
+                        id: "stack-b".to_string(),
+                        title: "Stack B".to_string(),
+                        columns: vec![KanbanColumn {
+                            id: "col-b".to_string(),
+                            title: "Todo".to_string(),
+                            cards: vec![],
+                            include_source: None,
+                        }],
+                    },
+                ],
+            }],
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        };
+        let new = KanbanBoard {
+            rows: vec![KanbanRow {
+                stacks: vec![
+                    KanbanStack {
+                        columns: vec![KanbanColumn {
+                            cards: vec![],
+                            ..old.rows[0].stacks[0].columns[0].clone()
+                        }],
+                        ..old.rows[0].stacks[0].clone()
+                    },
+                    KanbanStack {
+                        columns: vec![KanbanColumn {
+                            cards: vec![card],
+                            ..old.rows[0].stacks[1].columns[0].clone()
+                        }],
+                        ..old.rows[0].stacks[1].clone()
+                    },
+                ],
+                ..old.rows[0].clone()
+            }],
+            ..old.clone()
+        };
+
+        let changes = diff_boards(&old, &new);
+        assert!(changes.iter().any(|c| {
+            matches!(
+                c,
+                CardChange::Moved {
+                    kid,
+                    old_column_id,
+                    old_column,
+                    new_column_id,
+                    new_column,
+                }
+                if kid == "aaaa0001"
+                    && old_column_id == "col-a"
+                    && old_column == "Todo"
+                    && new_column_id == "col-b"
+                    && new_column == "Todo"
+            )
+        }));
     }
 }
