@@ -15,31 +15,17 @@
       <span class="capture-hint">esc</span>
     </div>
 
-    <div id="history-section" class="history-section">
-      <label class="field-label">Clipboard history</label>
-      <div id="history-list" class="history-list"></div>
+    <div id="clipboard-preview" class="clipboard-preview">
+      <div class="clipboard-empty">No clipboard content</div>
     </div>
 
-    <div id="drop-zone" class="drop-zone">
-      <div id="drop-label" class="drop-label">Drop files here</div>
-      <div id="file-preview" class="file-preview hidden"></div>
+    <div class="search-section">
+      <input id="search-input" class="search-input" type="text" placeholder="Search boards and cards..." autocomplete="off" spellcheck="false">
     </div>
 
-    <div class="field-row">
-      <div class="field">
-        <label class="field-label" for="board-select">Board</label>
-        <select id="board-select" class="field-select"></select>
-      </div>
-      <div class="field">
-        <label class="field-label" for="column-select">Column</label>
-        <select id="column-select" class="field-select"></select>
-      </div>
-    </div>
+    <div id="browse-path" class="browse-path"></div>
 
-    <div class="actions">
-      <button id="btn-cancel" class="btn btn-cancel">Cancel</button>
-      <button id="btn-send" class="btn btn-send" disabled>Send</button>
-    </div>
+    <div id="browse-area" class="browse-area"></div>
 
     <div id="status-msg" class="status-msg hidden"></div>
   </div>

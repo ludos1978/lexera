@@ -166,6 +166,7 @@ pub fn open_capture_popup(app: &AppHandle) {
     .center()
     .resizable(true)
     .always_on_top(true)
+    .focused(false)
     .decorations(false)
     .shadow(true)
     .build()

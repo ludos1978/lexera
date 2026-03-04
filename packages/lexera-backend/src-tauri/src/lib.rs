@@ -41,6 +41,53 @@ pub fn run() {
         log_bridge::write_fallback_line(&format!("failed to initialize backend logger: {}", e));
     }
 
+    // Install a panic hook that writes crash reports to disk before the
+    // process aborts.  This captures panics on any thread (main, tokio,
+    // clipboard-watcher, etc.) and persists the backtrace so we can
+    // diagnose unexpected crashes (especially on Windows).
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let thread = std::thread::current();
+        let thread_name = thread.name().unwrap_or("<unnamed>");
+
+        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic payload".to_string()
+        };
+
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        let report = format!(
+            "=== CRASH REPORT ===\n\
+             Timestamp: {}\n\
+             Thread: {}\n\
+             Location: {}\n\
+             Message: {}\n\
+             \n\
+             Backtrace:\n\
+             {}\n\
+             === END CRASH REPORT ===\n",
+            timestamp, thread_name, location, message, backtrace
+        );
+
+        log_bridge::write_crash_report(&report);
+
+        // Call the default hook so the panic still prints to stderr
+        default_hook(info);
+    }));
+
     // Global shutdown signal — created before Tauri builder so both setup and
     // the run-event handler can hold a reference.
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);

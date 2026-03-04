@@ -171,9 +171,30 @@ async fn handle_sync_session(
     let hello = tokio::time::timeout(
         std::time::Duration::from_secs(WS_HELLO_TIMEOUT_SECS),
         async {
-            while let Some(Ok(msg)) = ws_rx.next().await {
+            while let Some(next_msg) = ws_rx.next().await {
+                let msg = match next_msg {
+                    Ok(msg) => msg,
+                    Err(error) => {
+                        log::warn!(
+                            "[sync_ws] WS read error while waiting for ClientHello on board {}: {}",
+                            board_id,
+                            error
+                        );
+                        return None;
+                    }
+                };
                 if let Message::Text(text) = msg {
-                    return serde_json::from_str::<ClientMessage>(&text).ok();
+                    match serde_json::from_str::<ClientMessage>(&text) {
+                        Ok(parsed) => return Some(parsed),
+                        Err(error) => {
+                            log::warn!(
+                                "[sync_ws] Ignoring invalid message before ClientHello on board {}: {}",
+                                board_id,
+                                error
+                            );
+                            continue;
+                        }
+                    }
                 }
             }
             None
@@ -184,11 +205,28 @@ async fn handle_sync_session(
     let (client_user_id, client_vv_b64) = match hello {
         Ok(Some(ClientMessage::ClientHello { user_id, vv })) => (user_id, vv),
         _ => {
-            let err = serde_json::to_string(&ServerMessage::ServerError {
+            let err = match serde_json::to_string(&ServerMessage::ServerError {
                 message: format!("Expected ClientHello within {}s", WS_HELLO_TIMEOUT_SECS),
-            })
-            .unwrap_or_default();
-            let _ = ws_tx.send(Message::Text(err.into())).await;
+            }) {
+                Ok(value) => value,
+                Err(error) => {
+                    log::error!(
+                        "[sync_ws] Failed to serialize ClientHello timeout error for board {}: {}",
+                        board_id,
+                        error
+                    );
+                    String::new()
+                }
+            };
+            if !err.is_empty() {
+                if let Err(error) = ws_tx.send(Message::Text(err.into())).await {
+                    log::warn!(
+                        "[sync_ws] Failed to send ClientHello timeout error for board {}: {}",
+                        board_id,
+                        error
+                    );
+                }
+            }
             return;
         }
     };
@@ -210,11 +248,29 @@ async fn handle_sync_session(
     };
 
     if !authorized {
-        let err = serde_json::to_string(&ServerMessage::ServerError {
+        let err = match serde_json::to_string(&ServerMessage::ServerError {
             message: "Not authorized for this board".to_string(),
-        })
-        .unwrap_or_default();
-        let _ = ws_tx.send(Message::Text(err.into())).await;
+        }) {
+            Ok(value) => value,
+            Err(error) => {
+                log::error!(
+                    "[sync_ws] Failed to serialize unauthorized error for board {}: {}",
+                    board_id,
+                    error
+                );
+                String::new()
+            }
+        };
+        if !err.is_empty() {
+            if let Err(error) = ws_tx.send(Message::Text(err.into())).await {
+                log::warn!(
+                    "[sync_ws] Failed to send unauthorized error for board {} user {}: {}",
+                    board_id,
+                    auth_user,
+                    error
+                );
+            }
+        }
         return;
     }
 
@@ -222,11 +278,20 @@ async fn handle_sync_session(
     let (peer_id, mut hub_rx) = {
         let mut hub = state.sync_hub.lock().await;
         let result = hub.register(&board_id, auth_user);
-        let presence_msg = serde_json::to_string(&ServerMessage::ServerPresence {
+        match serde_json::to_string(&ServerMessage::ServerPresence {
             online_users: hub.online_users(&board_id),
-        })
-        .unwrap_or_default();
-        hub.broadcast_all(&board_id, &presence_msg);
+        }) {
+            Ok(presence_msg) => {
+                hub.broadcast_all(&board_id, &presence_msg);
+            }
+            Err(error) => {
+                log::error!(
+                    "[sync_ws] Failed to serialize presence message for board {}: {}",
+                    board_id,
+                    error
+                );
+            }
+        }
         result
     };
 
@@ -238,21 +303,65 @@ async fn handle_sync_session(
     );
 
     // 4. Compute delta from server CRDT
-    let client_vv_bytes = b64().decode(&client_vv_b64).unwrap_or_default();
-    let server_updates = state
+    let client_vv_bytes = match b64().decode(&client_vv_b64) {
+        Ok(vv) => vv,
+        Err(error) => {
+            log::warn!(
+                "[sync_ws] Invalid ClientHello VV for board {} user {}: {}",
+                board_id,
+                auth_user,
+                error
+            );
+            Vec::new()
+        }
+    };
+    let server_updates = match state
         .storage
         .export_crdt_updates_since(&board_id, &client_vv_bytes)
-        .unwrap_or_default();
-    let server_vv = state.storage.get_crdt_vv(&board_id).unwrap_or_default();
+    {
+        Some(updates) => updates,
+        None => {
+            log::warn!(
+                "[sync_ws] Failed to export CRDT updates for board {} during hello; sending empty updates",
+                board_id
+            );
+            Vec::new()
+        }
+    };
+    let server_vv = match state.storage.get_crdt_vv(&board_id) {
+        Some(vv) => vv,
+        None => {
+            log::warn!(
+                "[sync_ws] Failed to get CRDT VV for board {} during hello; sending empty VV",
+                board_id
+            );
+            Vec::new()
+        }
+    };
 
     // 5. Send ServerHello
-    let hello_msg = serde_json::to_string(&ServerMessage::ServerHello {
+    let hello_msg = match serde_json::to_string(&ServerMessage::ServerHello {
         peer_id,
         vv: b64().encode(&server_vv),
         updates: b64().encode(&server_updates),
-    })
-    .unwrap_or_default();
-    if ws_tx.send(Message::Text(hello_msg.into())).await.is_err() {
+    }) {
+        Ok(msg) => msg,
+        Err(error) => {
+            log::error!(
+                "[sync_ws] Failed to serialize ServerHello for board {} peer {}: {}",
+                board_id,
+                peer_id,
+                error
+            );
+            String::new()
+        }
+    };
+    if hello_msg.is_empty() || ws_tx.send(Message::Text(hello_msg.into())).await.is_err() {
+        log::warn!(
+            "[sync_ws] Failed to send ServerHello for board {} peer {}",
+            board_id,
+            peer_id
+        );
         let mut hub = state.sync_hub.lock().await;
         hub.unregister(&board_id, peer_id);
         return;
@@ -260,6 +369,7 @@ async fn handle_sync_session(
 
     // 6. Split into read and write tasks
     let board_id_read = board_id.clone();
+    let _board_id_write = board_id.clone();
     let state_read = state.clone();
     let auth_user_read = auth_user.to_string();
 
@@ -270,15 +380,21 @@ async fn handle_sync_session(
         ping_interval.tick().await; // consume the immediate first tick
         loop {
             tokio::select! {
-                maybe_msg = hub_rx.recv() => {
-                    match maybe_msg {
-                        Some(msg) => {
-                            if ws_tx.send(Message::Text(msg.into())).await.is_err() {
-                                break;
+                    maybe_msg = hub_rx.recv() => {
+                        match maybe_msg {
+                            Some(msg) => {
+                                if let Err(error) = ws_tx.send(Message::Text(msg.into())).await {
+                                    log::warn!(
+                                        "[sync_ws] Failed to forward hub message for board {} peer {}: {}",
+                                        _board_id_write,
+                                        peer_id,
+                                        error
+                                    );
+                                    break;
+                                }
                             }
+                            None => break,
                         }
-                        None => break,
-                    }
                 }
                 _ = ping_interval.tick() => {
                     if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
@@ -292,23 +408,53 @@ async fn handle_sync_session(
 
     // Read task: process ClientUpdate messages
     let read_task = tokio::spawn(async move {
-        while let Some(Ok(msg)) = ws_rx.next().await {
+        while let Some(next_msg) = ws_rx.next().await {
+            let msg = match next_msg {
+                Ok(msg) => msg,
+                Err(error) => {
+                    log::warn!(
+                        "[sync_ws] WS read error on board {} peer {}: {}",
+                        board_id_read,
+                        peer_id,
+                        error
+                    );
+                    break;
+                }
+            };
             let text = match msg {
                 Message::Text(t) => t,
                 Message::Close(_) => break,
-                _ => continue,
+                _ => {
+                    continue;
+                }
             };
 
             let parsed: ClientMessage = match serde_json::from_str(&text) {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(error) => {
+                    log::warn!(
+                        "[sync_ws] Failed to parse client WS message on board {} peer {}: {}",
+                        board_id_read,
+                        peer_id,
+                        error
+                    );
+                    continue;
+                }
             };
 
             match parsed {
                 ClientMessage::ClientUpdate { updates } => {
                     let bytes = match b64().decode(&updates) {
                         Ok(b) => b,
-                        Err(_) => continue,
+                        Err(error) => {
+                            log::warn!(
+                                "[sync_ws] Failed to decode ClientUpdate payload on board {} peer {}: {}",
+                                board_id_read,
+                                peer_id,
+                                error
+                            );
+                            continue;
+                        }
                     };
 
                     log::info!(
@@ -332,22 +478,38 @@ async fn handle_sync_session(
                     }
 
                     // Broadcast to other peers
-                    let broadcast_msg = serde_json::to_string(&ServerMessage::ServerUpdate {
+                    let broadcast_msg = match serde_json::to_string(&ServerMessage::ServerUpdate {
                         updates: updates.clone(),
-                    })
-                    .unwrap_or_default();
+                    }) {
+                        Ok(msg) => msg,
+                        Err(error) => {
+                            log::error!(
+                                "[sync_ws] Failed to serialize ServerUpdate for board {} peer {}: {}",
+                                board_id_read,
+                                peer_id,
+                                error
+                            );
+                            continue;
+                        }
+                    };
                     let hub = state_read.sync_hub.lock().await;
                     hub.broadcast(&board_id_read, peer_id, &broadcast_msg);
 
                     // Fire SSE event so non-WS clients know something changed
-                    let _ = state_read.event_tx.send(
+                    if let Err(error) = state_read.event_tx.send(
                         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
                             board_id: board_id_read.clone(),
                             revision: state_read.storage.get_board_revision_token(&board_id_read),
                             generation: state_read.storage.get_board_generation(&board_id_read),
                             writer_id: None,
                         },
-                    );
+                    ) {
+                        log::warn!(
+                            "[sync_ws] Failed to publish MainFileChanged event for board {}: {}",
+                            board_id_read,
+                            error
+                        );
+                    }
                 }
                 ClientMessage::ClientEditingPresence {
                     card_kid,
@@ -355,14 +517,24 @@ async fn handle_sync_session(
                     cursor_pos,
                     is_typing,
                 } => {
-                    let msg = serde_json::to_string(&ServerMessage::ServerEditingPresence {
+                    let msg = match serde_json::to_string(&ServerMessage::ServerEditingPresence {
                         user_id: auth_user_read.clone(),
                         user_name,
                         card_kid,
                         cursor_pos,
                         is_typing,
-                    })
-                    .unwrap_or_default();
+                    }) {
+                        Ok(msg) => msg,
+                        Err(error) => {
+                            log::error!(
+                                "[sync_ws] Failed to serialize editing presence for board {} peer {}: {}",
+                                board_id_read,
+                                peer_id,
+                                error
+                            );
+                            continue;
+                        }
+                    };
                     let hub = state_read.sync_hub.lock().await;
                     hub.broadcast(&board_id_read, peer_id, &msg);
                 }
@@ -383,21 +555,37 @@ async fn handle_sync_session(
     {
         let mut hub = state.sync_hub.lock().await;
         hub.unregister(&board_id, peer_id);
-        let presence_msg = serde_json::to_string(&ServerMessage::ServerPresence {
+        match serde_json::to_string(&ServerMessage::ServerPresence {
             online_users: hub.online_users(&board_id),
-        })
-        .unwrap_or_default();
-        hub.broadcast_all(&board_id, &presence_msg);
+        }) {
+            Ok(presence_msg) => hub.broadcast_all(&board_id, &presence_msg),
+            Err(error) => {
+                log::error!(
+                    "[sync_ws] Failed to serialize disconnect presence for board {} peer {}: {}",
+                    board_id,
+                    peer_id,
+                    error
+                );
+            }
+        }
         // Clear editing presence for this peer
-        let editing_clear = serde_json::to_string(&ServerMessage::ServerEditingPresence {
+        match serde_json::to_string(&ServerMessage::ServerEditingPresence {
             user_id: auth_user.to_string(),
             user_name: String::new(),
             card_kid: None,
             cursor_pos: None,
             is_typing: false,
-        })
-        .unwrap_or_default();
-        hub.broadcast_all(&board_id, &editing_clear);
+        }) {
+            Ok(editing_clear) => hub.broadcast_all(&board_id, &editing_clear),
+            Err(error) => {
+                log::error!(
+                    "[sync_ws] Failed to serialize disconnect editing presence for board {} peer {}: {}",
+                    board_id,
+                    peer_id,
+                    error
+                );
+            }
+        }
     }
     log::info!(
         "[sync_ws] Peer {} disconnected from board {}",

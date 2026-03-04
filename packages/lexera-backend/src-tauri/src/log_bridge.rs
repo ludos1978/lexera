@@ -173,6 +173,42 @@ pub fn log_file_path() -> String {
     LOG_FILE.path.display().to_string()
 }
 
+/// Write a crash report to a dedicated crash log file next to backend.log.
+/// Called from the panic hook — uses only infallible file I/O (no locks that
+/// might already be poisoned from the panic).
+pub fn write_crash_report(report: &str) {
+    let crash_path = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(crate::config::CONFIG_DIR_NAME)
+        .join("logs")
+        .join("crash.log");
+
+    if let Some(parent) = crash_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&crash_path)
+    {
+        let _ = file.write_all(report.as_bytes());
+        let _ = file.write_all(b"\n");
+        let _ = file.flush();
+        let _ = file.sync_all();
+    }
+
+    // Also try the regular backend.log (best-effort, lock may be poisoned)
+    LOG_FILE.append_entry(&BackendLogEntry {
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+        level: "error".to_string(),
+        target: "lexera.crash".to_string(),
+        message: report.replace('\n', "\\n"),
+    });
+}
+
 pub fn write_fallback_line(message: &str) {
     let entry = BackendLogEntry {
         timestamp_ms: std::time::SystemTime::now()

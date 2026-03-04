@@ -227,6 +227,48 @@ pub async fn add_card(
     ))
 }
 
+/// POST /boards/{board_id}/cards/{card_id}/append -- append content to an existing card.
+pub async fn append_to_card(
+    State(state): State<AppState>,
+    Path((board_id, card_id)): Path<(String, String)>,
+    Json(body): Json<AddCardBody>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    validate_board_id(&board_id)?;
+    if body.content.trim().is_empty() {
+        let status = StatusCode::BAD_REQUEST;
+        let error = "Missing or empty content".to_string();
+        log_api_issue(status, "lexera.api.append_to_card", &error);
+        return Err((status, Json(ErrorResponse { error })));
+    }
+
+    state
+        .storage
+        .append_to_card(&board_id, &card_id, &body.content)
+        .map_err(|e| {
+            let status = match &e {
+                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+                lexera_core::storage::StorageError::CardNotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            log_api_issue(
+                status,
+                "lexera.api.append_to_card",
+                format!(
+                    "Failed to append to card {} on board {}: {}",
+                    card_id, board_id, e
+                ),
+            );
+            (
+                status,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+
+    Ok((StatusCode::OK, Json(serde_json::json!({ "success": true }))))
+}
+
 /// PUT /boards/{board_id} -- write a full board, with card-level merge on conflict.
 pub async fn write_board(
     State(state): State<AppState>,
@@ -253,6 +295,7 @@ pub async fn write_board(
             }),
         )
     })?;
+    emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
     Ok(Json(build_write_board_response(
         &state, &board_id, result, &board,
@@ -336,6 +379,7 @@ pub async fn write_board_with_base(
                 }),
             )
         })?;
+    emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
     Ok(Json(build_write_board_response(
         &state,
@@ -578,14 +622,20 @@ pub async fn add_board_endpoint(
     }
 
     // Broadcast board list change via SSE
-    let _ = state.event_tx.send(
+    if let Err(error) = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.clone(),
             revision: state.storage.get_board_revision_token(&board_id),
             generation: state.storage.get_board_generation(&board_id),
             writer_id: None,
         },
-    );
+    ) {
+        log::warn!(
+            "[lexera.api.add_board] Failed to publish MainFileChanged for {}: {}",
+            board_id,
+            error
+        );
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -725,14 +775,20 @@ pub async fn update_board_settings(
     })?;
 
     // Broadcast change so SSE clients can react
-    let _ = state.event_tx.send(
+    if let Err(error) = state.event_tx.send(
         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
             board_id: board_id.clone(),
             revision: state.storage.get_board_revision_token(&board_id),
             generation: state.storage.get_board_generation(&board_id),
             writer_id: None,
         },
-    );
+    ) {
+        log::warn!(
+            "[lexera.api.update_board_settings] Failed to publish MainFileChanged for {}: {}",
+            board_id,
+            error
+        );
+    }
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
 
     Ok(Json(serde_json::json!({
@@ -839,7 +895,13 @@ async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
     // Export outside the hub lock to prevent lock ordering inversion
     let updates = match state.storage.export_crdt_updates_since(board_id, &[]) {
         Some(u) => u,
-        None => return,
+        None => {
+            log::warn!(
+                "[lexera.api.broadcast_crdt] Failed to export CRDT updates for board {}",
+                board_id
+            );
+            return;
+        }
     };
     let msg = serde_json::json!({
         "type": "ServerUpdate",
@@ -848,6 +910,23 @@ async fn broadcast_crdt_to_sync_hub(state: &AppState, board_id: &str) {
     let msg_str = msg.to_string();
     let hub = state.sync_hub.lock().await;
     hub.broadcast(board_id, 0, &msg_str);
+}
+
+fn emit_main_file_changed(state: &AppState, board_id: &str) {
+    if let Err(error) = state.event_tx.send(
+        lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
+            board_id: board_id.to_string(),
+            revision: state.storage.get_board_revision_token(board_id),
+            generation: state.storage.get_board_generation(board_id),
+            writer_id: Some(state.local_user_id.clone()),
+        },
+    ) {
+        log::warn!(
+            "[lexera.api.board] Failed to publish MainFileChanged for {}: {}",
+            board_id,
+            error
+        );
+    }
 }
 
 #[cfg(test)]

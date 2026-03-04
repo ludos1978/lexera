@@ -28,6 +28,14 @@ pub trait BoardStorage: Send + Sync {
     fn add_card(&self, board_id: &str, col_index: usize, content: &str)
         -> Result<(), StorageError>;
 
+    /// Append content to an existing card (identified by card ID).
+    fn append_to_card(
+        &self,
+        board_id: &str,
+        card_id: &str,
+        content: &str,
+    ) -> Result<(), StorageError>;
+
     /// Search cards across all boards.
     fn search(&self, query: &str) -> Vec<SearchResult>;
 
@@ -45,6 +53,9 @@ pub enum StorageError {
 
     #[error("Column index {index} out of range (0-{max})")]
     ColumnOutOfRange { index: usize, max: usize },
+
+    #[error("Card not found: {0}")]
+    CardNotFound(String),
 
     #[error("Invalid board: {0}")]
     InvalidBoard(String),

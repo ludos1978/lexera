@@ -91,6 +91,10 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::post(board::add_card),
         )
         .route(
+            "/boards/{board_id}/cards/{card_id}/append",
+            axum::routing::post(board::append_to_card),
+        )
+        .route(
             "/boards/{board_id}",
             axum::routing::put(board::write_board).delete(board::remove_board_endpoint),
         )

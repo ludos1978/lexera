@@ -476,6 +476,41 @@ impl BoardStorage for IosStorage {
         self.write_board_file(board_id)
     }
 
+    fn append_to_card(
+        &self,
+        board_id: &str,
+        card_id: &str,
+        content: &str,
+    ) -> Result<(), StorageError> {
+        {
+            let mut boards = self.boards.write().unwrap_or_else(|p| {
+                log::warn!("[ios_storage.append_to_card] Lock was poisoned, recovering");
+                p.into_inner()
+            });
+            let state = boards
+                .get_mut(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+
+            let mut found = false;
+            for col in state.board.all_columns_mut() {
+                for card in col.cards.iter_mut() {
+                    if card.id == card_id {
+                        card.content = format!("{}\n{}", card.content, content);
+                        found = true;
+                        break;
+                    }
+                }
+                if found {
+                    break;
+                }
+            }
+            if !found {
+                return Err(StorageError::CardNotFound(card_id.to_string()));
+            }
+        }
+        self.write_board_file(board_id)
+    }
+
     fn search(&self, query: &str) -> Vec<SearchResult> {
         self.search_with_options(query, SearchOptions::default())
     }

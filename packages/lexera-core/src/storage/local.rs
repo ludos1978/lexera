@@ -291,7 +291,18 @@ impl LocalStorage {
         board_dir: &Path,
     ) -> Option<KanbanBoard> {
         let normalized_board = Self::normalize_board_for_write(board, board_dir);
-        let mut crdt_board = Self::normalize_board_for_write(&crdt.to_board(), board_dir);
+        let crdt_snapshot = match crdt.to_board_result() {
+            Ok(board) => board,
+            Err(error) => {
+                log::warn!(
+                    target: "lexera.storage.read_board",
+                    "Failed to materialize CRDT snapshot during semantic compare: {}",
+                    error
+                );
+                return None;
+            }
+        };
+        let mut crdt_board = Self::normalize_board_for_write(&crdt_snapshot, board_dir);
         Self::restore_include_sources(&mut crdt_board, &normalized_board);
         if !Self::boards_match_visible_content(&normalized_board, &crdt_board) {
             log::info!(
@@ -600,7 +611,7 @@ impl LocalStorage {
         let incoming_delta = incoming_store.export_updates_since(&current_vv)?;
         current_store.import_updates(&incoming_delta)?;
 
-        let mut merged_board = current_store.to_board();
+        let mut merged_board = current_store.to_board_result()?;
         merged_board = Self::normalize_board_for_write(&merged_board, board_dir);
         Self::restore_include_sources(&mut merged_board, current);
         Self::restore_include_sources(&mut merged_board, incoming);
@@ -687,12 +698,26 @@ impl LocalStorage {
     ) -> Result<(), StorageError> {
         board_to_write.generation_meta = Some(self.next_generation_meta(board_id, &board_to_write));
         if let Some(ref mut c) = crdt {
-            c.set_metadata(
-                board_to_write.yaml_header.clone(),
-                board_to_write.kanban_footer.clone(),
-                board_to_write.board_settings.clone(),
-                board_to_write.generation_meta.clone(),
-            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                c.set_metadata(
+                    board_to_write.yaml_header.clone(),
+                    board_to_write.kanban_footer.clone(),
+                    board_to_write.board_settings.clone(),
+                    board_to_write.generation_meta.clone(),
+                );
+            }));
+            if let Err(panic_payload) = result {
+                let msg = panic_payload
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or_else(|| panic_payload.downcast_ref::<&str>().copied())
+                    .unwrap_or("unknown panic");
+                log::error!(
+                    "[lexera.crdt] Loro panicked during set_metadata for board {}: {}",
+                    board_id,
+                    msg
+                );
+            }
         }
 
         if create_backup && file_path.exists() {
@@ -721,7 +746,31 @@ impl LocalStorage {
 
         if let Some(ref c) = crdt {
             let crdt_path = file_path.with_extension("md.crdt");
-            let _ = c.save_to_file(&crdt_path);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                c.save_to_file(&crdt_path)
+            }));
+            match result {
+                Ok(Err(e)) => {
+                    log::error!(
+                        "[lexera.crdt] Failed to save CRDT file for board {}: {}",
+                        board_id,
+                        e
+                    );
+                }
+                Err(panic_payload) => {
+                    let msg = panic_payload
+                        .downcast_ref::<String>()
+                        .map(|s| s.as_str())
+                        .or_else(|| panic_payload.downcast_ref::<&str>().copied())
+                        .unwrap_or("unknown panic");
+                    log::error!(
+                        "[lexera.crdt] Loro panicked during save_to_file for board {}: {}",
+                        board_id,
+                        msg
+                    );
+                }
+                Ok(Ok(())) => {}
+            }
         }
 
         let metadata = fs::metadata(file_path)?;
@@ -762,7 +811,7 @@ impl LocalStorage {
             .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?
             .get(board_id)
             .map(|state| state.file_path.clone())
-            .unwrap_or_else(|| PathBuf::from(format!("<remote>/{}", board_id)));
+            .unwrap_or_else(|| Self::remote_virtual_board_path(board_id));
 
         let markdown = parser::generate_markdown(&board);
         let generation = board
@@ -795,15 +844,101 @@ impl LocalStorage {
         board: &KanbanBoard,
         reason: &str,
     ) -> Result<super::backup::CrashsaveEntry, StorageError> {
-        if self.is_remote_board(board_id) {
-            return Err(StorageError::InvalidBoard(
-                "Remote boards do not have a local file path for crashsaves".to_string(),
-            ));
-        }
-        let file_path = self
-            .get_board_path(board_id)
-            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+        let file_path = if self.is_remote_board(board_id) {
+            // Remote mirrors still need crashsave guarantees; persist into a
+            // stable local shadow directory using a safe synthetic filename.
+            Self::remote_virtual_board_path(board_id)
+        } else {
+            self.get_board_path(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+        };
         self.write_crashsave_for_file(&file_path, board, reason)
+    }
+
+    fn write_remote_board_internal(
+        &self,
+        board_id: &str,
+        board: &KanbanBoard,
+    ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+        let lock = self.get_write_lock(board_id)?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "write_remote_board_internal");
+
+        let incoming_board = Self::ensure_board_card_kids(board);
+        let (mut current_board, mut crdt) = {
+            let mut boards = self
+                .boards
+                .write()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?;
+            let state = boards
+                .get_mut(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            let current = Self::ensure_board_card_kids(&state.board);
+            let crdt = state
+                .crdt
+                .take()
+                .or_else(|| CrdtStore::from_board(&current).ok())
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+            (current, crdt)
+        };
+
+        let merged_result: Result<(KanbanBoard, CrdtStore), StorageError> = (|| {
+            if Self::board_has_missing_kids(&current_board) {
+                current_board = Self::ensure_board_card_kids(&current_board);
+                crdt = CrdtStore::from_board(&current_board)?;
+            }
+            log::info!(
+                "[lexera.storage.remote.write] board={} current={} incoming={}",
+                board_id,
+                board_card_summary(&current_board),
+                board_card_summary(&incoming_board)
+            );
+            crdt.apply_board(&incoming_board, &current_board)?;
+            let mut merged = crdt.to_board_result()?;
+            Self::restore_include_sources(&mut merged, &current_board);
+            Self::restore_include_sources(&mut merged, &incoming_board);
+
+            if has_structural_mismatch(&merged, &incoming_board) {
+                log::info!(
+                    "[lexera.storage.remote.write] board={} structural mismatch after CRDT apply, rebuilding from incoming",
+                    board_id
+                );
+                Ok((
+                    incoming_board.clone(),
+                    CrdtStore::from_board(&incoming_board)?,
+                ))
+            } else {
+                Ok((merged, crdt))
+            }
+        })();
+
+        let (board_to_write, crdt_to_write) = match merged_result {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!(
+                    "[lexera.storage.remote.write] CRDT apply failed for board {}: {} (current={} incoming={})",
+                    board_id,
+                    err,
+                    board_card_summary(&current_board),
+                    board_card_summary(&incoming_board)
+                );
+                let replacement_crdt = CrdtStore::from_board(&current_board).ok();
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = replacement_crdt;
+                    }
+                }
+                return Err(err);
+            }
+        };
+
+        log::info!(
+            "[lexera.storage.remote.write] board={} final={}",
+            board_id,
+            board_card_summary(&board_to_write)
+        );
+        self.commit_remote_board_state(board_id, board_to_write, Some(crdt_to_write))?;
+        Ok(None)
     }
 
     fn write_board_internal(
@@ -813,14 +948,11 @@ impl LocalStorage {
         base_board: Option<&KanbanBoard>,
     ) -> Result<Option<card_merge::MergeResult>, StorageError> {
         if self.is_remote_board(board_id) {
-            return Err(StorageError::InvalidBoard(
-                "Remote boards are read-only mirrors and cannot be saved locally".to_string(),
-            ));
+            return self.write_remote_board_internal(board_id, board);
         }
         let lock = self.get_write_lock(board_id)?;
-        let _guard = lock.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e))
-        })?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "write_board_internal");
 
         let file_path = self
             .get_board_path(board_id)
@@ -846,7 +978,17 @@ impl LocalStorage {
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
             (
                 state.board.clone(),
-                state.crdt.as_ref().map(|c| c.to_board()),
+                state.crdt.as_ref().and_then(|c| match c.to_board_result() {
+                    Ok(board) => Some(board),
+                    Err(error) => {
+                        log::warn!(
+                            "[lexera.storage.write] Failed to materialize CRDT board for {}: {}",
+                            board_id,
+                            error
+                        );
+                        None
+                    }
+                }),
                 state.crdt.is_some(),
             )
         };
@@ -960,7 +1102,8 @@ impl LocalStorage {
                 );
 
                 crdt.apply_board(&normalized_board, &current)?;
-                let mut merged = Self::normalize_board_for_write(&crdt.to_board(), &board_dir);
+                let mut merged =
+                    Self::normalize_board_for_write(&crdt.to_board_result()?, &board_dir);
                 Self::restore_include_sources(&mut merged, &current);
                 Self::restore_include_sources(&mut merged, &normalized_board);
 
@@ -987,6 +1130,11 @@ impl LocalStorage {
             match direct_result {
                 Ok((board_to_write, crdt)) => (board_to_write, Some(crdt), None),
                 Err(err) => {
+                    log::error!(
+                        "[lexera.storage.write] CRDT direct apply failed for board {}: {}",
+                        board_id,
+                        err
+                    );
                     let replacement_crdt =
                         crate::crdt::bridge::CrdtStore::from_board(&current).ok();
                     if let Ok(mut boards) = self.boards.write() {
@@ -1028,10 +1176,37 @@ impl LocalStorage {
         base_board: &KanbanBoard,
         board: &KanbanBoard,
     ) -> Result<(KanbanBoard, KanbanBoard, Option<card_merge::MergeResult>), StorageError> {
+        if self.is_remote_board(board_id) {
+            let _ = base_board;
+            let lock = self.get_write_lock(board_id)?;
+            let _guard = Self::acquire_board_write_guard(
+                board_id,
+                lock.as_ref(),
+                "rebase_board_from_base(remote)",
+            );
+            let current = self
+                .boards
+                .read()
+                .map_err(|e| StorageError::LockPoisoned(format!("boards read: {}", e)))?
+                .get(board_id)
+                .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?
+                .board
+                .clone();
+            let current = Self::ensure_board_card_kids(&current);
+            let incoming = Self::ensure_board_card_kids(board);
+            let mut crdt = CrdtStore::from_board(&current)?;
+            crdt.apply_board(&incoming, &current)?;
+            let mut merged = crdt.to_board_result()?;
+            Self::restore_include_sources(&mut merged, &current);
+            Self::restore_include_sources(&mut merged, &incoming);
+            if has_structural_mismatch(&merged, &incoming) {
+                return Ok((current, incoming, None));
+            }
+            return Ok((current, merged, None));
+        }
         let lock = self.get_write_lock(board_id)?;
-        let _guard = lock.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!("write lock for board {}: {}", board_id, e))
-        })?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "rebase_board_from_base");
 
         let file_path = self
             .get_board_path(board_id)
@@ -1059,7 +1234,19 @@ impl LocalStorage {
                 )
             } else {
                 Self::normalize_board_for_write(
-                    &state.crdt.as_ref().unwrap().to_board(),
+                    &state
+                        .crdt
+                        .as_ref()
+                        .unwrap()
+                        .to_board_result()
+                        .unwrap_or_else(|error| {
+                            log::warn!(
+                                "[lexera.storage.rebase] Failed to materialize CRDT board for {}: {}. Falling back to in-memory board state.",
+                                board_id,
+                                error
+                            );
+                            state.board.clone()
+                        }),
                     &board_dir,
                 )
             }
@@ -1122,6 +1309,27 @@ impl LocalStorage {
         hex::encode(&result[..6])
     }
 
+    fn sanitize_filename_component(value: &str) -> String {
+        let mut out = String::with_capacity(value.len());
+        for ch in value.chars() {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            "remote-board".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn remote_virtual_board_path(board_id: &str) -> PathBuf {
+        let safe = Self::sanitize_filename_component(board_id);
+        PathBuf::from(".lexera-remote").join(format!("{}.md", safe))
+    }
+
     /// Add a board file to tracking. Reads and parses it immediately.
     /// Detects include columns and loads their content from include files.
     pub fn add_board(&self, file_path: &Path) -> Result<String, StorageError> {
@@ -1173,7 +1381,13 @@ impl LocalStorage {
                     log::warn!("[lexera.crdt] Failed to load .crdt file: {}", e);
                     match CrdtStore::from_board(&board) {
                         Ok(c) => {
-                            let _ = c.save_to_file(&crdt_path);
+                            if let Err(error) = c.save_to_file(&crdt_path) {
+                                log::warn!(
+                                    "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
+                                    crdt_path,
+                                    error
+                                );
+                            }
                             Some(c)
                         }
                         Err(e) => {
@@ -1186,7 +1400,13 @@ impl LocalStorage {
         } else {
             match CrdtStore::from_board(&board) {
                 Ok(c) => {
-                    let _ = c.save_to_file(&crdt_path);
+                    if let Err(error) = c.save_to_file(&crdt_path) {
+                        log::warn!(
+                            "[lexera.crdt] Failed to persist new .crdt file {:?}: {}",
+                            crdt_path,
+                            error
+                        );
+                    }
                     Some(c)
                 }
                 Err(e) => {
@@ -1323,7 +1543,13 @@ impl LocalStorage {
             match Self::align_loaded_board_with_crdt(board_id, &board, c, &board_dir) {
                 Ok((canonical_board, c)) => {
                     board = canonical_board;
-                    let _ = c.save_to_file(&crdt_path);
+                    if let Err(error) = c.save_to_file(&crdt_path) {
+                        log::warn!(
+                            "[lexera.crdt] Failed to persist aligned .crdt file {:?}: {}",
+                            crdt_path,
+                            error
+                        );
+                    }
                     Some(c)
                 }
                 Err(e) => {
@@ -1334,7 +1560,13 @@ impl LocalStorage {
         } else {
             match CrdtStore::from_board(&board) {
                 Ok(c) => {
-                    let _ = c.save_to_file(&crdt_path);
+                    if let Err(error) = c.save_to_file(&crdt_path) {
+                        log::warn!(
+                            "[lexera.crdt] Failed to persist rebuilt .crdt file {:?}: {}",
+                            crdt_path,
+                            error
+                        );
+                    }
                     Some(c)
                 }
                 Err(e) => {
@@ -1434,7 +1666,7 @@ impl LocalStorage {
             .unwrap_or(0);
         let version = self.next_version();
         let state = BoardState {
-            file_path: PathBuf::from(format!("<remote>/{}", board_id)),
+            file_path: Self::remote_virtual_board_path(board_id),
             board: normalized_board.clone(),
             last_modified: SystemTime::now(),
             content_hash,
@@ -1779,13 +2011,38 @@ impl LocalStorage {
 
     /// Get a write lock for a specific board.
     fn get_write_lock(&self, board_id: &str) -> Result<Arc<Mutex<()>>, StorageError> {
-        let mut locks = self.write_locks.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!("write_locks in get_write_lock: {}", e))
-        })?;
+        let mut locks = match self.write_locks.lock() {
+            Ok(locks) => locks,
+            Err(poisoned) => {
+                log::error!(
+                    "[lexera.storage.lock] Recovered from poisoned global write_locks mutex while getting board {} lock",
+                    board_id
+                );
+                poisoned.into_inner()
+            }
+        };
         Ok(locks
             .entry(board_id.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(())))
             .clone())
+    }
+
+    fn acquire_board_write_guard<'a>(
+        board_id: &str,
+        lock: &'a Mutex<()>,
+        context: &str,
+    ) -> std::sync::MutexGuard<'a, ()> {
+        match lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::error!(
+                    "[lexera.storage.lock] Recovered from poisoned write lock for board {} during {}. A prior task panicked while holding this lock.",
+                    board_id,
+                    context
+                );
+                poisoned.into_inner()
+            }
+        }
     }
 
     /// Atomic write with fsync: write to .tmp, fsync, rename, fsync directory.
@@ -1811,8 +2068,23 @@ impl LocalStorage {
 
         // fsync directory for rename durability
         if let Some(dir) = path.parent() {
-            if let Ok(d) = fs::File::open(dir) {
-                let _ = d.sync_all();
+            match fs::File::open(dir) {
+                Ok(d) => {
+                    if let Err(error) = d.sync_all() {
+                        log::warn!(
+                            "[lexera.storage.atomic_write] Failed to fsync directory {:?}: {}",
+                            dir,
+                            error
+                        );
+                    }
+                }
+                Err(error) => {
+                    log::warn!(
+                        "[lexera.storage.atomic_write] Failed to open directory {:?} for fsync: {}",
+                        dir,
+                        error
+                    );
+                }
             }
         }
         Ok(())
@@ -1859,7 +2131,7 @@ impl LocalStorage {
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
     pub fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
-        let _guard = lock.lock().ok()?;
+        let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "get_crdt_vv");
         let boards = self.boards.read().ok()?;
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
@@ -1872,7 +2144,8 @@ impl LocalStorage {
     /// Acquires the per-board write lock to avoid reading while CRDT is taken out.
     pub fn export_crdt_updates_since(&self, board_id: &str, vv_bytes: &[u8]) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
-        let _guard = lock.lock().ok()?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "export_crdt_updates_since");
         let boards = self.boards.read().ok()?;
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
@@ -1886,7 +2159,8 @@ impl LocalStorage {
 
     pub fn export_crdt_snapshot(&self, board_id: &str) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
-        let _guard = lock.lock().ok()?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "export_crdt_snapshot");
         let boards = self.boards.read().ok()?;
         let state = boards.get(board_id)?;
         let crdt = state.crdt.as_ref()?;
@@ -1896,12 +2170,8 @@ impl LocalStorage {
     /// Import remote CRDT updates, rebuild the board from CRDT, and persist.
     pub fn import_crdt_updates(&self, board_id: &str, bytes: &[u8]) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id)?;
-        let _guard = lock.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!(
-                "write lock for board {} in import_crdt: {}",
-                board_id, e
-            ))
-        })?;
+        let _guard =
+            Self::acquire_board_write_guard(board_id, lock.as_ref(), "import_crdt_updates");
         let is_remote = self.is_remote_board(board_id);
         let file_path = if is_remote {
             None
@@ -1931,22 +2201,54 @@ impl LocalStorage {
             )
         };
 
+        // import_updates is panic-safe in the CRDT bridge, but any failure
+        // still means this CRDT instance may be unhealthy (e.g. poisoned
+        // internals after panic recovery). Rebuild from the last stable board.
         if let Err(e) = crdt.import_updates(bytes) {
-            // Put CRDT back on failure
+            log::error!(
+                "[lexera.crdt] import_updates failed for board {}: {}",
+                board_id,
+                e
+            );
+            let replacement_crdt = CrdtStore::from_board(&current_board).ok();
             if let Ok(mut boards) = self.boards.write() {
                 if let Some(state) = boards.get_mut(board_id) {
-                    state.crdt = Some(crdt);
+                    state.crdt = replacement_crdt;
                 }
-            } else {
-                log::error!(
-                    "[lexera.crdt] Boards lock poisoned while restoring CRDT after import failure"
-                );
             }
             return Err(StorageError::Io(e));
         }
 
-        // Rebuild board from CRDT state
-        let mut board = crdt.to_board();
+        let board_result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crdt.to_board()));
+        let mut board = match board_result {
+            Ok(board) => board,
+            Err(panic_payload) => {
+                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                    (*s).to_string()
+                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic in Loro CRDT to_board".to_string()
+                };
+                log::error!(
+                    "[lexera.crdt] Loro panicked during to_board for {}: {}",
+                    board_id,
+                    msg
+                );
+                let replacement_crdt = CrdtStore::from_board(&current_board).ok();
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = replacement_crdt;
+                    }
+                }
+                return Err(StorageError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("CRDT to_board panic: {}", msg),
+                )));
+            }
+        };
+
         Self::restore_include_sources(&mut board, &current_board);
 
         log::info!(
@@ -1959,7 +2261,13 @@ impl LocalStorage {
         if is_remote {
             self.commit_remote_board_state(board_id, board, Some(crdt))
         } else {
-            self.commit_board_state(board_id, file_path.as_ref().unwrap(), board, Some(crdt), false)
+            self.commit_board_state(
+                board_id,
+                file_path.as_ref().unwrap(),
+                board,
+                Some(crdt),
+                false,
+            )
         }
     }
 
@@ -2139,12 +2447,7 @@ impl BoardStorage for LocalStorage {
         content: &str,
     ) -> Result<(), StorageError> {
         let lock = self.get_write_lock(board_id)?;
-        let _guard = lock.lock().map_err(|e| {
-            StorageError::LockPoisoned(format!(
-                "write lock for board {} in add_card: {}",
-                board_id, e
-            ))
-        })?;
+        let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "add_card");
 
         let file_path = self
             .get_board_path(board_id)
@@ -2210,11 +2513,103 @@ impl BoardStorage for LocalStorage {
 
         all_cols[col_index].cards.push(new_card);
 
-        // Update CRDT with the new card
+        // Update CRDT with the new card (catch Loro panics)
         if let Some(ref mut c) = crdt {
-            let old_board = c.to_board();
-            if let Err(e) = c.apply_board(&board, &old_board) {
-                log::error!("[lexera.crdt] Failed to apply card addition to CRDT: {}", e);
+            let result = c
+                .to_board_result()
+                .and_then(|old_board| c.apply_board(&board, &old_board));
+            if let Err(e) = result {
+                log::error!(
+                    "[lexera.crdt] Failed to apply card addition to CRDT for board {}: {}",
+                    board_id,
+                    e
+                );
+            }
+        }
+
+        self.commit_board_state(board_id, &file_path, board, crdt, true)
+    }
+
+    fn append_to_card(
+        &self,
+        board_id: &str,
+        card_id: &str,
+        content: &str,
+    ) -> Result<(), StorageError> {
+        let lock = self.get_write_lock(board_id)?;
+        let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "append_to_card");
+
+        let file_path = self
+            .get_board_path(board_id)
+            .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
+
+        let mut crdt = {
+            let mut boards = self.boards.write().map_err(|e| {
+                StorageError::LockPoisoned(format!(
+                    "boards write in append_to_card (take crdt): {}",
+                    e
+                ))
+            })?;
+            boards.get_mut(board_id).and_then(|s| s.crdt.take())
+        };
+
+        let file_content = fs::read_to_string(&file_path)?;
+        let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let mut board = Self::normalize_board_for_write(
+            &self.parse_with_includes(&file_content, board_id, &board_dir, &file_path)?,
+            &board_dir,
+        );
+
+        if !board.valid {
+            if let Some(c) = crdt {
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = Some(c);
+                    }
+                }
+            }
+            return Err(StorageError::InvalidBoard(
+                file_path.to_string_lossy().to_string(),
+            ));
+        }
+
+        // Find and mutate the card
+        let mut found = false;
+        for col in board.all_columns_mut() {
+            for card in col.cards.iter_mut() {
+                if card.id == card_id {
+                    card.content = format!("{}\n{}", card.content, content);
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+
+        if !found {
+            if let Some(c) = crdt {
+                if let Ok(mut boards) = self.boards.write() {
+                    if let Some(state) = boards.get_mut(board_id) {
+                        state.crdt = Some(c);
+                    }
+                }
+            }
+            return Err(StorageError::CardNotFound(card_id.to_string()));
+        }
+
+        // Update CRDT (catch Loro panics)
+        if let Some(ref mut c) = crdt {
+            let result = c
+                .to_board_result()
+                .and_then(|old_board| c.apply_board(&board, &old_board));
+            if let Err(e) = result {
+                log::error!(
+                    "[lexera.crdt] Failed to apply card append to CRDT for board {}: {}",
+                    board_id,
+                    e
+                );
             }
         }
 
