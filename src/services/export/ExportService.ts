@@ -26,6 +26,13 @@ import { logger } from '../../utils/logger';
 import MarkdownIt from 'markdown-it';
 import { tableWidthsPlugin } from '../../wysiwyg/markdownItPlugins';
 
+/** Internal system tags that must ALWAYS be excluded from exports */
+const INTERNAL_EXCLUDE_TAGS = [
+    '#hidden-internal-deleted',
+    '#hidden-internal-parked',
+    '#hidden-internal-archived',
+];
+
 /**
  * Export options - SINGLE unified system for ALL exports
  */
@@ -1543,10 +1550,10 @@ export class ExportService {
         // If reversed, tags would be stripped before exclude filter can match them!
 
         // Step 1: Apply exclude tag filtering FIRST (before tags are stripped by visibility filter)
+        // Always include internal system tags (deleted/parked/archived) regardless of user settings
+        const effectiveExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
         let filteredContent = modifiedContent;
-        if (options.excludeTags && options.excludeTags.length > 0) {
-            filteredContent = this.filterExcludedFromMarkdown(filteredContent, options.excludeTags);
-        }
+        filteredContent = this.filterExcludedFromMarkdown(filteredContent, effectiveExcludeTags);
 
         // Step 2: Apply tag visibility filtering (may remove tags from display)
         // This ensures all markdown files (main and included) get tag filtering
@@ -2026,9 +2033,9 @@ export class ExportService {
             // 2. Tag visibility filtering (removes/modifies tags themselves) - runs after exclusion
 
             // Step 1: Apply exclude tag filtering FIRST (before tags are stripped)
-            if (options.excludeTags && options.excludeTags.length > 0) {
-                result = this.filterExcludedFromMarkdown(result, options.excludeTags);
-            }
+            // Always include internal system tags (deleted/parked/archived) regardless of user settings
+            const simpleExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
+            result = this.filterExcludedFromMarkdown(result, simpleExcludeTags);
 
             // Step 2: Apply tag visibility filtering (may remove tags from display)
             result = this.applyTagFiltering(result, options.tagVisibility);

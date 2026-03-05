@@ -3,6 +3,13 @@ import { TagUtils, TagVisibility } from '../../utils/tagUtils';
 import { INCLUDE_SYNTAX } from '../../constants/IncludeConstants';
 import { escapeRegExp } from '../../utils/stringUtils';
 
+/** Internal system tags that must ALWAYS be excluded from exports */
+const INTERNAL_EXCLUDE_TAGS = [
+    '#hidden-internal-deleted',
+    '#hidden-internal-parked',
+    '#hidden-internal-archived',
+];
+
 /**
  * Options for presentation generation
  */
@@ -74,10 +81,9 @@ export class PresentationGenerator {
         if (options.filterIncludes) {
             filteredTasks = tasks.filter(task => !task.includeMode && !task.includeFiles);
         }
-        // Filter tasks with exclude tags
-        if (options.excludeTags && options.excludeTags.length > 0) {
-            filteredTasks = filteredTasks.filter(task => !this.hasExcludeTag(task.content, options.excludeTags));
-        }
+        // Filter tasks with exclude tags (always include internal system tags)
+        const effectiveExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
+        filteredTasks = filteredTasks.filter(task => !this.hasExcludeTag(task.content, effectiveExcludeTags));
 
         // Convert tasks to slide content strings
         const slideContents = filteredTasks.map(task => this.taskToSlideContent(task, options));
@@ -169,10 +175,9 @@ export class PresentationGenerator {
                     content = TagUtils.processMarkdownContent(content, options.tagVisibility);
                 }
 
-                // Filter excluded lines
-                if (options.excludeTags && options.excludeTags.length > 0) {
-                    content = this.filterExcludedLines(content, options.excludeTags);
-                }
+                // Filter excluded lines (always include internal system tags)
+                const lineExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
+                content = this.filterExcludedLines(content, lineExcludeTags);
 
                 if (content) {
                     lines.push(content, '');
@@ -213,10 +218,9 @@ export class PresentationGenerator {
             }
         }
 
-        // Filter excluded lines if specified
-        if (options.excludeTags && options.excludeTags.length > 0) {
-            content = this.filterExcludedLines(content, options.excludeTags);
-        }
+        // Filter excluded lines (always include internal system tags)
+        const slideExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
+        content = this.filterExcludedLines(content, slideExcludeTags);
 
         return content;
     }
@@ -319,7 +323,8 @@ export class PresentationGenerator {
      */
     private static getProcessedColumnTitle(column: KanbanColumn, options: PresentationOptions): string | null {
         let columnTitle = column.originalTitle ?? column.title;
-        if (this.hasExcludeTag(columnTitle, options.excludeTags)) {
+        const colExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
+        if (this.hasExcludeTag(columnTitle, colExcludeTags)) {
             return null;
         }
         if (options.stripIncludes) {
@@ -336,9 +341,9 @@ export class PresentationGenerator {
         if (options.filterIncludes) {
             filtered = filtered.filter(task => !task.includeMode && !task.includeFiles);
         }
-        if (options.excludeTags && options.excludeTags.length > 0) {
-            filtered = filtered.filter(task => !this.hasExcludeTag(task.content, options.excludeTags));
-        }
+        // Always include internal system tags (deleted/parked/archived)
+        const taskExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
+        filtered = filtered.filter(task => !this.hasExcludeTag(task.content, taskExcludeTags));
         return filtered;
     }
 
