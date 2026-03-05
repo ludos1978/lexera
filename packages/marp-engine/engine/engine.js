@@ -777,6 +777,9 @@ module.exports = ({ marp }) => {
     // so markdown-it-include acts as a fallback for any unprocessed patterns
     .use(require("markdown-it-include"))
 
+    // Image attributes: ![alt](url){height=550px .class key=value}
+    .use(require("./markdown-it-image-attrs.js"))
+
     // https://www.npmjs.com/package/markdown-it-strikethrough-alt
     // --Strikeout-- => <s>Strikeout</s>
     .use(require("markdown-it-strikethrough-alt"))

@@ -548,6 +548,8 @@ export class DiagramPreprocessor {
     ): Promise<RenderedDiagram[]> {
 
         const renderPromises = diagrams.map(async (diagram) => {
+            const fileName = `${baseFileName}-${diagram.id}.png`;
+            const outputPath = path.join(outputFolder, fileName);
             try {
                 if (!diagram.filePath) {
                     logger.error(`[DiagramPreprocessor] ❌ No file path for ${diagram.id}`);
@@ -566,10 +568,6 @@ export class DiagramPreprocessor {
                     logger.error(`[DiagramPreprocessor.renderXlsx] ❌ File not found: ${absolutePath} (from filePath="${diagram.filePath}", sourceDir="${sourceDir}")`);
                     return null;
                 }
-
-                // PNG output for xlsx (not SVG like other diagram types)
-                const fileName = `${baseFileName}-${diagram.id}.png`;
-                const outputPath = path.join(outputFolder, fileName);
 
                 // Check if output is up-to-date (skip re-rendering unchanged files)
                 if (await this.isOutputUpToDate(absolutePath, outputPath)) {
@@ -614,6 +612,17 @@ export class DiagramPreprocessor {
                 return result;
             } catch (error) {
                 logger.error(`[DiagramPreprocessor.renderXlsx] Failed to render ${diagram.id}:`, error);
+                // Fall back to cached PNG if it exists from a previous export
+                if (fs.existsSync(outputPath)) {
+                    logger.warn(`[DiagramPreprocessor.renderXlsx] Using cached PNG for ${diagram.id}`);
+                    const result: RenderedDiagram = {
+                        id: diagram.id,
+                        fileName,
+                        originalBlock: diagram.fullMatch
+                    };
+                    if (diagram.title) result.title = diagram.title;
+                    return result;
+                }
                 return null;
             }
         });

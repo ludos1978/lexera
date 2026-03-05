@@ -82,8 +82,12 @@ export class PresentationGenerator {
             filteredTasks = tasks.filter(task => !task.includeMode && !task.includeFiles);
         }
         // Filter tasks with exclude tags (always include internal system tags)
+        // Only exclude full card if the first line (card header) contains the tag
         const effectiveExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
-        filteredTasks = filteredTasks.filter(task => !this.hasExcludeTag(task.content, effectiveExcludeTags));
+        filteredTasks = filteredTasks.filter(task => {
+            const firstLine = (task.content || '').split('\n')[0] || '';
+            return !this.hasExcludeTag(firstLine, effectiveExcludeTags);
+        });
 
         // Convert tasks to slide content strings
         const slideContents = filteredTasks.map(task => this.taskToSlideContent(task, options));
@@ -342,8 +346,12 @@ export class PresentationGenerator {
             filtered = filtered.filter(task => !task.includeMode && !task.includeFiles);
         }
         // Always include internal system tags (deleted/parked/archived)
+        // Only exclude full card if the first line (card header) contains the tag
         const taskExcludeTags = [...INTERNAL_EXCLUDE_TAGS, ...(options.excludeTags || [])];
-        filtered = filtered.filter(task => !this.hasExcludeTag(task.content, taskExcludeTags));
+        filtered = filtered.filter(task => {
+            const firstLine = (task.content || '').split('\n')[0] || '';
+            return !this.hasExcludeTag(firstLine, taskExcludeTags);
+        });
         return filtered;
     }
 

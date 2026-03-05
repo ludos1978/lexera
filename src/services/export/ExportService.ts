@@ -247,16 +247,18 @@ export class ExportService {
             // Filter tasks in this column
             const filteredTasks: KanbanCard[] = [];
             for (const task of column.cards || []) {
-                // Skip task if its content contains an exclude tag
-                if (this.hasExcludeTag(task.content, excludeTags)) {
-                    continue;
-                }
-
-                // Filter lines in task content
                 if (task.content) {
-                    const filteredLines = task.content
-                        .split('\n')
-                        .filter((line: string) => !this.hasExcludeTag(line, excludeTags));
+                    const lines = task.content.split('\n');
+                    const firstLine = lines[0] || '';
+
+                    // Skip entire card if the first line (card header) contains an exclude tag
+                    if (this.hasExcludeTag(firstLine, excludeTags)) {
+                        continue;
+                    }
+
+                    // Filter body lines that contain exclude tags (line-level exclusion)
+                    const filteredLines = lines
+                        .filter((line: string, index: number) => index === 0 || !this.hasExcludeTag(line, excludeTags));
                     filteredTasks.push({
                         ...task,
                         content: filteredLines.join('\n')
@@ -1193,6 +1195,9 @@ export class ExportService {
                 // Copy the file if not already there
                 if (!fs.existsSync(targetPath)) {
                     fs.copyFileSync(asset.resolvedPath, targetPath);
+                    // Preserve original mtime so diagram cache (isOutputUpToDate) works correctly
+                    const srcStat = fs.statSync(asset.resolvedPath);
+                    fs.utimesSync(targetPath, srcStat.atime, srcStat.mtime);
                     this.exportedFiles.set(md5, targetPath);
                 }
 
