@@ -218,7 +218,13 @@
       "Bash(rustc:*)",
       "Bash(head:*)",
       "Bash(tail:*)",
-      "Bash(grep ExportService:*)"
+      "Bash(grep ExportService:*)",
+      "Bash(mkdir -p /Users/rspoerri/Desktop/_cleanup_tmp)",
+      "Bash(mv /private/tmp/claude-501/-Users-rspoerri--REPOSITORIES--TINKERING-REPOs-lexera-vscode/tasks/*.output /Users/rspoerri/Desktop/_cleanup_tmp/)",
+      "Bash(git -C /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-vscode status -u)",
+      "Bash(git -C /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-vscode diff src/html/boardRenderer.js src/html/markdownRenderer.js)",
+      "Bash(git -C /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-vscode log --oneline -5)",
+      "Bash(git -C /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-vscode diff src/html/markdownRenderer.js)"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-vscode checkout 30fae160~1 -- src/html/markdownRenderer.js src/html/boardRenderer.js)"
+    ]
+  }
+}
