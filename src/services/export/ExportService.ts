@@ -1492,13 +1492,6 @@ export class ExportService {
         // Find all assets in the markdown
         const assets = this.findAssets(content, sourceDir);
 
-        // Track include markers through pipeline for diagnostics
-        const countIncludes = (text: string): number => (text.match(INCLUDE_SYNTAX.REGEX) || []).length;
-        const inputIncludeCount = countIncludes(content);
-        if (inputIncludeCount > 0) {
-            logger.warn(`[ExportService.processMarkdownContent] INPUT has ${inputIncludeCount} include marker(s) for ${fileBasename}`);
-        }
-
         // Find and process included markdown files
         const { processedContent, includeStats } = await this.processIncludedFiles(
             content,
@@ -1509,11 +1502,6 @@ export class ExportService {
             convertToPresentation,
             mergeIncludes
         );
-
-        if (inputIncludeCount > 0) {
-            const afterIncludesCount = countIncludes(processedContent);
-            logger.warn(`[ExportService.processMarkdownContent] AFTER processIncludedFiles: ${afterIncludesCount} include marker(s) remain (mergeIncludes=${mergeIncludes})`);
-        }
 
         // Filter assets based on options
         const assetsToInclude = this.filterAssets(assets, options);
@@ -1564,13 +1552,6 @@ export class ExportService {
         // This ensures all markdown files (main and included) get tag filtering
         filteredContent = this.applyTagFiltering(filteredContent, options.tagVisibility);
 
-        if (inputIncludeCount > 0) {
-            const afterTagFilterCount = countIncludes(filteredContent);
-            if (afterTagFilterCount !== countIncludes(modifiedContent)) {
-                logger.warn(`[ExportService.processMarkdownContent] TAG FILTERING changed include count: ${countIncludes(modifiedContent)} → ${afterTagFilterCount} for ${fileBasename}`);
-            }
-        }
-
         // Convert based on format option AND convertToPresentation flag
         // Formats: 'kanban', 'presentation', or 'document'
         // IMPORTANT: Only convert if convertToPresentation is true
@@ -1604,14 +1585,6 @@ export class ExportService {
             filteredContent = PresentationGenerator.toDocument(board, pageBreaks, {});
         }
         // format === 'kanban' or 'keep' → keep as-is
-
-        if (inputIncludeCount > 0) {
-            const afterConversionCount = countIncludes(filteredContent);
-            logger.warn(`[ExportService.processMarkdownContent] AFTER format conversion: ${afterConversionCount} include marker(s) remain for ${fileBasename} (convertToPresentation=${convertToPresentation}, format=${options.format})`);
-            if (afterConversionCount === 0 && !mergeIncludes) {
-                logger.warn(`[ExportService.processMarkdownContent] WARNING: All include markers LOST during format conversion for ${fileBasename}! This means Marp engine cannot resolve nested includes.`);
-            }
-        }
 
         // Apply content transformations AFTER format conversion
         // (must run on presentation/document content, not kanban format,
