@@ -143,20 +143,85 @@ function filterTagsForExport(text, tagVisibility = 'allexcludinglayout') {
 }
 
 /**
- * Parse comma-separated exclude tags input into an array of normalized tags
- * Ensures each tag starts with # and trims whitespace
- * @param {string} input - Comma-separated tags (e.g., "#exclude, private, #draft")
- * @returns {string[]} Array of normalized tags (e.g., ["#exclude", "#private", "#draft"])
+ * Normalize a tag string: trim whitespace, ensure # prefix
+ * @param {string} tag - Raw tag input
+ * @returns {string} Normalized tag (e.g., "#exclude")
  */
-function parseExcludeTags(input) {
-    if (!input || !input.trim()) {
-        return [];
-    }
-    return input
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(tag => tag.length > 0)
-        .map(tag => tag.startsWith('#') ? tag : '#' + tag);
+function normalizeTag(tag) {
+    const trimmed = tag.trim();
+    if (!trimmed) return '';
+    return trimmed.startsWith('#') ? trimmed : '#' + trimmed;
+}
+
+/**
+ * Get the current exclude tags from the tag list container
+ * @returns {string[]} Array of tag strings
+ */
+function getExcludeTagsFromChips() {
+    const container = document.getElementById('export-exclude-tag-list');
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.export-tag-chip'))
+        .map(chip => chip.dataset.tag)
+        .filter(tag => tag);
+}
+
+/**
+ * Save exclude tags to localStorage
+ */
+function saveExcludeTagsToStorage() {
+    const tags = getExcludeTagsFromChips();
+    localStorage.setItem('kanban-export-exclude-tags', JSON.stringify(tags));
+}
+
+/**
+ * Render a single tag chip element
+ * @param {string} tag - The tag string
+ * @returns {HTMLSpanElement}
+ */
+function createTagChip(tag) {
+    const chip = document.createElement('span');
+    chip.className = 'export-tag-chip';
+    chip.dataset.tag = tag;
+    chip.textContent = tag;
+
+    const removeBtn = document.createElement('span');
+    removeBtn.className = 'export-tag-chip-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => {
+        chip.remove();
+        saveExcludeTagsToStorage();
+    });
+    chip.appendChild(removeBtn);
+    return chip;
+}
+
+/**
+ * Add a tag to the exclude tag list (if not already present)
+ * @param {string} rawTag - Raw tag input
+ */
+function addExcludeTag(rawTag) {
+    const tag = normalizeTag(rawTag);
+    if (!tag) return;
+    const existing = getExcludeTagsFromChips();
+    if (existing.includes(tag)) return;
+
+    const container = document.getElementById('export-exclude-tag-list');
+    if (!container) return;
+    container.appendChild(createTagChip(tag));
+    saveExcludeTagsToStorage();
+}
+
+/**
+ * Render all exclude tags from an array
+ * @param {string[]} tags - Array of tag strings
+ */
+function renderExcludeTagChips(tags) {
+    const container = document.getElementById('export-exclude-tag-list');
+    if (!container) return;
+    container.innerHTML = '';
+    tags.forEach(tag => {
+        if (tag) container.appendChild(createTagChip(tag));
+    });
 }
 
 // =============================================================================
@@ -307,15 +372,19 @@ function initializeExportTree(preSelectNodeId = null) {
 
         // Set up export exclude tags persistence
         const excludeEnabledCheckbox = document.getElementById('export-exclude-enabled');
-        const excludeTagsInput = document.getElementById('export-exclude-tags');
         if (excludeEnabledCheckbox) {
             excludeEnabledCheckbox.addEventListener('change', () => {
                 localStorage.setItem('kanban-export-exclude-enabled', excludeEnabledCheckbox.checked);
             });
         }
-        if (excludeTagsInput) {
-            excludeTagsInput.addEventListener('input', () => {
-                localStorage.setItem('kanban-export-exclude-tags', excludeTagsInput.value);
+        const excludeTagInput = document.getElementById('export-exclude-tag-input');
+        if (excludeTagInput) {
+            excludeTagInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addExcludeTag(excludeTagInput.value);
+                    excludeTagInput.value = '';
+                }
             });
         }
 
@@ -337,17 +406,22 @@ function initializeExportTree(preSelectNodeId = null) {
 
     // Restore export exclude settings from localStorage
     const excludeEnabledCheckbox = document.getElementById('export-exclude-enabled');
-    const excludeTagsInput = document.getElementById('export-exclude-tags');
     if (excludeEnabledCheckbox) {
         const savedEnabled = localStorage.getItem('kanban-export-exclude-enabled');
         excludeEnabledCheckbox.checked = savedEnabled !== null ? savedEnabled === 'true' : true;
     }
-    if (excludeTagsInput) {
-        const savedTags = localStorage.getItem('kanban-export-exclude-tags');
-        if (savedTags !== null) {
-            excludeTagsInput.value = savedTags;
+    // Restore tag chips from localStorage
+    const savedTagsRaw = localStorage.getItem('kanban-export-exclude-tags');
+    let savedTags = ['#exclude']; // default
+    if (savedTagsRaw !== null) {
+        try {
+            savedTags = JSON.parse(savedTagsRaw);
+        } catch {
+            // Legacy format: comma-separated string
+            savedTags = savedTagsRaw.split(',').map(t => normalizeTag(t)).filter(t => t);
         }
     }
+    renderExcludeTagChips(savedTags);
 
     // Set up selection change callback to update folder name
     exportTreeUI.setSelectionChangeCallback(() => {
@@ -450,8 +524,7 @@ function executeUnifiedExport() {
 
     // Export exclude tags
     const excludeEnabled = document.getElementById('export-exclude-enabled')?.checked || false;
-    const excludeTagsRaw = document.getElementById('export-exclude-tags')?.value || '';
-    const excludeTags = excludeEnabled ? parseExcludeTags(excludeTagsRaw) : [];
+    const excludeTags = excludeEnabled ? getExcludeTagsFromChips() : [];
 
     let packAssets = false;
     let packOptions = undefined;

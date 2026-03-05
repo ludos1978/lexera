@@ -5061,6 +5061,35 @@ body.sticky-stack-mode-titleonly .kanban-column-stack .kanban-full-height-column
   margin-bottom: 12px;
 }
 
+.export-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+  min-height: 0;
+}
+
+.export-tag-chip {
+  padding: 1px 6px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  gap: 4px;
+}
+
+.export-tag-chip-remove {
+  cursor: pointer;
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.export-tag-chip-remove:hover {
+  opacity: 1;
+}
+
 .export-field-compact {
   margin-top: 8px;
 }

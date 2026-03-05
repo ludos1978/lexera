@@ -802,10 +802,11 @@
 											</label>
 										</div>
 										<div class="export-field-half">
-											<input type="text" id="export-exclude-tags" class="form-input" placeholder="#exclude" value="#exclude" style="font-size: 12px;">
+											<input type="text" id="export-exclude-tag-input" class="form-input" placeholder="Add tag..." style="font-size: 12px;">
 										</div>
 									</div>
-									<div class="help-text">Comma-separated tags. Excludes: columns (tag in header), cards (tag in title), lines (tag in content).</div>
+									<div id="export-exclude-tag-list" class="export-tag-list"></div>
+									<div class="help-text">Type a tag and press Enter. Excludes: columns (tag in header), cards (tag in first line), lines (tag in content).</div>
 								</div>
 
 <!-- Auto-export option (moved here) -->
