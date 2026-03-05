@@ -145,38 +145,53 @@ pub fn open_session(
     let normalized_ids = card_id_map(&normalized);
     let (mut crdt, current_board) = if let Some(bytes) = snapshot {
         let loaded = CrdtStore::load(&bytes).map_err(|e| e.to_string())?;
-        let mut snapshot_board = normalize_board(loaded.to_board(), &board_dir);
-        restore_card_ids(&mut snapshot_board, &[&normalized_ids]);
-        let (normalized_count, snapshot_count, overlap) =
-            board_identity_stats(&normalized, &snapshot_board);
-        log::info!(
-            target: "lexera.live_sync",
-            "[open_session] normalized_vs_snapshot cards=({}, {}) overlap={} normalized={} snapshot={}",
-            normalized_count,
-            snapshot_count,
-            overlap,
-            board_card_summary(&normalized),
-            board_card_summary(&snapshot_board)
-        );
-        let visible_equal = boards_match_visible_content(&normalized, &snapshot_board);
-        log::info!(
-            target: "lexera.live_sync",
-            "[open_session] source_decision visible_equal={} normalized_kids={:?} snapshot_kids={:?}",
-            visible_equal,
-            board_kid_sample(&normalized, 6),
-            board_kid_sample(&snapshot_board, 6)
-        );
-        if visible_equal {
-            (loaded, snapshot_board)
-        } else {
-            log::warn!(
-                target: "lexera.live_sync",
-                "Snapshot diverged from board markdown during session open; rebuilding session CRDT"
-            );
-            (
-                CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
-                normalized.clone(),
-            )
+        match loaded.to_board_result() {
+            Ok(snapshot_from_crdt) => {
+                let mut snapshot_board = normalize_board(snapshot_from_crdt, &board_dir);
+                restore_card_ids(&mut snapshot_board, &[&normalized_ids]);
+                let (normalized_count, snapshot_count, overlap) =
+                    board_identity_stats(&normalized, &snapshot_board);
+                log::info!(
+                    target: "lexera.live_sync",
+                    "[open_session] normalized_vs_snapshot cards=({}, {}) overlap={} normalized={} snapshot={}",
+                    normalized_count,
+                    snapshot_count,
+                    overlap,
+                    board_card_summary(&normalized),
+                    board_card_summary(&snapshot_board)
+                );
+                let visible_equal = boards_match_visible_content(&normalized, &snapshot_board);
+                log::info!(
+                    target: "lexera.live_sync",
+                    "[open_session] source_decision visible_equal={} normalized_kids={:?} snapshot_kids={:?}",
+                    visible_equal,
+                    board_kid_sample(&normalized, 6),
+                    board_kid_sample(&snapshot_board, 6)
+                );
+                if visible_equal {
+                    (loaded, snapshot_board)
+                } else {
+                    log::warn!(
+                        target: "lexera.live_sync",
+                        "Snapshot diverged from board markdown during session open; rebuilding session CRDT"
+                    );
+                    (
+                        CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+                        normalized.clone(),
+                    )
+                }
+            }
+            Err(error) => {
+                log::warn!(
+                    target: "lexera.live_sync",
+                    "Snapshot CRDT could not be materialized during session open; rebuilding from markdown board: {}",
+                    error
+                );
+                (
+                    CrdtStore::from_board(&normalized).map_err(|e| e.to_string())?,
+                    normalized.clone(),
+                )
+            }
         }
     } else {
         (
@@ -265,9 +280,53 @@ pub fn apply_board(session_id: &str, board: KanbanBoard) -> Result<LiveSessionRe
     );
 
     if let Err(e) = session.crdt.apply_board(&incoming, &current_board) {
-        log::error!("[live_sync.apply] Failed to apply board to CRDT: {}", e);
+        log::error!(
+            target: "lexera.live_sync",
+            "[apply_board] FAILED session={} error={} incoming={} current={}",
+            &session_id[..8],
+            e,
+            board_card_summary(&incoming),
+            board_card_summary(&current_board)
+        );
+        session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
+            format!(
+                "Failed to rebuild session CRDT after apply failure (session={}): {}",
+                &session_id[..8],
+                rebuild_error
+            )
+        })?;
+        session.current_board = current_board;
+        return Err(format!(
+            "Failed to apply live sync board for session {}: {}",
+            &session_id[..8],
+            e
+        ));
     }
-    let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
+    let next_snapshot = match session.crdt.to_board_result() {
+        Ok(board) => board,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[apply_board] FAILED to materialize CRDT after apply session={} error={}",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after materialize failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            session.current_board = current_board;
+            return Err(format!(
+                "Failed to materialize live sync board after apply for session {}: {}",
+                &session_id[..8],
+                error
+            ));
+        }
+    };
+    let mut next_board = normalize_board(next_snapshot, &session.board_dir);
     restore_card_ids(&mut next_board, &[&incoming_ids, &current_ids]);
     let (next_count, _, overlap_after) = board_identity_stats(&next_board, &incoming);
 
@@ -319,17 +378,55 @@ pub fn import_updates(session_id: &str, bytes: &[u8]) -> Result<LiveSessionResul
         board_card_summary(&current_board)
     );
 
-    session.crdt.import_updates(bytes).map_err(|e| {
+    if let Err(error) = session.crdt.import_updates(bytes) {
         log::warn!(
             target: "lexera.live_sync",
-            "Failed to import live sync updates for session {}: {}",
-            session_id,
-            e
+            "[import_updates] FAILED session={} bytes={} error={} before={}",
+            &session_id[..8],
+            bytes.len(),
+            error,
+            board_card_summary(&current_board)
         );
-        e.to_string()
-    })?;
+        session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
+            format!(
+                "Failed to rebuild session CRDT after import failure (session={}): {}",
+                &session_id[..8],
+                rebuild_error
+            )
+        })?;
+        session.current_board = current_board;
+        return Err(format!(
+            "Failed to import live sync updates for session {}: {}",
+            &session_id[..8],
+            error
+        ));
+    }
 
-    let mut next_board = normalize_board(session.crdt.to_board(), &session.board_dir);
+    let next_snapshot = match session.crdt.to_board_result() {
+        Ok(board) => board,
+        Err(error) => {
+            log::error!(
+                target: "lexera.live_sync",
+                "[import_updates] FAILED to materialize CRDT session={} error={}",
+                &session_id[..8],
+                error
+            );
+            session.crdt = CrdtStore::from_board(&current_board).map_err(|rebuild_error| {
+                format!(
+                    "Failed to rebuild session CRDT after import materialize failure (session={}): {}",
+                    &session_id[..8],
+                    rebuild_error
+                )
+            })?;
+            session.current_board = current_board;
+            return Err(format!(
+                "Failed to materialize board after importing live sync updates for session {}: {}",
+                &session_id[..8],
+                error
+            ));
+        }
+    };
+    let mut next_board = normalize_board(next_snapshot, &session.board_dir);
     restore_card_ids(&mut next_board, &[&current_ids]);
 
     let vv = encode_vv(&session.crdt);

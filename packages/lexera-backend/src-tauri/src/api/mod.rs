@@ -7,6 +7,7 @@ use axum::{
 use serde::Serialize;
 
 mod board;
+mod config_api;
 mod events;
 mod external_embed;
 mod file_ops;
@@ -44,6 +45,8 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   POST /boards/:boardId/find-file            -> search for files by name in board dir
 ///   POST /boards/:boardId/convert-path        -> convert relative<->absolute path in card
 ///   GET  /search?q=term                       -> search cards
+///   GET  /config/theme                        -> current theme ID
+///   PUT  /config/theme                        -> update theme ID
 ///   GET  /events                              -> SSE stream of board changes
 ///   GET  /status                              -> health check (+ incoming config)
 ///   GET  /templates                           -> list available templates
@@ -150,6 +153,27 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/external-embeds/probe",
             get(external_embed::probe_external_embed),
+        )
+        .route(
+            "/config/theme",
+            get(config_api::get_theme).put(config_api::set_theme),
+        )
+        .route(
+            "/config/workspaces",
+            get(config_api::list_workspaces).post(config_api::create_workspace),
+        )
+        .route(
+            "/config/workspaces/{id}",
+            axum::routing::put(config_api::update_workspace)
+                .delete(config_api::delete_workspace),
+        )
+        .route(
+            "/config/default-workspace",
+            axum::routing::put(config_api::set_default_workspace),
+        )
+        .route(
+            "/config/boards/{board_id}/workspace",
+            axum::routing::put(config_api::assign_board_workspace),
         )
         .route("/status", get(events::status))
         .route(

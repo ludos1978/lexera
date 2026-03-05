@@ -10,6 +10,8 @@
 
   let baseUrl = '';
   let boards = [];
+  let workspaces = [];
+  let defaultWorkspaceId = null;
 
   // Browse state: tree navigation through boards → rows → stacks → columns → cards
   let browseState = {
@@ -17,6 +19,10 @@
     items: [],      // current level items
     activeIndex: 0, // highlighted item
   };
+
+  // Clipboard state
+  let clipboardData = { type: 'empty', summary: '', isPassword: false, fullHtml: '' };
+  let clipboardExpanded = false;
 
   let isSearchMode = false;
   let searchResults = [];
@@ -35,6 +41,11 @@
 
   // --- Init ---
 
+  // Apply theme immediately from localStorage to avoid flash of wrong theme
+  if (typeof applyLexeraTheme === 'function') {
+    applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
+  }
+
   async function init() {
     baseUrl = await discoverBackend();
     if (!baseUrl) {
@@ -42,9 +53,29 @@
       return;
     }
 
+    // Load theme from backend (may override localStorage)
+    try {
+      const themeRes = await fetch(baseUrl + '/config/theme');
+      if (themeRes.ok) {
+        const themeData = await themeRes.json();
+        if (themeData.theme && typeof applyLexeraTheme === 'function') {
+          applyLexeraTheme(themeData.theme);
+        }
+      }
+    } catch (e) { /* keep localStorage theme */ }
+
     await loadClipboardPreview();
     await loadBoards();
-    showBoardList();
+    await loadWorkspaces();
+
+    // Start at default workspace's boards, or workspace list if multiple exist
+    if (defaultWorkspaceId) {
+      showBoardsForWorkspace(defaultWorkspaceId);
+    } else if (workspaces.length > 0) {
+      showWorkspaceList();
+    } else {
+      showBoardList();
+    }
 
     // Restore snap position
     const savedSnap = localStorage.getItem('lexera-qc-snap');
@@ -86,17 +117,105 @@
 
   // --- Clipboard Preview ---
 
-  async function loadClipboardPreview() {
+  /**
+   * Detect if text looks like a password or secret token.
+   * Checks: no whitespace, length 6-128, Shannon entropy > 3.5, at least 2 character classes.
+   */
+  function looksLikePassword(text) {
+    const t = text.trim();
+    if (t.length < 6 || t.length > 128) return false;
+    if (/\s/.test(t)) return false;
+    // Known hash/token prefixes
+    if (/^(\$2[ab]\$|\$argon2|ghp_|gho_|Bearer\s)/i.test(t)) return true;
+    // Shannon entropy
+    const freq = {};
+    for (const ch of t) freq[ch] = (freq[ch] || 0) + 1;
+    let entropy = 0;
+    const len = t.length;
+    for (const ch in freq) {
+      const p = freq[ch] / len;
+      entropy -= p * Math.log2(p);
+    }
+    if (entropy <= 3.5) return false;
+    // At least 2 character classes
+    let classes = 0;
+    if (/[a-z]/.test(t)) classes++;
+    if (/[A-Z]/.test(t)) classes++;
+    if (/[0-9]/.test(t)) classes++;
+    if (/[^a-zA-Z0-9]/.test(t)) classes++;
+    return classes >= 2;
+  }
+
+  function buildFullPreviewHtml(data) {
+    if (data.type === 'image') return data.fullHtml;
+    if (data.type === 'url') return data.fullHtml;
+    if (data.type === 'text') return data.fullHtml;
+    return '<div class="clipboard-empty">No clipboard content</div>';
+  }
+
+  function renderClipboardPreview() {
     els.clipboardPreview.innerHTML = '';
+
+    if (clipboardData.type === 'empty') {
+      els.clipboardPreview.innerHTML = '<div class="clipboard-empty">No clipboard content</div>';
+      els.clipboardPreview.classList.remove('clipboard-expanded');
+      return;
+    }
+
+    // Collapsed summary bar (always shown)
+    const summary = document.createElement('div');
+    summary.className = 'clipboard-summary';
+    summary.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clipboardExpanded = !clipboardExpanded;
+      renderClipboardPreview();
+    });
+
+    const chevron = document.createElement('span');
+    chevron.className = 'clipboard-toggle';
+    chevron.textContent = clipboardExpanded ? '▾' : '▸';
+    summary.appendChild(chevron);
+
+    const label = document.createElement('span');
+    label.className = 'clipboard-summary-text' + (clipboardData.isPassword ? ' clipboard-password-warning' : '');
+    label.textContent = clipboardData.summary;
+    summary.appendChild(label);
+
+    els.clipboardPreview.appendChild(summary);
+
+    if (clipboardExpanded) {
+      els.clipboardPreview.classList.add('clipboard-expanded');
+      if (clipboardData.isPassword) {
+        const warning = document.createElement('div');
+        warning.className = 'clipboard-password-notice';
+        warning.textContent = 'Content hidden — may contain sensitive data';
+        els.clipboardPreview.appendChild(warning);
+      } else {
+        const content = document.createElement('div');
+        content.className = 'clipboard-full-content';
+        content.innerHTML = clipboardData.fullHtml;
+        els.clipboardPreview.appendChild(content);
+      }
+    } else {
+      els.clipboardPreview.classList.remove('clipboard-expanded');
+    }
+  }
+
+  async function loadClipboardPreview() {
+    clipboardData = { type: 'empty', summary: '', isPassword: false, fullHtml: '' };
+    clipboardExpanded = false;
 
     // Try image first
     try {
       const imgResult = await window.__TAURI_INTERNALS__.invoke('read_clipboard_image');
       if (imgResult && imgResult.data) {
-        const img = document.createElement('img');
-        img.className = 'preview-image';
-        img.src = 'data:image/png;base64,' + imgResult.data;
-        els.clipboardPreview.appendChild(img);
+        clipboardData = {
+          type: 'image',
+          summary: 'Image (clipboard)',
+          isPassword: false,
+          fullHtml: '<img class="preview-image" src="data:image/png;base64,' + imgResult.data + '">',
+        };
+        renderClipboardPreview();
         return;
       }
     } catch (e) { /* no image */ }
@@ -105,32 +224,48 @@
     try {
       const text = await window.__TAURI_INTERNALS__.invoke('read_clipboard');
       if (text && text.trim()) {
-        if (isUrl(text.trim())) {
-          const wrapper = document.createElement('div');
-          wrapper.className = 'preview-url';
-          const domain = document.createElement('span');
-          domain.className = 'url-domain';
-          try {
-            domain.textContent = new URL(text.trim()).hostname;
-          } catch {
-            domain.textContent = 'link';
-          }
-          wrapper.appendChild(domain);
-          const link = document.createElement('span');
-          link.textContent = text.trim().length > 120 ? text.trim().substring(0, 120) + '...' : text.trim();
-          wrapper.appendChild(link);
-          els.clipboardPreview.appendChild(wrapper);
+        const trimmed = text.trim();
+        if (looksLikePassword(trimmed)) {
+          clipboardData = {
+            type: 'text',
+            summary: 'Sensitive content (hidden)',
+            isPassword: true,
+            fullHtml: '',
+          };
+        } else if (isUrl(trimmed)) {
+          let hostname = 'link';
+          try { hostname = new URL(trimmed).hostname; } catch {}
+          const display = trimmed.length > 120 ? trimmed.substring(0, 120) + '...' : trimmed;
+          clipboardData = {
+            type: 'url',
+            summary: hostname,
+            isPassword: false,
+            fullHtml: '<div class="preview-url"><span class="url-domain">' + escapeHtml(hostname) +
+              '</span><span>' + escapeHtml(display) + '</span></div>',
+          };
         } else {
-          const pre = document.createElement('div');
-          pre.className = 'preview-text';
-          pre.textContent = text.length > 200 ? text.substring(0, 200) + '...' : text;
-          els.clipboardPreview.appendChild(pre);
+          const firstLine = text.split('\n')[0].trim();
+          const summary = firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
+          const display = text.length > 200 ? text.substring(0, 200) + '...' : text;
+          clipboardData = {
+            type: 'text',
+            summary: summary,
+            isPassword: false,
+            fullHtml: '<div class="preview-text">' + escapeHtml(display) + '</div>',
+          };
         }
+        renderClipboardPreview();
         return;
       }
     } catch (e) { /* no text */ }
 
-    els.clipboardPreview.innerHTML = '<div class="clipboard-empty">No clipboard content</div>';
+    renderClipboardPreview();
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   // --- API helpers ---
@@ -176,7 +311,81 @@
     }
   }
 
+  async function loadWorkspaces() {
+    try {
+      const data = await apiGet('/config/workspaces');
+      workspaces = data.workspaces || [];
+      defaultWorkspaceId = data.default_workspace || null;
+    } catch (e) {
+      workspaces = [];
+      defaultWorkspaceId = null;
+    }
+  }
+
   // --- Tree Navigation ---
+
+  function showWorkspaceList() {
+    browseState.path = [];
+    const items = [];
+
+    for (const ws of workspaces) {
+      const count = boards.filter(b => b.workspace_id === ws.id).length;
+      items.push({
+        type: 'workspace',
+        id: ws.id,
+        title: ws.name,
+        detail: count + ' boards',
+        workspaceId: ws.id,
+      });
+    }
+
+    // "Unassigned" workspace for boards without workspace_id
+    const unassigned = boards.filter(b => !b.workspace_id);
+    if (unassigned.length > 0) {
+      items.push({
+        type: 'workspace',
+        id: '__unassigned__',
+        title: 'Unassigned',
+        detail: unassigned.length + ' boards',
+        workspaceId: null,
+      });
+    }
+
+    browseState.items = items;
+    browseState.activeIndex = 0;
+    renderBrowse();
+  }
+
+  function showBoardsForWorkspace(workspaceId) {
+    const filtered = workspaceId === '__unassigned__' || workspaceId === null
+      ? boards.filter(b => !b.workspace_id)
+      : boards.filter(b => b.workspace_id === workspaceId);
+
+    browseState.path = [];
+
+    // If coming from a workspace, push it to path so goBack returns to workspace list
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (ws || workspaceId === '__unassigned__') {
+      browseState.path.push({
+        type: 'workspace',
+        id: workspaceId,
+        title: ws ? ws.name : 'Unassigned',
+        items: browseState.items.length > 0 ? browseState.items : [],
+        activeIndex: browseState.activeIndex,
+      });
+    }
+
+    browseState.items = filtered.map(b => ({
+      type: 'board',
+      id: b.id,
+      title: b.title || b.filePath.split('/').pop().replace('.md', ''),
+      detail: (b.columns || []).length + ' columns',
+      boardId: b.id,
+      columns: b.columns,
+    }));
+    browseState.activeIndex = 0;
+    renderBrowse();
+  }
 
   function showBoardList() {
     browseState.path = [];
@@ -194,6 +403,11 @@
 
   async function drillInto(item) {
     if (item.type === 'card') return; // can't drill into a card
+
+    if (item.type === 'workspace') {
+      showBoardsForWorkspace(item.workspaceId || item.id);
+      return;
+    }
 
     browseState.path.push({
       type: item.type,
@@ -285,8 +499,19 @@
   }
 
   function goBack() {
-    if (browseState.path.length === 0) return;
+    if (browseState.path.length === 0) {
+      // At root level: if workspaces exist, show workspace list
+      if (workspaces.length > 0) {
+        showWorkspaceList();
+      }
+      return;
+    }
     const prev = browseState.path.pop();
+    if (prev.type === 'workspace') {
+      // Going back from workspace's boards → show workspace list
+      showWorkspaceList();
+      return;
+    }
     browseState.items = prev.items;
     browseState.activeIndex = prev.activeIndex;
     renderBrowse();
@@ -304,10 +529,14 @@
     // Root
     const root = document.createElement('span');
     root.className = 'path-segment';
-    root.textContent = 'Boards';
+    root.textContent = workspaces.length > 0 ? 'Workspaces' : 'Boards';
     root.addEventListener('click', () => {
-      browseState.path = [];
-      showBoardList();
+      if (workspaces.length > 0) {
+        showWorkspaceList();
+      } else {
+        browseState.path = [];
+        showBoardList();
+      }
     });
     els.browsePath.appendChild(root);
 
@@ -346,6 +575,7 @@
   }
 
   const BADGE_LABELS = {
+    workspace: 'WS',
     board: 'Board',
     row: 'Row',
     stack: 'Stack',
@@ -397,7 +627,7 @@
 
       el.appendChild(info);
 
-      // Show arrow for drillable items
+      // Show arrow for drillable items (everything except cards)
       if (item.type !== 'card') {
         const arrow = document.createElement('span');
         arrow.className = 'item-arrow';

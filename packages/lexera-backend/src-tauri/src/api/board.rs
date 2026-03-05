@@ -47,7 +47,36 @@ pub struct CrashsaveBoardBody {
 
 pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boards = state.storage.list_boards();
-    Json(serde_json::json!({ "boards": boards }))
+
+    // Enrich each board with workspace_id from config (config stores by file path)
+    let workspace_map: std::collections::HashMap<String, String> = state
+        .config
+        .lock()
+        .ok()
+        .map(|cfg| {
+            cfg.boards
+                .iter()
+                .filter_map(|b| {
+                    b.workspace_id
+                        .as_ref()
+                        .map(|ws| (b.file.clone(), ws.clone()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let enriched: Vec<serde_json::Value> = boards
+        .into_iter()
+        .map(|b| {
+            let mut val = serde_json::to_value(&b).unwrap_or_default();
+            if let Some(ws_id) = workspace_map.get(&b.file_path) {
+                val["workspaceId"] = serde_json::json!(ws_id);
+            }
+            val
+        })
+        .collect();
+
+    Json(serde_json::json!({ "boards": enriched }))
 }
 
 pub async fn list_remote_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -614,6 +643,7 @@ pub async fn add_board_endpoint(
             cfg.boards.push(crate::config::BoardEntry {
                 file: file_str,
                 name: None,
+                workspace_id: None,
             });
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.add_board] Failed to save config: {}", e);

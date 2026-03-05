@@ -20,6 +20,8 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
     base64::engine::general_purpose::STANDARD
 }
 
+const REMOTE_SYNC_WRITER_ID: &str = "sync-client-remote";
+
 struct RemoteConnection {
     server_url: String,
     remote_board_id: String,
@@ -92,12 +94,22 @@ impl SyncClientManager {
             "id": user_id,
             "name": user_name,
         });
-        let _ = client
+        let register_resp = client
             .post(format!("{}/collab/users/register", server_url))
             .json(&register_body)
             .send()
             .await
             .map_err(|e| friendly_error("User registration", e))?;
+        if !register_resp.status().is_success() && register_resp.status().as_u16() != 409 {
+            let status = register_resp.status();
+            let body = register_resp.text().await.unwrap_or_default();
+            log::warn!(
+                "[sync_client] User registration returned unexpected status {} from {}: {}",
+                status,
+                server_url,
+                body
+            );
+        }
 
         // 2. Accept invite token
         let accept_resp = client
@@ -166,8 +178,7 @@ impl SyncClientManager {
             let text = board_resp.text().await.unwrap_or_default();
             return Err(format!(
                 "Initial board fetch failed (HTTP {}): {}",
-                status,
-                text
+                status, text
             ));
         }
 
@@ -290,69 +301,293 @@ async fn run_sync_client(
         .await
         .map_err(|e| format!("Send ClientHello failed: {}", e))?;
 
-    // Process messages
-    while let Some(msg) = ws_rx.next().await {
-        let msg = msg.map_err(|e| format!("WS read error: {}", e))?;
-        let text = match msg {
-            Message::Text(t) => t.to_string(),
-            Message::Close(_) => {
-                log::info!("[sync_client] WS closed for {}", local_board_id);
-                break;
-            }
-            Message::Ping(data) => {
-                let _ = ws_tx.send(Message::Pong(data)).await;
-                continue;
-            }
-            _ => continue,
-        };
+    let mut event_rx = event_tx.subscribe();
+    let mut last_sent_vv = match storage.get_crdt_vv(&local_board_id) {
+        Some(vv) => vv,
+        None => {
+            log::warn!(
+                "[sync_client] Missing initial local VV for {}; starting with empty baseline",
+                local_board_id
+            );
+            Vec::new()
+        }
+    };
+    log::info!(
+        "[sync_client] Initialized local VV baseline for {} vv_bytes={}",
+        local_board_id,
+        last_sent_vv.len()
+    );
 
-        let parsed: ServerMessage =
-            serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?;
+    // Process remote WS messages + local board changes.
+    loop {
+        tokio::select! {
+            maybe_msg = ws_rx.next() => {
+                let msg = match maybe_msg {
+                    Some(msg) => msg.map_err(|e| format!("WS read error: {}", e))?,
+                    None => {
+                        log::info!("[sync_client] WS stream ended for {}", local_board_id);
+                        break;
+                    }
+                };
 
-        match parsed {
-            ServerMessage::ServerHello {
-                peer_id: _,
-                vv: _,
-                updates,
-            } => {
-                let bytes = b64().decode(&updates).unwrap_or_default();
-                if !bytes.is_empty() {
-                    if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
-                        log::warn!("[sync_client] Failed to import ServerHello updates: {}", e);
+                let text = match msg {
+                    Message::Text(t) => t.to_string(),
+                    Message::Close(_) => {
+                        log::info!("[sync_client] WS closed for {}", local_board_id);
+                        break;
+                    }
+                    Message::Ping(data) => {
+                        if let Err(error) = ws_tx.send(Message::Pong(data)).await {
+                            log::warn!(
+                                "[sync_client] Failed to send Pong for {}: {}",
+                                local_board_id,
+                                error
+                            );
+                            break;
+                        }
+                        continue;
+                    }
+                    _ => continue,
+                };
+
+                let parsed: ServerMessage =
+                    serde_json::from_str(&text).map_err(|e| format!("Parse error: {}", e))?;
+
+                match parsed {
+                    ServerMessage::ServerHello {
+                        peer_id,
+                        vv,
+                        updates,
+                    } => {
+                        let server_vv = match b64().decode(vv.as_bytes()) {
+                            Ok(decoded) => decoded,
+                            Err(error) => {
+                                log::warn!(
+                                    "[sync_client] Invalid ServerHello VV for {} (peer_id={}): {}",
+                                    local_board_id,
+                                    peer_id,
+                                    error
+                                );
+                                Vec::new()
+                            }
+                        };
+                        let bytes = match b64().decode(&updates) {
+                            Ok(decoded) => decoded,
+                            Err(error) => {
+                                log::warn!(
+                                    "[sync_client] Invalid ServerHello updates payload for {} (peer_id={}): {}",
+                                    local_board_id,
+                                    peer_id,
+                                    error
+                                );
+                                Vec::new()
+                            }
+                        };
+                        if !bytes.is_empty() {
+                            if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
+                                log::warn!("[sync_client] Failed to import ServerHello updates: {}", e);
+                            } else {
+                                log::info!(
+                                    "[sync_client] Imported ServerHello updates for {} bytes={}",
+                                    local_board_id,
+                                    bytes.len()
+                                );
+                                if let Some(vv_after_import) = storage.get_crdt_vv(&local_board_id) {
+                                    last_sent_vv = vv_after_import;
+                                }
+                            }
+                        }
+                        log::info!(
+                            "[sync_client] ServerHello processed board={} peer_id={} server_vv_bytes={} local_vv_bytes={}",
+                            local_board_id,
+                            peer_id,
+                            server_vv.len(),
+                            last_sent_vv.len()
+                        );
+                        // Fire SSE event so frontend reloads (marked as remote-origin).
+                        if let Err(error) = event_tx.send(BoardChangeEvent::MainFileChanged {
+                            board_id: local_board_id.clone(),
+                            revision: storage.get_board_revision_token(&local_board_id),
+                            generation: storage.get_board_generation(&local_board_id),
+                            writer_id: Some(REMOTE_SYNC_WRITER_ID.to_string()),
+                        }) {
+                            log::warn!(
+                                "[sync_client] Failed to publish ServerHello SSE event for {}: {}",
+                                local_board_id,
+                                error
+                            );
+                        }
+                    }
+                    ServerMessage::ServerUpdate { updates } => {
+                        let bytes = match b64().decode(&updates) {
+                            Ok(decoded) => decoded,
+                            Err(error) => {
+                                log::warn!(
+                                    "[sync_client] Invalid ServerUpdate payload for {}: {}",
+                                    local_board_id,
+                                    error
+                                );
+                                Vec::new()
+                            }
+                        };
+                        if !bytes.is_empty() {
+                            if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
+                                log::warn!("[sync_client] Failed to import ServerUpdate: {}", e);
+                            } else {
+                                log::info!(
+                                    "[sync_client] Imported ServerUpdate for {} bytes={}",
+                                    local_board_id,
+                                    bytes.len()
+                                );
+                                if let Some(vv_after_import) = storage.get_crdt_vv(&local_board_id) {
+                                    last_sent_vv = vv_after_import;
+                                }
+                            }
+                        }
+                        if let Err(error) = event_tx.send(BoardChangeEvent::MainFileChanged {
+                            board_id: local_board_id.clone(),
+                            revision: storage.get_board_revision_token(&local_board_id),
+                            generation: storage.get_board_generation(&local_board_id),
+                            writer_id: Some(REMOTE_SYNC_WRITER_ID.to_string()),
+                        }) {
+                            log::warn!(
+                                "[sync_client] Failed to publish ServerUpdate SSE event for {}: {}",
+                                local_board_id,
+                                error
+                            );
+                        }
+                    }
+                    ServerMessage::ServerError { message } => {
+                        log::error!(
+                            "[sync_client] Server error for {}: {}",
+                            local_board_id,
+                            message
+                        );
+                        break;
+                    }
+                    ServerMessage::ServerPresence { .. } | ServerMessage::ServerEditingPresence { .. } => {
+                        // Presence updates are handled by the frontend, not the backend sync client
                     }
                 }
-                // Fire SSE event so frontend reloads
-                let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
-                    board_id: local_board_id.clone(),
-                    revision: storage.get_board_revision_token(&local_board_id),
-                    generation: storage.get_board_generation(&local_board_id),
-                    writer_id: None,
-                });
             }
-            ServerMessage::ServerUpdate { updates } => {
-                let bytes = b64().decode(&updates).unwrap_or_default();
-                if !bytes.is_empty() {
-                    if let Err(e) = storage.import_crdt_updates(&local_board_id, &bytes) {
-                        log::warn!("[sync_client] Failed to import ServerUpdate: {}", e);
+            event = event_rx.recv() => {
+                match event {
+                    Ok(BoardChangeEvent::MainFileChanged { board_id, writer_id, revision, generation }) => {
+                        if board_id != local_board_id {
+                            continue;
+                        }
+                        if writer_id.as_deref() == Some(REMOTE_SYNC_WRITER_ID) {
+                            continue;
+                        }
+                        let current_vv = match storage.get_crdt_vv(&local_board_id) {
+                            Some(vv) => vv,
+                            None => {
+                                log::warn!(
+                                    "[sync_client] Missing local VV for {} on MainFileChanged (writer_id={:?}, revision={:?}, generation={:?})",
+                                    local_board_id,
+                                    writer_id,
+                                    revision,
+                                    generation
+                                );
+                                continue;
+                            }
+                        };
+                        if current_vv == last_sent_vv {
+                            log::info!(
+                                "[sync_client] Skipping upstream send for {}: VV unchanged (writer_id={:?}, revision={:?}, generation={:?})",
+                                local_board_id,
+                                writer_id,
+                                revision,
+                                generation
+                            );
+                            continue;
+                        }
+
+                        let mut used_full_resync = false;
+                        let mut updates = match storage
+                            .export_crdt_updates_since(&local_board_id, &last_sent_vv)
+                        {
+                            Some(bytes) => bytes,
+                            None => {
+                                log::warn!(
+                                    "[sync_client] Failed to export incremental updates for {} (last_vv_bytes={}, current_vv_bytes={})",
+                                    local_board_id,
+                                    last_sent_vv.len(),
+                                    current_vv.len()
+                                );
+                                Vec::new()
+                            }
+                        };
+                        if updates.is_empty() {
+                            used_full_resync = true;
+                            log::warn!(
+                                "[sync_client] Empty delta with changed VV for {} (last_vv_bytes={}, current_vv_bytes={}, writer_id={:?}, revision={:?}, generation={:?}); falling back to full delta export",
+                                local_board_id,
+                                last_sent_vv.len(),
+                                current_vv.len(),
+                                writer_id,
+                                revision,
+                                generation
+                            );
+                            updates = match storage.export_crdt_updates_since(&local_board_id, &[]) {
+                                Some(bytes) => bytes,
+                                None => {
+                                    log::warn!(
+                                        "[sync_client] Failed to export full fallback updates for {}",
+                                        local_board_id
+                                    );
+                                    Vec::new()
+                                }
+                            };
+                        }
+                        if updates.is_empty() {
+                            log::warn!(
+                                "[sync_client] No CRDT updates available for {} even after fallback (writer_id={:?}, revision={:?}, generation={:?})",
+                                local_board_id,
+                                writer_id,
+                                revision,
+                                generation
+                            );
+                            last_sent_vv = current_vv;
+                            continue;
+                        }
+                        let msg = serde_json::to_string(&ClientMessage::ClientUpdate {
+                            updates: b64().encode(&updates),
+                        })
+                        .map_err(|e| format!("Failed to serialize ClientUpdate: {}", e))?;
+                        ws_tx
+                            .send(Message::Text(msg.into()))
+                        .await
+                        .map_err(|e| format!("Failed to send ClientUpdate: {}", e))?;
+                        if let Some(vv_after_send) = storage.get_crdt_vv(&local_board_id) {
+                            last_sent_vv = vv_after_send;
+                        } else {
+                            last_sent_vv = current_vv;
+                        }
+                        log::info!(
+                            "[sync_client] Sent local update upstream board={} delta_bytes={} next_vv_bytes={} full_resync={}",
+                            local_board_id,
+                            updates.len(),
+                            last_sent_vv.len(),
+                            used_full_resync
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        log::warn!(
+                            "[sync_client] Event stream lagged for {} by {} events",
+                            local_board_id,
+                            skipped
+                        );
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        log::warn!(
+                            "[sync_client] Event stream closed for {}, stopping WS sync",
+                            local_board_id
+                        );
+                        break;
                     }
                 }
-                let _ = event_tx.send(BoardChangeEvent::MainFileChanged {
-                    board_id: local_board_id.clone(),
-                    revision: storage.get_board_revision_token(&local_board_id),
-                    generation: storage.get_board_generation(&local_board_id),
-                    writer_id: None,
-                });
-            }
-            ServerMessage::ServerError { message } => {
-                log::error!(
-                    "[sync_client] Server error for {}: {}",
-                    local_board_id,
-                    message
-                );
-                break;
-            }
-            ServerMessage::ServerPresence { .. } | ServerMessage::ServerEditingPresence { .. } => {
-                // Presence updates are handled by the frontend, not the backend sync client
             }
         }
     }

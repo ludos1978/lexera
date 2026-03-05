@@ -53,6 +53,12 @@
     btnSaveServer: document.getElementById('btn-save-server'),
     serverAddress: document.getElementById('server-address'),
     serverRestartNote: document.getElementById('server-restart-note'),
+    selectTheme: document.getElementById('select-theme'),
+    colorModeLabel: document.getElementById('color-mode-label'),
+    inputAddWorkspace: document.getElementById('input-add-workspace'),
+    btnAddWorkspace: document.getElementById('btn-add-workspace'),
+    selectDefaultWorkspace: document.getElementById('select-default-workspace'),
+    workspacesList: document.getElementById('workspaces-list'),
     myBoardsList: document.getElementById('my-boards-list'),
     inputAddBoard: document.getElementById('input-add-board'),
     btnAddBoard: document.getElementById('btn-add-board'),
@@ -82,6 +88,11 @@
   }
 
   // --- Init ---
+
+  // Apply theme immediately from localStorage to avoid flash of wrong theme
+  if (typeof applyLexeraTheme === 'function') {
+    applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
+  }
 
   async function init() {
     try {
@@ -251,6 +262,8 @@
       await loadIdentity();
       await loadServerInfo();
       await loadNetworkInterfaces();
+      await loadTheme();
+      await loadWorkspaces();
       await loadMyBoards();
       await loadConnections();
       await loadDiscoveredPeers();
@@ -618,6 +631,15 @@
       html += '<div class="board-row" data-board-id="' + esc(b.id) + '">';
       html += '<span class="board-row-name">' + esc(boardName) + '</span>';
       html += '<div class="board-row-actions">';
+      // Workspace assignment
+      html += '<select class="field-select field-select-small" data-action="assign-workspace" data-board-id="' + esc(b.id) + '">';
+      html += '<option value="">(No workspace)</option>';
+      for (var wi = 0; wi < cachedWorkspaces.length; wi++) {
+        var ws = cachedWorkspaces[wi];
+        var selected = (b.workspace_id === ws.id) ? ' selected' : '';
+        html += '<option value="' + esc(ws.id) + '"' + selected + '>' + esc(ws.name) + '</option>';
+      }
+      html += '</select>';
       html += '<button class="btn btn-small" data-action="toggle-details" data-board-id="' + esc(b.id) + '">Details</button>';
       html += '<select class="field-select field-select-small" id="role-' + esc(b.id) + '">';
       html += '<option value="editor">Editor</option>';
@@ -913,17 +935,197 @@
     els.joinStatus.className = 'status-text' + (type ? ' ' + type : '');
   }
 
+  // --- Workspaces ---
+
+  var cachedWorkspaces = [];
+  var cachedDefaultWorkspaceId = null;
+
+  async function loadWorkspaces() {
+    try {
+      var data = await apiGet('/config/workspaces');
+      cachedWorkspaces = data.workspaces || [];
+      cachedDefaultWorkspaceId = data.default_workspace || null;
+      renderWorkspaces();
+      populateDefaultWorkspaceSelect();
+    } catch (e) {
+      els.workspacesList.innerHTML = '<div class="list-empty">Failed to load workspaces</div>';
+    }
+  }
+
+  function renderWorkspaces() {
+    if (cachedWorkspaces.length === 0) {
+      els.workspacesList.innerHTML = '<div class="list-empty">No workspaces</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < cachedWorkspaces.length; i++) {
+      var ws = cachedWorkspaces[i];
+      html += '<div class="workspace-row">';
+      html += '<input class="workspace-name-input field-input field-input-inline" data-workspace-id="' + esc(ws.id) + '" value="' + esc(ws.name) + '">';
+      html += '<button class="btn btn-small" data-action="rename-workspace" data-workspace-id="' + esc(ws.id) + '">Rename</button>';
+      html += '<button class="btn btn-small btn-danger" data-action="delete-workspace" data-workspace-id="' + esc(ws.id) + '" data-workspace-name="' + esc(ws.name) + '">&times;</button>';
+      html += '</div>';
+    }
+    els.workspacesList.innerHTML = html;
+  }
+
+  function populateDefaultWorkspaceSelect() {
+    var select = els.selectDefaultWorkspace;
+    select.innerHTML = '<option value="">(None)</option>';
+    for (var i = 0; i < cachedWorkspaces.length; i++) {
+      var ws = cachedWorkspaces[i];
+      var opt = document.createElement('option');
+      opt.value = ws.id;
+      opt.textContent = ws.name;
+      if (ws.id === cachedDefaultWorkspaceId) opt.selected = true;
+      select.appendChild(opt);
+    }
+  }
+
+  async function addWorkspace() {
+    var name = els.inputAddWorkspace.value.trim();
+    if (!name) return;
+    try {
+      await apiPost('/config/workspaces', { name: name });
+      els.inputAddWorkspace.value = '';
+      await loadWorkspaces();
+    } catch (e) {
+      console.warn('Failed to create workspace:', e);
+    }
+  }
+
+  async function renameWorkspace(wsId) {
+    var input = document.querySelector('.workspace-name-input[data-workspace-id="' + wsId + '"]');
+    if (!input) return;
+    var name = input.value.trim();
+    if (!name) return;
+    try {
+      await apiPut('/config/workspaces/' + wsId, { name: name });
+      await loadWorkspaces();
+    } catch (e) {
+      console.warn('Failed to rename workspace:', e);
+    }
+  }
+
+  async function deleteWorkspace(wsId, wsName) {
+    showConfirm('Delete workspace "' + wsName + '"?\nBoards will be unassigned.', function () {
+      apiDelete('/config/workspaces/' + wsId).then(function () {
+        loadWorkspaces();
+        loadMyBoards();
+      }).catch(function (e) {
+        console.warn('Failed to delete workspace:', e);
+      });
+    });
+  }
+
+  async function setDefaultWorkspace(wsId) {
+    try {
+      await apiPut('/config/default-workspace', { workspace_id: wsId || null });
+      cachedDefaultWorkspaceId = wsId || null;
+    } catch (e) {
+      console.warn('Failed to set default workspace:', e);
+    }
+  }
+
+  async function assignBoardWorkspace(boardId, wsId) {
+    try {
+      await apiPut('/config/boards/' + boardId + '/workspace', { workspace_id: wsId || null });
+    } catch (e) {
+      console.warn('Failed to assign workspace:', e);
+    }
+  }
+
+  // --- Theme ---
+
+  function populateThemeSelect(currentThemeId) {
+    var select = els.selectTheme;
+    select.innerHTML = '';
+    if (typeof LEXERA_THEMES !== 'undefined') {
+      for (var i = 0; i < LEXERA_THEMES.length; i++) {
+        var t = LEXERA_THEMES[i];
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.name;
+        if (t.id === currentThemeId) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+    // Update mode label
+    var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    els.colorModeLabel.textContent = isDark ? 'Dark (system)' : 'Light (system)';
+  }
+
+  async function loadTheme() {
+    var themeId = 'lexera';
+    try {
+      var data = await apiGet('/config/theme');
+      themeId = data.theme || 'lexera';
+    } catch (e) {
+      // Fallback to localStorage
+      themeId = localStorage.getItem('lexera-theme') || 'lexera';
+    }
+    if (typeof applyLexeraTheme === 'function') {
+      applyLexeraTheme(themeId);
+    }
+    populateThemeSelect(themeId);
+  }
+
+  async function saveTheme(themeId) {
+    if (typeof applyLexeraTheme === 'function') {
+      applyLexeraTheme(themeId);
+    }
+    try {
+      await apiPut('/config/theme', { theme: themeId });
+    } catch (e) {
+      console.warn('Failed to save theme:', e);
+    }
+  }
+
+  // --- Top-level Tab Switching ---
+
+  function setupTopTabs() {
+    var tabBar = document.querySelector('.top-tab-bar');
+    if (!tabBar) return;
+    tabBar.addEventListener('click', function (e) {
+      var tab = e.target.closest('.top-tab');
+      if (!tab) return;
+      var tabName = tab.getAttribute('data-top-tab');
+      // Deactivate all
+      var tabs = tabBar.querySelectorAll('.top-tab');
+      for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+      var contents = document.querySelectorAll('.top-tab-content');
+      for (var i = 0; i < contents.length; i++) contents[i].classList.remove('active');
+      // Activate selected
+      tab.classList.add('active');
+      var content = document.getElementById('top-tab-' + tabName);
+      if (content) content.classList.add('active');
+    });
+  }
+
   // --- Event Handling ---
 
   function setupEventListeners() {
+    setupTopTabs();
     els.btnSaveName.addEventListener('click', saveName);
     els.inputName.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') saveName();
     });
 
+    els.btnAddWorkspace.addEventListener('click', addWorkspace);
+    els.inputAddWorkspace.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') addWorkspace();
+    });
+    els.selectDefaultWorkspace.addEventListener('change', function () {
+      setDefaultWorkspace(els.selectDefaultWorkspace.value);
+    });
+
     els.btnAddBoard.addEventListener('click', addBoard);
     els.inputAddBoard.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') addBoard();
+    });
+
+    els.selectTheme.addEventListener('change', function () {
+      saveTheme(els.selectTheme.value);
     });
 
     els.selectBind.addEventListener('change', function () {
@@ -937,6 +1139,15 @@
     els.btnJoin.addEventListener('click', joinRemote);
     els.inputJoinToken.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') joinRemote();
+    });
+
+    // Delegate workspace assignment changes
+    document.addEventListener('change', function (e) {
+      var select = e.target.closest('[data-action="assign-workspace"]');
+      if (select) {
+        var boardId = select.getAttribute('data-board-id');
+        assignBoardWorkspace(boardId, select.value);
+      }
     });
 
     // Delegate clicks for dynamic content
@@ -985,6 +1196,13 @@
         removeBoard(boardId, boardName);
       } else if (action === 'save-settings') {
         saveBoardSettings(boardId);
+      } else if (action === 'rename-workspace') {
+        var wsId = btn.getAttribute('data-workspace-id');
+        renameWorkspace(wsId);
+      } else if (action === 'delete-workspace') {
+        var wsId = btn.getAttribute('data-workspace-id');
+        var wsName = btn.getAttribute('data-workspace-name');
+        deleteWorkspace(wsId, wsName);
       }
 
       // Tab switching

@@ -616,7 +616,11 @@ async fn server_info(State(state): State<AppState>) -> Json<serde_json::Value> {
         .map(|c| c.bind_address.clone())
         .unwrap_or_else(|| state.bind_address.clone());
     let configured_port = cfg.as_ref().map(|c| c.port).unwrap_or(state.port);
-    let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(configured_port);
+    let actual_port = state
+        .live_port
+        .lock()
+        .map(|p| *p)
+        .unwrap_or(configured_port);
 
     // Determine the address to share: if bound to 0.0.0.0, try to detect a LAN IP
     let address = if configured_bind == "0.0.0.0" {
@@ -762,8 +766,20 @@ async fn list_network_interfaces(State(state): State<AppState>) -> Json<serde_js
     let mut seen = std::collections::HashSet::new();
 
     // Always offer reliable fallback choices even if interface enumeration fails.
-    push_interface_entry(&mut interfaces, &mut seen, "0.0.0.0", "all", "All interfaces");
-    push_interface_entry(&mut interfaces, &mut seen, "127.0.0.1", "loopback", "Localhost");
+    push_interface_entry(
+        &mut interfaces,
+        &mut seen,
+        "0.0.0.0",
+        "all",
+        "All interfaces",
+    );
+    push_interface_entry(
+        &mut interfaces,
+        &mut seen,
+        "127.0.0.1",
+        "loopback",
+        "Localhost",
+    );
     if current_bind != "0.0.0.0" && current_bind != "127.0.0.1" {
         push_interface_entry(
             &mut interfaces,
@@ -1367,7 +1383,9 @@ mod tests {
         let interfaces = json["interfaces"].as_array().unwrap();
         assert!(!interfaces.is_empty());
         assert!(interfaces.iter().any(|entry| entry["address"] == "0.0.0.0"));
-        assert!(interfaces.iter().any(|entry| entry["address"] == "127.0.0.1"));
+        assert!(interfaces
+            .iter()
+            .any(|entry| entry["address"] == "127.0.0.1"));
         assert!(interfaces
             .iter()
             .any(|entry| entry["address"] == "192.168.1.77"));

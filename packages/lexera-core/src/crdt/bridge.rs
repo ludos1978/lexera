@@ -19,6 +19,24 @@ fn loro_err(e: impl std::fmt::Display) -> io::Error {
     io::Error::new(io::ErrorKind::Other, e.to_string())
 }
 
+fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic payload".to_string()
+    }
+}
+
+fn crdt_panic_err(op: &str, payload: Box<dyn std::any::Any + Send>) -> io::Error {
+    let msg = panic_payload_to_string(payload);
+    io::Error::new(
+        io::ErrorKind::Other,
+        format!("CRDT panic during {}: {}", op, msg),
+    )
+}
+
 /// CRDT-backed board storage that wraps a Loro document.
 ///
 /// Board metadata (yaml_header, kanban_footer, board_settings) is stored
@@ -588,187 +606,214 @@ impl CrdtStore {
         }
     }
 
+    /// Reconstruct a KanbanBoard from the CRDT state, converting panics into
+    /// io::Error so callers can recover from poisoned internal locks.
+    pub fn to_board_result(&self) -> io::Result<KanbanBoard> {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.to_board()));
+        match result {
+            Ok(board) => Ok(board),
+            Err(payload) => Err(crdt_panic_err("to_board", payload)),
+        }
+    }
+
     /// Apply changes from an incoming board by diffing against the current CRDT state.
     pub fn apply_board(&mut self, incoming: &KanbanBoard, current: &KanbanBoard) -> io::Result<()> {
-        let changes = diff::diff_boards(current, incoming);
-        let has_structural_change = self.has_structural_diff(incoming);
-        let has_metadata_change = self.has_metadata_diff(incoming);
-        let has_title_change = incoming.title != current.title;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let changes = diff::diff_boards(current, incoming);
+            let has_structural_change = self.has_structural_diff(incoming);
+            let has_metadata_change = self.has_metadata_diff(incoming);
+            let has_title_change = incoming.title != current.title;
 
-        // Update title if changed
-        if has_title_change {
-            let root = self.doc.get_map("root");
-            root.insert("title", incoming.title.as_str())
-                .map_err(loro_err)?;
-        }
+            // Update title if changed
+            if has_title_change {
+                let root = self.doc.get_map("root");
+                root.insert("title", incoming.title.as_str())
+                    .map_err(loro_err)?;
+            }
 
-        // Sync metadata into CRDT
-        if has_metadata_change {
-            self.sync_metadata(incoming)?;
-        }
+            // Sync metadata into CRDT
+            if has_metadata_change {
+                self.sync_metadata(incoming)?;
+            }
 
-        // Move stacks/columns that changed parent containers (e.g., column moved
-        // from one stack to another). Must run before structural sync so elements
-        // are in the correct parent before index-based operations.
-        self.execute_cross_container_moves(incoming)?;
+            // Move stacks/columns that changed parent containers (e.g., column moved
+            // from one stack to another). Must run before structural sync so elements
+            // are in the correct parent before index-based operations.
+            self.execute_cross_container_moves(incoming)?;
 
-        // Sync column structure/titles BEFORE card diffs so that column lookups
-        // by stable ID resolve correctly even when a column has been renamed.
-        if has_structural_change {
-            self.sync_column_structure(incoming)?;
-        } else {
-            self.sync_column_order(incoming)?;
-        }
+            // Sync column structure/titles BEFORE card diffs so that column lookups
+            // by stable ID resolve correctly even when a column has been renamed.
+            if has_structural_change {
+                self.sync_column_structure(incoming)?;
+            } else {
+                self.sync_column_order(incoming)?;
+            }
 
-        // Apply card-level diffs (add/remove/modify/move between columns)
-        for change in &changes {
-            match change {
-                CardChange::Added {
-                    kid,
-                    column_id,
-                    column_title,
-                    card,
-                } => {
-                    if let Some(cards_list) =
-                        self.find_column_cards_list_by_identity(column_id, column_title)
-                    {
-                        // Skip if card already exists in target (placed by sync_column_structure)
-                        let already_exists = (0..cards_list.len()).any(|i| {
-                            get_map_at(&cards_list, i)
-                                .map(|m| get_string(&m, "kid") == *kid)
-                                .unwrap_or(false)
-                        });
-                        if !already_exists {
-                            let card_map: LoroMap = cards_list
-                                .push_container(LoroMap::new())
-                                .map_err(loro_err)?;
-                            let content = card_identity::strip_kid(&card.content);
-                            card_map.insert("kid", kid.as_str()).map_err(loro_err)?;
-                            card_map
-                                .insert("content", content.as_str())
-                                .map_err(loro_err)?;
-                            card_map.insert("checked", card.checked).map_err(loro_err)?;
-                        }
-                    }
-                }
-                CardChange::Removed { kid, .. } => {
-                    if let Some((cards_list, pos)) = self.find_card_position(kid) {
-                        cards_list.delete(pos, 1).map_err(loro_err)?;
-                    }
-                }
-                CardChange::Modified {
-                    kid,
-                    new_content,
-                    new_checked,
-                    ..
-                } => {
-                    if let Some((_, pos, cards_list)) = self.find_card_with_map(kid) {
-                        if let Some(card_map) = get_map_at(&cards_list, pos) {
-                            card_map
-                                .insert("content", new_content.as_str())
-                                .map_err(loro_err)?;
-                            card_map.insert("checked", *new_checked).map_err(loro_err)?;
-                        }
-                    }
-                }
-                CardChange::Moved {
-                    kid,
-                    old_column_id,
-                    old_column,
-                    new_column_id,
-                    new_column,
-                } => {
-                    // Check if card already exists in target (placed by sync_column_structure)
-                    let already_in_target = self
-                        .find_column_cards_list_by_identity(new_column_id, new_column)
-                        .map(|cl| {
-                            (0..cl.len()).any(|i| {
-                                get_map_at(&cl, i)
+            // Apply card-level diffs (add/remove/modify/move between columns)
+            for change in &changes {
+                match change {
+                    CardChange::Added {
+                        kid,
+                        column_id,
+                        column_title,
+                        card,
+                    } => {
+                        if let Some(cards_list) =
+                            self.find_column_cards_list_by_identity(column_id, column_title)
+                        {
+                            // Skip if card already exists in target (placed by sync_column_structure)
+                            let already_exists = (0..cards_list.len()).any(|i| {
+                                get_map_at(&cards_list, i)
                                     .map(|m| get_string(&m, "kid") == *kid)
                                     .unwrap_or(false)
+                            });
+                            if !already_exists {
+                                let card_map: LoroMap = cards_list
+                                    .push_container(LoroMap::new())
+                                    .map_err(loro_err)?;
+                                let content = card_identity::strip_kid(&card.content);
+                                card_map.insert("kid", kid.as_str()).map_err(loro_err)?;
+                                card_map
+                                    .insert("content", content.as_str())
+                                    .map_err(loro_err)?;
+                                card_map.insert("checked", card.checked).map_err(loro_err)?;
+                            }
+                        }
+                    }
+                    CardChange::Removed { kid, .. } => {
+                        if let Some((cards_list, pos)) = self.find_card_position(kid) {
+                            cards_list.delete(pos, 1).map_err(loro_err)?;
+                        }
+                    }
+                    CardChange::Modified {
+                        kid,
+                        new_content,
+                        new_checked,
+                        ..
+                    } => {
+                        if let Some((_, pos, cards_list)) = self.find_card_with_map(kid) {
+                            if let Some(card_map) = get_map_at(&cards_list, pos) {
+                                card_map
+                                    .insert("content", new_content.as_str())
+                                    .map_err(loro_err)?;
+                                card_map.insert("checked", *new_checked).map_err(loro_err)?;
+                            }
+                        }
+                    }
+                    CardChange::Moved {
+                        kid,
+                        old_column_id,
+                        old_column,
+                        new_column_id,
+                        new_column,
+                    } => {
+                        // Check if card already exists in target (placed by sync_column_structure)
+                        let already_in_target = self
+                            .find_column_cards_list_by_identity(new_column_id, new_column)
+                            .map(|cl| {
+                                (0..cl.len()).any(|i| {
+                                    get_map_at(&cl, i)
+                                        .map(|m| get_string(&m, "kid") == *kid)
+                                        .unwrap_or(false)
+                                })
                             })
-                        })
-                        .unwrap_or(false);
+                            .unwrap_or(false);
 
-                    // Find and remove from old column specifically (not just first match anywhere)
-                    if let Some(old_cards) =
-                        self.find_column_cards_list_by_identity(old_column_id, old_column)
-                    {
-                        let pos = (0..old_cards.len()).find(|&i| {
-                            get_map_at(&old_cards, i)
-                                .map(|m| get_string(&m, "kid") == *kid)
-                                .unwrap_or(false)
-                        });
-                        if let Some(pos) = pos {
-                            let card_data = if !already_in_target {
-                                // Read data before removing — we need to add to target
-                                get_map_at(&old_cards, pos).map(|m| {
+                        // Find and remove from old column specifically (not just first match anywhere)
+                        if let Some(old_cards) =
+                            self.find_column_cards_list_by_identity(old_column_id, old_column)
+                        {
+                            let pos = (0..old_cards.len()).find(|&i| {
+                                get_map_at(&old_cards, i)
+                                    .map(|m| get_string(&m, "kid") == *kid)
+                                    .unwrap_or(false)
+                            });
+                            if let Some(pos) = pos {
+                                let card_data = if !already_in_target {
+                                    // Read data before removing — we need to add to target
+                                    get_map_at(&old_cards, pos).map(|m| {
+                                        (
+                                            get_string(&m, "kid"),
+                                            get_string(&m, "content"),
+                                            get_bool(&m, "checked"),
+                                        )
+                                    })
+                                } else {
+                                    None
+                                };
+                                old_cards.delete(pos, 1).map_err(loro_err)?;
+
+                                // Add to target only if not already there
+                                if let Some((kid_val, content, checked)) = card_data {
+                                    if let Some(target_cards) = self
+                                        .find_column_cards_list_by_identity(
+                                            new_column_id,
+                                            new_column,
+                                        )
+                                    {
+                                        let card_map: LoroMap = target_cards
+                                            .push_container(LoroMap::new())
+                                            .map_err(loro_err)?;
+                                        card_map
+                                            .insert("kid", kid_val.as_str())
+                                            .map_err(loro_err)?;
+                                        card_map
+                                            .insert("content", content.as_str())
+                                            .map_err(loro_err)?;
+                                        card_map.insert("checked", checked).map_err(loro_err)?;
+                                    }
+                                }
+                            }
+                        } else if !already_in_target {
+                            // Old column not found — try global search as fallback
+                            if let Some((cards_list, pos)) = self.find_card_position(kid) {
+                                let card_map = get_map_at(&cards_list, pos);
+                                let data = card_map.map(|m| {
                                     (
                                         get_string(&m, "kid"),
                                         get_string(&m, "content"),
                                         get_bool(&m, "checked"),
                                     )
-                                })
-                            } else {
-                                None
-                            };
-                            old_cards.delete(pos, 1).map_err(loro_err)?;
-
-                            // Add to target only if not already there
-                            if let Some((kid_val, content, checked)) = card_data {
-                                if let Some(target_cards) = self
-                                    .find_column_cards_list_by_identity(new_column_id, new_column)
-                                {
-                                    let card_map: LoroMap = target_cards
-                                        .push_container(LoroMap::new())
-                                        .map_err(loro_err)?;
-                                    card_map.insert("kid", kid_val.as_str()).map_err(loro_err)?;
-                                    card_map
-                                        .insert("content", content.as_str())
-                                        .map_err(loro_err)?;
-                                    card_map.insert("checked", checked).map_err(loro_err)?;
-                                }
-                            }
-                        }
-                    } else if !already_in_target {
-                        // Old column not found — try global search as fallback
-                        if let Some((cards_list, pos)) = self.find_card_position(kid) {
-                            let card_map = get_map_at(&cards_list, pos);
-                            let data = card_map.map(|m| {
-                                (
-                                    get_string(&m, "kid"),
-                                    get_string(&m, "content"),
-                                    get_bool(&m, "checked"),
-                                )
-                            });
-                            cards_list.delete(pos, 1).map_err(loro_err)?;
-                            if let Some((kid_val, content, checked)) = data {
-                                if let Some(target_cards) = self
-                                    .find_column_cards_list_by_identity(new_column_id, new_column)
-                                {
-                                    let card_map: LoroMap = target_cards
-                                        .push_container(LoroMap::new())
-                                        .map_err(loro_err)?;
-                                    card_map.insert("kid", kid_val.as_str()).map_err(loro_err)?;
-                                    card_map
-                                        .insert("content", content.as_str())
-                                        .map_err(loro_err)?;
-                                    card_map.insert("checked", checked).map_err(loro_err)?;
+                                });
+                                cards_list.delete(pos, 1).map_err(loro_err)?;
+                                if let Some((kid_val, content, checked)) = data {
+                                    if let Some(target_cards) = self
+                                        .find_column_cards_list_by_identity(
+                                            new_column_id,
+                                            new_column,
+                                        )
+                                    {
+                                        let card_map: LoroMap = target_cards
+                                            .push_container(LoroMap::new())
+                                            .map_err(loro_err)?;
+                                        card_map
+                                            .insert("kid", kid_val.as_str())
+                                            .map_err(loro_err)?;
+                                        card_map
+                                            .insert("content", content.as_str())
+                                            .map_err(loro_err)?;
+                                        card_map.insert("checked", checked).map_err(loro_err)?;
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+            // Always sync card ordering to match the incoming board exactly.
+            // This is a cheap no-op when the order already matches, but critical
+            // when the only change is a reorder (which diff_boards does not detect).
+            self.sync_card_order(incoming)?;
+
+            self.doc.commit();
+            Ok(())
+        }));
+
+        match result {
+            Ok(inner) => inner,
+            Err(payload) => Err(crdt_panic_err("apply_board", payload)),
         }
-
-        // Always sync card ordering to match the incoming board exactly.
-        // This is a cheap no-op when the order already matches, but critical
-        // when the only change is a reorder (which diff_boards does not detect).
-        self.sync_card_order(incoming)?;
-
-        self.doc.commit();
-        Ok(())
     }
 
     /// Reorder cards within each column to match the incoming board's card order.
@@ -1579,7 +1624,13 @@ impl CrdtStore {
 
     /// Export CRDT state as bytes (snapshot).
     pub fn save(&self) -> io::Result<Vec<u8>> {
-        self.doc.export(ExportMode::Snapshot).map_err(loro_err)
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.doc.export(ExportMode::Snapshot).map_err(loro_err)
+        }));
+        match result {
+            Ok(inner) => inner,
+            Err(payload) => Err(crdt_panic_err("save", payload)),
+        }
     }
 
     /// Load a CrdtStore from snapshot bytes.
@@ -1661,18 +1712,28 @@ impl CrdtStore {
 
     /// Export CRDT updates since a given version vector.
     pub fn export_updates_since(&self, vv: &loro::VersionVector) -> Result<Vec<u8>, io::Error> {
-        self.doc
-            .export(ExportMode::updates(vv))
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.doc
+                .export(ExportMode::updates(vv))
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+        }));
+        match result {
+            Ok(inner) => inner,
+            Err(payload) => Err(crdt_panic_err("export_updates_since", payload)),
+        }
     }
 
     /// Import remote CRDT updates into the local document.
     pub fn import_updates(&mut self, bytes: &[u8]) -> Result<loro::ImportStatus, io::Error> {
-        let status = self
-            .doc
-            .import(bytes)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        Ok(status)
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.doc
+                .import(bytes)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+        }));
+        match result {
+            Ok(inner) => inner,
+            Err(payload) => Err(crdt_panic_err("import_updates", payload)),
+        }
     }
 }
 

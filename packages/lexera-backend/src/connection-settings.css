@@ -1,3 +1,4 @@
+/* Default fallback variables (overridden by themes.js applyLexeraTheme) */
 :root {
   --bg-primary: #1e1e1e;
   --bg-secondary: #252526;
@@ -13,12 +14,20 @@
   --error: #f44747;
   --input-bg: #3c3c3c;
   --input-border: #555;
+  --btn-bg: #3a3d41;
+  --btn-bg-hover: #45494e;
+  --btn-fg: #cccccc;
+  --card-bg: #1e1e1e;
+  --card-border: #474747;
+  --scrollbar-thumb: #424242;
+  --scrollbar-track: transparent;
+  --theme-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--theme-font, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   font-size: 13px;
   color: var(--text-primary);
   background: var(--bg-primary);
@@ -32,6 +41,35 @@ body {
   gap: 2px;
   padding: 0 16px 16px;
 }
+
+/* Top-level tab bar */
+.top-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  position: sticky;
+  top: 38px;
+  background: var(--bg-primary);
+  z-index: 9;
+}
+.top-tab {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-size: 12px;
+  font-family: inherit;
+  transition: color 0.12s, border-color 0.12s;
+}
+.top-tab:hover { color: var(--text-primary); }
+.top-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.top-tab-content { display: none; }
+.top-tab-content.active { display: block; }
 
 .window-header {
   display: flex;
@@ -178,6 +216,23 @@ body {
 }
 
 /* Board items in "My Boards" */
+/* Workspace rows */
+.workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.workspace-row:last-child { border-bottom: none; }
+
+.workspace-name-input.field-input-inline {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
 .board-row {
   display: flex;
   align-items: center;

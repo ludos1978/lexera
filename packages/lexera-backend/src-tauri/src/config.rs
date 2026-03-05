@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 /// Re-export shared config types from lexera-core.
-pub use lexera_core::config::{BoardEntry, IncomingConfig};
+pub use lexera_core::config::{BoardEntry, IncomingConfig, WorkspaceEntry};
 
 /// Default HTTP server port for the backend.
 pub const DEFAULT_PORT: u16 = 13080;
@@ -38,6 +38,12 @@ pub struct SyncConfig {
     pub incoming: Option<IncomingConfig>,
     #[serde(default)]
     pub templates_path: Option<String>,
+    #[serde(default)]
+    pub theme: Option<String>,
+    #[serde(default)]
+    pub workspaces: Vec<WorkspaceEntry>,
+    #[serde(default)]
+    pub default_workspace: Option<String>,
 }
 
 fn default_port() -> u16 {
@@ -64,6 +70,9 @@ impl Default for SyncConfig {
             boards: Vec::new(),
             incoming: None,
             templates_path: None,
+            theme: None,
+            workspaces: Vec::new(),
+            default_workspace: None,
         }
     }
 }
@@ -347,12 +356,16 @@ mod tests {
             boards: vec![BoardEntry {
                 file: "test.md".to_string(),
                 name: Some("Test Board".to_string()),
+                workspace_id: None,
             }],
             incoming: Some(IncomingConfig {
                 board: "inbox.md".to_string(),
                 column: 2,
             }),
             templates_path: Some("/tpl".to_string()),
+            theme: None,
+            workspaces: Vec::new(),
+            default_workspace: None,
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -382,10 +395,12 @@ mod tests {
                 BoardEntry {
                     file: "a.md".to_string(),
                     name: None,
+                    workspace_id: None,
                 },
                 BoardEntry {
                     file: "b.md".to_string(),
                     name: Some("B".to_string()),
+                    workspace_id: None,
                 },
             ],
             incoming: Some(IncomingConfig {
@@ -393,6 +408,9 @@ mod tests {
                 column: 0,
             }),
             templates_path: Some("/my/templates".to_string()),
+            theme: Some("nord".to_string()),
+            workspaces: Vec::new(),
+            default_workspace: None,
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();
@@ -407,6 +425,7 @@ mod tests {
         assert!(loaded.incoming.is_some());
         assert_eq!(loaded.incoming.as_ref().unwrap().board, "inbox.md");
         assert_eq!(loaded.incoming.as_ref().unwrap().column, 0);
+        assert_eq!(loaded.theme, Some("nord".to_string()));
     }
 
     // --- Identity persistence ---

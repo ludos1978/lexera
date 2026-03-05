@@ -9,6 +9,7 @@ var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
 var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
+var FRONTEND_BUILD_STAMP = '20260304-2040-remote-write-enabled';
 
 var elStatusMsg = null;
 var elStatusBar = null;
@@ -550,124 +551,27 @@ const LexeraDashboard = (function () {
   var dashboardRefreshSeq = 0;
 
   // --- Themes ---
-  var THEMES = [
-    {
-      id: 'lexera', name: 'Lexera',
-      font: "'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
-      light: {
-        '--bg-primary': '#ffffff', '--bg-secondary': '#f3f3f3', '--bg-tertiary': '#e8e8e8',
-        '--bg-hover': '#e0e0e0', '--bg-active': '#cce5ff', '--border': '#d4d4d4',
-        '--text-primary': '#333333', '--text-secondary': '#717171', '--text-bright': '#1e1e1e',
-        '--accent': '#007acc', '--accent-hover': '#0066b8', '--success': '#388a6c', '--error': '#d32f2f',
-        '--card-bg': '#ffffff', '--card-border': '#d4d4d4', '--card-checked': '#f0f0f0',
-        '--scrollbar-thumb': '#c1c1c1', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#e0e0e0', '--btn-bg-hover': '#d0d0d0', '--btn-fg': '#333333',
-        '--input-bg': '#ffffff', '--input-border': '#c4c4c4'
-      },
-      dark: {
-        '--bg-primary': '#1e1e1e', '--bg-secondary': '#252526', '--bg-tertiary': '#2d2d30',
-        '--bg-hover': '#2a2d2e', '--bg-active': '#094771', '--border': '#474747',
-        '--text-primary': '#d4d4d4', '--text-secondary': '#858585', '--text-bright': '#e8e8e8',
-        '--accent': '#007acc', '--accent-hover': '#1a8cff', '--success': '#4ec9b0', '--error': '#f44747',
-        '--card-bg': '#1e1e1e', '--card-border': '#474747', '--card-checked': '#2d2d30',
-        '--scrollbar-thumb': '#424242', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#3a3d41', '--btn-bg-hover': '#45494e', '--btn-fg': '#cccccc',
-        '--input-bg': '#3c3c3c', '--input-border': '#5a5a5a'
-      }
-    },
-    {
-      id: 'mono', name: 'Mono',
-      font: "'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace",
-      light: {
-        '--bg-primary': '#fafafa', '--bg-secondary': '#f0f0f0', '--bg-tertiary': '#e4e4e4',
-        '--bg-hover': '#dcdcdc', '--bg-active': '#c8dff0', '--border': '#cccccc',
-        '--text-primary': '#2e2e2e', '--text-secondary': '#6e6e6e', '--text-bright': '#111111',
-        '--accent': '#0969da', '--accent-hover': '#0550ae', '--success': '#1a7f37', '--error': '#cf222e',
-        '--card-bg': '#fafafa', '--card-border': '#d0d0d0', '--card-checked': '#eeeeee',
-        '--scrollbar-thumb': '#c0c0c0', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#e2e2e2', '--btn-bg-hover': '#d2d2d2', '--btn-fg': '#2e2e2e',
-        '--input-bg': '#ffffff', '--input-border': '#c0c0c0'
-      },
-      dark: {
-        '--bg-primary': '#0d1117', '--bg-secondary': '#161b22', '--bg-tertiary': '#21262d',
-        '--bg-hover': '#30363d', '--bg-active': '#1f3a5f', '--border': '#30363d',
-        '--text-primary': '#c9d1d9', '--text-secondary': '#8b949e', '--text-bright': '#f0f6fc',
-        '--accent': '#58a6ff', '--accent-hover': '#79c0ff', '--success': '#3fb950', '--error': '#f85149',
-        '--card-bg': '#0d1117', '--card-border': '#30363d', '--card-checked': '#161b22',
-        '--scrollbar-thumb': '#484f58', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#21262d', '--btn-bg-hover': '#30363d', '--btn-fg': '#c9d1d9',
-        '--input-bg': '#0d1117', '--input-border': '#30363d'
-      }
-    },
-    {
-      id: 'warm', name: 'Warm',
-      font: "Georgia, 'Times New Roman', serif",
-      light: {
-        '--bg-primary': '#fdf6e3', '--bg-secondary': '#f5eedc', '--bg-tertiary': '#eee8d5',
-        '--bg-hover': '#e8dfca', '--bg-active': '#ddd6c1', '--border': '#d6cdb7',
-        '--text-primary': '#5b4636', '--text-secondary': '#8a7560', '--text-bright': '#3b2a1a',
-        '--accent': '#b58900', '--accent-hover': '#a07800', '--success': '#859900', '--error': '#dc322f',
-        '--card-bg': '#fdf6e3', '--card-border': '#d6cdb7', '--card-checked': '#f0e8d4',
-        '--scrollbar-thumb': '#c8bfa8', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#eee8d5', '--btn-bg-hover': '#e0d8c2', '--btn-fg': '#5b4636',
-        '--input-bg': '#fdf6e3', '--input-border': '#d6cdb7'
-      },
-      dark: {
-        '--bg-primary': '#2b2018', '--bg-secondary': '#33261c', '--bg-tertiary': '#3d2e22',
-        '--bg-hover': '#483828', '--bg-active': '#4a3520', '--border': '#5a4530',
-        '--text-primary': '#d4c4a8', '--text-secondary': '#9a8a70', '--text-bright': '#f0e0c8',
-        '--accent': '#d4a017', '--accent-hover': '#e8b830', '--success': '#a8b820', '--error': '#e8503a',
-        '--card-bg': '#2b2018', '--card-border': '#5a4530', '--card-checked': '#33261c',
-        '--scrollbar-thumb': '#5a4a35', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#3d2e22', '--btn-bg-hover': '#483828', '--btn-fg': '#d4c4a8',
-        '--input-bg': '#33261c', '--input-border': '#5a4530'
-      }
-    },
-    {
-      id: 'nord', name: 'Nord',
-      font: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      light: {
-        '--bg-primary': '#eceff4', '--bg-secondary': '#e5e9f0', '--bg-tertiary': '#d8dee9',
-        '--bg-hover': '#d0d6e1', '--bg-active': '#c8d0e0', '--border': '#c8ced9',
-        '--text-primary': '#2e3440', '--text-secondary': '#4c566a', '--text-bright': '#1a1e28',
-        '--accent': '#5e81ac', '--accent-hover': '#4c6d96', '--success': '#a3be8c', '--error': '#bf616a',
-        '--card-bg': '#eceff4', '--card-border': '#d0d6e1', '--card-checked': '#e0e4ec',
-        '--scrollbar-thumb': '#b8c0cc', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#d8dee9', '--btn-bg-hover': '#c8ced9', '--btn-fg': '#2e3440',
-        '--input-bg': '#eceff4', '--input-border': '#c8ced9'
-      },
-      dark: {
-        '--bg-primary': '#2e3440', '--bg-secondary': '#3b4252', '--bg-tertiary': '#434c5e',
-        '--bg-hover': '#4c566a', '--bg-active': '#3d4a5e', '--border': '#4c566a',
-        '--text-primary': '#d8dee9', '--text-secondary': '#81a1c1', '--text-bright': '#eceff4',
-        '--accent': '#88c0d0', '--accent-hover': '#8fbcbb', '--success': '#a3be8c', '--error': '#bf616a',
-        '--card-bg': '#2e3440', '--card-border': '#4c566a', '--card-checked': '#3b4252',
-        '--scrollbar-thumb': '#4c566a', '--scrollbar-track': 'transparent',
-        '--btn-bg': '#434c5e', '--btn-bg-hover': '#4c566a', '--btn-fg': '#d8dee9',
-        '--input-bg': '#3b4252', '--input-border': '#4c566a'
-      }
-    }
-  ];
-
-  var currentThemeId = null;
+  // LEXERA_THEMES and applyLexeraTheme are provided by the shared themes.js script.
+  // THEMES is an alias for backward compatibility within app.js.
+  var THEMES = (typeof LEXERA_THEMES !== 'undefined') ? LEXERA_THEMES : [];
 
   function applyTheme(themeId) {
+    // Use shared theme applier for base CSS variables
+    if (typeof applyLexeraTheme === 'function') {
+      applyLexeraTheme(themeId);
+    }
+
+    // Find the active theme and palette for kanban-specific derived tokens
     var theme = null;
     for (var i = 0; i < THEMES.length; i++) {
       if (THEMES[i].id === themeId) { theme = THEMES[i]; break; }
     }
     if (!theme) theme = THEMES[0];
-    currentThemeId = theme.id;
+    if (!theme) return;
 
     var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     var palette = isDark ? theme.dark : theme.light;
     var root = document.documentElement;
-
-    var keys = Object.keys(palette);
-    for (var i = 0; i < keys.length; i++) {
-      root.style.setProperty(keys[i], palette[keys[i]]);
-    }
-    root.style.setProperty('--theme-font', theme.font);
 
     // Derive extended style tokens from the active palette so spacing/colors stay unified.
     root.style.setProperty('--board-bg', palette['--bg-primary'] || '');
@@ -692,10 +596,8 @@ const LexeraDashboard = (function () {
     root.style.setProperty('--icon-btn-fg', palette['--text-bright'] || palette['--btn-fg'] || '');
     root.style.setProperty('--icon-btn-fg-hover', palette['--text-bright'] || palette['--text-primary'] || '');
 
-    localStorage.setItem('lexera-theme', theme.id);
-
     // Update theme selector if present
-    var sel = document.getElementById('theme-select');
+    var sel = document.getElementById('theme-select') || document.getElementById('mgmt-theme-select');
     if (sel && sel.value !== theme.id) sel.value = theme.id;
 
     if (typeof applyBoardSettings === 'function') {
@@ -703,9 +605,12 @@ const LexeraDashboard = (function () {
     }
   }
 
-  // Re-apply on OS light/dark switch
+  // Re-apply kanban-specific derived tokens on OS light/dark switch
+  // (base variables are already re-applied by themes.js listener)
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-    applyTheme(currentThemeId || 'lexera');
+    var themeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
+                  localStorage.getItem('lexera-theme') || 'lexera';
+    applyTheme(themeId);
   });
 
   // DOM refs — static elements use lazy-init getters (see top of file)
@@ -2032,7 +1937,7 @@ const LexeraDashboard = (function () {
   }
 
   function buildThemeOptionsMarkup(selectedThemeId) {
-    var selected = selectedThemeId || currentThemeId || (THEMES[0] && THEMES[0].id) || 'lexera';
+    var selected = selectedThemeId || getLexeraCurrentThemeId() || (THEMES[0] && THEMES[0].id) || 'lexera';
     var html = '';
     for (var i = 0; i < THEMES.length; i++) {
       var t = THEMES[i];
@@ -2473,6 +2378,10 @@ const LexeraDashboard = (function () {
   }
 
   function init() {
+    window.__LEXERA_FRONTEND_BUILD = FRONTEND_BUILD_STAMP;
+    traceFrontendAction('info', 'frontend.build', 'Loaded frontend build', {
+      buildStamp: FRONTEND_BUILD_STAMP
+    });
     if (embeddedMode) document.body.classList.add('embedded-mode');
     if (typeof window.updateAppBottomInset === 'function') window.updateAppBottomInset();
     ensureSidebarTreeDefaultState();
@@ -3184,6 +3093,12 @@ const LexeraDashboard = (function () {
         includeBoardIds: includeBoardIds
       });
       if (!_boardDirty) {
+        traceFrontendAction('info', 'sse.fileChanged.reload', 'Reloading clean active board after external change event', {
+          boardId: activeBoardId,
+          kind: kind,
+          eventRevision: eventRevision,
+          eventGeneration: eventGen
+        });
         Promise.resolve()
           .then(function () { return loadBoard(activeBoardId); })
           .catch(function (err) {
@@ -3192,6 +3107,15 @@ const LexeraDashboard = (function () {
           });
         return;
       }
+      traceFrontendAction('warn', 'sse.fileChanged.rebase', 'Board is dirty while external change arrived; attempting rebase', {
+        boardId: activeBoardId,
+        kind: kind,
+        isRemoteBoard: isActiveRemoteBoard(),
+        eventRevision: eventRevision,
+        loadedRevision: _lastLoadedRevision,
+        eventGeneration: eventGen,
+        loadedGeneration: _lastLoadedGeneration
+      });
       Promise.resolve()
         .then(function () { return rebaseDirtyBoardFromServer(kind); })
         .catch(function (err) {
@@ -3245,7 +3169,20 @@ const LexeraDashboard = (function () {
           // Never reload the board if there are unsaved changes — that would
           // discard the user's work.  Only reload when the board is clean.
           if (!isBoardDirty()) {
+            traceFrontendAction('info', 'poll.reload', 'Polling reload for active board (clean)', {
+              boardId: activeBoardId,
+              revision: _lastLoadedRevision || null,
+              generation: _lastLoadedGeneration
+            });
             await loadBoard(activeBoardId);
+          } else {
+            traceFrontendAction('warn', 'poll.reload.skipDirty', 'Skipped polling reload because active board is marked dirty', {
+              boardId: activeBoardId,
+              isRemoteBoard: isActiveRemoteBoard(),
+              revision: _lastLoadedRevision || null,
+              generation: _lastLoadedGeneration,
+              summary: summarizeBoardHierarchy(fullBoardData)
+            });
           }
         } else {
           await closeLiveSyncSession(activeBoardId);
@@ -3605,7 +3542,6 @@ const LexeraDashboard = (function () {
 
   function saveLocalBoardDraft(boardId, boardData) {
     if (!boardId || !boardData) return;
-    if (isRemoteBoardId(boardId)) return;
     try {
       var baseBoard = getBoardSaveBase(boardData) || boardData;
       localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
@@ -4336,6 +4272,7 @@ const LexeraDashboard = (function () {
       _lastLoadedGeneration = null;
       _lastLoadedRevision = null;
       addCardColumn = null;
+      resetBoardDirtyState('selectBoard-split-switch', boardId);
       localStorage.setItem('lexera-last-board', boardId);
       renderBoardList();
       refreshHeaderFileControls();
@@ -4352,6 +4289,7 @@ const LexeraDashboard = (function () {
     _lastLoadedGeneration = null;
     _lastLoadedRevision = null;
     addCardColumn = null;
+    resetBoardDirtyState('selectBoard-switch', boardId);
     if (!embeddedMode) {
       localStorage.setItem('lexera-last-board', boardId);
     } else {
@@ -4391,6 +4329,12 @@ const LexeraDashboard = (function () {
         : await LexeraApi.getBoardColumns(boardId);
       if (seq !== boardLoadSeq) return; // stale response, a newer load was started
       if (response && response.notModified) {
+        traceFrontendAction('info', 'board.load.notModified', 'Skipped board reload because backend returned not-modified', {
+          boardId: boardId,
+          revision: cachedRevision || null,
+          dirty: isBoardDirty(),
+          isRemoteBoard: isRemoteBoardId(boardId)
+        });
         loadStage = 'connect-sync-not-modified';
         if (!isRemoteBoardId(boardId)) {
           connectSyncForBoard(boardId);
@@ -4416,16 +4360,15 @@ const LexeraDashboard = (function () {
       }
       activeBoardData = response;
       pendingExternalRebaseConflict = null;
-      var draftSnapshot = isRemoteBoard ? null : loadLocalBoardDraft(boardId);
+      resetBoardDirtyState('loadBoard-fresh-backend-snapshot', boardId);
+      var draftSnapshot = loadLocalBoardDraft(boardId);
       var shouldPrepareLiveSync = !isRemoteBoard;
       if (response && typeof response.generation === 'number') {
         _lastLoadedGeneration = response.generation;
       }
       _lastLoadedRevision = response && response.revision ? response.revision : null;
       // Auto-convert legacy boards and save immediately
-      if (isRemoteBoard) {
-        clearLocalBoardDraft(boardId);
-      } else if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
+      if (!isRemoteBoard && fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
         loadStage = 'migrate-legacy-board';
         migrateLegacyBoard();
         try {
@@ -5654,6 +5597,112 @@ const LexeraDashboard = (function () {
   // Dirty boards keep their working copy and rebase when external changes land.
   var _saveInFlight = false;
   var _savePending = false;
+  var _autoSaveTimer = null;
+  var AUTO_SAVE_DELAY_MS = 1200;
+
+  function clearScheduledAutoSave(reason) {
+    if (_autoSaveTimer) {
+      clearTimeout(_autoSaveTimer);
+      _autoSaveTimer = null;
+      traceFrontendAction('info', 'save.auto.cancel', 'Cancelled pending auto-save', {
+        boardId: activeBoardId || null,
+        reason: reason || null
+      });
+    }
+  }
+
+  function scheduleAutoSave(reason, delayMs) {
+    var boardId = activeBoardId || null;
+    var waitMs = typeof delayMs === 'number' && isFinite(delayMs) && delayMs >= 0
+      ? Math.floor(delayMs)
+      : AUTO_SAVE_DELAY_MS;
+    if (!boardId || !fullBoardData) {
+      traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save scheduling because active board is not ready', {
+        boardId: boardId,
+        reason: reason || null,
+        hasBoardData: !!fullBoardData
+      });
+      return false;
+    }
+    if (!isBoardDirty()) {
+      traceFrontendAction('info', 'save.auto.skip', 'Skipped auto-save scheduling because board is not dirty', {
+        boardId: boardId,
+        reason: reason || null
+      });
+      return false;
+    }
+    if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
+      traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save scheduling because unresolved rebase conflicts exist', {
+        boardId: boardId,
+        reason: reason || null,
+        conflicts: pendingExternalRebaseConflict.result.conflicts || 0
+      });
+      return false;
+    }
+    if (_autoSaveTimer) {
+      clearTimeout(_autoSaveTimer);
+      _autoSaveTimer = null;
+    }
+    traceFrontendAction('info', 'save.auto.schedule', 'Scheduled auto-save after board mutation', {
+      boardId: boardId,
+      reason: reason || null,
+      delayMs: waitMs,
+      dirty: isBoardDirty(),
+      saveInFlight: _saveInFlight
+    });
+    _autoSaveTimer = setTimeout(async function () {
+      _autoSaveTimer = null;
+      if (activeBoardId !== boardId) {
+        traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save because active board changed before timer fired', {
+          scheduledBoardId: boardId,
+          activeBoardId: activeBoardId || null,
+          reason: reason || null
+        });
+        return;
+      }
+      if (!isBoardDirty()) {
+        traceFrontendAction('info', 'save.auto.skip', 'Skipped auto-save because board is no longer dirty', {
+          boardId: boardId,
+          reason: reason || null
+        });
+        return;
+      }
+      if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
+        traceFrontendAction('warn', 'save.auto.skip', 'Skipped auto-save because unresolved rebase conflicts exist at execution time', {
+          boardId: boardId,
+          reason: reason || null,
+          conflicts: pendingExternalRebaseConflict.result.conflicts || 0
+        });
+        return;
+      }
+      traceFrontendAction('info', 'save.auto.run', 'Executing auto-save', {
+        boardId: boardId,
+        reason: reason || null,
+        dirty: isBoardDirty(),
+        saveInFlight: _saveInFlight
+      });
+      try {
+        var saved = await saveFullBoard();
+        if (saved) {
+          clearBoardDirty();
+          traceFrontendAction('info', 'save.auto.success', 'Auto-save completed successfully', {
+            boardId: boardId,
+            reason: reason || null
+          });
+        } else {
+          traceFrontendAction('warn', 'save.auto.blocked', 'Auto-save did not persist changes (blocked or deferred)', {
+            boardId: boardId,
+            reason: reason || null,
+            dirty: isBoardDirty(),
+            saveInFlight: _saveInFlight
+          });
+        }
+      } catch (err) {
+        logFrontendIssue('error', 'save.auto', 'Auto-save failed', err);
+      }
+    }, waitMs);
+    return true;
+  }
 
   async function writeBoardCrashsave(reason, boardData, extra) {
     if (!activeBoardId || !boardData) return null;
@@ -5720,10 +5769,12 @@ const LexeraDashboard = (function () {
       }
       _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
       clearBoardDirty();
-      try {
-        await reopenLiveSyncSession(activeBoardId);
-      } catch (err) {
-        logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
+      if (!isActiveRemoteBoard()) {
+        try {
+          await reopenLiveSyncSession(activeBoardId);
+        } catch (err) {
+          logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
+        }
       }
       showNotification('Local draft saved and overwrote the external board version.');
       return true;
@@ -5746,19 +5797,22 @@ const LexeraDashboard = (function () {
   }
 
   async function saveFullBoard() {
-    if (isActiveRemoteBoard()) {
-      traceFrontendAction('warn', 'board.remote.readOnly', 'Blocked save for remote mirror board', {
-        boardId: activeBoardId || null
-      });
-      showNotification('Remote boards are read-only mirrors for now.');
-      return false;
-    }
+    clearScheduledAutoSave('saveFullBoard-start');
     if (pendingExternalRebaseConflict && pendingExternalRebaseConflict.result) {
+      traceFrontendAction('warn', 'save.blocked.conflict', 'Blocked save because unresolved external rebase conflict exists', {
+        boardId: activeBoardId || null,
+        conflicts: pendingExternalRebaseConflict.result.conflicts || 0,
+        autoMerged: pendingExternalRebaseConflict.result.autoMerged || 0
+      });
       showExternalRebaseConflictDialog(pendingExternalRebaseConflict.result);
       return false;
     }
     if (_saveInFlight) {
       _savePending = true;
+      traceFrontendAction('info', 'save.coalesce', 'Save request coalesced because another save is in flight', {
+        boardId: activeBoardId || null,
+        dirty: isBoardDirty()
+      });
       return false;
     }
     _saveInFlight = true;
@@ -5775,7 +5829,7 @@ const LexeraDashboard = (function () {
         if (liveSession) {
           traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against live sync session', activeBoardId, 'local', fullBoardData, 'session', liveSession.board);
         }
-        if (liveSession && hasBoardIdentityMismatch(fullBoardData, liveSession.board)) {
+        if (!isActiveRemoteBoard() && liveSession && hasBoardIdentityMismatch(fullBoardData, liveSession.board)) {
           traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match live sync session', {
             boardId: activeBoardId,
             local: getBoardCardIdentityStats(fullBoardData, liveSession.board),
@@ -5807,7 +5861,7 @@ const LexeraDashboard = (function () {
         if (baseBoardData) {
           traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against save base', activeBoardId, 'local', fullBoardData, 'saveBase', baseBoardData);
         }
-        if (baseBoardData && hasBoardIdentityMismatch(fullBoardData, baseBoardData)) {
+        if (!isActiveRemoteBoard() && baseBoardData && hasBoardIdentityMismatch(fullBoardData, baseBoardData)) {
           traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match its save base', {
             boardId: activeBoardId,
             local: getBoardCardIdentityStats(fullBoardData, baseBoardData),
@@ -5825,6 +5879,13 @@ const LexeraDashboard = (function () {
           return false;
         }
         console.log('[saveFullBoard] REST path, has_base=' + !!baseBoardData + (baseBoardData ? ' base=' + boardCardSummary(baseBoardData) : ''));
+        if (isActiveRemoteBoard()) {
+          traceFrontendAction('info', 'save.remote', 'Saving remote board via REST', {
+            boardId: activeBoardId,
+            hasBase: !!baseBoardData,
+            summary: summarizeBoardHierarchy(fullBoardData)
+          });
+        }
         var result;
         try {
           result = baseBoardData
@@ -5878,15 +5939,25 @@ const LexeraDashboard = (function () {
         }
         _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
 
-        try {
-          await reopenLiveSyncSession(activeBoardId);
-        } catch (e) {
-          // REST save succeeded even if the live session cannot be refreshed.
+        if (!isActiveRemoteBoard()) {
+          try {
+            await reopenLiveSyncSession(activeBoardId);
+          } catch (e) {
+            // REST save succeeded even if the live session cannot be refreshed.
+          }
         }
         if (result && result.hasConflicts) {
           showConflictDialog(result.conflicts, result.autoMerged);
         } else if (result && result.merged && result.autoMerged > 0) {
           showNotification('Auto-merged ' + result.autoMerged + ' change(s) with server version');
+        }
+        if (isActiveRemoteBoard()) {
+          traceFrontendAction('info', 'save.remote', 'Remote board save finished', {
+            boardId: activeBoardId,
+            revision: result && result.revision ? result.revision : null,
+            generation: result && typeof result.generation === 'number' ? result.generation : null,
+            hasConflicts: !!(result && result.hasConflicts)
+          });
         }
         saveSucceeded = true;
       } while (_savePending);
@@ -5915,6 +5986,19 @@ const LexeraDashboard = (function () {
   // Board dirty state: tracks whether fullBoardData has unsaved changes.
   var _boardDirty = false;
 
+  function resetBoardDirtyState(reason, boardId) {
+    clearScheduledAutoSave('resetBoardDirtyState:' + (reason || 'unknown'));
+    _boardDirty = false;
+    pendingExternalRebaseConflict = null;
+    if ($savingIndicator) {
+      $savingIndicator.classList.remove('dirty');
+    }
+    traceFrontendAction('info', 'board.dirty.reset', 'Reset board dirty state', {
+      boardId: boardId || activeBoardId || null,
+      reason: reason || null
+    });
+  }
+
   function markBoardDirty() {
     if (_boardDirty) return;
     _boardDirty = true;
@@ -5925,12 +6009,8 @@ const LexeraDashboard = (function () {
   }
 
   function clearBoardDirty() {
-    _boardDirty = false;
-    pendingExternalRebaseConflict = null;
+    resetBoardDirtyState('clearBoardDirty', activeBoardId);
     clearLocalBoardDraft(activeBoardId);
-    if ($savingIndicator) {
-      $savingIndicator.classList.remove('dirty');
-    }
   }
 
   function isBoardDirty() {
@@ -5939,21 +6019,12 @@ const LexeraDashboard = (function () {
 
   function persistBoardMutation(options) {
     options = options || {};
-    if (isActiveRemoteBoard()) {
-      traceFrontendAction('warn', 'board.remote.readOnly', 'Blocked local mutation for remote mirror board', {
-        boardId: activeBoardId || null
-      });
-      showNotification('Remote boards are read-only mirrors for now.');
-      if (activeBoardId) {
-        loadBoard(activeBoardId);
-      }
-      return false;
-    }
-    traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no save)', {
+    traceFrontendAction('info', 'board.persist', 'Persist board mutation (UI refresh, no immediate save)', {
       boardId: activeBoardId || null,
       refreshMainView: !!options.refreshMainView,
       refreshSidebar: !!options.refreshSidebar,
       skipRender: !!options.skipRender,
+      skipAutoSave: !!options.skipAutoSave,
       summaryBefore: summarizeBoardHierarchy(fullBoardData)
     });
     if (typeof options.beforeRefresh === 'function') {
@@ -5975,6 +6046,14 @@ const LexeraDashboard = (function () {
     scheduleDashboardRefresh(80);
     markBoardDirty();
     saveLocalBoardDraft(activeBoardId, fullBoardData);
+    if (options.skipAutoSave) {
+      traceFrontendAction('info', 'save.auto.skip', 'Skipped auto-save due to explicit persistBoardMutation option', {
+        boardId: activeBoardId || null,
+        reason: options.autoSaveReason || 'persist-option-skip'
+      });
+    } else {
+      scheduleAutoSave(options.autoSaveReason || 'persist-board-mutation', options.autoSaveDelayMs);
+    }
     traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
       boardId: activeBoardId || null,
       refreshMainView: !!options.refreshMainView,
@@ -6062,10 +6141,6 @@ const LexeraDashboard = (function () {
         var boardId = boardIds[i];
         var boardData = changedBoards[boardId];
         if (!boardData) continue;
-        if (isRemoteBoardId(boardId)) {
-          showNotification('Remote boards are read-only mirrors for now.');
-          return false;
-        }
 
         if (boardId === activeBoardId) {
           // Active board: don't save — user saves explicitly with Cmd+S.
@@ -6276,7 +6351,7 @@ const LexeraDashboard = (function () {
     html += '<div class="mgmt-field-row">';
     html += '<label class="mgmt-field-label">Theme</label>';
     html += '<select class="mgmt-field-input" id="mgmt-theme-select">' +
-      buildThemeOptionsMarkup(currentThemeId || (THEMES[0] && THEMES[0].id)) + '</select>';
+      buildThemeOptionsMarkup(getLexeraCurrentThemeId() || (THEMES[0] && THEMES[0].id)) + '</select>';
     html += '</div>';
     html += '</div>';
 
@@ -6363,6 +6438,12 @@ const LexeraDashboard = (function () {
     if (themeSelect) {
       themeSelect.addEventListener('change', function () {
         applyTheme(themeSelect.value);
+        // Persist to backend config
+        LexeraApi.request('/config/theme', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theme: themeSelect.value })
+        }).catch(function () {});
       });
     }
 

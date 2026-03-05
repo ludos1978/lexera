@@ -1,8 +1,4 @@
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    response::Json,
-};
+use axum::{extract::Query, http::StatusCode, response::Json};
 use reqwest::header::HeaderMap;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -117,20 +113,22 @@ pub async fn probe_external_embed(
                     entry.embeddable,
                     entry.checked_at
                 );
-                return Ok(Json(serde_json::to_value(ProbeExternalEmbedResponse {
-                    url: entry.url.clone(),
-                    parent_origin: entry.parent_origin.clone(),
-                    final_url: entry.final_url.clone(),
-                    embeddable: entry.embeddable,
-                    action: entry.action.clone(),
-                    reason: entry.reason.clone(),
-                    checked_at: entry.checked_at,
-                    from_cache: true,
-                    status_code: entry.status_code,
-                    x_frame_options: entry.x_frame_options.clone(),
-                    frame_ancestors: entry.frame_ancestors.clone(),
-                })
-                .unwrap_or_else(|_| serde_json::json!({}))));
+                return Ok(Json(
+                    serde_json::to_value(ProbeExternalEmbedResponse {
+                        url: entry.url.clone(),
+                        parent_origin: entry.parent_origin.clone(),
+                        final_url: entry.final_url.clone(),
+                        embeddable: entry.embeddable,
+                        action: entry.action.clone(),
+                        reason: entry.reason.clone(),
+                        checked_at: entry.checked_at,
+                        from_cache: true,
+                        status_code: entry.status_code,
+                        x_frame_options: entry.x_frame_options.clone(),
+                        frame_ancestors: entry.frame_ancestors.clone(),
+                    })
+                    .unwrap_or_else(|_| serde_json::json!({})),
+                ));
             }
             save_external_embed_cache(&cache);
         }
@@ -184,20 +182,22 @@ pub async fn probe_external_embed(
         entry.reason
     );
 
-    Ok(Json(serde_json::to_value(ProbeExternalEmbedResponse {
-        url: entry.url,
-        parent_origin: entry.parent_origin,
-        final_url: entry.final_url,
-        embeddable: entry.embeddable,
-        action: entry.action,
-        reason: entry.reason,
-        checked_at: entry.checked_at,
-        from_cache: false,
-        status_code: entry.status_code,
-        x_frame_options: entry.x_frame_options,
-        frame_ancestors: entry.frame_ancestors,
-    })
-    .unwrap_or_else(|_| serde_json::json!({}))))
+    Ok(Json(
+        serde_json::to_value(ProbeExternalEmbedResponse {
+            url: entry.url,
+            parent_origin: entry.parent_origin,
+            final_url: entry.final_url,
+            embeddable: entry.embeddable,
+            action: entry.action,
+            reason: entry.reason,
+            checked_at: entry.checked_at,
+            from_cache: false,
+            status_code: entry.status_code,
+            x_frame_options: entry.x_frame_options,
+            frame_ancestors: entry.frame_ancestors,
+        })
+        .unwrap_or_else(|_| serde_json::json!({})),
+    ))
 }
 
 fn normalize_external_embed_url(raw: &str) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
@@ -210,7 +210,9 @@ fn normalize_external_embed_url(raw: &str) -> Result<String, (StatusCode, Json<E
     }
     let mut url = Url::parse(trimmed).map_err(|_| bad_request("Invalid external embed URL"))?;
     if !matches!(url.scheme(), "http" | "https") {
-        return Err(bad_request("Only http:// and https:// embeds are supported"));
+        return Err(bad_request(
+            "Only http:// and https:// embeds are supported",
+        ));
     }
     url.set_fragment(None);
     Ok(url.to_string())
@@ -282,7 +284,10 @@ fn save_external_embed_cache(cache: &ExternalEmbedCacheFile) {
 
 fn prune_expired_cache_entries(cache: &mut ExternalEmbedCacheFile, now: u64) {
     cache.entries.retain(|_, entry| {
-        entry.checked_at.saturating_add(EXTERNAL_EMBED_CACHE_TTL_SECS) > now
+        entry
+            .checked_at
+            .saturating_add(EXTERNAL_EMBED_CACHE_TTL_SECS)
+            > now
     });
 }
 
@@ -462,7 +467,10 @@ fn evaluate_embed_policy(
                 reason: "Embeddable: frame-ancestors directive is empty".to_string(),
             };
         }
-        if tokens.iter().any(|token| token.eq_ignore_ascii_case("'none'")) {
+        if tokens
+            .iter()
+            .any(|token| token.eq_ignore_ascii_case("'none'"))
+        {
             return EmbedDecision {
                 embeddable: false,
                 reason: "Blocked by Content-Security-Policy frame-ancestors 'none'".to_string(),
@@ -540,7 +548,12 @@ fn wildcard_origin_match(pattern: &str, parent_origin: &str) -> bool {
     }
     match pattern_port.as_deref() {
         Some("*") => true,
-        Some(port) => parent_url.port_or_known_default().map(|value| value.to_string()) == Some(port.to_string()),
+        Some(port) => {
+            parent_url
+                .port_or_known_default()
+                .map(|value| value.to_string())
+                == Some(port.to_string())
+        }
         None => parent_url.port().is_none(),
     }
 }
@@ -549,8 +562,7 @@ fn split_origin_pattern(pattern: &str) -> Option<(String, String, Option<String>
     let (scheme, rest) = pattern.split_once("://")?;
     let (host, port) = match rest.rsplit_once(':') {
         Some((host, port))
-            if !port.is_empty()
-                && port.chars().all(|ch| ch == '*' || ch.is_ascii_digit()) =>
+            if !port.is_empty() && port.chars().all(|ch| ch == '*' || ch.is_ascii_digit()) =>
         {
             (host.to_ascii_lowercase(), Some(port.to_ascii_lowercase()))
         }
@@ -591,22 +603,14 @@ mod tests {
 
     #[test]
     fn evaluate_embed_policy_blocks_x_frame_options_sameorigin() {
-        let result = evaluate_embed_policy(
-            Some("SAMEORIGIN"),
-            None,
-            Some("http://127.0.0.1:1431"),
-        );
+        let result = evaluate_embed_policy(Some("SAMEORIGIN"), None, Some("http://127.0.0.1:1431"));
         assert!(!result.embeddable);
         assert!(result.reason.contains("SAMEORIGIN"));
     }
 
     #[test]
     fn evaluate_embed_policy_blocks_frame_ancestors_none() {
-        let result = evaluate_embed_policy(
-            None,
-            Some("'none'"),
-            Some("http://127.0.0.1:1431"),
-        );
+        let result = evaluate_embed_policy(None, Some("'none'"), Some("http://127.0.0.1:1431"));
         assert!(!result.embeddable);
         assert!(result.reason.contains("frame-ancestors"));
     }
@@ -623,8 +627,7 @@ mod tests {
 
     #[test]
     fn normalize_external_embed_url_strips_fragment() {
-        let normalized =
-            normalize_external_embed_url("https://example.com/path#fragment").unwrap();
+        let normalized = normalize_external_embed_url("https://example.com/path#fragment").unwrap();
         assert_eq!(normalized, "https://example.com/path");
     }
 }

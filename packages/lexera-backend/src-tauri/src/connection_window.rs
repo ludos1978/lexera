@@ -77,16 +77,12 @@ pub fn open_connection_window(app: &AppHandle) {
         return;
     }
 
-    match WebviewWindowBuilder::new(
-        app,
-        "connection-settings",
-        connection_window_url(app),
-    )
-    .title("Management")
-    .inner_size(CONNECTION_WINDOW_WIDTH, CONNECTION_WINDOW_HEIGHT)
-    .center()
-    .resizable(true)
-    .build()
+    match WebviewWindowBuilder::new(app, "connection-settings", connection_window_url(app))
+        .title("Management")
+        .inner_size(CONNECTION_WINDOW_WIDTH, CONNECTION_WINDOW_HEIGHT)
+        .center()
+        .resizable(true)
+        .build()
     {
         Ok(_) => log::info!("[connection_window] Connection settings window opened"),
         Err(e) => log::error!("[connection_window] Failed to open window: {}", e),

@@ -34,11 +34,16 @@ pub fn capture_clipboard_to_history(history: &ClipboardHistory) {
     };
 
     let text = ctx.get_text().ok().filter(|t| !t.is_empty());
-    let (image_data, image_filename) = if ctx.has(ContentFormat::Image) {
-        read_image_as_base64(&ctx)
-    } else {
-        (None, None)
-    };
+    let has_image_flag = ctx.has(ContentFormat::Image);
+    let has_text_flag = ctx.has(ContentFormat::Text);
+    let (image_data, image_filename) = read_image_as_base64(&ctx);
+    log::info!(
+        "[lexera.capture] Clipboard snapshot flags image={} text={} resolved_image={} resolved_text={}",
+        has_image_flag,
+        has_text_flag,
+        image_data.is_some(),
+        text.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
+    );
 
     if text.is_none() && image_data.is_none() {
         return;
@@ -64,34 +69,60 @@ pub fn capture_clipboard_to_history(history: &ClipboardHistory) {
 fn read_image_as_base64(ctx: &CrsContext) -> (Option<String>, Option<String>) {
     let image = match ctx.get_image() {
         Ok(img) => img,
-        Err(_) => return (None, None),
-    };
-
-    let tmp_dir = std::env::temp_dir();
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let tmp_path = tmp_dir.join(format!("lexera-clip-{}.png", ts));
-    let tmp_str = tmp_path.to_str().unwrap_or("/tmp/lexera-clip.png");
-
-    if image.save_to_path(tmp_str).is_err() {
-        let _ = std::fs::remove_file(&tmp_path);
-        return (None, None);
-    }
-
-    let png_bytes = match std::fs::read(&tmp_path) {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            let _ = std::fs::remove_file(&tmp_path);
+        Err(error) => {
+            log::info!(
+                "[lexera.capture] Clipboard image read skipped: get_image failed: {}",
+                error
+            );
             return (None, None);
         }
     };
 
-    let _ = std::fs::remove_file(&tmp_path);
+    let (width, height) = image.get_size();
+    if width == 0 || height == 0 {
+        log::warn!(
+            "[lexera.capture] Clipboard image read failed: image has invalid dimensions {}x{}",
+            width,
+            height
+        );
+        return (None, None);
+    }
 
-    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_bytes);
+    let png = match image.to_png() {
+        Ok(data) => data,
+        Err(error) => {
+            log::warn!(
+                "[lexera.capture] Clipboard image conversion to PNG failed ({}x{}): {}",
+                width,
+                height,
+                error
+            );
+            return (None, None);
+        }
+    };
+    let png_bytes = png.get_bytes();
+    if png_bytes.is_empty() {
+        log::warn!(
+            "[lexera.capture] Clipboard image conversion produced empty payload ({}x{})",
+            width,
+            height
+        );
+        return (None, None);
+    }
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png_bytes);
     let filename = format!("clipboard-{}.png", ts);
+    log::info!(
+        "[lexera.capture] Clipboard image captured {}x{} bytes={} filename={}",
+        width,
+        height,
+        png_bytes.len(),
+        filename
+    );
 
     (Some(b64), Some(filename))
 }
@@ -189,15 +220,26 @@ pub fn read_clipboard(app: AppHandle) -> Result<String, String> {
 pub fn read_clipboard_image() -> Result<serde_json::Value, String> {
     let ctx =
         CrsContext::new().map_err(|e| format!("Failed to create clipboard context: {}", e))?;
-
-    if !ctx.has(ContentFormat::Image) {
-        return Err("No image in clipboard".to_string());
-    }
+    log::info!(
+        "[lexera.capture] read_clipboard_image requested has_image={} has_text={}",
+        ctx.has(ContentFormat::Image),
+        ctx.has(ContentFormat::Text)
+    );
 
     let (data, filename) = read_image_as_base64(&ctx);
     match (data, filename) {
-        (Some(d), Some(f)) => Ok(serde_json::json!({ "data": d, "filename": f })),
-        _ => Err("Failed to read clipboard image".to_string()),
+        (Some(d), Some(f)) => {
+            log::info!(
+                "[lexera.capture] read_clipboard_image succeeded filename={} b64_len={}",
+                f,
+                d.len()
+            );
+            Ok(serde_json::json!({ "data": d, "filename": f }))
+        }
+        _ => {
+            log::warn!("[lexera.capture] read_clipboard_image failed: no image payload available");
+            Err("Failed to read clipboard image".to_string())
+        }
     }
 }
 
