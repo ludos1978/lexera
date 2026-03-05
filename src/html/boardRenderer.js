@@ -252,8 +252,11 @@ function convertSummaryLineToPlainText(summaryLine) {
         return alias || filename || (targetPath || '').trim();
     });
 
-    // Regular include syntax
-    plainText = plainText.replace(/!!!include\(([^)]+)\)!!!/g, (match, includePath) => extractFilenameForSummary(includePath) || includePath || '');
+    // Regular include syntax — show as "[include: filename]" so it's clearly visible
+    plainText = plainText.replace(/!!!include\(([^)]+)\)!!!/g, (match, includePath) => {
+        const filename = extractFilenameForSummary(includePath) || includePath || '';
+        return `[include: ${filename}]`;
+    });
 
     // Standard markdown links (ignore images already handled above)
     plainText = plainText.replace(/(^|[^!])\[([^\]]*)\]\(([^)]+)\)/g, (match, prefix, linkText) => `${prefix}${linkText || ''}`);

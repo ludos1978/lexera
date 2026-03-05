@@ -2899,6 +2899,17 @@ function renderMarkdown(text, includeContext) {
                 Promise.resolve().then(() => processDiagramQueue());
             }
 
+            // Safety net: convert any !!!include()!!! that survived markdown-it parsing
+            // into visible badges (ensures includes are ALWAYS visible in kanban cards)
+            rendered = rendered.replace(/!!!include\(([^)]+)\)!!!/g, function(match, filePath) {
+                var fp = filePath.trim();
+                var parts = fp.replace(/\\/g, '/').split('/');
+                var filename = parts[parts.length - 1];
+                var escaped = fp.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                var escapedFn = filename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                return '<span class="columninclude-link" data-include-file="' + escaped + '" title="Nested include: ' + escaped + '">!(' + escapedFn + ')!</span>';
+            });
+
             // Remove paragraph wrapping for single line content
             if (!text.includes('\n') && rendered.startsWith('<p>') && rendered.endsWith('</p>\n')) {
                 rendered = rendered.slice(3, -5);
@@ -3864,6 +3875,16 @@ function renderMarkdown(text, includeContext) {
             // Use microtask to ensure DOM is updated first
             Promise.resolve().then(() => processDiagramQueue());
         }
+
+        // Safety net: convert any !!!include()!!! that survived markdown-it parsing
+        rendered = rendered.replace(/!!!include\(([^)]+)\)!!!/g, function(match, filePath) {
+            var fp = filePath.trim();
+            var parts = fp.replace(/\\/g, '/').split('/');
+            var filename = parts[parts.length - 1];
+            var escaped = fp.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            var escapedFn = filename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return '<span class="columninclude-link" data-include-file="' + escaped + '" title="Nested include: ' + escaped + '">!(' + escapedFn + ')!</span>';
+        });
 
         // Remove paragraph wrapping for single line content
         if (!text.includes('\n') && rendered.startsWith('<p>') && rendered.endsWith('</p>\n')) {
