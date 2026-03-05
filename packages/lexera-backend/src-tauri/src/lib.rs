@@ -28,6 +28,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use tauri::Manager;
+use uuid::Uuid;
 
 /// Capacity of the board-change event broadcast channel.
 const EVENT_CHANNEL_CAPACITY: usize = 256;
@@ -35,6 +36,23 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 const INVITE_CLEANUP_INTERVAL_SECS: u64 = 3600;
 /// Seconds between periodic saves of collaboration state and config.
 const PERIODIC_SAVE_INTERVAL_SECS: u64 = 60;
+
+fn format_recent_backend_log_tail(limit: usize) -> String {
+    let entries = log_bridge::recent_entries();
+    if entries.is_empty() {
+        return "  <no recent backend log entries available>\n".to_string();
+    }
+
+    let start = entries.len().saturating_sub(limit);
+    let mut out = String::new();
+    for entry in &entries[start..] {
+        out.push_str(&format!(
+            "  {} [{}] [{}] {}\n",
+            entry.timestamp_ms, entry.level, entry.target, entry.message
+        ));
+    }
+    out
+}
 
 pub fn run() {
     if let Err(e) = log_bridge::init() {
@@ -47,12 +65,15 @@ pub fn run() {
     // diagnose unexpected crashes (especially on Windows).
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        let crash_id = Uuid::new_v4().to_string();
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
         let thread = std::thread::current();
         let thread_name = thread.name().unwrap_or("<unnamed>");
+        let thread_id = format!("{:?}", thread.id());
+        let process_id = std::process::id();
 
         let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
             (*s).to_string()
@@ -68,18 +89,36 @@ pub fn run() {
             .unwrap_or_else(|| "unknown location".to_string());
 
         let backtrace = std::backtrace::Backtrace::force_capture();
+        let recent_logs = format_recent_backend_log_tail(100);
 
         let report = format!(
             "=== CRASH REPORT ===\n\
+             CrashId: {}\n\
              Timestamp: {}\n\
+             ProcessId: {}\n\
              Thread: {}\n\
+             ThreadId: {}\n\
+             Package: {} {}\n\
              Location: {}\n\
              Message: {}\n\
              \n\
+             RecentBackendLogs:\n\
+             {}\n\
+             \
              Backtrace:\n\
              {}\n\
              === END CRASH REPORT ===\n",
-            timestamp, thread_name, location, message, backtrace
+            crash_id,
+            timestamp,
+            process_id,
+            thread_name,
+            thread_id,
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+            location,
+            message,
+            recent_logs,
+            backtrace
         );
 
         log_bridge::write_crash_report(&report);

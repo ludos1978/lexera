@@ -3,7 +3,85 @@
 mod commands;
 mod export_commands;
 
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::PathBuf;
+
+fn write_kanban_crash_report(report: &str) {
+    let crash_path = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("lexera")
+        .join("logs")
+        .join("kanban-crash.log");
+    if let Some(parent) = crash_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&crash_path)
+    {
+        let _ = file.write_all(report.as_bytes());
+        let _ = file.write_all(b"\n");
+        let _ = file.flush();
+        let _ = file.sync_all();
+    }
+}
+
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let thread = std::thread::current();
+        let thread_name = thread.name().unwrap_or("<unnamed>");
+        let thread_id = format!("{:?}", thread.id());
+        let process_id = std::process::id();
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic payload".to_string()
+        };
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let report = format!(
+            "=== KANBAN CRASH REPORT ===\n\
+             Timestamp: {}\n\
+             ProcessId: {}\n\
+             Thread: {}\n\
+             ThreadId: {}\n\
+             Package: {} {}\n\
+             Location: {}\n\
+             Message: {}\n\
+             \n\
+             Backtrace:\n\
+             {}\n\
+             === END KANBAN CRASH REPORT ===\n",
+            timestamp,
+            process_id,
+            thread_name,
+            thread_id,
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+            location,
+            message,
+            backtrace
+        );
+        write_kanban_crash_report(&report);
+        default_hook(info);
+    }));
+}
+
 fn main() {
+    install_panic_hook();
+
     tauri::Builder::default()
         .manage(export_commands::MarpWatchState::new())
         .invoke_handler(tauri::generate_handler![
