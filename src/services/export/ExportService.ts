@@ -1233,13 +1233,13 @@ export class ExportService {
         // Replace in markdown images: ![alt](oldPath) -> ![alt](newPath)
         // Alt text pattern supports one level of nested brackets for footnote refs like [^ref]
         content = content.replace(
-            new RegExp(`(!\\[[^\\]\\n]*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
+            new RegExp(`(!\\[(?:[^\\[\\]\\n]|\\[[^\\]\\n]*\\])*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
             `$1${normalizedNewPath}$2`
         );
 
         // Replace in markdown links: [text](oldPath) -> [text](newPath)
         content = content.replace(
-            new RegExp(`((?<!!)\\[[^\\]\\n]*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
+            new RegExp(`((?<!!)\\[(?:[^\\[\\]\\n]|\\[[^\\]\\n]*\\])*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
             `$1${normalizedNewPath}$2`
         );
 
@@ -1308,7 +1308,7 @@ export class ExportService {
         //       - Email autolinks: <user@example.com>
         //       - HTML tags: <br>, <hr>, etc.
         //       They are NEVER used for file paths in markdown!
-        const linkPattern = /(!\[[^\]\n]*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[[^\]\n]*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
+        const linkPattern = /(!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
 
         modifiedContent = modifiedContent.replace(linkPattern, (match) => {
             return this.processLink(match, sourceDir, exportFolder, fileBasename);
@@ -1339,7 +1339,7 @@ export class ExportService {
         let attrBlock = '';
         if (link.startsWith('![')) {
             // Markdown image: ![alt](path) optionally followed by {attrs}
-            const match = link.match(/^!\[([^\]\n]*)\]\(([^)]+)\)(\{[^}]+\})?/);
+            const match = link.match(/^!\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\(([^)]+)\)(\{[^}]+\})?/);
             if (match) {
                 const altText = match[1];
                 filePath = match[2];
@@ -1361,7 +1361,7 @@ export class ExportService {
             }
         } else if (link.startsWith('[') && !link.startsWith('[[')) {
             // Markdown link: [text](path)
-            const match = link.match(/^\[([^\]\n]*)\]\(([^)]+)\)/);
+            const match = link.match(/^\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\(([^)]+)\)/);
             if (match) {
                 const linkText = match[1];
                 filePath = match[2];
@@ -2198,7 +2198,7 @@ export class ExportService {
 
             // Check if main file contains xlsx references before preprocessing
             const mainContent = await fs.promises.readFile(markdownPath, 'utf8');
-            const xlsxMatches = mainContent.match(/!\[[^\]\n]*\]\([^\s"]+\.(?:xlsx|xls|ods)/g);
+            const xlsxMatches = mainContent.match(/!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^\s"]+\.(?:xlsx|xls|ods)/g);
             if (xlsxMatches) {
                 logger.warn(`[ExportService.preprocessDiagrams] Main file contains ${xlsxMatches.length} xlsx reference(s): ${xlsxMatches.map(m => m.substring(0, 60)).join(', ')}`);
             }

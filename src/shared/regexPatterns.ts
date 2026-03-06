@@ -20,14 +20,14 @@ export const MarkdownPatterns = {
      * Markdown image: ![alt](path) or ![alt](path "title")
      * Captures: [1] = path (without title)
      */
-    image: () => /!\[[^\]\n]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
+    image: () => /!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
 
     /**
      * Markdown link: [text](path) or [text](path "title")
      * Uses negative lookbehind to exclude images (which start with !)
      * Captures: [1] = path (without title)
      */
-    link: () => /(?<!!)\[[^\]\n]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
+    link: () => /(?<!!)\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
 
     /**
      * Include syntax: !!!include(path)!!!
@@ -73,25 +73,25 @@ export const DiagramPatterns = {
      * Draw.io file reference: ![alt](path.drawio) or ![alt](path.dio "title")
      * Captures: [1] = file path, [2] = optional title
      */
-    drawio: () => /!\[[^\]\n]*\]\(([^\s"]+\.(?:drawio|dio))(?:\s+"([^"]+)")?\)/g,
+    drawio: () => /!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^\s"]+\.(?:drawio|dio))(?:\s+"([^"]+)")?\)/g,
 
     /**
      * Excalidraw file reference: ![alt](path.excalidraw "title") or ![alt](path.excalidraw.json/.svg)
      * Captures: [1] = file path, [2] = optional title
      */
-    excalidraw: () => /!\[[^\]\n]*\]\(([^\s"]+\.excalidraw(?:\.json|\.svg)?)(?:\s+"([^"]+)")?\)/g,
+    excalidraw: () => /!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^\s"]+\.excalidraw(?:\.json|\.svg)?)(?:\s+"([^"]+)")?\)/g,
 
     /**
      * Excel spreadsheet file reference: ![alt](path.xlsx "title"){page=1} or ![alt](path.xls/.ods)
      * Captures: [1] = file path, [2] = optional title, [3] = optional attributes block
      */
-    xlsx: () => /!\[[^\]\n]*\]\(([^\s"]+\.(?:xlsx|xls|ods))(?:\s+"([^"]+)")?\)(\{[^}]+\})?/g,
+    xlsx: () => /!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^\s"]+\.(?:xlsx|xls|ods))(?:\s+"([^"]+)")?\)(\{[^}]+\})?/g,
 
     /**
      * Document file reference: ![alt](path.docx "title") or ![alt](path.pptx/.odt/.odp/.doc/.ppt)
      * Captures: [1] = file path, [2] = optional title, [3] = optional attributes block
      */
-    document: () => /!\[[^\]\n]*\]\(([^\s"]+\.(?:docx|doc|odt|pptx|ppt|odp))(?:\s+"([^"]+)")?\)(\{[^}]+\})?/g,
+    document: () => /!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^\s"]+\.(?:docx|doc|odt|pptx|ppt|odp))(?:\s+"([^"]+)")?\)(\{[^}]+\})?/g,
 };
 
 /**
@@ -118,7 +118,7 @@ export const EmbedPatterns = {
      * Markdown image with attributes: ![alt](url){.class key="value"}
      * Captures: [1] = alt, [2] = url, [3] = title (optional), [4] = attributes (optional)
      */
-    imageWithAttrs: () => /!\[([^\]\n]*)\]\(([^)\s"]+)(?:\s+"([^"]*)")?\)(\{[^}]+\})?/g,
+    imageWithAttrs: () => /!\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\(([^)\s"]+)(?:\s+"([^"]*)")?\)(\{[^}]+\})?/g,
 
     /**
      * Attribute block: {.class key="value" key2=value2}

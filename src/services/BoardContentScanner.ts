@@ -104,8 +104,8 @@ export class BoardContentScanner {
         for (const line of lines) {
             const stripped = line.trim()
                 .replace(/<!--[\s\S]*?-->/g, '')       // HTML comments
-                .replace(/!\[[^\]\n]*\]\([^)]*\)/g, '')   // Markdown images
-                .replace(/\[[^\]\n]*\]\([^)]*\)/g, '')    // Markdown links
+                .replace(/!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^)]*\)/g, '')   // Markdown images
+                .replace(/\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^)]*\)/g, '')    // Markdown links
                 .replace(/<[^>]+>/g, '')                 // HTML tags
                 .replace(/^#+\s*/, '')                   // Heading markers
                 .trim();

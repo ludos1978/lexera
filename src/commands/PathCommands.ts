@@ -825,7 +825,7 @@ export class PathCommands extends SwitchBasedCommand {
 
             // Match ![any alt]() or ![any alt]( ) or ![any alt]("existing title")
             // This is intentionally broad since empty-path images are uncommon
-            const regex = /(!\[[^\]\n]*\]\()(\s*(?:"[^"]*")?\s*)\)/g;
+            const regex = /(!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\()(\s*(?:"[^"]*")?\s*)\)/g;
 
             const newContent = content.replace(regex, (match, prefix, inside) => {
                 if (!sourceUrl) {
