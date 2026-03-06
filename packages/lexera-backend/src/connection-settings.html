@@ -5,145 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Management</title>
   <link rel="stylesheet" href="connection-settings.css">
+  <link rel="stylesheet" href="management.css">
 </head>
 <body>
   <div class="window-container">
     <div class="window-header" data-tauri-drag-region>
       <h2 class="window-title" data-tauri-drag-region>Management</h2>
     </div>
-
-    <!-- Top-level tabs -->
-    <div class="top-tab-bar">
-      <button class="top-tab active" data-top-tab="config">Configuration</button>
-      <button class="top-tab" data-top-tab="sharing">Sharing</button>
-    </div>
-
-    <!-- Configuration tab -->
-    <div class="top-tab-content active" id="top-tab-config">
-
-      <!-- Identity -->
-      <section class="section">
-        <div class="section-title">Identity</div>
-        <div class="field-row">
-          <input id="input-name" class="field-input" type="text" placeholder="Your display name...">
-          <button id="btn-save-name" class="btn btn-primary">Save</button>
-        </div>
-      </section>
-
-      <!-- Server -->
-      <section class="section">
-        <div class="section-title">Server</div>
-        <div class="field-row">
-          <label class="field-label">Bind Address</label>
-          <select id="select-bind" class="field-select">
-            <option value="0.0.0.0">All interfaces (0.0.0.0)</option>
-            <option value="127.0.0.1">Localhost (127.0.0.1)</option>
-            <option value="__custom__">Custom...</option>
-          </select>
-        </div>
-        <div id="custom-bind-row" class="field-row" style="display:none;">
-          <label class="field-label"></label>
-          <input id="input-bind-custom" class="field-input" type="text" placeholder="e.g. 192.168.1.100">
-        </div>
-        <div class="field-row">
-          <label class="field-label">Port</label>
-          <select id="select-port" class="field-select">
-            <option value="13080">Default (13080)</option>
-            <option value="__custom__">Custom...</option>
-          </select>
-        </div>
-        <div id="custom-port-row" class="field-row" style="display:none;">
-          <label class="field-label"></label>
-          <input id="input-port-custom" class="field-input" type="number" min="1024" max="65535" placeholder="e.g. 8080">
-        </div>
-        <div class="field-row">
-          <button id="btn-save-server" class="btn btn-primary">Save</button>
-        </div>
-        <div id="server-address" class="info-text"></div>
-        <div id="server-restart-note" class="restart-note" style="display:none;">
-          Changes will take effect after restarting the application.
-        </div>
-      </section>
-
-      <!-- Theme -->
-      <section class="section">
-        <div class="section-title">Theme</div>
-        <div class="field-row">
-          <label class="field-label">Theme</label>
-          <select id="select-theme" class="field-select"></select>
-        </div>
-        <div class="field-row">
-          <label class="field-label">Mode</label>
-          <span id="color-mode-label" class="info-text" style="margin:0;">Auto (follows system)</span>
-        </div>
-      </section>
-    </div>
-
-    <!-- Sharing tab -->
-    <div class="top-tab-content" id="top-tab-sharing">
-
-      <!-- Workspaces -->
-      <section class="section">
-        <div class="section-title">Workspaces</div>
-        <div class="field-row">
-          <input id="input-add-workspace" class="field-input" type="text" placeholder="New workspace name...">
-          <button id="btn-add-workspace" class="btn btn-primary">Add</button>
-        </div>
-        <div class="field-row">
-          <label class="field-label">Default Workspace</label>
-          <select id="select-default-workspace" class="field-select">
-            <option value="">(None)</option>
-          </select>
-        </div>
-        <div id="workspaces-list" class="list-container">
-          <div class="list-empty">Loading...</div>
-        </div>
-      </section>
-
-      <!-- My Boards -->
-      <section class="section">
-        <div class="section-title">My Boards</div>
-        <div class="field-row">
-          <input id="input-add-board" class="field-input" type="text" placeholder="Path to .md file...">
-          <button id="btn-add-board" class="btn btn-primary">Add</button>
-        </div>
-        <div id="my-boards-list" class="list-container">
-          <div class="list-empty">Loading...</div>
-        </div>
-      </section>
-
-      <!-- Remote Connections -->
-      <section class="section">
-        <div class="section-title">Remote Connections</div>
-        <div id="connections-list" class="list-container">
-          <div class="list-empty">No remote connections</div>
-        </div>
-      </section>
-
-      <!-- Discovered Peers -->
-      <section class="section">
-        <div class="section-title">Discovered Peers</div>
-        <div id="peers-list" class="list-container">
-          <div class="list-empty">Scanning LAN...</div>
-        </div>
-      </section>
-
-      <!-- Join Remote Board -->
-      <section class="section">
-        <div class="section-title">Join Remote Board</div>
-        <div class="field-row">
-          <input id="input-join-url" class="field-input" type="text" placeholder="http://192.168.1.5:8080">
-        </div>
-        <div class="field-row">
-          <input id="input-join-token" class="field-input" type="text" placeholder="Invite token">
-          <button id="btn-join" class="btn btn-primary">Join</button>
-        </div>
-        <div id="join-status" class="status-text"></div>
-      </section>
-    </div>
+    <div id="management-container"></div>
   </div>
 
   <script src="themes.js"></script>
+  <script src="management.js"></script>
   <script src="connection-settings.js"></script>
 </body>
 </html>

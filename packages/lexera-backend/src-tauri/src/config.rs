@@ -2,6 +2,7 @@
 /// Reads sync.json from ~/.config/lexera/sync.json (or platform equivalent).
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -27,6 +28,24 @@ pub const TEMPLATES_DIR_NAME: &str = "templates";
 pub const COLLAB_DIR_NAME: &str = "collab";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteConnectionEntry {
+    #[serde(alias = "localBoardId")]
+    pub local_board_id: String,
+    #[serde(alias = "remoteBoardId")]
+    pub remote_board_id: String,
+    #[serde(alias = "serverUrl")]
+    pub server_url: String,
+    #[serde(default, alias = "inviteToken")]
+    pub invite_token: Option<String>,
+    #[serde(default = "default_remote_connection_enabled")]
+    pub enabled: bool,
+}
+
+fn default_remote_connection_enabled() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncConfig {
     #[serde(default = "default_port")]
     pub port: u16,
@@ -44,6 +63,8 @@ pub struct SyncConfig {
     pub workspaces: Vec<WorkspaceEntry>,
     #[serde(default)]
     pub default_workspace: Option<String>,
+    #[serde(default, alias = "remoteConnections")]
+    pub remote_connections: Vec<RemoteConnectionEntry>,
 }
 
 fn default_port() -> u16 {
@@ -73,6 +94,7 @@ impl Default for SyncConfig {
             theme: None,
             workspaces: Vec::new(),
             default_workspace: None,
+            remote_connections: Vec::new(),
         }
     }
 }
@@ -130,15 +152,158 @@ pub fn default_config_path() -> PathBuf {
 }
 
 /// Load config from path. Returns default if file doesn't exist.
+/// Migrates the legacy `workspace_id` field to `workspace_ids` on each board.
 pub fn load_config(path: &PathBuf) -> SyncConfig {
     match fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
-            log::warn!("Failed to parse config {}: {}", path.display(), e);
-            SyncConfig::default()
-        }),
+        Ok(content) => {
+            let raw: Option<serde_json::Value> = serde_json::from_str(&content).ok();
+            let mut cfg: SyncConfig = serde_json::from_str(&content).unwrap_or_else(|e| {
+                log::warn!("Failed to parse config {}: {}", path.display(), e);
+                SyncConfig::default()
+            });
+            // Migrate legacy workspace_id → workspace_ids per board
+            if let Some(serde_json::Value::Array(raw_boards)) =
+                raw.as_ref().and_then(|v| v.get("boards").cloned())
+            {
+                for (entry, raw_board) in cfg.boards.iter_mut().zip(raw_boards.iter()) {
+                    lexera_core::config::migrate_board_entry_workspace(entry, raw_board);
+                }
+            }
+            cfg
+        }
         Err(_) => {
             log::info!("No config at {}, using defaults", path.display());
             SyncConfig::default()
+        }
+    }
+}
+
+fn canonicalize_board_file(file: &str) -> String {
+    let path = PathBuf::from(file);
+    fs::canonicalize(&path)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn canonicalize_and_deduplicate_board_entries(config: &mut SyncConfig) -> bool {
+    let mut changed = false;
+
+    let original_len = config.boards.len();
+    let mut deduped: Vec<BoardEntry> = Vec::with_capacity(original_len);
+
+    for mut entry in std::mem::take(&mut config.boards) {
+        let canonical = canonicalize_board_file(&entry.file);
+        if entry.file != canonical {
+            entry.file = canonical.clone();
+            changed = true;
+        }
+
+        if let Some(existing) = deduped.iter_mut().find(|b| b.file == canonical) {
+            // Merge duplicate entries for the same board file.
+            changed = true;
+            if existing.name.is_none() && entry.name.is_some() {
+                existing.name = entry.name.take();
+            }
+            for ws_id in entry.workspace_ids {
+                if !existing.workspace_ids.contains(&ws_id) {
+                    existing.workspace_ids.push(ws_id);
+                }
+            }
+            continue;
+        }
+
+        deduped.push(entry);
+    }
+
+    if deduped.len() != original_len {
+        changed = true;
+    }
+    config.boards = deduped;
+    changed
+}
+
+/// Normalize workspace+board configuration so it remains usable:
+/// - all board file paths are canonicalized and duplicate board entries are merged
+/// - at least one workspace exists
+/// - default workspace always points to an existing workspace
+/// - every board belongs to at least one existing workspace
+pub fn normalize_workspace_setup(config: &mut SyncConfig) -> bool {
+    let mut changed = canonicalize_and_deduplicate_board_entries(config);
+
+    // Remove duplicate/invalid workspace IDs.
+    let mut seen_workspace_ids: HashSet<String> = HashSet::new();
+    config.workspaces.retain(|ws| {
+        let id = ws.id.trim();
+        let keep = !id.is_empty() && seen_workspace_ids.insert(id.to_string());
+        if !keep {
+            changed = true;
+        }
+        keep
+    });
+
+    // Create "Default" workspace if no workspaces exist.
+    if config.workspaces.is_empty() {
+        let id = Uuid::new_v4().to_string();
+        config.workspaces.push(WorkspaceEntry {
+            id: id.clone(),
+            name: "Default".to_string(),
+        });
+        config.default_workspace = Some(id);
+        changed = true;
+        log::info!("[config] Created default workspace");
+    }
+
+    // Ensure default_workspace points to an existing workspace.
+    let default_is_valid = config
+        .default_workspace
+        .as_ref()
+        .map(|id| config.workspaces.iter().any(|w| w.id == *id))
+        .unwrap_or(false);
+    if !default_is_valid {
+        config.default_workspace = config.workspaces.first().map(|w| w.id.clone());
+        changed = true;
+    }
+
+    let valid_workspace_ids: HashSet<String> =
+        config.workspaces.iter().map(|w| w.id.clone()).collect();
+    let fallback_ws_id = config
+        .default_workspace
+        .clone()
+        .or_else(|| config.workspaces.first().map(|w| w.id.clone()));
+
+    // Clean each board's workspace_ids and ensure at least one assignment.
+    for board in &mut config.boards {
+        let before = board.workspace_ids.clone();
+        let mut cleaned: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for ws_id in &before {
+            if valid_workspace_ids.contains(ws_id) && seen.insert(ws_id.clone()) {
+                cleaned.push(ws_id.clone());
+            }
+        }
+        if cleaned.is_empty() {
+            if let Some(ref fallback) = fallback_ws_id {
+                cleaned.push(fallback.clone());
+            }
+        }
+        if cleaned != before {
+            board.workspace_ids = cleaned;
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+/// Ensure a "Default" workspace exists and all boards belong to at least one workspace.
+/// Boards with no workspace assignment are placed into the default workspace.
+pub fn ensure_default_workspace(config: &mut SyncConfig, config_path: &PathBuf) {
+    let changed = normalize_workspace_setup(config);
+
+    if changed {
+        if let Err(e) = save_config(config_path, config) {
+            log::error!("Failed to save config after workspace migration: {}", e);
         }
     }
 }
@@ -343,6 +508,95 @@ mod tests {
         assert!(cfg.templates_path.is_none());
     }
 
+    // --- normalize_workspace_setup ---
+
+    #[test]
+    fn normalize_workspace_setup_creates_default_and_assigns_board() {
+        let mut cfg = SyncConfig {
+            boards: vec![BoardEntry {
+                file: "board.md".to_string(),
+                name: None,
+                workspace_ids: Vec::new(),
+            }],
+            ..SyncConfig::default()
+        };
+
+        let changed = normalize_workspace_setup(&mut cfg);
+        assert!(changed);
+        assert_eq!(cfg.workspaces.len(), 1);
+        let default_ws = cfg.default_workspace.clone().unwrap();
+        assert_eq!(cfg.boards[0].workspace_ids, vec![default_ws]);
+    }
+
+    #[test]
+    fn normalize_workspace_setup_removes_invalid_workspace_refs() {
+        let ws_id = "ws-1".to_string();
+        let mut cfg = SyncConfig {
+            workspaces: vec![WorkspaceEntry {
+                id: ws_id.clone(),
+                name: "Main".to_string(),
+            }],
+            default_workspace: None,
+            boards: vec![BoardEntry {
+                file: "board.md".to_string(),
+                name: None,
+                workspace_ids: vec!["missing".to_string(), ws_id.clone(), ws_id.clone()],
+            }],
+            ..SyncConfig::default()
+        };
+
+        let changed = normalize_workspace_setup(&mut cfg);
+        assert!(changed);
+        assert_eq!(cfg.default_workspace, Some(ws_id.clone()));
+        assert_eq!(cfg.boards[0].workspace_ids, vec![ws_id]);
+    }
+
+    #[test]
+    fn normalize_workspace_setup_canonicalizes_and_deduplicates_boards() {
+        let dir = tempdir().unwrap();
+        let board_path = dir.path().join("board.md");
+        fs::write(&board_path, "---\nkanban-plugin: board\n---\n").unwrap();
+
+        let canonical = fs::canonicalize(&board_path).unwrap();
+        let non_canonical = dir.path().join(".").join("board.md");
+
+        let ws_a = "ws-a".to_string();
+        let ws_b = "ws-b".to_string();
+        let mut cfg = SyncConfig {
+            workspaces: vec![
+                WorkspaceEntry {
+                    id: ws_a.clone(),
+                    name: "A".to_string(),
+                },
+                WorkspaceEntry {
+                    id: ws_b.clone(),
+                    name: "B".to_string(),
+                },
+            ],
+            default_workspace: Some(ws_a.clone()),
+            boards: vec![
+                BoardEntry {
+                    file: non_canonical.to_string_lossy().to_string(),
+                    name: None,
+                    workspace_ids: vec![ws_a.clone()],
+                },
+                BoardEntry {
+                    file: canonical.to_string_lossy().to_string(),
+                    name: Some("Board".to_string()),
+                    workspace_ids: vec![ws_b.clone()],
+                },
+            ],
+            ..SyncConfig::default()
+        };
+
+        let changed = normalize_workspace_setup(&mut cfg);
+        assert!(changed);
+        assert_eq!(cfg.boards.len(), 1);
+        assert_eq!(cfg.boards[0].file, canonical.to_string_lossy().to_string());
+        assert!(cfg.boards[0].workspace_ids.contains(&ws_a));
+        assert!(cfg.boards[0].workspace_ids.contains(&ws_b));
+    }
+
     // --- save_config ---
 
     #[test]
@@ -356,7 +610,7 @@ mod tests {
             boards: vec![BoardEntry {
                 file: "test.md".to_string(),
                 name: Some("Test Board".to_string()),
-                workspace_id: None,
+                workspace_ids: Vec::new(),
             }],
             incoming: Some(IncomingConfig {
                 board: "inbox.md".to_string(),
@@ -366,6 +620,7 @@ mod tests {
             theme: None,
             workspaces: Vec::new(),
             default_workspace: None,
+            remote_connections: Vec::new(),
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -395,12 +650,12 @@ mod tests {
                 BoardEntry {
                     file: "a.md".to_string(),
                     name: None,
-                    workspace_id: None,
+                    workspace_ids: Vec::new(),
                 },
                 BoardEntry {
                     file: "b.md".to_string(),
                     name: Some("B".to_string()),
-                    workspace_id: None,
+                    workspace_ids: Vec::new(),
                 },
             ],
             incoming: Some(IncomingConfig {
@@ -411,6 +666,13 @@ mod tests {
             theme: Some("nord".to_string()),
             workspaces: Vec::new(),
             default_workspace: None,
+            remote_connections: vec![RemoteConnectionEntry {
+                local_board_id: "remote-abc123".to_string(),
+                remote_board_id: "abc123".to_string(),
+                server_url: "http://192.168.1.50:13080".to_string(),
+                invite_token: Some("token-xyz".to_string()),
+                enabled: true,
+            }],
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();
@@ -426,6 +688,11 @@ mod tests {
         assert_eq!(loaded.incoming.as_ref().unwrap().board, "inbox.md");
         assert_eq!(loaded.incoming.as_ref().unwrap().column, 0);
         assert_eq!(loaded.theme, Some("nord".to_string()));
+        assert_eq!(loaded.remote_connections.len(), 1);
+        assert_eq!(
+            loaded.remote_connections[0].remote_board_id,
+            "abc123".to_string()
+        );
     }
 
     // --- Identity persistence ---
@@ -511,5 +778,6 @@ mod tests {
         assert!(cfg.boards.is_empty());
         assert!(cfg.incoming.is_none());
         assert!(cfg.templates_path.is_none());
+        assert!(cfg.remote_connections.is_empty());
     }
 }

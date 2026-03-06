@@ -171,6 +171,57 @@ fn save_public_rooms(state: &AppState) {
     }
 }
 
+fn remote_board_id_from_local(local_board_id: &str) -> String {
+    local_board_id
+        .strip_prefix("remote-")
+        .unwrap_or(local_board_id)
+        .to_string()
+}
+
+fn persist_remote_connection(
+    state: &AppState,
+    server_url: &str,
+    local_board_id: &str,
+    invite_token: Option<String>,
+) -> std::result::Result<(), String> {
+    let mut cfg = state
+        .config
+        .lock()
+        .map_err(|e| format!("config lock poisoned: {}", e))?;
+    let remote_board_id = remote_board_id_from_local(local_board_id);
+    cfg.remote_connections
+        .retain(|entry| entry.local_board_id != local_board_id);
+    cfg.remote_connections
+        .push(crate::config::RemoteConnectionEntry {
+            local_board_id: local_board_id.to_string(),
+            remote_board_id,
+            server_url: server_url.trim_end_matches('/').to_string(),
+            invite_token,
+            enabled: true,
+        });
+    crate::config::save_config(&state.config_path, &cfg)
+        .map_err(|e| format!("failed to save config: {}", e))
+}
+
+fn remove_persisted_remote_connection(
+    state: &AppState,
+    local_board_id: &str,
+) -> std::result::Result<bool, String> {
+    let mut cfg = state
+        .config
+        .lock()
+        .map_err(|e| format!("config lock poisoned: {}", e))?;
+    let before = cfg.remote_connections.len();
+    cfg.remote_connections
+        .retain(|entry| entry.local_board_id != local_board_id);
+    let changed = cfg.remote_connections.len() != before;
+    if changed {
+        crate::config::save_config(&state.config_path, &cfg)
+            .map_err(|e| format!("failed to save config: {}", e))?;
+    }
+    Ok(changed)
+}
+
 // ============================================================================
 // Invite Endpoints
 // ============================================================================
@@ -600,6 +651,7 @@ async fn update_me(
     // Persist to identity.json
     crate::config::persist_identity(&state.identity_path, &updated_user);
 
+    let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
     Ok(Json(updated_user))
 }
 
@@ -676,6 +728,7 @@ async fn connect_remote(
             user_name,
             state.storage.clone(),
             state.event_tx.clone(),
+            state.sync_hub.clone(),
         )
         .await
         .map_err(|e| {
@@ -685,13 +738,40 @@ async fn connect_remote(
             )
         })?;
 
+    let persisted = match persist_remote_connection(
+        &state,
+        &body.server_url,
+        &local_board_id,
+        Some(body.token.clone()),
+    ) {
+        Ok(()) => {
+            log::info!(
+                "[collab.connect] Persisted remote connection local_board_id={} server={}",
+                local_board_id,
+                body.server_url
+            );
+            true
+        }
+        Err(error) => {
+            log::error!(
+                "[collab.connect] Failed to persist remote connection local_board_id={} server={}: {}",
+                local_board_id,
+                body.server_url,
+                error
+            );
+            false
+        }
+    };
+
     let _ = state
         .event_tx
         .send(BoardChangeEvent::CollabConnectionChanged);
 
-    Ok(Json(
-        serde_json::json!({ "success": true, "local_board_id": local_board_id }),
-    ))
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "local_board_id": local_board_id,
+        "persisted": persisted
+    })))
 }
 
 /// DELETE /collab/connect/{local_board_id} — disconnect from a remote board
@@ -701,6 +781,22 @@ async fn disconnect_remote(
 ) -> Result<Json<SuccessResponse>> {
     let mut client = state.sync_client.lock().await;
     client.disconnect(&local_board_id, &state.storage);
+    match remove_persisted_remote_connection(&state, &local_board_id) {
+        Ok(true) => {
+            log::info!(
+                "[collab.disconnect] Removed persisted remote connection local_board_id={}",
+                local_board_id
+            );
+        }
+        Ok(false) => {}
+        Err(error) => {
+            log::error!(
+                "[collab.disconnect] Failed to remove persisted remote connection local_board_id={}: {}",
+                local_board_id,
+                error
+            );
+        }
+    }
     let _ = state
         .event_tx
         .send(BoardChangeEvent::CollabConnectionChanged);
@@ -911,6 +1007,7 @@ async fn update_server_config(
                 }
             }
 
+            let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
             Ok(Json(serde_json::json!({
                 "success": true,
                 "port": actual_port,

@@ -109,8 +109,6 @@ pub fn search(
 }
 
 #[tauri::command]
-pub fn process_pending_shares(
-    storage: tauri::State<'_, Arc<IosStorage>>,
-) -> Result<usize, String> {
+pub fn process_pending_shares(storage: tauri::State<'_, Arc<IosStorage>>) -> Result<usize, String> {
     storage.process_pending().map_err(|e| e.to_string())
 }

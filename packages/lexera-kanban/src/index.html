@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lexera Kanban</title>
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="management.css">
   <link rel="stylesheet" href="wysiwyg-editor.css">
 </head>
 <body>
@@ -24,7 +25,7 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <span>Hierarchy</span>
+        <select id="workspace-select" class="workspace-select" title="Active workspace"></select>
         <div class="sidebar-header-actions">
           <button id="btn-sidebar-sync" class="sidebar-btn" title="Sync hierarchy with view">&#8982;</button>
           <button id="btn-sidebar-lock" class="sidebar-btn" title="Lock hierarchy (prevent add/remove)">&#128274;</button>
@@ -311,6 +312,7 @@
     </div>
   </div>
 
+  <script src="management.js"></script>
   <script src="api.js"></script>
   <script src="templates.js"></script>
   <script src="export/exportTreeBuilder.js"></script>

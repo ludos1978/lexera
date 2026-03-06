@@ -1,5 +1,23 @@
 ## Version 2
 
+- [ ] smaller problems
+  - the management window must have sharing as the first tab, and configuration as second!
+  - it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!
+  - the system beeps when i press escape while having the board open. why?
+  - when i click outside the quick capture window it should get small immediately
+  - the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
+  - also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards 
+  - fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!
+    - the lexera kanban view can have one or multiple windows open
+    - find a solution for the management interface to solve this.
+  - it might be that the background of the application is not transparent? because on the right side the rounded border shows the background, but on the left side it shows some white parts
+
+- [x] make the management interface being shared between the backend and the frontend kanban (collaboration)
+
+- [ ] make the board zoomable by scrolling.
+
+- [ ] the clipboard should only show the current level within the search and not a hierarchical display. it lists the items and if i press left it goes higher, right it goes into the objects. it should show immediately if a new item is added by cmd+v
+
 - [ ] the clipboard should only be a vertical line with the title of the last copy-paste value. can we somehow detect/hide passwords? it should fold similar to the columns. when unfolded it displays the same way we have right now. the user can define a default workspace which is used as board search area, if he presses left it switches to workspace selection. we must have a hierarchy stored "workspaces > kanban boards" (with the subitems > rows > stacks > columns > cards shown when going right with the cursor). the backend must store the workspaces and boards, the frontend and the clipboard accesses these settings and uses the backend to navigate the contents of the boards. 
 
 - [ ] make sure the clipboard and the backend also use light / dark styles. templates that should be applied to all parts of the application. for that the backend should have a separate "configuration" which doesnt do regular maintenence and sharing aspects. the server bind address and port, as well as the identity should be there as well as the theme selection. theme should be shared among front and backend. the settings should be stored.

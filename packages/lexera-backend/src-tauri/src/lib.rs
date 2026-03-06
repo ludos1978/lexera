@@ -135,10 +135,14 @@ pub fn run() {
     let build_result = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             capture::read_clipboard,
+            capture::read_clipboard_summary,
             capture::read_clipboard_image,
             capture::get_clipboard_history,
             capture::remove_clipboard_entry,
             capture::snap_capture_window,
+            capture::expand_capture,
+            capture::collapse_capture,
+            capture::snap_strip_after_drag,
             capture::close_capture,
             connection_window::open_connection_window_cmd,
             config::get_backend_url,
@@ -177,7 +181,8 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let config_path = config::default_config_path();
-            let config = config::load_config(&config_path);
+            let mut config = config::load_config(&config_path);
+            config::ensure_default_workspace(&mut config, &config_path);
             let port = config.port;
             let bind_address = config.bind_address.clone();
             let config = Arc::new(std::sync::Mutex::new(config));
@@ -534,6 +539,125 @@ pub fn run() {
 
             app.manage(app_state.clone());
 
+            // Restore persisted remote backend connections (joined boards).
+            // These are saved in sync.json so remote mirrors survive restarts,
+            // especially on Windows where app restarts are common while testing.
+            let persisted_remote_connections = match config.lock() {
+                Ok(cfg) => cfg.remote_connections.clone(),
+                Err(e) => {
+                    log::error!(
+                        "[sync_client.restore] Failed to read persisted remote connections from config: {}",
+                        e
+                    );
+                    Vec::new()
+                }
+            };
+            if !persisted_remote_connections.is_empty() {
+                let restore_state = app_state.clone();
+                let restore_user_id = local_user.id.clone();
+                let restore_user_name = local_user.name.clone();
+                tauri::async_runtime::spawn(async move {
+                    log::info!(
+                        "[sync_client.restore] Restoring {} persisted remote connection(s)",
+                        persisted_remote_connections.len()
+                    );
+                    for entry in persisted_remote_connections {
+                        if !entry.enabled {
+                            log::info!(
+                                "[sync_client.restore] Skipping disabled persisted remote connection local_board_id={} server={}",
+                                entry.local_board_id,
+                                entry.server_url
+                            );
+                            continue;
+                        }
+                        let remote_board_id = if entry.remote_board_id.trim().is_empty() {
+                            entry
+                                .local_board_id
+                                .strip_prefix("remote-")
+                                .unwrap_or(entry.local_board_id.as_str())
+                                .to_string()
+                        } else {
+                            entry.remote_board_id.clone()
+                        };
+                        if remote_board_id.trim().is_empty() {
+                            log::error!(
+                                "[sync_client.restore] Skipping persisted connection with empty remote board id local_board_id={} server={}",
+                                entry.local_board_id,
+                                entry.server_url
+                            );
+                            continue;
+                        }
+
+                        let reconnect_result = {
+                            let mut client = restore_state.sync_client.lock().await;
+                            client
+                                .reconnect_existing(
+                                    entry.server_url.clone(),
+                                    remote_board_id.clone(),
+                                    restore_user_id.clone(),
+                                    restore_user_name.clone(),
+                                    restore_state.storage.clone(),
+                                    restore_state.event_tx.clone(),
+                                    restore_state.sync_hub.clone(),
+                                )
+                                .await
+                        };
+
+                        let final_result = match reconnect_result {
+                            Ok(local_board_id) => Ok(local_board_id),
+                            Err(primary_error) => {
+                                if let Some(token) = entry.invite_token.clone() {
+                                    log::warn!(
+                                        "[sync_client.restore] Reconnect without token failed for local_board_id={} remote_board_id={} server={}: {}. Retrying with saved invite token.",
+                                        entry.local_board_id,
+                                        remote_board_id,
+                                        entry.server_url,
+                                        primary_error
+                                    );
+                                    let mut client = restore_state.sync_client.lock().await;
+                                    client
+                                        .connect(
+                                            entry.server_url.clone(),
+                                            token,
+                                            restore_user_id.clone(),
+                                            restore_user_name.clone(),
+                                            restore_state.storage.clone(),
+                                            restore_state.event_tx.clone(),
+                                            restore_state.sync_hub.clone(),
+                                        )
+                                        .await
+                                } else {
+                                    Err(primary_error)
+                                }
+                            }
+                        };
+
+                        match final_result {
+                            Ok(local_board_id) => {
+                                log::info!(
+                                    "[sync_client.restore] Restored persisted remote connection local_board_id={} remote_board_id={} server={}",
+                                    local_board_id,
+                                    remote_board_id,
+                                    entry.server_url
+                                );
+                                let _ = restore_state
+                                    .event_tx
+                                    .send(BoardChangeEvent::CollabConnectionChanged);
+                            }
+                            Err(error) => {
+                                log::error!(
+                                    "[sync_client.restore] Failed to restore persisted remote connection local_board_id={} remote_board_id={} server={}: {}",
+                                    entry.local_board_id,
+                                    remote_board_id,
+                                    entry.server_url,
+                                    error
+                                );
+                            }
+                        }
+                    }
+                });
+            }
+
             // Spawn HTTP server
             let discovery_for_start = discovery.clone();
             let discovery_user_id = local_user.id.clone();
@@ -589,6 +713,9 @@ pub fn run() {
                 log::warn!("[lexera.clipboard_watcher] Clipboard watcher disabled");
             }
             app.manage(std::sync::Mutex::new(watcher_shutdown));
+
+            // Open the quick-capture strip on startup
+            capture::open_capture_popup(app.handle());
 
             Ok(())
         })

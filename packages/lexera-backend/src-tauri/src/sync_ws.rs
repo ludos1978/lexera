@@ -63,7 +63,7 @@ impl BoardSyncHub {
     }
 
     /// Register a new client for a board room. Returns (peer_id, receiver).
-    fn register(&mut self, board_id: &str, user_id: &str) -> (u64, mpsc::Receiver<String>) {
+    pub fn register(&mut self, board_id: &str, user_id: &str) -> (u64, mpsc::Receiver<String>) {
         let room = self
             .rooms
             .entry(board_id.to_string())
@@ -77,7 +77,7 @@ impl BoardSyncHub {
     }
 
     /// Unregister a client from a board room.
-    fn unregister(&mut self, board_id: &str, peer_id: u64) {
+    pub fn unregister(&mut self, board_id: &str, peer_id: u64) {
         if let Some(room) = self.rooms.get_mut(board_id) {
             room.clients.remove(&peer_id);
             room.peer_users.remove(&peer_id);
@@ -238,8 +238,13 @@ async fn handle_sync_session(
     } else {
         &client_user_id
     };
+    // Remote boards (local mirrors of remote backends) are always accessible
+    // to the local user — they don't go through the collab auth service.
+    let is_remote = state.storage.is_remote_board(&board_id);
     let authorized = if auth_user.is_empty() {
         false
+    } else if is_remote {
+        true
     } else {
         match state.auth_service.lock() {
             Ok(auth) => auth.is_member(&board_id, auth_user),
@@ -495,13 +500,15 @@ async fn handle_sync_session(
                     let hub = state_read.sync_hub.lock().await;
                     hub.broadcast(&board_id_read, peer_id, &broadcast_msg);
 
-                    // Fire SSE event so non-WS clients know something changed
+                    // Fire SSE event so non-WS clients know something changed.
+                    // Tag with "sync-ws-peer" so sync_client can distinguish
+                    // hub-originated updates from REST-only writes.
                     if let Err(error) = state_read.event_tx.send(
                         lexera_core::watcher::types::BoardChangeEvent::MainFileChanged {
                             board_id: board_id_read.clone(),
                             revision: state_read.storage.get_board_revision_token(&board_id_read),
                             generation: state_read.storage.get_board_generation(&board_id_read),
-                            writer_id: None,
+                            writer_id: Some("sync-ws-peer".to_string()),
                         },
                     ) {
                         log::warn!(

@@ -6,28 +6,36 @@
   <title>Quick Capture</title>
   <link rel="stylesheet" href="quick-capture.css">
 </head>
-<body>
-  <div class="capture-container">
-    <div class="capture-header" data-tauri-drag-region>
-      <h2 class="capture-title" data-tauri-drag-region>Quick Capture</h2>
-      <button id="btn-snap-left" class="snap-btn" title="Snap to left edge">◂</button>
-      <button id="btn-snap-right" class="snap-btn" title="Snap to right edge">▸</button>
-      <span class="capture-hint">esc</span>
+<body class="strip-mode">
+
+  <!-- Strip mode: thin vertical drop target -->
+  <div id="strip-view" class="strip-view">
+    <div class="strip-icon" id="strip-icon" title="Drag to reposition">&#9776;</div>
+    <div class="strip-clip-label" id="strip-clip-label"></div>
+    <div class="strip-drop-zone" id="strip-drop-zone"></div>
+  </div>
+
+  <!-- Expanded mode: full capture panel -->
+  <div id="expanded-view" class="expanded-view">
+    <div class="capture-container">
+      <div class="capture-header" data-tauri-drag-region>
+        <h2 class="capture-title" data-tauri-drag-region>Quick Capture</h2>
+        <button id="btn-collapse" class="snap-btn" title="Collapse to strip">&#10094;</button>
+        <span class="capture-hint">esc</span>
+      </div>
+
+      <div id="clipboard-preview" class="clipboard-preview">
+        <div class="clipboard-empty">No clipboard content</div>
+      </div>
+
+      <div class="search-section">
+        <input id="search-input" class="search-input" type="text" placeholder="Search boards and cards..." autocomplete="off" spellcheck="false">
+      </div>
+
+      <div id="browse-area" class="browse-area"></div>
+
+      <div id="status-msg" class="status-msg hidden"></div>
     </div>
-
-    <div id="clipboard-preview" class="clipboard-preview">
-      <div class="clipboard-empty">No clipboard content</div>
-    </div>
-
-    <div class="search-section">
-      <input id="search-input" class="search-input" type="text" placeholder="Search boards and cards..." autocomplete="off" spellcheck="false">
-    </div>
-
-    <div id="browse-path" class="browse-path"></div>
-
-    <div id="browse-area" class="browse-area"></div>
-
-    <div id="status-msg" class="status-msg hidden"></div>
   </div>
 
   <script src="themes.js"></script>

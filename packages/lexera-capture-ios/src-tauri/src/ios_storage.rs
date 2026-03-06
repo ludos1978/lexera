@@ -79,7 +79,10 @@ impl IosStorage {
         let entries = match fs::read_dir(&self.boards_dir) {
             Ok(e) => e,
             Err(e) => {
-                log::error!("[ios_storage.scan_boards] Failed to read boards directory: {}", e);
+                log::error!(
+                    "[ios_storage.scan_boards] Failed to read boards directory: {}",
+                    e
+                );
                 return;
             }
         };
@@ -320,7 +323,10 @@ impl IosStorage {
         let items: Vec<PendingItem> = match serde_json::from_str(&content) {
             Ok(items) => items,
             Err(e) => {
-                log::warn!("[ios_storage.process_pending] Failed to parse pending.json: {}", e);
+                log::warn!(
+                    "[ios_storage.process_pending] Failed to parse pending.json: {}",
+                    e
+                );
                 return Ok(0);
             }
         };
@@ -625,7 +631,11 @@ mod tests {
             {"type": "text", "text": "shared note", "timestamp": 1000.0},
             {"type": "url", "url": "https://example.com", "title": "Example", "timestamp": 1001.0}
         ]);
-        fs::write(dir.path().join("ShareExtension/pending.json"), pending.to_string()).unwrap();
+        fs::write(
+            dir.path().join("ShareExtension/pending.json"),
+            pending.to_string(),
+        )
+        .unwrap();
 
         let count = storage.process_pending().unwrap();
         assert_eq!(count, 2);
@@ -635,7 +645,9 @@ mod tests {
         let cols = board.all_columns();
         assert_eq!(cols[0].cards.len(), 2);
         assert!(cols[0].cards[0].content.contains("shared note"));
-        assert!(cols[0].cards[1].content.contains("[Example](https://example.com)"));
+        assert!(cols[0].cards[1]
+            .content
+            .contains("[Example](https://example.com)"));
     }
 
     #[test]
@@ -697,7 +709,11 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             StorageError::InvalidBoard(msg) => {
-                assert!(msg.contains("Inbox"), "Expected message about Inbox, got: {}", msg);
+                assert!(
+                    msg.contains("Inbox"),
+                    "Expected message about Inbox, got: {}",
+                    msg
+                );
             }
             other => panic!("Expected InvalidBoard error, got: {:?}", other),
         }
@@ -728,7 +744,9 @@ mod tests {
         let inbox_id = storage.inbox_board_id();
         storage.add_card(&inbox_id, 0, "original content").unwrap();
 
-        storage.edit_card(&inbox_id, 0, 0, "updated content").unwrap();
+        storage
+            .edit_card(&inbox_id, 0, 0, "updated content")
+            .unwrap();
 
         let board = storage.read_board(&inbox_id).unwrap();
         let cols = board.all_columns();
@@ -796,7 +814,11 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             StorageError::InvalidBoard(msg) => {
-                assert!(msg.contains("Card index"), "Expected card-index message, got: {}", msg);
+                assert!(
+                    msg.contains("Card index"),
+                    "Expected card-index message, got: {}",
+                    msg
+                );
             }
             other => panic!("Expected InvalidBoard (card index) error, got: {:?}", other),
         }
@@ -885,7 +907,11 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             StorageError::InvalidBoard(msg) => {
-                assert!(msg.contains("Card index"), "Expected card-index message, got: {}", msg);
+                assert!(
+                    msg.contains("Card index"),
+                    "Expected card-index message, got: {}",
+                    msg
+                );
             }
             other => panic!("Expected InvalidBoard (card index) error, got: {:?}", other),
         }
@@ -1008,26 +1034,33 @@ mod tests {
     fn test_encrypted_write_read_roundtrip() {
         let (storage, _dir) = temp_storage();
         let inbox_id = storage.inbox_board_id();
-        storage.add_card(&inbox_id, 0, "encrypted roundtrip card").unwrap();
+        storage
+            .add_card(&inbox_id, 0, "encrypted roundtrip card")
+            .unwrap();
 
         // Read it back from the in-memory cache
         let board = storage.read_board(&inbox_id).unwrap();
         let cols = board.all_columns();
-        assert!(cols[0].cards[0].content.contains("encrypted roundtrip card"));
+        assert!(cols[0].cards[0]
+            .content
+            .contains("encrypted roundtrip card"));
     }
 
     #[test]
     fn test_encrypted_file_on_disk_is_not_plaintext() {
         let (storage, dir) = temp_storage();
         let inbox_id = storage.inbox_board_id();
-        storage.add_card(&inbox_id, 0, "super secret content").unwrap();
+        storage
+            .add_card(&inbox_id, 0, "super secret content")
+            .unwrap();
 
         // Read the raw bytes of the inbox file on disk
         let raw = fs::read(dir.path().join("boards").join("inbox.md")).unwrap();
 
         // The file should start with the encryption magic header
         assert_eq!(
-            &raw[..4], b"LEXE",
+            &raw[..4],
+            b"LEXE",
             "File on disk should start with encryption magic header"
         );
 
@@ -1053,7 +1086,9 @@ mod tests {
         {
             let storage = IosStorage::new(boards_dir.clone(), pending_path.clone()).unwrap();
             let inbox_id = storage.inbox_board_id();
-            storage.add_card(&inbox_id, 0, "encrypted persisted card").unwrap();
+            storage
+                .add_card(&inbox_id, 0, "encrypted persisted card")
+                .unwrap();
         }
 
         // Verify file on disk is encrypted
@@ -1067,7 +1102,9 @@ mod tests {
             let board = storage.read_board(&inbox_id).unwrap();
             let cols = board.all_columns();
             assert_eq!(cols[0].cards.len(), 1);
-            assert!(cols[0].cards[0].content.contains("encrypted persisted card"));
+            assert!(cols[0].cards[0]
+                .content
+                .contains("encrypted persisted card"));
         }
     }
 
@@ -1105,7 +1142,8 @@ mod tests {
         // Verify the file on disk was migrated to encrypted format
         let raw = fs::read(boards_dir.join("inbox.md")).unwrap();
         assert_eq!(
-            &raw[..4], b"LEXE",
+            &raw[..4],
+            b"LEXE",
             "Legacy file should be migrated to encrypted format"
         );
         assert!(
@@ -1114,9 +1152,13 @@ mod tests {
         );
 
         // Adding a card should still work after migration
-        storage.add_card(&inbox_id, 0, "post-migration card").unwrap();
+        storage
+            .add_card(&inbox_id, 0, "post-migration card")
+            .unwrap();
         let board = storage.read_board(&inbox_id).unwrap();
-        assert!(board.all_columns()[0].cards[0].content.contains("post-migration card"));
+        assert!(board.all_columns()[0].cards[0]
+            .content
+            .contains("post-migration card"));
     }
 
     #[test]

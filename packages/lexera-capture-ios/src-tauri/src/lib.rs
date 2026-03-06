@@ -27,15 +27,13 @@ pub fn run() {
             let storage_path = std::env::var("LEXERA_APP_GROUP_PATH")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    app.path()
-                        .app_data_dir()
-                        .unwrap_or_else(|e| {
-                            log::warn!(
-                                "[ios_capture.setup] app_data_dir() failed ({}), falling back to '.'",
-                                e
-                            );
-                            std::path::PathBuf::from(".")
-                        })
+                    app.path().app_data_dir().unwrap_or_else(|e| {
+                        log::warn!(
+                            "[ios_capture.setup] app_data_dir() failed ({}), falling back to '.'",
+                            e
+                        );
+                        std::path::PathBuf::from(".")
+                    })
                 });
 
             let boards_dir = storage_path.join("Documents").join("boards");
@@ -44,7 +42,10 @@ pub fn run() {
             let storage = match ios_storage::IosStorage::new(boards_dir, pending_path) {
                 Ok(s) => Arc::new(s),
                 Err(e) => {
-                    log::error!("[ios_capture.setup] Failed to initialize iOS storage: {}", e);
+                    log::error!(
+                        "[ios_capture.setup] Failed to initialize iOS storage: {}",
+                        e
+                    );
                     return Err(Box::new(e));
                 }
             };

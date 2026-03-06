@@ -1,59 +1,95 @@
 /**
- * Quick Capture V2 — clipboard preview + tree navigation + search + paste.
+ * Quick Capture V4 — flat level-based navigator.
  *
- * Layout: clipboard preview → search input → breadcrumb → browse/results area.
- * Navigation: Down/Up to move in list, Right/Enter to drill in, Left/Backspace to go back.
- * Paste: Cmd+V / Ctrl+V pastes clipboard into selected target.
+ * Strip mode: thin bar snapped to screen edge, acts as drop target.
+ * Expanded mode: clipboard summary + search + flat level browser.
+ * Left arrow = go up a level, Right arrow = drill into item.
+ * Cmd+V pastes into selected and refreshes immediately.
  */
 (function () {
   'use strict';
 
   let baseUrl = '';
   let boards = [];
-  let workspaces = [];
-  let defaultWorkspaceId = null;
+  let isExpanded = false;
+  const STRIP_WIDTH_THRESHOLD = 96;
 
-  // Browse state: tree navigation through boards → rows → stacks → columns → cards
-  let browseState = {
-    path: [],       // [{type, id, title, data}] — breadcrumb trail
-    items: [],      // current level items
-    activeIndex: 0, // highlighted item
-  };
+  // Navigation stack: each entry = { items: [...], activeIndex, title }
+  // items[i] = { type, id, title, detail, boardId, colIndex, cardId, data, columns }
+  let navStack = [];
 
   // Clipboard state
-  let clipboardData = { type: 'empty', summary: '', isPassword: false, fullHtml: '' };
-  let clipboardExpanded = false;
+  let clipboardData = { type: 'empty', summary: '', isPassword: false };
 
   let isSearchMode = false;
   let searchResults = [];
   let activeSearchIndex = -1;
   let searchDebounceTimer = null;
 
-  const els = {
-    clipboardPreview: document.getElementById('clipboard-preview'),
-    searchInput: document.getElementById('search-input'),
-    browsePath: document.getElementById('browse-path'),
-    browseArea: document.getElementById('browse-area'),
-    btnSnapLeft: document.getElementById('btn-snap-left'),
-    btnSnapRight: document.getElementById('btn-snap-right'),
-    statusMsg: document.getElementById('status-msg'),
-  };
+  const els = {};
 
-  // --- Init ---
+  function tauriInvoke(cmd, args) {
+    if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+      return window.__TAURI_INTERNALS__.invoke(cmd, args || {});
+    }
+    if (window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === 'function') {
+      return window.__TAURI__.core.invoke(cmd, args || {});
+    }
+    return Promise.reject(new Error('Tauri invoke unavailable: ' + cmd));
+  }
 
-  // Apply theme immediately from localStorage to avoid flash of wrong theme
+  function tauriListen(eventName, callback) {
+    if (window.__TAURI_INTERNALS__ &&
+      typeof window.__TAURI_INTERNALS__.invoke === 'function' &&
+      typeof window.__TAURI_INTERNALS__.transformCallback === 'function') {
+      const handler = window.__TAURI_INTERNALS__.transformCallback(function (event) {
+        callback(event);
+      });
+      return window.__TAURI_INTERNALS__.invoke('plugin:event|listen', {
+        event: eventName,
+        target: { kind: 'Any' },
+        handler: handler,
+      });
+    }
+    if (window.__TAURI__ && window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+      return window.__TAURI__.event.listen(eventName, callback);
+    }
+    return Promise.reject(new Error('Tauri listen unavailable: ' + eventName));
+  }
+
+  // Apply theme immediately from localStorage
   if (typeof applyLexeraTheme === 'function') {
     applyLexeraTheme(localStorage.getItem('lexera-theme') || 'lexera');
   }
 
+  // --- Init ---
+
   async function init() {
+    els.stripView = document.getElementById('strip-view');
+    els.stripDropZone = document.getElementById('strip-drop-zone');
+    els.stripClipLabel = document.getElementById('strip-clip-label');
+    els.stripIcon = document.getElementById('strip-icon');
+    els.expandedView = document.getElementById('expanded-view');
+    els.clipboardPreview = document.getElementById('clipboard-preview');
+    els.searchInput = document.getElementById('search-input');
+    els.browseArea = document.getElementById('browse-area');
+    els.btnCollapse = document.getElementById('btn-collapse');
+    els.statusMsg = document.getElementById('status-msg');
+
+    setupEventListeners();
+    syncModeFromWindowSize();
+    window.addEventListener('resize', syncModeFromWindowSize);
+    renderClipboardSummary();
+    await loadClipboardSummary();
+
     baseUrl = await discoverBackend();
     if (!baseUrl) {
       showStatus('Cannot connect to Lexera Backend', 'error');
+      pushBoardsLevel();
       return;
     }
 
-    // Load theme from backend (may override localStorage)
+    // Load theme from backend
     try {
       const themeRes = await fetch(baseUrl + '/config/theme');
       if (themeRes.ok) {
@@ -64,43 +100,23 @@
       }
     } catch (e) { /* keep localStorage theme */ }
 
-    await loadClipboardPreview();
     await loadBoards();
-    await loadWorkspaces();
-
-    // Start at default workspace's boards, or workspace list if multiple exist
-    if (defaultWorkspaceId) {
-      showBoardsForWorkspace(defaultWorkspaceId);
-    } else if (workspaces.length > 0) {
-      showWorkspaceList();
-    } else {
-      showBoardList();
-    }
-
-    // Restore snap position
-    const savedSnap = localStorage.getItem('lexera-qc-snap');
-    if (savedSnap) {
-      window.__TAURI_INTERNALS__.invoke('snap_capture_window', { side: savedSnap }).catch(() => {});
-    }
-
-    setupEventListeners();
+    pushBoardsLevel();
   }
 
   async function discoverBackend() {
     try {
-      if (window.__TAURI_INTERNALS__) {
-        const url = await window.__TAURI_INTERNALS__.invoke('get_backend_url');
-        if (url) {
-          const res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status === 'running') return url;
-          }
+      const url = await tauriInvoke('get_backend_url');
+      if (url) {
+        const res = await fetch(url + '/status', { signal: AbortSignal.timeout(2000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'running') return url;
         }
       }
     } catch (e) { /* fall through */ }
 
-    const ports = [13080, 12080, 14080, 11080, 15080];
+    const ports = [1431, 13080, 12080, 14080, 11080, 15080];
     for (const port of ports) {
       try {
         const res = await fetch(`http://localhost:${port}/status`, { signal: AbortSignal.timeout(1000) });
@@ -115,19 +131,13 @@
     return null;
   }
 
-  // --- Clipboard Preview ---
+  // --- Clipboard Summary ---
 
-  /**
-   * Detect if text looks like a password or secret token.
-   * Checks: no whitespace, length 6-128, Shannon entropy > 3.5, at least 2 character classes.
-   */
   function looksLikePassword(text) {
     const t = text.trim();
     if (t.length < 6 || t.length > 128) return false;
     if (/\s/.test(t)) return false;
-    // Known hash/token prefixes
     if (/^(\$2[ab]\$|\$argon2|ghp_|gho_|Bearer\s)/i.test(t)) return true;
-    // Shannon entropy
     const freq = {};
     for (const ch of t) freq[ch] = (freq[ch] || 0) + 1;
     let entropy = 0;
@@ -137,7 +147,6 @@
       entropy -= p * Math.log2(p);
     }
     if (entropy <= 3.5) return false;
-    // At least 2 character classes
     let classes = 0;
     if (/[a-z]/.test(t)) classes++;
     if (/[A-Z]/.test(t)) classes++;
@@ -146,35 +155,41 @@
     return classes >= 2;
   }
 
-  function buildFullPreviewHtml(data) {
-    if (data.type === 'image') return data.fullHtml;
-    if (data.type === 'url') return data.fullHtml;
-    if (data.type === 'text') return data.fullHtml;
-    return '<div class="clipboard-empty">No clipboard content</div>';
-  }
-
-  function renderClipboardPreview() {
+  function renderClipboardSummary() {
     els.clipboardPreview.innerHTML = '';
+
+    // Update strip label with short clipboard text
+    if (els.stripClipLabel) {
+      if (clipboardData.type === 'empty') {
+        els.stripClipLabel.textContent = '';
+      } else if (clipboardData.isPassword) {
+        els.stripClipLabel.textContent = '***';
+      } else {
+        els.stripClipLabel.textContent = clipboardData.summary;
+        // Truncate with ellipsis since CSS text-overflow doesn't work with vertical writing-mode
+        requestAnimationFrame(() => {
+          if (!els.stripClipLabel) return;
+          let text = clipboardData.summary;
+          while (els.stripClipLabel.scrollHeight > els.stripClipLabel.clientHeight && text.length > 1) {
+            text = text.substring(0, text.length - 1);
+            els.stripClipLabel.textContent = text + '...';
+          }
+        });
+      }
+    }
 
     if (clipboardData.type === 'empty') {
       els.clipboardPreview.innerHTML = '<div class="clipboard-empty">No clipboard content</div>';
-      els.clipboardPreview.classList.remove('clipboard-expanded');
       return;
     }
 
-    // Collapsed summary bar (always shown)
     const summary = document.createElement('div');
     summary.className = 'clipboard-summary';
-    summary.addEventListener('click', (e) => {
-      e.stopPropagation();
-      clipboardExpanded = !clipboardExpanded;
-      renderClipboardPreview();
-    });
 
-    const chevron = document.createElement('span');
-    chevron.className = 'clipboard-toggle';
-    chevron.textContent = clipboardExpanded ? '▾' : '▸';
-    summary.appendChild(chevron);
+    const badge = document.createElement('span');
+    badge.className = 'clipboard-type-badge';
+    badge.textContent = clipboardData.type === 'image' ? 'IMG' : clipboardData.type === 'url' ? 'URL' : 'TXT';
+    summary.appendChild(badge);
 
     const label = document.createElement('span');
     label.className = 'clipboard-summary-text' + (clipboardData.isPassword ? ' clipboard-password-warning' : '');
@@ -182,90 +197,94 @@
     summary.appendChild(label);
 
     els.clipboardPreview.appendChild(summary);
-
-    if (clipboardExpanded) {
-      els.clipboardPreview.classList.add('clipboard-expanded');
-      if (clipboardData.isPassword) {
-        const warning = document.createElement('div');
-        warning.className = 'clipboard-password-notice';
-        warning.textContent = 'Content hidden — may contain sensitive data';
-        els.clipboardPreview.appendChild(warning);
-      } else {
-        const content = document.createElement('div');
-        content.className = 'clipboard-full-content';
-        content.innerHTML = clipboardData.fullHtml;
-        els.clipboardPreview.appendChild(content);
-      }
-    } else {
-      els.clipboardPreview.classList.remove('clipboard-expanded');
-    }
   }
 
-  async function loadClipboardPreview() {
-    clipboardData = { type: 'empty', summary: '', isPassword: false, fullHtml: '' };
-    clipboardExpanded = false;
+  async function loadClipboardSummary() {
+    clipboardData = { type: 'empty', summary: '', isPassword: false };
+    const failures = [];
+
+    // Preferred path: lightweight clipboard summary (does not transfer large image payloads)
+    try {
+      const summary = await tauriInvoke('read_clipboard_summary');
+      if (summary && summary.kind === 'image') {
+        let imageLabel = 'Image (clipboard)';
+        if (summary.image && typeof summary.image.width === 'number' && typeof summary.image.height === 'number') {
+          imageLabel += ` ${summary.image.width}x${summary.image.height}`;
+        }
+        clipboardData = { type: 'image', summary: imageLabel, isPassword: false };
+        renderClipboardSummary();
+        return;
+      }
+      if (summary && summary.kind === 'text' && typeof summary.text === 'string' && summary.text.trim()) {
+        const trimmed = summary.text.trim();
+        if (looksLikePassword(trimmed)) {
+          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true };
+        } else if (isUrl(trimmed)) {
+          let hostname = 'link';
+          try { hostname = new URL(trimmed).hostname; } catch (e) { /* ignore */ }
+          clipboardData = { type: 'url', summary: hostname, isPassword: false };
+        } else {
+          const firstLine = trimmed.split('\n')[0].trim();
+          clipboardData = {
+            type: 'text',
+            summary: firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine,
+            isPassword: false,
+          };
+        }
+        renderClipboardSummary();
+        return;
+      }
+      if (summary && summary.kind === 'empty') {
+        renderClipboardSummary();
+        return;
+      }
+    } catch (e) {
+      failures.push('summary: ' + (e && e.message ? e.message : String(e)));
+    }
 
     // Try image first
     try {
-      const imgResult = await window.__TAURI_INTERNALS__.invoke('read_clipboard_image');
+      const imgResult = await tauriInvoke('read_clipboard_image');
       if (imgResult && imgResult.data) {
-        clipboardData = {
-          type: 'image',
-          summary: 'Image (clipboard)',
-          isPassword: false,
-          fullHtml: '<img class="preview-image" src="data:image/png;base64,' + imgResult.data + '">',
-        };
-        renderClipboardPreview();
+        clipboardData = { type: 'image', summary: 'Image (clipboard)', isPassword: false };
+        renderClipboardSummary();
         return;
       }
-    } catch (e) { /* no image */ }
+    } catch (e) {
+      failures.push('image: ' + (e && e.message ? e.message : String(e)));
+    }
 
     // Try text
     try {
-      const text = await window.__TAURI_INTERNALS__.invoke('read_clipboard');
+      const text = await tauriInvoke('read_clipboard');
       if (text && text.trim()) {
         const trimmed = text.trim();
         if (looksLikePassword(trimmed)) {
-          clipboardData = {
-            type: 'text',
-            summary: 'Sensitive content (hidden)',
-            isPassword: true,
-            fullHtml: '',
-          };
+          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true };
         } else if (isUrl(trimmed)) {
           let hostname = 'link';
-          try { hostname = new URL(trimmed).hostname; } catch {}
-          const display = trimmed.length > 120 ? trimmed.substring(0, 120) + '...' : trimmed;
-          clipboardData = {
-            type: 'url',
-            summary: hostname,
-            isPassword: false,
-            fullHtml: '<div class="preview-url"><span class="url-domain">' + escapeHtml(hostname) +
-              '</span><span>' + escapeHtml(display) + '</span></div>',
-          };
+          try { hostname = new URL(trimmed).hostname; } catch (e) { /* ignore */ }
+          clipboardData = { type: 'url', summary: hostname, isPassword: false };
         } else {
           const firstLine = text.split('\n')[0].trim();
-          const summary = firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine;
-          const display = text.length > 200 ? text.substring(0, 200) + '...' : text;
           clipboardData = {
             type: 'text',
-            summary: summary,
+            summary: firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine,
             isPassword: false,
-            fullHtml: '<div class="preview-text">' + escapeHtml(display) + '</div>',
           };
         }
-        renderClipboardPreview();
+        renderClipboardSummary();
         return;
       }
-    } catch (e) { /* no text */ }
+    } catch (e) {
+      failures.push('text: ' + (e && e.message ? e.message : String(e)));
+    }
 
-    renderClipboardPreview();
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    renderClipboardSummary();
+    if (failures.length >= 2) {
+      showStatus('Clipboard read failed. See logs for details.', 'error');
+      log('Clipboard summary failures:', failures);
+    }
   }
 
   // --- API helpers ---
@@ -311,165 +330,91 @@
     }
   }
 
-  async function loadWorkspaces() {
-    try {
-      const data = await apiGet('/config/workspaces');
-      workspaces = data.workspaces || [];
-      defaultWorkspaceId = data.default_workspace || null;
-    } catch (e) {
-      workspaces = [];
-      defaultWorkspaceId = null;
-    }
+  // --- Flat Level Navigation ---
+
+  function currentLevel() {
+    return navStack.length > 0 ? navStack[navStack.length - 1] : null;
   }
 
-  // --- Tree Navigation ---
-
-  function showWorkspaceList() {
-    browseState.path = [];
-    const items = [];
-
-    for (const ws of workspaces) {
-      const count = boards.filter(b => b.workspace_id === ws.id).length;
-      items.push({
-        type: 'workspace',
-        id: ws.id,
-        title: ws.name,
-        detail: count + ' boards',
-        workspaceId: ws.id,
-      });
-    }
-
-    // "Unassigned" workspace for boards without workspace_id
-    const unassigned = boards.filter(b => !b.workspace_id);
-    if (unassigned.length > 0) {
-      items.push({
-        type: 'workspace',
-        id: '__unassigned__',
-        title: 'Unassigned',
-        detail: unassigned.length + ' boards',
-        workspaceId: null,
-      });
-    }
-
-    browseState.items = items;
-    browseState.activeIndex = 0;
-    renderBrowse();
-  }
-
-  function showBoardsForWorkspace(workspaceId) {
-    const filtered = workspaceId === '__unassigned__' || workspaceId === null
-      ? boards.filter(b => !b.workspace_id)
-      : boards.filter(b => b.workspace_id === workspaceId);
-
-    browseState.path = [];
-
-    // If coming from a workspace, push it to path so goBack returns to workspace list
-    const ws = workspaces.find(w => w.id === workspaceId);
-    if (ws || workspaceId === '__unassigned__') {
-      browseState.path.push({
-        type: 'workspace',
-        id: workspaceId,
-        title: ws ? ws.name : 'Unassigned',
-        items: browseState.items.length > 0 ? browseState.items : [],
-        activeIndex: browseState.activeIndex,
-      });
-    }
-
-    browseState.items = filtered.map(b => ({
+  function pushBoardsLevel() {
+    const items = boards.map(b => ({
       type: 'board',
       id: b.id,
       title: b.title || b.filePath.split('/').pop().replace('.md', ''),
       detail: (b.columns || []).length + ' columns',
       boardId: b.id,
       columns: b.columns,
+      data: b,
     }));
-    browseState.activeIndex = 0;
-    renderBrowse();
-  }
-
-  function showBoardList() {
-    browseState.path = [];
-    browseState.items = boards.map(b => ({
-      type: 'board',
-      id: b.id,
-      title: b.title || b.filePath.split('/').pop().replace('.md', ''),
-      detail: (b.columns || []).length + ' columns',
-      boardId: b.id,
-      columns: b.columns,
-    }));
-    browseState.activeIndex = 0;
-    renderBrowse();
+    navStack = [{ items: items, activeIndex: items.length > 0 ? 0 : -1, title: 'Boards' }];
+    renderLevel();
   }
 
   async function drillInto(item) {
-    if (item.type === 'card') return; // can't drill into a card
+    const children = await loadChildren(item);
+    if (!children || children.length === 0) return;
+    navStack.push({ items: children, activeIndex: 0, title: item.title });
+    renderLevel();
+  }
 
-    if (item.type === 'workspace') {
-      showBoardsForWorkspace(item.workspaceId || item.id);
-      return;
-    }
+  function goUp() {
+    if (navStack.length <= 1) return;
+    navStack.pop();
+    renderLevel();
+  }
 
-    browseState.path.push({
-      type: item.type,
-      id: item.id,
-      title: item.title,
-      items: browseState.items, // save current items for going back
-      activeIndex: browseState.activeIndex,
-    });
-
-    if (item.type === 'board') {
+  async function loadChildren(node) {
+    if (node.type === 'board') {
       try {
-        const data = await apiGet(`/boards/${item.id}/columns`);
+        const data = await apiGet(`/boards/${node.id}/columns`);
         const fullBoard = data.fullBoard;
         if (fullBoard && fullBoard.rows && fullBoard.rows.length > 0) {
-          // Hierarchical board: show rows
-          browseState.items = fullBoard.rows.map(r => ({
+          return fullBoard.rows.map(r => ({
             type: 'row',
             id: r.id,
             title: r.title || 'Default',
             detail: (r.stacks || []).length + ' stacks',
-            boardId: item.id,
+            boardId: node.boardId || node.id,
             data: r,
           }));
-        } else {
-          // Flat board: show columns directly
-          const cols = data.columns || [];
-          browseState.items = cols.map(c => ({
-            type: 'column',
-            id: c.id || `col-${c.index}`,
-            title: c.title,
-            detail: (c.cards || []).length + ' cards',
-            boardId: item.id,
-            colIndex: c.index,
-            data: c,
-          }));
         }
+        const cols = data.columns || [];
+        return cols.map(c => ({
+          type: 'column',
+          id: c.id || `col-${c.index}`,
+          title: c.title,
+          detail: (c.cards || []).length + ' cards',
+          boardId: node.boardId || node.id,
+          colIndex: c.index,
+          data: c,
+        }));
       } catch (e) {
         showStatus('Failed to load board', 'error');
-        goBack();
-        return;
+        return [];
       }
-    } else if (item.type === 'row') {
-      const stacks = item.data.stacks || [];
-      browseState.items = stacks.map(s => ({
+    }
+
+    if (node.type === 'row') {
+      const stacks = (node.data && node.data.stacks) || [];
+      return stacks.map(s => ({
         type: 'stack',
         id: s.id,
         title: s.title || 'Default',
         detail: (s.columns || []).length + ' columns',
-        boardId: item.boardId,
+        boardId: node.boardId,
         data: s,
       }));
-    } else if (item.type === 'stack') {
-      const cols = item.data.columns || [];
-      // Need flat column index — re-fetch from the board columns list
+    }
+
+    if (node.type === 'stack') {
+      const cols = (node.data && node.data.columns) || [];
       let flatCols = [];
       try {
-        const data = await apiGet(`/boards/${item.boardId}/columns`);
+        const data = await apiGet(`/boards/${node.boardId}/columns`);
         flatCols = data.columns || [];
-      } catch (e) { /* fallback below */ }
+      } catch (e) { /* fallback */ }
 
-      browseState.items = cols.map(c => {
-        // Find flat index by matching column id or title
+      return cols.map(c => {
         const flatMatch = flatCols.find(fc => fc.title === c.title);
         const colIndex = flatMatch ? flatMatch.index : 0;
         return {
@@ -477,105 +422,67 @@
           id: c.id || `col-${colIndex}`,
           title: c.title,
           detail: (c.cards || []).length + ' cards',
-          boardId: item.boardId,
+          boardId: node.boardId,
           colIndex,
           data: c,
         };
       });
-    } else if (item.type === 'column') {
-      const cards = item.data.cards || [];
-      browseState.items = cards.map(c => ({
+    }
+
+    if (node.type === 'column') {
+      let cards = (node.data && node.data.cards) || [];
+      if (cards.length === 0 && node.boardId != null && node.colIndex != null) {
+        try {
+          const data = await apiGet(`/boards/${node.boardId}/columns`);
+          const cols = data.columns || [];
+          const col = cols.find(c => c.index === node.colIndex);
+          if (col) cards = col.cards || [];
+        } catch (e) { /* fallback empty */ }
+      }
+      return cards.map(c => ({
         type: 'card',
         id: c.id,
         title: c.content.length > 100 ? c.content.substring(0, 100) + '...' : c.content,
-        boardId: item.boardId,
-        colIndex: item.colIndex,
+        boardId: node.boardId,
+        colIndex: node.colIndex,
         cardId: c.id,
       }));
     }
 
-    browseState.activeIndex = 0;
-    renderBrowse();
+    return [];
   }
 
-  function goBack() {
-    if (browseState.path.length === 0) {
-      // At root level: if workspaces exist, show workspace list
-      if (workspaces.length > 0) {
-        showWorkspaceList();
-      }
+  // Reload current level (after paste, etc.)
+  async function reloadCurrentLevel() {
+    if (navStack.length <= 1) {
+      await loadBoards();
+      const level = currentLevel();
+      const oldIdx = level ? level.activeIndex : 0;
+      pushBoardsLevel();
+      const lv = currentLevel();
+      if (lv) lv.activeIndex = Math.min(oldIdx, lv.items.length - 1);
+      renderLevel();
       return;
     }
-    const prev = browseState.path.pop();
-    if (prev.type === 'workspace') {
-      // Going back from workspace's boards → show workspace list
-      showWorkspaceList();
-      return;
+
+    // The parent item is the one we drilled into to get the current level
+    // We need to re-fetch its children
+    const parentStack = navStack[navStack.length - 2];
+    const parentItem = parentStack.items[parentStack.activeIndex];
+    if (!parentItem) return;
+
+    const level = currentLevel();
+    const oldIdx = level ? level.activeIndex : 0;
+    const children = await loadChildren(parentItem);
+    if (level) {
+      level.items = children || [];
+      level.activeIndex = Math.min(oldIdx, level.items.length - 1);
+      if (level.activeIndex < 0 && level.items.length > 0) level.activeIndex = 0;
     }
-    browseState.items = prev.items;
-    browseState.activeIndex = prev.activeIndex;
-    renderBrowse();
-  }
-
-  // --- Rendering ---
-
-  function renderBrowse() {
-    renderBreadcrumb();
-    renderBrowseItems();
-  }
-
-  function renderBreadcrumb() {
-    els.browsePath.innerHTML = '';
-    // Root
-    const root = document.createElement('span');
-    root.className = 'path-segment';
-    root.textContent = workspaces.length > 0 ? 'Workspaces' : 'Boards';
-    root.addEventListener('click', () => {
-      if (workspaces.length > 0) {
-        showWorkspaceList();
-      } else {
-        browseState.path = [];
-        showBoardList();
-      }
-    });
-    els.browsePath.appendChild(root);
-
-    for (let i = 0; i < browseState.path.length; i++) {
-      const sep = document.createElement('span');
-      sep.className = 'path-separator';
-      sep.textContent = ' › ';
-      els.browsePath.appendChild(sep);
-
-      const seg = document.createElement('span');
-      seg.className = 'path-segment';
-      seg.textContent = browseState.path[i].title;
-      const idx = i;
-      seg.addEventListener('click', () => {
-        // Navigate to this level
-        while (browseState.path.length > idx + 1) {
-          const popped = browseState.path.pop();
-          // restore items from the level we're navigating to
-          if (browseState.path.length === idx + 1) {
-            // We need to drill into this item again... but we have saved items
-          }
-        }
-        // Actually, let's just navigate to the level after this segment
-        const target = browseState.path[idx];
-        browseState.path.length = idx;
-        browseState.items = target.items;
-        browseState.activeIndex = target.activeIndex;
-        // Now drill into the target
-        const item = browseState.items[target.activeIndex];
-        if (item) {
-          drillInto(item);
-        }
-      });
-      els.browsePath.appendChild(seg);
-    }
+    renderLevel();
   }
 
   const BADGE_LABELS = {
-    workspace: 'WS',
     board: 'Board',
     row: 'Row',
     stack: 'Stack',
@@ -583,73 +490,82 @@
     card: 'Card',
   };
 
-  function renderBrowseItems() {
+  function renderLevel() {
     els.browseArea.innerHTML = '';
-    const items = isSearchMode ? searchResults : browseState.items;
-    const activeIdx = isSearchMode ? activeSearchIndex : browseState.activeIndex;
-
-    if (items.length === 0) {
+    const level = isSearchMode ? { items: searchResults, activeIndex: activeSearchIndex } : currentLevel();
+    if (!level || level.items.length === 0) {
       els.browseArea.innerHTML = '<div class="browse-empty">No items</div>';
       return;
     }
 
-    items.forEach((item, i) => {
+    // Breadcrumb path
+    if (!isSearchMode) {
+      const crumb = document.createElement('div');
+      crumb.className = 'level-breadcrumb';
+      const path = '/' + navStack.slice(1).map(s => s.title).join('/');
+      crumb.textContent = path;
+      els.browseArea.appendChild(crumb);
+    }
+
+    level.items.forEach((node, i) => {
       const el = document.createElement('div');
-      el.className = 'browse-item' + (i === activeIdx ? ' active' : '');
+      el.className = 'level-item' + (i === level.activeIndex ? ' active' : '');
       el.dataset.index = i;
 
+      // Badge
       const badge = document.createElement('span');
-      badge.className = 'item-badge badge-' + item.type;
-      badge.textContent = BADGE_LABELS[item.type] || item.type;
+      badge.className = 'item-badge badge-' + node.type;
+      badge.textContent = BADGE_LABELS[node.type] || node.type;
       el.appendChild(badge);
 
+      // Info
       const info = document.createElement('div');
       info.className = 'item-info';
 
-      if (item.context) {
+      if (node.context) {
         const ctx = document.createElement('span');
         ctx.className = 'item-context';
-        ctx.textContent = item.context;
+        ctx.textContent = node.context;
         info.appendChild(ctx);
       }
 
       const label = document.createElement('span');
       label.className = 'item-label';
-      label.textContent = item.title;
+      label.textContent = node.title;
       info.appendChild(label);
 
-      if (item.detail) {
+      if (node.detail) {
         const detail = document.createElement('span');
         detail.className = 'item-detail';
-        detail.textContent = item.detail;
+        detail.textContent = node.detail;
         info.appendChild(detail);
       }
 
       el.appendChild(info);
 
-      // Show arrow for drillable items (everything except cards)
-      if (item.type !== 'card') {
+      // Drill indicator for non-leaf items
+      if (node.type !== 'card') {
         const arrow = document.createElement('span');
-        arrow.className = 'item-arrow';
-        arrow.textContent = '▸';
+        arrow.className = 'level-drill';
+        arrow.textContent = '\u203A';
         el.appendChild(arrow);
       }
 
       el.addEventListener('click', () => {
         if (isSearchMode) {
           activeSearchIndex = i;
-          renderBrowseItems();
         } else {
-          browseState.activeIndex = i;
-          renderBrowseItems();
+          level.activeIndex = i;
         }
+        renderLevel();
       });
 
       el.addEventListener('dblclick', () => {
-        if (isSearchMode) return;
-        browseState.activeIndex = i;
-        if (item.type !== 'card') {
-          drillInto(item);
+        if (node.type === 'card') return;
+        if (isSearchMode) {
+          drillFromSearch(node);
+        } else {
+          drillInto(node);
         }
       });
 
@@ -657,7 +573,7 @@
     });
 
     // Scroll active into view
-    const activeEl = els.browseArea.querySelector('.browse-item.active');
+    const activeEl = els.browseArea.querySelector('.level-item.active');
     if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
   }
 
@@ -665,15 +581,31 @@
 
   function enterSearchMode() {
     isSearchMode = true;
-    els.browsePath.classList.add('hidden');
   }
 
   function exitSearchMode() {
     isSearchMode = false;
     searchResults = [];
     activeSearchIndex = -1;
-    els.browsePath.classList.remove('hidden');
-    renderBrowse();
+    renderLevel();
+  }
+
+  async function drillFromSearch(item) {
+    if (item.type === 'card') return;
+    isSearchMode = false;
+    searchResults = [];
+    activeSearchIndex = -1;
+    els.searchInput.value = '';
+    // Rebuild nav stack starting from boards root
+    const boardItems = boards.map(b => ({
+      type: 'board', id: b.id,
+      title: b.title || b.filePath.split('/').pop().replace('.md', ''),
+      detail: (b.columns || []).length + ' columns',
+      boardId: b.id, columns: b.columns, data: b,
+    }));
+    const boardIdx = Math.max(0, boardItems.findIndex(b => b.id === item.boardId));
+    navStack = [{ items: boardItems, activeIndex: boardIdx, title: 'Boards' }];
+    await drillInto(item);
   }
 
   function onSearchInput() {
@@ -691,7 +623,6 @@
     const lowerQuery = query.toLowerCase();
     const results = [];
 
-    // Client-side: boards and columns
     for (const board of boards) {
       const boardName = board.title || board.filePath.split('/').pop().replace('.md', '');
       if (boardName.toLowerCase().includes(lowerQuery)) {
@@ -700,8 +631,8 @@
           id: board.id,
           title: boardName,
           boardId: board.id,
-          colIndex: 0,
           columns: board.columns,
+          data: board,
         });
       }
       if (board.columns) {
@@ -714,13 +645,13 @@
               context: boardName,
               boardId: board.id,
               colIndex: col.index,
+              data: col,
             });
           }
         }
       }
     }
 
-    // Server-side: cards
     try {
       const data = await apiGet(`/search?q=${encodeURIComponent(query)}`);
       if (data.results) {
@@ -737,32 +668,61 @@
         }
       }
     } catch (e) {
-      console.warn('Search API error:', e);
+      log('Search API error:', e);
     }
 
     searchResults = results;
     activeSearchIndex = results.length > 0 ? 0 : -1;
     enterSearchMode();
-    renderBrowseItems();
+    renderLevel();
+  }
+
+  // --- Strip / Expand ---
+
+  function updateSnapSide(side) {
+    if (side === 'left') {
+      document.body.classList.add('snap-left');
+    } else {
+      document.body.classList.remove('snap-left');
+    }
+  }
+
+  function expandPanel() {
+    if (isExpanded) return;
+    isExpanded = true;
+    document.body.classList.remove('strip-mode');
+    document.body.classList.add('expanded-mode');
+    tauriInvoke('expand_capture').then(updateSnapSide).catch(log);
+    loadClipboardSummary();
+    if (els.searchInput) els.searchInput.focus();
+  }
+
+  function collapseToStrip() {
+    if (!isExpanded) return;
+    isExpanded = false;
+    document.body.classList.remove('expanded-mode');
+    document.body.classList.add('strip-mode');
+    tauriInvoke('collapse_capture').then(updateSnapSide).catch(log);
+    if (els.searchInput) els.searchInput.value = '';
+    if (isSearchMode) exitSearchMode();
   }
 
   // --- Paste ---
 
   async function pasteIntoSelected() {
-    const items = isSearchMode ? searchResults : browseState.items;
-    const idx = isSearchMode ? activeSearchIndex : browseState.activeIndex;
-    if (idx < 0 || idx >= items.length) return;
-    const target = items[idx];
+    const level = isSearchMode
+      ? { items: searchResults, activeIndex: activeSearchIndex }
+      : currentLevel();
+    if (!level || level.activeIndex < 0 || level.activeIndex >= level.items.length) return;
+    const target = level.items[level.activeIndex];
 
-    // Read clipboard content
     let content = '';
     let boardIdForUpload = target.boardId;
 
     // Try image first
     try {
-      const imgResult = await window.__TAURI_INTERNALS__.invoke('read_clipboard_image');
+      const imgResult = await tauriInvoke('read_clipboard_image');
       if (imgResult && imgResult.data) {
-        // Upload the image
         const byteString = atob(imgResult.data);
         const bytes = new Uint8Array(byteString.length);
         for (let i = 0; i < byteString.length; i++) {
@@ -775,10 +735,9 @@
       }
     } catch (e) { /* no image */ }
 
-    // If no image, try text
     if (!content) {
       try {
-        const text = await window.__TAURI_INTERNALS__.invoke('read_clipboard');
+        const text = await tauriInvoke('read_clipboard');
         if (text && text.trim()) {
           content = isUrl(text.trim()) ? formatAsMarkdownLink(text.trim()) : text;
         }
@@ -798,17 +757,14 @@
         await apiPost(`/boards/${target.boardId}/columns/${target.colIndex}/cards`, { content });
         showStatus('Card added to column', 'success');
       } else if (target.type === 'board') {
-        // Use first column (incoming/park behavior)
         const colIndex = (target.columns && target.columns.length > 0) ? target.columns[0].index : 0;
         await apiPost(`/boards/${target.boardId}/columns/${colIndex}/cards`, { content });
         showStatus('Card added to board', 'success');
       } else if (target.type === 'row' || target.type === 'stack') {
-        // For row/stack: find first column inside
         let colIndex = 0;
         if (target.type === 'row' && target.data) {
           const stacks = target.data.stacks || [];
           if (stacks.length > 0 && stacks[0].columns && stacks[0].columns.length > 0) {
-            // Need flat index — fetch columns
             try {
               const data = await apiGet(`/boards/${target.boardId}/columns`);
               const flatCols = data.columns || [];
@@ -831,7 +787,10 @@
         await apiPost(`/boards/${target.boardId}/columns/${colIndex}/cards`, { content });
         showStatus('Card added', 'success');
       }
-      setTimeout(() => closeWindow(), 600);
+
+      // Reload current level to show the new item immediately
+      await reloadCurrentLevel();
+      await loadClipboardSummary();
     } catch (e) {
       showStatus(`Failed: ${e.message}`, 'error');
     }
@@ -839,94 +798,195 @@
 
   // --- Event Listeners ---
 
-  function setupEventListeners() {
-    els.btnSnapLeft.addEventListener('click', () => snapTo('left'));
-    els.btnSnapRight.addEventListener('click', () => snapTo('right'));
-    els.searchInput.addEventListener('input', onSearchInput);
+  let stripDragging = false;
+  let dragEndTime = 0;
 
-    // Focus search input when window receives focus (Cmd+B)
-    window.addEventListener('focus', () => {
-      els.searchInput.focus();
+  function setupEventListeners() {
+    // Icon: drag handle — invoke Tauri's native window drag
+    els.stripIcon.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      stripDragging = true;
+      tauriInvoke('plugin:window|start_dragging').catch(log);
+    });
+    els.stripIcon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
     });
 
-    document.addEventListener('keydown', (e) => {
-      const items = isSearchMode ? searchResults : browseState.items;
-      const activeIdx = isSearchMode ? activeSearchIndex : browseState.activeIndex;
+    function finishDrag() {
+      if (!stripDragging) return;
+      stripDragging = false;
+      dragEndTime = Date.now();
+      tauriInvoke('snap_strip_after_drag').then(updateSnapSide).catch(log);
+    }
 
-      // Escape handling
+    // Snap after drag ends — mouseup may or may not fire after OS-level drag
+    document.addEventListener('mouseup', finishDrag);
+
+    // Fallback: detect drag end via move events stopping (macOS doesn't fire mouseup after OS drag)
+    let moveDragDebounce = null;
+    tauriListen('tauri://move', () => {
+      if (!stripDragging) return;
+      clearTimeout(moveDragDebounce);
+      moveDragDebounce = setTimeout(finishDrag, 500);
+    }).catch(log);
+
+    els.stripView.addEventListener('click', () => {
+      if (Date.now() - dragEndTime < 500) return;
+      expandPanel();
+    });
+
+    els.stripView.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      els.stripView.classList.add('drag-over');
+    });
+    els.stripView.addEventListener('dragleave', () => {
+      els.stripView.classList.remove('drag-over');
+    });
+    els.stripView.addEventListener('drop', (e) => {
+      e.preventDefault();
+      els.stripView.classList.remove('drag-over');
+      expandPanel();
+    });
+
+    els.btnCollapse.addEventListener('click', () => collapseToStrip());
+
+    els.searchInput.addEventListener('input', onSearchInput);
+
+    window.addEventListener('focus', () => {
+      loadClipboardSummary().catch(log);
+      if (isExpanded && els.searchInput) els.searchInput.focus();
+      // Always sync the snap side on focus (catches any missed drag snaps)
+      if (!isExpanded) {
+        tauriInvoke('snap_strip_after_drag').then(updateSnapSide).catch(log);
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      if (isExpanded && !stripDragging) collapseToStrip();
+    });
+
+    tauriListen('capture-expanded', () => {
+      expandPanel();
+    }).catch(log);
+
+    document.addEventListener('keydown', (e) => {
+      const level = isSearchMode
+        ? { items: searchResults, activeIndex: activeSearchIndex }
+        : currentLevel();
+
       if (e.key === 'Escape') {
+        e.preventDefault();
         if (isSearchMode) {
           els.searchInput.value = '';
           exitSearchMode();
           return;
         }
-        if (browseState.path.length > 0) {
-          goBack();
-          return;
-        }
-        closeWindow();
+        collapseToStrip();
         return;
       }
 
+      if (e.key === 'Tab' && isExpanded) {
+        e.preventDefault();
+        if (document.activeElement === els.searchInput) {
+          els.searchInput.blur();
+        } else {
+          els.searchInput.focus();
+        }
+        return;
+      }
+
+      if (!isExpanded) return;
+
       // Arrow navigation
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        if (document.activeElement === els.searchInput && !els.searchInput.value.trim()) {
+          els.searchInput.blur();
+        }
+        if (document.activeElement === els.searchInput && els.searchInput.value.trim()) {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') return;
+        }
+      }
+
       if (e.key === 'ArrowDown') {
         e.preventDefault();
+        if (!level || level.items.length === 0) return;
+        const maxIdx = level.items.length - 1;
+        const newIdx = Math.min((level.activeIndex < 0 ? -1 : level.activeIndex) + 1, maxIdx);
         if (isSearchMode) {
-          activeSearchIndex = Math.min(activeSearchIndex + 1, searchResults.length - 1);
+          activeSearchIndex = newIdx;
         } else {
-          browseState.activeIndex = Math.min(browseState.activeIndex + 1, browseState.items.length - 1);
+          level.activeIndex = newIdx;
         }
-        renderBrowseItems();
+        renderLevel();
         return;
       }
 
       if (e.key === 'ArrowUp') {
         e.preventDefault();
+        if (!level || level.items.length === 0) return;
+        const newIdx = Math.max((level.activeIndex < 0 ? 1 : level.activeIndex) - 1, 0);
         if (isSearchMode) {
-          activeSearchIndex = Math.max(activeSearchIndex - 1, 0);
+          activeSearchIndex = newIdx;
         } else {
-          browseState.activeIndex = Math.max(browseState.activeIndex - 1, 0);
+          level.activeIndex = newIdx;
         }
-        renderBrowseItems();
+        renderLevel();
         return;
       }
 
-      // Right arrow / Enter: drill into
-      if ((e.key === 'ArrowRight' || e.key === 'Enter') && !isSearchMode) {
-        if (e.key === 'Enter' && document.activeElement === els.searchInput && els.searchInput.value.trim()) {
-          return; // let search handle it
-        }
+      // Right arrow: drill into selected item
+      if (e.key === 'ArrowRight') {
+        if (document.activeElement === els.searchInput && els.searchInput.value.trim()) return;
         e.preventDefault();
-        if (activeIdx >= 0 && activeIdx < items.length) {
-          const item = items[activeIdx];
-          if (item.type !== 'card') {
-            drillInto(item);
-          }
+        if (!level || level.activeIndex < 0 || level.activeIndex >= level.items.length) return;
+        const node = level.items[level.activeIndex];
+        if (node.type === 'card') return;
+        if (isSearchMode) {
+          drillFromSearch(node);
+        } else {
+          drillInto(node);
         }
         return;
       }
 
-      // Left arrow / Backspace (when not typing): go back
+      // Left arrow: go up one level
       if (e.key === 'ArrowLeft' && !isSearchMode) {
-        if (document.activeElement === els.searchInput) return;
         e.preventDefault();
-        goBack();
+        goUp();
         return;
       }
 
-      if (e.key === 'Backspace' && !isSearchMode && document.activeElement !== els.searchInput) {
+      // Enter: drill into (non-card)
+      if (e.key === 'Enter') {
+        if (document.activeElement === els.searchInput && els.searchInput.value.trim()) {
+          return;
+        }
         e.preventDefault();
-        goBack();
+        if (!level || level.activeIndex < 0 || level.activeIndex >= level.items.length) return;
+        const node = level.items[level.activeIndex];
+        if (node.type === 'card') return;
+        if (isSearchMode) {
+          drillFromSearch(node);
+        } else {
+          drillInto(node);
+        }
         return;
       }
 
       // Cmd+V / Ctrl+V: paste into selected
       if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
-        if (activeIdx >= 0 && activeIdx < items.length) {
+        if (level && level.activeIndex >= 0 && level.activeIndex < level.items.length) {
           e.preventDefault();
           pasteIntoSelected();
           return;
         }
+      }
+
+      // Printable character: focus search input
+      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && document.activeElement !== els.searchInput) {
+        els.searchInput.focus();
       }
     });
   }
@@ -941,12 +1001,20 @@
     try {
       const parsed = new URL(url.trim());
       return `[${parsed.hostname}](${url.trim()})`;
-    } catch {
+    } catch (e) {
       return url.trim();
     }
   }
 
   // --- Helpers ---
+
+  function log() {
+    if (typeof console !== 'undefined' && typeof console.log === 'function') {
+      const args = Array.prototype.slice.call(arguments || []);
+      args.unshift('[quick-capture]');
+      console.log.apply(console, args);
+    }
+  }
 
   function showStatus(msg, type) {
     els.statusMsg.textContent = msg;
@@ -957,15 +1025,24 @@
     }
   }
 
-  function snapTo(side) {
-    localStorage.setItem('lexera-qc-snap', side);
-    window.__TAURI_INTERNALS__.invoke('snap_capture_window', { side }).catch((e) => {
-      console.warn('Failed to snap window:', e);
-    });
-  }
-
-  function closeWindow() {
-    window.__TAURI_INTERNALS__.invoke('close_capture');
+  function syncModeFromWindowSize() {
+    const shouldBeExpanded = window.innerWidth > STRIP_WIDTH_THRESHOLD;
+    if (shouldBeExpanded && !isExpanded) {
+      isExpanded = true;
+      document.body.classList.remove('strip-mode');
+      document.body.classList.add('expanded-mode');
+      if (els.searchInput) {
+        setTimeout(function () {
+          els.searchInput.focus();
+        }, 0);
+      }
+      return;
+    }
+    if (!shouldBeExpanded && isExpanded) {
+      isExpanded = false;
+      document.body.classList.remove('expanded-mode');
+      document.body.classList.add('strip-mode');
+    }
   }
 
   // --- Start ---

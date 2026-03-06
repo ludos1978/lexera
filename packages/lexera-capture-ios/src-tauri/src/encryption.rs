@@ -85,12 +85,15 @@ impl FileEncryptor {
         OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let ciphertext = self.cipher.encrypt(nonce, plaintext.as_bytes()).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Encryption failed: {}", e),
-            )
-        })?;
+        let ciphertext = self
+            .cipher
+            .encrypt(nonce, plaintext.as_bytes())
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Encryption failed: {}", e),
+                )
+            })?;
 
         let mut out = Vec::with_capacity(MAGIC.len() + NONCE_LEN + ciphertext.len());
         out.extend_from_slice(MAGIC);
@@ -231,8 +234,12 @@ mod tests {
 
     #[test]
     fn test_is_encrypted_detection() {
-        assert!(FileEncryptor::is_encrypted(b"LEXE\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00data"));
-        assert!(!FileEncryptor::is_encrypted(b"---\nkanban-plugin: board\n---"));
+        assert!(FileEncryptor::is_encrypted(
+            b"LEXE\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00data"
+        ));
+        assert!(!FileEncryptor::is_encrypted(
+            b"---\nkanban-plugin: board\n---"
+        ));
         assert!(!FileEncryptor::is_encrypted(b"LEX")); // too short
         assert!(!FileEncryptor::is_encrypted(b""));
     }

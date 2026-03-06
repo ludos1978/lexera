@@ -48,19 +48,16 @@ pub struct CrashsaveBoardBody {
 pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boards = state.storage.list_boards();
 
-    // Enrich each board with workspace_id from config (config stores by file path)
-    let workspace_map: std::collections::HashMap<String, String> = state
+    // Enrich each board with workspace_ids from config (config stores by file path)
+    let workspace_map: std::collections::HashMap<String, Vec<String>> = state
         .config
         .lock()
         .ok()
         .map(|cfg| {
             cfg.boards
                 .iter()
-                .filter_map(|b| {
-                    b.workspace_id
-                        .as_ref()
-                        .map(|ws| (b.file.clone(), ws.clone()))
-                })
+                .filter(|b| !b.workspace_ids.is_empty())
+                .map(|b| (b.file.clone(), b.workspace_ids.clone()))
                 .collect()
         })
         .unwrap_or_default();
@@ -69,8 +66,8 @@ pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Valu
         .into_iter()
         .map(|b| {
             let mut val = serde_json::to_value(&b).unwrap_or_default();
-            if let Some(ws_id) = workspace_map.get(&b.file_path) {
-                val["workspaceId"] = serde_json::json!(ws_id);
+            if let Some(ws_ids) = workspace_map.get(&b.file_path) {
+                val["workspaceIds"] = serde_json::json!(ws_ids);
             }
             val
         })
@@ -638,13 +635,21 @@ pub async fn add_board_endpoint(
 
     // Update config and persist
     if let Ok(mut cfg) = state.config.lock() {
-        let file_str = path.to_string_lossy().to_string();
+        let mut cfg_changed = crate::config::normalize_workspace_setup(&mut cfg);
+        let file_str = canonical.to_string_lossy().to_string();
         if !cfg.boards.iter().any(|b| b.file == file_str) {
+            let default_ws = cfg
+                .default_workspace
+                .clone()
+                .or_else(|| cfg.workspaces.first().map(|w| w.id.clone()));
             cfg.boards.push(crate::config::BoardEntry {
                 file: file_str,
                 name: None,
-                workspace_id: None,
+                workspace_ids: default_ws.into_iter().collect(),
             });
+            cfg_changed = true;
+        }
+        if cfg_changed {
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.add_board] Failed to save config: {}", e);
             }

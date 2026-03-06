@@ -3,6 +3,7 @@ use axum::{
     response::{sse::Event, Json, Sse},
 };
 use std::convert::Infallible;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
 
@@ -52,15 +53,33 @@ pub async fn open_connection_window(State(state): State<AppState>) -> Json<serde
 }
 
 pub async fn list_logs() -> Json<serde_json::Value> {
+    let file_path = crate::log_bridge::log_file_path();
+    log::info!(
+        target: "lexera.api.logs",
+        "Serving /logs snapshot entries={} file={}",
+        crate::log_bridge::recent_entries().len(),
+        file_path
+    );
+    let entries = crate::log_bridge::recent_entries();
     Json(serde_json::json!({
-        "entries": crate::log_bridge::recent_entries(),
-        "filePath": crate::log_bridge::log_file_path(),
+        "entries": entries,
+        "filePath": file_path,
     }))
 }
 
 pub async fn stream_logs() -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let stream_started_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    log::info!(
+        target: "lexera.api.logs",
+        "Client subscribed to /logs/stream at {}",
+        stream_started_ms
+    );
+
     let rx = crate::log_bridge::subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(|item| {
+    let live_stream = BroadcastStream::new(rx).filter_map(|item| {
         let entry = match item {
             Ok(entry) => entry,
             Err(_) => return None,
@@ -71,7 +90,23 @@ pub async fn stream_logs() -> Sse<impl tokio_stream::Stream<Item = Result<Event,
         };
         Some(Ok(Event::default().data(payload)))
     });
-    Sse::new(stream)
+
+    let connected_entry = crate::log_bridge::BackendLogEntry {
+        timestamp_ms: stream_started_ms,
+        level: "info".to_string(),
+        target: "lexera.api.logs".to_string(),
+        message: "Connected to /logs/stream".to_string(),
+    };
+    let initial_payload = serde_json::to_string(&connected_entry)
+        .unwrap_or_else(|_| "{\"level\":\"info\",\"target\":\"lexera.api.logs\",\"message\":\"Connected to /logs/stream\"}".to_string());
+    let initial_stream = tokio_stream::once(Ok(Event::default().data(initial_payload)));
+
+    let keepalive_stream = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+        Duration::from_secs(SSE_KEEPALIVE_SECS),
+    ))
+    .map(|_| Ok(Event::default().comment("keep-alive")));
+
+    Sse::new(initial_stream.chain(live_stream).merge(keepalive_stream))
 }
 
 #[cfg(test)]

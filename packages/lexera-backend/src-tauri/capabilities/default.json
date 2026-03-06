@@ -4,6 +4,7 @@
   "windows": ["quick-capture", "connection-settings"],
   "permissions": [
     "core:default",
+    "core:window:allow-start-dragging",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "clipboard-manager:allow-read-text"

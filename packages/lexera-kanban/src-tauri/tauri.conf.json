@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "identifier": "com.lexera.kanban",
   "build": {
-    "frontendDist": "../src"
+    "frontendDist": "../src",
+    "beforeDevCommand": "cp ../lexera-shared/management.js ../lexera-shared/management.css src/",
+    "beforeBuildCommand": "cp ../lexera-shared/management.js ../lexera-shared/management.css src/"
   },
   "bundle": {
     "icon": ["icons/icon.png"]

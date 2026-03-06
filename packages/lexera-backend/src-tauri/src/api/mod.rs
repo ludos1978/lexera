@@ -164,16 +164,15 @@ pub fn api_router() -> Router<AppState> {
         )
         .route(
             "/config/workspaces/{id}",
-            axum::routing::put(config_api::update_workspace)
-                .delete(config_api::delete_workspace),
+            axum::routing::put(config_api::update_workspace).delete(config_api::delete_workspace),
         )
         .route(
             "/config/default-workspace",
             axum::routing::put(config_api::set_default_workspace),
         )
         .route(
-            "/config/boards/{board_id}/workspace",
-            axum::routing::put(config_api::assign_board_workspace),
+            "/config/boards/{board_id}/workspaces",
+            axum::routing::put(config_api::assign_board_workspaces),
         )
         .route("/status", get(events::status))
         .route(

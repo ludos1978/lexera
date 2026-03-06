@@ -9,7 +9,8 @@ var activeLogSource = storedLogSource === 'backend' ? 'backend' : 'frontend';
 var backendLogLoaded = false;
 var backendLogEventSource = null;
 var backendLogConnectPending = false;
-var FRONTEND_BUILD_STAMP = '20260304-2040-remote-write-enabled';
+var backendLogEmptySnapshotRetries = 0;
+var FRONTEND_BUILD_STAMP = '20260305-1528-remote-join-persistence';
 
 var elStatusMsg = null;
 var elStatusBar = null;
@@ -318,21 +319,50 @@ function lexeraBackendLog(entry) {
 function refreshBackendLogs() {
   if (!window.LexeraApi || typeof LexeraApi.getLogs !== 'function') return Promise.resolve();
   return LexeraApi.getLogs().then(function (data) {
-    replaceLogEntries('backend', data && data.entries ? data.entries : []);
-    backendLogLoaded = true;
+    var entries = data && Array.isArray(data.entries) ? data.entries : [];
+    replaceLogEntries('backend', entries);
+    backendLogLoaded = entries.length > 0 || backendLogLoaded;
+    traceFrontendAction('info', 'backend.log.refresh', 'Loaded backend log snapshot', {
+      entries: entries.length,
+      filePath: data && data.filePath ? data.filePath : null
+    });
+    if (entries.length === 0 && backendLogEmptySnapshotRetries < 5) {
+      backendLogEmptySnapshotRetries++;
+      setTimeout(refreshBackendLogs, 1000);
+    } else if (entries.length > 0) {
+      backendLogEmptySnapshotRetries = 0;
+    }
   }).catch(function (err) {
     lexeraLog('warn', '[backend.log] Failed to load backend logs: ' + err.message);
+    traceFrontendAction('warn', 'backend.log.refresh', 'Backend log snapshot request failed', {
+      error: formatErrorDetails(err)
+    });
+    if (backendLogEmptySnapshotRetries < 5) {
+      backendLogEmptySnapshotRetries++;
+      setTimeout(refreshBackendLogs, 1500);
+    }
   });
 }
 
 function openBackendLogStream() {
   if (backendLogEventSource || !window.LexeraApi || typeof LexeraApi.connectLogStream !== 'function') return;
+  traceFrontendAction('info', 'backend.log.stream', 'Opening backend log stream', {});
   backendLogEventSource = LexeraApi.connectLogStream(function (entry) {
     backendLogLoaded = true;
     lexeraBackendLog(entry);
   });
-  if (!backendLogEventSource) return;
+  if (!backendLogEventSource) {
+    traceFrontendAction('warn', 'backend.log.stream', 'Backend log stream did not open (no backend URL yet)', {});
+    setTimeout(connectBackendLogStreamIfReady, 1000);
+    return;
+  }
+  backendLogEventSource.onopen = function () {
+    traceFrontendAction('info', 'backend.log.stream', 'Backend log stream connected', {});
+  };
   backendLogEventSource.onerror = function () {
+    traceFrontendAction('warn', 'backend.log.stream', 'Backend log stream error; reconnect scheduled', {
+      readyState: backendLogEventSource ? backendLogEventSource.readyState : null
+    });
     if (backendLogEventSource) backendLogEventSource.close();
     backendLogEventSource = null;
     setTimeout(connectBackendLogStreamIfReady, 1500);
@@ -346,7 +376,12 @@ function connectBackendLogStreamIfReady() {
   backendLogConnectPending = true;
   LexeraApi.discover().then(function (url) {
     backendLogConnectPending = false;
-    if (!url) return;
+    if (!url) {
+      traceFrontendAction('warn', 'backend.log.stream', 'Backend discovery returned no URL for log stream; retrying', {});
+      setTimeout(connectBackendLogStreamIfReady, 1500);
+      return;
+    }
+    traceFrontendAction('info', 'backend.log.stream', 'Backend discovered for log stream', { url: url });
     var ready = backendLogLoaded ? Promise.resolve() : refreshBackendLogs();
     ready.finally(function () {
       openBackendLogStream();
@@ -354,6 +389,7 @@ function connectBackendLogStreamIfReady() {
   }).catch(function (err) {
     logFrontendIssue('warn', 'backend.log.stream', 'Failed to connect backend log stream', err);
     backendLogConnectPending = false;
+    setTimeout(connectBackendLogStreamIfReady, 1500);
   });
 }
 
@@ -469,6 +505,9 @@ const LexeraDashboard = (function () {
   // State
   let boards = [];
   let remoteBoards = [];
+  let workspaces = [];
+  const ALL_WORKSPACES_ID = '__all__';
+  let activeWorkspaceId = localStorage.getItem('lexera-active-workspace') || null;
   let activeBoardId = null;
   let activeBoardData = null;
   let fullBoardData = null;
@@ -1482,7 +1521,7 @@ const LexeraDashboard = (function () {
     }
 
     if (currentInlineCardEditor) {
-      closeInlineCardEditor({ save: false });
+      closeInlineCardEditor({ save: true });
       didClose = true;
     }
 
@@ -2586,18 +2625,25 @@ const LexeraDashboard = (function () {
 
   function connectSSEIfReady() {
     if (eventSource) return;
+    traceFrontendAction('info', 'sse.connect', 'Opening board SSE stream', {});
     eventSource = LexeraApi.connectSSE(handleSSEEvent);
     if (eventSource) {
       // Reduce polling to 30s health checks while SSE is active
       clearInterval(pollInterval);
       pollInterval = setInterval(poll, 30000);
+      eventSource.onopen = function () {
+        traceFrontendAction('info', 'sse.connect', 'Board SSE stream connected', {});
+      };
       eventSource.onerror = function () {
+        traceFrontendAction('warn', 'sse.connect', 'Board SSE stream error; falling back to short polling', {});
         eventSource.close();
         eventSource = null;
         // Restore normal polling
         clearInterval(pollInterval);
         pollInterval = setInterval(poll, 5000);
       };
+    } else {
+      traceFrontendAction('warn', 'sse.connect', 'Board SSE stream not opened because backend URL is unavailable', {});
     }
   }
 
@@ -2880,11 +2926,6 @@ const LexeraDashboard = (function () {
       await closeLiveSyncSession();
       return;
     }
-    if (isRemoteBoardId(boardId)) {
-      LexeraApi.disconnectSync();
-      await closeLiveSyncSession(boardId);
-      return;
-    }
     try {
       await ensureLiveSyncSession(boardId);
     } catch (err) {
@@ -3055,10 +3096,17 @@ const LexeraDashboard = (function () {
 
   function handleSSEEvent(event) {
     try {
-    if (!activeBoardId || searchMode) return;
     var kind = event.kind || event.type || '';
+    // Forward collab/peer/config events to the shared management UI
+    if (typeof ManagementUI !== 'undefined' && mgmtInitialized) {
+      if (kind === 'CollabConnectionChanged') { ManagementUI.refresh('connections'); return; }
+      if (kind === 'PeerDiscoveryChanged') { ManagementUI.refresh('peers'); return; }
+      if (kind === 'ConfigChanged') { ManagementUI.refresh(); return; }
+    }
+    if (!activeBoardId || searchMode) return;
     var boardId = event.board_id || event.boardId || '';
     var includeBoardIds = event.board_ids || event.boardIds || [];
+    var writerId = event.writer_id || event.writerId || null;
     if (boardId && boardId !== activeBoardId) return;
     if (kind === 'IncludeFileChanged' && Array.isArray(includeBoardIds) && includeBoardIds.length > 0 && includeBoardIds.indexOf(activeBoardId) === -1) {
       traceFrontendAction('info', 'sse.fileChanged.ignore', 'Ignoring include change for unrelated board', {
@@ -3073,12 +3121,14 @@ const LexeraDashboard = (function () {
       if (canUseLiveSync(activeBoardId) && Date.now() - liveSyncLastLocalBroadcastAt < SAVE_DEBOUNCE_MS) return;
       var eventGen = event.generation;
       var eventRevision = typeof event.revision === 'string' && event.revision ? event.revision : null;
-      if (kind === 'MainFileChanged' && eventRevision && _lastLoadedRevision && eventRevision === _lastLoadedRevision) {
+      var remoteActive = isActiveRemoteBoard();
+      if (!remoteActive && kind === 'MainFileChanged' && eventRevision && _lastLoadedRevision && eventRevision === _lastLoadedRevision) {
         traceFrontendAction('info', 'sse.fileChanged.stale', 'Ignoring stale file change event', {
           eventRevision: eventRevision,
           loadedRevision: _lastLoadedRevision,
           eventGeneration: eventGen,
-          loadedGeneration: _lastLoadedGeneration
+          loadedGeneration: _lastLoadedGeneration,
+          writerId: writerId
         });
         return;
       }
@@ -3086,6 +3136,8 @@ const LexeraDashboard = (function () {
         boardId: activeBoardId,
         kind: kind,
         dirty: _boardDirty,
+        isRemoteBoard: remoteActive,
+        writerId: writerId,
         eventRevision: eventRevision,
         loadedRevision: _lastLoadedRevision,
         eventGeneration: eventGen,
@@ -3145,6 +3197,16 @@ const LexeraDashboard = (function () {
     connectBackendLogStreamIfReady();
 
     try {
+      // Load workspaces
+      try {
+        var wsData = await LexeraApi.request('/config/workspaces');
+        workspaces = Array.isArray(wsData.workspaces) ? wsData.workspaces : [];
+        resolveActiveWorkspaceId(wsData.default_workspace || null);
+        renderWorkspaceSelect();
+      } catch (err) {
+        logFrontendIssue('warn', 'poll.workspaces', 'Failed to load workspaces', err);
+      }
+
       const data = await LexeraApi.getBoards();
       boards = data.boards || [];
       try {
@@ -3542,6 +3604,7 @@ const LexeraDashboard = (function () {
 
   function saveLocalBoardDraft(boardId, boardData) {
     if (!boardId || !boardData) return;
+    if (isRemoteBoardId(boardId)) return;
     try {
       var baseBoard = getBoardSaveBase(boardData) || boardData;
       localStorage.setItem(boardDraftStorageKey(boardId), JSON.stringify({
@@ -3867,9 +3930,76 @@ const LexeraDashboard = (function () {
     return firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine;
   }
 
+  function setActiveWorkspaceId(workspaceId) {
+    activeWorkspaceId = workspaceId || ALL_WORKSPACES_ID;
+    localStorage.setItem('lexera-active-workspace', activeWorkspaceId);
+  }
+
+  function resolveActiveWorkspaceId(defaultWorkspaceId) {
+    var knownWorkspaceIds = workspaces.map(function (ws) { return ws.id; });
+    var storedIsValid = activeWorkspaceId === ALL_WORKSPACES_ID
+      || knownWorkspaceIds.indexOf(activeWorkspaceId) >= 0;
+
+    if (storedIsValid) return;
+
+    if (defaultWorkspaceId && knownWorkspaceIds.indexOf(defaultWorkspaceId) >= 0) {
+      setActiveWorkspaceId(defaultWorkspaceId);
+      return;
+    }
+    if (knownWorkspaceIds.length > 0) {
+      setActiveWorkspaceId(knownWorkspaceIds[0]);
+      return;
+    }
+    setActiveWorkspaceId(ALL_WORKSPACES_ID);
+  }
+
+  function renderWorkspaceSelect() {
+    var sel = document.getElementById('workspace-select');
+    if (!sel) return;
+
+    resolveActiveWorkspaceId(null);
+
+    sel.innerHTML = '';
+
+    var allOpt = document.createElement('option');
+    allOpt.value = ALL_WORKSPACES_ID;
+    allOpt.textContent = 'All Workspaces';
+    if (activeWorkspaceId === ALL_WORKSPACES_ID) allOpt.selected = true;
+    sel.appendChild(allOpt);
+
+    for (var i = 0; i < workspaces.length; i++) {
+      var ws = workspaces[i];
+      var opt = document.createElement('option');
+      opt.value = ws.id;
+      var boardCount = typeof ws.board_count === 'number' ? ws.board_count : null;
+      opt.textContent = boardCount != null ? (ws.name + ' (' + boardCount + ')') : ws.name;
+      if (ws.id === activeWorkspaceId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+
+    if (!sel.value) {
+      setActiveWorkspaceId(ALL_WORKSPACES_ID);
+      sel.value = ALL_WORKSPACES_ID;
+    } else if (sel.value !== activeWorkspaceId) {
+      setActiveWorkspaceId(sel.value);
+    }
+
+    sel.onchange = function () {
+      setActiveWorkspaceId(sel.value);
+      renderBoardList();
+    };
+  }
+
+  function getBoardWorkspaceIds(board) {
+    return board.workspace_ids || board.workspaceIds || (board.workspace_id || board.workspaceId ? [board.workspace_id || board.workspaceId] : []);
+  }
+
   function renderBoardList() {
     getElBoardList().innerHTML = '';
-    var orderedBoards = getOrderedItems(boards, 'lexera-board-order', function (b) { return b.id; });
+    var filteredBoards = activeWorkspaceId && activeWorkspaceId !== ALL_WORKSPACES_ID
+      ? boards.filter(function (b) { return getBoardWorkspaceIds(b).indexOf(activeWorkspaceId) >= 0; })
+      : boards;
+    var orderedBoards = getOrderedItems(filteredBoards, 'lexera-board-order', function (b) { return b.id; });
     var expandedIds = getSidebarExpandedBoards();
 
     if (getElBtnSidebarSync()) getElBtnSidebarSync().classList.toggle('active', sidebarSyncEnabled);
@@ -4336,11 +4466,7 @@ const LexeraDashboard = (function () {
           isRemoteBoard: isRemoteBoardId(boardId)
         });
         loadStage = 'connect-sync-not-modified';
-        if (!isRemoteBoardId(boardId)) {
-          connectSyncForBoard(boardId);
-        } else {
-          LexeraApi.disconnectSync();
-        }
+        connectSyncForBoard(boardId);
         return;
       }
       loadStage = 'prepare-board-meta';
@@ -4361,14 +4487,16 @@ const LexeraDashboard = (function () {
       activeBoardData = response;
       pendingExternalRebaseConflict = null;
       resetBoardDirtyState('loadBoard-fresh-backend-snapshot', boardId);
-      var draftSnapshot = loadLocalBoardDraft(boardId);
-      var shouldPrepareLiveSync = !isRemoteBoard;
+      var draftSnapshot = isRemoteBoard ? null : loadLocalBoardDraft(boardId);
+      var shouldPrepareLiveSync = true;
       if (response && typeof response.generation === 'number') {
         _lastLoadedGeneration = response.generation;
       }
       _lastLoadedRevision = response && response.revision ? response.revision : null;
       // Auto-convert legacy boards and save immediately
-      if (!isRemoteBoard && fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
+      if (isRemoteBoard) {
+        clearLocalBoardDraft(boardId);
+      } else if (fullBoardData && (!fullBoardData.rows || fullBoardData.rows.length === 0)) {
         loadStage = 'migrate-legacy-board';
         migrateLegacyBoard();
         try {
@@ -4499,11 +4627,7 @@ const LexeraDashboard = (function () {
       scheduleDashboardRefresh(80);
       // Connect WS sync for this board (no-op if already connected)
       loadStage = 'connect-sync';
-      if (!isRemoteBoard) {
-        connectSyncForBoard(boardId);
-      } else {
-        LexeraApi.disconnectSync();
-      }
+      connectSyncForBoard(boardId);
     } catch (err) {
       if (seq !== boardLoadSeq) return; // stale error, ignore
       logFrontendIssue('error', 'board.load', 'Failed to load board ' + boardId + ' during ' + loadStage, err);
@@ -5599,6 +5723,7 @@ const LexeraDashboard = (function () {
   var _savePending = false;
   var _autoSaveTimer = null;
   var AUTO_SAVE_DELAY_MS = 1200;
+  var AUTO_SAVE_REMOTE_DELAY_MS = 180;
 
   function clearScheduledAutoSave(reason) {
     if (_autoSaveTimer) {
@@ -5769,12 +5894,10 @@ const LexeraDashboard = (function () {
       }
       _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
       clearBoardDirty();
-      if (!isActiveRemoteBoard()) {
-        try {
-          await reopenLiveSyncSession(activeBoardId);
-        } catch (err) {
-          logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
-        }
+      try {
+        await reopenLiveSyncSession(activeBoardId);
+      } catch (err) {
+        logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
       }
       showNotification('Local draft saved and overwrote the external board version.');
       return true;
@@ -5817,6 +5940,12 @@ const LexeraDashboard = (function () {
     }
     _saveInFlight = true;
     var saveSucceeded = false;
+    traceFrontendAction('info', 'save.begin', 'Starting board save', {
+      boardId: activeBoardId || null,
+      isRemoteBoard: isActiveRemoteBoard(),
+      dirty: isBoardDirty(),
+      savePending: _savePending
+    });
     showSaving();
     try {
       do {
@@ -5829,7 +5958,7 @@ const LexeraDashboard = (function () {
         if (liveSession) {
           traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against live sync session', activeBoardId, 'local', fullBoardData, 'session', liveSession.board);
         }
-        if (!isActiveRemoteBoard() && liveSession && hasBoardIdentityMismatch(fullBoardData, liveSession.board)) {
+        if (liveSession && hasBoardIdentityMismatch(fullBoardData, liveSession.board)) {
           traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match live sync session', {
             boardId: activeBoardId,
             local: getBoardCardIdentityStats(fullBoardData, liveSession.board),
@@ -5861,7 +5990,7 @@ const LexeraDashboard = (function () {
         if (baseBoardData) {
           traceBoardIdentityPair('info', 'save.preflight', 'Pre-save identity comparison against save base', activeBoardId, 'local', fullBoardData, 'saveBase', baseBoardData);
         }
-        if (!isActiveRemoteBoard() && baseBoardData && hasBoardIdentityMismatch(fullBoardData, baseBoardData)) {
+        if (baseBoardData && hasBoardIdentityMismatch(fullBoardData, baseBoardData)) {
           traceFrontendAction('error', 'save.identityMismatch', 'Blocked save because local board identities do not match its save base', {
             boardId: activeBoardId,
             local: getBoardCardIdentityStats(fullBoardData, baseBoardData),
@@ -5939,12 +6068,10 @@ const LexeraDashboard = (function () {
         }
         _lastLoadedRevision = result && result.revision ? result.revision : _lastLoadedRevision;
 
-        if (!isActiveRemoteBoard()) {
-          try {
-            await reopenLiveSyncSession(activeBoardId);
-          } catch (e) {
-            // REST save succeeded even if the live session cannot be refreshed.
-          }
+        try {
+          await reopenLiveSyncSession(activeBoardId);
+        } catch (e) {
+          // REST save succeeded even if the live session cannot be refreshed.
         }
         if (result && result.hasConflicts) {
           showConflictDialog(result.conflicts, result.autoMerged);
@@ -6052,7 +6179,14 @@ const LexeraDashboard = (function () {
         reason: options.autoSaveReason || 'persist-option-skip'
       });
     } else {
-      scheduleAutoSave(options.autoSaveReason || 'persist-board-mutation', options.autoSaveDelayMs);
+      var isRemoteMutationBoard = isActiveRemoteBoard();
+      var autoSaveDelay = typeof options.autoSaveDelayMs === 'number'
+        ? options.autoSaveDelayMs
+        : (isRemoteMutationBoard ? AUTO_SAVE_REMOTE_DELAY_MS : AUTO_SAVE_DELAY_MS);
+      scheduleAutoSave(
+        options.autoSaveReason || (isRemoteMutationBoard ? 'persist-remote-board-mutation' : 'persist-board-mutation'),
+        autoSaveDelay
+      );
     }
     traceFrontendAction('info', 'board.persist', 'Persist board mutation success', {
       boardId: activeBoardId || null,
@@ -6295,44 +6429,78 @@ const LexeraDashboard = (function () {
     });
   }
 
-  // ── Management Panel ──────────────────────────────────────────
-
-  var BOARD_SETTINGS_FIELDS = [
-    { key: 'columnWidth', label: 'Column Width', placeholder: '280px', type: 'text' },
-    { key: 'layoutRows', label: 'Layout Rows', placeholder: '', type: 'number' },
-    { key: 'layoutPreset', label: 'Layout Preset', placeholder: 'compact / spacious / custom', type: 'text' },
-    { key: 'fontSize', label: 'Font Size', placeholder: '13px', type: 'text' },
-    { key: 'fontFamily', label: 'Font Family', placeholder: '', type: 'select', options: [
-      '', 'Poppins', 'Inter', 'Roboto', 'Open Sans', 'Lato', 'Nunito', 'Source Sans Pro',
-      'SF Pro Display', 'Helvetica Neue', 'Arial', 'Segoe UI', 'Verdana',
-      'Georgia', 'Times New Roman', 'Courier New', 'monospace', 'system-ui'
-    ] },
-    { key: 'rowHeight', label: 'Row Height', placeholder: 'auto', type: 'text' },
-    { key: 'maxRowHeight', label: 'Max Row Height (px)', placeholder: '', type: 'number' },
-    { key: 'cardMinHeight', label: 'Card Min Height', placeholder: 'auto', type: 'text' },
-    { key: 'tagVisibility', label: 'Tag Visibility', placeholder: '', type: 'select', options: ['', 'all', 'allexcludinglayout', 'customonly', 'mentionsonly', 'none', 'dim'] },
-    { key: 'whitespace', label: 'Whitespace', placeholder: '', type: 'select', options: ['', 'pre-wrap', 'normal', 'nowrap'] },
-    { key: 'stickyStackMode', label: 'Sticky Column Header', placeholder: '', type: 'select', options: ['', 'titleonly', 'full', 'bottom'] },
-    { key: 'htmlCommentRenderMode', label: 'HTML Comments', placeholder: '', type: 'select', options: ['', 'text', 'hidden', 'dim'] },
-    { key: 'htmlContentRenderMode', label: 'HTML Content', placeholder: '', type: 'select', options: ['', 'text', 'html'] },
-    { key: 'arrowKeyFocusScroll', label: 'Arrow Key Focus Scroll', placeholder: '', type: 'select', options: ['', 'nearest', 'center', 'disabled'] },
-    { key: 'layoutSpacing', label: 'Layout Spacing', placeholder: '', type: 'select', options: ['', 'compact', 'spacious'] },
-    { key: 'boardColor', label: 'Board Color', placeholder: '#4c7abf', type: 'text' },
-    { key: 'boardColorLight', label: 'Board Color (Light)', placeholder: '#4c7abf', type: 'text' },
-    { key: 'boardColorDark', label: 'Board Color (Dark)', placeholder: '#4c7abf', type: 'text' }
-  ];
+  // ── Management Panel (shared module) ─────────────────────────
 
   var mgmtPanelOpen = false;
-  var mgmtExpandedBoardId = null;
-  var mgmtActiveBoardTab = {};
+  var mgmtInitialized = false;
+
+  function initManagementUI() {
+    if (mgmtInitialized || !getElMgmtPanelBody()) return;
+    mgmtInitialized = true;
+    ManagementUI.init({
+      container: getElMgmtPanelBody(),
+      api: {
+        get: function (path) { return LexeraApi.request(path); },
+        post: function (path, body) {
+          return LexeraApi.request(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+        },
+        put: function (path, body) {
+          return LexeraApi.request(path, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+        },
+        delete: function (path) {
+          return LexeraApi.request(path, { method: 'DELETE' });
+        },
+      },
+      callbacks: {
+        onThemeChange: function (themeId) {
+          if (typeof applyTheme === 'function') applyTheme(themeId);
+        },
+        onNotify: function (msg) { showNotification(msg); },
+        onConfirm: function (msg) { return showConfirmDialog(msg); },
+        onBoardAdded: function () { poll(); },
+        onBoardRemoved: function (boardId) {
+          boards = boards.filter(function (b) { return b.id !== boardId; });
+          delete boardHierarchyCache[boardId];
+          if (activeBoardId === boardId) {
+            activeBoardId = null;
+            activeBoardData = null;
+            fullBoardData = null;
+            localStorage.removeItem('lexera-last-board');
+          }
+          renderBoardList();
+          renderMainView();
+          scheduleDashboardRefresh(60);
+        },
+        onBoardSettingsSaved: function (boardId, settings) {
+          if (boardId === activeBoardId && fullBoardData) {
+            if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
+            for (var s in settings) { fullBoardData.boardSettings[s] = settings[s]; }
+            applyBoardSettings();
+          }
+        },
+        onServerRestarted: function () {
+          // LexeraApi handles reconnection automatically
+        },
+        getThemes: function () {
+          return typeof LEXERA_THEMES !== 'undefined' ? LEXERA_THEMES : [];
+        },
+      },
+    });
+  }
 
   function openManagementPanel(options) {
     options = options || {};
     mgmtPanelOpen = true;
-    if (options.boardId) mgmtExpandedBoardId = options.boardId;
-    if (options.tab && options.boardId) mgmtActiveBoardTab[options.boardId] = options.tab;
     if (getElMgmtPanel()) getElMgmtPanel().classList.add('open');
-    renderManagementPanel(options.section);
+    initManagementUI();
   }
 
   function closeManagementPanel() {
@@ -6340,608 +6508,10 @@ const LexeraDashboard = (function () {
     if (getElMgmtPanel()) getElMgmtPanel().classList.remove('open');
   }
 
-  async function renderManagementPanel(scrollToSection) {
-    if (!getElMgmtPanelBody()) return;
-
-    var html = '';
-
-    // ── Theme ──
-    html += '<div class="mgmt-section" data-mgmt-section="theme">';
-    html += '<div class="mgmt-section-title">Theme</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label">Theme</label>';
-    html += '<select class="mgmt-field-input" id="mgmt-theme-select">' +
-      buildThemeOptionsMarkup(getLexeraCurrentThemeId() || (THEMES[0] && THEMES[0].id)) + '</select>';
-    html += '</div>';
-    html += '</div>';
-
-    // ── Identity ──
-    html += '<div class="mgmt-section" data-mgmt-section="identity">';
-    html += '<div class="mgmt-section-title">Identity</div>';
-    var identity = '';
-    try {
-      var info = await LexeraApi.getServerInfo();
-      identity = (info && (info.user_name || info.displayName || info.display_name || info.name)) || '';
-    } catch (e) { /* ignore */ }
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label">Display Name</label>';
-    html += '<input class="mgmt-field-input" id="mgmt-display-name" type="text" value="' + escapeAttr(identity) + '" placeholder="anonymous">';
-    html += '<button class="btn-small btn-primary" id="mgmt-save-name">Save</button>';
-    html += '</div>';
-    html += '</div>';
-
-    // ── My Boards ──
-    html += '<div class="mgmt-section" data-mgmt-section="boards">';
-    html += '<div class="mgmt-section-title">My Boards</div>';
-    html += '<div class="mgmt-add-board-row">';
-    html += '<input type="text" id="mgmt-add-board-path" placeholder="Board file path (.md)">';
-    html += '<button class="btn-small btn-primary" id="mgmt-add-board-btn">Add</button>';
-    html += '</div>';
-    html += '<div id="mgmt-board-list"></div>';
-    html += '</div>';
-
-    // ── Server ──
-    html += '<div class="mgmt-section" data-mgmt-section="server">';
-    html += '<div class="mgmt-section-title">Server</div>';
-    var serverConfig = { bindAddress: '0.0.0.0', port: 13080 };
-    try {
-      var sc = await LexeraApi.getServerInfo();
-      if (sc) {
-        serverConfig.bindAddress = sc.bindAddress || sc.bind_address || serverConfig.bindAddress;
-        serverConfig.port = sc.port || serverConfig.port;
-      }
-    } catch (e) { /* ignore */ }
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label">Bind Address</label>';
-    html += '<input class="mgmt-field-input" id="mgmt-bind-address" type="text" value="' + escapeAttr(serverConfig.bindAddress) + '">';
-    html += '</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label">Port</label>';
-    html += '<input class="mgmt-field-input" id="mgmt-port" type="number" value="' + escapeAttr(String(serverConfig.port)) + '">';
-    html += '</div>';
-    html += '<div class="mgmt-field-row" style="justify-content:flex-end">';
-    html += '<button class="btn-small btn-primary" id="mgmt-save-server">Save</button>';
-    html += '</div>';
-    html += '<div id="mgmt-server-status" class="mgmt-status"></div>';
-    html += '</div>';
-
-    // ── Network ──
-    html += '<div class="mgmt-section" data-mgmt-section="network">';
-    html += '<div class="mgmt-section-title">Network</div>';
-
-    // Connect to remote
-    html += '<div class="mgmt-field-row">';
-    html += '<input class="mgmt-field-input" id="mgmt-remote-url" type="text" placeholder="Remote server URL">';
-    html += '</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<input class="mgmt-field-input" id="mgmt-remote-token" type="text" placeholder="Invite token">';
-    html += '<button class="btn-small btn-primary" id="mgmt-connect-remote">Join</button>';
-    html += '</div>';
-    html += '<div id="mgmt-connect-status" class="mgmt-status"></div>';
-
-    // Active connections
-    html += '<div style="margin-top:8px"><div class="mgmt-section-title" style="font-size:10px">Active Connections</div></div>';
-    html += '<div id="mgmt-connections-list"></div>';
-
-    // Discovered peers
-    html += '<div style="margin-top:8px"><div class="mgmt-section-title" style="font-size:10px">Discovered Peers</div></div>';
-    html += '<div id="mgmt-peers-list"></div>';
-
-    html += '</div>';
-
-    getElMgmtPanelBody().innerHTML = html;
-
-    // ── Wire up events ──
-
-    // Theme
-    var themeSelect = document.getElementById('mgmt-theme-select');
-    if (themeSelect) {
-      themeSelect.addEventListener('change', function () {
-        applyTheme(themeSelect.value);
-        // Persist to backend config
-        LexeraApi.request('/config/theme', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ theme: themeSelect.value })
-        }).catch(function () {});
-      });
-    }
-
-    // Identity
-    var saveNameBtn = document.getElementById('mgmt-save-name');
-    if (saveNameBtn) {
-      saveNameBtn.addEventListener('click', async function () {
-        var name = document.getElementById('mgmt-display-name').value.trim();
-        try {
-          await LexeraApi.updateMe(name);
-          showNotification('Display name saved');
-        } catch (err) {
-          showNotification('Failed to save name: ' + err.message);
-        }
-      });
-    }
-
-    // Add board
-    var addBoardBtn = document.getElementById('mgmt-add-board-btn');
-    if (addBoardBtn) {
-      addBoardBtn.addEventListener('click', async function () {
-        var pathInput = document.getElementById('mgmt-add-board-path');
-        var filePath = pathInput ? pathInput.value.trim() : '';
-        if (!filePath) return;
-        try {
-          await LexeraApi.request('/boards', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ file: filePath })
-          });
-          if (pathInput) pathInput.value = '';
-          showNotification('Board added');
-          poll();
-          renderMgmtBoardList();
-        } catch (err) {
-          showNotification('Failed to add board: ' + err.message);
-        }
-      });
-    }
-
-    // Server save
-    var saveServerBtn = document.getElementById('mgmt-save-server');
-    if (saveServerBtn) {
-      saveServerBtn.addEventListener('click', async function () {
-        var addr = document.getElementById('mgmt-bind-address').value.trim();
-        var port = parseInt(document.getElementById('mgmt-port').value, 10);
-        var statusEl = document.getElementById('mgmt-server-status');
-        try {
-          await LexeraApi.updateServerConfig({ bindAddress: addr, port: port });
-          if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Saved'; }
-        } catch (err) {
-          if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = err.message; }
-        }
-      });
-    }
-
-    // Connect remote
-    var connectBtn = document.getElementById('mgmt-connect-remote');
-    if (connectBtn) {
-      connectBtn.addEventListener('click', async function () {
-        var urlInput = document.getElementById('mgmt-remote-url');
-        var tokenInput = document.getElementById('mgmt-remote-token');
-        var url = urlInput ? urlInput.value.trim() : '';
-        var token = tokenInput ? tokenInput.value.trim() : '';
-        var statusEl = document.getElementById('mgmt-connect-status');
-        if (!url || !token) {
-          if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = 'URL and token required'; }
-          return;
-        }
-        try {
-          await LexeraApi.connectRemote(url, token);
-          if (statusEl) { statusEl.className = 'mgmt-status success'; statusEl.textContent = 'Connected'; }
-          if (urlInput) urlInput.value = '';
-          if (tokenInput) tokenInput.value = '';
-          renderMgmtConnections();
-          poll();
-        } catch (err) {
-          if (statusEl) { statusEl.className = 'mgmt-status error'; statusEl.textContent = err.message; }
-        }
-      });
-    }
-
-    // Render dynamic lists
-    await Promise.all([
-      renderMgmtBoardList(),
-      renderMgmtConnections(),
-      renderMgmtPeers()
-    ]);
-
-    // Scroll to section if requested
-    if (scrollToSection) {
-      var sectionEl = getElMgmtPanelBody().querySelector('[data-mgmt-section="' + scrollToSection + '"]');
-      if (sectionEl) sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }
-
-  async function renderMgmtBoardList() {
-    var container = document.getElementById('mgmt-board-list');
-    if (!container) return;
-    var boardList = [];
-    try {
-      boardList = await LexeraApi.getBoards();
-    } catch (e) { /* ignore */ }
-
-    if (!boardList.length) {
-      container.innerHTML = '<div class="mgmt-list-empty">No boards</div>';
-      return;
-    }
-
-    var html = '';
-    for (var i = 0; i < boardList.length; i++) {
-      var b = boardList[i];
-      var isExpanded = mgmtExpandedBoardId === b.id;
-      html += '<div class="mgmt-board-row">';
-      html += '<span class="mgmt-board-name" data-mgmt-expand="' + escapeAttr(b.id) + '">' + escapeHtml(b.title || b.id) + '</span>';
-      html += '<div class="mgmt-board-actions">';
-      html += '<button class="mgmt-board-remove" data-mgmt-remove="' + escapeAttr(b.id) + '" data-mgmt-remove-name="' + escapeAttr(b.title || b.id) + '" title="Remove board">&times;</button>';
-      html += '</div>';
-      html += '</div>';
-      html += '<div class="mgmt-board-details' + (isExpanded ? ' expanded' : '') + '" data-mgmt-details="' + escapeAttr(b.id) + '">';
-      if (isExpanded) {
-        html += renderMgmtBoardDetailsContent(b.id, b.boardSettings || b.board_settings || {});
-      }
-      html += '</div>';
-    }
-    container.innerHTML = html;
-
-    // Delegated events
-    container.addEventListener('click', function (e) {
-      // Expand/collapse
-      var expandBtn = e.target.closest('[data-mgmt-expand]');
-      if (expandBtn) {
-        var boardId = expandBtn.getAttribute('data-mgmt-expand');
-        if (mgmtExpandedBoardId === boardId) {
-          mgmtExpandedBoardId = null;
-        } else {
-          mgmtExpandedBoardId = boardId;
-        }
-        renderMgmtBoardList();
-        return;
-      }
-
-      // Remove
-      var removeBtn = e.target.closest('[data-mgmt-remove]');
-      if (removeBtn) {
-        var rmId = removeBtn.getAttribute('data-mgmt-remove');
-        var rmName = removeBtn.getAttribute('data-mgmt-remove-name');
-        mgmtRemoveBoard(rmId, rmName);
-        return;
-      }
-
-      // Tab switching
-      var tabBtn = e.target.closest('[data-mgmt-tab]');
-      if (tabBtn) {
-        var tabBoardId = tabBtn.getAttribute('data-mgmt-tab-board');
-        var tabName = tabBtn.getAttribute('data-mgmt-tab');
-        mgmtActiveBoardTab[tabBoardId] = tabName;
-        var detailsEl = container.querySelector('[data-mgmt-details="' + tabBoardId + '"]');
-        if (detailsEl) {
-          detailsEl.querySelectorAll('.mgmt-detail-tab').forEach(function (t) {
-            t.classList.toggle('active', t.getAttribute('data-mgmt-tab') === tabName);
-          });
-          detailsEl.querySelectorAll('.mgmt-detail-tab-content').forEach(function (c) {
-            c.classList.toggle('active', c.getAttribute('data-mgmt-tab-panel') === tabName);
-          });
-        }
-        return;
-      }
-
-      // Save settings
-      var saveBtn = e.target.closest('[data-mgmt-save-settings]');
-      if (saveBtn) {
-        mgmtSaveBoardSettings(saveBtn.getAttribute('data-mgmt-save-settings'));
-        return;
-      }
-
-      // Create invite
-      var createInvBtn = e.target.closest('[data-mgmt-create-invite]');
-      if (createInvBtn) {
-        mgmtCreateInvite(createInvBtn.getAttribute('data-mgmt-create-invite'));
-        return;
-      }
-
-      // Revoke invite
-      var revokeBtn = e.target.closest('[data-mgmt-revoke]');
-      if (revokeBtn) {
-        mgmtRevokeInvite(revokeBtn.getAttribute('data-mgmt-revoke-board'), revokeBtn.getAttribute('data-mgmt-revoke'));
-        return;
-      }
-
-      // Copy token
-      var copyBtn = e.target.closest('[data-mgmt-copy]');
-      if (copyBtn) {
-        var tokenVal = copyBtn.getAttribute('data-mgmt-copy');
-        navigator.clipboard.writeText(tokenVal).then(function () {
-          showNotification('Token copied to clipboard');
-        });
-        return;
-      }
-    });
-  }
-
-  function renderMgmtBoardDetailsContent(boardId, settings) {
-    var activeTab = mgmtActiveBoardTab[boardId] || 'settings';
-    var html = '';
-
-    // Tabs
-    html += '<div class="mgmt-detail-tabs">';
-    html += '<button class="mgmt-detail-tab' + (activeTab === 'settings' ? ' active' : '') + '" data-mgmt-tab="settings" data-mgmt-tab-board="' + escapeAttr(boardId) + '">Settings</button>';
-    html += '<button class="mgmt-detail-tab' + (activeTab === 'sharing' ? ' active' : '') + '" data-mgmt-tab="sharing" data-mgmt-tab-board="' + escapeAttr(boardId) + '">Sharing</button>';
-    html += '<button class="mgmt-detail-tab' + (activeTab === 'members' ? ' active' : '') + '" data-mgmt-tab="members" data-mgmt-tab-board="' + escapeAttr(boardId) + '">Members</button>';
-    html += '</div>';
-
-    // ── Settings tab ──
-    html += '<div class="mgmt-detail-tab-content' + (activeTab === 'settings' ? ' active' : '') + '" data-mgmt-tab-panel="settings">';
-    html += '<div class="mgmt-settings-grid">';
-    for (var i = 0; i < BOARD_SETTINGS_FIELDS.length; i++) {
-      var f = BOARD_SETTINGS_FIELDS[i];
-      var val = settings[f.key] != null ? settings[f.key] : '';
-      if (f.key === 'stickyStackMode') {
-        var sv = String(val || '').trim().toLowerCase();
-        if (sv === 'top' || sv === 'titleonly' || sv === 'column' || sv === 'enabled' || sv === 'true') val = 'titleonly';
-        else if (sv === 'full') val = 'full';
-        else if (sv === 'bottom') val = 'bottom';
-        else val = '';
-      } else if (f.key === 'tagVisibility') {
-        val = normalizeTagVisibilityMode(val);
-      } else if (f.key === 'htmlCommentRenderMode') {
-        val = normalizeHtmlCommentRenderMode(val);
-      } else if (f.key === 'arrowKeyFocusScroll') {
-        val = normalizeArrowKeyFocusScrollMode(val);
-      }
-      html += '<label>' + escapeHtml(f.label) + '</label>';
-      if (f.type === 'select') {
-        html += '<select data-board-setting="' + f.key + '">';
-        for (var j = 0; j < f.options.length; j++) {
-          var opt = f.options[j];
-          html += '<option value="' + escapeAttr(opt) + '"' + (String(val) === opt ? ' selected' : '') + '>' + (opt || '(default)') + '</option>';
-        }
-        html += '</select>';
-      } else {
-        html += '<input type="' + f.type + '" data-board-setting="' + f.key + '" value="' + escapeAttr(String(val)) + '" placeholder="' + escapeAttr(f.placeholder) + '">';
-      }
-    }
-    html += '</div>';
-    html += '<div class="mgmt-settings-actions">';
-    html += '<button class="btn-small btn-primary" data-mgmt-save-settings="' + escapeAttr(boardId) + '">Save</button>';
-    html += '</div>';
-    html += '</div>';
-
-    // ── Sharing tab ──
-    html += '<div class="mgmt-detail-tab-content' + (activeTab === 'sharing' ? ' active' : '') + '" data-mgmt-tab-panel="sharing">';
-    html += '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:8px">';
-    html += '<div style="flex:1"><label style="font-size:11px;color:var(--text-secondary)">Role</label>';
-    html += '<select class="mgmt-field-input" data-mgmt-invite-role="' + escapeAttr(boardId) + '">';
-    html += '<option value="editor">Editor</option><option value="viewer">Viewer</option></select></div>';
-    html += '<div style="width:60px"><label style="font-size:11px;color:var(--text-secondary)">Uses</label>';
-    html += '<input class="mgmt-field-input" type="number" data-mgmt-invite-uses="' + escapeAttr(boardId) + '" value="1" min="1" style="width:100%"></div>';
-    html += '<button class="btn-small btn-primary" data-mgmt-create-invite="' + escapeAttr(boardId) + '">Create</button>';
-    html += '</div>';
-    html += '<div data-mgmt-invite-result="' + escapeAttr(boardId) + '"></div>';
-    html += '<div data-mgmt-invites-list="' + escapeAttr(boardId) + '"><div class="mgmt-list-empty">Loading...</div></div>';
-    html += '</div>';
-
-    // ── Members tab ──
-    html += '<div class="mgmt-detail-tab-content' + (activeTab === 'members' ? ' active' : '') + '" data-mgmt-tab-panel="members">';
-    html += '<div data-mgmt-members-list="' + escapeAttr(boardId) + '"><div class="mgmt-list-empty">Loading...</div></div>';
-    html += '</div>';
-
-    // Load sharing/members data async
-    setTimeout(function () { mgmtRefreshBoardCollabData(boardId); }, 0);
-
-    return html;
-  }
-
-  async function mgmtRefreshBoardCollabData(boardId) {
-    var userId = await ensureSyncUserId();
-    var results = await Promise.allSettled([
-      LexeraApi.listMembers(boardId, userId),
-      LexeraApi.getPresence(boardId, userId),
-      LexeraApi.listInvites(boardId, userId),
-    ]);
-    var members = results[0].status === 'fulfilled' ? results[0].value : [];
-    var onlineUsers = results[1].status === 'fulfilled' ? results[1].value : [];
-    var invites = results[2].status === 'fulfilled' ? results[2].value : [];
-
-    // Render members
-    var membersEl = document.querySelector('[data-mgmt-members-list="' + boardId + '"]');
-    if (membersEl) {
-      if (members.length === 0) {
-        membersEl.innerHTML = '<div class="mgmt-list-empty">No members yet</div>';
-      } else {
-        var mhtml = '';
-        for (var i = 0; i < members.length; i++) {
-          var m = members[i];
-          var isOnline = onlineUsers.indexOf(m.user_id) !== -1;
-          mhtml += '<div class="member-item">';
-          mhtml += '<span class="member-item-name">';
-          mhtml += '<span class="presence-dot' + (isOnline ? ' online' : '') + '"></span>';
-          mhtml += escapeHtml(m.user_name || m.user_id);
-          mhtml += '</span>';
-          mhtml += '<span class="member-item-role">' + escapeHtml(m.role) + '</span>';
-          mhtml += '</div>';
-        }
-        membersEl.innerHTML = mhtml;
-      }
-    }
-
-    // Render invites
-    var invitesEl = document.querySelector('[data-mgmt-invites-list="' + boardId + '"]');
-    if (invitesEl) {
-      if (invites.length === 0) {
-        invitesEl.innerHTML = '<div class="mgmt-list-empty">No active invites</div>';
-      } else {
-        var ihtml = '';
-        for (var j = 0; j < invites.length; j++) {
-          var inv = invites[j];
-          ihtml += '<div class="invite-item">';
-          ihtml += '<div>';
-          ihtml += '<span>' + escapeHtml(inv.role) + '</span>';
-          ihtml += ' <span class="invite-item-info">' + inv.uses + '/' + inv.max_uses + ' uses</span>';
-          ihtml += '<div class="invite-token-field">';
-          ihtml += '<input type="text" value="' + escapeAttr(inv.token) + '" readonly>';
-          ihtml += '<button class="btn-small" data-mgmt-copy="' + escapeAttr(inv.token) + '">Copy</button>';
-          ihtml += '</div>';
-          ihtml += '</div>';
-          ihtml += '<button class="btn-small btn-cancel" data-mgmt-revoke="' + escapeAttr(inv.token) + '" data-mgmt-revoke-board="' + escapeAttr(boardId) + '">Revoke</button>';
-          ihtml += '</div>';
-        }
-        invitesEl.innerHTML = ihtml;
-      }
-    }
-  }
-
-  async function mgmtCreateInvite(boardId) {
-    var userId = await ensureSyncUserId();
-    var roleEl = document.querySelector('[data-mgmt-invite-role="' + boardId + '"]');
-    var usesEl = document.querySelector('[data-mgmt-invite-uses="' + boardId + '"]');
-    var role = roleEl ? roleEl.value : 'editor';
-    var maxUses = usesEl ? parseInt(usesEl.value, 10) || 1 : 1;
-    try {
-      var invite = await LexeraApi.createInvite(boardId, userId, role, maxUses);
-      var resultEl = document.querySelector('[data-mgmt-invite-result="' + boardId + '"]');
-      if (resultEl) {
-        resultEl.innerHTML =
-          '<div class="invite-token-field">' +
-          '<input type="text" value="' + escapeAttr(invite.token) + '" readonly>' +
-          '<button class="btn-small" data-mgmt-copy="' + escapeAttr(invite.token) + '">Copy</button>' +
-          '</div>';
-      }
-      await mgmtRefreshBoardCollabData(boardId);
-    } catch (err) {
-      showNotification('Failed to create invite: ' + err.message);
-    }
-  }
-
-  async function mgmtRevokeInvite(boardId, token) {
-    var userId = await ensureSyncUserId();
-    try {
-      await LexeraApi.revokeInvite(boardId, token, userId);
-      showNotification('Invite revoked');
-      await mgmtRefreshBoardCollabData(boardId);
-    } catch (err) {
-      showNotification('Failed to revoke invite');
-    }
-  }
-
-  async function mgmtSaveBoardSettings(boardId) {
-    var detailsEl = document.querySelector('[data-mgmt-details="' + boardId + '"]');
-    if (!detailsEl) return;
-    var inputs = detailsEl.querySelectorAll('[data-board-setting]');
-    var settings = {};
-    for (var k = 0; k < inputs.length; k++) {
-      var key = inputs[k].getAttribute('data-board-setting');
-      var value = inputs[k].value.trim();
-      if (value === '') {
-        settings[key] = null;
-      } else if (inputs[k].type === 'number' && value) {
-        settings[key] = parseInt(value, 10);
-      } else {
-        settings[key] = value;
-      }
-    }
-    try {
-      // If this is the active board, persist via full board mutation
-      // (preserves all fields including ones not in the REST struct)
-      if (boardId === activeBoardId && fullBoardData) {
-        pushUndo();
-        if (!fullBoardData.boardSettings) fullBoardData.boardSettings = {};
-        for (var s in settings) {
-          fullBoardData.boardSettings[s] = settings[s];
-        }
-        await persistBoardMutation({ beforeRefresh: applyBoardSettings });
-      } else {
-        await LexeraApi.updateBoardSettings(boardId, settings);
-      }
-      showNotification('Board settings saved');
-    } catch (err) {
-      showNotification('Failed to save settings: ' + err.message);
-    }
-  }
-
-  async function mgmtRemoveBoard(boardId, boardName) {
-    var ok = await showConfirmDialog('Remove "' + boardName + '" from sidebar?\n(The file will not be deleted.)');
-    if (!ok) return;
-    try {
-      await LexeraApi.removeBoard(boardId);
-      // Update local state
-      boards = boards.filter(function (b) { return b.id !== boardId; });
-      delete boardHierarchyCache[boardId];
-      if (activeBoardId === boardId) {
-        activeBoardId = null;
-        activeBoardData = null;
-        fullBoardData = null;
-        localStorage.removeItem('lexera-last-board');
-      }
-      renderBoardList();
-      renderMainView();
-      scheduleDashboardRefresh(60);
-      if (mgmtExpandedBoardId === boardId) mgmtExpandedBoardId = null;
-      renderMgmtBoardList();
-      showNotification('Board removed');
-    } catch (err) {
-      showNotification('Failed to remove board');
-      poll();
-    }
-  }
-
-  async function renderMgmtConnections() {
-    var container = document.getElementById('mgmt-connections-list');
-    if (!container) return;
-    var connections = [];
-    try {
-      connections = await LexeraApi.getConnections();
-    } catch (e) { /* ignore */ }
-    if (!connections || !connections.length) {
-      container.innerHTML = '<div class="mgmt-list-empty">No active connections</div>';
-      return;
-    }
-    var html = '';
-    for (var i = 0; i < connections.length; i++) {
-      var c = connections[i];
-      html += '<div class="mgmt-connection-row">';
-      html += '<div class="mgmt-connection-info">';
-      html += '<div class="mgmt-connection-url">';
-      html += '<span class="mgmt-connection-status ' + (c.status === 'ok' || c.connected ? 'ok' : 'err') + '"></span>';
-      html += escapeHtml(c.serverUrl || c.server_url || c.url || '');
-      html += '</div>';
-      if (c.localBoardId || c.local_board_id) {
-        html += '<div class="mgmt-connection-board">' + escapeHtml(c.localBoardId || c.local_board_id) + '</div>';
-      }
-      html += '</div>';
-      html += '<button class="btn-small btn-cancel" data-mgmt-disconnect="' + escapeAttr(c.localBoardId || c.local_board_id || '') + '">Disconnect</button>';
-      html += '</div>';
-    }
-    container.innerHTML = html;
-
-    container.addEventListener('click', async function (e) {
-      var disBtn = e.target.closest('[data-mgmt-disconnect]');
-      if (!disBtn) return;
-      try {
-        await LexeraApi.disconnectRemote(disBtn.getAttribute('data-mgmt-disconnect'));
-        showNotification('Disconnected');
-        renderMgmtConnections();
-      } catch (err) {
-        showNotification('Disconnect failed: ' + err.message);
-      }
-    });
-  }
-
-  async function renderMgmtPeers() {
-    var container = document.getElementById('mgmt-peers-list');
-    if (!container) return;
-    var peers = [];
-    try {
-      peers = await LexeraApi.getDiscoveredPeers();
-    } catch (e) { /* ignore */ }
-    if (!peers || !peers.length) {
-      container.innerHTML = '<div class="mgmt-list-empty">No peers discovered</div>';
-      return;
-    }
-    var html = '';
-    for (var i = 0; i < peers.length; i++) {
-      var p = peers[i];
-      html += '<div class="mgmt-peer-row">';
-      html += '<div class="mgmt-peer-info">';
-      html += '<div class="mgmt-peer-name">' + escapeHtml(p.displayName || p.display_name || p.name || 'Unknown') + '</div>';
-      html += '<div class="mgmt-peer-url">' + escapeHtml(p.url || p.address || '') + '</div>';
-      html += '</div>';
-      html += '</div>';
-    }
-    container.innerHTML = html;
-  }
-
   // ── Collaboration ────────────────────────────────────────────────
 
   function openConnectionWindow() {
-    openManagementPanel({ section: 'network' });
+    openManagementPanel();
   }
 
   function showNotification(message) {
@@ -9307,7 +8877,7 @@ const LexeraDashboard = (function () {
     if (e.key === 'Escape') {
       try {
       if (currentInlineCardEditor) {
-        closeInlineCardEditor({ save: false });
+        closeInlineCardEditor({ save: true });
         return;
       }
       if (currentCardEditor) {
@@ -12233,17 +11803,9 @@ const LexeraDashboard = (function () {
     contentEl.innerHTML =
       '<textarea class="card-edit-input card-inline-textarea" spellcheck="false" style="' +
         escapeAttr('display:block;width:100%;min-height:120px;resize:vertical;overflow:auto;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px') +
-      '"></textarea>' +
-      '<div class="add-card-actions card-inline-actions">' +
-        '<button class="btn-small btn-cancel" type="button" data-inline-editor-action="cancel">Cancel</button>' +
-        '<button class="btn-small" type="button" data-inline-editor-action="overlay">Overlay</button>' +
-        '<button class="btn-small btn-primary" type="button" data-inline-editor-action="save">Save</button>' +
-      '</div>';
+      '"></textarea>';
 
     var textarea = contentEl.querySelector('.card-inline-textarea');
-    var cancelBtn = contentEl.querySelector('[data-inline-editor-action="cancel"]');
-    var overlayBtn = contentEl.querySelector('[data-inline-editor-action="overlay"]');
-    var saveBtn = contentEl.querySelector('[data-inline-editor-action="save"]');
     if (!textarea) return;
     textarea.value = card.content || '';
     autoResizeInlineCardTextarea(textarea);
@@ -12262,8 +11824,6 @@ const LexeraDashboard = (function () {
       if (!editor || editor.textarea !== textarea) return;
       setTimeout(function () {
         if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
-        var activeEl = document.activeElement;
-        if (activeEl && contentEl.contains(activeEl)) return;
         closeInlineCardEditor({ save: true });
       }, 0);
     }
@@ -12292,47 +11852,15 @@ const LexeraDashboard = (function () {
     textarea.addEventListener('keydown', function (e) {
       try {
       if (handleTextareaTabIndent(e, textarea)) return;
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 's')) {
+      if (e.altKey && e.key === 'Enter') {
         e.preventDefault();
         closeInlineCardEditor({ save: true });
         return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeInlineCardEditor({ save: false });
       }
       } catch (err) {
         logFrontendIssue('error', 'editor.inline', 'Error in inline editor keydown handler', err);
       }
     });
-
-    function bindAction(button, action) {
-      if (!button) return;
-      button.addEventListener('mousedown', function (e) {
-        e.preventDefault();
-      });
-      button.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (action === 'save') {
-          closeInlineCardEditor({ save: true });
-        } else if (action === 'cancel') {
-          closeInlineCardEditor({ save: false });
-        } else if (action === 'overlay') {
-          var draft = textarea.value;
-          closeInlineCardEditor({ save: true }).then(function () {
-            openCardEditor(cardEl, colIndex, cardIndex, 'overlay');
-            if (currentCardEditor && currentCardEditor.textarea && currentCardEditor.textarea.value !== draft) {
-              currentCardEditor.textarea.value = draft;
-              refreshCardEditorPreview();
-            }
-          });
-        }
-      });
-    }
-
-    bindAction(cancelBtn, 'cancel');
-    bindAction(overlayBtn, 'overlay');
-    bindAction(saveBtn, 'save');
 
     requestAnimationFrame(function () {
       if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;

@@ -151,13 +151,20 @@ impl Log for BroadcastLogger {
 pub fn init() -> Result<(), SetLoggerError> {
     let _ = &*LOG_FILE;
     let mut builder =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"));
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
     builder.target(Target::Pipe(Box::new(io::sink())));
     let logger = Box::leak(Box::new(BroadcastLogger {
         inner: builder.build(),
     }));
     log::set_logger(logger)?;
     log::set_max_level(log::LevelFilter::Trace);
+    log::info!(
+        target: "lexera.log_bridge",
+        "Backend logger initialized (buffer_capacity={}, broadcast_capacity={}, file={})",
+        MAX_LOG_ENTRIES,
+        LOG_BROADCAST_CAPACITY,
+        log_file_path()
+    );
     Ok(())
 }
 

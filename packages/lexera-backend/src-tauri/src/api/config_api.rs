@@ -4,8 +4,12 @@ use axum::{
     response::Json,
 };
 use serde::Deserialize;
+use std::collections::HashSet;
+use std::path::PathBuf;
 
-use crate::config::{save_config, WorkspaceEntry};
+use lexera_core::watcher::types::BoardChangeEvent;
+
+use crate::config::{normalize_workspace_setup, save_config, WorkspaceEntry};
 use crate::state::AppState;
 
 use super::ErrorResponse;
@@ -60,6 +64,7 @@ pub async fn set_theme(
     }
 
     log::info!("[config] Theme changed to '{}'", body.theme);
+    notify_config_changed(&state);
     Ok(Json(serde_json::json!({ "theme": body.theme })))
 }
 
@@ -81,8 +86,8 @@ pub struct SetDefaultWorkspaceRequest {
 }
 
 #[derive(Deserialize)]
-pub struct AssignBoardWorkspaceRequest {
-    pub workspace_id: Option<String>,
+pub struct AssignBoardWorkspacesRequest {
+    pub workspace_ids: Vec<String>,
 }
 
 /// GET /config/workspaces — list all workspaces and the default workspace ID.
@@ -93,15 +98,36 @@ pub async fn list_workspaces(State(state): State<AppState>) -> Json<serde_json::
         .map(|c| {
             c.workspaces
                 .iter()
-                .map(|w| serde_json::json!({ "id": w.id, "name": w.name }))
-                .collect()
+                .map(|w| {
+                    let board_count = c
+                        .boards
+                        .iter()
+                        .filter(|b| b.workspace_ids.iter().any(|id| id == &w.id))
+                        .count();
+                    serde_json::json!({
+                        "id": w.id,
+                        "name": w.name,
+                        "board_count": board_count
+                    })
+                })
+                .collect::<Vec<serde_json::Value>>()
         })
         .unwrap_or_default();
     let default_ws = cfg.as_ref().and_then(|c| c.default_workspace.clone());
+    let unassigned_board_count = cfg
+        .as_ref()
+        .map(|c| {
+            c.boards
+                .iter()
+                .filter(|b| b.workspace_ids.is_empty())
+                .count()
+        })
+        .unwrap_or(0);
 
     Json(serde_json::json!({
         "workspaces": workspaces,
         "default_workspace": default_ws,
+        "unassigned_board_count": unassigned_board_count,
     }))
 }
 
@@ -124,16 +150,30 @@ pub async fn create_workspace(
     let config_path = state.config_path.clone();
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        if cfg
+            .workspaces
+            .iter()
+            .any(|w| w.name.trim().eq_ignore_ascii_case(&name))
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(ErrorResponse {
+                    error: "Workspace name already exists".to_string(),
+                }),
+            ));
+        }
         cfg.workspaces.push(WorkspaceEntry {
             id: id.clone(),
             name: name.clone(),
         });
+        normalize_workspace_setup(&mut cfg);
         if let Err(e) = save_config(&config_path, &cfg) {
             log::error!("Failed to save config after workspace create: {}", e);
         }
     }
 
     log::info!("[config] Created workspace '{}' ({})", name, id);
+    notify_config_changed(&state);
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({ "id": id, "name": name })),
@@ -159,6 +199,18 @@ pub async fn update_workspace(
     let config_path = state.config_path.clone();
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        if cfg
+            .workspaces
+            .iter()
+            .any(|w| w.id != workspace_id && w.name.trim().eq_ignore_ascii_case(&name))
+        {
+            return Err((
+                StatusCode::CONFLICT,
+                Json(ErrorResponse {
+                    error: "Workspace name already exists".to_string(),
+                }),
+            ));
+        }
         let ws = cfg.workspaces.iter_mut().find(|w| w.id == workspace_id);
         match ws {
             Some(w) => w.name = name.clone(),
@@ -171,16 +223,20 @@ pub async fn update_workspace(
                 ));
             }
         }
+        normalize_workspace_setup(&mut cfg);
         if let Err(e) = save_config(&config_path, &cfg) {
             log::error!("Failed to save config after workspace rename: {}", e);
         }
     }
 
     log::info!("[config] Renamed workspace {} to '{}'", workspace_id, name);
-    Ok(Json(serde_json::json!({ "id": workspace_id, "name": name })))
+    notify_config_changed(&state);
+    Ok(Json(
+        serde_json::json!({ "id": workspace_id, "name": name }),
+    ))
 }
 
-/// DELETE /config/workspaces/{id} — delete a workspace and unassign its boards.
+/// DELETE /config/workspaces/{id} — delete a workspace and reassign affected boards.
 pub async fn delete_workspace(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -188,6 +244,15 @@ pub async fn delete_workspace(
     let config_path = state.config_path.clone();
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        if cfg.workspaces.len() <= 1 {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "At least one workspace is required".to_string(),
+                }),
+            ));
+        }
+
         let before = cfg.workspaces.len();
         cfg.workspaces.retain(|w| w.id != workspace_id);
         if cfg.workspaces.len() == before {
@@ -198,31 +263,44 @@ pub async fn delete_workspace(
                 }),
             ));
         }
-        // Unassign boards from this workspace
+
+        let fallback_workspace = cfg
+            .default_workspace
+            .clone()
+            .filter(|id| *id != workspace_id && cfg.workspaces.iter().any(|w| w.id == *id))
+            .or_else(|| cfg.workspaces.first().map(|w| w.id.clone()));
+
+        // Remove this workspace from all boards and reassign orphaned boards.
         for board in &mut cfg.boards {
-            if board.workspace_id.as_deref() == Some(&workspace_id) {
-                board.workspace_id = None;
+            board.workspace_ids.retain(|id| id != &workspace_id);
+            if board.workspace_ids.is_empty() {
+                if let Some(ref fallback_id) = fallback_workspace {
+                    board.workspace_ids.push(fallback_id.clone());
+                }
             }
         }
-        // Clear default if it was this workspace
+        // Move default if it was this workspace.
         if cfg.default_workspace.as_deref() == Some(&workspace_id) {
-            cfg.default_workspace = None;
+            cfg.default_workspace = fallback_workspace;
         }
+        normalize_workspace_setup(&mut cfg);
         if let Err(e) = save_config(&config_path, &cfg) {
             log::error!("Failed to save config after workspace delete: {}", e);
         }
     }
 
     log::info!("[config] Deleted workspace {}", workspace_id);
+    notify_config_changed(&state);
     Ok(Json(serde_json::json!({ "deleted": workspace_id })))
 }
 
-/// PUT /config/default-workspace — set or clear the default workspace.
+/// PUT /config/default-workspace — set the default workspace.
 pub async fn set_default_workspace(
     State(state): State<AppState>,
     Json(body): Json<SetDefaultWorkspaceRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let config_path = state.config_path.clone();
+    let default_workspace;
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
         if let Some(ref ws_id) = body.workspace_id {
@@ -234,25 +312,54 @@ pub async fn set_default_workspace(
                     }),
                 ));
             }
+            cfg.default_workspace = Some(ws_id.clone());
+        } else {
+            cfg.default_workspace = cfg.workspaces.first().map(|w| w.id.clone());
         }
-        cfg.default_workspace = body.workspace_id.clone();
+        normalize_workspace_setup(&mut cfg);
+        default_workspace = cfg.default_workspace.clone();
         if let Err(e) = save_config(&config_path, &cfg) {
-            log::error!("Failed to save config after default workspace change: {}", e);
+            log::error!(
+                "Failed to save config after default workspace change: {}",
+                e
+            );
         }
     }
 
-    log::info!("[config] Default workspace set to {:?}", body.workspace_id);
-    Ok(Json(
-        serde_json::json!({ "default_workspace": body.workspace_id }),
-    ))
+    log::info!("[config] Default workspace set to {:?}", default_workspace);
+    notify_config_changed(&state);
+    Ok(Json(serde_json::json!({
+        "default_workspace": default_workspace
+    })))
 }
 
-/// PUT /config/boards/{board_id}/workspace — assign or unassign a board to a workspace.
-pub async fn assign_board_workspace(
+/// PUT /config/boards/{board_id}/workspaces — set the workspaces a board belongs to.
+pub async fn assign_board_workspaces(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
-    Json(body): Json<AssignBoardWorkspaceRequest>,
+    Json(body): Json<AssignBoardWorkspacesRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let mut workspace_ids: Vec<String> = Vec::new();
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    for ws_id in body.workspace_ids {
+        let trimmed = ws_id.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if seen_ids.insert(trimmed.to_string()) {
+            workspace_ids.push(trimmed.to_string());
+        }
+    }
+
+    if workspace_ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Board must belong to at least one workspace".to_string(),
+            }),
+        ));
+    }
+
     let config_path = state.config_path.clone();
 
     // Resolve board_id to file path via storage
@@ -264,27 +371,35 @@ pub async fn assign_board_workspace(
             }),
         )
     })?;
-    let board_file = board_path.to_string_lossy().to_string();
+    let board_file = canonicalize_path(board_path.to_string_lossy().as_ref());
 
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
 
-        // Validate workspace exists if assigning
-        if let Some(ref ws_id) = body.workspace_id {
+        // Validate all workspace IDs exist
+        for ws_id in &workspace_ids {
             if !cfg.workspaces.iter().any(|w| w.id == *ws_id) {
                 return Err((
                     StatusCode::BAD_REQUEST,
                     Json(ErrorResponse {
-                        error: "Workspace not found".to_string(),
+                        error: format!("Workspace '{}' not found", ws_id),
                     }),
                 ));
             }
         }
 
-        // Find board in config by file path
-        let board_entry = cfg.boards.iter_mut().find(|b| b.file == board_file);
-        match board_entry {
-            Some(entry) => entry.workspace_id = body.workspace_id.clone(),
+        // Find board in config by file path (canonicalized fallback for legacy paths).
+        let board_index = cfg
+            .boards
+            .iter()
+            .position(|b| b.file == board_file)
+            .or_else(|| {
+                cfg.boards
+                    .iter()
+                    .position(|b| canonicalize_path(&b.file) == board_file)
+            });
+        match board_index {
+            Some(index) => cfg.boards[index].workspace_ids = workspace_ids.clone(),
             None => {
                 return Err((
                     StatusCode::NOT_FOUND,
@@ -294,23 +409,40 @@ pub async fn assign_board_workspace(
                 ));
             }
         }
+        normalize_workspace_setup(&mut cfg);
         if let Err(e) = save_config(&config_path, &cfg) {
-            log::error!("Failed to save config after board workspace assignment: {}", e);
+            log::error!(
+                "Failed to save config after board workspace assignment: {}",
+                e
+            );
         }
     }
 
     log::info!(
-        "[config] Board {} assigned to workspace {:?}",
+        "[config] Board {} assigned to workspaces {:?}",
         board_id,
-        body.workspace_id
+        workspace_ids
     );
+    notify_config_changed(&state);
     Ok(Json(serde_json::json!({
         "board_id": board_id,
-        "workspace_id": body.workspace_id,
+        "workspace_ids": workspace_ids,
     })))
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
+
+fn canonicalize_path(path: &str) -> String {
+    let path_buf = PathBuf::from(path);
+    std::fs::canonicalize(&path_buf)
+        .unwrap_or(path_buf)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn notify_config_changed(state: &AppState) {
+    let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
+}
 
 fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
     (

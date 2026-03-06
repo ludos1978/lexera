@@ -5,6 +5,7 @@
 /// - Atomic writes (write to .tmp, rename)
 /// - Self-write suppression for file watcher
 /// - Mutex-guarded writes to prevent concurrent modification
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -81,6 +82,16 @@ fn board_kid_sample(board: &KanbanBoard, limit: usize) -> Vec<String> {
         .filter_map(|card| card.kid.clone())
         .take(limit)
         .collect()
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -2132,10 +2143,75 @@ impl LocalStorage {
     pub fn get_crdt_vv(&self, board_id: &str) -> Option<Vec<u8>> {
         let lock = self.get_write_lock(board_id).ok()?;
         let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "get_crdt_vv");
-        let boards = self.boards.read().ok()?;
-        let state = boards.get(board_id)?;
-        let crdt = state.crdt.as_ref()?;
-        Some(crdt.oplog_vv().encode())
+        let mut boards = self.boards.write().ok()?;
+        let state = boards.get_mut(board_id)?;
+
+        let read_vv = |crdt: &CrdtStore| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crdt.oplog_vv().encode()))
+        };
+
+        if state.crdt.is_none() {
+            state.crdt = CrdtStore::from_board(&state.board).ok();
+            if state.crdt.is_none() {
+                log::error!(
+                    "[lexera.storage.crdt] Missing CRDT for board {} and failed to rebuild while reading VV",
+                    board_id
+                );
+                return None;
+            }
+            log::warn!(
+                "[lexera.storage.crdt] Rebuilt missing CRDT for board {} while reading VV",
+                board_id
+            );
+        }
+
+        if let Some(crdt) = state.crdt.as_ref() {
+            match read_vv(crdt) {
+                Ok(vv) => return Some(vv),
+                Err(payload) => {
+                    log::error!(
+                        "[lexera.storage.crdt] Loro panicked during oplog_vv for board {}: {}",
+                        board_id,
+                        panic_payload_message(payload.as_ref())
+                    );
+                }
+            }
+        }
+
+        match CrdtStore::from_board(&state.board) {
+            Ok(rebuilt) => {
+                state.crdt = Some(rebuilt);
+                log::warn!(
+                    "[lexera.storage.crdt] Rebuilt CRDT after oplog_vv panic for board {}",
+                    board_id
+                );
+            }
+            Err(error) => {
+                log::error!(
+                    "[lexera.storage.crdt] Failed to rebuild CRDT after oplog_vv panic for board {}: {}",
+                    board_id,
+                    error
+                );
+                state.crdt = None;
+                return None;
+            }
+        }
+
+        if let Some(crdt) = state.crdt.as_ref() {
+            match read_vv(crdt) {
+                Ok(vv) => Some(vv),
+                Err(payload) => {
+                    log::error!(
+                        "[lexera.storage.crdt] Loro panicked again during oplog_vv after rebuild for board {}: {}",
+                        board_id,
+                        panic_payload_message(payload.as_ref())
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        }
     }
 
     /// Export CRDT updates since a given version vector (for sync delta).
