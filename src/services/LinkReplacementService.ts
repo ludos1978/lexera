@@ -640,11 +640,11 @@ export class LinkReplacementService {
                     });
                     const escapedOld = escapeRegExp(oldPath);
                     // Try replacing in image syntax: ![...](oldPath...)
-                    const imgFallback = new RegExp(`(!\\[[^\\]\\n]*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
+                    const imgFallback = new RegExp(`(!\\[(?:[^\\[\\]\\n]|\\[[^\\]\\n]*\\])*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
                     newContent = content.replace(imgFallback, `$1${encodedNewPath}$2`);
                     // Also try replacing in link syntax: [...](oldPath...)
                     if (newContent === content) {
-                        const linkFallback = new RegExp(`(\\[[^\\]\\n]*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
+                        const linkFallback = new RegExp(`(\\[(?:[^\\[\\]\\n]|\\[[^\\]\\n]*\\])*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
                         newContent = content.replace(linkFallback, `$1${encodedNewPath}$2`);
                     }
                     // Also try wiki links: [[oldPath...]]
@@ -885,10 +885,10 @@ export class LinkReplacementService {
             // Fallback: broader regex replacement for board model text
             if (newResult === result && result.includes(replacement.oldPath)) {
                 const escapedOld = escapeRegExp(replacement.oldPath);
-                const imgFallback = new RegExp(`(!\\[[^\\]\\n]*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
+                const imgFallback = new RegExp(`(!\\[(?:[^\\[\\]\\n]|\\[[^\\]\\n]*\\])*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
                 newResult = result.replace(imgFallback, `$1${encodedNewPath}$2`);
                 if (newResult === result) {
-                    const linkFallback = new RegExp(`(\\[[^\\]\\n]*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
+                    const linkFallback = new RegExp(`(\\[(?:[^\\[\\]\\n]|\\[[^\\]\\n]*\\])*\\]\\()${escapedOld}((?:\\s+"[^"]*")?\\s*\\))`, 'g');
                     newResult = result.replace(linkFallback, `$1${encodedNewPath}$2`);
                 }
             }

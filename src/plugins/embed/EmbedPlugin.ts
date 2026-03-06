@@ -102,7 +102,7 @@ export class EmbedPlugin implements EmbedPluginInterface {
 
         // Pattern to match markdown images with optional attributes
         // ![alt](url){attrs} or ![alt](url "title"){attrs}
-        const imagePattern = /!\[([^\]\n]*)\]\(([^)\s"]+)(?:\s+"([^"]*)")?\)(\{[^}]+\})?/g;
+        const imagePattern = /!\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\(([^)\s"]+)(?:\s+"([^"]*)")?\)(\{[^}]+\})?/g;
 
         return content.replace(imagePattern, (match, alt, url, title, attrsBlock) => {
             // Parse attributes if present

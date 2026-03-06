@@ -253,8 +253,10 @@ export class ExportCommands extends SwitchBasedCommand {
 
                     const result = await ExportService.export(document!, options, board, webviewPanel, cts?.token ?? token);
 
-                    // Check for cancellation after export
-                    if (isCancelled()) {
+                    // Check for cancellation after export — but only if the export didn't succeed.
+                    // A concurrent export may have cancelled our CTS while we were still running,
+                    // but if the export completed successfully, we should show the success message.
+                    if (isCancelled() && !result.success) {
                         showInfo('Export cancelled.');
                         return;
                     }
@@ -276,7 +278,16 @@ export class ExportCommands extends SwitchBasedCommand {
 
                     // Show result message
                     if (result.success) {
-                        showInfo(result.message);
+                        if (result.exportedPath) {
+                            const folder = path.dirname(result.exportedPath);
+                            const choice = await showInfo(result.message, 'Open Folder');
+                            if (choice === 'Open Folder') {
+                                const folderUri = vscode.Uri.file(folder);
+                                await vscode.env.openExternal(folderUri);
+                            }
+                        } else {
+                            showInfo(result.message);
+                        }
                     } else {
                         showError(result.message);
                     }

@@ -19,7 +19,7 @@ import { generateTimestamp, getFileNamingConfig } from '../../constants/FileNami
 import { DOTTED_EXTENSIONS } from '../../shared/fileTypeDefinitions';
 import { MarkdownPatterns, HtmlPatterns, isUrl } from '../../shared/regexPatterns';
 import { AssetHandler } from '../assets/AssetHandler';
-import { escapeRegExp, getErrorMessage, toForwardSlashes } from '../../utils/stringUtils';
+import { escapeRegExp, getErrorMessage, safeDecodeURIComponent, toForwardSlashes } from '../../utils/stringUtils';
 import { KanbanBoard, KanbanColumn, KanbanCard } from '../../board/KanbanTypes';
 import { MarkdownKanbanParser } from '../../markdownParser';
 import { logger } from '../../utils/logger';
@@ -895,16 +895,19 @@ export class ExportService {
                         // This preserves ## headers and slide structure
                         exportedContent = includeContent;
 
-                        // IMPORTANT: Rewrite paths in merged content
-                        // Paths in the include file are relative to the include file's directory
-                        // They need to be adjusted relative to the export folder or main file's directory
+                        // IMPORTANT: Resolve paths in merged content to absolute
+                        // Paths in the include file are relative to the include file's directory.
+                        // We make them absolute here so the second rewrite pass (which uses
+                        // the main file's sourceDir) doesn't resolve them against the wrong base.
+                        // The second pass handles absolute paths correctly via path.resolve().
                         const includeDir = path.dirname(resolvedPath);
                         exportedContent = this.rewriteLinksForExport(
                             exportedContent,
                             includeDir,      // Source: include file's directory
-                            exportFolder,    // Target: export folder
-                            includeBasename, // Base name for asset subfolder
-                            true             // Use relative paths
+                            exportFolder,    // Not used in resolveToAbsolute mode
+                            includeBasename, // Not used in resolveToAbsolute mode
+                            true,            // Enable rewriting
+                            true             // resolveToAbsolute: make paths absolute for correct second pass
                         );
                     }
 
@@ -1272,7 +1275,8 @@ export class ExportService {
         sourceDir: string,
         exportFolder: string,
         fileBasename: string,
-        rewriteLinks: boolean
+        rewriteLinks: boolean,
+        resolveToAbsolute: boolean = false
     ): string {
         if (!rewriteLinks) {
             return content;
@@ -1311,7 +1315,7 @@ export class ExportService {
         const linkPattern = /(!\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
 
         modifiedContent = modifiedContent.replace(linkPattern, (match) => {
-            return this.processLink(match, sourceDir, exportFolder, fileBasename);
+            return this.processLink(match, sourceDir, exportFolder, fileBasename, resolveToAbsolute);
         });
 
         // Restore code blocks
@@ -1329,7 +1333,8 @@ export class ExportService {
         link: string,
         sourceDir: string,
         exportFolder: string,
-        fileBasename: string
+        fileBasename: string,
+        resolveToAbsolute: boolean = false
     ): string {
         let filePath: string | null = null;
         let linkStart = '';
@@ -1373,6 +1378,12 @@ export class ExportService {
             const match = link.match(/src=["']([^"']+)["']/i);
             if (match) {
                 filePath = match[1];
+                if (resolveToAbsolute) {
+                    // Make path absolute for include merging
+                    if (this.isAbsolutePath(filePath) || this.isUrl(filePath)) return link;
+                    const absolutePath = toForwardSlashes(path.resolve(sourceDir, safeDecodeURIComponent(filePath)));
+                    return link.replace(match[1], absolutePath);
+                }
                 // For HTML tags, we need to rebuild the tag
                 return this.rewriteHtmlTag(link, filePath, sourceDir, exportFolder, fileBasename);
             }
@@ -1409,13 +1420,31 @@ export class ExportService {
             return link;
         }
 
-        // Check if it's an absolute path or URL
-        if (this.isAbsolutePath(pathPart) || this.isUrl(pathPart)) {
-            return link; // Don't modify absolute paths or URLs
+        // Don't modify URLs
+        if (this.isUrl(pathPart)) {
+            return link;
         }
 
-        // Step 1: Convert the original relative path to absolute (relative to source directory)
-        const absoluteTargetPath = path.resolve(sourceDir, pathPart);
+        // Decode URL-encoded characters (e.g., %5B→[ %5D→]) so the path matches the real filesystem
+        const decodedPathPart = safeDecodeURIComponent(pathPart);
+
+        // resolveToAbsolute mode: convert relative paths to absolute (used for include merging)
+        // This ensures paths from includes survive the second rewrite pass with the correct base dir
+        if (resolveToAbsolute) {
+            if (this.isAbsolutePath(decodedPathPart)) {
+                return link; // Already absolute
+            }
+            const absolutePath = toForwardSlashes(path.resolve(sourceDir, decodedPathPart));
+            if (link.match(/^<(?:img|video|audio)/i)) {
+                return link.replace(pathPart, absolutePath);
+            }
+            return `${linkStart}${absolutePath}${anchorPart}${titleAttr}${linkEnd}${attrBlock}`;
+        }
+
+        // Step 1: Convert path to absolute
+        // For absolute paths (from merged includes), path.resolve returns them as-is
+        // For relative paths (from main file), resolves against sourceDir
+        const absoluteTargetPath = path.resolve(sourceDir, decodedPathPart);
 
         // Step 2: Define the absolute path of the exported markdown file
         const exportedFilePath = path.join(exportFolder, fileBasename + '.md');
@@ -1443,7 +1472,7 @@ export class ExportService {
         exportFolder: string,
         _fileBasename: string
     ): string {
-        const absoluteSourcePath = path.resolve(sourceDir, oldPath);
+        const absoluteSourcePath = path.resolve(sourceDir, safeDecodeURIComponent(oldPath));
         const relativePath = toForwardSlashes(path.relative(exportFolder, absoluteSourcePath));
 
         return tag.replace(/src=["'][^"']+["']/i, `src="${relativePath}"`);
