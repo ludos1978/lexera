@@ -173,7 +173,7 @@ export function buildMarkdownInputRules(schema: Schema): InputRule[] {
             return attrs;
         };
 
-        rules.push(new InputRule(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)$/, (state, match, start, end) => {
+        rules.push(new InputRule(/!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)$/, (state, match, start, end) => {
             const attrs = buildMediaAttrs(match);
             if (!attrs) {
                 return null;
@@ -181,7 +181,7 @@ export function buildMarkdownInputRules(schema: Schema): InputRule[] {
             return state.tr.replaceWith(start, end, schema.nodes.media_inline.create(attrs));
         }));
 
-        rules.push(new InputRule(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)\s$/, (state, match, start, end) => {
+        rules.push(new InputRule(/!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)\s$/, (state, match, start, end) => {
             const attrs = buildMediaAttrs(match);
             if (!attrs) {
                 return null;

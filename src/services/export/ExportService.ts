@@ -932,7 +932,6 @@ export class ExportService {
                             const existingPath = this.exportedFiles.get(md5Hash)!;
                             exportedRelativePath = toForwardSlashes(path.relative(exportFolder, existingPath));
                         } else {
-                            // Generate unique filename if needed
                             const fileName = path.basename(resolvedPath);
                             const ext = path.extname(fileName);
                             const nameWithoutExt = path.basename(fileName, ext);
@@ -941,25 +940,22 @@ export class ExportService {
                             let exportedFileName = fileName;
                             let index = 1;
 
-                            // Check for filename conflicts
-                            while (fs.existsSync(targetIncludePath)) {
-                                const existingContent = fs.readFileSync(targetIncludePath, 'utf8');
-                                const existingHash = crypto.createHash('md5').update(existingContent, 'utf8').digest('hex');
-                                if (existingHash === md5Hash) {
-                                    // Same content, use existing file
-                                    break;
-                                }
-                                // Different content with same name, create alternative name
+                            // Check for filename conflicts from different source files
+                            // within THIS export run. Files from previous exports are always
+                            // overwritten (their content may differ due to diagram preprocessing).
+                            const exportedTargets = new Set(
+                                Array.from(this.exportedIncludePaths.values())
+                            );
+                            while (exportedTargets.has(exportedFileName) && exportedFileName !== this.exportedIncludePaths.get(resolvedPath)) {
+                                // Another source file already claimed this name in this export
                                 exportedFileName = `${nameWithoutExt}-${index}${ext}`;
                                 targetIncludePath = path.join(exportFolder, exportedFileName);
                                 index++;
                             }
 
-                            // Write the file if not already there
-                            if (!fs.existsSync(targetIncludePath)) {
-                                fs.writeFileSync(targetIncludePath, exportedContent, 'utf8');
-                                this.exportedFiles.set(md5Hash, targetIncludePath);
-                            }
+                            // Always write fresh content (overwrite previous export's version)
+                            fs.writeFileSync(targetIncludePath, exportedContent, 'utf8');
+                            this.exportedFiles.set(md5Hash, targetIncludePath);
 
                             exportedRelativePath = exportedFileName;
                         }
@@ -1235,14 +1231,15 @@ export class ExportService {
         const normalizedNewPath = toForwardSlashes(newPath);
 
         // Replace in markdown images: ![alt](oldPath) -> ![alt](newPath)
+        // Alt text pattern supports one level of nested brackets for footnote refs like [^ref]
         content = content.replace(
-            new RegExp(`(!\\[[^\\]]*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
+            new RegExp(`(!\\[[^\\]\\n]*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
             `$1${normalizedNewPath}$2`
         );
 
         // Replace in markdown links: [text](oldPath) -> [text](newPath)
         content = content.replace(
-            new RegExp(`((?<!!)\\[[^\\]]*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
+            new RegExp(`((?<!!)\\[[^\\]\\n]*\\]\\()${escapedOldPath}((?:\\s+[^)]*)?\\))`, 'g'),
             `$1${normalizedNewPath}$2`
         );
 
@@ -1311,7 +1308,7 @@ export class ExportService {
         //       - Email autolinks: <user@example.com>
         //       - HTML tags: <br>, <hr>, etc.
         //       They are NEVER used for file paths in markdown!
-        const linkPattern = /(!\[[^\]]*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[[^\]]*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
+        const linkPattern = /(!\[[^\]\n]*\]\([^)]+\)(?:\{[^}]+\})?)|((?<!!)\[[^\]\n]*\]\([^)]+\))|(<(?:img|video|audio)[^>]+src=["'][^"']+["'][^>]*>)|(\[\[[^\]]+\]\])/g;
 
         modifiedContent = modifiedContent.replace(linkPattern, (match) => {
             return this.processLink(match, sourceDir, exportFolder, fileBasename);
@@ -1342,7 +1339,7 @@ export class ExportService {
         let attrBlock = '';
         if (link.startsWith('![')) {
             // Markdown image: ![alt](path) optionally followed by {attrs}
-            const match = link.match(/^!\[([^\]]*)\]\(([^)]+)\)(\{[^}]+\})?/);
+            const match = link.match(/^!\[([^\]\n]*)\]\(([^)]+)\)(\{[^}]+\})?/);
             if (match) {
                 const altText = match[1];
                 filePath = match[2];
@@ -1364,7 +1361,7 @@ export class ExportService {
             }
         } else if (link.startsWith('[') && !link.startsWith('[[')) {
             // Markdown link: [text](path)
-            const match = link.match(/^\[([^\]]*)\]\(([^)]+)\)/);
+            const match = link.match(/^\[([^\]\n]*)\]\(([^)]+)\)/);
             if (match) {
                 const linkText = match[1];
                 filePath = match[2];
@@ -2201,7 +2198,7 @@ export class ExportService {
 
             // Check if main file contains xlsx references before preprocessing
             const mainContent = await fs.promises.readFile(markdownPath, 'utf8');
-            const xlsxMatches = mainContent.match(/!\[[^\]]*\]\([^\s"]+\.(?:xlsx|xls|ods)/g);
+            const xlsxMatches = mainContent.match(/!\[[^\]\n]*\]\([^\s"]+\.(?:xlsx|xls|ods)/g);
             if (xlsxMatches) {
                 logger.warn(`[ExportService.preprocessDiagrams] Main file contains ${xlsxMatches.length} xlsx reference(s): ${xlsxMatches.map(m => m.substring(0, 60)).join(', ')}`);
             }

@@ -61,12 +61,12 @@ export class PathConversionService {
     private static readonly PATTERNS = {
         // Markdown image: ![alt](path "optional title")
         // Captures: full match, path
-        IMAGE: /!\[[^\]]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
+        IMAGE: /!\[[^\]\n]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
 
         // Markdown link: [text](path "optional title")
         // Uses negative lookbehind to exclude images (which start with !)
         // Captures: full match, path
-        LINK: /(?<!!)\[[^\]]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
+        LINK: /(?<!!)\[[^\]\n]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g,
 
         // HTML img: <img src="path"> or <img src='path'>
         // Captures: full match, path

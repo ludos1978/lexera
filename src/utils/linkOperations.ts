@@ -12,7 +12,7 @@ import { escapeRegExp } from './stringUtils';
  *
  * Use with global flag for iterating: new RegExp(MARKDOWN_PATH_PATTERN.source, 'g')
  */
-export const MARKDOWN_PATH_PATTERN = /!\[[^\]]*\]\(([^)]+)\)|(?<!!)\[[^\]]*\]\(([^)]+)\)|\[\[([^\]|]+)(?:\|[^\]]+)?\]\]|!!!include\(([^)]+)\)!!!/;
+export const MARKDOWN_PATH_PATTERN = /!\[[^\]\n]*\]\(([^)]+)\)|(?<!!)\[[^\]\n]*\]\(([^)]+)\)|\[\[([^\]|]+)(?:\|[^\]]+)?\]\]|!!!include\(([^)]+)\)!!!/;
 
 /**
  * Same pattern but also handles optional title in links: [text](path "title")
@@ -24,7 +24,7 @@ export const MARKDOWN_PATH_PATTERN = /!\[[^\]]*\]\(([^)]+)\)|(?<!!)\[[^\]]*\]\((
  * - Group 3: Wiki link path from [[path]] or [[path|label]]
  * - Group 4: Include path from !!!include(path)!!!
  */
-export const MARKDOWN_PATH_PATTERN_WITH_TITLE = /!\[[^\]]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)|(?<!!)\[[^\]]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)|\[\[([^\]|]+)(?:\|[^\]]+)?\]\]|!!!include\(([^)]+)\)!!!/;
+export const MARKDOWN_PATH_PATTERN_WITH_TITLE = /!\[[^\]\n]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)|(?<!!)\[[^\]\n]*\]\(([^)\s"]+)(?:\s+"[^"]*")?\)|\[\[([^\]|]+)(?:\|[^\]]+)?\]\]|!!!include\(([^)]+)\)!!!/;
 
 /**
  * Extract path from a pattern match result.
@@ -119,7 +119,7 @@ export class LinkOperations {
         const destPattern = `(?:<${escapedPath}>|${escapedPath})`;
         const patterns: { regex: RegExp; type: LinkMatchType }[] = [
             // Image: ![alt](path "title")
-            { regex: new RegExp(`(!\\[[^\\]]*\\]\\(\\s*${destPattern}${titlePattern}\\s*\\))`, 'g'), type: 'image' },
+            { regex: new RegExp(`(!\\[[^\\]\\n]*\\]\\(\\s*${destPattern}${titlePattern}\\s*\\))`, 'g'), type: 'image' },
             // Regular link: [text](path "title") - but not images (negative lookbehind for !)
             { regex: new RegExp(`(^|[^!])(\\[[^\\]]+\\]\\(\\s*${destPattern}${titlePattern}\\s*\\))`, 'gm'), type: 'link' },
             // Wiki link: [[path]] or [[path|alias]]
@@ -189,11 +189,11 @@ export class LinkOperations {
 
         const patterns: { regex: RegExp; type: LinkMatchType }[] = [
             // Image: ![alt]()
-            { regex: /(!\[[^\]]*\]\(\s*\))/g, type: 'image' },
+            { regex: /(!\[[^\]\n]*\]\(\s*\))/g, type: 'image' },
             // Regular link: [text]() - but not images (negative lookbehind for !)
-            { regex: /(^|[^!])(\[[^\]]+\]\(\s*\))/gm, type: 'link' },
+            { regex: /(^|[^!])(\[[^\]\n]+\]\(\s*\))/gm, type: 'link' },
             // Wiki link: [[ ]] or [[|alias]]
-            { regex: /(\[\[[^\]]*\]\])/g, type: 'wiki' },
+            { regex: /(\[\[[^\]\n]*\]\])/g, type: 'wiki' },
             // Auto link: < >
             { regex: /(<\s*>)/g, type: 'auto' },
             // Include: !!!include()!!!

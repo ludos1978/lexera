@@ -729,7 +729,7 @@ export class PathCommands extends SwitchBasedCommand {
         const escapedSourceUrl = sourceUrl.replace(/"/g, '%22');
         const escapedPath = newPathInFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         // Match image syntax with this exact path, with or without existing title
-        const regex = new RegExp(`(!\\[[^\\]]*\\]\\()${escapedPath}(\\s+"[^"]*")?\\)`, 'g');
+        const regex = new RegExp(`(!\\[[^\\]\\n]*\\]\\()${escapedPath}(\\s+"[^"]*")?\\)`, 'g');
 
         for (const file of fileRegistry.getAll()) {
             const content = file.getContent();
@@ -778,7 +778,7 @@ export class PathCommands extends SwitchBasedCommand {
         // Apply the same title transformation used by _addSourceUrlToImageTitle
         const escapedSourceUrl = sourceUrl.replace(/"/g, '%22');
         const escapedPath = newPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(!\\[[^\\]]*\\]\\()${escapedPath}(\\s+"[^"]*")?\\)`, 'g');
+        const regex = new RegExp(`(!\\[[^\\]\\n]*\\]\\()${escapedPath}(\\s+"[^"]*")?\\)`, 'g');
 
         const addTitle = (text: string) => text.replace(regex, (_match, prefix, existingTitle) => {
             if (existingTitle) {
@@ -825,7 +825,7 @@ export class PathCommands extends SwitchBasedCommand {
 
             // Match ![any alt]() or ![any alt]( ) or ![any alt]("existing title")
             // This is intentionally broad since empty-path images are uncommon
-            const regex = /(!\[[^\]]*\]\()(\s*(?:"[^"]*")?\s*)\)/g;
+            const regex = /(!\[[^\]\n]*\]\()(\s*(?:"[^"]*")?\s*)\)/g;
 
             const newContent = content.replace(regex, (match, prefix, inside) => {
                 if (!sourceUrl) {
@@ -957,8 +957,8 @@ export class PathCommands extends SwitchBasedCommand {
     private _buildDeleteElementRegex(pathToDelete: string): RegExp {
         const p = pathToDelete.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        const imagePattern = `(?:~~)?!\\[[^\\]]*\\]\\(${p}(?:\\s+"[^"]*")?\\)(?:~~)?`;
-        const linkPattern = `(?:~~)?(?<!!)\\[[^\\]]*\\]\\(${p}(?:\\s+"[^"]*")?\\)(?:~~)?`;
+        const imagePattern = `(?:~~)?!\\[[^\\]\\n]*\\]\\(${p}(?:\\s+"[^"]*")?\\)(?:~~)?`;
+        const linkPattern = `(?:~~)?(?<!!)\\[[^\\]\\n]*\\]\\(${p}(?:\\s+"[^"]*")?\\)(?:~~)?`;
         const htmlImgPattern = `(?:~~)?<img[^>]*src=["']${p}["'][^>]*>(?:~~)?`;
         const includePattern = `(?:~~)?!!!include\\(${p}\\)!!!(?:~~)?`;
 

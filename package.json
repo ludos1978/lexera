@@ -3,7 +3,7 @@
   "displayName": "Ludos Kanban",
   "description": "Kanban Board that supports export to markdown / marp",
   "publisher": "ludos",
-  "version": "0.233.28",
+  "version": "0.233.37",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -22,7 +22,9 @@
   "icon": "./imgs/logo.png",
   "activationEvents": [
     "onLanguage:markdown",
-    "onWebviewPanel:markdownKanbanPanel"
+    "onWebviewPanel:markdownKanbanPanel",
+    "onView:kanbanBoardsSidebar",
+    "onView:kanbanDashboard"
   ],
   "main": "./dist/extension.js",
   "repository": {
@@ -5993,12 +5995,7 @@
       "activitybar": [
         {
           "id": "kanbanBoards",
-          "title": "Kanban Boards",
-          "icon": "$(notebook)"
-        },
-        {
-          "id": "kanbanDashboardContainer",
-          "title": "Kanban Dashboard",
+          "title": "Kanban",
           "icon": "$(notebook)"
         }
       ]
@@ -6009,9 +6006,7 @@
           "type": "webview",
           "id": "kanbanBoardsSidebar",
           "name": "Kanban Boards"
-        }
-      ],
-      "kanbanDashboardContainer": [
+        },
         {
           "type": "webview",
           "id": "kanbanDashboard",
