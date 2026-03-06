@@ -111,6 +111,9 @@ export interface NewExportOptions {
     runPandoc?: boolean;                              // Use Pandoc for document export
     pandocFormat?: 'docx' | 'odt' | 'epub';           // Pandoc output format
     documentPageBreaks?: 'continuous' | 'per-task' | 'per-column';  // Page breaks in document format
+
+    // AUTO-EXPORT: Register save handler after export completes
+    autoExportOnSave?: boolean;
 }
 
 /**

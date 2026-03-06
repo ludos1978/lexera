@@ -288,6 +288,13 @@ export class ExportCommands extends SwitchBasedCommand {
                         } else {
                             showInfo(result.message);
                         }
+
+                        // Register auto-export on save if requested
+                        if (options.autoExportOnSave) {
+                            context.setAutoExportSettings(options);
+                            await this.handleStopAutoExportForOtherKanbanFiles(document!.uri.fsPath, context, result.marpWatchPath || result.exportedPath);
+                            this.registerAutoExportSaveHandler(document!, options, context);
+                        }
                     } else {
                         showError(result.message);
                     }
@@ -316,13 +323,21 @@ export class ExportCommands extends SwitchBasedCommand {
         // Get webview panel for diagram rendering
         const webviewPanel = context.getWebviewPanel();
 
-        // Do initial export FIRST (to start Marp if needed)
+        // Do initial export (to start Marp watch if needed)
         const initialResult = await ExportService.export(document, options, board, webviewPanel);
 
-        // NOW stop existing handlers/processes for other files
-        // Use marpWatchPath (the file Marp is watching) for protection, fallback to exportedPath
+        // Stop existing handlers/processes for other files
         await this.handleStopAutoExportForOtherKanbanFiles(document.uri.fsPath, context, initialResult.marpWatchPath || initialResult.exportedPath);
 
+        // Register save handler for subsequent auto-exports
+        this.registerAutoExportSaveHandler(document, options, context);
+    }
+
+    /**
+     * Register a save handler that re-exports on every file save.
+     * Does NOT do an initial export — caller is responsible for that.
+     */
+    private registerAutoExportSaveHandler(document: vscode.TextDocument, options: NewExportOptions, context: CommandContext): void {
         const docPath = document.uri.fsPath;
 
         // Clean up any existing subscription for this file

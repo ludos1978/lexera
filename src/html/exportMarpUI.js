@@ -625,6 +625,12 @@ function executeUnifiedExport() {
     lastExportSettings = options;
     window.lastExportSettings = options;
 
+    // If autoExportOnSave is enabled, include it in the options so the backend
+    // registers the save handler after the export completes (single message instead of two)
+    if (autoExportOnSave) {
+        options.autoExportOnSave = true;
+    }
+
     vscode.postMessage({
         type: 'export',
         options: options
@@ -637,17 +643,6 @@ function executeUnifiedExport() {
         autoExportActive = true;
         window.autoExportActive = true;
         updateAutoExportButton();
-    }
-
-    if (autoExportOnSave && lastExportSettings) {
-        const autoOptions = {
-            ...lastExportSettings,
-            mode: 'auto'
-        };
-        vscode.postMessage({
-            type: 'export',
-            options: autoOptions
-        });
     }
 }
 
