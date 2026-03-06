@@ -1,4 +1,33 @@
 ## Version 2
+- [ ] i want the top menu bar have the following structure
+  left aligned
+  - filename
+  - file header settings (marp, pandoc, etc settings that are file specific in one or multiple burger menus.)
+
+  middle aligned:
+  - empty card, column, stack, rows to drag into the board
+  - template card, column, stack, rows to drag into the board
+  - card, columns stacks, rows generated from clipboard content
+  - predefined templates for cards, for example draw.io files, excalidraw files, other file formats that we coud later directly embed to edit
+  - a separator
+  - individual dropdowns for incoming, park, archive, trash
+
+  right side aligned:
+  - fold all cards, fold all columns
+  - pin column headers (when they are outside the view they are stick to header footer of the view)
+  - runnign processes
+  - save system and change tracking
+  - templates selection (maybe zoom)
+  - export / pack
+  - burger menu for extended settings
+    - overlay editor enabled
+    - wysiwyg edtior enabled
+    - show special characters
+    - show marp settings
+    - html comment rendering
+    - html content rendering 
+    - tag visibility
+
 
 - [ ] smaller problems
   - the management window must have sharing as the first tab, and configuration as second!

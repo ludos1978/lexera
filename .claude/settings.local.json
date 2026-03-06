@@ -248,7 +248,10 @@
       "Bash(cd /Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/lexera-standalone/packages && cargo clean -p lexera-core 2>&1 && cargo check -p lexera-core --tests 2>&1)",
       "Bash(npx vitest run tests/boardMutations.test.js)",
       "Bash(npx vitest run)",
-      "Bash(npx vitest run tests/mutations.test.js)"
+      "Bash(npx vitest run tests/mutations.test.js)",
+      "Bash(TMPDIR=/tmp grep -n \"method.*PUT\\\\|method.*POST\\\\|columns\\\\|\\\\.boards\\\\|moveCard\\\\|updateCard\" packages/lexera-kanban/src/api.js)",
+      "Bash(TMPDIR=/tmp cargo test)",
+      "Bash(TMPDIR=/tmp npx vitest run)"
     ],
     "deny": [],
     "ask": []

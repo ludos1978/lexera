@@ -4225,8 +4225,7 @@ const LexeraDashboard = (function () {
             { id: 'split-left', label: 'Open in Split Left' },
             { id: 'split-right', label: 'Open in Split Right' },
             { separator: true },
-            { id: 'share', label: 'Share & Members' },
-            { id: 'settings', label: 'Settings' },
+            { id: 'backend-settings', label: 'Backend Settings' },
             { separator: true },
             { id: 'reveal', label: 'Reveal in Finder' },
           ], e.clientX, e.clientY).then(async function (action) {
@@ -4234,10 +4233,8 @@ const LexeraDashboard = (function () {
               openBoardInPane(boardId, 'a');
             } else if (action === 'split-right') {
               openBoardInPane(boardId, 'b');
-            } else if (action === 'share') {
-              openManagementPanel({ section: 'boards', boardId: boardId, tab: 'sharing' });
-            } else if (action === 'settings') {
-              openManagementPanel({ section: 'boards', boardId: boardId, tab: 'settings' });
+            } else if (action === 'backend-settings') {
+              openConnectionWindow();
             } else if (action === 'reveal' && boardFilePath) {
               showInFinder(boardFilePath);
             }
@@ -5412,10 +5409,8 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn header-drop-target' + (parkedCount > 0 ? ' has-items' : '') + '" id="btn-parked" title="Show parked items — drop cards here to park">Parked' + (parkedCount > 0 ? ' (' + parkedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archived' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
-    html += '<span id="btn-add-row-wrap" class="creation-source creation-source-header"></span>';
     html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold All</button>';
     html += '<button class="board-action-btn" id="btn-export" title="Export board">Export</button>';
-    html += '<button class="board-action-btn" id="btn-collab" title="Open collaboration settings">Collab</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Board options">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
     getElBoardHeader().innerHTML = html;
@@ -5481,12 +5476,6 @@ const LexeraDashboard = (function () {
         window._exportUI.show();
       });
     }
-    var collabBtn = document.getElementById('btn-collab');
-    if (collabBtn) {
-      collabBtn.addEventListener('click', function () {
-        openConnectionWindow();
-      });
-    }
     var parkedBtn = document.getElementById('btn-parked');
     if (parkedBtn) {
       parkedBtn.addEventListener('click', function () {
@@ -5504,17 +5493,6 @@ const LexeraDashboard = (function () {
       trashBtn.addEventListener('click', function () {
         showDeletedItems(trashBtn);
       });
-    }
-    var addRowWrap = document.getElementById('btn-add-row-wrap');
-    if (addRowWrap) {
-      var nextIndex = (fullBoardData && fullBoardData.rows) ? fullBoardData.rows.length : 0;
-      var rowSource = renderCreationSource('row', { atIndex: nextIndex }, {
-        btnClass: 'board-action-btn',
-        btnText: 'Add Row',
-        wrapperClass: 'creation-source-header'
-      });
-      // Move children into the placeholder span
-      while (rowSource.firstChild) addRowWrap.appendChild(rowSource.firstChild);
     }
     var boardMenuBtn = document.getElementById('btn-board-menu');
     if (boardMenuBtn) {
@@ -5567,8 +5545,7 @@ const LexeraDashboard = (function () {
     var items = [
       { id: 'add-row', label: 'Add Row' },
       { id: allFolded ? 'unfold-all' : 'fold-all', label: allFolded ? 'Unfold All' : 'Fold All' },
-      { id: 'settings', label: 'Settings' },
-      { id: 'collab', label: 'Collaboration' },
+      { id: 'backend-settings', label: 'Backend Settings' },
     ];
     if (parkedCount > 0) {
       items.push({ id: 'show-parked', label: 'Show Parked (' + parkedCount + ')' });
@@ -5599,12 +5576,8 @@ const LexeraDashboard = (function () {
       toggleFoldAll();
       return;
     }
-    if (action === 'settings') {
-      openManagementPanel({ section: 'boards', boardId: activeBoardId, tab: 'settings' });
-      return;
-    }
-    if (action === 'collab') {
-      openManagementPanel({ section: 'boards', boardId: activeBoardId, tab: 'sharing' });
+    if (action === 'backend-settings') {
+      openConnectionWindow();
       return;
     }
     if (action === 'show-parked') {
