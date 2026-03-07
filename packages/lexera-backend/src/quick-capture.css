@@ -321,6 +321,11 @@ body.snap-left .capture-container {
   color: var(--success);
 }
 
+.badge-workspace {
+  background: rgba(0, 120, 212, 0.18);
+  color: var(--accent-hover);
+}
+
 .badge-row {
   background: rgba(200, 150, 50, 0.2);
   color: #d4a843;

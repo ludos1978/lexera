@@ -11,8 +11,10 @@
 
   let baseUrl = '';
   let boards = [];
+  let workspaces = [];
   let isExpanded = false;
   const STRIP_WIDTH_THRESHOLD = 96;
+  const UNASSIGNED_WORKSPACE_ID = '__lexera_unassigned_workspace__';
 
   // Navigation stack: each entry = { items: [...], activeIndex, title }
   // items[i] = { type, id, title, detail, boardId, colIndex, cardId, data, columns }
@@ -85,7 +87,7 @@
     baseUrl = await discoverBackend();
     if (!baseUrl) {
       showStatus('Cannot connect to Lexera Backend', 'error');
-      pushBoardsLevel();
+      pushWorkspacesLevel();
       return;
     }
 
@@ -101,7 +103,8 @@
     } catch (e) { /* keep localStorage theme */ }
 
     await loadBoards();
-    pushBoardsLevel();
+    await loadWorkspaces();
+    pushWorkspacesLevel();
   }
 
   async function discoverBackend() {
@@ -330,24 +333,167 @@
     }
   }
 
+  async function loadWorkspaces() {
+    try {
+      const data = await apiGet('/config/workspaces');
+      workspaces = data && Array.isArray(data.workspaces) ? data.workspaces : [];
+    } catch (e) {
+      workspaces = [];
+      log('Failed to load workspaces, falling back to derived workspace groups:', e);
+    }
+  }
+
+  function getBoardDisplayName(board) {
+    if (!board) return 'Untitled';
+    if (board.title) return board.title;
+    const filePath = String(board.filePath || board.file_path || '');
+    if (!filePath) return 'Untitled';
+    const fileName = filePath.split('/').pop() || filePath;
+    return fileName.replace(/\.md$/i, '');
+  }
+
+  function getBoardWorkspaceIds(board) {
+    if (!board) return [];
+    const raw = Array.isArray(board.workspaceIds)
+      ? board.workspaceIds
+      : (Array.isArray(board.workspace_ids) ? board.workspace_ids : []);
+    const unique = [];
+    for (let i = 0; i < raw.length; i++) {
+      const id = String(raw[i] || '').trim();
+      if (!id || unique.indexOf(id) !== -1) continue;
+      unique.push(id);
+    }
+    return unique;
+  }
+
+  function getWorkspaceNameById(workspaceId) {
+    if (!workspaceId) return '';
+    for (let i = 0; i < workspaces.length; i++) {
+      if (workspaces[i] && workspaces[i].id === workspaceId) {
+        return String(workspaces[i].name || '').trim();
+      }
+    }
+    return '';
+  }
+
+  function workspaceLabelForId(workspaceId) {
+    if (workspaceId === UNASSIGNED_WORKSPACE_ID) return 'Unassigned';
+    const name = getWorkspaceNameById(workspaceId);
+    if (name) return name;
+    const compactId = String(workspaceId || '').slice(0, 8);
+    return compactId ? ('Workspace ' + compactId) : 'Workspace';
+  }
+
+  function getWorkspaceLabelsForBoard(board) {
+    const wsIds = getBoardWorkspaceIds(board);
+    if (wsIds.length === 0) return ['Unassigned'];
+    const labels = [];
+    for (let i = 0; i < wsIds.length; i++) {
+      const label = workspaceLabelForId(wsIds[i]);
+      if (labels.indexOf(label) === -1) labels.push(label);
+    }
+    return labels;
+  }
+
+  function buildWorkspaceItems() {
+    const workspaceOrder = [];
+    const workspaceMap = {};
+
+    function ensureWorkspace(id, name) {
+      if (!workspaceMap[id]) {
+        workspaceMap[id] = { id: id, name: name || 'Workspace', boards: [] };
+        workspaceOrder.push(id);
+      } else if (name && !workspaceMap[id].name) {
+        workspaceMap[id].name = name;
+      }
+      return workspaceMap[id];
+    }
+
+    for (let i = 0; i < workspaces.length; i++) {
+      const ws = workspaces[i];
+      if (!ws || !ws.id) continue;
+      ensureWorkspace(ws.id, String(ws.name || '').trim() || 'Workspace');
+    }
+
+    for (let i = 0; i < boards.length; i++) {
+      const board = boards[i];
+      const wsIds = getBoardWorkspaceIds(board);
+      const targetWorkspaceIds = wsIds.length > 0 ? wsIds : [UNASSIGNED_WORKSPACE_ID];
+
+      for (let j = 0; j < targetWorkspaceIds.length; j++) {
+        const wsId = targetWorkspaceIds[j];
+        const ws = ensureWorkspace(wsId, workspaceLabelForId(wsId));
+        ws.boards.push({
+          type: 'board',
+          id: board.id,
+          title: getBoardDisplayName(board),
+          detail: (board.columns || []).length + ' columns',
+          boardId: board.id,
+          workspaceId: wsId,
+          columns: board.columns,
+          data: board,
+        });
+      }
+    }
+
+    const items = [];
+    for (let i = 0; i < workspaceOrder.length; i++) {
+      const ws = workspaceMap[workspaceOrder[i]];
+      if (!ws) continue;
+      items.push({
+        type: 'workspace',
+        id: ws.id,
+        title: ws.name,
+        detail: ws.boards.length + ' boards',
+        workspaceId: ws.id,
+        data: { id: ws.id, name: ws.name, boards: ws.boards },
+      });
+    }
+    return items;
+  }
+
   // --- Flat Level Navigation ---
 
   function currentLevel() {
     return navStack.length > 0 ? navStack[navStack.length - 1] : null;
   }
 
-  function pushBoardsLevel() {
-    const items = boards.map(b => ({
-      type: 'board',
-      id: b.id,
-      title: b.title || b.filePath.split('/').pop().replace('.md', ''),
-      detail: (b.columns || []).length + ' columns',
-      boardId: b.id,
-      columns: b.columns,
-      data: b,
-    }));
-    navStack = [{ items: items, activeIndex: items.length > 0 ? 0 : -1, title: 'Boards' }];
+  function pushWorkspacesLevel() {
+    const items = buildWorkspaceItems();
+    navStack = [{ items: items, activeIndex: items.length > 0 ? 0 : -1, title: 'Workspaces' }];
     renderLevel();
+  }
+
+  function rebuildNavStackForBoard(boardId, preferredWorkspaceId) {
+    const workspaceItems = buildWorkspaceItems();
+    let workspaceIdx = -1;
+
+    if (preferredWorkspaceId) {
+      workspaceIdx = workspaceItems.findIndex(w =>
+        w && w.id === preferredWorkspaceId &&
+        w.data && Array.isArray(w.data.boards) &&
+        w.data.boards.some(b => b.id === boardId)
+      );
+    }
+    if (workspaceIdx < 0) {
+      workspaceIdx = workspaceItems.findIndex(w =>
+        w && w.data && Array.isArray(w.data.boards) &&
+        w.data.boards.some(b => b.id === boardId)
+      );
+    }
+    if (workspaceIdx < 0) workspaceIdx = 0;
+
+    navStack = [{ items: workspaceItems, activeIndex: workspaceIdx, title: 'Workspaces' }];
+    const workspaceNode = workspaceItems[workspaceIdx];
+    const boardItems = workspaceNode && workspaceNode.data && Array.isArray(workspaceNode.data.boards)
+      ? workspaceNode.data.boards
+      : [];
+    if (boardItems.length === 0) return null;
+
+    let boardIdx = boardItems.findIndex(b => b.id === boardId);
+    if (boardIdx < 0) boardIdx = 0;
+    navStack.push({ items: boardItems, activeIndex: boardIdx, title: workspaceNode.title });
+    return boardItems[boardIdx];
   }
 
   async function drillInto(item) {
@@ -364,6 +510,11 @@
   }
 
   async function loadChildren(node) {
+    if (node.type === 'workspace') {
+      const boardsInWorkspace = (node.data && Array.isArray(node.data.boards)) ? node.data.boards : [];
+      return boardsInWorkspace.slice();
+    }
+
     if (node.type === 'board') {
       try {
         const data = await apiGet(`/boards/${node.id}/columns`);
@@ -456,9 +607,10 @@
   async function reloadCurrentLevel() {
     if (navStack.length <= 1) {
       await loadBoards();
+      await loadWorkspaces();
       const level = currentLevel();
       const oldIdx = level ? level.activeIndex : 0;
-      pushBoardsLevel();
+      pushWorkspacesLevel();
       const lv = currentLevel();
       if (lv) lv.activeIndex = Math.min(oldIdx, lv.items.length - 1);
       renderLevel();
@@ -483,6 +635,7 @@
   }
 
   const BADGE_LABELS = {
+    workspace: 'WS',
     board: 'Board',
     row: 'Row',
     stack: 'Stack',
@@ -596,15 +749,28 @@
     searchResults = [];
     activeSearchIndex = -1;
     els.searchInput.value = '';
-    // Rebuild nav stack starting from boards root
-    const boardItems = boards.map(b => ({
-      type: 'board', id: b.id,
-      title: b.title || b.filePath.split('/').pop().replace('.md', ''),
-      detail: (b.columns || []).length + ' columns',
-      boardId: b.id, columns: b.columns, data: b,
-    }));
-    const boardIdx = Math.max(0, boardItems.findIndex(b => b.id === item.boardId));
-    navStack = [{ items: boardItems, activeIndex: boardIdx, title: 'Boards' }];
+
+    if (item.type === 'workspace') {
+      const workspaceItems = buildWorkspaceItems();
+      const workspaceIdx = Math.max(0, workspaceItems.findIndex(w => w.id === item.id));
+      navStack = [{ items: workspaceItems, activeIndex: workspaceIdx, title: 'Workspaces' }];
+      const workspaceNode = navStack[0].items[workspaceIdx];
+      if (workspaceNode) await drillInto(workspaceNode);
+      else renderLevel();
+      return;
+    }
+
+    const boardNode = rebuildNavStackForBoard(item.boardId, item.workspaceId);
+    if (!boardNode) {
+      renderLevel();
+      return;
+    }
+
+    if (item.type === 'board') {
+      await drillInto(boardNode);
+      return;
+    }
+
     await drillInto(item);
   }
 
@@ -622,15 +788,40 @@
     if (!baseUrl) return;
     const lowerQuery = query.toLowerCase();
     const results = [];
+    const workspaceItems = buildWorkspaceItems();
+
+    for (let i = 0; i < workspaceItems.length; i++) {
+      const ws = workspaceItems[i];
+      if (!ws || !ws.title) continue;
+      if (ws.title.toLowerCase().includes(lowerQuery)) {
+        results.push({
+          type: 'workspace',
+          id: ws.id,
+          title: ws.title,
+          detail: ws.detail,
+          workspaceId: ws.id,
+          data: ws.data,
+        });
+      }
+    }
+
+    const boardsById = {};
 
     for (const board of boards) {
-      const boardName = board.title || board.filePath.split('/').pop().replace('.md', '');
+      boardsById[board.id] = board;
+      const boardName = getBoardDisplayName(board);
+      const boardWorkspaceIds = getBoardWorkspaceIds(board);
+      const primaryWorkspaceId = boardWorkspaceIds.length > 0 ? boardWorkspaceIds[0] : UNASSIGNED_WORKSPACE_ID;
+      const workspaceContext = getWorkspaceLabelsForBoard(board).join(', ');
+
       if (boardName.toLowerCase().includes(lowerQuery)) {
         results.push({
           type: 'board',
           id: board.id,
           title: boardName,
+          context: workspaceContext,
           boardId: board.id,
+          workspaceId: primaryWorkspaceId,
           columns: board.columns,
           data: board,
         });
@@ -642,8 +833,9 @@
               type: 'column',
               id: `${board.id}-col-${col.index}`,
               title: col.title,
-              context: boardName,
+              context: (workspaceContext ? (workspaceContext + ' / ') : '') + boardName,
               boardId: board.id,
+              workspaceId: primaryWorkspaceId,
               colIndex: col.index,
               data: col,
             });
@@ -656,12 +848,18 @@
       const data = await apiGet(`/search?q=${encodeURIComponent(query)}`);
       if (data.results) {
         for (const r of data.results) {
+          const board = boardsById[r.boardId] || null;
+          const workspaceContext = board ? getWorkspaceLabelsForBoard(board).join(', ') : '';
+          const workspaceId = board
+            ? (getBoardWorkspaceIds(board)[0] || UNASSIGNED_WORKSPACE_ID)
+            : null;
           results.push({
             type: 'card',
             id: r.cardId,
             title: r.cardContent.length > 100 ? r.cardContent.substring(0, 100) + '...' : r.cardContent,
-            context: r.boardTitle + ' / ' + r.columnTitle,
+            context: (workspaceContext ? (workspaceContext + ' / ') : '') + r.boardTitle + ' / ' + r.columnTitle,
             boardId: r.boardId,
+            workspaceId: workspaceId,
             colIndex: r.columnIndex,
             cardId: r.cardId,
           });
@@ -715,6 +913,10 @@
       : currentLevel();
     if (!level || level.activeIndex < 0 || level.activeIndex >= level.items.length) return;
     const target = level.items[level.activeIndex];
+    if (!target || target.type === 'workspace') {
+      showStatus('Select a board, row, stack, column, or card inside a workspace', 'error');
+      return;
+    }
 
     let content = '';
     let boardIdForUpload = target.boardId;
