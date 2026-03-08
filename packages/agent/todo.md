@@ -1,0 +1,76 @@
+# Lexera Kanban V1 Parity Todo
+
+## Done
+
+- [x] Reworked the board header into left file controls, middle creation/incoming controls, and right board/runtime controls.
+- [x] Moved removed top-row actions into the right burger menu and kept a single `Backend Settings` entry.
+- [x] Made the header fold into the compact v1 icon mode based on actual overflow instead of only fixed breakpoints.
+- [x] Switched quick capture to expose workspaces at the highest level instead of boards.
+- [x] Merged draw.io and Excalidraw into the normal template flow and removed the duplicate template structure.
+- [x] Kept `Incoming` clipboard-fed only instead of inventing a separate "new incoming card" flow.
+- [x] Restored the main row, stack, column, and card context-menu actions for add, rename, duplicate, move, park, archive, delete, and move-to targets.
+- [x] Restored parked, archived, and trash dropdown handling in the top row and the drag targets for hidden-item recovery.
+- [x] Ported the richer tag-style layer so tags drive row, stack, column, and card borders, header/footer styling, badges, and numeric tag visuals.
+- [x] Expanded v2 tag categories and tag menus toward the broader v1 category set.
+- [x] Added rendered-tag click menus for current-board filtering, global search, rename-in-board, recoloring, and copy.
+- [x] Stopped treating Markdown heading markers like `#`, `##`, and `###` as tags while still parsing real tags inside heading lines.
+- [x] Verified that menu-triggered template inserts already prompt for template variables and copy companion files when templates include extra files.
+- [x] Replaced the placeholder per-element Marp menu with real `Marp Classes`, `Marp Colors`, and `Marp Header & Footer` submenus.
+- [x] Added local and scoped Marp class toggles for row, stack, column, and card menus.
+- [x] Added local and scoped Marp directive editing for color, background color, background image, background position, background repeat, and background size.
+- [x] Added local and scoped Marp directive editing for header, footer, and paginate.
+- [x] Preserved Marp HTML comments in the underlying source while stripping them from visible row, stack, and column labels.
+- [x] Added regression coverage for the new HTML-comment and Marp directive helper functions.
+- [x] Restored board-level Marp enable/disable control in the left file-header settings menu.
+- [x] Restored board-level Marp presentation frontmatter editing for theme, style, size, heading divider, and math.
+- [x] Restored board-level Marp metadata frontmatter editing for title, author, description, keywords, URL, and image.
+- [x] Restored board-level Marp slide-setting frontmatter editing for paginate, header, and footer.
+- [x] Restored board-level Marp styling frontmatter editing for class, text color, background color, background image, background position, background repeat, and background size.
+- [x] Restored a file-header YAML preview/copy submenu for the current board frontmatter.
+- [x] Added regression coverage for board-level YAML frontmatter mutation helpers.
+- [x] Restored file-header Pandoc status visibility in the left settings menu without requiring the export dialog first.
+- [x] Restored file-header Pandoc quick actions for jumping straight into document export mode from the left settings menu.
+- [x] Restored file-header Pandoc default output-format mutators for DOCX, ODT, and EPUB.
+- [x] Restored file-header Pandoc default page-break mutators for continuous, per-task, and per-column document exports.
+- [x] Restored export-dialog persistence for Pandoc default output format and page-break settings.
+- [x] Restored export-dialog persistence for the v1 Marp theme and content-transform defaults that are still represented in the v2 dialog.
+- [x] Restored export-dialog persistence for the exclude-tag filter text that v1 stored locally.
+- [x] Added regression coverage for the export-dialog preference helper functions.
+- [x] Restored archive dropdown per-item export actions so archived items can be written into the archive file instead of only being restored or hard-deleted.
+- [x] Restored archive dropdown footer actions for exporting all archived items and opening the archive file from the header controls.
+- [x] Restored archive-file generation beside the active board file using the `{board-name}-archive.md` naming pattern.
+- [x] Restored archive-file appending that preserves an existing YAML frontmatter header and appends new archived content below it.
+- [x] Extended archive export formatting to cover the v2 row, stack, column, and card hierarchy instead of only v1 cards and columns.
+- [x] Allowed archive header controls to stay usable even when no archived items are currently listed but the archive file can still be opened.
+- [x] Added regression coverage for archive filename, archive append, and archive markdown generation helpers.
+- [x] Restored Marp class discovery parity so v2 loads available classes from workspace `.kanban/marp.json` config and discovered theme CSS files instead of only static fallback values.
+- [x] Restored a file-header Marp class refresh action so discovered classes can be reloaded without reopening the board.
+- [x] Restored element-level Marp class menus so they consume the same discovered class set as the file-header Marp class menu.
+- [x] Verified that dragged template sources already route through the same template application flow as menu-triggered inserts, including variable prompts, companion file copies, and filename placeholder resolution.
+- [x] Replaced the top-bar empty, template, clipboard, and incoming popups with draggable source-item lists and backed `Incoming` with stored quick-capture history entries.
+- [x] Restored card drag/drop parity so dropping into a stack without columns creates an unnamed column automatically.
+- [x] Restored card drag/drop parity so dropping into a row without stacks or columns creates unnamed stack and column containers automatically.
+- [x] Restored card drag/drop parity so the last card moved out of an unnamed column removes that column and any now-empty unnamed parent stack automatically.
+- [x] Verified that empty rows are already auto-removed after move operations, which satisfies the unnamed-row cleanup rule from the drag/drop spec.
+- [x] Restored column drag/drop parity so dropping into a row body creates an unnamed stack in that row automatically.
+- [x] Restored column drag/drop parity so dropping into a top-level row position creates a new unnamed row containing an unnamed stack automatically.
+- [x] Restored stack drag/drop parity so dropping into a row body appends the stack into that row.
+- [x] Restored stack drag/drop parity so dropping into a top-level row position creates a new unnamed row automatically.
+- [x] Restored drag/drop feedback for the new row-level stack and column targets in both the board view and hierarchy.
+- [x] Restored hidden row, stack, column, and card drag-out capture so recovery targets are preserved across board rerenders and work from both the board view and the hierarchy.
+- [x] Kept inline card editing open when the app loses focus so external clicks or drag prep do not auto-save and close the editor.
+- [x] Restored export scope selection so the dialog reflects the real board rows, stacks, and columns instead of a flat generic column list.
+- [x] Restored export scope combinations so full-board, row, stack, and column selections can be mixed while still flattening correctly for the export pipeline.
+- [x] Restored export entry-point parity so row, stack, and column context-menu exports open the dialog with the matching scope preselected.
+- [x] Restored selection-aware export backend handling so keep, kanban, presentation, and document exports all honor the chosen board subset.
+- [x] Added regression coverage for export-tree scope selection and backend subset export helpers.
+- [x] Restored inline `Escape` cancel behavior so the inline card editor closes without saving.
+
+## Open
+
+- [ ] Add the export-preset dropdown (`Marp presentation`, `Marp PDF`, `Share content`, `Custom settings`) from the export spec.
+- [ ] Add auto-export-on-save / re-export-until-stopped control to the export dialog and wire it to the export pipeline.
+- [ ] Add the merge-includes checkbox and wire `stripIncludes` / include-merging behavior from the export spec.
+- [ ] Add embed-handling controls for iframe/url exports (`show URL`, `fallback image`, `remove`).
+- [ ] Add Marp browser selection / auto-detect control for preview and export launches.
+- [ ] Add link-and-asset handling mode selection with pack options and file-size limit.

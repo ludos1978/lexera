@@ -1,6 +1,6 @@
 /// Tauri commands for export functionality: Marp CLI, Pandoc CLI, theme discovery.
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -70,6 +70,159 @@ pub struct ThemeInfo {
     pub name: String,
     pub path: String,
     pub builtin: bool,
+}
+
+fn collect_marp_scan_dirs(dirs: &[String]) -> Vec<PathBuf> {
+    let mut scan_dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
+
+    if let Some(home) = dirs::home_dir() {
+        for common in &[".marp/themes", "themes", "_themes", "assets/themes"] {
+            scan_dirs.push(home.join(common));
+        }
+    }
+
+    scan_dirs
+}
+
+fn is_marp_theme_file(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    name.ends_with(".marp.css") || name.ends_with(".css")
+}
+
+fn collect_marp_theme_files(scan_dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    let mut files = Vec::new();
+
+    for dir in scan_dirs {
+        if !dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() || !is_marp_theme_file(&path) {
+                    continue;
+                }
+                let key = path.to_string_lossy().to_string();
+                if seen.insert(key) {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    files
+}
+
+fn strip_css_comments(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let bytes = source.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(bytes.len());
+            continue;
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+
+    out
+}
+
+fn insert_selector_class_names(selector: &str, out: &mut BTreeSet<String>) {
+    let trimmed = selector.trim();
+    if trimmed.is_empty() || trimmed.starts_with('@') {
+        return;
+    }
+
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '.' {
+            let next = chars.get(i + 1).copied();
+            if matches!(next, Some(ch) if ch.is_ascii_alphabetic() || ch == '_') {
+                let mut j = i + 1;
+                while j < chars.len() {
+                    let ch = chars[j];
+                    if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                        j += 1;
+                    } else {
+                        break;
+                    }
+                }
+                if j > i + 1 {
+                    let class_name: String = chars[i + 1..j].iter().collect();
+                    if !class_name.is_empty() {
+                        out.insert(class_name);
+                    }
+                }
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+}
+
+fn extract_marp_classes_from_css(source: &str) -> Vec<String> {
+    let stripped = strip_css_comments(source);
+    let mut classes = BTreeSet::new();
+    let mut selector_buffer = String::new();
+
+    for ch in stripped.chars() {
+        if ch == '{' {
+            insert_selector_class_names(&selector_buffer, &mut classes);
+            selector_buffer.clear();
+            continue;
+        }
+        if ch == '}' {
+            selector_buffer.clear();
+            continue;
+        }
+        selector_buffer.push(ch);
+    }
+
+    classes.into_iter().collect()
+}
+
+fn insert_marp_config_classes(scan_dirs: &[PathBuf], out: &mut BTreeSet<String>) {
+    let mut seen = BTreeSet::new();
+
+    for dir in scan_dirs {
+        for ancestor in dir.ancestors() {
+            let config_path = ancestor.join(".kanban").join("marp.json");
+            let key = config_path.to_string_lossy().to_string();
+            if !seen.insert(key) || !config_path.is_file() {
+                continue;
+            }
+
+            let Ok(raw) = std::fs::read_to_string(&config_path) else {
+                continue;
+            };
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                continue;
+            };
+            let Some(classes) = json.get("availableClasses").and_then(|value| value.as_array()) else {
+                continue;
+            };
+
+            for class_name in classes {
+                let Some(class_name) = class_name.as_str() else {
+                    continue;
+                };
+                let trimmed = class_name.trim();
+                if !trimmed.is_empty() {
+                    out.insert(trimmed.to_string());
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -523,48 +676,51 @@ pub async fn discover_marp_themes(dirs: Vec<String>) -> Vec<ThemeInfo> {
         });
     }
 
-    // Common theme directories to scan
-    let mut scan_dirs: Vec<PathBuf> = dirs.iter().map(PathBuf::from).collect();
+    let scan_dirs = collect_marp_scan_dirs(&dirs);
 
-    // Add common paths relative to home
-    if let Some(home) = dirs::home_dir() {
-        for common in &[".marp/themes", "themes", "_themes", "assets/themes"] {
-            scan_dirs.push(home.join(common));
-        }
+    for path in collect_marp_theme_files(&scan_dirs) {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let theme_name = name
+            .strip_suffix(".marp.css")
+            .or_else(|| name.strip_suffix(".css"))
+            .unwrap_or(&name)
+            .to_string();
+
+        themes.push(ThemeInfo {
+            name: theme_name,
+            path: path.to_string_lossy().to_string(),
+            builtin: false,
+        });
     }
 
-    // Scan each directory for .css and .marp.css files
-    for dir in &scan_dirs {
-        if !dir.is_dir() {
+    themes
+}
+
+/// Discover Marp classes from workspace config and theme CSS files.
+#[tauri::command]
+pub async fn discover_marp_classes(dirs: Vec<String>) -> Vec<String> {
+    let scan_dirs = collect_marp_scan_dirs(&dirs);
+    let mut classes = BTreeSet::new();
+
+    insert_marp_config_classes(&scan_dirs, &mut classes);
+
+    for path in collect_marp_theme_files(&scan_dirs) {
+        let Ok(source) = std::fs::read_to_string(&path) else {
             continue;
-        }
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_string();
-
-                if name.ends_with(".marp.css") || name.ends_with(".css") {
-                    let theme_name = name
-                        .strip_suffix(".marp.css")
-                        .or_else(|| name.strip_suffix(".css"))
-                        .unwrap_or(&name)
-                        .to_string();
-
-                    themes.push(ThemeInfo {
-                        name: theme_name,
-                        path: path.to_string_lossy().to_string(),
-                        builtin: false,
-                    });
-                }
+        };
+        for class_name in extract_marp_classes_from_css(&source) {
+            if !class_name.is_empty() {
+                classes.insert(class_name);
             }
         }
     }
 
-    themes
+    classes.into_iter().collect()
 }
 
 /// Open a folder in the system file manager.

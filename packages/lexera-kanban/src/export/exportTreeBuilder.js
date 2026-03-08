@@ -1,245 +1,503 @@
 /**
- * Build hierarchical tree structure for export dialog.
- * Organizes board into: Rows → Stacks → Columns.
- *
- * Ported from src/html/utils/exportTreeBuilder.js
+ * Build the hierarchical selection tree for the export dialog.
+ * Uses the board's real row -> stack -> column structure when available,
+ * while keeping a legacy flat-column fallback for old boards.
  */
 
 const PARKED_TAG = '#hidden-internal-parked';
 const DELETED_TAG = '#hidden-internal-deleted';
+const ARCHIVED_TAG = '#hidden-internal-archived';
+const PLAIN_HIDDEN_TAG_PATTERN = /(^|\s)#hidden(?=\s|$)/i;
 const EXCLUDE_TAG_PATTERN = /#exclude(?=\s|$)/i;
 
 class ExportTreeBuilder {
     static isHiddenItem(title) {
-        return title && (title.includes(PARKED_TAG) || title.includes(DELETED_TAG));
+        var value = String(title || '');
+        return !!value && (
+            value.indexOf(PARKED_TAG) !== -1 ||
+            value.indexOf(DELETED_TAG) !== -1 ||
+            value.indexOf(ARCHIVED_TAG) !== -1 ||
+            PLAIN_HIDDEN_TAG_PATTERN.test(value)
+        );
     }
 
     static isExcludedItem(title) {
-        return title && EXCLUDE_TAG_PATTERN.test(title);
+        return EXCLUDE_TAG_PATTERN.test(String(title || ''));
     }
 
     /**
-     * Build export tree from board data (columns array from REST API).
-     * @param {{ columns: Array<{index: number, title: string, id?: string}> }} board
-     * @returns {object|null} Hierarchical tree
+     * Build export tree from board data.
+     * @param {{ rows?: Array, columns?: Array }} board
+     * @returns {object}
      */
     static buildExportTree(board) {
-        if (!board || !board.columns) return null;
-
-        const tree = {
+        var rows = this.normalizeBoardRows(board);
+        var tree = {
             type: 'root',
-            label: 'Full Kanban',
+            label: 'Full Board',
+            explicitSelected: false,
             selected: false,
-            scope: 'full',
+            partial: false,
+            excluded: false,
+            scope: 'board',
             children: [],
         };
 
-        const rowMap = new Map();
+        var flatVisibleColumnIndex = 0;
 
-        board.columns.forEach((column, idx) => {
-            const columnIndex = column.index !== undefined ? column.index : idx;
-            if (this.isHiddenItem(column.title)) return;
+        for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+            var row = rows[rowIndex];
+            if (!row || this.isHiddenItem(row.title)) continue;
 
-            const rowNumber = this.getColumnRow(column.title);
-            if (!rowMap.has(rowNumber)) rowMap.set(rowNumber, []);
-            rowMap.get(rowNumber).push({
-                column,
-                columnIndex,
-                isStacked: this.isColumnStacked(column.title),
-                excluded: this.isExcludedItem(column.title),
-            });
-        });
-
-        const sortedRows = Array.from(rowMap.entries()).sort((a, b) => a[0] - b[0]);
-
-        sortedRows.forEach(([rowNumber, columns]) => {
-            const rowNode = {
+            var rowNode = {
                 type: 'row',
-                label: `Row ${rowNumber}`,
+                label: this.cleanHierarchyTitle(row.title, 'Row ' + (rowIndex + 1)),
+                explicitSelected: false,
                 selected: false,
+                partial: false,
+                excluded: false,
                 scope: 'row',
-                rowNumber,
+                rowIndex: rowIndex,
                 children: [],
             };
 
-            const stacks = this.groupIntoStacks(columns);
+            var stacks = Array.isArray(row.stacks) ? row.stacks : [];
+            for (var stackIndex = 0; stackIndex < stacks.length; stackIndex++) {
+                var stack = stacks[stackIndex];
+                if (!stack || this.isHiddenItem(stack.title)) continue;
 
-            stacks.forEach((stack, stackIndex) => {
-                if (stack.length > 1) {
-                    const stackLabel = stack
-                        .map(item => this.getCleanColumnTitle(item.column.title) || 'Untitled')
-                        .join(', ');
+                var stackNode = {
+                    type: 'stack',
+                    label: this.cleanHierarchyTitle(stack.title, 'Stack ' + (stackIndex + 1)),
+                    explicitSelected: false,
+                    selected: false,
+                    partial: false,
+                    excluded: false,
+                    scope: 'stack',
+                    rowIndex: rowIndex,
+                    stackIndex: stackIndex,
+                    children: [],
+                };
 
-                    const stackNode = {
-                        type: 'stack',
-                        label: `Stack (${stackLabel})`,
-                        selected: false,
-                        scope: 'stack',
-                        rowNumber,
-                        stackIndex,
-                        children: [],
-                    };
+                var columns = Array.isArray(stack.columns) ? stack.columns : [];
+                for (var columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+                    var column = columns[columnIndex];
+                    if (!column || this.isHiddenItem(column.title)) continue;
 
-                    stack.forEach(item => {
-                        const title = this.getCleanColumnTitle(item.column.title) || 'Untitled';
-                        const node = {
-                            type: 'column',
-                            label: `Column: ${title}`,
-                            selected: false,
-                            scope: 'column',
-                            columnIndex: item.columnIndex,
-                            columnId: item.column.id,
-                            children: [],
-                        };
-                        if (item.excluded) node.excluded = true;
-                        stackNode.children.push(node);
-                    });
-
-                    rowNode.children.push(stackNode);
-                } else {
-                    const item = stack[0];
-                    const title = this.getCleanColumnTitle(item.column.title) || 'Untitled';
-                    const node = {
+                    var columnNode = {
                         type: 'column',
-                        label: `Column: ${title}`,
+                        label: this.cleanHierarchyTitle(column.title, 'Column ' + (columnIndex + 1)),
+                        explicitSelected: false,
                         selected: false,
+                        partial: false,
+                        excluded: this.isExcludedItem(column.title),
                         scope: 'column',
-                        columnIndex: item.columnIndex,
-                        columnId: item.column.id,
+                        rowIndex: rowIndex,
+                        stackIndex: stackIndex,
+                        columnIndex: columnIndex,
+                        flatColumnIndex: flatVisibleColumnIndex,
+                        columnId: column.id || null,
                         children: [],
                     };
-                    if (item.excluded) node.excluded = true;
-                    rowNode.children.push(node);
+                    flatVisibleColumnIndex += 1;
+                    stackNode.children.push(columnNode);
                 }
-            });
 
-            tree.children.push(rowNode);
-        });
+                if (stackNode.children.length > 0) rowNode.children.push(stackNode);
+            }
 
+            if (rowNode.children.length > 0) tree.children.push(rowNode);
+        }
+
+        this.finalizeNode(tree, true);
+        this.refreshSelectionState(tree, false, true);
         return tree;
     }
 
+    static normalizeBoardRows(board) {
+        if (!board) return [];
+        if (Array.isArray(board.rows) && board.rows.length > 0) return board.rows;
+        if (Array.isArray(board.columns) && board.columns.length > 0) {
+            return this.rowsFromLegacyColumns(board.columns);
+        }
+        return [];
+    }
+
+    static rowsFromLegacyColumns(columns) {
+        var rowMap = new Map();
+        var list = Array.isArray(columns) ? columns : [];
+
+        for (var i = 0; i < list.length; i++) {
+            var column = list[i];
+            if (!column || this.isHiddenItem(column.title)) continue;
+            var rowNumber = this.getColumnRow(column.title);
+            if (!rowMap.has(rowNumber)) rowMap.set(rowNumber, []);
+            rowMap.get(rowNumber).push({
+                id: column.id || null,
+                title: column.title || '',
+                cards: Array.isArray(column.cards) ? column.cards : [],
+                includeSource: column.includeSource || null,
+                isStacked: this.isColumnStacked(column.title),
+            });
+        }
+
+        var sortedRows = Array.from(rowMap.entries()).sort(function (a, b) {
+            return a[0] - b[0];
+        });
+
+        return sortedRows.map(function (entry, rowIdx) {
+            var rowNumber = entry[0];
+            var rowColumns = entry[1];
+            var stacks = ExportTreeBuilder.groupIntoStacks(rowColumns).map(function (stackColumns, stackIdx) {
+                return {
+                    id: 'legacy-stack-' + rowNumber + '-' + stackIdx,
+                    title: stackColumns.length > 1
+                        ? ('Stack ' + (stackIdx + 1))
+                        : (stackColumns[0] && stackColumns[0].title ? stackColumns[0].title : ('Stack ' + (stackIdx + 1))),
+                    columns: stackColumns,
+                };
+            });
+            return {
+                id: 'legacy-row-' + rowNumber + '-' + rowIdx,
+                title: 'Row ' + rowNumber,
+                stacks: stacks,
+            };
+        });
+    }
+
     static getColumnRow(title) {
-        if (!title) return 1;
-        const matches = title.match(/#row(\d+)\b/gi);
+        var value = String(title || '');
+        var matches = value.match(/#row(\d+)\b/gi);
         if (matches && matches.length > 0) {
-            const num = parseInt(matches[matches.length - 1].replace(/#row/i, ''), 10);
+            var num = parseInt(matches[matches.length - 1].replace(/#row/i, ''), 10);
             return isNaN(num) ? 1 : num;
         }
         return 1;
     }
 
     static isColumnStacked(title) {
-        return /#stack\b/i.test(title);
-    }
-
-    static getCleanColumnTitle(title) {
-        if (!title) return '';
-        return title
-            .replace(/#row\d+/gi, '')
-            .replace(/#span\d+/gi, '')
-            .replace(/#stack\b/gi, '')
-            .replace(/#hidden-internal-parked\b/gi, '')
-            .replace(/#hidden-internal-deleted\b/gi, '')
-            .replace(/#exclude\b/gi, '')
-            .trim();
+        return /#stack\b/i.test(String(title || ''));
     }
 
     static groupIntoStacks(columns) {
-        const stacks = [];
-        let i = 0;
+        var stacks = [];
+        var i = 0;
         while (i < columns.length) {
-            const currentStack = [columns[i]];
-            i++;
+            var currentStack = [columns[i]];
+            i += 1;
             while (i < columns.length && columns[i].isStacked) {
                 currentStack.push(columns[i]);
-                i++;
+                i += 1;
             }
             stacks.push(currentStack);
         }
         return stacks;
     }
 
-    static getSelectedItems(tree) {
-        const columnIndexes = new Set();
-        const traverse = (node) => {
-            if (node.selected) {
-                this.collectColumnIndexes(node, columnIndexes);
-            } else if (node.children) {
-                node.children.forEach(child => traverse(child));
-            }
-        };
-        traverse(tree);
-        return Array.from(columnIndexes);
+    static cleanHierarchyTitle(title, fallback) {
+        var value = this.stripHtmlComments(String(title || ''))
+            .replace(/#row\d+\b/gi, '')
+            .replace(/#span\d+\b/gi, '')
+            .replace(/#stack\b/gi, '')
+            .replace(/#hidden-internal-(?:parked|archived|deleted)\b/gi, '')
+            .replace(PLAIN_HIDDEN_TAG_PATTERN, ' ')
+            .replace(EXCLUDE_TAG_PATTERN, '')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/[ \t]{2,}/g, ' ')
+            .trim();
+        return value || String(fallback || '').trim() || 'Untitled';
     }
 
-    static collectColumnIndexes(node, set) {
-        if (node.type === 'column' && node.columnIndex !== undefined && !node.excluded) {
-            set.add(node.columnIndex);
+    static stripHtmlComments(value) {
+        return String(value || '').replace(/<!--[\s\S]*?-->/g, '').trim();
+    }
+
+    static finalizeNode(node, isRoot) {
+        if (!node || !node.children || node.children.length === 0) {
+            node.partial = false;
+            if (!isRoot) node.excluded = !!node.excluded;
+            return node.excluded ? 0 : 1;
         }
-        if (node.children) {
-            node.children.forEach(child => this.collectColumnIndexes(child, set));
+
+        var selectableChildren = 0;
+        for (var i = 0; i < node.children.length; i++) {
+            selectableChildren += this.finalizeNode(node.children[i], false);
         }
+
+        node.selected = false;
+        node.partial = false;
+        node.explicitSelected = !!node.explicitSelected;
+        if (!isRoot) node.excluded = selectableChildren === 0;
+        return node.excluded ? 0 : selectableChildren;
+    }
+
+    static getSelection(tree) {
+        var columnIndexes = new Set();
+        var columnIds = new Set();
+        var scopes = [];
+
+        var traverse = (node) => {
+            if (!node || node.excluded) return;
+            if (node.selected) {
+                scopes.push(this.describeSelectionNode(node));
+                this.collectColumnRefs(node, columnIndexes, columnIds);
+                return;
+            }
+            if (!node.children) return;
+            for (var i = 0; i < node.children.length; i++) {
+                traverse(node.children[i]);
+            }
+        };
+
+        traverse(tree);
+
+        var selection = {
+            hasSelection: scopes.length > 0,
+            isFullBoard: !!(tree && tree.selected),
+            columnIndexes: Array.from(columnIndexes).sort(function (a, b) { return a - b; }),
+            columnIds: Array.from(columnIds),
+            scopes: scopes,
+        };
+        selection.summary = this.summarizeSelection(selection);
+        return selection;
+    }
+
+    static describeSelectionNode(node) {
+        return {
+            nodeId: this.generateNodeId(node),
+            scope: node.type === 'root' ? 'board' : node.scope,
+            label: node.label,
+            rowIndex: typeof node.rowIndex === 'number' ? node.rowIndex : null,
+            stackIndex: typeof node.stackIndex === 'number' ? node.stackIndex : null,
+            columnIndex: typeof node.columnIndex === 'number' ? node.columnIndex : null,
+            flatColumnIndex: typeof node.flatColumnIndex === 'number' ? node.flatColumnIndex : null,
+            columnId: node.columnId || null,
+        };
+    }
+
+    static collectColumnRefs(node, columnIndexes, columnIds) {
+        if (!node || node.excluded) return;
+        if (node.type === 'column') {
+            if (typeof node.flatColumnIndex === 'number') columnIndexes.add(node.flatColumnIndex);
+            if (node.columnId) columnIds.add(node.columnId);
+            return;
+        }
+        if (!node.children) return;
+        for (var i = 0; i < node.children.length; i++) {
+            this.collectColumnRefs(node.children[i], columnIndexes, columnIds);
+        }
+    }
+
+    static summarizeSelection(selection) {
+        if (!selection || !selection.hasSelection) {
+            return { label: 'No selection', key: 'none' };
+        }
+        if (selection.isFullBoard) {
+            return { label: 'Full board', key: 'full' };
+        }
+
+        var scopes = selection.scopes || [];
+        var labels = scopes
+            .map(function (scope) { return String(scope.label || '').trim(); })
+            .filter(function (label) { return label.length > 0; });
+
+        if (scopes.length === 1) {
+            return {
+                label: labels[0] || 'Selection',
+                key: this.sanitizeRangeToken(labels[0] || scopes[0].scope || 'selection'),
+            };
+        }
+
+        if (labels.length > 0 && labels.length <= 3) {
+            var compact = labels.join(', ');
+            return {
+                label: compact,
+                key: this.sanitizeRangeToken(labels.join('-')) || (labels.length + '-scopes'),
+            };
+        }
+
+        var counts = { board: 0, row: 0, stack: 0, column: 0 };
+        for (var i = 0; i < scopes.length; i++) {
+            var scopeType = scopes[i].scope;
+            if (Object.prototype.hasOwnProperty.call(counts, scopeType)) counts[scopeType] += 1;
+        }
+
+        var parts = [];
+        if (counts.board) parts.push(counts.board + ' board');
+        if (counts.row) parts.push(counts.row + (counts.row === 1 ? ' row' : ' rows'));
+        if (counts.stack) parts.push(counts.stack + (counts.stack === 1 ? ' stack' : ' stacks'));
+        if (counts.column) parts.push(counts.column + (counts.column === 1 ? ' column' : ' columns'));
+
+        return {
+            label: parts.join(', ') || (scopes.length + ' scopes'),
+            key: this.buildCountSummaryKey(counts, scopes.length),
+        };
+    }
+
+    static buildCountSummaryKey(counts, fallbackCount) {
+        var parts = [];
+        if (counts.board) parts.push(counts.board + 'board');
+        if (counts.row) parts.push(counts.row + 'rows');
+        if (counts.stack) parts.push(counts.stack + 'stacks');
+        if (counts.column) parts.push(counts.column + 'cols');
+        if (parts.length === 0) return String(fallbackCount || 0) + '-scopes';
+        return parts.join('-');
+    }
+
+    static sanitizeRangeToken(value) {
+        return String(value || '')
+            .replace(/[^a-zA-Z0-9_-]+/g, '-')
+            .replace(/-{2,}/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .substring(0, 40)
+            .toLowerCase();
+    }
+
+    static getSelectedItems(tree) {
+        return this.getSelection(tree).columnIndexes;
+    }
+
+    static getSelectedColumnLabels(tree) {
+        var labels = [];
+        var selection = this.getSelection(tree);
+        for (var i = 0; i < selection.scopes.length; i++) {
+            if (selection.scopes[i].scope === 'column' && selection.scopes[i].label) {
+                labels.push(selection.scopes[i].label);
+            }
+        }
+        return labels;
     }
 
     static toggleSelection(tree, nodeId, selected) {
-        const node = this.findNodeById(tree, nodeId);
+        var node = this.findNodeById(tree, nodeId);
         if (!node || node.excluded) return tree;
-        node.selected = selected;
-        if (node.children) this.selectAllChildren(node, selected);
-        this.updateParentSelection(tree);
+        node.explicitSelected = !!selected;
+        if (node.children && node.children.length > 0) {
+            this.clearExplicitSelection(node.children);
+        }
+        this.refreshSelectionState(tree, false, true);
         return tree;
     }
 
-    static selectAllChildren(node, selected) {
-        if (!node.children) return;
-        node.children.forEach(child => {
-            if (!child.excluded) child.selected = selected;
-            this.selectAllChildren(child, selected);
-        });
+    static clearSelection(tree) {
+        if (!tree) return tree;
+        tree.explicitSelected = false;
+        this.clearExplicitSelection(tree.children);
+        this.refreshSelectionState(tree, false, true);
+        return tree;
     }
 
-    static updateParentSelection(node) {
-        if (!node.children || node.children.length === 0) return;
-        node.children.forEach(child => this.updateParentSelection(child));
-        const selectable = node.children.filter(c => !c.excluded);
-        if (selectable.length > 0 && selectable.every(c => c.selected)) {
-            node.selected = true;
-        } else if (selectable.some(c => !c.selected)) {
-            node.selected = false;
+    static setOnlySelection(tree, nodeId) {
+        if (!tree) return tree;
+        this.clearSelection(tree);
+        if (!nodeId) return tree;
+        return this.toggleSelection(tree, nodeId, true);
+    }
+
+    static clearExplicitSelection(nodes) {
+        if (!Array.isArray(nodes)) return;
+        for (var i = 0; i < nodes.length; i++) {
+            nodes[i].explicitSelected = false;
+            if (nodes[i].children && nodes[i].children.length > 0) {
+                this.clearExplicitSelection(nodes[i].children);
+            }
         }
     }
 
+    static refreshSelectionState(node, inheritedSelected, isRoot) {
+        if (!node) return false;
+        if (node.excluded) {
+            node.selected = false;
+            node.partial = false;
+            return false;
+        }
+
+        var isSelected = !!inheritedSelected || !!node.explicitSelected;
+        node.selected = isSelected;
+        node.partial = false;
+
+        if (!node.children || node.children.length === 0) {
+            return isSelected;
+        }
+
+        var anyChildActive = false;
+        for (var i = 0; i < node.children.length; i++) {
+            if (this.refreshSelectionState(node.children[i], isSelected, false)) {
+                anyChildActive = true;
+            }
+        }
+
+        if (!isSelected) {
+            node.partial = anyChildActive;
+        } else if (!isRoot) {
+            node.partial = false;
+        }
+
+        return isSelected || anyChildActive;
+    }
+
     static findNodeById(tree, id) {
+        if (!tree) return null;
         if (this.generateNodeId(tree) === id) return tree;
         if (!tree.children) return null;
-        for (const child of tree.children) {
-            const found = this.findNodeById(child, id);
+        for (var i = 0; i < tree.children.length; i++) {
+            var found = this.findNodeById(tree.children[i], id);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    static findNode(tree, predicate) {
+        if (!tree || typeof predicate !== 'function') return null;
+        if (predicate(tree)) return tree;
+        if (!tree.children) return null;
+        for (var i = 0; i < tree.children.length; i++) {
+            var found = this.findNode(tree.children[i], predicate);
             if (found) return found;
         }
         return null;
     }
 
     static generateNodeId(node) {
+        if (!node) return 'unknown';
         if (node.type === 'root') return 'root';
-        if (node.type === 'row') return `row-${node.rowNumber}`;
-        if (node.type === 'stack') return `stack-${node.rowNumber}-${node.stackIndex}`;
-        if (node.type === 'column') return `column-${node.columnIndex}`;
+        if (node.type === 'row') return 'row-' + node.rowIndex;
+        if (node.type === 'stack') return 'stack-' + node.rowIndex + '-' + node.stackIndex;
+        if (node.type === 'column') return 'column-' + node.rowIndex + '-' + node.stackIndex + '-' + node.columnIndex;
         return 'unknown';
     }
 
-    static getSelectedColumnLabels(tree) {
-        const labels = [];
-        const traverse = (node) => {
-            if (node.type === 'column' && node.selected) {
-                const clean = node.label.replace(/^Column:\s*/, '').trim();
-                if (clean) labels.push(clean);
-            } else if (node.children) {
-                node.children.forEach(child => traverse(child));
+    static resolveNodeIdForSelection(tree, selection) {
+        if (!tree) return null;
+        var scope = selection && selection.scope ? String(selection.scope).toLowerCase() : 'board';
+        if (scope === 'board' || scope === 'full' || scope === 'root') return 'root';
+        if (scope === 'row' && typeof selection.rowIndex === 'number') {
+            var rowId = 'row-' + selection.rowIndex;
+            return this.findNodeById(tree, rowId) ? rowId : null;
+        }
+        if (scope === 'stack' && typeof selection.rowIndex === 'number' && typeof selection.stackIndex === 'number') {
+            var stackId = 'stack-' + selection.rowIndex + '-' + selection.stackIndex;
+            return this.findNodeById(tree, stackId) ? stackId : null;
+        }
+        if (scope === 'column') {
+            if (typeof selection.rowIndex === 'number' && typeof selection.stackIndex === 'number' && typeof selection.columnIndex === 'number') {
+                var columnId = 'column-' + selection.rowIndex + '-' + selection.stackIndex + '-' + selection.columnIndex;
+                if (this.findNodeById(tree, columnId)) return columnId;
             }
-        };
-        traverse(tree);
-        return labels;
+            if (selection.columnId) {
+                var byColumnId = this.findNode(tree, function (node) {
+                    return node.type === 'column' && node.columnId === selection.columnId;
+                });
+                if (byColumnId) return this.generateNodeId(byColumnId);
+            }
+            if (typeof selection.flatColumnIndex === 'number') {
+                var byFlatIndex = this.findNode(tree, function (node) {
+                    return node.type === 'column' && node.flatColumnIndex === selection.flatColumnIndex;
+                });
+                if (byFlatIndex) return this.generateNodeId(byFlatIndex);
+            }
+        }
+        return null;
     }
 }
 

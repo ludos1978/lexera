@@ -59,12 +59,19 @@ function loadAppUtils() {
     extractFunction(findLine('function parseLocalFileReference(')),
     extractFunction(findLine('function stripMarkdownExtension(')),
     extractFunction(findLine('function normalizeWikiLookupKey(')),
+    extractFunction(findLine('function extractHtmlComments(')),
+    extractFunction(findLine('function stripHtmlComments(')),
+    extractFunction(findLine('function buildSourceSummaryLabel(')),
+    extractFunction(findLine('function normalizeIncomingImageBase64(')),
+    extractFunction(findLine('function decodeBase64BinaryStringToUint8Array(')),
     extractFunction(findLine('function stripLayoutTags(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
     extractFunction(findLine('function reconstructColumnTitle(')),
     extractFunction(findLine('function normalizeRatio(')),
     extractFunction(findLine('function reorderItems(')),
     extractFunction(findLine('function normalizeDroppedPath(')),
+    extractFunction(findLine('function shouldKeepInlineEditorOpenOnBlur(')),
+    extractFunction(findLine('function shouldCancelInlineEditorOnEscape(')),
   ];
 
   const wrappedSource = `
@@ -76,18 +83,24 @@ function loadAppUtils() {
       normalizePathForCompare,
       parseLocalFileReference,
       normalizeWikiLookupKey,
+      buildSourceSummaryLabel,
+      normalizeIncomingImageBase64,
+      decodeBase64BinaryStringToUint8Array,
       stripLayoutTags,
       getColumnLayoutTags,
       reconstructColumnTitle,
       normalizeRatio,
       reorderItems,
       normalizeDroppedPath,
+      shouldKeepInlineEditorOpenOnBlur,
+      shouldCancelInlineEditorOnEscape,
     };
   `;
 
   // The functions reference URL (global in browser) — Node has it natively.
-  const factory = new Function('URL', wrappedSource);
-  return factory(URL);
+  const atobShim = (value) => Buffer.from(String(value || ''), 'base64').toString('binary');
+  const factory = new Function('URL', 'atob', wrappedSource);
+  return factory(URL, atobShim);
 }
 
 let U; // utility functions under test
@@ -207,6 +220,32 @@ describe('stripLayoutTags', () => {
 
   it('preserves title when there are no layout tags', () => {
     expect(U.stripLayoutTags('Regular Title')).toBe('Regular Title');
+  });
+});
+
+describe('buildSourceSummaryLabel', () => {
+  it('collapses whitespace and trims the result', () => {
+    expect(U.buildSourceSummaryLabel('  alpha   beta \n gamma  ', 'fallback')).toBe('alpha beta gamma');
+  });
+
+  it('returns the fallback when the source is empty', () => {
+    expect(U.buildSourceSummaryLabel('   ', 'fallback')).toBe('fallback');
+  });
+
+  it('truncates long labels to 80 characters', () => {
+    const label = U.buildSourceSummaryLabel('a'.repeat(90), 'fallback');
+    expect(label.length).toBe(80);
+    expect(label.endsWith('...')).toBe(true);
+  });
+});
+
+describe('incoming capture base64 helpers', () => {
+  it('strips the data URL prefix from incoming image payloads', () => {
+    expect(U.normalizeIncomingImageBase64('data:image/png;base64,YWJj')).toBe('YWJj');
+  });
+
+  it('decodes base64 payloads into bytes', () => {
+    expect(Array.from(U.decodeBase64BinaryStringToUint8Array('YWJj'))).toEqual([97, 98, 99]);
   });
 });
 
@@ -444,6 +483,39 @@ describe('normalizeDroppedPath', () => {
 
   it('passes through regular paths unchanged', () => {
     expect(U.normalizeDroppedPath('/home/user/file.md')).toBe('/home/user/file.md');
+  });
+});
+
+describe('shouldKeepInlineEditorOpenOnBlur', () => {
+  it('keeps the inline editor open when the document loses focus', () => {
+    const previousDocument = global.document;
+    global.document = { hasFocus: () => false };
+    try {
+      expect(U.shouldKeepInlineEditorOpenOnBlur()).toBe(true);
+    } finally {
+      global.document = previousDocument;
+    }
+  });
+
+  it('allows the inline editor blur-save when the document is still focused', () => {
+    const previousDocument = global.document;
+    global.document = { hasFocus: () => true };
+    try {
+      expect(U.shouldKeepInlineEditorOpenOnBlur()).toBe(false);
+    } finally {
+      global.document = previousDocument;
+    }
+  });
+});
+
+describe('shouldCancelInlineEditorOnEscape', () => {
+  it('returns true for the Escape key', () => {
+    expect(U.shouldCancelInlineEditorOnEscape({ key: 'Escape' })).toBe(true);
+  });
+
+  it('returns false for other keys or missing events', () => {
+    expect(U.shouldCancelInlineEditorOnEscape({ key: 'Enter' })).toBe(false);
+    expect(U.shouldCancelInlineEditorOnEscape(null)).toBe(false);
   });
 });
 

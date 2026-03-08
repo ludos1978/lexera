@@ -580,6 +580,14 @@ const LexeraDashboard = (function () {
   var _headerSavingInProgress = false;
   var _boardHeaderResizeBound = false;
   var suppressHeaderCreationClickUntil = 0;
+  var activeHeaderSourceDropdown = null;
+  var HEADER_SOURCE_ENTITY_TYPES = ['card', 'column', 'stack', 'row'];
+  var incomingCaptureCache = {
+    items: [],
+    loadedAt: 0,
+    pending: null,
+    available: true
+  };
   var BOARD_HEADER_COMPACT_WIDTH = 1320;
   var BOARD_HEADER_COMPACT_HEADER_WIDTH = 1180;
   var BOARD_HEADER_V1_COMPACT_ICONS = {
@@ -695,8 +703,8 @@ const LexeraDashboard = (function () {
   function normalizeUiScale(value) {
     var parsed = parseFloat(value);
     if (!isFinite(parsed)) return 1;
-    if (parsed < 0.85) return 0.85;
-    if (parsed > 1.25) return 1.25;
+    if (parsed < 0.75) return 0.75;
+    if (parsed > 1.5) return 1.5;
     return Math.round(parsed * 100) / 100;
   }
 
@@ -705,6 +713,18 @@ const LexeraDashboard = (function () {
     $uiScale = normalized;
     document.documentElement.style.setProperty('--ui-scale', String(normalized));
     localStorage.setItem('lexera-ui-scale', String(normalized));
+  }
+
+  function getUiScalePercentLabel() {
+    return Math.round($uiScale * 100) + '%';
+  }
+
+  function nudgeUiScale(delta) {
+    var next = normalizeUiScale($uiScale + delta);
+    if (next === $uiScale) return false;
+    applyUiScale(next);
+    showNotification('Zoom ' + getUiScalePercentLabel());
+    return true;
   }
 
   function isOverlayEditorEnabled() {
@@ -945,8 +965,30 @@ const LexeraDashboard = (function () {
 
   // --- Order Helpers ---
 
+  function extractHtmlComments(text) {
+    var matches = String(text || '').match(/<!--[\s\S]*?-->/g);
+    return matches ? matches.slice() : [];
+  }
+
+  function stripHtmlComments(text) {
+    return String(text || '')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function rebuildTitleWithPreservedComments(userInput, originalTitle) {
+    var cleanTitle = stripHtmlComments(userInput);
+    var comments = extractHtmlComments(originalTitle);
+    if (comments.length === 0) return cleanTitle;
+    return ((cleanTitle ? cleanTitle + ' ' : '') + comments.join(' ')).trim();
+  }
+
   function stripLayoutTags(title) {
-    return String(title || '')
+    return stripHtmlComments(String(title || ''))
       .replace(/\s*#row\d*\b/gi, '')
       .replace(/\s*#span\d*\b/gi, '')
       .replace(/\s*#stack\b/gi, '')
@@ -957,7 +999,7 @@ const LexeraDashboard = (function () {
   }
 
   function stripStackTag(title) {
-    return String(title || '')
+    return stripHtmlComments(String(title || ''))
       .replace(/\s*#stack\b/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
@@ -1043,7 +1085,9 @@ const LexeraDashboard = (function () {
     var source = String(userInput || '');
     var original = getColumnLayoutTags(originalTitle);
     var next = getColumnLayoutTags(source);
+    var preservedComments = extractHtmlComments(originalTitle);
     var cleanTitle = source
+      .replace(/<!--[\s\S]*?-->/g, ' ')
       .replace(/#row\d+\b/gi, '')
       .replace(/#span\d+\b/gi, '')
       .replace(/#stack\b/gi, '')
@@ -1077,6 +1121,10 @@ const LexeraDashboard = (function () {
 
     if (!/#nofooter\b/i.test(source) && (next.footer || (!next.footer && original.footer))) {
       parts.push('#footer');
+    }
+
+    if (preservedComments.length > 0) {
+      parts = parts.concat(preservedComments);
     }
 
     return parts.join(' ').trim();
@@ -4619,6 +4667,11 @@ const LexeraDashboard = (function () {
         });
       }
       activeBoardData = response;
+      try {
+        await refreshAvailableMarpClasses(false);
+      } catch (marpClassErr) {
+        logFrontendIssue('warn', 'board.load.marp-classes', 'Failed to refresh Marp classes during board load', marpClassErr);
+      }
       pendingExternalRebaseConflict = null;
       resetBoardDirtyState('loadBoard-fresh-backend-snapshot', boardId);
       var draftSnapshot = isRemoteBoard ? null : loadLocalBoardDraft(boardId);
@@ -5030,6 +5083,249 @@ const LexeraDashboard = (function () {
     return parts.join(' / ');
   }
 
+  function buildArchiveFileNameFromBoardPath(boardFilePath) {
+    var fileName = getFileNameFromPath(boardFilePath);
+    if (!fileName) return 'archive.md';
+    var extMatch = fileName.match(/(\.[^.]+)$/);
+    var ext = extMatch ? extMatch[1] : '.md';
+    var stem = extMatch ? fileName.slice(0, -ext.length) : fileName;
+    return stem + '-archive' + ext;
+  }
+
+  function buildArchiveRelativePathFromBoardPath(boardFilePath) {
+    return buildArchiveFileNameFromBoardPath(boardFilePath);
+  }
+
+  function buildArchiveFilePathFromBoardPath(boardFilePath) {
+    var filename = buildArchiveFileNameFromBoardPath(boardFilePath);
+    var dir = getDirNameFromPath(boardFilePath);
+    return dir ? (dir + '/' + filename) : filename;
+  }
+
+  function buildArchiveFileHeader() {
+    return '---\narchived: true\n---\n\n';
+  }
+
+  function buildArchiveTagValue(dateValue) {
+    var now = dateValue instanceof Date ? dateValue : new Date();
+    var year = now.getFullYear();
+    var month = String(now.getMonth() + 1).padStart(2, '0');
+    var day = String(now.getDate()).padStart(2, '0');
+    var hours = String(now.getHours()).padStart(2, '0');
+    var minutes = String(now.getMinutes()).padStart(2, '0');
+    var seconds = String(now.getSeconds()).padStart(2, '0');
+    return '#archived !' + year + '.' + month + '.' + day + ' !' + hours + ':' + minutes + ':' + seconds;
+  }
+
+  function buildArchiveSectionHeading(level, label, title, archiveTag) {
+    var depth = isFinite(level) ? Math.max(1, Math.floor(level)) : 1;
+    var hashes = '';
+    for (var i = 0; i < depth; i++) hashes += '#';
+    var heading = hashes + ' Archived ' + label;
+    if (title) heading += ': ' + title;
+    if (archiveTag) heading += ' ' + archiveTag;
+    return heading;
+  }
+
+  function cleanArchiveHeadingTitle(title, options) {
+    options = options || {};
+    var fallback = options.fallback || '';
+    var cleaned = stripInternalHiddenTags(title || '');
+    cleaned = options.isColumn ? stripLayoutTags(cleaned) : stripHtmlComments(cleaned);
+    cleaned = String(cleaned || '').replace(/\s+/g, ' ').trim();
+    return cleaned || fallback;
+  }
+
+  function formatArchivedCardMarkdown(card, archiveTag) {
+    var text = stripInternalHiddenTags(card && card.content ? card.content : '');
+    var lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    while (lines.length > 1 && !String(lines[lines.length - 1] || '').trim()) lines.pop();
+    if (!lines.length) lines = [''];
+
+    var firstLine = String(lines[0] || '').trim();
+    var checked = !!(card && card.checked);
+    var checkboxMatch = firstLine.match(/^\s*-\s*\[([ xX])\]\s*(.*)$/);
+    if (checkboxMatch) {
+      checked = checkboxMatch[1].toLowerCase() === 'x';
+      firstLine = checkboxMatch[2] || '';
+    }
+    firstLine = firstLine.trim() || '(untitled card)';
+
+    var rendered = '- [' + (checked ? 'x' : ' ') + '] ' + firstLine;
+    if (archiveTag) rendered += ' ' + archiveTag;
+
+    for (var i = 1; i < lines.length; i++) {
+      rendered += '\n    ' + stripInternalHiddenTags(lines[i] || '');
+    }
+    return rendered;
+  }
+
+  function buildArchiveMarkdownForColumn(column, archiveTag, headingLevel) {
+    var cleanTitle = cleanArchiveHeadingTitle(column && column.title, {
+      isColumn: true,
+      fallback: 'Untitled Column'
+    });
+    var lines = [buildArchiveSectionHeading(headingLevel || 2, 'Column', cleanTitle, archiveTag), ''];
+    var cards = column && Array.isArray(column.cards) ? column.cards : [];
+    for (var i = 0; i < cards.length; i++) {
+      lines.push(formatArchivedCardMarkdown(cards[i], archiveTag));
+    }
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function buildArchiveMarkdownForStack(stack, archiveTag, headingLevel) {
+    var cleanTitle = cleanArchiveHeadingTitle(stack && stack.title, { fallback: 'Untitled Stack' });
+    var sections = [buildArchiveSectionHeading(headingLevel || 2, 'Stack', cleanTitle, archiveTag)];
+    var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
+    if (columns.length > 0) {
+      sections.push('');
+      for (var i = 0; i < columns.length; i++) {
+        sections.push(buildArchiveMarkdownForColumn(columns[i], archiveTag, (headingLevel || 2) + 1));
+      }
+    }
+    return sections.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function buildArchiveMarkdownForRow(row, archiveTag, headingLevel) {
+    var cleanTitle = cleanArchiveHeadingTitle(row && row.title, { fallback: 'Untitled Row' });
+    var sections = [buildArchiveSectionHeading(headingLevel || 1, 'Row', cleanTitle, archiveTag)];
+    var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+    if (stacks.length > 0) {
+      sections.push('');
+      for (var i = 0; i < stacks.length; i++) {
+        sections.push(buildArchiveMarkdownForStack(stacks[i], archiveTag, (headingLevel || 1) + 1));
+      }
+    }
+    return sections.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function buildArchiveMarkdownForHiddenItems(items, options) {
+    options = options || {};
+    var list = Array.isArray(items) ? items : [];
+    if (list.length === 0) return '';
+
+    var archiveTag = buildArchiveTagValue(options.now);
+    var sections = [];
+    var cards = [];
+
+    for (var i = 0; i < list.length; i++) {
+      var entry = list[i];
+      if (!entry || !entry.kind || !entry.data) continue;
+      if (entry.kind === 'card') {
+        cards.push(entry.data);
+        continue;
+      }
+      if (entry.kind === 'row') {
+        sections.push(buildArchiveMarkdownForRow(entry.data, archiveTag, 1));
+      } else if (entry.kind === 'stack') {
+        sections.push(buildArchiveMarkdownForStack(entry.data, archiveTag, 2));
+      } else if (entry.kind === 'column') {
+        sections.push(buildArchiveMarkdownForColumn(entry.data, archiveTag, 2));
+      }
+    }
+
+    if (cards.length > 0) {
+      var cardLines = ['## Archived Cards', ''];
+      for (var c = 0; c < cards.length; c++) {
+        cardLines.push(formatArchivedCardMarkdown(cards[c], archiveTag));
+      }
+      sections.push(cardLines.join('\n').trim());
+    }
+
+    return sections.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function appendArchivedItemsToArchiveContent(existingContent, archivedContent) {
+    var incoming = String(archivedContent || '').replace(/\r\n/g, '\n').trim();
+    if (!incoming) return String(existingContent || '');
+
+    var existing = String(existingContent || '').replace(/\r\n/g, '\n');
+    if (!existing.trim()) return buildArchiveFileHeader() + incoming + '\n';
+
+    var yamlMatch = existing.match(/^---\n[\s\S]*?\n---\n?/);
+    if (yamlMatch) {
+      var yamlHeader = yamlMatch[0];
+      var restOfContent = existing.slice(yamlHeader.length).trim();
+      return yamlHeader + (restOfContent ? restOfContent + '\n\n' : '') + incoming + '\n';
+    }
+    return existing.replace(/\s+$/, '') + '\n\n' + incoming + '\n';
+  }
+
+  function getArchiveFileContext() {
+    var boardFilePath = getActiveBoardFilePath();
+    if (!activeBoardId || !boardFilePath) return null;
+    return {
+      boardId: activeBoardId,
+      boardFilePath: boardFilePath,
+      filename: buildArchiveFileNameFromBoardPath(boardFilePath),
+      relativePath: buildArchiveRelativePathFromBoardPath(boardFilePath),
+      absolutePath: buildArchiveFilePathFromBoardPath(boardFilePath)
+    };
+  }
+
+  function getHiddenItemArchiveExportEntry(item) {
+    if (!item || !fullBoardData) return null;
+    if (item.kind === 'row') {
+      var row = getRowByLocation(item.rowIndex);
+      return row ? { kind: 'row', data: row } : null;
+    }
+    if (item.kind === 'stack') {
+      var stack = getStackByLocation(item.rowIndex, item.stackIndex);
+      return stack ? { kind: 'stack', data: stack } : null;
+    }
+    if (item.kind === 'column') {
+      var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
+      return col ? { kind: 'column', data: col } : null;
+    }
+    var card = getCardByLocation(item.rowIndex, item.stackIndex, item.colIndex, item.cardIndex);
+    return card ? { kind: 'card', data: card } : null;
+  }
+
+  function collectHiddenItemArchiveExportEntries(items) {
+    var list = Array.isArray(items) ? items : [];
+    var exports = [];
+    for (var i = 0; i < list.length; i++) {
+      var entry = getHiddenItemArchiveExportEntry(list[i]);
+      if (entry) exports.push(entry);
+    }
+    return exports;
+  }
+
+  async function readArchiveFileText(archiveContext) {
+    if (!archiveContext || !archiveContext.boardId || !archiveContext.relativePath) return '';
+    try {
+      var info = await LexeraApi.fileInfo(archiveContext.boardId, archiveContext.relativePath);
+      if (!info || info.exists === false) return '';
+      var response = await fetch(LexeraApi.fileUrl(archiveContext.boardId, archiveContext.relativePath));
+      if (!response.ok) return '';
+      return await response.text();
+    } catch (err) {
+      logFrontendIssue('warn', 'archive.read', 'Failed to read archive file ' + archiveContext.relativePath, err);
+      return '';
+    }
+  }
+
+  async function openArchiveFileFromHeader() {
+    var archiveContext = getArchiveFileContext();
+    if (!archiveContext) {
+      showNotification('Archive file is only available for local board files');
+      return false;
+    }
+    try {
+      var info = await LexeraApi.fileInfo(archiveContext.boardId, archiveContext.relativePath);
+      if (!info || info.exists === false) {
+        showNotification('Archive file does not exist yet');
+        return false;
+      }
+      openInSystem(archiveContext.absolutePath);
+      return true;
+    } catch (err) {
+      logFrontendIssue('warn', 'archive.open', 'Failed to open archive file ' + archiveContext.relativePath, err);
+      showNotification('Failed to open archive file');
+      return false;
+    }
+  }
+
   async function updateHiddenItemTag(item, tag) {
     if (!item || !fullBoardData || !activeBoardId) return false;
     if (item.kind === 'row') {
@@ -5067,51 +5363,426 @@ const LexeraDashboard = (function () {
     });
   }
 
-  async function permanentlyDeleteHiddenItem(item) {
-    if (!item || !fullBoardData || !activeBoardId) return false;
-    traceFrontendAction('info', 'trash.delete', 'Permanently deleting hidden item', {
-      boardId: activeBoardId || null,
-      kind: item.kind,
-      rowIndex: item.rowIndex,
-      stackIndex: item.stackIndex,
-      colIndex: item.colIndex,
-      cardIndex: item.cardIndex,
-      title: item.title || ''
+  function buildHiddenItemRestoreSource(item) {
+    if (!item || !activeBoardId) return null;
+    if (item.kind === 'row') {
+      return {
+        boardId: activeBoardId,
+        rowIndex: item.rowIndex,
+        indexMode: 'full'
+      };
+    }
+    if (item.kind === 'stack') {
+      return {
+        boardId: activeBoardId,
+        rowIndex: item.rowIndex,
+        stackIndex: item.stackIndex,
+        indexMode: 'full'
+      };
+    }
+    if (item.kind === 'column') {
+      return {
+        boardId: activeBoardId,
+        rowIndex: item.rowIndex,
+        stackIndex: item.stackIndex,
+        colIndex: item.colIndex,
+        indexMode: 'full'
+      };
+    }
+    if (item.kind === 'card') {
+      return {
+        boardId: activeBoardId,
+        rowIndex: item.rowIndex,
+        stackIndex: item.stackIndex,
+        colIndex: item.colIndex,
+        cardIndex: item.cardIndex,
+        cardIndexMode: 'full',
+        indexMode: 'full'
+      };
+    }
+    return null;
+  }
+
+  function captureStableRowRestoreTarget(target) {
+    if (!target || !target.boardId || !isFinite(target.rowIndex)) return null;
+    var normalized = {
+      kind: target.kind || 'row',
+      boardId: target.boardId,
+      rowIndex: target.rowIndex,
+      before: !!target.before,
+      indexMode: target.indexMode || (target.boardId === activeBoardId ? 'display' : 'full')
+    };
+    if (normalized.boardId === activeBoardId && normalized.indexMode === 'display') {
+      var fullRowIndex = findFullDataRowIndex(normalized.rowIndex);
+      if (fullRowIndex < 0) return null;
+      normalized.rowIndex = fullRowIndex;
+      normalized.indexMode = 'full';
+    }
+    return normalized;
+  }
+
+  function captureStableStackRestoreTarget(target) {
+    if (!target || !target.boardId) return null;
+    if (target.kind === 'row' || target.kind === 'new-row') {
+      return captureStableRowRestoreTarget(target);
+    }
+    if (!isFinite(target.rowIndex) || !isFinite(target.stackIndex)) return null;
+    var normalized = {
+      kind: target.kind || 'stack',
+      boardId: target.boardId,
+      rowIndex: target.rowIndex,
+      stackIndex: target.stackIndex,
+      before: !!target.before,
+      indexMode: target.indexMode || (target.boardId === activeBoardId ? 'display' : 'full')
+    };
+    if (normalized.boardId === activeBoardId && normalized.indexMode === 'display') {
+      var fullRowIndex = findFullDataRowIndex(normalized.rowIndex);
+      if (fullRowIndex < 0 || !fullBoardData || !fullBoardData.rows || fullRowIndex >= fullBoardData.rows.length) return null;
+      var fullRow = fullBoardData.rows[fullRowIndex];
+      var fullStackIndex = findFullDataStackIndex(fullRow, target.rowIndex, target.stackIndex);
+      if (fullStackIndex < 0) return null;
+      normalized.rowIndex = fullRowIndex;
+      normalized.stackIndex = fullStackIndex;
+      normalized.indexMode = 'full';
+    }
+    return normalized;
+  }
+
+  function captureStableColumnRestoreTarget(target) {
+    if (!target || !target.boardId) return null;
+    if (target.kind === 'row' || target.kind === 'new-row') {
+      return captureStableRowRestoreTarget(target);
+    }
+    if (target.kind === 'stack') {
+      return captureStableStackRestoreTarget(target);
+    }
+    if (target.kind === 'new-stack') {
+      if (!isFinite(target.rowIndex)) return null;
+      var normalizedNewStack = {
+        kind: 'new-stack',
+        boardId: target.boardId,
+        rowIndex: target.rowIndex,
+        insertAtStackIdx: typeof target.insertAtStackIdx === 'number' ? target.insertAtStackIdx : 0,
+        indexMode: target.indexMode || (target.boardId === activeBoardId ? 'display' : 'full')
+      };
+      if (normalizedNewStack.boardId === activeBoardId && normalizedNewStack.indexMode === 'display') {
+        var fullNewStackRowIndex = findFullDataRowIndex(normalizedNewStack.rowIndex);
+        if (fullNewStackRowIndex < 0 || !fullBoardData || !fullBoardData.rows || fullNewStackRowIndex >= fullBoardData.rows.length) return null;
+        var fullTargetRow = fullBoardData.rows[fullNewStackRowIndex];
+        normalizedNewStack.insertAtStackIdx = findInsertStackIndexInRow(
+          fullTargetRow,
+          target.rowIndex,
+          normalizedNewStack.insertAtStackIdx
+        );
+        normalizedNewStack.rowIndex = fullNewStackRowIndex;
+        normalizedNewStack.indexMode = 'full';
+      }
+      return normalizedNewStack;
+    }
+    if (
+      target.kind === 'column' &&
+      isFinite(target.rowIndex) &&
+      isFinite(target.stackIndex) &&
+      isFinite(target.colIndex)
+    ) {
+      var normalizedColumn = {
+        kind: 'column',
+        boardId: target.boardId,
+        rowIndex: target.rowIndex,
+        stackIndex: target.stackIndex,
+        colIndex: target.colIndex,
+        before: !!target.before,
+        indexMode: target.indexMode || (target.boardId === activeBoardId ? 'display' : 'full')
+      };
+      if (normalizedColumn.boardId === activeBoardId && normalizedColumn.indexMode === 'display') {
+        var columnLoc = resolveColumnLocationForMutation(
+          activeBoardId,
+          fullBoardData,
+          target.rowIndex,
+          target.stackIndex,
+          target.colIndex,
+          'display'
+        );
+        if (!columnLoc) return null;
+        normalizedColumn.rowIndex = columnLoc.rowIndex;
+        normalizedColumn.stackIndex = columnLoc.stackIndex;
+        normalizedColumn.colIndex = columnLoc.colIndex;
+        normalizedColumn.indexMode = 'full';
+      }
+      return normalizedColumn;
+    }
+    return null;
+  }
+
+  function getCardTargetDisplayPath(target) {
+    if (!target) return null;
+    if (
+      typeof target.rowIndex === 'number' &&
+      typeof target.stackIndex === 'number' &&
+      typeof target.colIndex === 'number'
+    ) {
+      return {
+        rowIndex: target.rowIndex,
+        stackIndex: target.stackIndex,
+        colIndex: target.colIndex
+      };
+    }
+    var columnEl = target.container && typeof target.container.closest === 'function'
+      ? target.container.closest('.column[data-row-index][data-stack-index][data-col-local-index]')
+      : null;
+    if (!columnEl) return null;
+    var rowIndex = parseInt(columnEl.getAttribute('data-row-index') || '', 10);
+    var stackIndex = parseInt(columnEl.getAttribute('data-stack-index') || '', 10);
+    var colIndex = parseInt(columnEl.getAttribute('data-col-local-index') || '', 10);
+    if (isNaN(rowIndex) || isNaN(stackIndex) || isNaN(colIndex)) return null;
+    return {
+      rowIndex: rowIndex,
+      stackIndex: stackIndex,
+      colIndex: colIndex
+    };
+  }
+
+  function captureStableCardRestoreTarget(target) {
+    if (!target || !target.boardId) return null;
+    if (target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
+      return null;
+    }
+    if (isFinite(target.rowIndex) && isFinite(target.stackIndex) && isFinite(target.colIndex)) {
+      var normalizedColumnTarget = {
+        kind: target.kind || 'main',
+        boardId: target.boardId,
+        rowIndex: target.rowIndex,
+        stackIndex: target.stackIndex,
+        colIndex: target.colIndex,
+        insertIdx: typeof target.insertIdx === 'number' ? target.insertIdx : 0,
+        insertMode: target.insertMode || 'visible',
+        indexMode: target.indexMode || (target.boardId === activeBoardId ? 'display' : 'full')
+      };
+      if (normalizedColumnTarget.boardId === activeBoardId && normalizedColumnTarget.indexMode === 'display') {
+        var targetColumnLoc = resolveColumnLocationForMutation(
+          activeBoardId,
+          fullBoardData,
+          target.rowIndex,
+          target.stackIndex,
+          target.colIndex,
+          'display'
+        );
+        var targetColumn = targetColumnLoc && targetColumnLoc.stack && targetColumnLoc.stack.columns
+          ? targetColumnLoc.stack.columns[targetColumnLoc.colIndex]
+          : null;
+        if (!targetColumnLoc || !targetColumn) return null;
+        normalizedColumnTarget.rowIndex = targetColumnLoc.rowIndex;
+        normalizedColumnTarget.stackIndex = targetColumnLoc.stackIndex;
+        normalizedColumnTarget.colIndex = targetColumnLoc.colIndex;
+        normalizedColumnTarget.insertIdx = resolveInsertCardIndex(
+          targetColumn,
+          normalizedColumnTarget.insertIdx,
+          normalizedColumnTarget.insertMode
+        );
+        normalizedColumnTarget.insertMode = 'full';
+        normalizedColumnTarget.indexMode = 'full';
+      }
+      return normalizedColumnTarget;
+    }
+    if (isFinite(target.rowIndex) && isFinite(target.stackIndex)) {
+      return captureStableStackRestoreTarget(target);
+    }
+    if (isFinite(target.rowIndex)) {
+      return captureStableRowRestoreTarget(target);
+    }
+    var displayPath = getCardTargetDisplayPath(target);
+    if (!displayPath) return null;
+    return captureStableCardRestoreTarget({
+      kind: target.kind || 'main',
+      boardId: target.boardId,
+      rowIndex: displayPath.rowIndex,
+      stackIndex: displayPath.stackIndex,
+      colIndex: displayPath.colIndex,
+      insertIdx: target.insertIdx,
+      insertMode: target.insertMode,
+      indexMode: target.indexMode
     });
-    pushUndo();
+  }
+
+  function captureStableHiddenItemRestoreTarget(kind, mx, my) {
+    if (kind === 'row') {
+      return captureStableRowRestoreTarget(getRowDropTarget(mx, my));
+    }
+    if (kind === 'stack') {
+      var stackTarget = getStackDropTarget(mx, my);
+      if (stackTarget) {
+        return captureStableStackRestoreTarget({
+          kind: 'stack',
+          boardId: stackTarget.boardId,
+          rowIndex: stackTarget.rowIndex,
+          stackIndex: stackTarget.stackIndex,
+          before: stackTarget.before,
+          indexMode: stackTarget.indexMode
+        });
+      }
+      var stackRowBodyTarget = resolveRowBodyDropTarget(mx, my);
+      if (stackRowBodyTarget) {
+        return captureStableStackRestoreTarget({
+          kind: 'row',
+          boardId: stackRowBodyTarget.boardId,
+          rowIndex: stackRowBodyTarget.rowIndex,
+          indexMode: stackRowBodyTarget.indexMode
+        });
+      }
+      var stackRowTarget = getRowDropTarget(mx, my);
+      if (stackRowTarget) {
+        return captureStableStackRestoreTarget({
+          kind: 'new-row',
+          boardId: stackRowTarget.boardId,
+          rowIndex: stackRowTarget.rowIndex,
+          before: stackRowTarget.before,
+          indexMode: stackRowTarget.indexMode
+        });
+      }
+      return null;
+    }
+    if (kind === 'column') {
+      var zone = findStackDropZoneAt(mx, my);
+      if (zone) {
+        return captureStableColumnRestoreTarget({
+          kind: 'new-stack',
+          boardId: activeBoardId,
+          rowIndex: parseInt(zone.getAttribute('data-row-index') || '', 10),
+          insertAtStackIdx: parseInt(zone.getAttribute('data-insert-index') || '', 10),
+          indexMode: 'display'
+        });
+      }
+      var column = findDraggableColumnAt(mx, my);
+      if (column) {
+        var stackEl = column.closest('.board-stack');
+        var stackColumns = stackEl ? stackEl.querySelectorAll('.board-stack-content > .column') : [];
+        var columnDisplayIndex = Array.prototype.indexOf.call(stackColumns, column);
+        return captureStableColumnRestoreTarget({
+          kind: 'column',
+          boardId: activeBoardId,
+          rowIndex: parseInt(stackEl && stackEl.getAttribute('data-row-index') || '', 10),
+          stackIndex: parseInt(stackEl && stackEl.getAttribute('data-stack-index') || '', 10),
+          colIndex: columnDisplayIndex,
+          before: my < column.getBoundingClientRect().top + column.getBoundingClientRect().height / 2,
+          indexMode: 'display'
+        });
+      }
+      var boardStack = findBoardStackAt(mx, my);
+      if (boardStack) {
+        return captureStableColumnRestoreTarget({
+          kind: 'stack',
+          boardId: activeBoardId,
+          rowIndex: parseInt(boardStack.getAttribute('data-row-index') || '', 10),
+          stackIndex: parseInt(boardStack.getAttribute('data-stack-index') || '', 10),
+          indexMode: 'display'
+        });
+      }
+      var treeColumnTarget = getTreeColumnDropTarget(mx, my);
+      if (treeColumnTarget) {
+        return captureStableColumnRestoreTarget({
+          kind: 'column',
+          boardId: treeColumnTarget.boardId,
+          rowIndex: treeColumnTarget.rowIndex,
+          stackIndex: treeColumnTarget.stackIndex,
+          colIndex: treeColumnTarget.colIndex,
+          before: treeColumnTarget.before,
+          indexMode: treeColumnTarget.indexMode
+        });
+      }
+      var treeStackTarget = getTreeStackDropTarget(mx, my);
+      if (treeStackTarget) {
+        return captureStableColumnRestoreTarget({
+          kind: 'stack',
+          boardId: treeStackTarget.boardId,
+          rowIndex: treeStackTarget.rowIndex,
+          stackIndex: treeStackTarget.stackIndex,
+          indexMode: treeStackTarget.indexMode
+        });
+      }
+      var columnRowBodyTarget = resolveRowBodyDropTarget(mx, my);
+      if (columnRowBodyTarget) {
+        return captureStableColumnRestoreTarget({
+          kind: 'row',
+          boardId: columnRowBodyTarget.boardId,
+          rowIndex: columnRowBodyTarget.rowIndex,
+          indexMode: columnRowBodyTarget.indexMode
+        });
+      }
+      var columnRowTarget = getRowDropTarget(mx, my);
+      if (columnRowTarget) {
+        return captureStableColumnRestoreTarget({
+          kind: 'new-row',
+          boardId: columnRowTarget.boardId,
+          rowIndex: columnRowTarget.rowIndex,
+          before: columnRowTarget.before,
+          indexMode: columnRowTarget.indexMode
+        });
+      }
+      return null;
+    }
+    if (kind === 'card') {
+      return captureStableCardRestoreTarget(resolveCardDropTarget(mx, my));
+    }
+    return null;
+  }
+
+  async function restoreHiddenItemToCapturedTarget(item, target) {
+    if (!item) return false;
+    var source = buildHiddenItemRestoreSource(item);
+    if (!source) return false;
+    var restored = await updateHiddenItemTag(item, null);
+    if (restored === false) return false;
+    if (!target) return true;
+    if (item.kind === 'row') {
+      await moveRowAcrossBoards(source, target);
+      return true;
+    }
+    if (item.kind === 'stack') {
+      await moveStackAcrossBoards(source, target);
+      return true;
+    }
+    if (item.kind === 'column') {
+      await moveColumnAcrossBoards(source, target);
+      return true;
+    }
+    if (item.kind === 'card') {
+      await moveCard(source, target);
+      return true;
+    }
+    return true;
+  }
+
+  function removeHiddenItemFromBoard(item) {
+    if (!item || !fullBoardData || !fullBoardData.rows) return false;
     if (item.kind === 'row') {
       if (item.rowIndex < 0 || item.rowIndex >= fullBoardData.rows.length) return false;
       fullBoardData.rows.splice(item.rowIndex, 1);
-    } else if (item.kind === 'stack') {
+      return true;
+    }
+    if (item.kind === 'stack') {
       var row = getRowByLocation(item.rowIndex);
       if (!row || !row.stacks || item.stackIndex < 0 || item.stackIndex >= row.stacks.length) return false;
       row.stacks.splice(item.stackIndex, 1);
       removeEmptyStacksAndRows();
-    } else if (item.kind === 'column') {
+      return true;
+    }
+    if (item.kind === 'column') {
       var stack = fullBoardData.rows[item.rowIndex] && fullBoardData.rows[item.rowIndex].stacks
         ? fullBoardData.rows[item.rowIndex].stacks[item.stackIndex]
         : null;
       if (!stack || !stack.columns || item.colIndex < 0 || item.colIndex >= stack.columns.length) return false;
       stack.columns.splice(item.colIndex, 1);
       removeEmptyStacksAndRows();
-    } else {
-      var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
-      if (!col || !col.cards || item.cardIndex < 0 || item.cardIndex >= col.cards.length) return false;
-      col.cards.splice(item.cardIndex, 1);
+      return true;
     }
-    return persistBoardMutation({
-      refreshMainView: true,
-      refreshSidebar: true
-    });
+    var col = getColumnByLocation(item.rowIndex, item.stackIndex, item.colIndex);
+    if (!col || !col.cards || item.cardIndex < 0 || item.cardIndex >= col.cards.length) return false;
+    col.cards.splice(item.cardIndex, 1);
+    return true;
   }
 
-  async function permanentlyDeleteHiddenItems(items) {
-    if (!items || items.length === 0 || !fullBoardData || !activeBoardId) return false;
-    traceFrontendAction('info', 'trash.empty', 'Permanently deleting all trash items', {
-      boardId: activeBoardId || null,
-      itemCount: items.length
-    });
-    var sorted = items.slice().sort(function (a, b) {
+  function sortHiddenItemsForRemoval(items) {
+    return items.slice().sort(function (a, b) {
       if (a.rowIndex !== b.rowIndex) return b.rowIndex - a.rowIndex;
       if (a.stackIndex !== b.stackIndex) return b.stackIndex - a.stackIndex;
       if (a.colIndex !== b.colIndex) return b.colIndex - a.colIndex;
@@ -5120,8 +5791,11 @@ const LexeraDashboard = (function () {
       var bCardIndex = typeof b.cardIndex === 'number' ? b.cardIndex : -1;
       return bCardIndex - aCardIndex;
     });
+  }
 
-    pushUndo();
+  function removeHiddenItemsFromBoard(items) {
+    if (!items || items.length === 0 || !fullBoardData || !fullBoardData.rows) return false;
+    var sorted = sortHiddenItemsForRemoval(items);
     for (var i = 0; i < sorted.length; i++) {
       var item = sorted[i];
       if (item.kind === 'row') {
@@ -5148,14 +5822,117 @@ const LexeraDashboard = (function () {
       }
     }
     removeEmptyStacksAndRows();
+    return true;
+  }
+
+  async function permanentlyDeleteHiddenItem(item) {
+    if (!item || !fullBoardData || !activeBoardId) return false;
+    traceFrontendAction('info', 'trash.delete', 'Permanently deleting hidden item', {
+      boardId: activeBoardId || null,
+      kind: item.kind,
+      rowIndex: item.rowIndex,
+      stackIndex: item.stackIndex,
+      colIndex: item.colIndex,
+      cardIndex: item.cardIndex,
+      title: item.title || ''
+    });
+    pushUndo();
+    if (!removeHiddenItemFromBoard(item)) return false;
     return persistBoardMutation({
       refreshMainView: true,
       refreshSidebar: true
     });
   }
 
+  async function permanentlyDeleteHiddenItems(items) {
+    if (!items || items.length === 0 || !fullBoardData || !activeBoardId) return false;
+    traceFrontendAction('info', 'trash.empty', 'Permanently deleting all trash items', {
+      boardId: activeBoardId || null,
+      itemCount: items.length
+    });
+    pushUndo();
+    if (!removeHiddenItemsFromBoard(items)) return false;
+    return persistBoardMutation({
+      refreshMainView: true,
+      refreshSidebar: true
+    });
+  }
+
+  async function removeArchivedHiddenItemsAfterExport(items) {
+    var list = Array.isArray(items) ? items.filter(Boolean) : (items ? [items] : []);
+    if (list.length === 0 || !fullBoardData || !activeBoardId) return false;
+    pushUndo();
+    if (list.length === 1) {
+      if (!removeHiddenItemFromBoard(list[0])) return false;
+    } else if (!removeHiddenItemsFromBoard(list)) {
+      return false;
+    }
+    return persistBoardMutation({
+      refreshMainView: true,
+      refreshSidebar: true
+    });
+  }
+
+  async function exportArchivedHiddenItemsToArchiveFile(items) {
+    var list = Array.isArray(items) ? items.filter(Boolean) : (items ? [items] : []);
+    if (list.length === 0) {
+      showNotification('No archived items to export');
+      return false;
+    }
+
+    var archiveContext = getArchiveFileContext();
+    if (!archiveContext) {
+      showNotification('Archive export is only available for local board files');
+      return false;
+    }
+
+    var exportEntries = collectHiddenItemArchiveExportEntries(list);
+    if (exportEntries.length === 0) {
+      showNotification('No archived items to export');
+      return false;
+    }
+
+    traceFrontendAction('info', 'archive.export', 'Exporting archived items to archive file', {
+      boardId: archiveContext.boardId,
+      itemCount: exportEntries.length,
+      archivePath: archiveContext.absolutePath
+    });
+
+    try {
+      var archivedMarkdown = buildArchiveMarkdownForHiddenItems(exportEntries, { now: new Date() });
+      var existingContent = await readArchiveFileText(archiveContext);
+      var finalContent = appendArchivedItemsToArchiveContent(existingContent, archivedMarkdown);
+      await tauriInvoke('write_export_file', {
+        path: archiveContext.absolutePath,
+        content: finalContent
+      });
+
+      var removed = await removeArchivedHiddenItemsAfterExport(list);
+      if (!removed) {
+        showNotification('Archive file updated, but board cleanup failed');
+        return false;
+      }
+
+      showNotification('Exported ' + exportEntries.length + ' archived item(s) to ' + archiveContext.filename);
+      return true;
+    } catch (err) {
+      logFrontendIssue('error', 'archive.export', 'Failed to export archived items to ' + archiveContext.absolutePath, err);
+      showNotification('Failed to export archived items');
+      return false;
+    }
+  }
+
   // ── Hidden Items Dropdown Panel ──────────────────────────────────────
   var activeHiddenDropdown = null;
+
+  function closeHeaderSourceDropdown() {
+    if (activeHeaderSourceDropdown) {
+      if (activeHeaderSourceDropdown.el && activeHeaderSourceDropdown.el.parentNode) activeHeaderSourceDropdown.el.remove();
+      if (activeHeaderSourceDropdown.closeListener) document.removeEventListener('mousedown', activeHeaderSourceDropdown.closeListener, true);
+      if (activeHeaderSourceDropdown.keyListener) document.removeEventListener('keydown', activeHeaderSourceDropdown.keyListener, true);
+      activeHeaderSourceDropdown = null;
+    }
+  }
 
   function closeHiddenItemsDropdown() {
     if (activeHiddenDropdown) {
@@ -5167,9 +5944,13 @@ const LexeraDashboard = (function () {
   }
 
   function showHiddenItemsDropdown(btnElement, tag, title, emptyMessage, actions, footerActions) {
+    closeHeaderSourceDropdown();
     closeHiddenItemsDropdown();
+    actions = Array.isArray(actions) ? actions : [];
+    footerActions = Array.isArray(footerActions) ? footerActions : [];
     var items = collectHiddenItems(tag);
-    if (!items || items.length === 0) {
+    var hasItems = !!(items && items.length > 0);
+    if (!hasItems && footerActions.length === 0) {
       showNotification(emptyMessage);
       return;
     }
@@ -5178,24 +5959,28 @@ const LexeraDashboard = (function () {
     panel.className = 'hidden-items-dropdown';
 
     // Build HTML
-    var html = '<div class="hidden-items-dropdown-header">' + escapeHtml(title) + ' (' + items.length + ')</div>';
+    var html = '<div class="hidden-items-dropdown-header">' + escapeHtml(title) + ' (' + (hasItems ? items.length : 0) + ')</div>';
     html += '<div class="hidden-items-dropdown-list">';
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var kindLabel = item.kind === 'row' ? 'Row' : item.kind === 'stack' ? 'Stack' : item.kind === 'column' ? 'Column' : 'Card';
-      html += '<div class="hidden-items-dropdown-item" data-idx="' + i + '">';
-      html += '<span class="drag-grip">\u22EE\u22EE</span>';
-      html += '<span class="hidden-item-kind">' + kindLabel + '</span>';
-      html += '<span class="hidden-item-title">' + escapeHtml(item.title) + '</span>';
-      html += '<span class="hidden-item-loc">' + escapeHtml(buildHiddenItemLocation(item)) + '</span>';
-      for (var a = 0; a < actions.length; a++) {
-        html += '<button class="board-action-btn' + (actions[a].danger ? ' danger' : '') + '" data-item-action="' +
-          escapeAttr(actions[a].id) + '" data-item-index="' + i + '">' + escapeHtml(actions[a].label) + '</button>';
+    if (hasItems) {
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var kindLabel = item.kind === 'row' ? 'Row' : item.kind === 'stack' ? 'Stack' : item.kind === 'column' ? 'Column' : 'Card';
+        html += '<div class="hidden-items-dropdown-item" data-idx="' + i + '">';
+        html += '<span class="drag-grip">\u22EE\u22EE</span>';
+        html += '<span class="hidden-item-kind">' + kindLabel + '</span>';
+        html += '<span class="hidden-item-title">' + escapeHtml(item.title) + '</span>';
+        html += '<span class="hidden-item-loc">' + escapeHtml(buildHiddenItemLocation(item)) + '</span>';
+        for (var a = 0; a < actions.length; a++) {
+          html += '<button class="board-action-btn' + (actions[a].danger ? ' danger' : '') + '" data-item-action="' +
+            escapeAttr(actions[a].id) + '" data-item-index="' + i + '">' + escapeHtml(actions[a].label) + '</button>';
+        }
+        html += '</div>';
       }
-      html += '</div>';
+    } else {
+      html += '<div class="hidden-items-dropdown-empty">' + escapeHtml(emptyMessage) + '</div>';
     }
     html += '</div>';
-    if (footerActions && footerActions.length > 0) {
+    if (footerActions.length > 0) {
       html += '<div class="hidden-items-dropdown-footer">';
       for (var f = 0; f < footerActions.length; f++) {
         html += '<button class="board-action-btn' + (footerActions[f].danger ? ' danger' : '') + '" data-footer-action="' +
@@ -5315,6 +6100,7 @@ const LexeraDashboard = (function () {
             document.removeEventListener('pointermove', onMove);
             document.removeEventListener('pointerup', onUp);
             if (!dragging) return;
+            var capturedRestoreTarget = captureStableHiddenItemRestoreTarget(dragItem.kind, ev.clientX, ev.clientY);
             if (ghost) ghost.remove();
             itemEl.style.opacity = '';
             // Clean up all drop indicators
@@ -5328,28 +6114,21 @@ const LexeraDashboard = (function () {
             }
 
             if (dragItem.kind === 'card') {
-              var target = resolveCardDropTarget(ev.clientX, ev.clientY);
-              if (target && target.kind !== 'header-park' && target.kind !== 'header-archive' && target.kind !== 'header-trash') {
-                // Restore card first (remove hidden tag), then move to target
-                updateHiddenItemTag(dragItem, null).then(function () {
-                  // After restoring, the card is back in its original column — now move it
-                  var source = {
-                    boardId: activeBoardId,
-                    rowIndex: dragItem.rowIndex,
-                    stackIndex: dragItem.stackIndex,
-                    colIndex: dragItem.colIndex,
-                    cardIndex: dragItem.cardIndex,
-                    cardIndexMode: 'full',
-                    indexMode: 'full'
-                  };
-                  return moveCard(source, target);
-                }).catch(function (err) {
+              if (capturedRestoreTarget) {
+                restoreHiddenItemToCapturedTarget(dragItem, capturedRestoreTarget).catch(function (err) {
                   logFrontendIssue('error', 'hidden.dropdown.drag', 'Card drag-out failed', err);
                 });
                 closeHiddenItemsDropdown();
               }
             } else {
-              // Non-card items: check if dropped on board area — restore in original position
+              if (capturedRestoreTarget) {
+                restoreHiddenItemToCapturedTarget(dragItem, capturedRestoreTarget).catch(function (err) {
+                  logFrontendIssue('error', 'hidden.dropdown.drag', 'Non-card drag-out failed', err);
+                });
+                closeHiddenItemsDropdown();
+                return;
+              }
+              // Non-card items: if dropped on the main board without a specific target, restore in place
               var boardRect = getElColumnsContainer().getBoundingClientRect();
               if (isPointInsideRect(ev.clientX, ev.clientY, boardRect)) {
                 updateHiddenItemTag(dragItem, null).catch(function (err) {
@@ -5492,6 +6271,446 @@ const LexeraDashboard = (function () {
     });
   }
 
+  function positionFloatingDropdownPanel(panel, btnElement) {
+    if (!panel || !btnElement) return;
+    document.body.appendChild(panel);
+    var btnRect = btnElement.getBoundingClientRect();
+    var panelRect = panel.getBoundingClientRect();
+    var left = btnRect.right - panelRect.width;
+    var top = btnRect.bottom + 4;
+    if (left < 4) left = 4;
+    if (left + panelRect.width > window.innerWidth - 4) left = Math.max(4, window.innerWidth - panelRect.width - 4);
+    if (top + panelRect.height > window.innerHeight - 4) top = Math.max(4, window.innerHeight - panelRect.height - 4);
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+  }
+
+  function getHeaderSourceDropdownTitle(mode) {
+    if (mode === 'template') return 'Templates';
+    if (mode === 'clipboard') return 'Clipboard';
+    if (mode === 'incoming') return 'Incoming';
+    return 'Empty';
+  }
+
+  function getHeaderSourceDescriptorLabel(descriptor) {
+    if (!descriptor) return '';
+    if (descriptor.mode === 'template') return getCreationEntityLabel(descriptor.entityType) + ': ' + descriptor.title;
+    if (descriptor.mode === 'incoming') return getCreationEntityLabel(descriptor.entityType) + ': ' + descriptor.title;
+    return descriptor.title;
+  }
+
+  function getHeaderSourceDropdownEmptyMessage(mode) {
+    if (mode === 'template') return 'No templates available';
+    if (mode === 'clipboard') {
+      if (!navigator.clipboard || !navigator.clipboard.readText) return 'Clipboard read unavailable';
+      return 'Clipboard is empty';
+    }
+    if (mode === 'incoming') {
+      return incomingCaptureCache.available === false
+        ? 'Incoming history unavailable'
+        : 'No incoming items';
+    }
+    return 'No source items available';
+  }
+
+  function buildSourceSummaryLabel(text, fallback) {
+    var normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return fallback || '(empty)';
+    if (normalized.length > 80) return normalized.slice(0, 77) + '...';
+    return normalized;
+  }
+
+  async function readClipboardCreationText() {
+    if (!navigator.clipboard || !navigator.clipboard.readText) return '';
+    try {
+      return String(await navigator.clipboard.readText() || '');
+    } catch (err) {
+      logFrontendIssue('warn', 'header.source.clipboard', 'Failed to read clipboard content for header source list', err);
+      return '';
+    }
+  }
+
+  function buildClipboardSourceDescriptorsFromText(text) {
+    var normalized = String(text || '');
+    if (!normalized.trim()) return [];
+    var summary = buildSourceSummaryLabel(normalized, 'Clipboard content');
+    return HEADER_SOURCE_ENTITY_TYPES.map(function (entityType) {
+      return {
+        mode: 'clipboard',
+        entityType: entityType,
+        title: summary,
+        subtitle: 'Clipboard',
+        text: normalized
+      };
+    });
+  }
+
+  function buildTemplateSourceDescriptorsFromTemplates(entityType, templates) {
+    var list = Array.isArray(templates) ? templates : [];
+    return list.map(function (templateSummary) {
+      return {
+        mode: 'template',
+        entityType: entityType,
+        templateId: templateSummary.id,
+        title: templateSummary.name || templateSummary.id || 'Unnamed Template',
+        subtitle: templateSummary.description || templateSummary.id || 'Template'
+      };
+    });
+  }
+
+  async function buildHeaderSourceDescriptors(mode) {
+    if (mode === 'empty') {
+      return HEADER_SOURCE_ENTITY_TYPES.map(function (entityType) {
+        return {
+          mode: 'empty',
+          entityType: entityType,
+          title: 'Empty ' + getCreationEntityLabel(entityType),
+          subtitle: 'Blank ' + getCreationEntityLabel(entityType).toLowerCase()
+        };
+      });
+    }
+
+    if (mode === 'clipboard') {
+      return buildClipboardSourceDescriptorsFromText(await readClipboardCreationText());
+    }
+
+    if (mode === 'template') {
+      try {
+        await LexeraTemplates.loadTemplates();
+      } catch (err) {
+        logFrontendIssue('warn', 'header.source.template', 'Failed to load templates for header source list', err);
+      }
+      var templateDescriptors = [];
+      for (var i = 0; i < HEADER_SOURCE_ENTITY_TYPES.length; i++) {
+        var entityType = HEADER_SOURCE_ENTITY_TYPES[i];
+        templateDescriptors = templateDescriptors.concat(
+          buildTemplateSourceDescriptorsFromTemplates(
+            entityType,
+            prioritizeDrawioAndExcalidrawTemplates(entityType, LexeraTemplates.getTemplatesForType(entityType))
+          )
+        );
+      }
+      return templateDescriptors;
+    }
+
+    if (mode === 'incoming') {
+      var incomingItems = await refreshIncomingCaptureCache(false);
+      var incomingDescriptors = [];
+      var entries = Array.isArray(incomingItems) ? incomingItems : [];
+      for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
+        var entry = entries[entryIndex];
+        var timestampLabel = formatIncomingCaptureTimestamp(entry.timestamp);
+        for (var typeIndex = 0; typeIndex < HEADER_SOURCE_ENTITY_TYPES.length; typeIndex++) {
+          var incomingEntityType = HEADER_SOURCE_ENTITY_TYPES[typeIndex];
+          incomingDescriptors.push({
+            mode: 'incoming',
+            entityType: incomingEntityType,
+            entry: entry,
+            title: '#' + (entryIndex + 1) + ' ' + summarizeIncomingCaptureEntry(entry),
+            subtitle: timestampLabel ? ('Incoming • ' + timestampLabel) : 'Incoming'
+          });
+        }
+      }
+      return incomingDescriptors;
+    }
+
+    return [];
+  }
+
+  function normalizeIncomingImageBase64(value) {
+    var source = String(value || '').trim();
+    if (!source) return '';
+    var commaIndex = source.indexOf(',');
+    if (source.indexOf('data:') === 0 && commaIndex >= 0) return source.slice(commaIndex + 1);
+    return source;
+  }
+
+  function decodeBase64BinaryStringToUint8Array(value) {
+    var normalized = normalizeIncomingImageBase64(value);
+    if (!normalized) return new Uint8Array(0);
+    if (typeof atob !== 'function') throw new Error('Base64 decode unavailable');
+    var binary = atob(normalized);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function buildIncomingCaptureMarkdown(entry) {
+    if (!entry) return '';
+    var parts = [];
+    var text = String(entry.text || '').trim();
+    if (text) parts.push(text);
+    if (entry.imageData) {
+      if (!activeBoardId) throw new Error('No active board selected');
+      var fileName = sanitizeBuiltInDiagramFileName(
+        entry.imageFilename || ('incoming-' + String(entry.id || Date.now())),
+        '.png',
+        'incoming-' + String(entry.id || Date.now())
+      );
+      var bytes = decodeBase64BinaryStringToUint8Array(entry.imageData);
+      if (!bytes || bytes.length === 0) throw new Error('Incoming image payload is empty');
+      var file = createBuiltInNamedFile(bytes, fileName, 'image/png');
+      var uploadResult = await LexeraApi.uploadMedia(activeBoardId, file);
+      if (!uploadResult || !uploadResult.filename) throw new Error('Incoming image upload failed');
+      parts.push('![' + fileName + '](' + uploadResult.filename + ')');
+    }
+    return parts.join('\n\n').trim();
+  }
+
+  async function insertHeaderSourceText(entityType, text, context) {
+    var normalized = String(text || '').trim();
+    if (!normalized) {
+      showNotification('No content available');
+      return false;
+    }
+    if (entityType === 'card' && context && context.colIndex !== undefined && activeBoardId) {
+      await addCardToActiveBoard(
+        context.colIndex,
+        normalized,
+        context.atCardIndex,
+        context.insertMode
+      );
+      return true;
+    }
+    if (entityType === 'row') {
+      await addRowFromContent(normalized, context && context.atIndex);
+      return true;
+    }
+    if (entityType === 'stack') {
+      await addStackFromContent(context && context.rowIdx, normalized, context && context.atStackIdx);
+      return true;
+    }
+    if (entityType === 'column') {
+      await addColumnFromContent(context && context.rowIdx, context && context.stackIdx, normalized, context && context.atColIdx);
+      return true;
+    }
+    showNotification('No insertion target available');
+    return false;
+  }
+
+  function resolveHeaderCreationDropTargetForEntity(entityType, mx, my) {
+    var context = null;
+    if (entityType === 'card') context = resolveHeaderCardCreationContext(mx, my);
+    else if (entityType === 'column') context = resolveHeaderColumnCreationContext(mx, my);
+    else if (entityType === 'stack') context = resolveHeaderStackCreationContext(mx, my);
+    else if (entityType === 'row') context = resolveHeaderRowCreationContext(mx, my);
+    return context ? { entityType: entityType, context: context } : null;
+  }
+
+  async function runHeaderSourceDescriptorAction(descriptor, target) {
+    if (!descriptor || descriptor.disabled) return false;
+    var entityType = String(descriptor.entityType || '').trim().toLowerCase();
+    if (!entityType) return false;
+    var resolvedTarget = target && target.context ? target : null;
+    var context = resolvedTarget ? resolvedTarget.context : await resolveHeaderCreationContext(entityType);
+    if (!context) {
+      showNotification('No insertion target available');
+      return false;
+    }
+
+    if (descriptor.mode === 'empty') {
+      await handleCreationAction(entityType, 'empty', context);
+      return true;
+    }
+
+    if (descriptor.mode === 'template') {
+      if (!descriptor.templateId) return false;
+      await handleCreationAction(entityType, 'template:' + descriptor.templateId, context);
+      return true;
+    }
+
+    if (descriptor.mode === 'clipboard') {
+      var clipboardText = typeof descriptor.text === 'string' ? descriptor.text : await readClipboardCreationText();
+      return insertHeaderSourceText(entityType, clipboardText, context);
+    }
+
+    if (descriptor.mode === 'incoming') {
+      var markdown = await buildIncomingCaptureMarkdown(descriptor.entry);
+      var inserted = await insertHeaderSourceText(entityType, markdown, context);
+      if (!inserted) return false;
+      if (
+        descriptor.entry &&
+        descriptor.entry.id != null &&
+        window.LexeraApi &&
+        typeof LexeraApi.removeCaptureEntry === 'function'
+      ) {
+        try {
+          await LexeraApi.removeCaptureEntry(descriptor.entry.id);
+        } catch (err) {
+          logFrontendIssue('warn', 'header.source.incoming.remove', 'Failed to remove consumed incoming capture entry', err);
+          showNotification('Created item, but incoming cleanup failed');
+        }
+      }
+      await refreshIncomingCaptureCache(true);
+      refreshBoardHeaderActionStates();
+      return true;
+    }
+
+    return false;
+  }
+
+  function bindHeaderSourceDropdownGrip(grip, itemEl, descriptor, onSuccess) {
+    if (!grip || !itemEl || !descriptor) return;
+    grip.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var startX = e.clientX;
+      var startY = e.clientY;
+      var started = false;
+      var ghost = null;
+      var currentTarget = null;
+      var currentIndicatorType = null;
+
+      function setIndicatorForEntity(entityType) {
+        var nextIndicatorType = getHeaderCreationDragIndicatorType(entityType);
+        if (nextIndicatorType === currentIndicatorType) return;
+        removeStackDropZones();
+        removeDropZoneIndicators();
+        currentIndicatorType = nextIndicatorType;
+        if (!nextIndicatorType) return;
+        if (nextIndicatorType === 'column') insertStackDropZones();
+        insertDropZoneIndicators(nextIndicatorType);
+      }
+
+      function cleanup() {
+        itemEl.style.opacity = '';
+        if (ghost) ghost.remove();
+        ghost = null;
+        clearHeaderCreationDragVisuals();
+      }
+
+      function onMove(ev) {
+        var dx = ev.clientX - startX;
+        var dy = ev.clientY - startY;
+        if (!started) {
+          if ((dx * dx + dy * dy) < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+          started = true;
+          itemEl.style.opacity = '0.3';
+          ghost = document.createElement('div');
+          ghost.className = 'hidden-items-drag-ghost';
+          ghost.textContent = getHeaderSourceDescriptorLabel(descriptor);
+          document.body.appendChild(ghost);
+          setIndicatorForEntity(descriptor.entityType);
+        }
+
+        if (ghost) {
+          ghost.style.left = (ev.clientX + 8) + 'px';
+          ghost.style.top = (ev.clientY - 12) + 'px';
+        }
+
+        currentTarget = resolveHeaderCreationDropTargetForEntity(descriptor.entityType, ev.clientX, ev.clientY);
+        updateHeaderCreationDragVisualsForTarget(currentTarget, ev.clientX, ev.clientY);
+      }
+
+      function onUp(ev) {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onCancel);
+        if (!started) return;
+        cleanup();
+        runHeaderSourceDescriptorAction(
+          descriptor,
+          resolveHeaderCreationDropTargetForEntity(descriptor.entityType, ev.clientX, ev.clientY) || currentTarget
+        ).then(function (success) {
+          if (success && typeof onSuccess === 'function') onSuccess();
+        }).catch(function (err) {
+          logFrontendIssue('error', 'header.source.drag', 'Failed to apply header source drag', err);
+          showNotification('Creation drop failed');
+        });
+      }
+
+      function onCancel() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onCancel);
+        if (!started) return;
+        cleanup();
+      }
+
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onCancel);
+    });
+  }
+
+  function showHeaderSourceDropdown(mode, btnElement) {
+    if (!btnElement) return;
+    closeHiddenItemsDropdown();
+    closeHeaderSourceDropdown();
+
+    buildHeaderSourceDescriptors(mode).then(function (items) {
+      var list = Array.isArray(items) ? items : [];
+      var panel = document.createElement('div');
+      panel.className = 'hidden-items-dropdown header-source-dropdown';
+
+      var title = getHeaderSourceDropdownTitle(mode);
+      var html = '<div class="hidden-items-dropdown-header">' + escapeHtml(title) + ' (' + list.length + ')</div>';
+      html += '<div class="hidden-items-dropdown-list">';
+      if (list.length > 0) {
+        for (var i = 0; i < list.length; i++) {
+          var item = list[i];
+          html += '<div class="hidden-items-dropdown-item header-source-dropdown-item' + (item.disabled ? ' disabled' : '') + '" data-source-index="' + i + '">';
+          html += '<span class="drag-grip" data-source-grip="' + i + '">' + (item.disabled ? '' : '\u22EE\u22EE') + '</span>';
+          html += '<span class="hidden-item-kind">' + escapeHtml(getCreationEntityLabel(item.entityType)) + '</span>';
+          html += '<span class="hidden-item-title">' + escapeHtml(item.title || '') + '</span>';
+          html += '<span class="hidden-item-loc">' + escapeHtml(item.subtitle || '') + '</span>';
+          html += '</div>';
+        }
+      } else {
+        html += '<div class="hidden-items-dropdown-empty">' + escapeHtml(getHeaderSourceDropdownEmptyMessage(mode)) + '</div>';
+      }
+      html += '</div>';
+      panel.innerHTML = html;
+
+      positionFloatingDropdownPanel(panel, btnElement);
+
+      panel.addEventListener('click', function (e) {
+        if (e.target.closest('.drag-grip')) return;
+        var itemEl = e.target.closest('[data-source-index]');
+        if (!itemEl) return;
+        var idx = parseInt(itemEl.getAttribute('data-source-index'), 10);
+        var descriptor = list[idx];
+        if (!descriptor || descriptor.disabled) return;
+        runHeaderSourceDescriptorAction(descriptor).then(function (success) {
+          if (success) closeHeaderSourceDropdown();
+        }).catch(function (err) {
+          logFrontendIssue('error', 'header.source.click', 'Failed to apply header source item', err);
+          showNotification('Creation failed');
+        });
+      });
+
+      var grips = panel.querySelectorAll('[data-source-grip]');
+      for (var g = 0; g < grips.length; g++) {
+        var grip = grips[g];
+        var gripIndex = parseInt(grip.getAttribute('data-source-grip'), 10);
+        if (isNaN(gripIndex) || !list[gripIndex] || list[gripIndex].disabled) continue;
+        bindHeaderSourceDropdownGrip(grip, grip.closest('.header-source-dropdown-item'), list[gripIndex], function () {
+          closeHeaderSourceDropdown();
+        });
+      }
+
+      function closeListener(e) {
+        if (!panel.contains(e.target) && e.target !== btnElement) {
+          closeHeaderSourceDropdown();
+        }
+      }
+      function keyListener(e) {
+        if (e.key === 'Escape') closeHeaderSourceDropdown();
+      }
+      setTimeout(function () {
+        document.addEventListener('mousedown', closeListener, true);
+        document.addEventListener('keydown', keyListener, true);
+      }, 0);
+
+      activeHeaderSourceDropdown = { el: panel, closeListener: closeListener, keyListener: keyListener };
+    }).catch(function (err) {
+      logFrontendIssue('error', 'header.source.build', 'Failed to build header source dropdown', err);
+      showNotification('Failed to open source list');
+    });
+  }
+
   // --- Main View ---
 
   function renderMainView() {
@@ -5525,6 +6744,7 @@ const LexeraDashboard = (function () {
   }
 
   function renderBoardHeader() {
+    var incomingCount = getIncomingCaptureCount();
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
@@ -5550,7 +6770,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn" id="btn-create-template" title="Create from reusable templates">Template</button>';
     html += '<button class="board-action-btn" id="btn-create-clipboard" title="Create from clipboard content">Clipboard</button>';
     html += '<span class="board-header-separator" aria-hidden="true"></span>';
-    html += '<button class="board-action-btn" id="btn-incoming" title="Incoming (clipboard-fed)">Incoming</button>';
+    html += '<button class="board-action-btn' + (incomingCount > 0 ? ' has-items' : '') + '" id="btn-incoming" title="Incoming (clipboard-fed)">Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (parkedCount > 0 ? ' has-items' : '') + '" id="btn-parked" title="Show parked items — drop cards here to park">Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
@@ -5655,32 +6875,26 @@ const LexeraDashboard = (function () {
     }
     var createEmptyBtn = document.getElementById('btn-create-empty');
     if (createEmptyBtn) {
-      attachHeaderCreationDragSource(createEmptyBtn, 'empty');
       createEmptyBtn.addEventListener('click', function (e) {
-        if (consumeHeaderCreationClickSuppression()) return;
         e.preventDefault();
         e.stopPropagation();
-        showHeaderCreationMenu('empty', createEmptyBtn);
+        showHeaderSourceDropdown('empty', createEmptyBtn);
       });
     }
     var createTemplateBtn = document.getElementById('btn-create-template');
     if (createTemplateBtn) {
-      attachHeaderCreationDragSource(createTemplateBtn, 'template');
       createTemplateBtn.addEventListener('click', function (e) {
-        if (consumeHeaderCreationClickSuppression()) return;
         e.preventDefault();
         e.stopPropagation();
-        showHeaderCreationMenu('template', createTemplateBtn);
+        showHeaderSourceDropdown('template', createTemplateBtn);
       });
     }
     var createClipboardBtn = document.getElementById('btn-create-clipboard');
     if (createClipboardBtn) {
-      attachHeaderCreationDragSource(createClipboardBtn, 'clipboard');
       createClipboardBtn.addEventListener('click', function (e) {
-        if (consumeHeaderCreationClickSuppression()) return;
         e.preventDefault();
         e.stopPropagation();
-        showHeaderCreationMenu('clipboard', createClipboardBtn);
+        showHeaderSourceDropdown('clipboard', createClipboardBtn);
       });
     }
     var incomingBtn = document.getElementById('btn-incoming');
@@ -5688,7 +6902,7 @@ const LexeraDashboard = (function () {
       incomingBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showIncomingQueueMenu(incomingBtn);
+        showHeaderSourceDropdown('incoming', incomingBtn);
       });
     }
     var exportBtn = document.getElementById('btn-export');
@@ -5734,6 +6948,9 @@ const LexeraDashboard = (function () {
       window.addEventListener('resize', refreshBoardHeaderActionStates);
     }
     refreshBoardHeaderActionStates();
+    refreshIncomingCaptureCache(false).then(function () {
+      refreshBoardHeaderActionStates();
+    });
   }
 
   function getParkedCount() {
@@ -5746,6 +6963,79 @@ const LexeraDashboard = (function () {
 
   function getDeletedCount() {
     return getHiddenItemCount('#hidden-internal-deleted');
+  }
+
+  function getIncomingCaptureCount() {
+    return incomingCaptureCache && Array.isArray(incomingCaptureCache.items)
+      ? incomingCaptureCache.items.length
+      : 0;
+  }
+
+  function normalizeIncomingCaptureEntry(rawEntry) {
+    if (!rawEntry || typeof rawEntry !== 'object') return null;
+    var text = typeof rawEntry.text === 'string' ? rawEntry.text : '';
+    var imageData = typeof rawEntry.image_data === 'string' ? rawEntry.image_data : '';
+    var imageFilename = typeof rawEntry.image_filename === 'string' ? rawEntry.image_filename : '';
+    if (!text && !imageData) return null;
+    return {
+      id: rawEntry.id,
+      text: text,
+      imageData: imageData,
+      imageFilename: imageFilename,
+      timestamp: typeof rawEntry.timestamp === 'number' ? rawEntry.timestamp : 0
+    };
+  }
+
+  function summarizeIncomingCaptureEntry(entry) {
+    if (!entry) return '(empty)';
+    if (entry.imageData) {
+      return entry.imageFilename ? ('Image: ' + entry.imageFilename) : 'Image capture';
+    }
+    var text = String(entry.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '(empty)';
+    if (text.length > 80) return text.slice(0, 77) + '...';
+    return text;
+  }
+
+  function formatIncomingCaptureTimestamp(timestamp) {
+    if (!timestamp || !isFinite(timestamp)) return '';
+    var dt = new Date(timestamp);
+    if (!isFinite(dt.getTime())) return '';
+    return dt.toLocaleString();
+  }
+
+  async function refreshIncomingCaptureCache(force) {
+    force = !!force;
+    var maxAgeMs = 5000;
+    if (!force && incomingCaptureCache.pending) return incomingCaptureCache.pending;
+    if (!force && incomingCaptureCache.loadedAt > 0 && (Date.now() - incomingCaptureCache.loadedAt) < maxAgeMs) {
+      return incomingCaptureCache.items.slice();
+    }
+    incomingCaptureCache.pending = LexeraApi.getCaptureHistory().then(function (entries) {
+      incomingCaptureCache.items = Array.isArray(entries)
+        ? entries.map(normalizeIncomingCaptureEntry).filter(Boolean)
+        : [];
+      incomingCaptureCache.loadedAt = Date.now();
+      incomingCaptureCache.available = true;
+      incomingCaptureCache.pending = null;
+      return incomingCaptureCache.items.slice();
+    }).catch(function (err) {
+      incomingCaptureCache.items = [];
+      incomingCaptureCache.loadedAt = Date.now();
+      incomingCaptureCache.available = false;
+      incomingCaptureCache.pending = null;
+      logFrontendIssue('warn', 'header.incoming.history', 'Failed to refresh incoming capture history', err);
+      return [];
+    });
+    return incomingCaptureCache.pending;
+  }
+
+  function getCreationEntityLabel(entityType) {
+    var value = String(entityType || '').trim().toLowerCase();
+    if (value === 'row') return 'Row';
+    if (value === 'stack') return 'Stack';
+    if (value === 'column') return 'Column';
+    return 'Card';
   }
 
   function formatMenuToggleLabel(enabled, label) {
@@ -5952,6 +7242,42 @@ const LexeraDashboard = (function () {
     ]);
   }
 
+  function normalizeWhitespaceValue(rawValue) {
+    var source = String(rawValue || '').trim().toLowerCase();
+    if (!source) return '';
+    if (source === 'compact') return '8px';
+    if (source === 'default' || source === 'normal') return '16px';
+    if (source === 'spacious') return '32px';
+    var match = source.match(/^(\d+(?:\.\d+)?)px$/);
+    if (!match) return '';
+    var px = parseFloat(match[1]);
+    if (!isFinite(px) || px <= 0) return '';
+    if (px <= 12) return '8px';
+    if (px >= 24) return '32px';
+    return '16px';
+  }
+
+  function buildWhitespaceModeItems(actionPrefix) {
+    var current = normalizeWhitespaceValue(getBoardSettingValue('whitespace', '16px')) || '16px';
+    return buildModeMenuItems(current, actionPrefix, [
+      { value: '8px', label: 'Compact' },
+      { value: '16px', label: 'Default' },
+      { value: '32px', label: 'Spacious' }
+    ]);
+  }
+
+  function buildLayoutRowsModeItems(actionPrefix) {
+    var current = String(getBoardSettingValue('layoutRows', 1) || 1);
+    return buildModeMenuItems(current, actionPrefix, [
+      { value: '1', label: '1 Row' },
+      { value: '2', label: '2 Rows' },
+      { value: '3', label: '3 Rows' },
+      { value: '4', label: '4 Rows' },
+      { value: '5', label: '5 Rows' },
+      { value: '6', label: '6 Rows' }
+    ]);
+  }
+
   function buildArrowKeyFocusScrollModeItems(actionPrefix) {
     var current = normalizeArrowKeyFocusScrollMode(getBoardSettingValue('arrowKeyFocusScroll', 'nearest'));
     return buildModeMenuItems(current, actionPrefix, [
@@ -5961,10 +7287,162 @@ const LexeraDashboard = (function () {
     ]);
   }
 
-  async function triggerBoardExport() {
+  var EXPORT_DEFAULT_STORAGE_KEYS = {
+    marpTheme: 'lexera-export-marp-theme',
+    speakerNotes: 'lexera-export-speaker-notes',
+    htmlComments: 'lexera-export-html-comments',
+    htmlContent: 'lexera-export-html-content',
+    pandocFormat: 'lexera-export-pandoc-format',
+    pandocPageBreaks: 'lexera-export-pandoc-page-breaks'
+  };
+  var exportToolStatusCache = {
+    pandoc: { available: false, version: null, checkedAt: 0, pending: null, error: null }
+  };
+
+  function normalizeExportDialogFormat(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'keep' || normalized === 'kanban' || normalized === 'document') return normalized;
+    return 'presentation';
+  }
+
+  function normalizePandocExportFormat(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'odt' || normalized === 'epub') return normalized;
+    return 'docx';
+  }
+
+  function normalizeDocumentPageBreakPreference(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'per-task' || normalized === 'pertask') return 'perTask';
+    if (normalized === 'per-column' || normalized === 'percolumn') return 'perColumn';
+    return 'continuous';
+  }
+
+  function getStoredExportDefault(key, fallback) {
+    var storageKey = EXPORT_DEFAULT_STORAGE_KEYS[key];
+    if (!storageKey) return fallback;
+    var raw = localStorage.getItem(storageKey);
+    return raw == null || raw === '' ? fallback : raw;
+  }
+
+  function setStoredExportDefault(key, value) {
+    var storageKey = EXPORT_DEFAULT_STORAGE_KEYS[key];
+    if (!storageKey) return;
+    if (value == null || value === '') localStorage.removeItem(storageKey);
+    else localStorage.setItem(storageKey, String(value));
+  }
+
+  function getStoredPandocDefaults() {
+    return {
+      format: normalizePandocExportFormat(getStoredExportDefault('pandocFormat', 'docx')),
+      pageBreaks: normalizeDocumentPageBreakPreference(getStoredExportDefault('pandocPageBreaks', 'continuous'))
+    };
+  }
+
+  function buildPandocOutputFormatItems(actionPrefix) {
+    return buildModeMenuItems(getStoredPandocDefaults().format, actionPrefix, [
+      { value: 'docx', label: 'DOCX' },
+      { value: 'odt', label: 'ODT' },
+      { value: 'epub', label: 'EPUB' }
+    ]);
+  }
+
+  function buildDocumentPageBreakModeItems(actionPrefix) {
+    return buildModeMenuItems(getStoredPandocDefaults().pageBreaks, actionPrefix, [
+      { value: 'continuous', label: 'Continuous' },
+      { value: 'perTask', label: 'Per Task' },
+      { value: 'perColumn', label: 'Per Column' }
+    ]);
+  }
+
+  function formatExportToolStatusLabel(toolName, status) {
+    if (!status) return toolName + ': Unknown';
+    if (status.pending) return toolName + ': Checking…';
+    if (status.available) return toolName + ': Ready' + (status.version ? ' (v' + status.version + ')' : '');
+    if (status.error) return toolName + ': Unavailable';
+    return toolName + ': Not Installed';
+  }
+
+  async function refreshExportToolStatus(toolName, force) {
+    var cache = exportToolStatusCache[toolName];
+    if (!cache) return { available: false, version: null, checkedAt: 0, pending: null, error: 'unknown-tool' };
+    var maxAgeMs = 30000;
+    if (!force && cache.checkedAt > 0 && (Date.now() - cache.checkedAt) < maxAgeMs && !cache.pending) {
+      return cache;
+    }
+    if (cache.pending) return cache.pending;
+    if (toolName !== 'pandoc' || !window.ExportService || typeof ExportService.checkPandocStatus !== 'function') {
+      cache.error = 'unavailable';
+      cache.available = false;
+      cache.version = null;
+      cache.checkedAt = Date.now();
+      return cache;
+    }
+    cache.pending = ExportService.checkPandocStatus().then(function (status) {
+      cache.available = !!(status && status.available);
+      cache.version = status && status.version ? status.version : null;
+      cache.error = null;
+      cache.checkedAt = Date.now();
+      cache.pending = null;
+      return cache;
+    }).catch(function (err) {
+      cache.available = false;
+      cache.version = null;
+      cache.error = err ? (err.message || String(err)) : 'unknown-error';
+      cache.checkedAt = Date.now();
+      cache.pending = null;
+      return cache;
+    });
+    return cache.pending;
+  }
+
+  function buildFileHeaderPandocMenuItems() {
+    var status = exportToolStatusCache.pandoc;
+    return [
+      { id: 'file-pandoc-status', label: formatExportToolStatusLabel('Pandoc', status), disabled: true },
+      { id: 'file-pandoc-refresh-status', label: 'Refresh Status' },
+      { separator: true },
+      { id: 'file-pandoc-open-export', label: 'Open Document Export' },
+      {
+        id: 'file-pandoc-output-format',
+        label: 'Output Format',
+        items: buildPandocOutputFormatItems('file-pandoc-set-format')
+      },
+      {
+        id: 'file-pandoc-page-breaks',
+        label: 'Page Breaks',
+        items: buildDocumentPageBreakModeItems('file-pandoc-set-page-breaks')
+      }
+    ];
+  }
+
+  async function handleBoardPandocMenuAction(action) {
+    if (action === 'file-pandoc-refresh-status') {
+      await refreshExportToolStatus('pandoc', true);
+      return true;
+    }
+    if (action === 'file-pandoc-open-export') {
+      await triggerBoardExport({
+        format: 'document',
+        runPandoc: true
+      });
+      return true;
+    }
+    if (action.indexOf('file-pandoc-set-format:') === 0) {
+      setStoredExportDefault('pandocFormat', normalizePandocExportFormat(action.substring('file-pandoc-set-format:'.length)));
+      return true;
+    }
+    if (action.indexOf('file-pandoc-set-page-breaks:') === 0) {
+      setStoredExportDefault('pandocPageBreaks', normalizeDocumentPageBreakPreference(action.substring('file-pandoc-set-page-breaks:'.length)));
+      return true;
+    }
+    return false;
+  }
+
+  async function triggerBoardExport(initialOptions) {
     if (!window.ExportUI) return;
     if (!window._exportUI) window._exportUI = new ExportUI();
-    await window._exportUI.init(activeBoardId, fullBoardData);
+    await window._exportUI.init(activeBoardId, fullBoardData, initialOptions || null);
     window._exportUI.show();
   }
 
@@ -6233,30 +7711,46 @@ const LexeraDashboard = (function () {
   function showTemplateZoomMenu(btnElement) {
     if (!btnElement) return;
     var rect = btnElement.getBoundingClientRect();
+    var zoomLevels = [0.8, 0.9, 1, 1.1, 1.25];
     var items = [
-      { id: 'ui-scale-90', label: ($uiScale === 0.9 ? '\u2713 ' : '') + 'Zoom 90%' },
-      { id: 'ui-scale-100', label: ($uiScale === 1 ? '\u2713 ' : '') + 'Zoom 100%' },
-      { id: 'ui-scale-110', label: ($uiScale === 1.1 ? '\u2713 ' : '') + 'Zoom 110%' },
+      { id: 'zoom-in', label: 'Zoom In (+)' },
+      { id: 'zoom-out', label: 'Zoom Out (-)' },
+      { id: 'zoom-reset', label: 'Reset Zoom (100%)' },
+      { separator: true },
+      { id: 'zoom-current', label: 'Current Zoom: ' + getUiScalePercentLabel(), disabled: true },
       { separator: true },
       { id: 'open-template-chooser', label: 'Open Templates' }
     ];
+    items = zoomLevels.map(function (scale) {
+      var percent = Math.round(scale * 100);
+      return { id: 'ui-scale:' + scale, label: ($uiScale === scale ? '\u2713 ' : '') + 'Zoom ' + percent + '%' };
+    }).concat(items);
     showNativeMenu(items, rect.right, rect.bottom, 'header.templateZoom').then(function (action) {
       if (!action) return;
-      if (action === 'ui-scale-90') {
-        applyUiScale(0.9);
+      if (action.indexOf('ui-scale:') === 0) {
+        var nextScale = parseFloat(action.substring('ui-scale:'.length));
+        if (isFinite(nextScale)) {
+          applyUiScale(nextScale);
+          showNotification('Zoom ' + getUiScalePercentLabel());
+        }
         return;
       }
-      if (action === 'ui-scale-100') {
+      if (action === 'zoom-in') {
+        nudgeUiScale(0.05);
+        return;
+      }
+      if (action === 'zoom-out') {
+        nudgeUiScale(-0.05);
+        return;
+      }
+      if (action === 'zoom-reset') {
         applyUiScale(1);
-        return;
-      }
-      if (action === 'ui-scale-110') {
-        applyUiScale(1.1);
+        showNotification('Zoom 100%');
         return;
       }
       if (action === 'open-template-chooser') {
         var templateBtn = document.getElementById('btn-create-template');
-        showHeaderCreationMenu('template', templateBtn || btnElement);
+        showHeaderSourceDropdown('template', templateBtn || btnElement);
       }
     });
   }
@@ -6281,12 +7775,38 @@ const LexeraDashboard = (function () {
     if (!btnElement) return;
     var rect = btnElement.getBoundingClientRect();
     buildIncomingClipboardSummaryLabel().then(function (summaryLabel) {
+      var clipboardReady = summaryLabel.indexOf('Clipboard: ') === 0;
       var items = [
         { id: 'incoming-summary', label: summaryLabel, disabled: true },
         { separator: true },
-        { id: 'incoming-note', label: 'Use "Clipboard" to create cards/columns/stacks/rows', disabled: true }
+        { id: 'incoming-create-card', label: 'Create Card From Clipboard', disabled: !clipboardReady },
+        { id: 'incoming-create-column', label: 'Create Column From Clipboard', disabled: !clipboardReady },
+        { id: 'incoming-create-stack', label: 'Create Stack From Clipboard', disabled: !clipboardReady },
+        { id: 'incoming-create-row', label: 'Create Row From Clipboard', disabled: !clipboardReady },
+        { separator: true },
+        { id: 'incoming-open-clipboard', label: 'Open Clipboard Drag Menu' }
       ];
       return showNativeMenu(items, rect.right, rect.bottom, 'header.incoming');
+    }).then(function (action) {
+      if (!action) return;
+      if (action === 'incoming-open-clipboard') {
+        var createClipboardBtn = document.getElementById('btn-create-clipboard');
+        if (createClipboardBtn) showHeaderCreationMenu('clipboard', createClipboardBtn);
+        else showHeaderCreationMenu('clipboard', btnElement);
+        return;
+      }
+      var map = {
+        'incoming-create-card': 'card',
+        'incoming-create-column': 'column',
+        'incoming-create-stack': 'stack',
+        'incoming-create-row': 'row'
+      };
+      var entityType = map[action];
+      if (!entityType) return;
+      runHeaderCreationAction(entityType, 'clipboard').catch(function (err) {
+        logFrontendIssue('error', 'header.incoming.create', 'Failed to create clipboard item from incoming menu', err);
+        showNotification('Clipboard creation failed');
+      });
     });
   }
 
@@ -6909,7 +8429,6 @@ const LexeraDashboard = (function () {
       (window.innerWidth <= BOARD_HEADER_COMPACT_WIDTH ||
         (headerWidth > 0 && headerWidth <= BOARD_HEADER_COMPACT_HEADER_WIDTH))
     );
-    if (boardHeaderEl) boardHeaderEl.classList.toggle('board-header-compact', compactMode);
 
     var createEmptyBtn = document.getElementById('btn-create-empty');
     var createTemplateBtn = document.getElementById('btn-create-template');
@@ -6925,6 +8444,7 @@ const LexeraDashboard = (function () {
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
+    var incomingCount = getIncomingCaptureCount();
 
     function setHeaderActionLabel(btn, fullLabel, compactLabel, title) {
       if (!btn) return;
@@ -6934,71 +8454,99 @@ const LexeraDashboard = (function () {
       if (title) btn.title = title;
     }
 
-    setHeaderActionLabel(createEmptyBtn, 'Empty', BOARD_HEADER_V1_COMPACT_ICONS.createEmpty, 'Create empty card, column, stack or row');
-    setHeaderActionLabel(createTemplateBtn, 'Template', BOARD_HEADER_V1_COMPACT_ICONS.createTemplate, 'Create from reusable templates');
-    setHeaderActionLabel(createClipboardBtn, 'Clipboard', BOARD_HEADER_V1_COMPACT_ICONS.createClipboard, 'Create from clipboard content');
+    function applyHeaderLabelsForMode() {
+      if (boardHeaderEl) boardHeaderEl.classList.toggle('board-header-compact', compactMode);
 
-    setHeaderActionLabel(incomingBtn, 'Incoming', BOARD_HEADER_V1_COMPACT_ICONS.incoming, 'Incoming (clipboard-fed)');
-    setHeaderActionLabel(
-      parkedBtn,
-      'Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : ''),
-      BOARD_HEADER_V1_COMPACT_ICONS.parked,
-      'Show parked items — drop cards here to park'
-    );
-    setHeaderActionLabel(
-      archivedBtn,
-      'Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : ''),
-      BOARD_HEADER_V1_COMPACT_ICONS.archived,
-      'Show archived items — drop cards here to archive'
-    );
-    setHeaderActionLabel(
-      trashBtn,
-      'Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : ''),
-      BOARD_HEADER_V1_COMPACT_ICONS.trash,
-      'Show deleted items — drop cards here to delete'
-    );
-    if (parkedBtn) parkedBtn.classList.toggle('has-items', parkedCount > 0);
-    if (archivedBtn) archivedBtn.classList.toggle('has-items', archivedCount > 0);
-    if (trashBtn) trashBtn.classList.toggle('has-items', deletedCount > 0);
+      setHeaderActionLabel(createEmptyBtn, 'Empty', BOARD_HEADER_V1_COMPACT_ICONS.createEmpty, 'Create empty card, column, stack or row');
+      setHeaderActionLabel(createTemplateBtn, 'Template', BOARD_HEADER_V1_COMPACT_ICONS.createTemplate, 'Create from reusable templates');
+      setHeaderActionLabel(createClipboardBtn, 'Clipboard', BOARD_HEADER_V1_COMPACT_ICONS.createClipboard, 'Create from clipboard content');
 
-    var allColumnsFolded = areAllColumnsFolded();
-    var allCardsCollapsed = areAllCardsCollapsed();
-    setHeaderActionLabel(
-      $foldAllBtn,
-      allColumnsFolded ? 'Unfold Columns' : 'Fold Columns',
-      allColumnsFolded ? BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsExpanded,
-      'Fold/unfold all columns'
-    );
-    setHeaderActionLabel(
-      $foldAllCardsBtn,
-      allCardsCollapsed ? 'Unfold Cards' : 'Fold Cards',
-      allCardsCollapsed ? BOARD_HEADER_V1_COMPACT_ICONS.foldCardsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldCardsExpanded,
-      'Collapse or expand all cards'
-    );
-
-    if ($pinHeadersBtn) {
-      var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
-      var pinned = !!stickyMode;
       setHeaderActionLabel(
-        $pinHeadersBtn,
-        pinned ? 'Unpin Headers' : 'Pin Headers',
-        BOARD_HEADER_V1_COMPACT_ICONS.pinHeaders,
-        'Pin or unpin column headers'
+        incomingBtn,
+        'Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : ''),
+        BOARD_HEADER_V1_COMPACT_ICONS.incoming,
+        'Incoming (clipboard-fed)'
       );
-      $pinHeadersBtn.classList.toggle('has-items', pinned);
+      setHeaderActionLabel(
+        parkedBtn,
+        'Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : ''),
+        BOARD_HEADER_V1_COMPACT_ICONS.parked,
+        'Show parked items — drop cards here to park'
+      );
+      setHeaderActionLabel(
+        archivedBtn,
+        'Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : ''),
+        BOARD_HEADER_V1_COMPACT_ICONS.archived,
+        'Show archived items — drop cards here to archive'
+      );
+      setHeaderActionLabel(
+        trashBtn,
+        'Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : ''),
+        BOARD_HEADER_V1_COMPACT_ICONS.trash,
+        'Show deleted items — drop cards here to delete'
+      );
+      if (incomingBtn) incomingBtn.classList.toggle('has-items', incomingCount > 0);
+      if (parkedBtn) parkedBtn.classList.toggle('has-items', parkedCount > 0);
+      if (archivedBtn) archivedBtn.classList.toggle('has-items', archivedCount > 0);
+      if (trashBtn) trashBtn.classList.toggle('has-items', deletedCount > 0);
+
+      var allColumnsFolded = areAllColumnsFolded();
+      var allCardsCollapsed = areAllCardsCollapsed();
+      setHeaderActionLabel(
+        $foldAllBtn,
+        allColumnsFolded ? 'Unfold Columns' : 'Fold Columns',
+        allColumnsFolded ? BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsExpanded,
+        'Fold/unfold all columns'
+      );
+      setHeaderActionLabel(
+        $foldAllCardsBtn,
+        allCardsCollapsed ? 'Unfold Cards' : 'Fold Cards',
+        allCardsCollapsed ? BOARD_HEADER_V1_COMPACT_ICONS.foldCardsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldCardsExpanded,
+        'Collapse or expand all cards'
+      );
+
+      if ($pinHeadersBtn) {
+        var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
+        var pinned = !!stickyMode;
+        setHeaderActionLabel(
+          $pinHeadersBtn,
+          pinned ? 'Unpin Headers' : 'Pin Headers',
+          BOARD_HEADER_V1_COMPACT_ICONS.pinHeaders,
+          'Pin or unpin column headers'
+        );
+        $pinHeadersBtn.classList.toggle('has-items', pinned);
+      }
+
+      setHeaderActionLabel(runningProcessesBtn, 'Processes', BOARD_HEADER_V1_COMPACT_ICONS.processes, 'Open running processes and logs');
+      setHeaderActionLabel(templateZoomBtn, 'Templates / Zoom', BOARD_HEADER_V1_COMPACT_ICONS.templatesZoom, 'Template selection and zoom controls');
+      setHeaderActionLabel(exportBtn, 'Export / Pack', BOARD_HEADER_V1_COMPACT_ICONS.exportPack, 'Export or pack board');
+
+      if ($saveTrackingBtn) {
+        var dirty = isBoardDirty();
+        var saveLabel = _headerSavingInProgress ? 'Saving...' : (dirty ? 'Save*' : 'Saved');
+        var saveIcon = _headerSavingInProgress ? '\u2026' : (dirty ? '\u25CF' : '\u2713');
+        setHeaderActionLabel($saveTrackingBtn, saveLabel, saveIcon, 'Save now and inspect change tracking');
+        $saveTrackingBtn.classList.toggle('has-items', dirty || _headerSavingInProgress);
+        $saveTrackingBtn.disabled = _headerSavingInProgress;
+      }
     }
 
-    setHeaderActionLabel(runningProcessesBtn, 'Processes', BOARD_HEADER_V1_COMPACT_ICONS.processes, 'Open running processes and logs');
-    setHeaderActionLabel(templateZoomBtn, 'Templates / Zoom', BOARD_HEADER_V1_COMPACT_ICONS.templatesZoom, 'Template selection and zoom controls');
-    setHeaderActionLabel(exportBtn, 'Export / Pack', BOARD_HEADER_V1_COMPACT_ICONS.exportPack, 'Export or pack board');
+    function headerActionsOverflowing() {
+      if (!boardHeaderEl) return false;
+      var tolerance = 4;
+      var actionGroups = boardHeaderEl.querySelectorAll('.board-header-actions-middle, .board-header-actions-right');
+      for (var i = 0; i < actionGroups.length; i++) {
+        if (!actionGroups[i]) continue;
+        if ((actionGroups[i].scrollWidth - actionGroups[i].clientWidth) > tolerance) return true;
+      }
+      return false;
+    }
 
-    if ($saveTrackingBtn) {
-      var dirty = isBoardDirty();
-      var saveLabel = _headerSavingInProgress ? 'Saving...' : (dirty ? 'Save*' : 'Saved');
-      var saveIcon = _headerSavingInProgress ? '\u2026' : (dirty ? '\u25CF' : '\u2713');
-      setHeaderActionLabel($saveTrackingBtn, saveLabel, saveIcon, 'Save now and inspect change tracking');
-      $saveTrackingBtn.classList.toggle('has-items', dirty || _headerSavingInProgress);
-      $saveTrackingBtn.disabled = _headerSavingInProgress;
+    applyHeaderLabelsForMode();
+
+    if (!compactMode && headerActionsOverflowing()) {
+      compactMode = true;
+      applyHeaderLabelsForMode();
     }
   }
 
@@ -7022,6 +8570,135 @@ const LexeraDashboard = (function () {
     }
     if (!changed) return false;
     applyBoardSettings();
+    await persistBoardMutation();
+    refreshBoardHeaderActionStates();
+    return true;
+  }
+
+  function normalizeYamlFrontmatterScalar(value) {
+    if (value == null) return '';
+    return String(value)
+      .replace(/\r\n?/g, '\n')
+      .trim();
+  }
+
+  function ensureBoardYamlHeaderLines(yamlHeader) {
+    var normalizedYaml = String(yamlHeader || '')
+      .replace(/\r\n?/g, '\n')
+      .trim();
+    var lines = normalizedYaml ? normalizedYaml.split('\n') : [];
+    if (lines.length === 0) return ['---', 'kanban-plugin: board', '---'];
+    if (lines[0].trim() !== '---') lines.unshift('---');
+    if (lines[lines.length - 1].trim() !== '---') lines.push('---');
+    var hasBoardMarker = false;
+    for (var i = 1; i < lines.length - 1; i++) {
+      if (/^kanban-plugin:\s*board\s*$/i.test(lines[i].trim())) {
+        hasBoardMarker = true;
+        break;
+      }
+    }
+    if (!hasBoardMarker) {
+      lines.splice(Math.max(1, lines.length - 1), 0, 'kanban-plugin: board');
+    }
+    return lines;
+  }
+
+  function getYamlFrontmatterValueMap(yamlHeader, allowedKeys) {
+    var lines = String(yamlHeader || '').replace(/\r\n?/g, '\n').split('\n');
+    var allowed = null;
+    if (Array.isArray(allowedKeys) && allowedKeys.length > 0) {
+      allowed = {};
+      for (var i = 0; i < allowedKeys.length; i++) {
+        allowed[String(allowedKeys[i])] = true;
+      }
+    }
+    var out = {};
+    for (var lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      var line = lines[lineIndex];
+      var match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!match) continue;
+      var key = match[1];
+      if (allowed && !allowed[key]) continue;
+      out[key] = normalizeYamlFrontmatterScalar(match[2]);
+    }
+    return out;
+  }
+
+  function updateYamlFrontmatterValue(yamlHeader, key, value) {
+    var normalizedKey = String(key || '').trim();
+    if (!normalizedKey) return String(yamlHeader || '').trim();
+
+    var normalizedValue = normalizeYamlFrontmatterScalar(value);
+    var normalizedYaml = String(yamlHeader || '').replace(/\r\n?/g, '\n').trim();
+    if (!normalizedValue && !normalizedYaml) return '';
+
+    var lines = ensureBoardYamlHeaderLines(normalizedYaml);
+    var keyRegex = new RegExp('^\\s*' + escapeRegex(normalizedKey) + '\\s*:\\s*(.*)$');
+    var result = [];
+    var replaced = false;
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (i > 0 && i < lines.length - 1 && keyRegex.test(line)) {
+        if (!replaced && normalizedValue) result.push(normalizedKey + ': ' + normalizedValue);
+        replaced = true;
+        continue;
+      }
+      result.push(line);
+    }
+
+    if (!replaced && normalizedValue) {
+      result.splice(Math.max(1, result.length - 1), 0, normalizedKey + ': ' + normalizedValue);
+    }
+
+    return result.join('\n');
+  }
+
+  function getWhitespaceTokenList(value) {
+    var tokens = String(value || '').split(/\s+/);
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < tokens.length; i++) {
+      var token = String(tokens[i] || '').trim();
+      if (!token || seen[token]) continue;
+      seen[token] = true;
+      out.push(token);
+    }
+    return out;
+  }
+
+  function setWhitespaceTokenList(tokens) {
+    var clean = getWhitespaceTokenList(Array.isArray(tokens) ? tokens.join(' ') : '');
+    return clean.length > 0 ? clean.join(' ') : '';
+  }
+
+  function syncBoardFrontmatterCache() {
+    if (!fullBoardData) return {};
+    var nextFrontmatter = getYamlFrontmatterValueMap(fullBoardData.yamlHeader || '', BOARD_MARP_FRONTMATTER_KEYS);
+    fullBoardData.frontmatter = nextFrontmatter;
+    if (activeBoardData && activeBoardData.fullBoard) {
+      activeBoardData.fullBoard.frontmatter = nextFrontmatter;
+      activeBoardData.fullBoard.yamlHeader = fullBoardData.yamlHeader;
+      activeBoardData.fullBoard.valid = fullBoardData.valid;
+    }
+    return nextFrontmatter;
+  }
+
+  function getBoardMarpFrontmatter() {
+    if (!fullBoardData) return {};
+    return getYamlFrontmatterValueMap(fullBoardData.yamlHeader || '', BOARD_MARP_FRONTMATTER_KEYS);
+  }
+
+  async function setBoardFrontmatterValue(key, value) {
+    if (!activeBoardId || !fullBoardData) return false;
+    var previousYaml = fullBoardData.yamlHeader || '';
+    var nextYaml = updateYamlFrontmatterValue(previousYaml, key, value);
+    if ((nextYaml || '') === previousYaml) return false;
+
+    pushUndo();
+    fullBoardData.yamlHeader = nextYaml || null;
+    fullBoardData.valid = !!((fullBoardData.yamlHeader || '').indexOf('kanban-plugin: board') !== -1);
+    syncBoardFrontmatterCache();
     await persistBoardMutation();
     refreshBoardHeaderActionStates();
     return true;
@@ -7057,16 +8734,28 @@ const LexeraDashboard = (function () {
     refreshBoardHeaderActionStates();
   }
 
-  function showFileHeaderSettingsMenu(btnElement, forcedX, forcedY) {
+  async function showFileHeaderSettingsMenu(btnElement, forcedX, forcedY) {
     if (!btnElement) return;
+    await refreshExportToolStatus('pandoc', false);
+    await refreshAvailableMarpClasses(false);
     var items = [
       {
         id: 'file-open-board-settings',
-        label: 'Board Header / YAML Settings'
+        label: 'Open Board Settings Panel'
       },
       {
         id: 'file-open-export-settings',
         label: 'Open Export / Pack (Marp & Pandoc)'
+      },
+      {
+        id: 'file-marp-global',
+        label: 'Marp YAML / Frontmatter',
+        items: buildFileHeaderMarpMenuItems()
+      },
+      {
+        id: 'file-pandoc-settings',
+        label: 'Pandoc Document Export',
+        items: buildFileHeaderPandocMenuItems()
       },
       { separator: true },
       {
@@ -7125,8 +8814,8 @@ const LexeraDashboard = (function () {
     var items = [
       { id: 'undo', label: 'Undo', disabled: undoStack.length === 0 && !undoPendingSnapshot },
       { id: 'redo', label: 'Redo', disabled: redoStack.length === 0 },
-      { separator: true },
       { id: 'add-row', label: 'Add Row' },
+      { separator: true },
       { id: allStructureFolded ? 'unfold-all' : 'fold-all', label: allStructureFolded ? 'Unfold Structure' : 'Fold Structure' },
       { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
       { id: allCardsFolded ? 'unfold-cards' : 'fold-cards', label: allCardsFolded ? 'Unfold All Cards' : 'Fold All Cards' },
@@ -7137,8 +8826,10 @@ const LexeraDashboard = (function () {
       { separator: true },
       { id: 'set-column-width', label: 'Column Width', items: buildColumnWidthModeItems('set-column-width') },
       { id: 'set-card-height', label: 'Card Height', items: buildCardHeightModeItems('set-card-height') },
+      { id: 'set-whitespace', label: 'Whitespace', items: buildWhitespaceModeItems('set-whitespace') },
       { id: 'set-font-size', label: 'Font Size', items: buildFontSizeModeItems('set-font-size') },
       { id: 'set-font-family', label: 'Font Family', items: buildFontFamilyModeItems('set-font-family') },
+      { id: 'set-layout-rows', label: 'Layout Rows', items: buildLayoutRowsModeItems('set-layout-rows') },
       { id: 'set-row-height', label: 'Row Height', items: buildRowHeightModeItems('set-row-height') },
       { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetModeItems('set-layout-preset') },
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
@@ -7185,6 +8876,12 @@ const LexeraDashboard = (function () {
 
   async function handleBoardAction(action) {
     if (!action) return;
+    if (await handleBoardMarpMenuAction(action)) {
+      return;
+    }
+    if (await handleBoardPandocMenuAction(action)) {
+      return;
+    }
     if (action === 'undo') {
       await undo();
       return;
@@ -7194,9 +8891,7 @@ const LexeraDashboard = (function () {
       return;
     }
     if (action === 'add-row') {
-      var nextIndex = (fullBoardData && fullBoardData.rows) ? fullBoardData.rows.length : 0;
-      await addRow(nextIndex);
-      refreshBoardHeaderActionStates();
+      await addRow();
       return;
     }
     if (action === 'fold-all' || action === 'unfold-all') {
@@ -7226,6 +8921,11 @@ const LexeraDashboard = (function () {
       await setBoardSettingValue('cardMinHeight', cardHeightValue === 'auto' ? 'auto' : cardHeightValue);
       return;
     }
+    if (action.indexOf('set-whitespace:') === 0) {
+      var whitespaceValue = normalizeWhitespaceValue(action.substring('set-whitespace:'.length));
+      await setBoardSettingValue('whitespace', whitespaceValue || null);
+      return;
+    }
     if (action.indexOf('set-font-size:') === 0) {
       var fontSizeValue = normalizeBoardFontSizeValue(action.substring('set-font-size:'.length));
       await setBoardSettingValue('fontSize', fontSizeValue);
@@ -7234,6 +8934,13 @@ const LexeraDashboard = (function () {
     if (action.indexOf('set-font-family:') === 0) {
       var fontFamilyToken = action.substring('set-font-family:'.length);
       await setBoardSettingValue('fontFamily', resolveBoardFontFamilyValue(fontFamilyToken));
+      return;
+    }
+    if (action.indexOf('set-layout-rows:') === 0) {
+      var layoutRowsValue = parseInt(action.substring('set-layout-rows:'.length), 10);
+      if (!isFinite(layoutRowsValue) || layoutRowsValue < 1) layoutRowsValue = 1;
+      if (layoutRowsValue > 6) layoutRowsValue = 6;
+      await setBoardSettingValue('layoutRows', layoutRowsValue);
       return;
     }
     if (action.indexOf('set-row-height:') === 0) {
@@ -7358,7 +9065,7 @@ const LexeraDashboard = (function () {
       await setBoardSettingValue('tagVisibility', tagMode === 'none' ? 'allexcludinglayout' : 'none');
       return;
     }
-    if (action === 'backend-settings') {
+    if (action === 'backend-settings' || action === 'settings' || action === 'collab') {
       openConnectionWindow();
       return;
     }
@@ -7448,7 +9155,17 @@ const LexeraDashboard = (function () {
     showHiddenItemsDropdown(btn, '#hidden-internal-archived', 'Archived', 'No archived items',
       [
         { id: 'restore', label: 'Restore', handler: function (item) { return updateHiddenItemTag(item, null); } },
-        { id: 'delete-forever', label: 'Delete Forever', danger: true, handler: function (item) { return permanentlyDeleteHiddenItem(item); } }
+        { id: 'export', label: 'Export', handler: function (item) { return exportArchivedHiddenItemsToArchiveFile(item); } }
+      ],
+      [
+        {
+          id: 'export-all', label: 'Export All',
+          handler: function (items) { return exportArchivedHiddenItemsToArchiveFile(items); }
+        },
+        {
+          id: 'open-archive-file', label: 'Open Archive File',
+          handler: function () { return openArchiveFileFromHeader(); }
+        }
       ]
     );
   }
@@ -8680,6 +10397,23 @@ const LexeraDashboard = (function () {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '=' || e.key === '+')) {
+      e.preventDefault();
+      nudgeUiScale(0.05);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '-') {
+      e.preventDefault();
+      nudgeUiScale(-0.05);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '0') {
+      e.preventDefault();
+      applyUiScale(1);
+      showNotification('Zoom 100%');
+      return;
+    }
+
     // Undo: Ctrl/Cmd+Z
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
       e.preventDefault();
@@ -8717,6 +10451,17 @@ const LexeraDashboard = (function () {
       return;
     }
   });
+
+  document.addEventListener('wheel', function (e) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (!activeBoardData) return;
+    var target = e.target;
+    if (!target || typeof target.closest !== 'function') return;
+    if (!target.closest('#board-header, #columns-container')) return;
+    if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
+    e.preventDefault();
+    nudgeUiScale(e.deltaY < 0 ? 0.05 : -0.05);
+  }, { passive: false });
 
   function normalizeStickyHeaderMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
@@ -8798,6 +10543,166 @@ const LexeraDashboard = (function () {
       if (normalizedMode === 'hidden') comments[i].style.display = 'none';
       else if (normalizedMode === 'dim') comments[i].style.opacity = '0.3';
     }
+  }
+
+  function isValidCssColorValue(value) {
+    var probe = document.createElement('span');
+    probe.style.color = '';
+    probe.style.color = String(value || '').trim();
+    return !!probe.style.color;
+  }
+
+  function persistTagColorOverrides() {
+    try {
+      localStorage.setItem('lexera-tag-color-overrides', JSON.stringify(TAG_COLORS));
+    } catch (err) {
+      logFrontendIssue('warn', 'tag.color.persist', 'Failed to persist tag color overrides', err);
+    }
+  }
+
+  function replaceTagTokenInHeaderText(headerText, oldTag, newTag) {
+    var fromTag = normalizePromptTagToken(oldTag);
+    var toTag = normalizePromptTagToken(newTag);
+    if (!fromTag || !toTag || fromTag === toTag) return String(headerText || '');
+    var re = new RegExp('(^|[\\s&|!])' + escapeRegex(fromTag) + '(?=([\\s&|!]|$))', 'g');
+    return String(headerText || '').replace(re, function (_, prefix) {
+      return prefix + toTag;
+    });
+  }
+
+  async function renameTagAcrossBoard(oldTag, newTag) {
+    var fromTag = normalizePromptTagToken(oldTag);
+    var toTag = normalizePromptTagToken(newTag);
+    if (!fromTag || !toTag || fromTag === toTag || !fullBoardData || !activeBoardId) return false;
+    var changed = false;
+    pushUndo();
+
+    function renameInTarget(kind, indices) {
+      var target = resolveTagTarget(kind, indices);
+      if (!target) return;
+      var parts = splitTagHeaderAndBody(target.text || '');
+      var nextHeader = replaceTagTokenInHeaderText(parts.header || '', fromTag, toTag);
+      if (nextHeader === parts.header) return;
+      target.setText(rebuildTagHeaderAndBody(nextHeader, parts.bodyLines));
+      changed = true;
+    }
+
+    var rows = Array.isArray(fullBoardData.rows) ? fullBoardData.rows : [];
+    for (var r = 0; r < rows.length; r++) {
+      renameInTarget('row', { rowIdx: r });
+      var stacks = Array.isArray(rows[r].stacks) ? rows[r].stacks : [];
+      for (var s = 0; s < stacks.length; s++) {
+        renameInTarget('stack', { rowIdx: r, stackIdx: s });
+        var columns = Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
+        for (var c = 0; c < columns.length; c++) {
+          var colIndex = columns[c] && columns[c].index != null ? columns[c].index : c;
+          renameInTarget('column', { colIndex: colIndex });
+          var cards = Array.isArray(columns[c].cards) ? columns[c].cards : [];
+          for (var k = 0; k < cards.length; k++) {
+            renameInTarget('card', { colIndex: colIndex, cardIndex: k });
+          }
+        }
+      }
+    }
+
+    if (!changed) {
+      undoStack.pop();
+      return false;
+    }
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    return true;
+  }
+
+  async function performBoardScopedSearch(query) {
+    if (!activeBoardId) return;
+    try {
+      var response = await LexeraApi.search(query);
+      var filtered = Array.isArray(response && response.results)
+        ? response.results.filter(function (item) { return item && item.boardId === activeBoardId; })
+        : [];
+      searchResults = {
+        query: response && response.query ? response.query : query,
+        results: filtered
+      };
+      searchMode = true;
+      updateHeaderSearchVisibility();
+      renderSearchResults();
+    } catch (err) {
+      logFrontendIssue('warn', 'search.board.tag', 'Board-scoped tag search failed for "' + query + '"', err);
+    }
+  }
+
+  function showRenderedTagMenu(tagName, x, y) {
+    var normalizedTag = normalizePromptTagToken(tagName);
+    if (!normalizedTag) return;
+    var currentColor = getTagColor(normalizedTag);
+    var items = [
+      { id: 'filter-current-board', label: 'Filter Current Board By ' + normalizedTag, disabled: !activeBoardId },
+      { id: 'search-everywhere', label: 'Search For ' + normalizedTag },
+      { separator: true },
+      { id: 'rename-tag', label: 'Rename ' + normalizedTag + ' In This Board', disabled: !activeBoardId },
+      { id: 'change-color', label: 'Change Color (' + currentColor + ')' },
+      { id: 'copy-tag', label: 'Copy ' + normalizedTag }
+    ];
+    showNativeMenu(items, x, y, 'tag.menu').then(async function (action) {
+      if (!action) return;
+      if (action === 'filter-current-board') {
+        await performBoardScopedSearch(normalizedTag);
+        return;
+      }
+      if (action === 'search-everywhere') {
+        await performSearch(normalizedTag);
+        return;
+      }
+      if (action === 'rename-tag') {
+        var requestedTag = window.prompt('Rename tag', normalizedTag);
+        if (requestedTag == null) return;
+        var nextTag = normalizePromptTagToken(requestedTag);
+        if (!nextTag) {
+          showNotification('Invalid tag');
+          return;
+        }
+        var renamed = await renameTagAcrossBoard(normalizedTag, nextTag);
+        if (!renamed) showNotification('Tag not found in this board');
+        return;
+      }
+      if (action === 'change-color') {
+        var requestedColor = window.prompt('Tag color', currentColor);
+        if (requestedColor == null) return;
+        if (!isValidCssColorValue(requestedColor)) {
+          showNotification('Invalid CSS color');
+          return;
+        }
+        TAG_COLORS[normalizedTag] = requestedColor.trim();
+        persistTagColorOverrides();
+        renderMainView();
+        return;
+      }
+      if (action === 'copy-tag') {
+        copyTextToClipboard(normalizedTag, 'Tag copied to clipboard', 'Failed to copy tag');
+      }
+    }).catch(function (err) {
+      logFrontendIssue('warn', 'tag.menu', 'Failed to open rendered tag menu for ' + normalizedTag, err);
+    });
+  }
+
+  function attachRenderedTagInteractions(root) {
+    if (!root || root.__tagInteractionsBound) return;
+    root.__tagInteractionsBound = true;
+    root.addEventListener('click', function (e) {
+      var tagEl = e.target && e.target.closest ? e.target.closest('.tag[data-tag]') : null;
+      if (!tagEl || !root.contains(tagEl)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showRenderedTagMenu(tagEl.getAttribute('data-tag') || '', e.clientX, e.clientY);
+    });
+    root.addEventListener('contextmenu', function (e) {
+      var tagEl = e.target && e.target.closest ? e.target.closest('.tag[data-tag]') : null;
+      if (!tagEl || !root.contains(tagEl)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showRenderedTagMenu(tagEl.getAttribute('data-tag') || '', e.clientX, e.clientY);
+    });
   }
 
   function normalizeColumnWidth(rawValue) {
@@ -8898,7 +10803,8 @@ const LexeraDashboard = (function () {
       '--board-column-width', '--board-font-size', '--board-font-family',
       '--board-bg', '--board-color', '--board-color-dark', '--board-color-light',
       '--board-row-height', '--board-max-row-height', '--board-card-min-height',
-      '--board-whitespace', '--board-layout-rows'
+      '--board-layout-rows', '--board-row-gap', '--board-stack-gap',
+      '--board-column-gap', '--board-inner-padding'
     ];
     for (var i = 0; i < cssProps.length; i++) {
       getElColumnsContainer().style.removeProperty(cssProps[i]);
@@ -8906,7 +10812,7 @@ const LexeraDashboard = (function () {
     // Reset class-based settings
     getElColumnsContainer().classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     getElColumnsContainer().classList.remove('html-comments-hide', 'html-comments-dim');
-    getElColumnsContainer().classList.remove('layout-spacious');
+    getElColumnsContainer().classList.remove('layout-spacious', 'layout-rows-fixed');
     getElColumnsContainer().removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
@@ -8922,8 +10828,23 @@ const LexeraDashboard = (function () {
     if (s.rowHeight) getElColumnsContainer().style.setProperty('--board-row-height', s.rowHeight);
     if (s.maxRowHeight) getElColumnsContainer().style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
     if (s.cardMinHeight) getElColumnsContainer().style.setProperty('--board-card-min-height', s.cardMinHeight);
-    if (s.whitespace) getElColumnsContainer().style.setProperty('--board-whitespace', s.whitespace);
-    if (s.layoutRows) getElColumnsContainer().style.setProperty('--board-layout-rows', String(s.layoutRows));
+    var normalizedWhitespace = normalizeWhitespaceValue(s.whitespace);
+    if (normalizedWhitespace) {
+      var whitespacePx = parseFloat(normalizedWhitespace);
+      if (isFinite(whitespacePx) && whitespacePx > 0) {
+        var whitespaceScale = whitespacePx / 16;
+        var roundedWhitespaceScale = Math.round(whitespaceScale * 1000) / 1000;
+        getElColumnsContainer().style.setProperty('--board-row-gap', 'calc(12px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        getElColumnsContainer().style.setProperty('--board-stack-gap', 'calc(10px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        getElColumnsContainer().style.setProperty('--board-column-gap', 'calc(6px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        getElColumnsContainer().style.setProperty('--board-inner-padding', 'calc(8px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+      }
+    }
+    var layoutRows = parseInt(s.layoutRows, 10);
+    if (!isFinite(layoutRows) || layoutRows < 1) layoutRows = 1;
+    if (layoutRows > 6) layoutRows = 6;
+    getElColumnsContainer().style.setProperty('--board-layout-rows', String(layoutRows));
+    if (layoutRows > 1) getElColumnsContainer().classList.add('layout-rows-fixed');
     currentTagVisibilityMode = normalizeTagVisibilityMode(s.tagVisibility);
     var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
     if (stickyMode) getElColumnsContainer().classList.add('sticky-headers-' + stickyMode);
@@ -9042,8 +10963,6 @@ const LexeraDashboard = (function () {
       cardEl.setAttribute('data-card-index', j.toString());
       cardEl.setAttribute('data-card-id', cardId);
       if (card.kid) cardEl.setAttribute('data-card-kid', card.kid);
-      var firstTag = getFirstTag(card.content);
-      if (firstTag) cardEl.style.borderLeftColor = getTagColor(firstTag);
       var isCollapsed = collapsedCards.indexOf(cardId) !== -1;
       if (isCollapsed) cardEl.classList.add('collapsed');
 
@@ -9110,6 +11029,7 @@ const LexeraDashboard = (function () {
           showCardContextMenu(rect.right, rect.bottom, ci, cj);
         });
       })(cardEl, col.index, j, menuBtn);
+      applyTagStyleToEntity(cardEl, card.content || '');
       cardsEl.appendChild(cardEl);
     }
     colEl.appendChild(cardsEl);
@@ -9195,6 +11115,7 @@ const LexeraDashboard = (function () {
     enhanceColumnIncludeBadges(getElColumnsContainer());
     applyRenderedHtmlCommentVisibility(getElColumnsContainer(), currentHtmlCommentRenderMode);
     applyRenderedTagVisibility(getElColumnsContainer(), currentTagVisibilityMode);
+    attachRenderedTagInteractions(getElColumnsContainer());
 
     syncSidebarToView();
     updateCardEditingIndicators();
@@ -9239,6 +11160,7 @@ const LexeraDashboard = (function () {
       var rowHeader = document.createElement('div');
       rowHeader.className = 'board-row-header';
       var rowTitle = typeof row.title === 'string' ? row.title : '';
+      var rowDisplayTitle = stripHtmlComments(rowTitle);
       var totalCards = 0;
       for (var si = 0; si < rowStacks.length; si++) {
         var cardCols = Array.isArray(rowStacks[si].columns) ? rowStacks[si].columns : [];
@@ -9250,7 +11172,7 @@ const LexeraDashboard = (function () {
       rowHeader.innerHTML =
         '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         '<span class="drag-grip">\u22EE\u22EE</span>' +
-        '<span class="board-row-title">' + escapeHtml(rowTitle.length > 40 ? rowTitle.slice(0, 40) + '\u2026' : rowTitle) + '</span>' +
+        '<span class="board-row-title">' + escapeHtml(rowDisplayTitle.length > 40 ? rowDisplayTitle.slice(0, 40) + '\u2026' : rowDisplayTitle) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
         '<span class="row-header-actions">' +
           '<button class="row-edit-btn" title="Edit row title">&#9998;</button>' +
@@ -9328,10 +11250,11 @@ const LexeraDashboard = (function () {
         var stackHeader = document.createElement('div');
         stackHeader.className = 'board-stack-header';
         var stackColCount = stackColumnEntries.length;
+        var stackDisplayTitle = stripHtmlComments(stack.title || '');
         stackHeader.innerHTML =
           '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           '<span class="drag-grip">\u22EE\u22EE</span>' +
-          '<span class="board-stack-title">' + (stack.title ? escapeHtml(stack.title.length > 40 ? stack.title.slice(0, 40) + '\u2026' : stack.title) : '&nbsp;') + '</span>' +
+          '<span class="board-stack-title">' + (stackDisplayTitle ? escapeHtml(stackDisplayTitle.length > 40 ? stackDisplayTitle.slice(0, 40) + '\u2026' : stackDisplayTitle) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
           '<span class="stack-header-actions">' +
             '<button class="stack-edit-btn" title="Edit stack title">&#9998;</button>' +
@@ -9746,12 +11669,196 @@ const LexeraDashboard = (function () {
     return addColumnToStack(displayRowIdx, displayStackIdx, insertAt);
   }
 
-  function removeEmptyStacksAndRowsInBoard(boardData) {
+  var mutationEntityIdSeed = 0;
+
+  function nextMutationEntityId(prefix) {
+    mutationEntityIdSeed = (mutationEntityIdSeed + 1) % 1000000;
+    return prefix + '-' + Date.now() + '-' + mutationEntityIdSeed;
+  }
+
+  function isUnnamedStructuralTitle(title) {
+    return stripInternalHiddenTags(stripHtmlComments(String(title || ''))).trim() === '';
+  }
+
+  function createUnnamedColumnForMutation(cards) {
+    return {
+      id: nextMutationEntityId('col'),
+      title: '',
+      cards: Array.isArray(cards) ? cards : []
+    };
+  }
+
+  function createUnnamedStackForMutation(columns) {
+    return {
+      id: nextMutationEntityId('stack'),
+      title: '',
+      columns: Array.isArray(columns) ? columns : []
+    };
+  }
+
+  function createUnnamedRowForMutation(stacks) {
+    return {
+      id: nextMutationEntityId('row'),
+      title: '',
+      stacks: Array.isArray(stacks) ? stacks : []
+    };
+  }
+
+  function resolveRowInsertIndexForMutation(boardId, boardData, target) {
+    if (!boardData || !boardData.rows) return 0;
+    if (!target || typeof target.rowIndex !== 'number') return boardData.rows.length;
+
+    var rowInfo = resolveRowForMutation(
+      boardId,
+      boardData,
+      target.rowIndex,
+      target.indexMode || (boardId === activeBoardId ? 'display' : 'full')
+    );
+    if (!rowInfo || !rowInfo.row) return boardData.rows.length;
+
+    var insertAt = target.before ? rowInfo.rowIndex : (rowInfo.rowIndex + 1);
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > boardData.rows.length) insertAt = boardData.rows.length;
+    return insertAt;
+  }
+
+  function insertUnnamedRowForMutation(boardId, boardData, target, stacks) {
+    if (!boardData) return null;
+    if (!boardData.rows) boardData.rows = [];
+    var row = createUnnamedRowForMutation(stacks);
+    var insertAt = resolveRowInsertIndexForMutation(boardId, boardData, target);
+    boardData.rows.splice(insertAt, 0, row);
+    return { row: row, rowIndex: insertAt };
+  }
+
+  function insertUnnamedStackIntoRowForMutation(boardId, boardData, target) {
+    if (!target || typeof target.rowIndex !== 'number') return null;
+    var rowInfo = resolveRowForMutation(
+      boardId,
+      boardData,
+      target.rowIndex,
+      target.indexMode || (boardId === activeBoardId ? 'display' : 'full')
+    );
+    if (!rowInfo || !rowInfo.row) return null;
+
+    if (!rowInfo.row.stacks) rowInfo.row.stacks = [];
+    var stack = createUnnamedStackForMutation([]);
+    var insertAt = rowInfo.row.stacks.length;
+    if (typeof target.insertAtStackIdx === 'number') {
+      if ((target.indexMode || (boardId === activeBoardId ? 'display' : 'full')) === 'display' && boardId === activeBoardId) {
+        insertAt = findInsertStackIndexInRow(rowInfo.row, target.rowIndex, target.insertAtStackIdx);
+      } else {
+        insertAt = target.insertAtStackIdx;
+      }
+    }
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > rowInfo.row.stacks.length) insertAt = rowInfo.row.stacks.length;
+    rowInfo.row.stacks.splice(insertAt, 0, stack);
+    return {
+      row: rowInfo.row,
+      rowIndex: rowInfo.rowIndex,
+      stack: stack,
+      stackIndex: insertAt
+    };
+  }
+
+  function resolvePreferredCardColumnRefInStack(stack, preferLast) {
+    if (!stack || !Array.isArray(stack.columns)) return null;
+    var entries = getDisplayOrderedColumnEntries(stack.columns || []);
+    if (entries.length > 0) {
+      var entry = preferLast ? entries[entries.length - 1] : entries[0];
+      return {
+        column: stack.columns[entry.fullIndex],
+        columnIndex: entry.fullIndex,
+        stack: stack
+      };
+    }
+    if (stack.columns.length > 0) {
+      var idx = preferLast ? (stack.columns.length - 1) : 0;
+      return {
+        column: stack.columns[idx],
+        columnIndex: idx,
+        stack: stack
+      };
+    }
+    return null;
+  }
+
+  function ensureCardTargetColumnForMutation(boardId, boardData, descriptor) {
+    var existing = resolveColumnRefForCardMutation(boardId, boardData, descriptor);
+    if (existing && existing.column) return existing;
+    if (!descriptor) return null;
+
+    var indexMode = descriptor.indexMode || (boardId === activeBoardId ? 'display' : 'full');
+
+    if (typeof descriptor.rowIndex === 'number' && typeof descriptor.stackIndex === 'number') {
+      var stackInfo = resolveStackForMutation(boardId, boardData, descriptor.rowIndex, descriptor.stackIndex, indexMode);
+      if (!stackInfo || !stackInfo.stack) return null;
+      if (!stackInfo.stack.columns) stackInfo.stack.columns = [];
+      var preferredColumn = resolvePreferredCardColumnRefInStack(stackInfo.stack, true);
+      if (preferredColumn) return preferredColumn;
+      var newColumn = createUnnamedColumnForMutation([]);
+      stackInfo.stack.columns.push(newColumn);
+      return {
+        column: newColumn,
+        columnIndex: stackInfo.stack.columns.length - 1,
+        stack: stackInfo.stack
+      };
+    }
+
+    if (typeof descriptor.rowIndex === 'number') {
+      var rowInfo = resolveRowForMutation(boardId, boardData, descriptor.rowIndex, indexMode);
+      if (!rowInfo || !rowInfo.row) return null;
+      if (!rowInfo.row.stacks) rowInfo.row.stacks = [];
+      for (var i = 0; i < rowInfo.row.stacks.length; i++) {
+        var stackTarget = resolvePreferredCardColumnRefInStack(rowInfo.row.stacks[i], false);
+        if (stackTarget) return stackTarget;
+      }
+      var insertedStackInfo = insertUnnamedStackIntoRowForMutation(boardId, boardData, descriptor);
+      if (!insertedStackInfo || !insertedStackInfo.stack) return null;
+      var insertedColumn = createUnnamedColumnForMutation([]);
+      insertedStackInfo.stack.columns.push(insertedColumn);
+      return {
+        column: insertedColumn,
+        columnIndex: insertedStackInfo.stack.columns.length - 1,
+        stack: insertedStackInfo.stack
+      };
+    }
+
+    return null;
+  }
+
+  function cleanupUnnamedStructuralContainersInBoard(boardData) {
     if (!boardData || !boardData.rows) return;
     for (var r = boardData.rows.length - 1; r >= 0; r--) {
       var row = boardData.rows[r];
       if (!row.stacks) row.stacks = [];
-      // Keep empty stacks — they persist with their title
+      for (var s = row.stacks.length - 1; s >= 0; s--) {
+        var stack = row.stacks[s];
+        if (!stack.columns) stack.columns = [];
+        for (var c = stack.columns.length - 1; c >= 0; c--) {
+          var column = stack.columns[c];
+          var cards = column && Array.isArray(column.cards) ? column.cards : [];
+          if (cards.length === 0 && isUnnamedStructuralTitle(column && column.title ? column.title : '')) {
+            stack.columns.splice(c, 1);
+          }
+        }
+        if (stack.columns.length === 0 && isUnnamedStructuralTitle(stack && stack.title ? stack.title : '')) {
+          row.stacks.splice(s, 1);
+        }
+      }
+      if (row.stacks.length === 0 && isUnnamedStructuralTitle(row && row.title ? row.title : '')) {
+        boardData.rows.splice(r, 1);
+      }
+    }
+  }
+
+  function removeEmptyStacksAndRowsInBoard(boardData) {
+    if (!boardData || !boardData.rows) return;
+    cleanupUnnamedStructuralContainersInBoard(boardData);
+    for (var r = boardData.rows.length - 1; r >= 0; r--) {
+      var row = boardData.rows[r];
+      if (!row.stacks) row.stacks = [];
       if (row.stacks.length === 0) {
         boardData.rows.splice(r, 1);
       }
@@ -9778,26 +11885,30 @@ const LexeraDashboard = (function () {
     var rowTitle = row ? (row.title || '') : '';
 
     var nativeItems = [
+      { id: 'rename', label: 'Rename row' },
+      { id: 'add-stack', label: 'Add stack' },
+      { separator: true },
       { id: 'reveal-all', label: 'Reveal all' },
-      { id: 'insert-before', label: 'Insert row before' },
-      { id: 'insert-after', label: 'Insert row after' },
+      { id: 'add-row-before', label: 'Insert row before' },
+      { id: 'add-row-after', label: 'Insert row after' },
       { id: 'duplicate', label: 'Duplicate row' },
       { separator: true },
       { id: 'park', label: 'Park row' },
       { id: 'archive', label: 'Archive row' },
       { id: 'delete', label: 'Delete row' },
       { separator: true },
-      buildTagSubmenu('Special', TAG_CATEGORIES.special, rowTitle, 'tag-special-'),
-      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, rowTitle, 'tag-pos-'),
-      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, rowTitle, 'tag-color-'),
-      buildTagSubmenu('Workflow', TAG_CATEGORIES.workflow, rowTitle, 'tag-wf-'),
-      buildTagSubmenu('Complexity', TAG_CATEGORIES.complexity, rowTitle, 'tag-cx-'),
+      { id: 'tag-add', label: 'Add Tag...' },
+      { id: 'tag-remove', label: 'Remove Tag...' },
+      { id: 'tag-clear', label: 'Clear Tags' },
+      { separator: true },
     ];
+    nativeItems = nativeItems.concat(buildTagCategorySubmenus(rowTitle, 'tag-'));
     var customSub = buildCustomTagsSubmenu(rowTitle, 'tag-custom-');
     if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems = nativeItems.concat(buildMarpMenuItems(rowTitle));
     nativeItems.push({ separator: true });
     nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
+    nativeItems.push({ id: 'export-row', label: 'Export row' });
 
     showNativeMenu(nativeItems, x, y, 'row.menu').then(function (action) {
       if (!action) return;
@@ -9815,26 +11926,30 @@ const LexeraDashboard = (function () {
     var stackTitle = stack ? (stack.title || '') : '';
 
     var nativeItems = [
+      { id: 'rename', label: 'Rename stack' },
+      { id: 'add-column', label: 'Add column' },
+      { separator: true },
       { id: 'reveal-all', label: 'Reveal all' },
-      { id: 'insert-before', label: 'Insert stack before' },
-      { id: 'insert-after', label: 'Insert stack after' },
+      { id: 'add-stack-before', label: 'Insert stack before' },
+      { id: 'add-stack-after', label: 'Insert stack after' },
       { id: 'duplicate', label: 'Duplicate stack' },
       { separator: true },
       { id: 'park', label: 'Park stack' },
       { id: 'archive', label: 'Archive stack' },
       { id: 'delete', label: 'Delete stack' },
       { separator: true },
-      buildTagSubmenu('Special', TAG_CATEGORIES.special, stackTitle, 'tag-special-'),
-      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, stackTitle, 'tag-pos-'),
-      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, stackTitle, 'tag-color-'),
-      buildTagSubmenu('Workflow', TAG_CATEGORIES.workflow, stackTitle, 'tag-wf-'),
-      buildTagSubmenu('Complexity', TAG_CATEGORIES.complexity, stackTitle, 'tag-cx-'),
+      { id: 'tag-add', label: 'Add Tag...' },
+      { id: 'tag-remove', label: 'Remove Tag...' },
+      { id: 'tag-clear', label: 'Clear Tags' },
+      { separator: true },
     ];
+    nativeItems = nativeItems.concat(buildTagCategorySubmenus(stackTitle, 'tag-'));
     var customSub = buildCustomTagsSubmenu(stackTitle, 'tag-custom-');
     if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems = nativeItems.concat(buildMarpMenuItems(stackTitle));
     nativeItems.push({ separator: true });
     nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
+    nativeItems.push({ id: 'export-stack', label: 'Export stack' });
 
     showNativeMenu(nativeItems, x, y, 'stack.menu').then(function (action) {
       if (!action) return;
@@ -9845,11 +11960,15 @@ const LexeraDashboard = (function () {
   }
 
   async function handleRowAction(action, rowIdx) {
-    if (action === 'reveal-all') {
+    if (action === 'rename') {
+      renameRowOrStack('row', rowIdx);
+    } else if (action === 'add-stack') {
+      await addStackToRow(rowIdx);
+    } else if (action === 'reveal-all') {
       revealRowContent(rowIdx);
-    } else if (action === 'insert-before') {
+    } else if (action === 'insert-before' || action === 'add-row-before') {
       await addRow(rowIdx);
-    } else if (action === 'insert-after') {
+    } else if (action === 'insert-after' || action === 'add-row-after') {
       await addRow(rowIdx + 1);
     } else if (action === 'duplicate') {
       await duplicateRow(rowIdx);
@@ -9861,18 +11980,30 @@ const LexeraDashboard = (function () {
       await deleteRow(rowIdx);
     } else if (action === 'copy-markdown') {
       copyElementAsMarkdown('row', { rowIdx: rowIdx });
+    } else if (action === 'export-row') {
+      await triggerBoardExport({
+        selection: {
+          scope: 'row',
+          rowIndex: rowIdx
+        }
+      });
+    } else if (String(action || '').indexOf('marp-') === 0) {
+      await handleEntityMarpMenuAction(action, 'row', { rowIdx: rowIdx });
     } else if (action.indexOf('tag-') === 0) {
-      var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
-      if (tagMatch) await toggleTag('row', { rowIdx: rowIdx }, '#' + tagMatch[1]);
+      await handleEntityTagMenuAction(action, 'row', { rowIdx: rowIdx });
     }
   }
 
   async function handleStackAction(action, rowIdx, stackIdx) {
-    if (action === 'reveal-all') {
+    if (action === 'rename') {
+      renameRowOrStack('stack', rowIdx, stackIdx);
+    } else if (action === 'add-column') {
+      await addColumnToStack(rowIdx, stackIdx);
+    } else if (action === 'reveal-all') {
       revealStackContent(rowIdx, stackIdx);
-    } else if (action === 'insert-before') {
+    } else if (action === 'insert-before' || action === 'add-stack-before') {
       await addStackToRow(rowIdx, stackIdx);
-    } else if (action === 'insert-after') {
+    } else if (action === 'insert-after' || action === 'add-stack-after') {
       await addStackToRow(rowIdx, stackIdx + 1);
     } else if (action === 'duplicate') {
       await duplicateStack(rowIdx, stackIdx);
@@ -9884,9 +12015,18 @@ const LexeraDashboard = (function () {
       await deleteStack(rowIdx, stackIdx);
     } else if (action === 'copy-markdown') {
       copyElementAsMarkdown('stack', { rowIdx: rowIdx, stackIdx: stackIdx });
+    } else if (action === 'export-stack') {
+      await triggerBoardExport({
+        selection: {
+          scope: 'stack',
+          rowIndex: rowIdx,
+          stackIndex: stackIdx
+        }
+      });
+    } else if (String(action || '').indexOf('marp-') === 0) {
+      await handleEntityMarpMenuAction(action, 'stack', { rowIdx: rowIdx, stackIdx: stackIdx });
     } else if (action.indexOf('tag-') === 0) {
-      var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
-      if (tagMatch) await toggleTag('stack', { rowIdx: rowIdx, stackIdx: stackIdx }, '#' + tagMatch[1]);
+      await handleEntityTagMenuAction(action, 'stack', { rowIdx: rowIdx, stackIdx: stackIdx });
     }
   }
 
@@ -9906,11 +12046,12 @@ const LexeraDashboard = (function () {
     var headerSelector = type === 'row' ? '.board-row-header' : '.board-stack-header';
     var headerEl = rootEl.querySelector(headerSelector);
     var currentTitle = target.title;
+    var currentDisplayTitle = stripHtmlComments(currentTitle);
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'column-rename-input';
     if (type === 'row') input.classList.add('row-rename-input');
-    input.value = currentTitle;
+    input.value = currentDisplayTitle;
     if (headerEl) headerEl.classList.add('title-editing');
     titleEl.textContent = '';
     titleEl.appendChild(input);
@@ -9929,13 +12070,13 @@ const LexeraDashboard = (function () {
       done = true;
       var newTitle = input.value.trim();
       cleanup();
-      if (newTitle && newTitle !== currentTitle) {
+      if (newTitle && newTitle !== currentDisplayTitle) {
         titleEl.textContent = getDisplayTitle(newTitle);
         pushUndo();
-        target.title = newTitle;
+        target.title = rebuildTitleWithPreservedComments(newTitle, currentTitle);
         persistBoardMutation();
       } else {
-        titleEl.textContent = getDisplayTitle(currentTitle);
+        titleEl.textContent = getDisplayTitle(currentDisplayTitle);
       }
     }
     input.addEventListener('blur', save);
@@ -9945,7 +12086,7 @@ const LexeraDashboard = (function () {
         save();
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        input.value = currentTitle;
+        input.value = currentDisplayTitle;
         save();
       }
     });
@@ -10839,7 +12980,8 @@ const LexeraDashboard = (function () {
     if (e.key === 'Escape') {
       try {
       if (currentInlineCardEditor) {
-        closeInlineCardEditor({ save: true });
+        e.preventDefault();
+        closeInlineCardEditor({ save: false });
         return;
       }
       if (currentCardEditor) {
@@ -10956,7 +13098,20 @@ const LexeraDashboard = (function () {
     var rows = getBoardHierarchyRows(boardId) || [];
     var row = rows[rowIdx];
     var stack = row && row.stacks ? row.stacks[stackIdx] : null;
-    if (!stack || !stack.columns || stack.columns.length === 0) return null;
+    if (!stack) return null;
+    if (!stack.columns || stack.columns.length === 0) {
+      return {
+        kind: 'sidebar',
+        boardId: boardId,
+        rowIndex: rowIdx,
+        stackIndex: stackIdx,
+        indexMode: boardId === activeBoardId ? 'display' : 'full',
+        insertIdx: 0,
+        insertMode: 'full',
+        sidebarNode: sidebarNode || null,
+        container: null
+      };
+    }
 
     var resolvedColIdx = (typeof colIdx === 'number' && colIdx >= 0 && colIdx < stack.columns.length)
       ? colIdx
@@ -10989,6 +13144,18 @@ const LexeraDashboard = (function () {
         if (!stack || !stack.columns || stack.columns.length === 0) continue;
         return buildSidebarCardTarget(boardId, r, s, 0, sidebarNode || null);
       }
+    }
+    if (rows.length > 0) {
+      return {
+        kind: 'sidebar',
+        boardId: boardId,
+        rowIndex: 0,
+        indexMode: boardId === activeBoardId ? 'display' : 'full',
+        insertIdx: 0,
+        insertMode: 'full',
+        sidebarNode: sidebarNode || null,
+        container: null
+      };
     }
     return null;
   }
@@ -11098,6 +13265,16 @@ const LexeraDashboard = (function () {
               break;
             }
           }
+          return {
+            kind: 'sidebar',
+            boardId: rowBoardId,
+            rowIndex: rowIdx,
+            indexMode: rowBoardId === activeBoardId ? 'display' : 'full',
+            insertIdx: 0,
+            insertMode: 'full',
+            sidebarNode: sidebarRowNode,
+            container: null
+          };
         }
       }
 
@@ -11128,6 +13305,42 @@ const LexeraDashboard = (function () {
       }
     }
 
+    var targetStackEl = findBoardStackAt(mx, my);
+    if (targetStackEl) {
+      var stackRowIdx = parseInt(targetStackEl.getAttribute('data-row-index'), 10);
+      var stackIdx = parseInt(targetStackEl.getAttribute('data-stack-index'), 10);
+      if (!isNaN(stackRowIdx) && !isNaN(stackIdx)) {
+        return {
+          kind: 'main',
+          boardId: activeBoardId,
+          rowIndex: stackRowIdx,
+          stackIndex: stackIdx,
+          indexMode: 'display',
+          insertIdx: 0,
+          insertMode: 'full',
+          sidebarNode: null,
+          container: null
+        };
+      }
+    }
+
+    var targetRowEl = findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-row'), mx, my);
+    if (targetRowEl) {
+      var mainRowIdx = parseInt(targetRowEl.getAttribute('data-row-index'), 10);
+      if (!isNaN(mainRowIdx)) {
+        return {
+          kind: 'main',
+          boardId: activeBoardId,
+          rowIndex: mainRowIdx,
+          indexMode: 'display',
+          insertIdx: 0,
+          insertMode: 'full',
+          sidebarNode: null,
+          container: null
+        };
+      }
+    }
+
     return null;
   }
 
@@ -11153,6 +13366,21 @@ const LexeraDashboard = (function () {
     if (target.kind === 'sidebar') {
       if (target.sidebarNode) target.sidebarNode.classList.add('drop-target');
       return true;
+    }
+
+    if (target.kind === 'main') {
+      if (typeof target.stackIndex === 'number') {
+        var stackSelector = '.board-stack[data-row-index="' + target.rowIndex + '"][data-stack-index="' + target.stackIndex + '"]';
+        var stackTarget = getElColumnsContainer().querySelector(stackSelector);
+        if (stackTarget) stackTarget.classList.add('column-drop-target');
+        return true;
+      }
+      if (typeof target.rowIndex === 'number') {
+        var rowSelector = '.board-row[data-row-index="' + target.rowIndex + '"]';
+        var rowTarget = getElColumnsContainer().querySelector(rowSelector);
+        if (rowTarget) rowTarget.classList.add('drop-target');
+        return true;
+      }
     }
 
     if (target.container) {
@@ -11957,8 +14185,19 @@ const LexeraDashboard = (function () {
     } else if (type === 'tree-stack' || type === 'board-stack') {
       var stackBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
       var stackTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
-      if (stackBoardHit) highlightDropZoneIndicator(type, mx, my);
-      return !!(stackBoardHit || stackTreeHit);
+      if (stackBoardHit) {
+        highlightDropZoneIndicator(type, mx, my);
+        return true;
+      }
+      if (stackTreeHit) return true;
+      var stackRowBodyTarget = resolveRowBodyDropTarget(mx, my);
+      if (stackRowBodyTarget && stackRowBodyTarget.node) {
+        stackRowBodyTarget.node.classList.add('drop-target');
+        return true;
+      }
+      var stackRowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
+      var stackRowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+      return !!(stackRowBoardHit || stackRowTreeHit);
     } else if (type === 'tree-column' || type === 'column') {
       var boardColumnHit = updateColumnPtrDropTarget(mx, my);
       var treeColHit = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
@@ -11974,8 +14213,18 @@ const LexeraDashboard = (function () {
           }
         }
       }
-      if (boardColumnHit) highlightDropZoneIndicator(type, mx, my);
-      return !!boardColumnHit;
+      if (boardColumnHit) {
+        highlightDropZoneIndicator(type, mx, my);
+        return true;
+      }
+      var columnRowBodyTarget = resolveRowBodyDropTarget(mx, my);
+      if (columnRowBodyTarget && columnRowBodyTarget.node) {
+        columnRowBodyTarget.node.classList.add('drop-target');
+        return true;
+      }
+      var columnRowBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-row'), mx, my, 'drag-over-top', 'drag-over-bottom', true);
+      var columnRowTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
+      return !!(columnRowBoardHit || columnRowTreeHit);
     } else if (type === 'tree-card') {
       // Cards can only drop into columns (not stacks/rows/boards)
       clearCardDropIndicators();
@@ -12037,6 +14286,44 @@ const LexeraDashboard = (function () {
           before: treeTarget.before,
           indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
         };
+      }
+    }
+    return null;
+  }
+
+  function resolveRowBodyDropTarget(mx, my) {
+    var boardRowNode = findNodeAtPoint(getElColumnsContainer().querySelectorAll('.board-row'), mx, my);
+    if (boardRowNode) {
+      var boardRect = boardRowNode.getBoundingClientRect();
+      var boardEdge = Math.min(40, boardRect.height * 0.25);
+      if (my > boardRect.top + boardEdge && my < boardRect.bottom - boardEdge) {
+        var boardRowIdx = parseInt(boardRowNode.getAttribute('data-row-index'), 10);
+        if (!isNaN(boardRowIdx)) {
+          return {
+            node: boardRowNode,
+            boardId: activeBoardId,
+            rowIndex: boardRowIdx,
+            indexMode: 'display'
+          };
+        }
+      }
+    }
+
+    var treeRowNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-row"]'), mx, my);
+    if (treeRowNode) {
+      var treeRect = treeRowNode.getBoundingClientRect();
+      var treeEdge = Math.min(16, treeRect.height * 0.25);
+      if (my > treeRect.top + treeEdge && my < treeRect.bottom - treeEdge) {
+        var treeBoardId = treeRowNode.getAttribute('data-board-id') || activeBoardId;
+        var treeRowIdx = parseInt(treeRowNode.getAttribute('data-row-index'), 10);
+        if (!isNaN(treeRowIdx)) {
+          return {
+            node: treeRowNode,
+            boardId: treeBoardId,
+            rowIndex: treeRowIdx,
+            indexMode: treeBoardId === activeBoardId ? 'display' : 'full'
+          };
+        }
       }
     }
     return null;
@@ -12120,37 +14407,71 @@ const LexeraDashboard = (function () {
     var srcStackIdx = parseInt(source.stackIndex, 10);
     if (!srcBoardId || isNaN(srcRowIdx) || isNaN(srcStackIdx) || srcRowIdx < 0 || srcStackIdx < 0) return false;
 
-    var stackTarget = getStackDropTarget(mx, my);
-    if (!stackTarget || !stackTarget.boardId || stackTarget.rowIndex < 0 || stackTarget.stackIndex < 0) return false;
-
     var srcIndexMode = source.indexMode || (srcBoardId === activeBoardId ? 'display' : 'full');
-    var targetIndexMode = stackTarget.indexMode || (stackTarget.boardId === activeBoardId ? 'display' : 'full');
+    var stackTarget = getStackDropTarget(mx, my);
+    if (stackTarget && stackTarget.boardId && stackTarget.rowIndex >= 0 && stackTarget.stackIndex >= 0) {
+      var targetIndexMode = stackTarget.indexMode || (stackTarget.boardId === activeBoardId ? 'display' : 'full');
 
-    if (
-      srcBoardId === stackTarget.boardId &&
-      srcBoardId === activeBoardId &&
-      srcIndexMode === 'display' &&
-      targetIndexMode === 'display'
-    ) {
-      if (srcRowIdx !== stackTarget.rowIndex || srcStackIdx !== stackTarget.stackIndex) {
-        moveStack(srcRowIdx, srcStackIdx, stackTarget.rowIndex, stackTarget.stackIndex, stackTarget.before);
+      if (
+        srcBoardId === stackTarget.boardId &&
+        srcBoardId === activeBoardId &&
+        srcIndexMode === 'display' &&
+        targetIndexMode === 'display'
+      ) {
+        if (srcRowIdx !== stackTarget.rowIndex || srcStackIdx !== stackTarget.stackIndex) {
+          moveStack(srcRowIdx, srcStackIdx, stackTarget.rowIndex, stackTarget.stackIndex, stackTarget.before);
+        }
+        return true;
       }
+
+      moveStackAcrossBoards(
+        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          boardId: stackTarget.boardId,
+          rowIndex: stackTarget.rowIndex,
+          stackIndex: stackTarget.stackIndex,
+          before: stackTarget.before,
+          indexMode: targetIndexMode
+        }
+      ).catch(function (err) {
+        lexeraLog('error', '[moveStackAcrossBoards] Drop failed: ' + err);
+      });
       return true;
     }
 
-    moveStackAcrossBoards(
-      { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
-      {
-        boardId: stackTarget.boardId,
-        rowIndex: stackTarget.rowIndex,
-        stackIndex: stackTarget.stackIndex,
-        before: stackTarget.before,
-        indexMode: targetIndexMode
-      }
-    ).catch(function (err) {
-      lexeraLog('error', '[moveStackAcrossBoards] Drop failed: ' + err);
-    });
-    return true;
+    var rowBodyTarget = resolveRowBodyDropTarget(mx, my);
+    if (rowBodyTarget && rowBodyTarget.boardId) {
+      moveStackAcrossBoards(
+        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          kind: 'row',
+          boardId: rowBodyTarget.boardId,
+          rowIndex: rowBodyTarget.rowIndex,
+          indexMode: rowBodyTarget.indexMode
+        }
+      ).catch(function (err) {
+        lexeraLog('error', '[moveStackAcrossBoards] Drop to row failed: ' + err);
+      });
+      return true;
+    }
+
+    var rowTarget = getRowDropTarget(mx, my);
+    if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
+      moveStackAcrossBoards(
+        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        {
+          kind: 'new-row',
+          boardId: rowTarget.boardId,
+          rowIndex: rowTarget.rowIndex,
+          before: rowTarget.before,
+          indexMode: rowTarget.indexMode
+        }
+      ).catch(function (err) {
+        lexeraLog('error', '[moveStackAcrossBoards] Drop to new row failed: ' + err);
+      });
+      return true;
+    }
+    return false;
   }
 
   function getTreeColumnDropTarget(mx, my) {
@@ -12306,11 +14627,12 @@ const LexeraDashboard = (function () {
   function clearPtrDropIndicators() {
     removeClassesFromNodeList(getElBoardList().querySelectorAll('.tree-node'), ['tree-drop-above', 'tree-drop-below']);
     removeClassesFromNodeList(getElBoardList().querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
-    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom', 'drop-target']);
     removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
     removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom']);
     removeClassFromNodeList(getElColumnsContainer().querySelectorAll('.stack-drop-zone'), 'active');
     removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone.tree-drop-stack-target'), 'tree-drop-stack-target');
+    removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-node.drop-target'), 'drop-target');
     clearCardDropIndicators();
     clearCardDragOverHighlights();
     clearSidebarDropHighlights();
@@ -12522,6 +14844,28 @@ const LexeraDashboard = (function () {
       }
       return;
     }
+
+    var rowBodyTarget = resolveRowBodyDropTarget(mx, my);
+    if (rowBodyTarget && rowBodyTarget.boardId) {
+      moveAcross({
+        kind: 'row',
+        boardId: rowBodyTarget.boardId,
+        rowIndex: rowBodyTarget.rowIndex,
+        indexMode: rowBodyTarget.indexMode
+      });
+      return;
+    }
+
+    var rowTarget = getRowDropTarget(mx, my);
+    if (rowTarget && rowTarget.boardId && rowTarget.rowIndex >= 0) {
+      moveAcross({
+        kind: 'new-row',
+        boardId: rowTarget.boardId,
+        rowIndex: rowTarget.rowIndex,
+        before: rowTarget.before,
+        indexMode: rowTarget.indexMode
+      });
+    }
   }
 
   function resolveColumnLocationForMutation(boardId, boardData, rowIndex, stackIndex, colIndex, indexMode) {
@@ -12680,13 +15024,44 @@ const LexeraDashboard = (function () {
     );
     if (!sourceStackInfo || !sourceStackInfo.stack || !sourceStackInfo.row) return;
 
+    var activeTouched = sourceBoardId === activeBoardId || targetBoardId === activeBoardId;
+    if (activeTouched && fullBoardData) pushUndo();
+
+    var movedStack = sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 1)[0];
+    if (!movedStack) return;
+
+    if (target.kind === 'new-row') {
+      insertUnnamedRowForMutation(targetBoardId, targetBoardData, target, [movedStack]);
+      removeEmptyStacksAndRowsInBoard(sourceBoardData);
+      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
+      var changedNewRows = {};
+      changedNewRows[sourceBoardId] = sourceBoardData;
+      if (targetBoardId !== sourceBoardId) changedNewRows[targetBoardId] = targetBoardData;
+      await commitBoardMutations(changedNewRows, { refreshSidebar: true });
+      return;
+    }
+
     var targetRowInfo = resolveRowForMutation(
       targetBoardId,
       targetBoardData,
       target.rowIndex,
       target.indexMode || 'full'
     );
-    if (!targetRowInfo || !targetRowInfo.row || !targetRowInfo.row.stacks) return;
+    if (!targetRowInfo || !targetRowInfo.row || !targetRowInfo.row.stacks) {
+      sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 0, movedStack);
+      return;
+    }
+
+    if (target.kind === 'row') {
+      targetRowInfo.row.stacks.push(movedStack);
+      removeEmptyStacksAndRowsInBoard(sourceBoardData);
+      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
+      var changedRows = {};
+      changedRows[sourceBoardId] = sourceBoardData;
+      if (targetBoardId !== sourceBoardId) changedRows[targetBoardId] = targetBoardData;
+      await commitBoardMutations(changedRows, { refreshSidebar: true });
+      return;
+    }
 
     var targetStackInfo = resolveStackForMutation(
       targetBoardId,
@@ -12695,12 +15070,6 @@ const LexeraDashboard = (function () {
       target.stackIndex,
       target.indexMode || 'full'
     );
-
-    var activeTouched = sourceBoardId === activeBoardId || targetBoardId === activeBoardId;
-    if (activeTouched && fullBoardData) pushUndo();
-
-    var movedStack = sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 1)[0];
-    if (!movedStack) return;
 
     var insertAt = targetRowInfo.row.stacks.length;
     if (targetStackInfo && targetStackInfo.stack) {
@@ -12758,6 +15127,43 @@ const LexeraDashboard = (function () {
 
     var insertStack = null;
     var insertAt = 0;
+
+    if (target.kind === 'new-row') {
+      var insertedRow = insertUnnamedRowForMutation(
+        targetBoardId,
+        targetBoardData,
+        target,
+        [createUnnamedStackForMutation([movedColumn])]
+      );
+      if (!insertedRow || !insertedRow.row) {
+        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        return;
+      }
+      removeEmptyStacksAndRowsInBoard(sourceBoardData);
+      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
+      var changedNewRows = {};
+      changedNewRows[sourceBoardId] = sourceBoardData;
+      if (targetBoardId !== sourceBoardId) changedNewRows[targetBoardId] = targetBoardData;
+      await commitBoardMutations(changedNewRows, { refreshSidebar: true });
+      return;
+    }
+
+    if (target.kind === 'row') {
+      var insertedStackInfo = insertUnnamedStackIntoRowForMutation(targetBoardId, targetBoardData, target);
+      if (!insertedStackInfo || !insertedStackInfo.stack) {
+        sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
+        return;
+      }
+      if (!insertedStackInfo.stack.columns) insertedStackInfo.stack.columns = [];
+      insertedStackInfo.stack.columns.push(movedColumn);
+      removeEmptyStacksAndRowsInBoard(sourceBoardData);
+      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
+      var changedNewStacks = {};
+      changedNewStacks[sourceBoardId] = sourceBoardData;
+      if (targetBoardId !== sourceBoardId) changedNewStacks[targetBoardId] = targetBoardData;
+      await commitBoardMutations(changedNewStacks, { refreshSidebar: true });
+      return;
+    }
 
     if (target.kind === 'new-stack') {
       var targetRowInfo = resolveRowForMutation(
@@ -12828,6 +15234,7 @@ const LexeraDashboard = (function () {
         insertAt = target.before ? target.colIndex : (target.colIndex + 1);
       }
     } else {
+      sourceLoc.stack.columns.splice(sourceLoc.colIndex, 0, movedColumn);
       return;
     }
 
@@ -13218,7 +15625,7 @@ const LexeraDashboard = (function () {
       if (!targetBoardData) return;
 
       var sourceRef = resolveColumnRefForCardMutation(source.boardId, sourceBoardData, source);
-      var targetRef = resolveColumnRefForCardMutation(target.boardId, targetBoardData, target);
+      var targetRef = ensureCardTargetColumnForMutation(target.boardId, targetBoardData, target);
       if (!sourceRef || !sourceRef.column || !targetRef || !targetRef.column) return;
 
       var sourceCardMode = source.cardIndexMode || (source.boardId === activeBoardId ? 'visible' : 'full');
@@ -13246,6 +15653,9 @@ const LexeraDashboard = (function () {
       if (targetInsertIdx < 0) targetInsertIdx = 0;
       if (targetInsertIdx > targetRef.column.cards.length) targetInsertIdx = targetRef.column.cards.length;
       targetRef.column.cards.splice(targetInsertIdx, 0, movedCard);
+
+      removeEmptyStacksAndRowsInBoard(sourceBoardData);
+      if (sourceBoardData !== targetBoardData) removeEmptyStacksAndRowsInBoard(targetBoardData);
 
       var changedBoards = {};
       changedBoards[source.boardId] = sourceBoardData;
@@ -13748,6 +16158,18 @@ const LexeraDashboard = (function () {
     enterInlineCardEditMode(cardEl, colIndex, cardIndex);
   }
 
+  function shouldKeepInlineEditorOpenOnBlur() {
+    try {
+      return typeof document.hasFocus === 'function' && !document.hasFocus();
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function shouldCancelInlineEditorOnEscape(event) {
+    return !!event && event.key === 'Escape';
+  }
+
   function enterInlineCardEditMode(cardEl, colIndex, cardIndex) {
     if (currentCardEditor || currentInlineCardEditor) return;
     if (!fullBoardData) return;
@@ -13787,6 +16209,7 @@ const LexeraDashboard = (function () {
       if (!editor || editor.textarea !== textarea) return;
       setTimeout(function () {
         if (!currentInlineCardEditor || currentInlineCardEditor.textarea !== textarea) return;
+        if (shouldKeepInlineEditorOpenOnBlur()) return;
         closeInlineCardEditor({ save: true });
       }, 0);
     }
@@ -13815,6 +16238,12 @@ const LexeraDashboard = (function () {
     textarea.addEventListener('keydown', function (e) {
       try {
       if (handleTextareaTabIndent(e, textarea)) return;
+      if (shouldCancelInlineEditorOnEscape(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeInlineCardEditor({ save: false });
+        return;
+      }
       if (e.altKey && e.key === 'Enter') {
         e.preventDefault();
         closeInlineCardEditor({ save: true });
@@ -14351,6 +16780,80 @@ const LexeraDashboard = (function () {
     return { id: idPrefix + '_sub', label: label, items: items };
   }
 
+  var TAG_CATEGORY_MENU_ORDER = [
+    'special',
+    'importance',
+    'status',
+    'priority',
+    'moscow',
+    'positivity',
+    'type',
+    'category',
+    'colors',
+    'colors-dark',
+    'colors-light',
+    'colors-accessible',
+    'workflow',
+    'organization',
+    'teaching-content',
+    'product-content',
+    'complexity',
+    'status-review',
+    'time-estimate',
+    'status-testing',
+    'teaching-platform',
+    'product-platform',
+    'version',
+    'impact',
+    'schedule',
+    'overview',
+    'example',
+    'deliveries'
+  ];
+  var TAG_CATEGORY_MENU_LABELS = {
+    special: 'Special',
+    importance: 'Importance',
+    status: 'Status',
+    priority: 'Priority',
+    moscow: 'MoSCoW',
+    positivity: 'Positivity',
+    type: 'Type',
+    category: 'Category',
+    colors: 'Colors',
+    'colors-dark': 'Colors Dark',
+    'colors-light': 'Colors Light',
+    'colors-accessible': 'Colors Accessible',
+    impact: 'Impact',
+    workflow: 'Workflow',
+    organization: 'Organization',
+    'teaching-content': 'Teaching Content',
+    'product-content': 'Product Content',
+    complexity: 'Complexity',
+    'status-review': 'Status Review',
+    'time-estimate': 'Time Estimate',
+    'status-testing': 'Status Testing',
+    'teaching-platform': 'Teaching Platform',
+    'product-platform': 'Product Platform',
+    version: 'Version',
+    schedule: 'Schedule',
+    overview: 'Overview',
+    example: 'Example',
+    deliveries: 'Deliveries'
+  };
+
+  function buildTagCategorySubmenus(text, idPrefix, order) {
+    var categoryOrder = Array.isArray(order) && order.length > 0 ? order : TAG_CATEGORY_MENU_ORDER;
+    var items = [];
+    for (var i = 0; i < categoryOrder.length; i++) {
+      var key = categoryOrder[i];
+      var tags = TAG_CATEGORIES[key];
+      if (!Array.isArray(tags) || tags.length === 0) continue;
+      var label = TAG_CATEGORY_MENU_LABELS[key] || key;
+      items.push(buildTagSubmenu(label, tags, text, idPrefix + 'cat-' + key + '-'));
+    }
+    return items;
+  }
+
   function buildCustomTagsSubmenu(text, idPrefix) {
     var allTags = extractAllTags(text);
     var knownTags = {};
@@ -14375,20 +16878,750 @@ const LexeraDashboard = (function () {
     return { id: idPrefix + '_sub', label: 'Custom Tags', items: items };
   }
 
-  function buildMarpPlaceholders() {
+  function extractTagNameFromMenuAction(action) {
+    var match = String(action || '').match(/^tag-(?:cat-[a-z0-9_-]+|custom)-(.+)$/i);
+    return match ? ('#' + match[1]) : '';
+  }
+
+  var DEFAULT_MARP_CLASS_NAMES = ['lead', 'invert'];
+  var marpClassDiscoveryState = {
+    pending: null,
+    lastDirKey: '',
+    lastUpdatedAt: 0
+  };
+  var MARP_COLOR_DIRECTIVES = [
+    { key: 'color', label: 'Text Color', prompt: 'Marp text color' },
+    { key: 'backgroundColor', label: 'Background Color', prompt: 'Marp background color' },
+    { key: 'backgroundImage', label: 'Background Image', prompt: 'Marp background image' },
+    { key: 'backgroundPosition', label: 'Background Position', prompt: 'Marp background position' },
+    { key: 'backgroundRepeat', label: 'Background Repeat', prompt: 'Marp background repeat' },
+    { key: 'backgroundSize', label: 'Background Size', prompt: 'Marp background size' }
+  ];
+  var MARP_TEXT_DIRECTIVES = [
+    { key: 'header', label: 'Header Text', prompt: 'Marp header text' },
+    { key: 'footer', label: 'Footer Text', prompt: 'Marp footer text' }
+  ];
+  var BOARD_MARP_PRESENTATION_FIELDS = [
+    {
+      key: 'theme',
+      label: 'Theme',
+      prompt: 'Marp theme',
+      presets: [
+        { label: 'Default', value: 'default' },
+        { label: 'Gaia', value: 'gaia' },
+        { label: 'Uncover', value: 'uncover' }
+      ]
+    },
+    {
+      key: 'style',
+      label: 'Style',
+      prompt: 'Marp style'
+    },
+    {
+      key: 'size',
+      label: 'Size',
+      prompt: 'Marp size',
+      presets: [
+        { label: '16:9', value: '16:9' },
+        { label: '4:3', value: '4:3' },
+        { label: '16:10', value: '16:10' },
+        { label: 'A4', value: 'A4' }
+      ]
+    },
+    {
+      key: 'headingDivider',
+      label: 'Heading Divider',
+      prompt: 'Marp heading divider',
+      presets: [
+        { label: 'Off', value: 'false' },
+        { label: 'All Headings', value: 'true' },
+        { label: 'Level 1', value: '1' },
+        { label: 'Level 2', value: '2' },
+        { label: 'Level 3', value: '3' },
+        { label: 'Level 4', value: '4' },
+        { label: 'Level 5', value: '5' },
+        { label: 'Level 6', value: '6' }
+      ]
+    },
+    {
+      key: 'math',
+      label: 'Math',
+      prompt: 'Marp math engine',
+      presets: [
+        { label: 'Off', value: 'false' },
+        { label: 'KaTeX', value: 'katex' },
+        { label: 'MathJax', value: 'mathjax' }
+      ]
+    }
+  ];
+  var BOARD_MARP_METADATA_FIELDS = [
+    { key: 'title', label: 'Title', prompt: 'Document title' },
+    { key: 'author', label: 'Author', prompt: 'Document author' },
+    { key: 'description', label: 'Description', prompt: 'Document description' },
+    { key: 'keywords', label: 'Keywords', prompt: 'Document keywords' },
+    { key: 'url', label: 'URL', prompt: 'Document URL' },
+    { key: 'image', label: 'Image', prompt: 'Document image URL/path' }
+  ];
+  var BOARD_MARP_SLIDE_FIELDS = [
+    {
+      key: 'paginate',
+      label: 'Paginate',
+      prompt: 'Paginate',
+      presets: [
+        { label: 'Enabled', value: 'true' },
+        { label: 'Disabled', value: 'false' }
+      ]
+    },
+    { key: 'header', label: 'Header', prompt: 'Marp header text' },
+    { key: 'footer', label: 'Footer', prompt: 'Marp footer text' }
+  ];
+  var BOARD_MARP_STYLING_FIELDS = [
+    { key: 'color', label: 'Text Color', prompt: 'Marp text color' },
+    { key: 'backgroundColor', label: 'Background Color', prompt: 'Marp background color' },
+    { key: 'backgroundImage', label: 'Background Image', prompt: 'Marp background image URL/path' },
+    { key: 'backgroundPosition', label: 'Background Position', prompt: 'Marp background position' },
+    { key: 'backgroundRepeat', label: 'Background Repeat', prompt: 'Marp background repeat' },
+    { key: 'backgroundSize', label: 'Background Size', prompt: 'Marp background size' }
+  ];
+
+  function buildMarpClassDiscoveryDirs() {
+    var dirs = [];
+    var seen = {};
+
+    function addDir(path) {
+      var normalized = normalizePathForCompare(String(path || '').trim());
+      if (!normalized || seen[normalized]) return;
+      seen[normalized] = true;
+      dirs.push(normalized);
+    }
+
+    var boardFilePath = getActiveBoardFilePath();
+    var boardDir = getDirNameFromPath(boardFilePath);
+    if (boardDir) {
+      addDir(boardDir);
+      addDir(boardDir + '/themes');
+      addDir(boardDir + '/_themes');
+      addDir(boardDir + '/assets/themes');
+    }
+
+    return dirs;
+  }
+
+  async function refreshAvailableMarpClasses(force) {
+    if (!window.ExportService || typeof ExportService.getMarpClasses !== 'function') {
+      return Array.isArray(window.marpAvailableClasses) ? window.marpAvailableClasses : [];
+    }
+
+    var dirs = buildMarpClassDiscoveryDirs();
+    var dirKey = dirs.join('|');
+    var existing = Array.isArray(window.marpAvailableClasses) ? window.marpAvailableClasses : [];
+
+    if (!force && marpClassDiscoveryState.pending) {
+      return marpClassDiscoveryState.pending;
+    }
+    if (!force && existing.length > 0 && marpClassDiscoveryState.lastDirKey === dirKey) {
+      return existing;
+    }
+
+    marpClassDiscoveryState.pending = ExportService.getMarpClasses(dirs).then(function (classes) {
+      window.marpAvailableClasses = Array.isArray(classes) ? classes.slice() : [];
+      marpClassDiscoveryState.lastDirKey = dirKey;
+      marpClassDiscoveryState.lastUpdatedAt = Date.now();
+      marpClassDiscoveryState.pending = null;
+      return window.marpAvailableClasses;
+    }).catch(function (err) {
+      marpClassDiscoveryState.pending = null;
+      logFrontendIssue('warn', 'marp.classes', 'Failed to discover Marp classes', err);
+      return existing;
+    });
+
+    return marpClassDiscoveryState.pending;
+  }
+  var BOARD_MARP_FRONTMATTER_KEYS = ['marp']
+    .concat(BOARD_MARP_PRESENTATION_FIELDS.map(function (field) { return field.key; }))
+    .concat(BOARD_MARP_METADATA_FIELDS.map(function (field) { return field.key; }))
+    .concat(BOARD_MARP_SLIDE_FIELDS.map(function (field) { return field.key; }))
+    .concat(['class'])
+    .concat(BOARD_MARP_STYLING_FIELDS.map(function (field) { return field.key; }));
+
+  function getMarpDirectiveFinalName(directiveName, directiveScope) {
+    return directiveScope === 'scoped' ? ('_' + directiveName) : directiveName;
+  }
+
+  function getMarpDirectiveRegex(directiveName, directiveScope) {
+    var finalDirectiveName = getMarpDirectiveFinalName(directiveName, directiveScope);
+    return new RegExp('<!--\\s*' + escapeRegex(finalDirectiveName) + '\\s*:\\s*([\\s\\S]*?)\\s*-->', 'gi');
+  }
+
+  function getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope) {
+    var re = getMarpDirectiveRegex(directiveName, directiveScope);
+    var text = String(headerText || '');
+    var match = null;
+    var value = '';
+    while ((match = re.exec(text)) !== null) {
+      value = String(match[1] || '').trim();
+    }
+    return value;
+  }
+
+  function clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope) {
+    return String(headerText || '')
+      .replace(getMarpDirectiveRegex(directiveName, directiveScope), ' ')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function setMarpDirectiveInHeaderText(headerText, directiveName, value, directiveScope) {
+    var cleanValue = String(value || '').trim();
+    if (!cleanValue) {
+      return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
+    }
+    var nextHeader = clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
+    var comment = '<!-- ' + getMarpDirectiveFinalName(directiveName, directiveScope) + ': ' + cleanValue + ' -->';
+    return nextHeader ? (nextHeader + ' ' + comment).trim() : comment;
+  }
+
+  function hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue) {
+    var currentValue = getMarpDirectiveValueFromHeader(headerText, directiveName, directiveScope);
+    return currentValue.toLowerCase() === String(targetValue || '').trim().toLowerCase();
+  }
+
+  function getMarpClassListFromHeader(headerText, classScope) {
+    var raw = getMarpDirectiveValueFromHeader(headerText, 'class', classScope);
+    if (!raw) return [];
+    var tokens = raw.split(/\s+/);
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < tokens.length; i++) {
+      var className = String(tokens[i] || '').trim();
+      if (!className || seen[className]) continue;
+      seen[className] = true;
+      out.push(className);
+    }
+    return out;
+  }
+
+  function setMarpClassListInHeader(headerText, classNames, classScope) {
+    var list = Array.isArray(classNames) ? classNames : [];
+    var clean = [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var className = String(list[i] || '').trim();
+      if (!className || seen[className]) continue;
+      seen[className] = true;
+      clean.push(className);
+    }
+    if (clean.length === 0) {
+      return clearMarpDirectiveFromHeaderText(headerText, 'class', classScope);
+    }
+    return setMarpDirectiveInHeaderText(headerText, 'class', clean.join(' '), classScope);
+  }
+
+  function toggleMarpClassInHeaderText(headerText, className, classScope) {
+    var normalized = String(className || '').trim();
+    if (!normalized) return String(headerText || '');
+    var classes = getMarpClassListFromHeader(headerText, classScope);
+    var index = classes.indexOf(normalized);
+    if (index === -1) classes.push(normalized);
+    else classes.splice(index, 1);
+    return setMarpClassListInHeader(headerText, classes, classScope);
+  }
+
+  function getAvailableMarpClassNames(headerText) {
+    var available = [];
+    var seen = {};
+
+    function addClassNames(list) {
+      var names = Array.isArray(list) ? list : [];
+      for (var i = 0; i < names.length; i++) {
+        var className = String(names[i] || '').trim();
+        if (!className || seen[className]) continue;
+        seen[className] = true;
+        available.push(className);
+      }
+    }
+
+    addClassNames(window.marpAvailableClasses);
+    addClassNames(DEFAULT_MARP_CLASS_NAMES);
+    addClassNames(getMarpClassListFromHeader(headerText, 'local'));
+    addClassNames(getMarpClassListFromHeader(headerText, 'scoped'));
+
+    return available;
+  }
+
+  function truncateMarpDirectiveValue(value) {
+    var text = String(value || '').trim();
+    if (!text) return '';
+    return text.length > 24 ? (text.slice(0, 24) + '…') : text;
+  }
+
+  function buildMarpDirectiveValueSubmenu(headerText, directive) {
+    var localValue = getMarpDirectiveValueFromHeader(headerText, directive.key, 'local');
+    var scopedValue = getMarpDirectiveValueFromHeader(headerText, directive.key, 'scoped');
+    return {
+      id: 'marp-directive-group:' + directive.key,
+      label: directive.label,
+      items: [
+        {
+          id: 'marp-directive-set-local:' + directive.key,
+          label: (localValue ? 'Edit Local… (' + truncateMarpDirectiveValue(localValue) + ')' : 'Set Local…')
+        },
+        {
+          id: 'marp-directive-clear-local:' + directive.key,
+          label: 'Clear Local',
+          disabled: !localValue
+        },
+        { separator: true },
+        {
+          id: 'marp-directive-set-scoped:' + directive.key,
+          label: (scopedValue ? 'Edit Scoped… (' + truncateMarpDirectiveValue(scopedValue) + ')' : 'Set Scoped…')
+        },
+        {
+          id: 'marp-directive-clear-scoped:' + directive.key,
+          label: 'Clear Scoped',
+          disabled: !scopedValue
+        }
+      ]
+    };
+  }
+
+  function buildMarpClassScopeSubmenu(headerText, classScope) {
+    var classes = getAvailableMarpClassNames(headerText);
+    var items = [];
+    for (var i = 0; i < classes.length; i++) {
+      var className = classes[i];
+      items.push({
+        id: 'marp-class-' + classScope + ':' + className,
+        label: formatMenuToggleLabel(getMarpClassListFromHeader(headerText, classScope).indexOf(className) !== -1, className)
+      });
+    }
+    if (items.length > 0) items.push({ separator: true });
+    items.push({ id: 'marp-class-custom-' + classScope, label: 'Toggle Custom Class…' });
+    items.push({
+      id: 'marp-class-clear-' + classScope,
+      label: 'Clear ' + (classScope === 'scoped' ? 'Scoped' : 'Local') + ' Classes',
+      disabled: getMarpClassListFromHeader(headerText, classScope).length === 0
+    });
+    return {
+      id: 'marp-class-group-' + classScope,
+      label: classScope === 'scoped' ? 'Scoped Classes' : 'Local Classes',
+      items: items
+    };
+  }
+
+  function buildMarpMenuItems(headerText) {
     if (!isMarpSettingsEnabled()) return [];
+    var currentHeader = String(headerText || '');
     return [
       { separator: true },
-      { id: 'marp-classes', label: 'Marp Classes', items: [
-        { id: 'marp-na', label: 'Not yet available', disabled: true }
-      ]},
-      { id: 'marp-colors', label: 'Marp Colors', items: [
-        { id: 'marp-na', label: 'Not yet available', disabled: true }
-      ]},
-      { id: 'marp-hf', label: 'Marp Header & Footer', items: [
-        { id: 'marp-na', label: 'Not yet available', disabled: true }
-      ]}
+      {
+        id: 'marp-classes',
+        label: 'Marp Classes',
+        items: [
+          { id: 'marp-classes-refresh', label: 'Refresh Available Classes' },
+          { separator: true },
+          buildMarpClassScopeSubmenu(currentHeader, 'local'),
+          buildMarpClassScopeSubmenu(currentHeader, 'scoped')
+        ]
+      },
+      {
+        id: 'marp-colors',
+        label: 'Marp Colors',
+        items: MARP_COLOR_DIRECTIVES.map(function (directive) {
+          return buildMarpDirectiveValueSubmenu(currentHeader, directive);
+        })
+      },
+      {
+        id: 'marp-hf',
+        label: 'Marp Header & Footer',
+        items: [
+          buildMarpDirectiveValueSubmenu(currentHeader, MARP_TEXT_DIRECTIVES[0]),
+          buildMarpDirectiveValueSubmenu(currentHeader, MARP_TEXT_DIRECTIVES[1]),
+          { separator: true },
+          { id: 'marp-paginate-local', label: formatMenuToggleLabel(hasMarpDirectiveValue(currentHeader, 'paginate', 'local', 'true'), 'Paginate (Local)') },
+          { id: 'marp-paginate-scoped', label: formatMenuToggleLabel(hasMarpDirectiveValue(currentHeader, 'paginate', 'scoped', 'true'), 'Paginate (Scoped)') }
+        ]
+      }
     ];
+  }
+
+  function findMarpDirectiveDefinition(directiveName) {
+    var all = MARP_COLOR_DIRECTIVES.concat(MARP_TEXT_DIRECTIVES);
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].key === directiveName) return all[i];
+    }
+    return null;
+  }
+
+  function findBoardMarpFieldDefinition(key) {
+    var groups = BOARD_MARP_PRESENTATION_FIELDS
+      .concat(BOARD_MARP_METADATA_FIELDS)
+      .concat(BOARD_MARP_SLIDE_FIELDS)
+      .concat(BOARD_MARP_STYLING_FIELDS);
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i].key === key) return groups[i];
+    }
+    return null;
+  }
+
+  function getAvailableBoardMarpClassNames(frontmatter) {
+    var available = [];
+    var seen = {};
+
+    function addNames(list) {
+      var names = Array.isArray(list) ? list : [];
+      for (var i = 0; i < names.length; i++) {
+        var className = String(names[i] || '').trim();
+        if (!className || seen[className]) continue;
+        seen[className] = true;
+        available.push(className);
+      }
+    }
+
+    addNames(window.marpAvailableClasses);
+    addNames(DEFAULT_MARP_CLASS_NAMES);
+    addNames(getWhitespaceTokenList(frontmatter && frontmatter['class']));
+
+    return available;
+  }
+
+  function buildBoardMarpValueSubmenu(frontmatter, descriptor) {
+    var currentValue = normalizeYamlFrontmatterScalar(frontmatter && frontmatter[descriptor.key]);
+    var items = [];
+    var presets = Array.isArray(descriptor.presets) ? descriptor.presets : [];
+    for (var i = 0; i < presets.length; i++) {
+      var preset = presets[i];
+      items.push({
+        id: 'file-marp-set:' + descriptor.key + ':' + encodeURIComponent(String(preset.value)),
+        label: formatMenuToggleLabel(currentValue.toLowerCase() === String(preset.value).trim().toLowerCase(), preset.label)
+      });
+    }
+    if (items.length > 0) items.push({ separator: true });
+    items.push({
+      id: 'file-marp-prompt:' + descriptor.key,
+      label: currentValue ? ('Edit… (' + truncateMarpDirectiveValue(currentValue) + ')') : 'Set…'
+    });
+    items.push({
+      id: 'file-marp-clear:' + descriptor.key,
+      label: 'Clear',
+      disabled: !currentValue
+    });
+    return {
+      id: 'file-marp-field-group:' + descriptor.key,
+      label: descriptor.label + (currentValue ? ' (' + truncateMarpDirectiveValue(currentValue) + ')' : ''),
+      items: items
+    };
+  }
+
+  function buildBoardMarpClassSubmenu(frontmatter) {
+    var activeClasses = getWhitespaceTokenList(frontmatter && frontmatter['class']);
+    var availableClasses = getAvailableBoardMarpClassNames(frontmatter);
+    var items = [
+      { id: 'file-marp-refresh-classes', label: 'Refresh Available Classes' },
+      { separator: true }
+    ];
+    for (var i = 0; i < availableClasses.length; i++) {
+      var className = availableClasses[i];
+      items.push({
+        id: 'file-marp-toggle-class:' + className,
+        label: formatMenuToggleLabel(activeClasses.indexOf(className) !== -1, className)
+      });
+    }
+    if (items.length > 0) items.push({ separator: true });
+    items.push({ id: 'file-marp-prompt-class', label: 'Toggle Custom Class…' });
+    items.push({
+      id: 'file-marp-clear-class',
+      label: 'Clear Classes',
+      disabled: activeClasses.length === 0
+    });
+    return {
+      id: 'file-marp-classes',
+      label: 'Class' + (activeClasses.length > 0 ? ' (' + truncateMarpDirectiveValue(activeClasses.join(' ')) + ')' : ''),
+      items: items
+    };
+  }
+
+  function buildBoardMarpYamlPreviewItems() {
+    var yamlHeader = fullBoardData && fullBoardData.yamlHeader ? String(fullBoardData.yamlHeader) : '';
+    var items = [
+      {
+        id: 'file-marp-copy-yaml',
+        label: 'Copy YAML Header',
+        disabled: !yamlHeader
+      }
+    ];
+    items.push({ separator: true });
+    if (!yamlHeader) {
+      items.push({ id: 'file-marp-yaml-empty', label: '(No YAML header yet)', disabled: true });
+      return items;
+    }
+    var lines = yamlHeader.split(/\r?\n/);
+    var maxLines = 16;
+    for (var i = 0; i < lines.length && i < maxLines; i++) {
+      items.push({
+        id: 'file-marp-yaml-line:' + i,
+        label: lines[i] || ' ',
+        disabled: true
+      });
+    }
+    if (lines.length > maxLines) {
+      items.push({ id: 'file-marp-yaml-more', label: '…', disabled: true });
+    }
+    return items;
+  }
+
+  function buildFileHeaderMarpMenuItems() {
+    var frontmatter = getBoardMarpFrontmatter();
+    var marpEnabled = normalizeYamlFrontmatterScalar(frontmatter.marp).toLowerCase() === 'true';
+    return [
+      { id: 'file-marp-toggle-enabled', label: formatMenuToggleLabel(marpEnabled, 'Enable Marp') },
+      { separator: true },
+      {
+        id: 'file-marp-presentation',
+        label: 'Presentation',
+        items: BOARD_MARP_PRESENTATION_FIELDS.map(function (field) {
+          return buildBoardMarpValueSubmenu(frontmatter, field);
+        })
+      },
+      {
+        id: 'file-marp-metadata',
+        label: 'Metadata',
+        items: BOARD_MARP_METADATA_FIELDS.map(function (field) {
+          return buildBoardMarpValueSubmenu(frontmatter, field);
+        })
+      },
+      {
+        id: 'file-marp-slide',
+        label: 'Slide Settings',
+        items: BOARD_MARP_SLIDE_FIELDS.map(function (field) {
+          return buildBoardMarpValueSubmenu(frontmatter, field);
+        })
+      },
+      {
+        id: 'file-marp-styling',
+        label: 'Styling',
+        items: [buildBoardMarpClassSubmenu(frontmatter)].concat(
+          BOARD_MARP_STYLING_FIELDS.map(function (field) {
+            return buildBoardMarpValueSubmenu(frontmatter, field);
+          })
+        )
+      },
+      {
+        id: 'file-marp-yaml',
+        label: 'Current YAML',
+        items: buildBoardMarpYamlPreviewItems()
+      }
+    ];
+  }
+
+  async function toggleBoardMarpClass(className) {
+    var normalizedClass = String(className || '').trim();
+    if (!normalizedClass) return false;
+    var frontmatter = getBoardMarpFrontmatter();
+    var classes = getWhitespaceTokenList(frontmatter['class']);
+    var index = classes.indexOf(normalizedClass);
+    if (index === -1) classes.push(normalizedClass);
+    else classes.splice(index, 1);
+    return setBoardFrontmatterValue('class', setWhitespaceTokenList(classes) || null);
+  }
+
+  async function clearBoardMarpClasses() {
+    return setBoardFrontmatterValue('class', null);
+  }
+
+  async function promptBoardMarpValue(key) {
+    var descriptor = findBoardMarpFieldDefinition(key);
+    var currentValue = normalizeYamlFrontmatterScalar(getBoardMarpFrontmatter()[key]);
+    var label = descriptor && descriptor.prompt ? descriptor.prompt : ('Marp ' + key);
+    var requested = window.prompt(label, currentValue || '');
+    if (requested == null) return false;
+    var normalizedValue = normalizeYamlFrontmatterScalar(requested);
+    return setBoardFrontmatterValue(key, normalizedValue || null);
+  }
+
+  async function promptBoardMarpClassToggle() {
+    var requested = window.prompt('Marp class name(s) to toggle', '');
+    if (requested == null) return false;
+    var classNames = getWhitespaceTokenList(requested);
+    if (classNames.length === 0) return false;
+    var changed = false;
+    for (var i = 0; i < classNames.length; i++) {
+      changed = (await toggleBoardMarpClass(classNames[i])) || changed;
+    }
+    return changed;
+  }
+
+  async function handleBoardMarpMenuAction(action) {
+    if (action === 'file-marp-toggle-enabled') {
+      var enabled = normalizeYamlFrontmatterScalar(getBoardMarpFrontmatter().marp).toLowerCase() === 'true';
+      await setBoardFrontmatterValue('marp', enabled ? 'false' : 'true');
+      return true;
+    }
+    if (action === 'file-marp-refresh-classes') {
+      await refreshAvailableMarpClasses(true);
+      return true;
+    }
+    if (action === 'file-marp-prompt-class') {
+      await promptBoardMarpClassToggle();
+      return true;
+    }
+    if (action === 'file-marp-clear-class') {
+      await clearBoardMarpClasses();
+      return true;
+    }
+    if (action === 'file-marp-copy-yaml') {
+      copyTextToClipboard(
+        fullBoardData && fullBoardData.yamlHeader ? String(fullBoardData.yamlHeader) : '',
+        'YAML header copied to clipboard',
+        'Failed to copy YAML header'
+      );
+      return true;
+    }
+    if (action.indexOf('file-marp-toggle-class:') === 0) {
+      await toggleBoardMarpClass(action.substring('file-marp-toggle-class:'.length));
+      return true;
+    }
+
+    var setMatch = String(action || '').match(/^file-marp-set:([A-Za-z0-9_]+):(.+)$/);
+    if (setMatch) {
+      await setBoardFrontmatterValue(setMatch[1], decodeURIComponent(setMatch[2]));
+      return true;
+    }
+
+    var promptMatch = String(action || '').match(/^file-marp-prompt:([A-Za-z0-9_]+)$/);
+    if (promptMatch) {
+      await promptBoardMarpValue(promptMatch[1]);
+      return true;
+    }
+
+    var clearMatch = String(action || '').match(/^file-marp-clear:([A-Za-z0-9_]+)$/);
+    if (clearMatch) {
+      await setBoardFrontmatterValue(clearMatch[1], null);
+      return true;
+    }
+
+    return false;
+  }
+
+  async function setEntityMarpDirective(elementType, indices, directiveName, directiveValue, directiveScope) {
+    return mutateEntityHeaderText(elementType, indices, function (headerText) {
+      return setMarpDirectiveInHeaderText(headerText, directiveName, directiveValue, directiveScope);
+    });
+  }
+
+  async function clearEntityMarpDirective(elementType, indices, directiveName, directiveScope) {
+    return mutateEntityHeaderText(elementType, indices, function (headerText) {
+      return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
+    });
+  }
+
+  async function toggleEntityMarpDirective(elementType, indices, directiveName, enabledValue, directiveScope) {
+    var targetValue = String(enabledValue || '').trim() || 'true';
+    return mutateEntityHeaderText(elementType, indices, function (headerText) {
+      if (hasMarpDirectiveValue(headerText, directiveName, directiveScope, targetValue)) {
+        return clearMarpDirectiveFromHeaderText(headerText, directiveName, directiveScope);
+      }
+      return setMarpDirectiveInHeaderText(headerText, directiveName, targetValue, directiveScope);
+    });
+  }
+
+  async function toggleEntityMarpClass(elementType, indices, className, classScope) {
+    return mutateEntityHeaderText(elementType, indices, function (headerText) {
+      return toggleMarpClassInHeaderText(headerText, className, classScope);
+    });
+  }
+
+  async function clearEntityMarpClasses(elementType, indices, classScope) {
+    return mutateEntityHeaderText(elementType, indices, function (headerText) {
+      return setMarpClassListInHeader(headerText, [], classScope);
+    });
+  }
+
+  async function promptEntityMarpDirective(elementType, indices, directiveName, directiveScope) {
+    var target = resolveTagTarget(elementType, indices);
+    if (!target) return false;
+    var currentValue = getMarpDirectiveValueFromHeader(splitTagHeaderAndBody(target.text || '').header || '', directiveName, directiveScope);
+    var descriptor = findMarpDirectiveDefinition(directiveName);
+    var label = descriptor && descriptor.prompt ? descriptor.prompt : ('Marp ' + directiveName);
+    var requested = window.prompt(label + ' (' + directiveScope + ')', currentValue || '');
+    if (requested == null) return false;
+    var cleanValue = String(requested || '').trim();
+    if (!cleanValue) {
+      return clearEntityMarpDirective(elementType, indices, directiveName, directiveScope);
+    }
+    return setEntityMarpDirective(elementType, indices, directiveName, cleanValue, directiveScope);
+  }
+
+  async function promptEntityMarpClassToggle(elementType, indices, classScope) {
+    var requested = window.prompt('Marp class name(s) to toggle (' + classScope + ')', '');
+    if (requested == null) return false;
+    var tokens = String(requested || '').split(/\s+/);
+    var classNames = [];
+    var seen = {};
+    for (var i = 0; i < tokens.length; i++) {
+      var className = String(tokens[i] || '').trim();
+      if (!className || seen[className]) continue;
+      seen[className] = true;
+      classNames.push(className);
+    }
+    if (classNames.length === 0) return false;
+    return mutateEntityHeaderText(elementType, indices, function (headerText) {
+      var nextHeader = String(headerText || '');
+      for (var j = 0; j < classNames.length; j++) {
+        nextHeader = toggleMarpClassInHeaderText(nextHeader, classNames[j], classScope);
+      }
+      return nextHeader;
+    });
+  }
+
+  async function handleEntityMarpMenuAction(action, elementType, indices) {
+    if (action === 'marp-classes-refresh') {
+      await refreshAvailableMarpClasses(true);
+      return true;
+    }
+    if (action === 'marp-paginate-local') {
+      await toggleEntityMarpDirective(elementType, indices, 'paginate', 'true', 'local');
+      return true;
+    }
+    if (action === 'marp-paginate-scoped') {
+      await toggleEntityMarpDirective(elementType, indices, 'paginate', 'true', 'scoped');
+      return true;
+    }
+    if (action === 'marp-class-custom-local') {
+      await promptEntityMarpClassToggle(elementType, indices, 'local');
+      return true;
+    }
+    if (action === 'marp-class-custom-scoped') {
+      await promptEntityMarpClassToggle(elementType, indices, 'scoped');
+      return true;
+    }
+    if (action === 'marp-class-clear-local') {
+      await clearEntityMarpClasses(elementType, indices, 'local');
+      return true;
+    }
+    if (action === 'marp-class-clear-scoped') {
+      await clearEntityMarpClasses(elementType, indices, 'scoped');
+      return true;
+    }
+    if (action.indexOf('marp-class-local:') === 0) {
+      await toggleEntityMarpClass(elementType, indices, action.substring('marp-class-local:'.length), 'local');
+      return true;
+    }
+    if (action.indexOf('marp-class-scoped:') === 0) {
+      await toggleEntityMarpClass(elementType, indices, action.substring('marp-class-scoped:'.length), 'scoped');
+      return true;
+    }
+    var directiveMatch = String(action || '').match(/^marp-directive-(set|clear)-(local|scoped):([A-Za-z0-9_]+)$/);
+    if (!directiveMatch) return false;
+    if (directiveMatch[1] === 'set') {
+      await promptEntityMarpDirective(elementType, indices, directiveMatch[3], directiveMatch[2]);
+    } else {
+      await clearEntityMarpDirective(elementType, indices, directiveMatch[3], directiveMatch[2]);
+    }
+    return true;
   }
 
   function showCardContextMenu(x, y, colIndex, cardIndex) {
@@ -14396,12 +17629,37 @@ const LexeraDashboard = (function () {
 
     var col = getFullColumn(colIndex);
     var cardText = '';
+    var visibleCardCount = 0;
     if (col) {
       var fullIdx = getFullCardIndex(col, cardIndex);
       if (fullIdx !== -1 && col.cards[fullIdx]) cardText = col.cards[fullIdx].content || '';
     }
+    if (activeBoardData && Array.isArray(activeBoardData.columns)) {
+      for (var vc = 0; vc < activeBoardData.columns.length; vc++) {
+        var visibleCol = activeBoardData.columns[vc];
+        if (!visibleCol || visibleCol.index !== colIndex) continue;
+        visibleCardCount = Array.isArray(visibleCol.cards) ? visibleCol.cards.length : 0;
+        break;
+      }
+    }
+
+    var moveSubItems = [];
+    if (activeBoardData && Array.isArray(activeBoardData.columns)) {
+      for (var i = 0; i < activeBoardData.columns.length; i++) {
+        var targetCol = activeBoardData.columns[i];
+        if (!targetCol || targetCol.index === colIndex) continue;
+        var targetLabel = stripLayoutTags(stripInternalHiddenTags(targetCol.title || ''));
+        moveSubItems.push({
+          id: 'move-to:' + targetCol.index,
+          label: targetLabel || 'Untitled Column'
+        });
+      }
+    }
 
     var nativeItems = [
+      { id: 'add-card', label: 'Add card' },
+      { separator: true },
+      { id: 'edit', label: 'Edit task (inline)' },
       { id: 'edit-overlay', label: 'Edit task (overlay)', disabled: !isOverlayEditorEnabled() },
       { id: 'reveal', label: 'Reveal content' },
       { id: 'copy-markdown', label: 'Copy as markdown' },
@@ -14409,20 +17667,27 @@ const LexeraDashboard = (function () {
       { id: 'insert-before', label: 'Insert card before' },
       { id: 'insert-after', label: 'Insert card after' },
       { id: 'duplicate', label: 'Duplicate card' },
+      { id: 'move-up', label: 'Move up', disabled: cardIndex <= 0 },
+      { id: 'move-down', label: 'Move down', disabled: visibleCardCount <= 0 || cardIndex >= (visibleCardCount - 1) },
       { separator: true },
       { id: 'park', label: 'Park card' },
+      { id: 'park-copy', label: 'Park copy' },
       { id: 'archive', label: 'Archive card' },
       { id: 'delete', label: 'Delete card' },
       { separator: true },
-      buildTagSubmenu('Special', TAG_CATEGORIES.special, cardText, 'tag-special-'),
-      buildTagSubmenu('Status', TAG_CATEGORIES.status, cardText, 'tag-status-'),
-      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, cardText, 'tag-pos-'),
-      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, cardText, 'tag-color-'),
-      buildTagSubmenu('Impact', TAG_CATEGORIES.impact, cardText, 'tag-impact-'),
+      { id: 'tag-add', label: 'Add Tag...' },
+      { id: 'tag-remove', label: 'Remove Tag...' },
+      { id: 'tag-clear', label: 'Clear Tags' },
+      { separator: true },
     ];
+    if (moveSubItems.length > 0) {
+      nativeItems.push({ id: 'move-sub', label: 'Move to Column', items: moveSubItems });
+      nativeItems.push({ separator: true });
+    }
+    nativeItems = nativeItems.concat(buildTagCategorySubmenus(cardText, 'tag-'));
     var customSub = buildCustomTagsSubmenu(cardText, 'tag-custom-');
     if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems = nativeItems.concat(buildMarpMenuItems(cardText));
 
     showNativeMenu(nativeItems, x, y, 'card.menu').then(function (action) {
       if (action) return handleCardMenuAction(action, colIndex, cardIndex);
@@ -14432,7 +17697,13 @@ const LexeraDashboard = (function () {
   }
 
   async function handleCardMenuAction(action, colIndex, cardIndex) {
-    if (action === 'edit-overlay') {
+    if (action === 'add-card') {
+      addCardColumn = colIndex;
+      renderColumns();
+    } else if (action === 'edit' || action === 'edit-inline') {
+      var inlineCardEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
+      if (inlineCardEls.length > 0) openCardEditor(inlineCardEls[0], colIndex, cardIndex, 'inline');
+    } else if (action === 'edit-overlay') {
       if (!isOverlayEditorEnabled()) {
         showNotification('Overlay editor is disabled in header settings');
         return;
@@ -14449,15 +17720,25 @@ const LexeraDashboard = (function () {
       await insertCardAtIndex(colIndex, cardIndex + 1);
     } else if (action === 'duplicate') {
       await duplicateCard(colIndex, cardIndex);
+    } else if (action === 'move-up') {
+      if (cardIndex > 0) await moveCard(colIndex, cardIndex, colIndex, cardIndex - 1);
+    } else if (action === 'move-down') {
+      await moveCard(colIndex, cardIndex, colIndex, cardIndex + 2);
+    } else if (action.indexOf('move-to:') === 0) {
+      var targetColIdx = parseInt(action.substring(8), 10);
+      if (isFinite(targetColIdx)) await moveCard(colIndex, cardIndex, targetColIdx, 0);
     } else if (action === 'park') {
       await tagCard(colIndex, cardIndex, '#hidden-internal-parked');
+    } else if (action === 'park-copy') {
+      await parkCopyCard(colIndex, cardIndex);
     } else if (action === 'archive') {
       await tagCard(colIndex, cardIndex, '#hidden-internal-archived');
     } else if (action === 'delete') {
       await deleteCard(colIndex, cardIndex);
+    } else if (String(action || '').indexOf('marp-') === 0) {
+      await handleEntityMarpMenuAction(action, 'card', { colIndex: colIndex, cardIndex: cardIndex });
     } else if (action.indexOf('tag-') === 0) {
-      var tagMatch = action.match(/^tag-(?:special|status|pos|color|impact|custom)-(.+)$/);
-      if (tagMatch) await toggleTag('card', { colIndex: colIndex, cardIndex: cardIndex }, '#' + tagMatch[1]);
+      await handleEntityTagMenuAction(action, 'card', { colIndex: colIndex, cardIndex: cardIndex });
     }
   }
 
@@ -14475,6 +17756,22 @@ const LexeraDashboard = (function () {
     clone.kid = null;
     col.cards.splice(fullIdx + 1, 0, clone);
     await persistBoardMutation();
+  }
+
+  async function parkCopyCard(colIndex, cardIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    var col = getFullColumn(colIndex);
+    if (!col) return;
+    var fullIdx = getFullCardIndex(col, cardIndex);
+    var card = col.cards[fullIdx];
+    if (!card) return;
+    pushUndo();
+    var clone = JSON.parse(JSON.stringify(card));
+    clone.id = 'dup-' + Date.now();
+    clone.kid = null;
+    clone.content = applyInternalHiddenTag(clone.content || '', '#hidden-internal-parked');
+    col.cards.splice(fullIdx + 1, 0, clone);
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
   }
 
   async function tagCard(colIndex, cardIndex, tag) {
@@ -14496,47 +17793,224 @@ const LexeraDashboard = (function () {
     await tagCard(colIndex, cardIndex, '#hidden-internal-deleted');
   }
 
-  async function toggleTag(elementType, indices, tagName) {
-    if (!fullBoardData || !activeBoardId) return;
-    var text, setFn;
+  function resolveTagTarget(elementType, indices) {
+    var text = '';
+    var setFn = null;
     if (elementType === 'card') {
       var col = getFullColumn(indices.colIndex);
-      if (!col) return;
+      if (!col) return null;
       var fullIdx = getFullCardIndex(col, indices.cardIndex);
-      if (fullIdx === -1) return;
+      if (fullIdx === -1) return null;
       text = col.cards[fullIdx].content || '';
       setFn = function (val) { col.cards[fullIdx].content = val; };
     } else if (elementType === 'column') {
       var col = getFullColumn(indices.colIndex);
-      if (!col) return;
+      if (!col) return null;
       text = col.title || '';
       setFn = function (val) { col.title = val; };
     } else if (elementType === 'row') {
       var row = findFullDataRow(indices.rowIdx);
-      if (!row) return;
+      if (!row) return null;
       text = row.title || '';
       setFn = function (val) { row.title = val; };
     } else if (elementType === 'stack') {
       var stack = findFullDataStack(indices.rowIdx, indices.stackIdx);
-      if (!stack) return;
+      if (!stack) return null;
       text = stack.title || '';
       setFn = function (val) { stack.title = val; };
     } else {
+      return null;
+    }
+    return { text: text, setText: setFn };
+  }
+
+  function splitTagHeaderAndBody(text) {
+    var lines = String(text || '').split('\n');
+    var splitIdx = lines.length;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === '') {
+        splitIdx = i;
+        break;
+      }
+    }
+    return {
+      header: lines.slice(0, splitIdx).join('\n'),
+      bodyLines: lines.slice(splitIdx)
+    };
+  }
+
+  function rebuildTagHeaderAndBody(headerText, bodyLines) {
+    var parts = [];
+    if (headerText) parts = headerText.split('\n');
+    if (Array.isArray(bodyLines) && bodyLines.length > 0) {
+      var nextBodyLines = bodyLines.slice();
+      if (!headerText) {
+        while (nextBodyLines.length > 0 && String(nextBodyLines[0] || '').trim() === '') {
+          nextBodyLines.shift();
+        }
+      }
+      parts = parts.concat(nextBodyLines);
+    }
+    return parts.join('\n');
+  }
+
+  async function mutateEntityHeaderText(elementType, indices, mutator) {
+    if (!fullBoardData || !activeBoardId || typeof mutator !== 'function') return false;
+    var target = resolveTagTarget(elementType, indices);
+    if (!target || typeof target.setText !== 'function') return false;
+    var parts = splitTagHeaderAndBody(target.text || '');
+    var nextHeader = mutator(parts.header || '', target.text || '');
+    if (typeof nextHeader !== 'string' || nextHeader === parts.header) return false;
+    var nextText = rebuildTagHeaderAndBody(nextHeader, parts.bodyLines);
+    if (nextText === target.text) return false;
+    pushUndo();
+    target.setText(nextText);
+    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    return true;
+  }
+
+  function normalizePromptTagToken(rawToken) {
+    var token = String(rawToken || '').trim();
+    if (!token) return '';
+    if (token.charAt(0) !== '#') {
+      if (token.charAt(0) === '@' || token.charAt(0) === '!') return '';
+      token = '#' + token;
+    }
+    if (!/^#[^\s&|!]+$/.test(token)) return '';
+    return token.toLowerCase();
+  }
+
+  function parsePromptTagList(rawInput) {
+    var source = String(rawInput || '');
+    if (!source) return [];
+    var parts = source.split(/[\s,;]+/);
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < parts.length; i++) {
+      var tag = normalizePromptTagToken(parts[i]);
+      if (!tag || seen[tag]) continue;
+      seen[tag] = true;
+      out.push(tag);
+    }
+    return out;
+  }
+
+  function removeTagFromHeaderText(headerText, tagName) {
+    var normalized = normalizePromptTagToken(tagName);
+    if (!normalized) return headerText;
+    var re = new RegExp('(^|[\\s&|!])' + escapeRegex(normalized) + '(?=([\\s&|!]|$))', 'g');
+    var next = String(headerText || '').replace(re, '$1');
+    next = next
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trimEnd();
+    return next;
+  }
+
+  function addTagToHeaderText(headerText, tagName) {
+    var normalized = normalizePromptTagToken(tagName);
+    if (!normalized) return headerText;
+    if (hasTag(headerText, normalized)) return headerText;
+    var lines = String(headerText || '').split('\n');
+    if (lines.length === 0) lines = [''];
+    var firstLine = String(lines[0] || '').trim();
+    if (!firstLine) lines[0] = normalized;
+    else lines[0] = firstLine + ' ' + normalized;
+    return lines.join('\n');
+  }
+
+  function clearRemovableTagsFromHeaderText(headerText) {
+    var tokens = collectHeaderTagTokens(headerText, {
+      includeHash: true,
+      includeAt: false,
+      includeTemporalBang: false
+    });
+    var next = String(headerText || '');
+    for (var i = 0; i < tokens.length; i++) {
+      var token = String(tokens[i] || '');
+      if (!token || token.charAt(0) !== '#') continue;
+      if (/^#hidden-internal-/i.test(token)) continue;
+      if (isLayoutTagName(token)) continue;
+      next = removeTagFromHeaderText(next, token);
+    }
+    return next;
+  }
+
+  async function mutateEntityHeaderTags(elementType, indices, mutator) {
+    return mutateEntityHeaderText(elementType, indices, function (header) {
+      return mutator(header || '');
+    });
+  }
+
+  async function promptAddTagsToEntity(elementType, indices) {
+    var raw = window.prompt('Add tags (space/comma separated)', '#todo');
+    if (raw == null) return;
+    var tags = parsePromptTagList(raw);
+    if (tags.length === 0) {
+      showNotification('No valid tags provided');
       return;
     }
-    var re = new RegExp('(^|[\\s&|!])' + escapeRegex(tagName) + '(?=([\\s&|!]|$))');
-    var newText;
-    if (re.test(text)) {
-      newText = text.replace(re, '$1').replace(/  +/g, ' ').trim();
-    } else {
-      var lines = text.split('\n');
-      lines[0] = (lines[0] || '') + ' ' + tagName;
-      newText = lines.join('\n');
+    var changed = await mutateEntityHeaderTags(elementType, indices, function (header) {
+      var next = header;
+      for (var i = 0; i < tags.length; i++) next = addTagToHeaderText(next, tags[i]);
+      return next;
+    });
+    if (!changed) showNotification('Tags already present');
+  }
+
+  async function promptRemoveTagsFromEntity(elementType, indices) {
+    var target = resolveTagTarget(elementType, indices);
+    var prefill = target ? extractAllTags(target.text || '').join(' ') : '';
+    var raw = window.prompt('Remove tags (space/comma separated)', prefill || '#todo');
+    if (raw == null) return;
+    var tags = parsePromptTagList(raw);
+    if (tags.length === 0) {
+      showNotification('No valid tags provided');
+      return;
     }
-    if (newText === text) return;
-    pushUndo();
-    setFn(newText);
-    await persistBoardMutation({ refreshMainView: true, refreshSidebar: true });
+    var changed = await mutateEntityHeaderTags(elementType, indices, function (header) {
+      var next = header;
+      for (var i = 0; i < tags.length; i++) next = removeTagFromHeaderText(next, tags[i]);
+      return next;
+    });
+    if (!changed) showNotification('Selected tags not found');
+  }
+
+  async function clearTagsFromEntity(elementType, indices) {
+    var changed = await mutateEntityHeaderTags(elementType, indices, clearRemovableTagsFromHeaderText);
+    if (!changed) showNotification('No removable tags found');
+  }
+
+  async function handleEntityTagMenuAction(action, elementType, indices) {
+    if (action === 'tag-add') {
+      await promptAddTagsToEntity(elementType, indices);
+      return true;
+    }
+    if (action === 'tag-remove') {
+      await promptRemoveTagsFromEntity(elementType, indices);
+      return true;
+    }
+    if (action === 'tag-clear') {
+      await clearTagsFromEntity(elementType, indices);
+      return true;
+    }
+    var tagName = extractTagNameFromMenuAction(action);
+    if (tagName) {
+      await toggleTag(elementType, indices, tagName);
+      return true;
+    }
+    return false;
+  }
+
+  async function toggleTag(elementType, indices, tagName) {
+    var normalizedTag = normalizePromptTagToken(tagName);
+    if (!normalizedTag) return;
+    await mutateEntityHeaderTags(elementType, indices, function (header) {
+      if (hasTag(header, normalizedTag)) return removeTagFromHeaderText(header, normalizedTag);
+      return addTagToHeaderText(header, normalizedTag);
+    });
   }
 
   // --- Column Context Menu & Operations ---
@@ -14558,26 +18032,50 @@ const LexeraDashboard = (function () {
     var includePath = col && col.includeSource && col.includeSource.rawPath
       ? String(col.includeSource.rawPath)
       : extractIncludePathFromTitle(colTitle);
+    var stackMoveItems = [];
+    if (activeBoardData && Array.isArray(activeBoardData.rows)) {
+      for (var r = 0; r < activeBoardData.rows.length; r++) {
+        var row = activeBoardData.rows[r];
+        if (!row || !Array.isArray(row.stacks)) continue;
+        var rowLabel = stripHtmlComments(stripInternalHiddenTags(row.title || '')) || 'Row ' + (r + 1);
+        for (var s = 0; s < row.stacks.length; s++) {
+          if (context && context.rowIdx === r && context.stackIdx === s) continue;
+          var stack = row.stacks[s];
+          if (!stack) continue;
+          var stackLabel = stripHtmlComments(stripInternalHiddenTags(stack.title || '')) || 'Stack ' + (s + 1);
+          stackMoveItems.push({
+            id: 'move-to-stack-' + r + '-' + s,
+            label: rowLabel + ' / ' + stackLabel
+          });
+        }
+      }
+    }
 
     var nativeItems = [
+      { id: 'rename', label: 'Rename column' },
+      { id: 'add-card', label: 'Add card' },
+      { separator: true },
       { id: 'reveal-all', label: 'Reveal all' },
       { id: 'add-before', label: 'Insert column before' },
       { id: 'add-after', label: 'Insert column after' },
       { id: 'duplicate', label: 'Duplicate column' },
       { separator: true },
+      { id: 'fold-all', label: 'Fold all cards' },
+      { id: 'unfold-all', label: 'Unfold all cards' },
+      { separator: true },
       { id: 'park', label: 'Park column' },
       { id: 'archive', label: 'Archive column' },
       { id: 'delete', label: 'Delete column' },
       { separator: true },
-      buildTagSubmenu('Special', TAG_CATEGORIES.special, colTitle, 'tag-special-'),
-      buildTagSubmenu('Positivity', TAG_CATEGORIES.positivity, colTitle, 'tag-pos-'),
-      buildTagSubmenu('Colors', TAG_CATEGORIES.colors, colTitle, 'tag-color-'),
-      buildTagSubmenu('Workflow', TAG_CATEGORIES.workflow, colTitle, 'tag-wf-'),
-      buildTagSubmenu('Complexity', TAG_CATEGORIES.complexity, colTitle, 'tag-cx-'),
+      { id: 'tag-add', label: 'Add Tag...' },
+      { id: 'tag-remove', label: 'Remove Tag...' },
+      { id: 'tag-clear', label: 'Clear Tags' },
+      { separator: true },
     ];
+    nativeItems = nativeItems.concat(buildTagCategorySubmenus(colTitle, 'tag-'));
     var customSub = buildCustomTagsSubmenu(colTitle, 'tag-custom-');
     if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpPlaceholders());
+    nativeItems = nativeItems.concat(buildMarpMenuItems(colTitle));
     nativeItems.push({ separator: true });
     nativeItems.push({ id: 'toggle-width', label: 'Width (span ' + currentSpan + ')' });
     nativeItems.push({ id: 'toggle-stacked', label: (isStacked ? '\u2713 ' : '') + 'Stacked column' });
@@ -14585,6 +18083,10 @@ const LexeraDashboard = (function () {
       { id: 'sort-title', label: 'Title' },
       { id: 'sort-tag', label: 'Tag Value' }
     ]});
+    if (stackMoveItems.length > 0) {
+      nativeItems.push({ separator: true });
+      nativeItems.push({ id: 'move-sub', label: 'Move to Stack', items: stackMoveItems });
+    }
     nativeItems.push({ separator: true });
     nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
     nativeItems.push({ id: 'export-column', label: 'Export column' });
@@ -14738,7 +18240,19 @@ const LexeraDashboard = (function () {
   }
 
   async function handleColumnAction(action, colIndex, context) {
-    if (action === 'reveal-all') {
+    var stackMoveMatch = String(action || '').match(/^move-to-stack-(\d+)-(\d+)$/);
+    if (stackMoveMatch) {
+      await moveColumnToStack(colIndex, parseInt(stackMoveMatch[1], 10), parseInt(stackMoveMatch[2], 10));
+      return;
+    }
+    if (action === 'rename') {
+      var colCardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
+      var colRootEl = colCardsEl ? colCardsEl.closest('.column') : null;
+      if (colRootEl) enterColumnRename(colRootEl, colIndex);
+    } else if (action === 'add-card') {
+      addCardColumn = colIndex;
+      renderColumns();
+    } else if (action === 'reveal-all') {
       revealColumnContent(colIndex);
     } else if (action === 'add-before') {
       if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, true))) {
@@ -14750,6 +18264,10 @@ const LexeraDashboard = (function () {
       }
     } else if (action === 'duplicate') {
       await duplicateColumn(colIndex);
+    } else if (action === 'fold-all') {
+      toggleColCards(colIndex, true);
+    } else if (action === 'unfold-all') {
+      toggleColCards(colIndex, false);
     } else if (action === 'park') {
       await setColumnHiddenTag(colIndex, '#hidden-internal-parked');
     } else if (action === 'archive') {
@@ -14786,9 +18304,10 @@ const LexeraDashboard = (function () {
       await editColumnIncludeFile(colIndex);
     } else if (action === 'disable-include') {
       await disableColumnIncludeMode(colIndex);
+    } else if (String(action || '').indexOf('marp-') === 0) {
+      await handleEntityMarpMenuAction(action, 'column', { colIndex: colIndex });
     } else if (action.indexOf('tag-') === 0) {
-      var tagMatch = action.match(/^tag-(?:special|pos|color|wf|cx|custom)-(.+)$/);
-      if (tagMatch) await toggleTag('column', { colIndex: colIndex }, '#' + tagMatch[1]);
+      await handleEntityTagMenuAction(action, 'column', { colIndex: colIndex });
     }
   }
 
@@ -14882,22 +18401,42 @@ const LexeraDashboard = (function () {
   }
 
   function extractNumericTag(content) {
-    var lines = content.split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === '') break;
-      var match = lines[i].match(/(^|\s)#(\d+(?:\.\d+)*)/);
-      if (match) {
-        var parts = match[2].split('.');
-        var numbers = [];
-        for (var p = 0; p < parts.length; p++) {
-          var part = parseInt(parts[p], 10);
-          if (!isFinite(part)) return null;
-          numbers.push(part);
+    var numericTags = extractAllNumericTags(content);
+    return numericTags.length > 0 ? numericTags[0].parts.slice() : null;
+  }
+
+  function extractAllNumericTags(content) {
+    var tokens = collectHeaderTagTokens(content, {
+      includeHash: true,
+      includeAt: false,
+      includeTemporalBang: false
+    });
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < tokens.length; i++) {
+      var token = String(tokens[i] || '');
+      if (!isNumericIndexTag(token)) continue;
+      var normalizedToken = token.toLowerCase();
+      if (seen[normalizedToken]) continue;
+      seen[normalizedToken] = true;
+      var parts = token.slice(1).split('.');
+      var numbers = [];
+      for (var p = 0; p < parts.length; p++) {
+        var part = parseInt(parts[p], 10);
+        if (!isFinite(part)) {
+          numbers = null;
+          break;
         }
-        return numbers;
+        numbers.push(part);
+      }
+      if (numbers && numbers.length > 0) {
+        out.push({
+          tag: token,
+          parts: numbers
+        });
       }
     }
-    return null;
+    return out;
   }
 
   function escapeAttr(str) {
@@ -18233,11 +21772,26 @@ const LexeraDashboard = (function () {
     if (md) copyTextToClipboard(md, 'Copied as markdown', 'Copy failed');
   }
 
+  function buildExportSelectionForColumn(colIndex) {
+    var selection = {
+      scope: 'column',
+      flatColumnIndex: colIndex
+    };
+    var col = getFullColumn(colIndex);
+    if (col && col.id) selection.columnId = col.id;
+    var container = findColumnContainer(colIndex);
+    if (container) {
+      selection.rowIndex = container.rowIdx;
+      selection.stackIndex = container.stackIdx;
+      selection.columnIndex = container.localIdx;
+    }
+    return selection;
+  }
+
   async function exportColumn(colIndex) {
-    if (!window.ExportUI) return;
-    if (!window._exportUI) window._exportUI = new ExportUI();
-    await window._exportUI.init(activeBoardId, fullBoardData);
-    window._exportUI.show();
+    await triggerBoardExport({
+      selection: buildExportSelectionForColumn(colIndex)
+    });
   }
 
   function isExternalEmbedContainer(container) {
@@ -18533,14 +22087,78 @@ const LexeraDashboard = (function () {
     '#7ed47e', '#d45c8c', '#4ec9b0', '#d4644e',
   ];
 
+  try {
+    var storedTagColorOverrides = JSON.parse(localStorage.getItem('lexera-tag-color-overrides') || '{}');
+    if (storedTagColorOverrides && typeof storedTagColorOverrides === 'object') {
+      for (var storedTagKey in storedTagColorOverrides) {
+        if (!Object.prototype.hasOwnProperty.call(storedTagColorOverrides, storedTagKey)) continue;
+        TAG_COLORS[String(storedTagKey).toLowerCase()] = String(storedTagColorOverrides[storedTagKey] || '');
+      }
+    }
+  } catch (storedTagColorErr) {
+    // Ignore malformed local overrides and keep built-in colors.
+  }
+
   var TAG_CATEGORIES = {
-    special:    ['header', 'footer', 'hide', 'exclude'],
-    status:     ['todo', 'inprogress', 'done', 'transferred', 'blocked', 'review', 'testing', 'wip'],
+    special: ['header', 'footer', 'hide', 'exclude', 'private', 'draft'],
+    importance: ['critical', 'normal'],
+    status: ['todo', 'inprogress', 'done', 'transferred', 'blocked', 'review', 'testing', 'wip', 'cancelled', 'archived'],
+    priority: ['urgent', 'high', 'medium', 'low', 'delayed', 'stopped'],
+    moscow: ['must', 'should', 'could', 'wont'],
     positivity: ['++', '+', '\u00f8', '-', '--'],
-    colors:     ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'brown', 'gray', 'teal', 'indigo'],
-    impact:     ['minor', 'moderate', 'major', 'breaking'],
-    workflow:   ['ideas', 'outline', 'draft', 'reviewing', 'polish', 'ready', 'published'],
-    complexity: ['trivial', 'beginner', 'intermediate', 'advanced-level', 'expert']
+    type: ['bug', 'feature', 'enhancement', 'documentation', 'epic', 'spike', 'refactor'],
+    category: ['backend', 'frontend', 'database', 'api', 'security', 'performance', 'ux', 'ui'],
+    colors: ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'pink', 'brown', 'gray', 'teal', 'indigo'],
+    'colors-dark': ['dark-red', 'dark-orange', 'dark-yellow', 'dark-green', 'dark-cyan', 'dark-blue', 'dark-purple', 'dark-pink', 'dark-brown', 'dark-gray', 'black', 'dark-charcoal'],
+    'colors-light': ['light-red', 'light-orange', 'light-yellow', 'light-green', 'light-cyan', 'light-blue', 'light-purple', 'light-pink', 'light-brown', 'light-gray', 'white', 'light-beige'],
+    'colors-accessible': ['accessible-indigo', 'accessible-green', 'accessible-teal', 'accessible-cyan', 'accessible-yellow', 'accessible-rose', 'accessible-purple', 'accessible-magenta'],
+    workflow: ['ideas', 'outline', 'draft', 'reviewing', 'polish', 'ready', 'published', 'active', 'production', 'archive'],
+    organization: ['intro', 'core', 'advanced', 'frontend', 'backend', 'infrastructure', 'design'],
+    'teaching-content': ['slide', 'video', 'reading', 'exercise', 'quiz', 'demo', 'interactive', 'handout', 'discussion'],
+    'product-content': ['story', 'task', 'chore', 'improvement', 'design', 'infrastructure-task'],
+    complexity: ['trivial', 'beginner', 'intermediate', 'advanced-level', 'expert'],
+    'status-review': ['needs-review', 'in-review', 'needs-changes', 'reviewed', 'needs-approval', 'approved', 'rejected'],
+    'time-estimate': ['quick', 'medium-time', 'long'],
+    'status-testing': ['untested', 'unit-tested', 'integration-tested', 'e2e-tested', 'security-tested', 'performance-tested', 'regression-tested', 'uat-passed'],
+    'teaching-platform': ['online', 'in-person', 'hybrid', 'async', 'sync'],
+    'product-platform': ['web', 'mobile', 'ios', 'android', 'desktop', 'api'],
+    version: ['v1', 'v2', 'v3', 'rc', 'stable', 'legacy', 'eol'],
+    impact: ['minor', 'moderate', 'major', 'breaking'],
+    schedule: ['planning', 'preparation', 'verify'],
+    overview: ['overview', 'information', 'presentation'],
+    example: ['example', 'tasks', 'homework'],
+    deliveries: ['deliveries', 'handouts', 'references']
+  };
+
+  var TAG_STYLE_ROLE_BY_CATEGORY = {
+    importance: 'header',
+    status: 'header',
+    workflow: 'header',
+    organization: 'header',
+    'teaching-content': 'header',
+    'product-content': 'header',
+    complexity: 'header',
+    type: 'header',
+    category: 'header',
+    impact: 'header',
+    schedule: 'header',
+    overview: 'header',
+    example: 'header',
+    deliveries: 'header',
+    version: 'header',
+    priority: 'footer',
+    moscow: 'footer',
+    'status-review': 'footer',
+    'time-estimate': 'footer',
+    'status-testing': 'footer',
+    positivity: 'badge',
+    'teaching-platform': 'badge',
+    'product-platform': 'badge',
+    colors: 'background',
+    'colors-dark': 'background',
+    'colors-light': 'background',
+    'colors-accessible': 'background',
+    special: 'effect'
   };
 
   var EMOJI_SHORTCODES = {
@@ -18587,6 +22205,158 @@ const LexeraDashboard = (function () {
     return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
   }
 
+  function normalizeTagCategoryName(tagName) {
+    var normalized = String(tagName || '').trim().toLowerCase();
+    if (!normalized) return '';
+    return normalized.charAt(0) === '#' ? normalized.substring(1) : normalized;
+  }
+
+  function getTagCategoryKey(tagName) {
+    var normalized = normalizeTagCategoryName(tagName);
+    if (!normalized) return '';
+    var keys = Object.keys(TAG_CATEGORIES);
+    for (var i = 0; i < keys.length; i++) {
+      var tags = TAG_CATEGORIES[keys[i]];
+      if (!Array.isArray(tags)) continue;
+      for (var j = 0; j < tags.length; j++) {
+        if (String(tags[j]).toLowerCase() === normalized) return keys[i];
+      }
+    }
+    return '';
+  }
+
+  function formatTagDisplayLabel(tagName) {
+    var normalized = normalizeTagCategoryName(tagName);
+    if (!normalized) return '';
+    if (/^(?:\+\+|\+|\u00f8|-|--)$/.test(normalized)) return normalized;
+    return normalized.replace(/[-_]+/g, ' ').replace(/\b([a-z])/g, function (_, ch) { return ch.toUpperCase(); });
+  }
+
+  function parseColorChannels(color) {
+    var source = String(color || '').trim();
+    var shortHexMatch = source.match(/^#([0-9a-f]{3})$/i);
+    if (shortHexMatch) {
+      return {
+        r: parseInt(shortHexMatch[1].charAt(0) + shortHexMatch[1].charAt(0), 16),
+        g: parseInt(shortHexMatch[1].charAt(1) + shortHexMatch[1].charAt(1), 16),
+        b: parseInt(shortHexMatch[1].charAt(2) + shortHexMatch[1].charAt(2), 16)
+      };
+    }
+    var longHexMatch = source.match(/^#([0-9a-f]{6})$/i);
+    if (longHexMatch) {
+      return {
+        r: parseInt(longHexMatch[1].slice(0, 2), 16),
+        g: parseInt(longHexMatch[1].slice(2, 4), 16),
+        b: parseInt(longHexMatch[1].slice(4, 6), 16)
+      };
+    }
+    var rgbMatch = source.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+    if (rgbMatch) {
+      return {
+        r: parseInt(rgbMatch[1], 10),
+        g: parseInt(rgbMatch[2], 10),
+        b: parseInt(rgbMatch[3], 10)
+      };
+    }
+    return null;
+  }
+
+  function getContrastingTextColor(color) {
+    var channels = parseColorChannels(color);
+    if (!channels) return '#ffffff';
+    var luminance = ((0.299 * channels.r) + (0.587 * channels.g) + (0.114 * channels.b)) / 255;
+    return luminance > 0.6 ? '#111111' : '#ffffff';
+  }
+
+  function buildTagStyleDescriptor(tagName) {
+    var normalized = normalizeTagCategoryName(tagName);
+    if (!normalized) return null;
+    var fullTag = '#' + normalized;
+    var color = getTagColor(fullTag);
+    var categoryKey = getTagCategoryKey(fullTag);
+    var descriptor = {
+      tag: fullTag,
+      normalizedTag: normalized,
+      category: categoryKey,
+      color: color,
+      border: {
+        style: 'solid',
+        width: '2px',
+        position: 'left',
+        color: color
+      },
+      background: null,
+      headerBar: null,
+      footerBar: null,
+      badge: null,
+      opacity: '',
+      filter: '',
+      pattern: ''
+    };
+    var styleRole = TAG_STYLE_ROLE_BY_CATEGORY[categoryKey] || '';
+    var label = formatTagDisplayLabel(fullTag).toUpperCase();
+
+    if (styleRole === 'background') {
+      descriptor.background = {
+        color: color,
+        alpha: categoryKey === 'colors-light' ? 0.2 : (categoryKey === 'colors-dark' ? 0.18 : 0.14)
+      };
+      descriptor.border.position = 'full';
+    } else if (styleRole === 'header') {
+      descriptor.headerBar = {
+        label: label,
+        color: color,
+        labelColor: getContrastingTextColor(color)
+      };
+    } else if (styleRole === 'footer') {
+      descriptor.footerBar = {
+        label: label,
+        color: color,
+        labelColor: getContrastingTextColor(color)
+      };
+    } else if (styleRole === 'badge') {
+      descriptor.badge = {
+        label: /^(?:\+\+|\+|\u00f8|-|--)$/.test(normalized) ? normalized : formatTagDisplayLabel(fullTag),
+        color: color,
+        labelColor: getContrastingTextColor(color)
+      };
+    } else if (styleRole === 'effect') {
+      if (normalized === 'exclude') {
+        descriptor.opacity = '0.55';
+        descriptor.pattern = 'stripes';
+      } else if (normalized === 'private') {
+        descriptor.opacity = '0.72';
+        descriptor.pattern = 'stripes';
+      } else if (normalized === 'draft') {
+        descriptor.opacity = '0.82';
+        descriptor.pattern = 'stripes-h';
+      } else if (normalized === 'header') {
+        descriptor.headerBar = {
+          label: 'HEADER',
+          color: color,
+          labelColor: getContrastingTextColor(color)
+        };
+      } else if (normalized === 'footer') {
+        descriptor.footerBar = {
+          label: 'FOOTER',
+          color: color,
+          labelColor: getContrastingTextColor(color)
+        };
+      }
+    }
+
+    if (normalized === 'critical' || normalized === 'urgent' || normalized === 'blocked') {
+      descriptor.border.width = '3px';
+      descriptor.border.style = 'dashed';
+    } else if (normalized === 'wip' || normalized === 'done' || normalized === 'stopped') {
+      descriptor.border.position = 'full';
+    } else if (normalized === 'normal' || normalized === 'todo') {
+      descriptor.border.style = 'dotted';
+    }
+
+    return descriptor;
+  }
+
   function renderEmojiShortcodes(text) {
     return String(text || '').replace(/(^|[^\w&]):([a-z][a-z0-9_+-]*):(?=$|[^\w;])/gi, function (_, prefix, code) {
       var emoji = EMOJI_SHORTCODES[String(code || '').toLowerCase()];
@@ -18615,8 +22385,14 @@ const LexeraDashboard = (function () {
     var lines = String(text || '').split('\n');
     var sourceLines = [];
     for (var i = 0; i < lines.length; i++) {
-      if (lines[i].trim() === '') break;
-      sourceLines.push(lines[i]);
+      var line = String(lines[i] || '');
+      if (line.trim() === '') break;
+      var headingMatch = line.match(/^(\s{0,3})#{1,6}(?:[ \t]+(.*))?[ \t]*$/);
+      if (headingMatch) {
+        var headingContent = String(headingMatch[2] || '').replace(/[ \t]+#{1,}[ \t]*$/, '');
+        line = (headingMatch[1] || '') + headingContent;
+      }
+      sourceLines.push(line);
     }
     var source = sourceLines.join('\n');
     var tokens = [];
@@ -18865,23 +22641,197 @@ const LexeraDashboard = (function () {
     return '';
   }
 
-  function applyTagStyleToEntity(containerEl, styleSourceText) {
-    if (!containerEl || !containerEl.style) return;
-    var styleTag = getFirstStyleTag(styleSourceText);
-    if (!styleTag) {
-      containerEl.classList.remove('tag-styled');
-      containerEl.style.removeProperty('--tag-accent');
-      containerEl.style.removeProperty('--tag-accent-soft');
-      containerEl.style.removeProperty('--tag-accent-soft-strong');
-      containerEl.style.removeProperty('--tag-accent-muted');
+  function getTagStyleEntityType(containerEl) {
+    if (!containerEl || !containerEl.classList) return '';
+    if (containerEl.classList.contains('board-row')) return 'row';
+    if (containerEl.classList.contains('board-stack')) return 'stack';
+    if (containerEl.classList.contains('column')) return 'column';
+    if (containerEl.classList.contains('card')) return 'card';
+    return '';
+  }
+
+  function getTagStyleHeaderElement(containerEl, entityType) {
+    if (!containerEl) return null;
+    if (entityType === 'row') return containerEl.querySelector(':scope > .board-row-header');
+    if (entityType === 'stack') return containerEl.querySelector(':scope > .board-stack-header');
+    if (entityType === 'column') return containerEl.querySelector(':scope > .column-header');
+    if (entityType === 'card') return containerEl.querySelector(':scope > .card-header');
+    return null;
+  }
+
+  function getTagStyleFooterElement(containerEl, entityType, allowCreate) {
+    if (!containerEl) return null;
+    if (entityType === 'row') return containerEl.querySelector(':scope > .board-row-footer');
+    if (entityType === 'stack') return containerEl.querySelector(':scope > .board-stack-footer');
+    if (entityType === 'column') return containerEl.querySelector(':scope > .column-footer');
+    if (entityType !== 'card') return null;
+    var footer = containerEl.querySelector(':scope > .card-footer.tag-style-generated');
+    if (!footer && allowCreate) {
+      footer = document.createElement('div');
+      footer.className = 'card-footer tag-style-generated';
+      containerEl.appendChild(footer);
+    }
+    return footer;
+  }
+
+  function clearTagStyleGeneratedNodes(containerEl) {
+    if (!containerEl) return;
+    var generated = containerEl.querySelectorAll('.tag-style-generated');
+    for (var i = 0; i < generated.length; i++) {
+      if (generated[i] && generated[i].parentNode) generated[i].parentNode.removeChild(generated[i]);
+    }
+  }
+
+  function buildTagStyleBadgeDescriptor(label, color, labelColor) {
+    return {
+      label: String(label || ''),
+      color: color || '#4b5563',
+      labelColor: labelColor || getContrastingTextColor(color || '#4b5563')
+    };
+  }
+
+  function renderTagStyleBadgeRail(targetEl, badges, entityType, slot) {
+    if (!targetEl || !Array.isArray(badges) || badges.length === 0) return;
+    var rail = document.createElement('span');
+    rail.className = 'tag-style-badge-rail tag-style-generated tag-style-' + slot;
+    for (var i = 0; i < badges.length; i++) {
+      if (!badges[i] || !badges[i].label) continue;
+      var badge = document.createElement('span');
+      badge.className = 'tag-style-badge';
+      badge.textContent = badges[i].label;
+      badge.style.setProperty('--tag-badge-bg', badges[i].color);
+      badge.style.setProperty('--tag-badge-fg', badges[i].labelColor);
+      rail.appendChild(badge);
+    }
+    if (!rail.childNodes.length) return;
+
+    if (slot === 'header') {
+      var beforeNode = null;
+      if (entityType === 'row') beforeNode = targetEl.querySelector(':scope > .row-header-actions');
+      else if (entityType === 'stack') beforeNode = targetEl.querySelector(':scope > .stack-header-actions');
+      else if (entityType === 'column') beforeNode = targetEl.querySelector(':scope > .column-header-actions');
+      else if (entityType === 'card') beforeNode = targetEl.querySelector(':scope > .card-menu-btn');
+      if (beforeNode) targetEl.insertBefore(rail, beforeNode);
+      else targetEl.appendChild(rail);
       return;
     }
-    var color = getTagColor(styleTag);
-    containerEl.classList.add('tag-styled');
-    containerEl.style.setProperty('--tag-accent', color);
-    containerEl.style.setProperty('--tag-accent-soft', toTagAccentRgba(color, 0.14));
-    containerEl.style.setProperty('--tag-accent-soft-strong', toTagAccentRgba(color, 0.24));
-    containerEl.style.setProperty('--tag-accent-muted', toTagAccentRgba(color, 0.42));
+
+    targetEl.appendChild(rail);
+  }
+
+  function applyTagStyleToEntity(containerEl, styleSourceText) {
+    if (!containerEl || !containerEl.style) return;
+    var entityType = getTagStyleEntityType(containerEl);
+    var headerEl = getTagStyleHeaderElement(containerEl, entityType);
+    var footerEl = getTagStyleFooterElement(containerEl, entityType, false);
+    clearTagStyleGeneratedNodes(containerEl);
+
+    var removableProps = [
+      '--tag-accent', '--tag-accent-soft', '--tag-accent-soft-strong', '--tag-accent-muted',
+      '--tag-label-bg', '--tag-label-fg', '--tag-footer-label-bg', '--tag-footer-label-fg',
+      '--tag-border-color', '--tag-border-width', '--tag-border-style',
+      '--tag-surface-bg', '--tag-surface-header-bg', '--tag-surface-footer-bg', '--tag-surface-content-bg',
+      '--tag-effect-opacity', '--tag-effect-filter'
+    ];
+    for (var rp = 0; rp < removableProps.length; rp++) {
+      containerEl.style.removeProperty(removableProps[rp]);
+    }
+    containerEl.classList.remove('tag-styled', 'tag-style-pattern-stripes', 'tag-style-pattern-stripes-h');
+    containerEl.removeAttribute('data-tag-border-position');
+
+    if (headerEl) headerEl.removeAttribute('data-tag-style-label');
+    if (footerEl) footerEl.removeAttribute('data-tag-style-label');
+
+    var numericTags = extractAllNumericTags(styleSourceText);
+    var allTags = extractAllTags(styleSourceText);
+    var styleTags = [];
+    for (var i = 0; i < allTags.length; i++) {
+      if (!isTagStyleEligible(allTags[i])) continue;
+      styleTags.push(allTags[i]);
+    }
+
+    var primaryTag = styleTags.length > 0 ? styleTags[0] : '';
+    var descriptor = primaryTag ? buildTagStyleDescriptor(primaryTag) : null;
+    var headerBadges = [];
+    var footerBadges = [];
+
+    for (var nt = 0; nt < numericTags.length; nt++) {
+      headerBadges.push(buildTagStyleBadgeDescriptor(numericTags[nt].tag, '#4b5563', '#ffffff'));
+    }
+
+    for (var st = 0; st < styleTags.length; st++) {
+      var tagDescriptor = buildTagStyleDescriptor(styleTags[st]);
+      if (tagDescriptor && tagDescriptor.badge) {
+        headerBadges.push(buildTagStyleBadgeDescriptor(
+          tagDescriptor.badge.label,
+          tagDescriptor.badge.color,
+          tagDescriptor.badge.labelColor
+        ));
+      }
+    }
+
+    if (!descriptor && headerBadges.length === 0 && footerBadges.length === 0) {
+      if (entityType === 'card' && footerEl && footerEl.parentNode) footerEl.parentNode.removeChild(footerEl);
+      return;
+    }
+
+    if (descriptor) {
+      var color = descriptor.color || getTagColor(primaryTag || '#tag');
+      containerEl.classList.add('tag-styled');
+      containerEl.style.setProperty('--tag-accent', color);
+      containerEl.style.setProperty('--tag-accent-soft', toTagAccentRgba(color, 0.14));
+      containerEl.style.setProperty('--tag-accent-soft-strong', toTagAccentRgba(color, 0.24));
+      containerEl.style.setProperty('--tag-accent-muted', toTagAccentRgba(color, 0.42));
+
+      var headerLabel = descriptor.headerBar && descriptor.headerBar.label
+        ? descriptor.headerBar.label
+        : (primaryTag ? primaryTag : '');
+      if (headerEl && headerLabel) {
+        headerEl.setAttribute('data-tag-style-label', headerLabel);
+        containerEl.style.setProperty('--tag-label-bg', descriptor.headerBar && descriptor.headerBar.color ? descriptor.headerBar.color : color);
+        containerEl.style.setProperty('--tag-label-fg', descriptor.headerBar && descriptor.headerBar.labelColor ? descriptor.headerBar.labelColor : getContrastingTextColor(color));
+      }
+
+      var footerLabel = descriptor.footerBar && descriptor.footerBar.label ? descriptor.footerBar.label : '';
+      if (footerLabel) {
+        footerEl = getTagStyleFooterElement(containerEl, entityType, entityType === 'card');
+        if (footerEl) {
+          footerEl.setAttribute('data-tag-style-label', footerLabel);
+          containerEl.style.setProperty('--tag-footer-label-bg', descriptor.footerBar && descriptor.footerBar.color ? descriptor.footerBar.color : color);
+          containerEl.style.setProperty('--tag-footer-label-fg', descriptor.footerBar && descriptor.footerBar.labelColor ? descriptor.footerBar.labelColor : getContrastingTextColor(color));
+        }
+      }
+
+      if (descriptor.border) {
+        containerEl.style.setProperty('--tag-border-color', descriptor.border.color || color);
+        containerEl.style.setProperty('--tag-border-width', descriptor.border.width || '2px');
+        containerEl.style.setProperty('--tag-border-style', descriptor.border.style || 'solid');
+        containerEl.setAttribute('data-tag-border-position', descriptor.border.position || 'left');
+      }
+
+      if (descriptor.background) {
+        var bgColor = descriptor.background.color || color;
+        var bgAlpha = typeof descriptor.background.alpha === 'number' ? descriptor.background.alpha : 0.14;
+        containerEl.style.setProperty('--tag-surface-bg', toTagAccentRgba(bgColor, bgAlpha));
+        containerEl.style.setProperty('--tag-surface-header-bg', toTagAccentRgba(bgColor, Math.min(bgAlpha + 0.08, 0.28)));
+        containerEl.style.setProperty('--tag-surface-footer-bg', toTagAccentRgba(bgColor, Math.min(bgAlpha + 0.04, 0.24)));
+        containerEl.style.setProperty('--tag-surface-content-bg', toTagAccentRgba(bgColor, Math.max(bgAlpha - 0.04, 0.08)));
+      }
+
+      if (descriptor.opacity) containerEl.style.setProperty('--tag-effect-opacity', descriptor.opacity);
+      if (descriptor.filter) containerEl.style.setProperty('--tag-effect-filter', descriptor.filter);
+      if (descriptor.pattern === 'stripes') containerEl.classList.add('tag-style-pattern-stripes');
+      if (descriptor.pattern === 'stripes-h') containerEl.classList.add('tag-style-pattern-stripes-h');
+    }
+
+    if (headerEl && headerBadges.length > 0) {
+      renderTagStyleBadgeRail(headerEl, headerBadges, entityType, 'header');
+    }
+    if (footerEl && footerBadges.length > 0) {
+      renderTagStyleBadgeRail(footerEl, footerBadges, entityType, 'footer');
+    } else if (entityType === 'card' && footerEl && !footerEl.getAttribute('data-tag-style-label') && footerEl.parentNode) {
+      footerEl.parentNode.removeChild(footerEl);
+    }
   }
 
   function getCardTitle(content) {
@@ -18903,7 +22853,7 @@ const LexeraDashboard = (function () {
 
   function renderTitleInline(text, boardId) {
     boardId = boardId || activeBoardId || '';
-    var safe = escapeHtml(text);
+    var safe = escapeHtml(stripHtmlComments(text));
     var titleIncludeIndex = 0;
     var titleLinkIndex = 0;
     // Strip image/embed markdown

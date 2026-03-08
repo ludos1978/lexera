@@ -398,6 +398,16 @@ const LexeraApi = (function () {
     return request('/logs');
   }
 
+  async function getCaptureHistory() {
+    return request('/capture/history');
+  }
+
+  async function removeCaptureEntry(id) {
+    return request('/capture/history/' + encodeURIComponent(id), {
+      method: 'DELETE',
+    });
+  }
+
   function connectLogStream(onEntry) {
     if (!baseUrl) return null;
     var es = new EventSource(baseUrl + '/logs/stream');
@@ -776,6 +786,7 @@ const LexeraApi = (function () {
     probeExternalEmbed,
     openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
+    getCaptureHistory, removeCaptureEntry,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,
     getMe, updateMe, getServerInfo,
     createInvite, listInvites, revokeInvite, acceptInvite,

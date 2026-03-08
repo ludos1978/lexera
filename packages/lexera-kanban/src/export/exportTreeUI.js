@@ -1,8 +1,7 @@
 /**
- * Export Tree UI Component.
- * Renders kanban-style visual selector (rows horizontal, stacks vertical).
- *
- * Ported from src/html/utils/exportTreeUI.js
+ * Export tree selector UI.
+ * Renders a board -> rows -> stacks -> columns scope selector and keeps
+ * selection state in sync with ExportTreeBuilder.
  */
 
 class ExportTreeUI {
@@ -17,53 +16,59 @@ class ExportTreeUI {
         if (!this.container) return;
         this.container.innerHTML = '';
         if (!tree) {
-            this.container.innerHTML = '<div class="export-selector-empty">No columns available</div>';
+            this.container.innerHTML = '<div class="export-selector-empty">No board content available</div>';
             return;
         }
 
-        const main = document.createElement('div');
+        var main = document.createElement('div');
         main.className = 'export-selector-main';
-
-        main.appendChild(this.renderFullKanbanOption(tree));
+        main.appendChild(this.renderFullBoardOption(tree));
 
         if (tree.children && tree.children.length > 0) {
-            tree.children.forEach(rowNode => main.appendChild(this.renderRow(rowNode)));
+            for (var i = 0; i < tree.children.length; i++) {
+                main.appendChild(this.renderRow(tree.children[i]));
+            }
         }
 
         this.container.appendChild(main);
     }
 
-    renderFullKanbanOption(node) {
-        const el = document.createElement('div');
-        el.className = 'export-selector-full' + (node.selected ? ' selected' : '');
-        el.textContent = 'Full Kanban';
+    renderFullBoardOption(node) {
+        var el = document.createElement('div');
+        el.className = this.getNodeClassName('export-selector-full', node);
+        el.textContent = node.label || 'Full Board';
         el.dataset.nodeId = 'root';
-        el.addEventListener('click', () => this.toggleNode('root'));
+        if (!node.excluded) {
+            el.addEventListener('click', () => this.toggleNode('root'));
+        }
         return el;
     }
 
     renderRow(rowNode) {
-        const rowDiv = document.createElement('div');
-        rowDiv.className = 'export-selector-row' + (rowNode.selected ? ' selected' : '');
+        var rowDiv = document.createElement('div');
+        rowDiv.className = this.getNodeClassName('export-selector-row', rowNode);
         rowDiv.dataset.nodeId = ExportTreeBuilder.generateNodeId(rowNode);
 
-        const label = document.createElement('div');
+        var label = document.createElement('div');
         label.className = 'export-selector-row-label';
         label.textContent = rowNode.label;
-        label.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleNode(rowDiv.dataset.nodeId);
-        });
+        if (!rowNode.excluded) {
+            label.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleNode(rowDiv.dataset.nodeId);
+            });
+        }
         rowDiv.appendChild(label);
 
-        const cols = document.createElement('div');
+        var cols = document.createElement('div');
         cols.className = 'export-selector-columns-container';
 
         if (rowNode.children) {
-            rowNode.children.forEach(child => {
+            for (var i = 0; i < rowNode.children.length; i++) {
+                var child = rowNode.children[i];
                 if (child.type === 'stack') cols.appendChild(this.renderStack(child));
                 else if (child.type === 'column') cols.appendChild(this.renderColumn(child));
-            });
+            }
         }
 
         rowDiv.appendChild(cols);
@@ -71,32 +76,34 @@ class ExportTreeUI {
     }
 
     renderStack(stackNode) {
-        const el = document.createElement('div');
-        el.className = 'export-selector-stack' + (stackNode.selected ? ' selected' : '');
+        var el = document.createElement('div');
+        el.className = this.getNodeClassName('export-selector-stack', stackNode);
         el.dataset.nodeId = ExportTreeBuilder.generateNodeId(stackNode);
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleNode(el.dataset.nodeId);
-        });
+        if (!stackNode.excluded) {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleNode(el.dataset.nodeId);
+            });
+        }
 
-        const label = document.createElement('div');
+        var label = document.createElement('div');
         label.className = 'export-selector-stack-label';
-        label.textContent = 'Stack';
+        label.textContent = stackNode.label;
         el.appendChild(label);
 
         if (stackNode.children) {
-            stackNode.children.forEach(col => el.appendChild(this.renderStackedColumn(col)));
+            for (var i = 0; i < stackNode.children.length; i++) {
+                el.appendChild(this.renderStackedColumn(stackNode.children[i]));
+            }
         }
         return el;
     }
 
     renderColumn(node) {
-        const el = document.createElement('div');
-        el.className = 'export-selector-column';
-        if (node.excluded) el.className += ' excluded';
-        else if (node.selected) el.className += ' selected';
+        var el = document.createElement('div');
+        el.className = this.getNodeClassName('export-selector-column', node);
         el.dataset.nodeId = ExportTreeBuilder.generateNodeId(node);
-        el.textContent = node.label.replace(/^Column:\s*/, '');
+        el.textContent = node.label;
         if (!node.excluded) {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -107,12 +114,10 @@ class ExportTreeUI {
     }
 
     renderStackedColumn(node) {
-        const el = document.createElement('div');
-        el.className = 'export-selector-stacked-column';
-        if (node.excluded) el.className += ' excluded';
-        else if (node.selected) el.className += ' selected';
+        var el = document.createElement('div');
+        el.className = this.getNodeClassName('export-selector-stacked-column', node);
         el.dataset.nodeId = ExportTreeBuilder.generateNodeId(node);
-        el.textContent = node.label.replace(/^Column:\s*/, '');
+        el.textContent = node.label;
         if (!node.excluded) {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -122,35 +127,36 @@ class ExportTreeUI {
         return el;
     }
 
-    toggleNode(nodeId) {
-        if (!this.tree) return;
-        const node = ExportTreeBuilder.findNodeById(this.tree, nodeId);
-        if (!node) return;
-        this.tree = ExportTreeBuilder.toggleSelection(this.tree, nodeId, !node.selected);
-        this.updateSelectionClasses(this.tree);
-        if (this.onSelectionChange) {
-            this.onSelectionChange(ExportTreeBuilder.getSelectedItems(this.tree));
-        }
+    getNodeClassName(baseClass, node) {
+        var className = baseClass;
+        if (node && node.excluded) className += ' excluded';
+        else if (node && node.selected) className += ' selected';
+        else if (node && node.partial) className += ' partial';
+        return className;
     }
 
-    /**
-     * Update CSS 'selected' classes on existing DOM elements to match tree state,
-     * without rebuilding the DOM. Walks the tree and finds each node's element
-     * by its data-node-id attribute.
-     */
+    toggleNode(nodeId) {
+        if (!this.tree) return;
+        var node = ExportTreeBuilder.findNodeById(this.tree, nodeId);
+        if (!node || node.excluded) return;
+        this.tree = ExportTreeBuilder.toggleSelection(this.tree, nodeId, !node.selected);
+        this.updateSelectionClasses(this.tree);
+        this.emitSelectionChange();
+    }
+
     updateSelectionClasses(node) {
-        if (!this.container) return;
-        const nodeId = ExportTreeBuilder.generateNodeId(node);
-        const el = this.container.querySelector('[data-node-id="' + nodeId + '"]');
-        if (el && !node.excluded) {
-            if (node.selected) {
-                el.classList.add('selected');
-            } else {
-                el.classList.remove('selected');
-            }
+        if (!this.container || !node) return;
+        var nodeId = ExportTreeBuilder.generateNodeId(node);
+        var el = this.container.querySelector('[data-node-id="' + nodeId + '"]');
+        if (el) {
+            el.classList.toggle('selected', !!node.selected && !node.excluded);
+            el.classList.toggle('partial', !!node.partial && !node.excluded);
+            el.classList.toggle('excluded', !!node.excluded);
         }
         if (node.children) {
-            node.children.forEach(child => this.updateSelectionClasses(child));
+            for (var i = 0; i < node.children.length; i++) {
+                this.updateSelectionClasses(node.children[i]);
+            }
         }
     }
 
@@ -159,18 +165,49 @@ class ExportTreeUI {
         return ExportTreeBuilder.getSelectedItems(this.tree);
     }
 
-    setSelectionChangeCallback(cb) { this.onSelectionChange = cb; }
+    getSelection() {
+        if (!this.tree) {
+            return {
+                hasSelection: false,
+                isFullBoard: false,
+                columnIndexes: [],
+                columnIds: [],
+                scopes: [],
+                summary: { label: 'No selection', key: 'none' },
+            };
+        }
+        return ExportTreeBuilder.getSelection(this.tree);
+    }
+
+    setSelectionChangeCallback(cb) {
+        this.onSelectionChange = cb;
+    }
 
     clearSelection() {
         if (!this.tree) return;
-        this.tree = ExportTreeBuilder.toggleSelection(this.tree, 'root', false);
+        this.tree = ExportTreeBuilder.clearSelection(this.tree);
         this.updateSelectionClasses(this.tree);
+        this.emitSelectionChange();
     }
 
     selectAll() {
         if (!this.tree) return;
-        this.tree = ExportTreeBuilder.toggleSelection(this.tree, 'root', true);
+        this.tree = ExportTreeBuilder.setOnlySelection(this.tree, 'root');
         this.updateSelectionClasses(this.tree);
+        this.emitSelectionChange();
+    }
+
+    setOnlySelection(nodeId) {
+        if (!this.tree) return;
+        this.tree = ExportTreeBuilder.setOnlySelection(this.tree, nodeId);
+        this.updateSelectionClasses(this.tree);
+        this.emitSelectionChange();
+    }
+
+    emitSelectionChange() {
+        if (typeof this.onSelectionChange === 'function') {
+            this.onSelectionChange(this.getSelection());
+        }
     }
 }
 

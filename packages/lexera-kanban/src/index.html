@@ -137,7 +137,7 @@
 
         <!-- Selection -->
         <div class="export-section">
-          <div class="export-section-title">Column Selection</div>
+          <div class="export-section-title">Content Selection</div>
           <div id="export-tree-container" class="export-tree-container"></div>
           <div class="export-tree-actions">
             <button class="export-btn-select-all export-action-btn" type="button">Select All</button>
@@ -148,6 +148,15 @@
         <!-- Format -->
         <div class="export-section">
           <div class="export-section-title">Format</div>
+          <div class="export-field">
+            <label class="export-label" for="export-preset">Export preset</label>
+            <select id="export-preset" class="export-input">
+              <option value="custom">Custom settings</option>
+              <option value="marp-presentation">Marp presentation</option>
+              <option value="marp-pdf">Marp PDF</option>
+              <option value="share-content">Share content</option>
+            </select>
+          </div>
           <div class="export-field">
             <label class="export-label" for="export-format">Export format</label>
             <select id="export-format" class="export-input">
@@ -173,8 +182,19 @@
             </select>
           </div>
           <div class="export-field">
+            <label class="export-checkbox" for="export-exclude-enabled">
+              <input id="export-exclude-enabled" type="checkbox" checked>
+              Exclude content with tags
+            </label>
+          </div>
+          <div class="export-field">
             <label class="export-label" for="export-exclude-tags">Exclude tags (comma-separated)</label>
             <input id="export-exclude-tags" class="export-input" type="text" placeholder="#draft, #wip">
+            <div class="export-field-help">Defaults to `#exclude` when enabled.</div>
+          </div>
+          <div class="export-checkboxes">
+            <label class="export-checkbox"><input type="checkbox" id="export-auto-export-on-save"> Auto-export on save</label>
+            <label class="export-checkbox"><input type="checkbox" id="export-strip-includes"> Merge includes into main file</label>
           </div>
         </div>
 

@@ -9,6 +9,145 @@
  *   window.LexeraApi          — REST API client
  */
 
+var EXPORT_UI_STORAGE_KEYS = {
+    preset: 'lexera-export-preset',
+    marpTheme: 'lexera-export-marp-theme',
+    speakerNotes: 'lexera-export-speaker-notes',
+    htmlComments: 'lexera-export-html-comments',
+    htmlContent: 'lexera-export-html-content',
+    pandocFormat: 'lexera-export-pandoc-format',
+    pandocPageBreaks: 'lexera-export-pandoc-page-breaks',
+    excludeEnabled: 'lexera-export-exclude-enabled',
+    excludeTags: 'lexera-export-exclude-tags',
+    stripIncludes: 'lexera-export-strip-includes',
+    autoExportOnSave: 'lexera-export-auto-export-on-save',
+};
+var EXPORT_UI_LEGACY_STORAGE_KEYS = {
+    marpTheme: 'kanban-marp-theme',
+    speakerNotes: 'kanban-speaker-note-mode',
+    htmlComments: 'kanban-html-comment-mode',
+    htmlContent: 'kanban-html-content-mode',
+    excludeTags: 'kanban-export-exclude-tags',
+};
+
+var ACTIVE_EXPORT_AUTO_SETTINGS = null;
+var ACTIVE_EXPORT_AUTO_PROMISE = null;
+
+function normalizeExportDialogFormat(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'keep' || normalized === 'kanban' || normalized === 'document') return normalized;
+    return 'presentation';
+}
+
+function normalizeExportPreset(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'marp-presentation' || normalized === 'marp-pdf' || normalized === 'share-content') {
+        return normalized;
+    }
+    return 'custom';
+}
+
+function normalizePandocExportFormat(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'odt' || normalized === 'epub') return normalized;
+    return 'docx';
+}
+
+function normalizeDocumentPageBreakPreference(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'per-task' || normalized === 'pertask') return 'perTask';
+    if (normalized === 'per-column' || normalized === 'percolumn') return 'perColumn';
+    return 'continuous';
+}
+
+function normalizeSpeakerNoteMode(value) {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'keep' || normalized === 'remove') return normalized;
+    return 'comment';
+}
+
+function normalizeKeepRemoveMode(value) {
+    return String(value || '').trim().toLowerCase() === 'remove' ? 'remove' : 'keep';
+}
+
+function normalizeBooleanPreference(value, fallback) {
+    if (value == null || value === '') return !!fallback;
+    if (value === true || value === 'true' || value === '1' || value === 1) return true;
+    if (value === false || value === 'false' || value === '0' || value === 0) return false;
+    return !!fallback;
+}
+
+function defaultExcludeTagsInput() {
+    return '#exclude';
+}
+
+function normalizeExcludeTagsInput(raw) {
+    var value = String(raw || '').trim();
+    return value || defaultExcludeTagsInput();
+}
+
+function applyExportPresetToOptions(baseOptions, preset) {
+    var normalizedPreset = normalizeExportPreset(preset);
+    var next = Object.assign({}, baseOptions || {});
+    next.preset = normalizedPreset;
+
+    if (normalizedPreset === 'marp-presentation') {
+        next.format = 'presentation';
+        next.tagVisibility = 'none';
+        next.stripIncludes = false;
+        next.autoExportOnSave = true;
+        next.runMarp = true;
+        next.marpFormat = 'html';
+        next.marpWatch = true;
+        next.marpPptxEditable = false;
+        next.marpHandout = false;
+        next.runPandoc = false;
+    } else if (normalizedPreset === 'marp-pdf') {
+        next.format = 'presentation';
+        next.tagVisibility = 'none';
+        next.stripIncludes = false;
+        next.autoExportOnSave = true;
+        next.runMarp = true;
+        next.marpFormat = 'pdf';
+        next.marpWatch = false;
+        next.marpPptxEditable = false;
+        next.marpHandout = false;
+        next.speakerNoteMode = 'keep';
+        next.runPandoc = false;
+    } else if (normalizedPreset === 'share-content') {
+        next.format = 'keep';
+        next.tagVisibility = 'allexcludinglayout';
+        next.stripIncludes = false;
+        next.autoExportOnSave = false;
+        next.runMarp = false;
+        next.marpWatch = false;
+        next.runPandoc = false;
+    }
+
+    return next;
+}
+
+function cloneExportAutoOptions(options) {
+    return options ? JSON.parse(JSON.stringify(options)) : null;
+}
+
+function getStoredExportUiPreference(key, fallback) {
+    var storageKey = EXPORT_UI_STORAGE_KEYS[key];
+    if (!storageKey) return fallback;
+    var raw = localStorage.getItem(storageKey);
+    if ((raw == null || raw === '') && EXPORT_UI_LEGACY_STORAGE_KEYS[key]) {
+        raw = localStorage.getItem(EXPORT_UI_LEGACY_STORAGE_KEYS[key]);
+    }
+    return raw == null || raw === '' ? fallback : raw;
+}
+
+function setStoredExportUiPreference(key, value) {
+    var storageKey = EXPORT_UI_STORAGE_KEYS[key];
+    if (!storageKey) return;
+    if (value == null || value === '') localStorage.removeItem(storageKey);
+    else localStorage.setItem(storageKey, String(value));
+}
+
 class ExportUI {
     constructor() {
         this.boardId = null;
@@ -21,6 +160,8 @@ class ExportUI {
         this.pandocAvailable = false;
         this.pandocVersion = null;
         this.marpThemes = [];
+        this.initialOptions = null;
+        this.eventsBound = false;
     }
 
     // ── Public API ──────────────────────────────────────────────────────
@@ -30,10 +171,11 @@ class ExportUI {
      * @param {string} boardId
      * @param {object} boardData - Board data with columns array from REST API.
      */
-    async init(boardId, boardData) {
+    async init(boardId, boardData, initialOptions) {
         this.boardId = boardId;
         this.boardData = boardData;
         this.boardName = this._deriveBoardName(boardData);
+        this.initialOptions = initialOptions || null;
 
         lexeraLog('info', '[kanban.export.init] boardId=' + boardId);
 
@@ -49,12 +191,17 @@ class ExportUI {
 
         // Wire up event listeners
         this._bindEvents();
+        this._restoreStoredPreferences();
+
+        this._applyInitialOptions();
+        this._applyInitialSelection();
 
         // Check tool availability and populate themes
         await this.checkToolAvailability();
 
         // Set initial format state
         this.onFormatChange();
+        this.onMarpFormatChange();
 
         // Generate initial export folder name
         this.updateExportFolderName();
@@ -85,16 +232,20 @@ class ExportUI {
         var tagVisibility = this._val('export-tag-visibility');
         var excludeTagsRaw = this._val('export-exclude-tags');
         var excludeTags = this._parseExcludeTags(excludeTagsRaw);
-
-        // Column selection from tree
-        var columnIndexes = this.treeUI ? this.treeUI.getSelectedItems() : [];
+        var selection = this.treeUI
+            ? this.treeUI.getSelection()
+            : ExportTreeBuilder.getSelection(this.tree);
+        var columnIndexes = selection ? selection.columnIndexes : [];
+        var columnIds = selection ? selection.columnIds : [];
 
         var options = {
             boardId: this.boardId,
             format: format,
             tagVisibility: tagVisibility,
             excludeTags: excludeTags,
+            selectionScopes: selection ? selection.scopes : [],
             columnIndexes: columnIndexes,
+            columnIds: columnIds,
         };
 
         // Marp options (presentation format)
@@ -142,8 +293,8 @@ class ExportUI {
         lexeraLog('info', '[kanban.export.execute] mode=' + mode);
 
         // Validate selection
-        if (!options.columnIndexes || options.columnIndexes.length === 0) {
-            this._setStatus('No columns selected. Use the tree selector to pick columns.');
+        if (!options.selectionScopes || options.selectionScopes.length === 0) {
+            this._setStatus('No content selected. Use the selector to pick a board, row, stack, or column.');
             return;
         }
 
@@ -187,13 +338,13 @@ class ExportUI {
         // Show/hide Marp section
         var marpSection = document.getElementById('export-marp-section');
         if (marpSection) {
-            marpSection.style.display = (format === 'presentation' && this.marpAvailable) ? '' : 'none';
+            marpSection.style.display = (format === 'presentation') ? '' : 'none';
         }
 
         // Show/hide Pandoc section
         var pandocSection = document.getElementById('export-pandoc-section');
         if (pandocSection) {
-            pandocSection.style.display = (format === 'document' && this.pandocAvailable) ? '' : 'none';
+            pandocSection.style.display = (format === 'document') ? '' : 'none';
         }
 
         // Show/hide transforms section (presentation only)
@@ -257,18 +408,18 @@ class ExportUI {
             + String(now.getHours()).padStart(2, '0')
             + String(now.getMinutes()).padStart(2, '0');
 
-        // Build range label from selected columns
+        // Build range label from selected export scopes
         var range = 'full';
-        if (this.treeUI && this.tree) {
-            var labels = ExportTreeBuilder.getSelectedColumnLabels(this.tree);
-            if (labels.length === 0) {
+        var selection = this.treeUI
+            ? this.treeUI.getSelection()
+            : ExportTreeBuilder.getSelection(this.tree);
+        if (selection) {
+            if (!selection.hasSelection) {
                 range = 'none';
-            } else if (this.tree.selected) {
+            } else if (selection.isFullBoard) {
                 range = 'full';
-            } else if (labels.length <= 3) {
-                range = labels.join('-').replace(/\s+/g, '').substring(0, 30);
             } else {
-                range = labels.length + 'cols';
+                range = (selection.summary && selection.summary.key) || 'selection';
             }
         }
 
@@ -328,6 +479,8 @@ class ExportUI {
     // ── Private Helpers ─────────────────────────────────────────────────
 
     _bindEvents() {
+        if (this.eventsBound) return;
+        this.eventsBound = true;
         var self = this;
 
         // Close button
@@ -355,6 +508,14 @@ class ExportUI {
         if (marpFormatSelect) {
             marpFormatSelect.addEventListener('change', function () { self.onMarpFormatChange(); });
         }
+
+        this._bindStoredSelect('export-marp-theme', 'marpTheme');
+        this._bindStoredSelect('export-speaker-notes', 'speakerNotes', normalizeSpeakerNoteMode);
+        this._bindStoredSelect('export-html-comments', 'htmlComments', normalizeKeepRemoveMode);
+        this._bindStoredSelect('export-html-content', 'htmlContent', normalizeKeepRemoveMode);
+        this._bindStoredSelect('export-pandoc-format', 'pandocFormat', normalizePandocExportFormat);
+        this._bindStoredSelect('export-pandoc-page-breaks', 'pandocPageBreaks', normalizeDocumentPageBreakPreference);
+        this._bindStoredInput('export-exclude-tags', 'excludeTags');
 
         // Select All button
         var selectAllBtn = document.querySelector('#export-tree-container + .export-tree-actions .export-btn-select-all,' +
@@ -437,6 +598,73 @@ class ExportUI {
             opt.textContent = theme.name + (theme.builtin ? ' (built-in)' : '');
             themeSelect.appendChild(opt);
         }
+
+        var preferredTheme = this.initialOptions && typeof this.initialOptions.marpTheme === 'string'
+            ? this.initialOptions.marpTheme
+            : getStoredExportUiPreference('marpTheme', '');
+        if (preferredTheme) {
+            themeSelect.value = preferredTheme;
+            if (themeSelect.value !== preferredTheme) themeSelect.value = '';
+        }
+    }
+
+    _restoreStoredPreferences() {
+        this._setValue('export-speaker-notes', normalizeSpeakerNoteMode(getStoredExportUiPreference('speakerNotes', 'comment')));
+        this._setValue('export-html-comments', normalizeKeepRemoveMode(getStoredExportUiPreference('htmlComments', 'keep')));
+        this._setValue('export-html-content', normalizeKeepRemoveMode(getStoredExportUiPreference('htmlContent', 'keep')));
+        this._setValue('export-pandoc-format', normalizePandocExportFormat(getStoredExportUiPreference('pandocFormat', 'docx')));
+        this._setValue('export-pandoc-page-breaks', normalizeDocumentPageBreakPreference(getStoredExportUiPreference('pandocPageBreaks', 'continuous')));
+        this._setValue('export-exclude-tags', getStoredExportUiPreference('excludeTags', ''));
+    }
+
+    _applyInitialOptions() {
+        if (!this.initialOptions) return;
+        if (this.initialOptions.format) {
+            this._setValue('export-format', normalizeExportDialogFormat(this.initialOptions.format));
+        }
+        if (typeof this.initialOptions.runPandoc === 'boolean') {
+            this._setChecked('export-pandoc-enabled', this.initialOptions.runPandoc);
+        }
+        if (this.initialOptions.pandocFormat) {
+            this._setValue('export-pandoc-format', normalizePandocExportFormat(this.initialOptions.pandocFormat));
+        }
+        if (this.initialOptions.documentPageBreaks) {
+            this._setValue('export-pandoc-page-breaks', normalizeDocumentPageBreakPreference(this.initialOptions.documentPageBreaks));
+        }
+        if (typeof this.initialOptions.marpTheme === 'string') {
+            this._setValue('export-marp-theme', this.initialOptions.marpTheme);
+        }
+    }
+
+    _applyInitialSelection() {
+        if (!this.treeUI || !this.tree) return;
+        var selection = this.initialOptions && this.initialOptions.selection
+            ? this.initialOptions.selection
+            : { scope: 'board' };
+        var nodeId = ExportTreeBuilder.resolveNodeIdForSelection(this.tree, selection) || 'root';
+        this.treeUI.setOnlySelection(nodeId);
+    }
+
+    _bindStoredSelect(id, key, normalizeFn) {
+        var el = document.getElementById(id);
+        if (!el || el.dataset.lexeraStoredBound === 'true') return;
+        el.dataset.lexeraStoredBound = 'true';
+        el.addEventListener('change', function () {
+            var nextValue = typeof normalizeFn === 'function' ? normalizeFn(el.value) : el.value;
+            if (el.value !== nextValue) el.value = nextValue;
+            setStoredExportUiPreference(key, nextValue);
+        });
+    }
+
+    _bindStoredInput(id, key) {
+        var el = document.getElementById(id);
+        if (!el || el.dataset.lexeraStoredBound === 'true') return;
+        el.dataset.lexeraStoredBound = 'true';
+        var persist = function () {
+            setStoredExportUiPreference(key, el.value || '');
+        };
+        el.addEventListener('input', persist);
+        el.addEventListener('change', persist);
     }
 
     /**
@@ -550,6 +778,11 @@ class ExportUI {
         return el ? el.value : '';
     }
 
+    _setValue(id, value) {
+        var el = document.getElementById(id);
+        if (el && value != null) el.value = value;
+    }
+
     /**
      * Get checked state of a checkbox by ID.
      * @param {string} id
@@ -558,6 +791,11 @@ class ExportUI {
     _checked(id) {
         var el = document.getElementById(id);
         return el ? el.checked : false;
+    }
+
+    _setChecked(id, checked) {
+        var el = document.getElementById(id);
+        if (el) el.checked = !!checked;
     }
 }
 

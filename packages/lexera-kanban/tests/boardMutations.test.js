@@ -50,8 +50,64 @@ function loadMutationFunctions() {
   }
   const tagCategoriesSource = catLines.join('\n');
 
+  const colorsLine = findLine('var TAG_COLORS = {');
+  let colorsDepth = 0, colorsStarted = false;
+  const colorsLines = [];
+  for (let i = colorsLine - 1; i < lines.length; i++) {
+    colorsLines.push(lines[i]);
+    for (let c = 0; c < lines[i].length; c++) {
+      if (lines[i][c] === '{') { colorsDepth++; colorsStarted = true; }
+      if (lines[i][c] === '}') colorsDepth--;
+    }
+    if (colorsStarted && colorsDepth === 0) break;
+  }
+  const tagColorsSource = colorsLines.join('\n');
+
+  const paletteLine = findLine('var TAG_PALETTE = [');
+  let paletteDepth = 0, paletteStarted = false;
+  const paletteLines = [];
+  for (let i = paletteLine - 1; i < lines.length; i++) {
+    paletteLines.push(lines[i]);
+    for (let c = 0; c < lines[i].length; c++) {
+      if (lines[i][c] === '[') { paletteDepth++; paletteStarted = true; }
+      if (lines[i][c] === ']') paletteDepth--;
+    }
+    if (paletteStarted && paletteDepth === 0) break;
+  }
+  const tagPaletteSource = paletteLines.join('\n');
+
+  const roleLine = findLine('var TAG_STYLE_ROLE_BY_CATEGORY = {');
+  let roleDepth = 0, roleStarted = false;
+  const roleLines = [];
+  for (let i = roleLine - 1; i < lines.length; i++) {
+    roleLines.push(lines[i]);
+    for (let c = 0; c < lines[i].length; c++) {
+      if (lines[i][c] === '{') { roleDepth++; roleStarted = true; }
+      if (lines[i][c] === '}') roleDepth--;
+    }
+    if (roleStarted && roleDepth === 0) break;
+  }
+  const tagStyleRoleSource = roleLines.join('\n');
+
   const fnDefs = [
+    tagColorsSource,
+    tagPaletteSource,
     tagCategoriesSource,
+    tagStyleRoleSource,
+    extractFunction(findLine('function normalizePathForCompare(')),
+    extractFunction(findLine('function stripPathSearchAndHash(')),
+    extractFunction(findLine('function getFileNameFromPath(')),
+    extractFunction(findLine('function getDirNameFromPath(')),
+    extractFunction(findLine('function extractHtmlComments(')),
+    extractFunction(findLine('function stripHtmlComments(')),
+    extractFunction(findLine('function stripLayoutTags(')),
+    extractFunction(findLine('function rebuildTitleWithPreservedComments(')),
+    extractFunction(findLine('function normalizeYamlFrontmatterScalar(')),
+    extractFunction(findLine('function ensureBoardYamlHeaderLines(')),
+    extractFunction(findLine('function getYamlFrontmatterValueMap(')),
+    extractFunction(findLine('function updateYamlFrontmatterValue(')),
+    extractFunction(findLine('function getWhitespaceTokenList(')),
+    extractFunction(findLine('function setWhitespaceTokenList(')),
     extractFunction(findLine('function stripInternalHiddenTags(')),
     extractFunction(findLine('function applyInternalHiddenTag(')),
     extractFunction(findLine('function is_archived_or_deleted(')),
@@ -68,19 +124,64 @@ function loadMutationFunctions() {
     extractFunction(findLine('function isTagExpression(')),
     extractFunction(findLine('function extractAllTags(')),
     extractFunction(findLine('function hasTag(')),
+    extractFunction(findLine('function getMarpDirectiveFinalName(')),
+    extractFunction(findLine('function getMarpDirectiveRegex(')),
+    extractFunction(findLine('function getMarpDirectiveValueFromHeader(')),
+    extractFunction(findLine('function clearMarpDirectiveFromHeaderText(')),
+    extractFunction(findLine('function setMarpDirectiveInHeaderText(')),
+    extractFunction(findLine('function hasMarpDirectiveValue(')),
+    extractFunction(findLine('function getMarpClassListFromHeader(')),
+    extractFunction(findLine('function setMarpClassListInHeader(')),
+    extractFunction(findLine('function toggleMarpClassInHeaderText(')),
     extractFunction(findLine('function isNumericIndexTag(')),
+    extractFunction(findLine('function extractNumericTag(')),
+    extractFunction(findLine('function extractAllNumericTags(')),
+    extractFunction(findLine('function normalizeTagCategoryName(')),
+    extractFunction(findLine('function getTagCategoryKey(')),
+    extractFunction(findLine('function formatTagDisplayLabel(')),
+    extractFunction(findLine('function parseColorChannels(')),
+    extractFunction(findLine('function getContrastingTextColor(')),
+    extractFunction(findLine('function getTagColor(')),
+    extractFunction(findLine('function buildTagStyleDescriptor(')),
     extractFunction(findLine('function isLayoutTagName(')),
     extractFunction(findLine('function isTagStyleEligible(')),
     extractFunction(findLine('function getFirstStyleTag(')),
     extractFunction(findLine('function buildTagSubmenu(')),
     extractFunction(findLine('function buildCustomTagsSubmenu(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
+    extractFunction(findLine('function buildArchiveFileNameFromBoardPath(')),
+    extractFunction(findLine('function buildArchiveRelativePathFromBoardPath(')),
+    extractFunction(findLine('function buildArchiveFilePathFromBoardPath(')),
+    extractFunction(findLine('function buildArchiveFileHeader(')),
+    extractFunction(findLine('function buildArchiveTagValue(')),
+    extractFunction(findLine('function buildArchiveSectionHeading(')),
+    extractFunction(findLine('function cleanArchiveHeadingTitle(')),
+    extractFunction(findLine('function formatArchivedCardMarkdown(')),
+    extractFunction(findLine('function buildArchiveMarkdownForColumn(')),
+    extractFunction(findLine('function buildArchiveMarkdownForStack(')),
+    extractFunction(findLine('function buildArchiveMarkdownForRow(')),
+    extractFunction(findLine('function buildArchiveMarkdownForHiddenItems(')),
+    extractFunction(findLine('function appendArchivedItemsToArchiveContent(')),
   ];
 
   const wrappedSource = `
     ${fnDefs.join('\n\n')}
     return {
       TAG_CATEGORIES,
+      normalizePathForCompare,
+      stripPathSearchAndHash,
+      getFileNameFromPath,
+      getDirNameFromPath,
+      extractHtmlComments,
+      stripHtmlComments,
+      stripLayoutTags,
+      rebuildTitleWithPreservedComments,
+      normalizeYamlFrontmatterScalar,
+      ensureBoardYamlHeaderLines,
+      getYamlFrontmatterValueMap,
+      updateYamlFrontmatterValue,
+      getWhitespaceTokenList,
+      setWhitespaceTokenList,
       stripInternalHiddenTags,
       applyInternalHiddenTag,
       is_archived_or_deleted,
@@ -90,13 +191,44 @@ function loadMutationFunctions() {
       escapeRegex,
       extractAllTags,
       hasTag,
+      getMarpDirectiveFinalName,
+      getMarpDirectiveRegex,
+      getMarpDirectiveValueFromHeader,
+      clearMarpDirectiveFromHeaderText,
+      setMarpDirectiveInHeaderText,
+      hasMarpDirectiveValue,
+      getMarpClassListFromHeader,
+      setMarpClassListInHeader,
+      toggleMarpClassInHeaderText,
       isNumericIndexTag,
+      extractNumericTag,
+      extractAllNumericTags,
+      normalizeTagCategoryName,
+      getTagCategoryKey,
+      formatTagDisplayLabel,
+      parseColorChannels,
+      getContrastingTextColor,
+      getTagColor,
+      buildTagStyleDescriptor,
       isLayoutTagName,
       isTagStyleEligible,
       getFirstStyleTag,
       buildTagSubmenu,
       buildCustomTagsSubmenu,
       getColumnLayoutTags,
+      buildArchiveFileNameFromBoardPath,
+      buildArchiveRelativePathFromBoardPath,
+      buildArchiveFilePathFromBoardPath,
+      buildArchiveFileHeader,
+      buildArchiveTagValue,
+      buildArchiveSectionHeading,
+      cleanArchiveHeadingTitle,
+      formatArchivedCardMarkdown,
+      buildArchiveMarkdownForColumn,
+      buildArchiveMarkdownForStack,
+      buildArchiveMarkdownForRow,
+      buildArchiveMarkdownForHiddenItems,
+      appendArchivedItemsToArchiveContent,
     };
   `;
 
@@ -278,6 +410,71 @@ describe('is_archived_or_deleted', () => {
   });
 });
 
+describe('extractAllNumericTags', () => {
+  it('extracts multiple numeric tags from the title header', () => {
+    const result = F.extractAllNumericTags('#1 #1.1 Title');
+    expect(result).toEqual([
+      { tag: '#1', parts: [1] },
+      { tag: '#1.1', parts: [1, 1] },
+    ]);
+  });
+
+  it('deduplicates repeated numeric tags', () => {
+    const result = F.extractAllNumericTags('#2 #2 #2.3');
+    expect(result).toEqual([
+      { tag: '#2', parts: [2] },
+      { tag: '#2.3', parts: [2, 3] },
+    ]);
+  });
+
+  it('keeps numeric tags in heading text while ignoring heading markers', () => {
+    const result = F.extractAllNumericTags('## Heading #1.1 ###');
+    expect(result).toEqual([
+      { tag: '#1.1', parts: [1, 1] },
+    ]);
+  });
+});
+
+describe('getTagCategoryKey', () => {
+  it('resolves extended v1 parity categories', () => {
+    expect(F.getTagCategoryKey('#urgent')).toBe('priority');
+    expect(F.getTagCategoryKey('#must')).toBe('moscow');
+    expect(F.getTagCategoryKey('#backend')).toBe('category');
+    expect(F.getTagCategoryKey('#online')).toBe('teaching-platform');
+  });
+});
+
+describe('buildTagStyleDescriptor', () => {
+  it('maps status tags to header styling', () => {
+    const result = F.buildTagStyleDescriptor('#todo');
+    expect(result.category).toBe('status');
+    expect(result.headerBar).toBeTruthy();
+    expect(result.footerBar).toBeNull();
+    expect(result.border.position).toBe('left');
+  });
+
+  it('maps priority tags to footer styling', () => {
+    const result = F.buildTagStyleDescriptor('#urgent');
+    expect(result.category).toBe('priority');
+    expect(result.footerBar).toBeTruthy();
+    expect(result.border.width).toBe('3px');
+  });
+
+  it('maps color tags to background styling', () => {
+    const result = F.buildTagStyleDescriptor('#blue');
+    expect(result.category).toBe('colors');
+    expect(result.background).toBeTruthy();
+    expect(result.border.position).toBe('full');
+  });
+
+  it('maps positivity tags to badge styling', () => {
+    const result = F.buildTagStyleDescriptor('#++');
+    expect(result.category).toBe('positivity');
+    expect(result.badge).toBeTruthy();
+    expect(result.badge.label).toBe('++');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // getFullCardIndex
 // ═══════════════════════════════════════════════════════════════════════════
@@ -412,6 +609,12 @@ describe('extractAllTags', () => {
     expect(tags).toContain('#tag2');
     expect(tags).not.toContain('#tag3');
   });
+
+  it('ignores markdown heading markers while keeping tags in heading text', () => {
+    expect(F.extractAllTags('# Heading')).toEqual([]);
+    expect(F.extractAllTags('## Heading ###')).toEqual([]);
+    expect(F.extractAllTags('### Heading #todo ###')).toEqual(['#todo']);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -486,6 +689,11 @@ describe('hasTag', () => {
     expect(F.hasTag(text, '(#todo | #done) & (@today | @tomorrow)')).toBe(true);
     expect(F.hasTag(text, '#todo | (#done & @tomorrow)')).toBe(true);
   });
+
+  it('does not treat heading markers as tags', () => {
+    expect(F.hasTag('## Heading', '##')).toBe(false);
+    expect(F.hasTag('### Heading #todo ###', '#todo')).toBe(true);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -509,6 +717,31 @@ describe('tag style eligibility', () => {
   it('picks first non-numeric style tag from title header', () => {
     expect(F.getFirstStyleTag('Plan #1 #1.2 #todo')).toBe('#todo');
     expect(F.getFirstStyleTag('Plan #0 #1.1')).toBe('');
+  });
+});
+
+describe('extractNumericTag', () => {
+  it('extracts first numeric index tag from header block', () => {
+    expect(F.extractNumericTag('task #1 #2')).toEqual([1]);
+    expect(F.extractNumericTag('task #1.2 #3')).toEqual([1, 2]);
+  });
+
+  it('respects separators like tab/newline and operators', () => {
+    expect(F.extractNumericTag('task #1\t#2')).toEqual([1]);
+    expect(F.extractNumericTag('task #1.1&#2 @today')).toEqual([1, 1]);
+    expect(F.extractNumericTag('task !#3 | #4')).toEqual([3]);
+  });
+
+  it('does not parse body tags after first blank line', () => {
+    expect(F.extractNumericTag('title\n\nbody #7')).toBe(null);
+  });
+
+  it('returns null when no numeric tag exists', () => {
+    expect(F.extractNumericTag('task #todo @today')).toBe(null);
+  });
+
+  it('ignores heading markers when scanning for numeric tags', () => {
+    expect(F.extractNumericTag('### Heading #2 ###')).toEqual([2]);
   });
 });
 
@@ -1225,5 +1458,166 @@ describe('End-to-end: multiple operations on same board', () => {
     expect(reloadedVisible).toHaveLength(2);
     expect(reloadedVisible[0].id).toBe('card1');
     expect(reloadedVisible[1].id).toBe('card1-dup');
+  });
+});
+
+describe('HTML comment title helpers', () => {
+  it('strips HTML comments from visible title text', () => {
+    expect(F.stripHtmlComments('Roadmap <!-- class: lead --> <!-- color: red -->'))
+      .toBe('Roadmap');
+  });
+
+  it('preserves HTML comments when rebuilding a renamed title', () => {
+    expect(F.rebuildTitleWithPreservedComments('Renamed Title', 'Original <!-- class: lead -->'))
+      .toBe('Renamed Title <!-- class: lead -->');
+  });
+});
+
+describe('Marp directive helpers', () => {
+  it('sets and reads local and scoped directive values', () => {
+    var header = 'Slide Title';
+    header = F.setMarpDirectiveInHeaderText(header, 'color', 'red', 'local');
+    header = F.setMarpDirectiveInHeaderText(header, 'color', 'blue', 'scoped');
+
+    expect(F.getMarpDirectiveValueFromHeader(header, 'color', 'local')).toBe('red');
+    expect(F.getMarpDirectiveValueFromHeader(header, 'color', 'scoped')).toBe('blue');
+    expect(F.hasMarpDirectiveValue(header, 'color', 'local', 'red')).toBe(true);
+    expect(F.hasMarpDirectiveValue(header, 'color', 'scoped', 'blue')).toBe(true);
+  });
+
+  it('clears directives without removing the display title', () => {
+    var header = 'Slide Title <!-- paginate: true -->';
+    expect(F.clearMarpDirectiveFromHeaderText(header, 'paginate', 'local')).toBe('Slide Title');
+  });
+
+  it('toggles Marp classes in local and scoped class directives', () => {
+    var header = 'Slide Title';
+    header = F.toggleMarpClassInHeaderText(header, 'lead', 'local');
+    header = F.toggleMarpClassInHeaderText(header, 'invert', 'local');
+    header = F.toggleMarpClassInHeaderText(header, 'centerpiece', 'scoped');
+
+    expect(F.getMarpClassListFromHeader(header, 'local')).toEqual(['lead', 'invert']);
+    expect(F.getMarpClassListFromHeader(header, 'scoped')).toEqual(['centerpiece']);
+
+    header = F.toggleMarpClassInHeaderText(header, 'lead', 'local');
+    expect(F.getMarpClassListFromHeader(header, 'local')).toEqual(['invert']);
+
+    header = F.setMarpClassListInHeader(header, [], 'scoped');
+    expect(F.getMarpClassListFromHeader(header, 'scoped')).toEqual([]);
+  });
+});
+
+describe('YAML frontmatter helpers', () => {
+  it('creates a valid board YAML header when adding the first Marp key', () => {
+    expect(F.updateYamlFrontmatterValue('', 'marp', 'true')).toBe([
+      '---',
+      'kanban-plugin: board',
+      'marp: true',
+      '---'
+    ].join('\n'));
+  });
+
+  it('updates existing Marp keys without removing unrelated YAML lines', () => {
+    var nextYaml = F.updateYamlFrontmatterValue([
+      '---',
+      'kanban-plugin: board',
+      'columnWidth: 320px',
+      'theme: default',
+      '---'
+    ].join('\n'), 'theme', 'gaia');
+
+    expect(nextYaml).toBe([
+      '---',
+      'kanban-plugin: board',
+      'columnWidth: 320px',
+      'theme: gaia',
+      '---'
+    ].join('\n'));
+  });
+
+  it('removes keys cleanly and parses the remaining Marp frontmatter', () => {
+    var nextYaml = F.updateYamlFrontmatterValue([
+      '---',
+      'kanban-plugin: board',
+      'theme: default',
+      'title: Demo Deck',
+      '---'
+    ].join('\n'), 'theme', null);
+
+    expect(nextYaml).toBe([
+      '---',
+      'kanban-plugin: board',
+      'title: Demo Deck',
+      '---'
+    ].join('\n'));
+    expect(F.getYamlFrontmatterValueMap(nextYaml, ['theme', 'title'])).toEqual({
+      title: 'Demo Deck'
+    });
+  });
+
+  it('normalizes class token lists for board-level Marp classes', () => {
+    expect(F.getWhitespaceTokenList('lead invert lead')).toEqual(['lead', 'invert']);
+    expect(F.setWhitespaceTokenList(['lead', 'invert', 'lead'])).toBe('lead invert');
+  });
+});
+
+describe('Archive export helpers', () => {
+  it('builds the archive filename and path beside the active board file', () => {
+    expect(F.buildArchiveFileNameFromBoardPath('/boards/demo.md')).toBe('demo-archive.md');
+    expect(F.buildArchiveRelativePathFromBoardPath('/boards/demo.md')).toBe('demo-archive.md');
+    expect(F.buildArchiveFilePathFromBoardPath('/boards/demo.md')).toBe('/boards/demo-archive.md');
+  });
+
+  it('appends archive markdown after existing YAML frontmatter', () => {
+    var next = F.appendArchivedItemsToArchiveContent([
+      '---',
+      'archived: true',
+      '---',
+      '',
+      '## Existing Section'
+    ].join('\n'), '## New Section');
+
+    expect(next).toBe([
+      '---',
+      'archived: true',
+      '---',
+      '## Existing Section',
+      '',
+      '## New Section',
+      ''
+    ].join('\n'));
+  });
+
+  it('formats row, stack, column, and card archive markdown with cleaned titles', () => {
+    var archiveMarkdown = F.buildArchiveMarkdownForHiddenItems([
+      {
+        kind: 'row',
+        data: makeRow('row-1', 'Roadmap <!-- hidden --> #hidden-internal-archived', [
+          makeStack('stack-1', 'Sprint A #hidden-internal-archived', [
+            makeColumn('col-1', 'Todo #row2 #stack #hidden-internal-archived', [
+              makeCard('card-1', 'Build archive flow #hidden-internal-archived\nKeep multiline context', { checked: true })
+            ])
+          ])
+        ])
+      },
+      {
+        kind: 'card',
+        data: makeCard('card-2', 'Loose archived card', { checked: false })
+      }
+    ], {
+      now: new Date('2026-03-08T12:34:56')
+    });
+
+    expect(archiveMarkdown).toContain('# Archived Row: Roadmap #archived !2026.03.08 !12:34:56');
+    expect(archiveMarkdown).toContain('## Archived Stack: Sprint A #archived !2026.03.08 !12:34:56');
+    expect(archiveMarkdown).toContain('### Archived Column: Todo #archived !2026.03.08 !12:34:56');
+    expect(archiveMarkdown).toContain('- [x] Build archive flow #archived !2026.03.08 !12:34:56');
+    expect(archiveMarkdown).toContain('    Keep multiline context');
+    expect(archiveMarkdown).toContain('## Archived Cards');
+    expect(archiveMarkdown).toContain('- [ ] Loose archived card #archived !2026.03.08 !12:34:56');
+    expect(archiveMarkdown).not.toContain('#hidden-internal-archived');
+    expect(archiveMarkdown).not.toContain('#row2');
+    expect(archiveMarkdown).not.toContain('#stack');
+    expect(archiveMarkdown).not.toContain('<!-- hidden -->');
   });
 });

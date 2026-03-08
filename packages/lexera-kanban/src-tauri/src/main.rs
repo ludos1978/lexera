@@ -101,6 +101,7 @@ fn main() {
             export_commands::check_marp_available,
             export_commands::check_pandoc_available,
             export_commands::discover_marp_themes,
+            export_commands::discover_marp_classes,
             export_commands::open_export_folder,
             export_commands::write_export_file,
             export_commands::remove_export_files,

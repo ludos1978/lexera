@@ -23,7 +23,9 @@ use lexera_core::export::tag_filter::{
 };
 use lexera_core::parser::generate_markdown;
 use lexera_core::storage::BoardStorage;
+use lexera_core::types::KanbanBoard;
 use serde::Deserialize;
+use std::collections::HashSet;
 
 use crate::api::ErrorResponse;
 use crate::state::AppState;
@@ -50,6 +52,9 @@ pub struct PresentationBody {
     marp_local_classes: Vec<String>,
     per_slide_classes: Option<std::collections::HashMap<usize, Vec<String>>>,
     custom_yaml: Option<std::collections::HashMap<String, String>>,
+    /// Optional list of column ids to include (preferred over indexes when present).
+    #[serde(default)]
+    column_ids: Vec<String>,
     /// Optional list of column indexes to include (empty = all).
     #[serde(default)]
     column_indexes: Vec<usize>,
@@ -66,6 +71,12 @@ pub struct DocumentBody {
     strip_includes: bool,
     #[serde(default = "default_page_breaks")]
     page_breaks: PageBreaks,
+    /// Optional list of column ids to include (preferred over indexes when present).
+    #[serde(default)]
+    column_ids: Vec<String>,
+    /// Optional list of column indexes to include (empty = all).
+    #[serde(default)]
+    column_indexes: Vec<usize>,
 }
 
 fn default_page_breaks() -> PageBreaks {
@@ -79,6 +90,12 @@ pub struct FilterBody {
     tag_visibility: TagVisibility,
     #[serde(default)]
     exclude_tags: Vec<String>,
+    /// Optional list of column ids to include (preferred over indexes when present).
+    #[serde(default)]
+    column_ids: Vec<String>,
+    /// Optional list of column indexes to include (empty = all).
+    #[serde(default)]
+    column_indexes: Vec<usize>,
 }
 
 #[derive(Deserialize)]
@@ -94,6 +111,46 @@ pub struct TransformBody {
 
 fn default_format() -> ExportFormat {
     ExportFormat::Presentation
+}
+
+fn selected_board_for_export(
+    board: &KanbanBoard,
+    column_ids: &[String],
+    column_indexes: &[usize],
+) -> Option<KanbanBoard> {
+    if column_ids.is_empty() && column_indexes.is_empty() {
+        return None;
+    }
+
+    let selected_ids: HashSet<&str> = column_ids.iter().map(|value| value.as_str()).collect();
+    let selected_indexes: HashSet<usize> = column_indexes.iter().copied().collect();
+    let mut flat_index = 0usize;
+    let mut next_board = board.clone();
+
+    if !next_board.rows.is_empty() {
+        for row in &mut next_board.rows {
+            for stack in &mut row.stacks {
+                stack.columns.retain(|column| {
+                    let include = selected_ids.contains(column.id.as_str())
+                        || selected_indexes.contains(&flat_index);
+                    flat_index += 1;
+                    include
+                });
+            }
+            row.stacks.retain(|stack| !stack.columns.is_empty());
+        }
+        next_board.rows.retain(|row| !row.stacks.is_empty());
+        next_board.columns.clear();
+    } else {
+        next_board.columns.retain(|column| {
+            let include = selected_ids.contains(column.id.as_str())
+                || selected_indexes.contains(&flat_index);
+            flat_index += 1;
+            include
+        });
+    }
+
+    Some(next_board)
 }
 
 // ---------------------------------------------------------------------------
@@ -156,18 +213,14 @@ async fn export_presentation(
         custom_yaml: body.custom_yaml,
     };
 
-    let markdown = if body.column_indexes.is_empty() {
-        presentation::from_board(&filtered_board, &options)
-    } else {
-        // Select specific columns by index
-        let all_cols = filtered_board.all_columns();
-        let selected: Vec<&lexera_core::types::KanbanColumn> = body
-            .column_indexes
-            .iter()
-            .filter_map(|&idx| all_cols.get(idx).copied())
-            .collect();
-        presentation::from_columns(&selected, &options)
-    };
+    let export_board = selected_board_for_export(
+        &filtered_board,
+        &body.column_ids,
+        &body.column_indexes,
+    )
+    .unwrap_or_else(|| filtered_board.clone());
+
+    let markdown = presentation::from_board(&export_board, &options);
 
     Ok(Json(serde_json::json!({ "markdown": markdown })))
 }
@@ -206,7 +259,14 @@ async fn export_document(
         ..PresentationOptions::default()
     };
 
-    let markdown = presentation::to_document(&filtered_board, body.page_breaks, &options);
+    let export_board = selected_board_for_export(
+        &filtered_board,
+        &body.column_ids,
+        &body.column_indexes,
+    )
+    .unwrap_or_else(|| filtered_board.clone());
+
+    let markdown = presentation::to_document(&export_board, body.page_breaks, &options);
 
     Ok(Json(serde_json::json!({ "markdown": markdown })))
 }
@@ -240,7 +300,14 @@ async fn export_filter(
     let filtered_board = filter_excluded_from_board(&board, &exclude_tags);
 
     // Generate markdown from filtered board
-    let mut markdown = generate_markdown(&filtered_board);
+    let export_board = selected_board_for_export(
+        &filtered_board,
+        &body.column_ids,
+        &body.column_indexes,
+    )
+    .unwrap_or_else(|| filtered_board.clone());
+
+    let mut markdown = generate_markdown(&export_board);
 
     // Apply tag visibility filtering on the markdown
     if body.tag_visibility != TagVisibility::All {
@@ -270,4 +337,106 @@ async fn export_transform(Json(body): Json<TransformBody>) -> Json<serde_json::V
     let result = apply_transforms(&body.content, &options);
 
     Json(serde_json::json!({ "content": result }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::selected_board_for_export;
+    use lexera_core::types::{
+        BoardFormat, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack,
+    };
+
+    fn sample_card(id: &str) -> KanbanCard {
+        KanbanCard {
+            id: id.to_string(),
+            content: format!("Card {id}"),
+            checked: false,
+            kid: None,
+        }
+    }
+
+    fn sample_column(id: &str, title: &str) -> KanbanColumn {
+        KanbanColumn {
+            id: id.to_string(),
+            title: title.to_string(),
+            cards: vec![sample_card(&(String::from(id) + "-card"))],
+            include_source: None,
+        }
+    }
+
+    fn sample_board() -> KanbanBoard {
+        KanbanBoard {
+            valid: true,
+            title: "Board".to_string(),
+            columns: Vec::new(),
+            rows: vec![
+                KanbanRow {
+                    id: "row-1".to_string(),
+                    title: "Planning".to_string(),
+                    stacks: vec![
+                        KanbanStack {
+                            id: "stack-1".to_string(),
+                            title: "Ideas".to_string(),
+                            columns: vec![
+                                sample_column("col-1", "Inbox"),
+                                sample_column("col-2", "Next"),
+                            ],
+                        },
+                        KanbanStack {
+                            id: "stack-2".to_string(),
+                            title: "Ready".to_string(),
+                            columns: vec![sample_column("col-3", "Doing")],
+                        },
+                    ],
+                },
+                KanbanRow {
+                    id: "row-2".to_string(),
+                    title: "Delivery".to_string(),
+                    stacks: vec![KanbanStack {
+                        id: "stack-3".to_string(),
+                        title: "Ship".to_string(),
+                        columns: vec![sample_column("col-4", "Done")],
+                    }],
+                },
+            ],
+            yaml_header: None,
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        }
+    }
+
+    #[test]
+    fn selected_board_for_export_filters_by_column_ids_and_keeps_hierarchy() {
+        let board = sample_board();
+        let selected = selected_board_for_export(
+            &board,
+            &["col-2".to_string(), "col-4".to_string()],
+            &[],
+        )
+        .expect("selection should produce subset board");
+
+        assert_eq!(selected.rows.len(), 2);
+        assert_eq!(selected.rows[0].stacks.len(), 1);
+        assert_eq!(selected.rows[0].stacks[0].columns.len(), 1);
+        assert_eq!(selected.rows[0].stacks[0].columns[0].id, "col-2");
+        assert_eq!(selected.rows[1].stacks.len(), 1);
+        assert_eq!(selected.rows[1].stacks[0].columns.len(), 1);
+        assert_eq!(selected.rows[1].stacks[0].columns[0].id, "col-4");
+    }
+
+    #[test]
+    fn selected_board_for_export_filters_by_column_indexes_in_flat_order() {
+        let board = sample_board();
+        let selected = selected_board_for_export(&board, &[], &[1, 2])
+            .expect("selection should produce subset board");
+
+        assert_eq!(selected.rows.len(), 1);
+        assert_eq!(selected.rows[0].stacks.len(), 2);
+        assert_eq!(selected.rows[0].stacks[0].columns.len(), 1);
+        assert_eq!(selected.rows[0].stacks[0].columns[0].id, "col-2");
+        assert_eq!(selected.rows[0].stacks[1].columns.len(), 1);
+        assert_eq!(selected.rows[0].stacks[1].columns[0].id, "col-3");
+    }
 }

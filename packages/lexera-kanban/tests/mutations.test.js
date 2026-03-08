@@ -42,6 +42,7 @@ function loadMutationHarness() {
     extractFunction(findLine('function is_archived_or_deleted(')),
     extractFunction(findLine('function applyInternalHiddenTag(')),
     extractFunction(findLine('function stripInternalHiddenTags(')),
+    extractFunction(findLine('function stripHtmlComments(')),
     extractFunction(findLine('function getAllColumnsFromBoardData(')),
     extractFunction(findLine('function findColumnContainerInBoard(')),
     extractFunction(findLine('function getFullCardIndex(')),
@@ -59,6 +60,12 @@ function loadMutationHarness() {
     extractFunction(findLine('function getDisplayOrderedColumnEntries(')),
     extractFunction(findLine('function extractAllTags(')),
     extractFunction(findLine('function hasTag(')),
+    extractFunction(findLine('function splitTagHeaderAndBody(')),
+    extractFunction(findLine('function rebuildTagHeaderAndBody(')),
+    extractFunction(findLine('function normalizePromptTagToken(')),
+    extractFunction(findLine('function removeTagFromHeaderText(')),
+    extractFunction(findLine('function addTagToHeaderText(')),
+    extractFunction(findLine('function clearRemovableTagsFromHeaderText(')),
   ].join('\n\n');
 
   // --- Closure-dependent helpers ---
@@ -72,6 +79,32 @@ function loadMutationHarness() {
     extractFunction(findLine('function findFullColumnIndexInStack(')),
     extractFunction(findLine('function findInsertStackIndexInRow(')),
     extractFunction(findLine('function findInsertColumnIndexInStack(')),
+    extractFunction(findLine('function nextMutationEntityId(')),
+    extractFunction(findLine('function isUnnamedStructuralTitle(')),
+    extractFunction(findLine('function createUnnamedColumnForMutation(')),
+    extractFunction(findLine('function createUnnamedStackForMutation(')),
+    extractFunction(findLine('function createUnnamedRowForMutation(')),
+    extractFunction(findLine('function resolveRowInsertIndexForMutation(')),
+    extractFunction(findLine('function insertUnnamedRowForMutation(')),
+    extractFunction(findLine('function insertUnnamedStackIntoRowForMutation(')),
+    extractFunction(findLine('function resolvePreferredCardColumnRefInStack(')),
+    extractFunction(findLine('function ensureCardTargetColumnForMutation(')),
+    extractFunction(findLine('function cleanupUnnamedStructuralContainersInBoard(')),
+    extractFunction(findLine('function resolveTagTarget(')),
+    extractFunction(findLine('function resolveColumnLocationForMutation(')),
+    extractFunction(findLine('function resolveStackForMutation(')),
+    extractFunction(findLine('function resolveRowForMutation(')),
+    extractFunction(findLine('function resolveColumnRefForCardMutation(')),
+    extractFunction(findLine('function resolveSourceCardIndex(')),
+    extractFunction(findLine('function resolveInsertCardIndex(')),
+    extractFunction(findLine('function buildHiddenItemRestoreSource(')),
+    extractFunction(findLine('function captureStableRowRestoreTarget(')),
+    extractFunction(findLine('function captureStableStackRestoreTarget(')),
+    extractFunction(findLine('function captureStableColumnRestoreTarget(')),
+    extractFunction(findLine('function getCardTargetDisplayPath(')),
+    extractFunction(findLine('function captureStableCardRestoreTarget(')),
+    extractFunction(findLine('async function mutateEntityHeaderText(')),
+    extractFunction(findLine('async function mutateEntityHeaderTags(')),
     extractFunction(findLine('function removeEmptyStacksAndRowsInBoard(')),
     extractFunction(findLine('function removeEmptyStacksAndRows()')),
   ].join('\n\n');
@@ -102,6 +135,10 @@ function loadMutationHarness() {
     extractFunction(findLine('async function duplicateRow(')),
     extractFunction(findLine('async function setRowHiddenTag(')),
     extractFunction(findLine('async function reorderRows(')),
+    extractFunction(findLine('async function moveRowAcrossBoards(')),
+    extractFunction(findLine('async function moveStackAcrossBoards(')),
+    extractFunction(findLine('async function moveColumnAcrossBoards(')),
+    extractFunction(findLine('async function moveCard(')),
     // Cross
     extractFunction(findLine('async function toggleTag(')),
   ].join('\n\n');
@@ -116,10 +153,28 @@ function loadMutationHarness() {
   const wrappedSource = `
     // --- Injectable closure state ---
     var fullBoardData, activeBoardData, activeBoardId;
+    var boardStore = {};
+    var mutationEntityIdSeed = 0;
     var undoCalls = 0;
     function pushUndo() { undoCalls++; }
     async function persistBoardMutation(opts) { return true; }
+    async function loadBoardDataForMutation(boardId) {
+      if (!boardId) return null;
+      if (boardId === activeBoardId) return fullBoardData;
+      return boardStore[boardId] || null;
+    }
+    async function commitBoardMutations(changedBoards, options) {
+      var ids = Object.keys(changedBoards || {});
+      for (var i = 0; i < ids.length; i++) {
+        var boardId = ids[i];
+        if (boardId === activeBoardId) fullBoardData = changedBoards[boardId];
+        else boardStore[boardId] = changedBoards[boardId];
+      }
+      return true;
+    }
     function traceFrontendAction() {}
+    function lexeraLog() {}
+    function lexeraLogWithTarget() {}
     function summarizeBoardHierarchy() { return ''; }
     function flushDeferredBoardRefresh() {}
 
@@ -138,10 +193,18 @@ function loadMutationHarness() {
         fullBoardData = full;
         activeBoardData = active;
         activeBoardId = id || 'test-board';
+        boardStore = {};
+        boardStore[activeBoardId] = fullBoardData;
         undoCalls = 0;
+      },
+      setBoardState: function(boardId, boardData) {
+        boardStore[boardId] = boardData;
       },
       getState: function() {
         return { fullBoardData: fullBoardData, activeBoardData: activeBoardData };
+      },
+      getBoardState: function(boardId) {
+        return boardId === activeBoardId ? fullBoardData : boardStore[boardId];
       },
       getUndoCalls: function() { return undoCalls; },
 
@@ -154,6 +217,11 @@ function loadMutationHarness() {
       findColumnContainer: findColumnContainer,
       is_archived_or_deleted: is_archived_or_deleted,
       visibleColumnIndicesInStack: visibleColumnIndicesInStack,
+      buildHiddenItemRestoreSource: buildHiddenItemRestoreSource,
+      captureStableRowRestoreTarget: captureStableRowRestoreTarget,
+      captureStableStackRestoreTarget: captureStableStackRestoreTarget,
+      captureStableColumnRestoreTarget: captureStableColumnRestoreTarget,
+      captureStableCardRestoreTarget: captureStableCardRestoreTarget,
 
       // Card mutations
       addCardToActiveBoard: addCardToActiveBoard,
@@ -182,6 +250,10 @@ function loadMutationHarness() {
       duplicateRow: duplicateRow,
       setRowHiddenTag: setRowHiddenTag,
       reorderRows: reorderRows,
+      moveRowAcrossBoards: moveRowAcrossBoards,
+      moveStackAcrossBoards: moveStackAcrossBoards,
+      moveColumnAcrossBoards: moveColumnAcrossBoards,
+      moveCard: moveCard,
 
       // Cross
       toggleTag: toggleTag,
@@ -478,6 +550,250 @@ describe('Card mutations', () => {
   });
 });
 
+describe('Drag/drop structural parity', () => {
+  it('moveCard creates an unnamed column when dropping into a stack without columns', async () => {
+    var full = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+        ]),
+      ]),
+      makeRow('row-target', 'Target', [
+        makeStack('stack-target', 'Target Stack', []),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveCard(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        cardIndex: 0,
+        cardIndexMode: 'visible',
+        indexMode: 'display',
+      },
+      {
+        boardId: 'test-board',
+        rowIndex: 1,
+        stackIndex: 0,
+        indexMode: 'display',
+        insertIdx: 0,
+        insertMode: 'full',
+      }
+    );
+
+    var targetStack = M.getState().fullBoardData.rows[1].stacks[0];
+    expect(targetStack.columns.length).toBe(1);
+    expect(targetStack.columns[0].title).toBe('');
+    expect(targetStack.columns[0].cards.map(function (card) { return card.id; })).toEqual(['card-a']);
+  });
+
+  it('moveCard creates an unnamed stack and column when dropping into a row without stacks', async () => {
+    var full = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+        ]),
+      ]),
+      makeRow('row-target', 'Target', []),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveCard(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        cardIndex: 0,
+        cardIndexMode: 'visible',
+        indexMode: 'display',
+      },
+      {
+        boardId: 'test-board',
+        rowIndex: 1,
+        indexMode: 'display',
+        insertIdx: 0,
+        insertMode: 'full',
+      }
+    );
+
+    var targetRow = M.getState().fullBoardData.rows[1];
+    expect(targetRow.stacks.length).toBe(1);
+    expect(targetRow.stacks[0].title).toBe('');
+    expect(targetRow.stacks[0].columns.length).toBe(1);
+    expect(targetRow.stacks[0].columns[0].title).toBe('');
+    expect(targetRow.stacks[0].columns[0].cards.map(function (card) { return card.id; })).toEqual(['card-a']);
+  });
+
+  it('moveCard removes empty unnamed columns and stacks after the last card moves away', async () => {
+    var full = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-keep', 'Keep Stack', [
+          makeColumn('col-keep', 'Keep Column', []),
+        ]),
+        makeStack('stack-unnamed', '', [
+          makeColumn('col-unnamed', '', [makeCard('card-a', 'Task A')]),
+        ]),
+      ]),
+      makeRow('row-target', 'Target', [
+        makeStack('stack-target', 'Target Stack', [
+          makeColumn('col-target', 'Target Column', []),
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+
+    await M.moveCard(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 1,
+        colIndex: 0,
+        cardIndex: 0,
+        cardIndexMode: 'visible',
+        indexMode: 'display',
+      },
+      {
+        boardId: 'test-board',
+        rowIndex: 1,
+        stackIndex: 0,
+        colIndex: 0,
+        indexMode: 'display',
+        insertIdx: 0,
+        insertMode: 'full',
+      }
+    );
+
+    var sourceRow = M.getState().fullBoardData.rows[0];
+    expect(sourceRow.stacks.length).toBe(1);
+    expect(sourceRow.stacks[0].id).toBe('stack-keep');
+    expect(sourceRow.stacks[0].columns.length).toBe(1);
+  });
+
+  it('moveColumnAcrossBoards creates an unnamed row for top-level drops', async () => {
+    var source = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target', 'Target Row', [
+        makeStack('stack-target', 'Target Stack', [
+          makeColumn('col-target', 'Target Column', []),
+        ]),
+      ]),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveColumnAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        indexMode: 'display',
+      },
+      {
+        kind: 'new-row',
+        boardId: 'other-board',
+        rowIndex: 0,
+        before: false,
+        indexMode: 'full',
+      }
+    );
+
+    var targetBoard = M.getBoardState('other-board');
+    expect(targetBoard.rows.length).toBe(2);
+    expect(targetBoard.rows[1].title).toBe('');
+    expect(targetBoard.rows[1].stacks.length).toBe(1);
+    expect(targetBoard.rows[1].stacks[0].title).toBe('');
+    expect(targetBoard.rows[1].stacks[0].columns[0].id).toBe('col-source');
+  });
+
+  it('moveColumnAcrossBoards creates an unnamed stack inside an existing row drop target', async () => {
+    var source = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target', 'Target Row', []),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveColumnAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        colIndex: 0,
+        indexMode: 'display',
+      },
+      {
+        kind: 'row',
+        boardId: 'other-board',
+        rowIndex: 0,
+        indexMode: 'full',
+      }
+    );
+
+    var targetBoard = M.getBoardState('other-board');
+    expect(targetBoard.rows[0].stacks.length).toBe(1);
+    expect(targetBoard.rows[0].stacks[0].title).toBe('');
+    expect(targetBoard.rows[0].stacks[0].columns.map(function (column) { return column.id; })).toEqual(['col-source']);
+  });
+
+  it('moveStackAcrossBoards creates an unnamed row for top-level stack drops', async () => {
+    var source = makeBoard([
+      makeRow('row-source', 'Source', [
+        makeStack('stack-source', 'Source Stack', [
+          makeColumn('col-source', 'Source Column', [makeCard('card-a', 'Task A')]),
+        ]),
+      ]),
+    ]);
+    var target = makeBoard([
+      makeRow('row-target', 'Target Row', [
+        makeStack('stack-target', 'Target Stack', [
+          makeColumn('col-target', 'Target Column', []),
+        ]),
+      ]),
+    ]);
+    M.setState(source, buildActiveBoard(M, source), 'test-board');
+    M.setBoardState('other-board', target);
+
+    await M.moveStackAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        indexMode: 'display',
+      },
+      {
+        kind: 'new-row',
+        boardId: 'other-board',
+        rowIndex: 0,
+        before: false,
+        indexMode: 'full',
+      }
+    );
+
+    var targetBoard = M.getBoardState('other-board');
+    expect(targetBoard.rows.length).toBe(2);
+    expect(targetBoard.rows[1].title).toBe('');
+    expect(targetBoard.rows[1].stacks.length).toBe(1);
+    expect(targetBoard.rows[1].stacks[0].id).toBe('stack-source');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // COLUMN MUTATIONS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -771,6 +1087,154 @@ describe('Row mutations', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // INTEGRATION TESTS
 // ═══════════════════════════════════════════════════════════════════════════
+
+describe('Hidden item restore target capture', () => {
+  beforeEach(() => {
+    var full = makeBoard([
+      makeRow('row-a', 'Row A', [
+        makeStack('stack-a', 'Stack A', [
+          makeColumn('col-a', 'Column A', [makeCard('card-a', 'Visible A')])
+        ]),
+        makeStack('stack-hidden', 'Hidden Stack #hidden-internal-archived', [
+          makeColumn('col-hidden-stack', 'Hidden Stack Column', [])
+        ]),
+        makeStack('stack-b', 'Stack B', [
+          makeColumn('col-b', 'Column B', [
+            makeCard('card-hidden', 'Hidden Card #hidden-internal-archived'),
+            makeCard('card-b', 'Visible B')
+          ])
+        ])
+      ]),
+      makeRow('row-hidden', 'Hidden Row #hidden-internal-archived', [
+        makeStack('stack-row-hidden', 'Hidden Row Stack', [
+          makeColumn('col-row-hidden', 'Hidden Row Column', [])
+        ])
+      ]),
+      makeRow('row-c', 'Row C', [
+        makeStack('stack-c', 'Stack C', [
+          makeColumn('col-c', 'Column C', [])
+        ])
+      ])
+    ]);
+
+    full.rows[0].stacks[0].columns.push(makeColumn('col-hidden-col', 'Hidden Column #hidden-internal-archived', []));
+    var active = buildActiveBoard(M, full);
+    M.setState(full, active, 'test-board');
+  });
+
+  it('builds full-index restore sources for hidden items', () => {
+    expect(M.buildHiddenItemRestoreSource({ kind: 'row', rowIndex: 1 })).toEqual({
+      boardId: 'test-board',
+      rowIndex: 1,
+      indexMode: 'full'
+    });
+
+    expect(M.buildHiddenItemRestoreSource({ kind: 'stack', rowIndex: 0, stackIndex: 1 })).toEqual({
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 1,
+      indexMode: 'full'
+    });
+
+    expect(M.buildHiddenItemRestoreSource({ kind: 'column', rowIndex: 0, stackIndex: 0, colIndex: 1 })).toEqual({
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 0,
+      colIndex: 1,
+      indexMode: 'full'
+    });
+
+    expect(M.buildHiddenItemRestoreSource({ kind: 'card', rowIndex: 0, stackIndex: 2, colIndex: 0, cardIndex: 0 })).toEqual({
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 2,
+      colIndex: 0,
+      cardIndex: 0,
+      cardIndexMode: 'full',
+      indexMode: 'full'
+    });
+  });
+
+  it('converts active display row targets to stable full row indices', () => {
+    var target = M.captureStableRowRestoreTarget({
+      kind: 'row',
+      boardId: 'test-board',
+      rowIndex: 1,
+      before: true,
+      indexMode: 'display'
+    });
+
+    expect(target).toEqual({
+      kind: 'row',
+      boardId: 'test-board',
+      rowIndex: 2,
+      before: true,
+      indexMode: 'full'
+    });
+  });
+
+  it('converts active display stack targets to stable full stack indices', () => {
+    var target = M.captureStableStackRestoreTarget({
+      kind: 'stack',
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 1,
+      before: false,
+      indexMode: 'display'
+    });
+
+    expect(target).toEqual({
+      kind: 'stack',
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 2,
+      before: false,
+      indexMode: 'full'
+    });
+  });
+
+  it('converts new-stack insertion targets to stable full insertion indices', () => {
+    var target = M.captureStableColumnRestoreTarget({
+      kind: 'new-stack',
+      boardId: 'test-board',
+      rowIndex: 0,
+      insertAtStackIdx: 1,
+      indexMode: 'display'
+    });
+
+    expect(target).toEqual({
+      kind: 'new-stack',
+      boardId: 'test-board',
+      rowIndex: 0,
+      insertAtStackIdx: 2,
+      indexMode: 'full'
+    });
+  });
+
+  it('converts active display card column targets to stable full column paths and insert positions', () => {
+    var target = M.captureStableCardRestoreTarget({
+      kind: 'main',
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 1,
+      colIndex: 0,
+      insertIdx: 0,
+      insertMode: 'visible',
+      indexMode: 'display'
+    });
+
+    expect(target).toEqual({
+      kind: 'main',
+      boardId: 'test-board',
+      rowIndex: 0,
+      stackIndex: 2,
+      colIndex: 0,
+      insertIdx: 1,
+      insertMode: 'full',
+      indexMode: 'full'
+    });
+  });
+});
 
 describe('Integration', () => {
   beforeEach(setup);

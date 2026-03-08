@@ -77,6 +77,15 @@ class ExportService {
     }
 
     /**
+     * Discover available Marp classes from workspace config and theme CSS files.
+     * @param {string[]} dirs - Extra directories to scan around the active board.
+     * @returns {string[]}
+     */
+    static async getMarpClasses(dirs) {
+        return await window.__TAURI__.core.invoke('discover_marp_classes', { dirs: dirs || [] });
+    }
+
+    /**
      * Stop all running Marp watch processes.
      * @returns {number} Count of stopped processes.
      */
@@ -123,6 +132,7 @@ class ExportService {
                 marpTheme: options.marpTheme || null,
                 marpGlobalClasses: options.marpGlobalClasses || [],
                 marpLocalClasses: options.marpLocalClasses || [],
+                columnIds: options.columnIds || [],
                 columnIndexes: options.columnIndexes || [],
             };
         } else if (options.format === 'document') {
@@ -132,6 +142,7 @@ class ExportService {
                 excludeTags: options.excludeTags || [],
                 stripIncludes: options.stripIncludes || false,
                 pageBreaks: options.documentPageBreaks || 'continuous',
+                columnIds: options.columnIds || [],
                 columnIndexes: options.columnIndexes || [],
             };
         } else {
@@ -140,6 +151,7 @@ class ExportService {
             body = {
                 tagVisibility: options.tagVisibility || 'all',
                 excludeTags: options.excludeTags || [],
+                columnIds: options.columnIds || [],
                 columnIndexes: options.columnIndexes || [],
             };
         }

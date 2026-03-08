@@ -290,6 +290,7 @@ describe('_extract', () => {
       marpTheme: 'gaia',
       marpGlobalClasses: ['invert'],
       marpLocalClasses: [],
+      columnIds: ['col-1', 'col-2'],
       columnIndexes: [0, 1],
     });
 
@@ -305,6 +306,7 @@ describe('_extract', () => {
     expect(body.marpTheme).toBe('gaia');
     expect(body.marpGlobalClasses).toEqual(['invert']);
     expect(body.marpLocalClasses).toEqual([]);
+    expect(body.columnIds).toEqual(['col-1', 'col-2']);
     expect(body.columnIndexes).toEqual([0, 1]);
     expect(result).toBe('---\nmarp: true\n---\n# Slide');
   });
@@ -329,6 +331,7 @@ describe('_extract', () => {
     expect(body.tagVisibility).toBe('all');
     expect(body.excludeTags).toEqual([]);
     expect(body.stripIncludes).toBe(false);
+    expect(body.columnIds).toEqual([]);
     expect(body.columnIndexes).toEqual([]);
     expect(result).toBe('# Document');
   });
@@ -408,6 +411,7 @@ describe('_extract', () => {
     expect(body.marpTheme).toBeNull();
     expect(body.marpGlobalClasses).toEqual([]);
     expect(body.marpLocalClasses).toEqual([]);
+    expect(body.columnIds).toEqual([]);
     expect(body.columnIndexes).toEqual([]);
   });
 });
@@ -719,6 +723,21 @@ describe('getMarpThemes', () => {
     mockInvoke.mockResolvedValueOnce([]);
     await ES.getMarpThemes(null);
     expect(mockInvoke).toHaveBeenCalledWith('discover_marp_themes', { dirs: [] });
+  });
+});
+
+describe('getMarpClasses', () => {
+  it('invokes discover_marp_classes with provided dirs', async () => {
+    mockInvoke.mockResolvedValueOnce(['lead', 'invert', 'deck']);
+    const result = await ES.getMarpClasses(['/themes']);
+    expect(mockInvoke).toHaveBeenCalledWith('discover_marp_classes', { dirs: ['/themes'] });
+    expect(result).toEqual(['lead', 'invert', 'deck']);
+  });
+
+  it('passes empty array when dirs is null', async () => {
+    mockInvoke.mockResolvedValueOnce([]);
+    await ES.getMarpClasses(null);
+    expect(mockInvoke).toHaveBeenCalledWith('discover_marp_classes', { dirs: [] });
   });
 });
 

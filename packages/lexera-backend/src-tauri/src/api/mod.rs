@@ -7,6 +7,7 @@ use axum::{
 use serde::Serialize;
 
 mod board;
+mod capture_api;
 mod config_api;
 mod events;
 mod external_embed;
@@ -52,6 +53,8 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /templates                           -> list available templates
 ///   GET  /templates/:id                       -> full template content + extra files
 ///   POST /templates/:id/copy                  -> copy template files with variable substitution
+///   GET  /capture/history                     -> quick-capture / clipboard history
+///   DELETE /capture/history/:id              -> remove one quick-capture / clipboard history entry
 pub fn api_router() -> Router<AppState> {
     // Rate-limited sub-routers for expensive endpoints (requests per second)
     let search_routes = Router::new()
@@ -181,6 +184,11 @@ pub fn api_router() -> Router<AppState> {
         )
         .route("/templates", get(template::list_templates))
         .route("/templates/{template_id}", get(template::get_template))
+        .route("/capture/history", get(capture_api::list_capture_history))
+        .route(
+            "/capture/history/{id}",
+            axum::routing::delete(capture_api::delete_capture_history_entry),
+        )
         .merge(search_routes)
         .merge(find_file_routes)
         .merge(template_copy_routes)
