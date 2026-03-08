@@ -192,6 +192,10 @@ describe('stripLayoutTags', () => {
     expect(U.stripLayoutTags('Column #stack')).toBe('Column');
   });
 
+  it('removes #header and #footer tags', () => {
+    expect(U.stripLayoutTags('Column #header #footer')).toBe('Column');
+  });
+
   it('removes multiple layout tags at once', () => {
     expect(U.stripLayoutTags('Col #row2 #span3 #stack')).toBe('Col');
   });
@@ -260,10 +264,12 @@ describe('getColumnLayoutTags', () => {
   });
 
   it('extracts all layout tags at once', () => {
-    const result = U.getColumnLayoutTags('Col #row2 #span4 #stack');
+    const result = U.getColumnLayoutTags('Col #row2 #span4 #stack #header #footer');
     expect(result.row).toBe('#row2');
     expect(result.span).toBe('#span4');
     expect(result.stack).toBe(true);
+    expect(result.header).toBe(true);
+    expect(result.footer).toBe(true);
   });
 
   it('returns empty/false for a title with no layout tags', () => {
@@ -271,6 +277,8 @@ describe('getColumnLayoutTags', () => {
     expect(result.row).toBe('');
     expect(result.span).toBe('');
     expect(result.stack).toBe(false);
+    expect(result.header).toBe(false);
+    expect(result.footer).toBe(false);
   });
 
   it('handles null/undefined input', () => {
@@ -278,6 +286,8 @@ describe('getColumnLayoutTags', () => {
     expect(result.row).toBe('');
     expect(result.span).toBe('');
     expect(result.stack).toBe(false);
+    expect(result.header).toBe(false);
+    expect(result.footer).toBe(false);
   });
 });
 
@@ -311,6 +321,19 @@ describe('reconstructColumnTitle', () => {
   it('preserves #stack from original when user does not override', () => {
     const result = U.reconstructColumnTitle('New Name', 'Old Name #stack');
     expect(result).toContain('#stack');
+  });
+
+  it('preserves #header/#footer from original when user does not override', () => {
+    const result = U.reconstructColumnTitle('New Name', 'Old Name #header #footer');
+    expect(result).toContain('#header');
+    expect(result).toContain('#footer');
+  });
+
+  it('removes #header/#footer with #noheader/#nofooter directives', () => {
+    const result = U.reconstructColumnTitle('Title #noheader #nofooter', 'Old #header #footer');
+    expect(result).not.toContain('#header');
+    expect(result).not.toContain('#footer');
+    expect(result).toBe('Title');
   });
 
   it('drops #row1 because it is the default', () => {

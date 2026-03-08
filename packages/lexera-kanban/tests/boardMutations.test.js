@@ -59,9 +59,19 @@ function loadMutationFunctions() {
     extractFunction(findLine('function getAllColumnsFromBoardData(')),
     extractFunction(findLine('function findColumnContainerInBoard(')),
     extractFunction(findLine('function escapeRegex(')),
+    extractFunction(findLine('function isTagTokenBoundaryChar(')),
+    extractFunction(findLine('function normalizeTagTokenForMatch(')),
+    extractFunction(findLine('function isTagExpressionBoundaryChar(')),
+    extractFunction(findLine('function collectHeaderTagTokens(')),
+    extractFunction(findLine('function tokenizeTagExpression(')),
+    extractFunction(findLine('function evaluateTagExpression(')),
+    extractFunction(findLine('function isTagExpression(')),
     extractFunction(findLine('function extractAllTags(')),
     extractFunction(findLine('function hasTag(')),
+    extractFunction(findLine('function isNumericIndexTag(')),
     extractFunction(findLine('function isLayoutTagName(')),
+    extractFunction(findLine('function isTagStyleEligible(')),
+    extractFunction(findLine('function getFirstStyleTag(')),
     extractFunction(findLine('function buildTagSubmenu(')),
     extractFunction(findLine('function buildCustomTagsSubmenu(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
@@ -80,7 +90,10 @@ function loadMutationFunctions() {
       escapeRegex,
       extractAllTags,
       hasTag,
+      isNumericIndexTag,
       isLayoutTagName,
+      isTagStyleEligible,
+      getFirstStyleTag,
       buildTagSubmenu,
       buildCustomTagsSubmenu,
       getColumnLayoutTags,
@@ -359,6 +372,29 @@ describe('extractAllTags', () => {
     expect(tags).toContain('#--');
   });
 
+  it('extracts numeric and dotted tags', () => {
+    var tags = F.extractAllTags('task #0 #1 #1.1 #1.01');
+    expect(tags).toContain('#0');
+    expect(tags).toContain('#1');
+    expect(tags).toContain('#1.1');
+    expect(tags).toContain('#1.01');
+  });
+
+  it('treats &, |, ! as separators between tags', () => {
+    var tags = F.extractAllTags('task #todo&#urgent | #1.2 !#later');
+    expect(tags).toContain('#todo');
+    expect(tags).toContain('#urgent');
+    expect(tags).toContain('#1.2');
+    expect(tags).toContain('#later');
+  });
+
+  it('supports tab/newline terminated tags', () => {
+    var tags = F.extractAllTags('title #1\t#1.1\nnext #2');
+    expect(tags).toContain('#1');
+    expect(tags).toContain('#1.1');
+    expect(tags).toContain('#2');
+  });
+
   it('returns empty array for empty text', () => {
     expect(F.extractAllTags('')).toEqual([]);
     expect(F.extractAllTags(null)).toEqual([]);
@@ -408,6 +444,71 @@ describe('hasTag', () => {
   it('handles empty/null text', () => {
     expect(F.hasTag('', '#todo')).toBe(false);
     expect(F.hasTag(null, '#todo')).toBe(false);
+  });
+
+  it('finds numeric and dotted tags', () => {
+    expect(F.hasTag('task #1 #1.1', '#1')).toBe(true);
+    expect(F.hasTag('task #1 #1.1', '#1.1')).toBe(true);
+    expect(F.hasTag('task #1 #1.1', '#1.2')).toBe(false);
+  });
+
+  it('does not match #1 inside dotted-only #1.1 tag', () => {
+    expect(F.hasTag('task #1.1', '#1')).toBe(false);
+    expect(F.hasTag('task #1.1', '#1.1')).toBe(true);
+  });
+
+  it('supports tab/newline-delimited tags and operator separators', () => {
+    var text = 'task #todo\t#urgent\n@today | #later';
+    expect(F.hasTag(text, '#todo & #urgent')).toBe(true);
+    expect(F.hasTag(text, '#todo & @today')).toBe(true);
+    expect(F.hasTag(text, '#todo & #blocked')).toBe(false);
+    expect(F.hasTag(text, '#todo & (#later | #blocked)')).toBe(true);
+  });
+
+  it('supports expression operators with # and @ tags', () => {
+    var text = 'task #todo #urgent @today';
+    expect(F.hasTag(text, '#todo & #urgent')).toBe(true);
+    expect(F.hasTag(text, '#todo & !#blocked')).toBe(true);
+    expect(F.hasTag(text, '#blocked | #urgent')).toBe(true);
+    expect(F.hasTag(text, '#todo & @today')).toBe(true);
+    expect(F.hasTag(text, '#todo & #blocked')).toBe(false);
+  });
+
+  it('supports implicit AND between adjacent tags in expressions', () => {
+    var text = 'task #todo #urgent';
+    expect(F.hasTag(text, '#todo #urgent')).toBe(true);
+    expect(F.hasTag(text, '#todo #blocked')).toBe(false);
+  });
+
+  it('supports parentheses grouping in expressions', () => {
+    var text = 'task #todo #blocked @today';
+    expect(F.hasTag(text, '(#todo | #done) & !#blocked')).toBe(false);
+    expect(F.hasTag(text, '(#todo | #done) & (@today | @tomorrow)')).toBe(true);
+    expect(F.hasTag(text, '#todo | (#done & @tomorrow)')).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tag style eligibility
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('tag style eligibility', () => {
+  it('treats numeric index tags as non-style tags', () => {
+    expect(F.isNumericIndexTag('#0')).toBe(true);
+    expect(F.isNumericIndexTag('#1')).toBe(true);
+    expect(F.isNumericIndexTag('#1.1')).toBe(true);
+    expect(F.isNumericIndexTag('#1.01.3')).toBe(true);
+    expect(F.isNumericIndexTag('#todo')).toBe(false);
+  });
+
+  it('does not style numeric index tags', () => {
+    expect(F.isTagStyleEligible('#1')).toBe(false);
+    expect(F.isTagStyleEligible('#1.1')).toBe(false);
+  });
+
+  it('picks first non-numeric style tag from title header', () => {
+    expect(F.getFirstStyleTag('Plan #1 #1.2 #todo')).toBe('#todo');
+    expect(F.getFirstStyleTag('Plan #0 #1.1')).toBe('');
   });
 });
 

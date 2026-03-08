@@ -47,6 +47,16 @@ function loadMutationHarness() {
     extractFunction(findLine('function getFullCardIndex(')),
     extractFunction(findLine('function visibleColumnIndicesInStack(')),
     extractFunction(findLine('function escapeRegex(')),
+    extractFunction(findLine('function isTagTokenBoundaryChar(')),
+    extractFunction(findLine('function normalizeTagTokenForMatch(')),
+    extractFunction(findLine('function isTagExpressionBoundaryChar(')),
+    extractFunction(findLine('function collectHeaderTagTokens(')),
+    extractFunction(findLine('function tokenizeTagExpression(')),
+    extractFunction(findLine('function evaluateTagExpression(')),
+    extractFunction(findLine('function isTagExpression(')),
+    extractFunction(findLine('function isColumnHeaderTagged(')),
+    extractFunction(findLine('function isColumnFooterTagged(')),
+    extractFunction(findLine('function getDisplayOrderedColumnEntries(')),
     extractFunction(findLine('function extractAllTags(')),
     extractFunction(findLine('function hasTag(')),
   ].join('\n\n');
@@ -143,6 +153,7 @@ function loadMutationHarness() {
       findFullDataStack: findFullDataStack,
       findColumnContainer: findColumnContainer,
       is_archived_or_deleted: is_archived_or_deleted,
+      visibleColumnIndicesInStack: visibleColumnIndicesInStack,
 
       // Card mutations
       addCardToActiveBoard: addCardToActiveBoard,
@@ -316,6 +327,23 @@ function setup() {
   );
   return M.getState();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORDERING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('Column display ordering', () => {
+  it('orders visible columns as header -> normal -> footer', () => {
+    var stack = makeStack('stack-order', 'Order', [
+      makeColumn('col-normal', 'Normal', []),
+      makeColumn('col-footer', 'Footer #footer', []),
+      makeColumn('col-header', 'Header #header', []),
+      makeColumn('col-hidden', 'Hidden #header #hidden-internal-deleted', [])
+    ]);
+    var indices = M.visibleColumnIndicesInStack(stack);
+    expect(indices).toEqual([2, 0, 1]);
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CARD MUTATIONS
