@@ -5316,9 +5316,11 @@ select.dialog-input option,
   border-bottom: none !important;
   border-radius: 0 !important;
   padding-bottom: 2px !important;
+  background: var(--bg-primary, var(--board-bg, #1e1e1e)) !important;
 }
 [data-board-theme="gap-highlight"] .column-header {
   border-bottom: 1px solid var(--gap-line-color) !important;
+  background: var(--bg-primary, var(--board-bg, #1e1e1e)) !important;
 }
 [data-board-theme="gap-highlight"] .board-row-footer,
 [data-board-theme="gap-highlight"] .board-stack-footer,
