@@ -5261,6 +5261,10 @@ select.dialog-input option,
 [data-board-theme="gap-highlight"] .card + .card {
   border-top: 1px solid var(--gap-line-color) !important;
 }
+[data-board-theme="gap-highlight"] .card.editing {
+  border: none !important;
+  border-left: 3px solid var(--accent) !important;
+}
 
 /* Columns: strip all borders, separator 2px dashed, parent padding = 10px inset */
 [data-board-theme="gap-highlight"] .column {
