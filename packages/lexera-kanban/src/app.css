@@ -155,6 +155,7 @@
   gap: 0 !important;
 }
 [data-board-theme="gap-highlight"] .card {
+  border: none !important;
   border-left: 3px solid transparent !important;
 }
 [data-board-theme="gap-highlight"] .card + .card {
@@ -162,6 +163,10 @@
 }
 
 /* ── Column separators: 2px dashed, 10px inset ─────────────────────── */
+[data-board-theme="gap-highlight"] .column {
+  border: none !important;
+  box-shadow: none !important;
+}
 [data-board-theme="gap-highlight"] .board-stack-content {
   gap: 0 !important;
   padding: 0 10px !important;
@@ -171,6 +176,10 @@
 }
 
 /* ── Stack separators: 3px dashed, 20px inset ───────────────────────── */
+[data-board-theme="gap-highlight"] .board-stack {
+  border: none !important;
+  box-shadow: none !important;
+}
 [data-board-theme="gap-highlight"] .board-row-content {
   gap: 0 !important;
   padding: 20px 0 !important;
@@ -180,6 +189,10 @@
 }
 
 /* ── Row separators: 3px dotted, 20px inset ─────────────────────────── */
+[data-board-theme="gap-highlight"] .board-row {
+  border: none !important;
+  box-shadow: none !important;
+}
 [data-board-theme="gap-highlight"] .columns-container {
   padding: 20px !important;
   gap: 0 !important;
