@@ -23514,7 +23514,6 @@ const LexeraDashboard = (function () {
           md += (scol.cards[k].content || '') + '\n\n';
         }
       }
-    }
     } else if (elementType === 'board') {
       if (!fullBoardData.rows) return;
       for (var r = 0; r < fullBoardData.rows.length; r++) {
