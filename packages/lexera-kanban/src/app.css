@@ -117,76 +117,79 @@
 }
 
 /* ── Board Visual Theme: Gap Highlight ───────────────────────────────── */
-/* Replaces bordered elements with highlighted inter-element gaps.       */
-/* Uses !important on vars that applyTheme() also sets as inline styles. */
+/* No borders or backgrounds — just thin lines in the gaps between       */
+/* elements. Uses !important to override applyTheme() inline styles.     */
 [data-board-theme="gap-highlight"] {
-  --board-row-gap: calc(14px * var(--ui-scale)) !important;
-  --board-stack-gap: calc(12px * var(--ui-scale)) !important;
-  --board-column-gap: calc(10px * var(--ui-scale)) !important;
-  --board-inner-padding: calc(10px * var(--ui-scale)) !important;
   --surface-row-bg: transparent !important;
   --surface-row-border: transparent !important;
-  --surface-row-radius: var(--radius-md);
+  --surface-row-radius: 0;
   --surface-row-shadow: none;
-  --row-content-bg: rgba(0, 0, 0, 0.06);
+  --row-content-bg: transparent;
   --surface-stack-bg: transparent !important;
   --surface-stack-border: transparent !important;
-  --surface-stack-radius: var(--radius-md);
+  --surface-stack-radius: 0;
   --surface-stack-shadow: none;
-  --stack-content-bg: rgba(0, 0, 0, 0.05);
-  --surface-column-bg: var(--bg-primary) !important;
+  --stack-content-bg: transparent;
+  --surface-column-bg: transparent !important;
   --surface-column-border: transparent !important;
-  --surface-column-radius: var(--radius-md);
+  --surface-column-radius: 0;
   --surface-column-shadow: none;
-  --surface-header-bg: rgba(0, 0, 0, 0.04) !important;
+  --surface-header-bg: transparent !important;
   --surface-header-border: transparent !important;
-  --surface-footer-bg: rgba(0, 0, 0, 0.03) !important;
-  --card-bg: var(--bg-primary);
+  --surface-footer-bg: transparent !important;
+  --card-bg: transparent;
   --card-border: transparent;
-  --card-radius: var(--radius-md);
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --card-gap: 6px;
-  --card-list-padding: 6px;
+  --card-radius: 0;
+  --card-shadow: none;
+  --card-gap: 0;
+  --card-list-padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  [data-board-theme="gap-highlight"] {
-    --row-content-bg: rgba(255, 255, 255, 0.04);
-    --stack-content-bg: rgba(255, 255, 255, 0.03);
-    --surface-header-bg: rgba(255, 255, 255, 0.04) !important;
-    --surface-footer-bg: rgba(255, 255, 255, 0.02) !important;
-    --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  }
-}
-
-/* Gap-highlight: row content gets rounded corners to show gap background */
+/* Gap lines between stacks (vertical) */
 [data-board-theme="gap-highlight"] .board-row-content {
-  border-radius: var(--radius-md);
+  gap: 0;
 }
+[data-board-theme="gap-highlight"] .board-stack + .board-stack {
+  border-left: 1px solid var(--border);
+}
+
+/* Gap lines between columns (horizontal) */
 [data-board-theme="gap-highlight"] .board-stack-content {
-  border-radius: var(--radius-md);
+  gap: 0;
+  padding: 0;
+}
+[data-board-theme="gap-highlight"] .column + .column {
+  border-top: 1px solid var(--border);
 }
 
-/* Gap-highlight: header separators use bottom-border replacement */
+/* Gap lines between cards */
+[data-board-theme="gap-highlight"] .card + .card {
+  border-top: 1px solid var(--border);
+}
+
+/* Row separator lines */
+[data-board-theme="gap-highlight"] .board-row + .board-row {
+  border-top: 1px solid var(--border);
+}
+
+/* Header/footer separators as thin lines */
 [data-board-theme="gap-highlight"] .board-row-header {
-  border-right-color: transparent;
+  border-right: 1px solid var(--border);
 }
-[data-board-theme="gap-highlight"] .board-row-footer {
-  border-top-color: transparent;
+[data-board-theme="gap-highlight"] .board-stack-header {
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
 }
-[data-board-theme="gap-highlight"] .board-stack-footer {
-  border-top-color: transparent;
-}
-
-/* Gap-highlight: column header/footer separators */
 [data-board-theme="gap-highlight"] .column-header {
-  border-bottom-color: transparent;
+  border-bottom: 1px solid var(--border);
 }
+[data-board-theme="gap-highlight"] .board-row-footer,
+[data-board-theme="gap-highlight"] .board-stack-footer,
 [data-board-theme="gap-highlight"] .column-footer {
-  border-top-color: transparent;
+  border-top: 1px solid var(--border);
 }
 
-/* Gap-highlight: card left accent stays functional */
+/* Card left accent stays functional */
 [data-board-theme="gap-highlight"] .card {
   border-left: 3px solid transparent;
 }
