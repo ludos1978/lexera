@@ -151,57 +151,58 @@
 
 /* ── Card separators: 1px solid, 5px inset ──────────────────────────── */
 [data-board-theme="gap-highlight"] .column-cards {
-  padding: 2px 5px;
+  padding: 2px 5px !important;
+  gap: 0 !important;
 }
 [data-board-theme="gap-highlight"] .card {
-  border-left: 3px solid transparent;
+  border-left: 3px solid transparent !important;
 }
 [data-board-theme="gap-highlight"] .card + .card {
-  border-top: 1px solid var(--gap-line-color);
+  border-top: 1px solid var(--gap-line-color) !important;
 }
 
 /* ── Column separators: 2px dashed, 10px inset ─────────────────────── */
 [data-board-theme="gap-highlight"] .board-stack-content {
-  gap: 0;
-  padding: 0 10px;
+  gap: 0 !important;
+  padding: 0 10px !important;
 }
 [data-board-theme="gap-highlight"] .column + .column {
-  border-top: 2px dashed var(--gap-line-color);
+  border-top: 2px dashed var(--gap-line-color) !important;
 }
 
 /* ── Stack separators: 3px dashed, 20px inset ───────────────────────── */
 [data-board-theme="gap-highlight"] .board-row-content {
-  gap: 0;
+  gap: 0 !important;
   padding: 20px 0 !important;
 }
 [data-board-theme="gap-highlight"] .board-stack + .board-stack {
-  border-left: 3px dashed var(--gap-line-color);
+  border-left: 3px dashed var(--gap-line-color) !important;
 }
 
 /* ── Row separators: 3px dotted, 20px inset ─────────────────────────── */
 [data-board-theme="gap-highlight"] .columns-container {
-  padding-left: 20px;
-  padding-right: 20px;
+  padding: 20px !important;
+  gap: 0 !important;
 }
 [data-board-theme="gap-highlight"] .board-row + .board-row {
-  border-top: 3px dotted var(--gap-line-color);
+  border-top: 3px dotted var(--gap-line-color) !important;
 }
 
 /* ── Header/footer: thin solid lines ────────────────────────────────── */
 [data-board-theme="gap-highlight"] .board-row-header {
-  border-right: 1px solid var(--gap-line-color);
+  border-right: 1px solid var(--gap-line-color) !important;
 }
 [data-board-theme="gap-highlight"] .board-stack-header {
-  border-bottom: 1px solid var(--gap-line-color);
-  border-radius: 0;
+  border-bottom: 1px solid var(--gap-line-color) !important;
+  border-radius: 0 !important;
 }
 [data-board-theme="gap-highlight"] .column-header {
-  border-bottom: 1px solid var(--gap-line-color);
+  border-bottom: 1px solid var(--gap-line-color) !important;
 }
 [data-board-theme="gap-highlight"] .board-row-footer,
 [data-board-theme="gap-highlight"] .board-stack-footer,
 [data-board-theme="gap-highlight"] .column-footer {
-  border-top: 1px solid var(--gap-line-color);
+  border-top: 1px solid var(--gap-line-color) !important;
 }
 
 /* Dark theme vars are applied by JS via applyTheme() */
