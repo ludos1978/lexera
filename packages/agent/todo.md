@@ -90,8 +90,83 @@
 - [x] Exposed per-embed renderer status and retry controls in the embed menu and file preview dialog so failed rendered previews can be diagnosed and rerun without reopening the board.
 - [x] Added a direct raw `.excalidraw` / `.excalidraw.json` overlay editor with file-backed save and reload so embedded diagrams can be edited without leaving the kanban.
 
+- [x] Added TSV (`.tsv`, `.tab`) file format plugin backed by the same auto-detecting delimiter renderer used for CSV, with a separate `tsv` plugin id, `tsv-cache` folder, and backend routing.
+- [x] Added RTF (`.rtf`) support by extending the existing `document` plugin match pattern so LibreOffice renders RTF files through the same PDF-to-PNG pipeline.
+- [x] Added plain-text file (`.txt`, `.text`, `.log`, `.cfg`, `.ini`, `.conf`) plugin with a new `plaintext` backend SVG renderer that displays paginated text with line numbers, monospace font, and truncation for long lines.
+- [x] Added regression coverage for TSV, plain-text, and RTF plugin detection and render config generation.
+
+- [x] Integrated a draw.io external-edit bridge that opens `.drawio`/`.dio` files in the system's draw.io application and shows a floating control dialog with Refresh Preview, Reopen in App, and Done actions. Preview cache is cleared and board embeds are refreshed on both explicit refresh and dialog close.
+- [x] Replaced the `window.prompt` text input for tag recoloring with a visual color picker popover showing the 12-color `TAG_PALETTE` as clickable swatches with active-state highlight, plus a custom hex/CSS color input with validation and Enter/Escape key support.
+- [x] Column sort UI already exists: context menu has "Sort by" submenu with "Title", "Tag Value", and "Due Date" options backed by `sortColumnCards` and `compareCardsForSort` functions. Due Date sort extracts temporal tags (`!date(...)`, `!today`, etc.) and sorts cards with dates before cards without.
+- [x] Added board-level tag filtering: clicking "Filter Current Board By" on a rendered tag now toggles a CSS-based card visibility filter instead of switching to search mode. Multiple tags can be active simultaneously (AND logic). A filter bar below the header shows active filter chips with remove buttons and a "Clear all" action. Filters are cleared automatically on board switch.
+- [x] Added a keyboard shortcuts help overlay toggled by pressing `?` (when not editing). Shows all board, card editor, and navigation shortcuts with platform-aware modifier keys (⌘ on Mac, Ctrl elsewhere).
+- [x] Added visible undo/redo buttons (↩/↪) in the board header right zone next to the Processes and Changes buttons, providing mouse-accessible undo/redo alongside the existing Cmd/Ctrl+Z/Y shortcuts.
+- [x] Added sort direction toggle: clicking the same sort mode again reverses the direction (ascending ↔ descending). Menu labels show ↑/↓ arrows for the current direction per column. State resets on board load.
+- [x] Added board-level search-and-replace panel (Cmd/Ctrl+Shift+H) with find input, match counter, prev/next navigation, replace, and replace-all. Case-insensitive matching across all card content in the current board. Highlighted card scrolls into view. Undo-supported via pushUndo. Panel closes on Escape or board switch.
+- [x] Added "Duplicate to Column" submenu in card context menu listing all other columns as targets. Uses the same clone pattern as in-place duplicate (new id, null kid) and appends to the target column.
+- [x] Added a board statistics summary bar toggled by "Stats" button in header. Shows card count, column count, row count, and top 10 tags with counts. Excludes hidden/parked/archived cards. Bar renders below filter bar, hides on print, resets on board switch.
+- [x] Added "Sort all cards" submenu to row and stack context menus with Title, Tag Value, and Due Date modes. Sorts cards across all columns within the row or stack. Uses shared `sortColumnsCards` helper and `pushUndo` for undo support.
+- [x] Enhanced print-friendly CSS: added `display: none` for tag filter bar, color picker, undo/redo buttons, export dialog/overlay; added `break-inside: avoid` for cards; styled board header for print.
+- [x] Added card checklist progress badge (e.g., "3/5") in card header for cards containing markdown checkboxes. Badge turns green when all tasks are complete.
+- [x] Added visual due date badge on card headers showing resolved temporal tag dates (e.g., `!date(2025-03-15)`, `!today`). Badges show yellow for due today and red for overdue.
+- [x] Replaced column width toggle with a "Width" submenu showing Span 1-4 presets with checkmark on current selection. Added `setColumnSpan()` for direct span setting.
+- [x] Enhanced board statistics bar with word count across all visible cards and checklist task completion count (checked/total).
+- [x] Added empty column placeholder text ("No cards yet") in columns with no cards.
+- [x] Added recently opened boards tracking (last 10) with "Recent Boards" submenu in the board context menu for quick navigation. Persisted in localStorage.
+- [x] Added column WIP limit support via `#wip-N` tag in column title. Column header shows count/limit (e.g., "5/3"), header gets red border and bold red count when limit is exceeded. Tag is preserved through renames and stripped from display title.
+- [x] Added "Move to top" and "Move to bottom" card actions in context menu for quick repositioning within a column.
+- [x] Added "By Due Date" option to board-level "Sort All Cards" submenu for consistency with column/row/stack sort menus.
+- [x] Added "Add card at top" action in column context menu for inserting empty cards at position 0 instead of only at the bottom.
+- [x] Added "Copy Board as Markdown" action in board context menu. Copies all visible cards (excluding hidden/parked/archived) as structured markdown with row and column headings.
+- [x] Added "Paste as card" action in column context menu. Reads clipboard text and creates a new card at the bottom of the column with the pasted content.
+- [x] Added "Move to top" and "Move to bottom" card context menu actions for quick card repositioning within a column.
+- [x] Added a plain-text overlay editor using a monospace textarea for `.txt`/`.text`/`.log`/`.cfg`/`.ini`/`.conf`/`.csv`/`.tsv`/`.tab` files with Cmd/Ctrl+S save shortcut, file reload, dirty tracking, system app fallback, and automatic preview cache refresh on save.
+- [x] CSV/TSV overlay editing is covered by the plain-text editor since delimited files are plain text; the preview SVG re-renders on save via the existing cache invalidation pipeline.
+- [x] Audited file format overlay editing candidates and documented integration strategies below.
+
 ## Open
-- [ ] integrate a direct overlay editor or controlled external-edit bridge for `.drawio` files with reload/save-back handling that matches the preview/export plugin pipeline.
-- [ ] add more plugin-backed directly renderable tabular formats beyond CSV, starting with TSV and semicolon-separated spreadsheet exports routed through the same SVG table renderer.
-- [ ] add richer text-document plugin conversions for formats like RTF and plain-text report layouts so they can preview cleanly in the board and export as compatible images when embedded.
-- [ ] audit which file formats are realistic candidates for full-featured overlay editing, including tables, markdown/text, images, and diagram/document formats, and document the preferred integration strategy for each.
+
+### V1 Parity Gaps
+- [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
+
+## File Format Overlay Editing Audit
+
+### Diagrams
+| Format | Strategy | Feasibility | Notes |
+|--------|----------|-------------|-------|
+| `.excalidraw` / `.excalidraw.json` | **Overlay iframe editor** | Done | Uses bundled Excalidraw React app via postMessage. Full save/reload/dirty tracking. |
+| `.drawio` / `.dio` | **External-edit bridge** | High | draw.io desktop or VS Code extension opens the file; Tauri file-watcher detects save and re-renders preview. No embeddable JS editor exists for draw.io. |
+
+### Tables / Data
+| Format | Strategy | Feasibility | Notes |
+|--------|----------|-------------|-------|
+| `.csv` | **Overlay textarea editor** | Medium | Simple multi-line text editor with CSV-aware validation. Write back to file on save. Re-render SVG preview. |
+| `.tsv` / `.tab` | **Same as CSV** | Medium | Identical approach, delimiter auto-detected. |
+| `.xlsx` / `.xls` / `.ods` | **External app only** | Low | No viable in-browser spreadsheet editor that handles native formats. Open in system app. |
+
+### Text / Documents
+| Format | Strategy | Feasibility | Notes |
+|--------|----------|-------------|-------|
+| `.txt` / `.log` / `.cfg` / `.ini` / `.conf` | **Overlay textarea editor** | High | Simple monospace textarea with save-back. Re-render SVG preview on save. Low complexity. |
+| `.md` / `.markdown` | **Overlay WYSIWYG or CodeMirror** | Medium | Could reuse existing inline editor or embed a lightweight markdown editor. |
+| `.rtf` | **External app only** | Low | No viable in-browser RTF editor. Open in system app. |
+| `.doc` / `.docx` / `.odt` | **External app only** | Low | Complex formats. Open in LibreOffice/Word. |
+| `.ppt` / `.pptx` / `.odp` | **External app only** | Low | Complex formats. Open in system app. |
+
+### Images
+| Format | Strategy | Feasibility | Notes |
+|--------|----------|-------------|-------|
+| `.svg` | **Overlay code editor** | Medium | SVG is XML text — a code editor with syntax highlighting could work. |
+| `.png` / `.jpg` / `.gif` / `.webp` | **External app only** | Low | Bitmap editing requires full image editor. Open in system app. |
+
+### Other
+| Format | Strategy | Feasibility | Notes |
+|--------|----------|-------------|-------|
+| `.pdf` | **External app only** | Low | PDF editing is complex. Open in system app. |
+| `.epub` | **External app only** | Low | EPUB editing is complex. Open in Calibre or similar. |
+
+### Recommended implementation order
+1. **Draw.io external-edit bridge** — high impact, uses file-watcher pattern already available in Tauri
+2. **Plain-text overlay editor** — simple textarea, low complexity, high utility for `.txt`/`.log`/`.cfg`/`.ini`
+3. **CSV/TSV overlay editor** — textarea with delimiter-aware preview refresh
+4. **Markdown overlay editor** — reuse existing inline editor infrastructure
