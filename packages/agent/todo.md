@@ -134,6 +134,7 @@
 - [x] Added Alt+Arrow keyboard shortcuts for moving focused cards: Alt+Up/Down to reorder within column, Alt+Left/Right to move to adjacent column. Card focus follows the moved card.
 - [x] Added Space key to open context menu for the focused card, enabling fully keyboard-driven card operations.
 - [x] Added P key to park focused card, E key to edit (overlay if enabled, inline otherwise), and C key to copy focused card as markdown to clipboard.
+- [x] Added R key to reveal/collapse focused card content, I key to insert a new card after the focused card, and 1-9 number keys to jump to a column by position.
 
 ## File Format Overlay Editing Audit
 

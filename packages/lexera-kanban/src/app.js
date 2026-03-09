@@ -2822,6 +2822,16 @@ const LexeraDashboard = (function () {
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       tagCard(ci, cj, '#hidden-internal-parked');
+    } else if (key === 'r' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      revealCardContent(ci, cj);
+    } else if (key === 'i' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      insertCardAtIndex(ci, cj + 1);
     } else if (key === 'c' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
@@ -2842,6 +2852,20 @@ const LexeraDashboard = (function () {
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       var rect = focusedCardEl.getBoundingClientRect();
       showCardContextMenu(rect.left + 20, rect.top + 20, ci, cj);
+    } else if (key >= '1' && key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      var colNum = parseInt(key, 10) - 1;
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      if (colNum < columns.length) {
+        e.preventDefault();
+        var targetColIdx = columns[colNum].index;
+        var firstCard = getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
+        if (firstCard) focusCard(firstCard);
+        else {
+          // Scroll column into view even if empty
+          var colEl = getElColumnsContainer().querySelector('.column[data-col-index="' + targetColIdx + '"]');
+          if (colEl) colEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
     } else if (key === 'n' && !e.ctrlKey && !e.metaKey && !focusedCardEl && !mgmtPanelOpen) {
       e.preventDefault();
       var columns = activeBoardData ? activeBoardData.columns : [];
@@ -10711,12 +10735,15 @@ const LexeraDashboard = (function () {
       { keys: 'Alt+\u2191/\u2193', desc: 'Move card up / down' },
       { keys: 'Alt+\u2190/\u2192', desc: 'Move card to adjacent column' },
       { keys: mod + '+D', desc: 'Duplicate focused card' },
+      { keys: 'R', desc: 'Reveal / collapse card content' },
+      { keys: 'I', desc: 'Insert card after focused' },
       { keys: 'C', desc: 'Copy card as markdown' },
       { keys: 'E', desc: 'Edit card (overlay if enabled)' },
       { keys: 'P', desc: 'Park focused card' },
       { keys: 'Space', desc: 'Open card context menu' },
       { keys: 'Delete', desc: 'Delete focused card' },
       { keys: 'N', desc: 'New card (when no card focused)' },
+      { keys: '1\u20139', desc: 'Jump to column by position' },
       { section: 'Other' },
       { keys: '?', desc: 'Toggle this help' },
     ];
