@@ -5315,6 +5315,7 @@ select.dialog-input option,
 [data-board-theme="gap-highlight"] .board-stack-header {
   border-bottom: none !important;
   border-radius: 0 !important;
+  padding-bottom: 2px !important;
 }
 [data-board-theme="gap-highlight"] .column-header {
   border-bottom: 1px solid var(--gap-line-color) !important;
