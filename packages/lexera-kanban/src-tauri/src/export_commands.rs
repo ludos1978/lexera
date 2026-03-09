@@ -751,6 +751,124 @@ fn render_csv_text_to_svg(source: &str, title: &str, page_number: u32) -> String
     svg
 }
 
+fn render_plaintext_to_svg(source: &str, title: &str, page_number: u32) -> String {
+    let max_lines_per_page = 30usize;
+    let max_line_chars = 80usize;
+    let title_text = if title.trim().is_empty() { "Text file" } else { title.trim() };
+
+    let all_lines: Vec<&str> = source.lines().collect();
+    let total_lines = all_lines.len().max(1);
+    let page_index = page_number.saturating_sub(1) as usize;
+    let start = (page_index * max_lines_per_page).min(total_lines);
+    let end = (start + max_lines_per_page).min(total_lines);
+    let visible_lines = if start < total_lines {
+        &all_lines[start..end]
+    } else {
+        &[] as &[&str]
+    };
+
+    let line_height = 18f32;
+    let title_height = 32f32;
+    let meta_height = 22f32;
+    let footer_height = 22f32;
+    let outer_padding = 18f32;
+    let content_height = line_height * visible_lines.len().max(1) as f32;
+    let width = outer_padding * 2.0 + max_line_chars as f32 * 7.4 + 20.0;
+    let height = outer_padding * 2.0 + title_height + meta_height + content_height + footer_height;
+
+    let total_pages = (total_lines + max_lines_per_page - 1) / max_lines_per_page;
+    let footer_note = format!(
+        "Lines {}-{} of {} | Page {} of {}",
+        if start < total_lines { start + 1 } else { 0 },
+        end,
+        total_lines,
+        page_number.max(1),
+        total_pages
+    );
+
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
+        width, height, width, height
+    ));
+    svg.push_str("<rect width=\"100%\" height=\"100%\" fill=\"#f6f1e8\"/>");
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-sans-serif, system-ui, sans-serif\" font-size=\"18\" font-weight=\"700\" fill=\"#1d1d1d\">{}</text>",
+        outer_padding,
+        outer_padding + 20.0,
+        escape_svg_text(title_text)
+    ));
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-sans-serif, system-ui, sans-serif\" font-size=\"11\" fill=\"#4f4a45\">Plain text | Page {}</text>",
+        outer_padding,
+        outer_padding + title_height + 4.0,
+        page_number.max(1)
+    ));
+
+    let content_top = outer_padding + title_height + meta_height;
+    if visible_lines.is_empty() {
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-monospace, monospace\" font-size=\"12\" fill=\"#8a8078\">Empty file</text>",
+            outer_padding + 8.0,
+            content_top + 14.0
+        ));
+    } else {
+        for (i, line) in visible_lines.iter().enumerate() {
+            let y = content_top + line_height * i as f32 + 14.0;
+            let line_num = start + i + 1;
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-monospace, monospace\" font-size=\"11\" fill=\"#8a8078\">{:>4}</text>",
+                outer_padding,
+                y,
+                line_num
+            ));
+            let truncated = if line.chars().count() > max_line_chars {
+                let s: String = line.chars().take(max_line_chars - 3).collect();
+                format!("{}...", s)
+            } else {
+                line.to_string()
+            };
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-monospace, monospace\" font-size=\"12\" fill=\"#2b2b2b\">{}</text>",
+                outer_padding + 40.0,
+                y,
+                escape_svg_text(&truncated)
+            ));
+        }
+    }
+
+    svg.push_str(&format!(
+        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"ui-sans-serif, system-ui, sans-serif\" font-size=\"11\" fill=\"#5b5246\">{}</text>",
+        outer_padding,
+        height - outer_padding + 4.0,
+        escape_svg_text(&footer_note)
+    ));
+    svg.push_str("</svg>");
+    svg
+}
+
+fn render_plaintext_file(source_path: &Path, target_path: &Path, page_number: u32) -> Result<(), String> {
+    let output_format = target_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if output_format != "svg" {
+        return Err("Plain text rendering currently supports SVG output only".to_string());
+    }
+    let source = fs::read_to_string(source_path)
+        .map_err(|e| format!("Failed to read text source {}: {}", source_path.display(), e))?;
+    let title = source_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Text file");
+    let svg = render_plaintext_to_svg(&source, title, page_number);
+    ensure_parent_dir(target_path)?;
+    fs::write(target_path, svg)
+        .map_err(|e| format!("Failed to write text SVG {}: {}", target_path.display(), e))?;
+    Ok(())
+}
+
 fn render_csv_file(source_path: &Path, target_path: &Path, page_number: u32) -> Result<(), String> {
     let output_format = target_path
         .extension()
@@ -1197,7 +1315,8 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
         "drawio" => render_drawio_file(&source_path, &target_path, &output_format),
         "excalidraw" => render_excalidraw_file(&source_path, &target_path, &output_format),
         "xlsx" => render_spreadsheet_file(&source_path, &target_path, page_number),
-        "csv" => render_csv_file(&source_path, &target_path, page_number),
+        "csv" | "tsv" => render_csv_file(&source_path, &target_path, page_number),
+        "plaintext" => render_plaintext_file(&source_path, &target_path, page_number),
         "pdf" => render_pdf_page_to_png(&source_path, &target_path, page_number, 150),
         "document" => render_document_file(&source_path, &target_path, page_number),
         "epub" => render_epub_file(&source_path, &target_path, page_number),

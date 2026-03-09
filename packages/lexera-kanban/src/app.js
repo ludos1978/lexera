@@ -2817,6 +2817,25 @@ const LexeraDashboard = (function () {
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       deleteCard(ci, cj);
+    } else if (key === 'p' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      tagCard(ci, cj, '#hidden-internal-parked');
+    } else if (key === 'c' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      copyElementAsMarkdown('card', { colIndex: ci, cardIndex: cj });
+    } else if (key === 'e' && !e.ctrlKey && !e.metaKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      if (isOverlayEditorEnabled()) {
+        openCardEditor(focusedCardEl, ci, cj, 'overlay');
+      } else {
+        openCardEditor(focusedCardEl, ci, cj, 'inline');
+      }
     } else if (key === ' ' && focusedCardEl) {
       e.preventDefault();
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
@@ -10692,6 +10711,9 @@ const LexeraDashboard = (function () {
       { keys: 'Alt+\u2191/\u2193', desc: 'Move card up / down' },
       { keys: 'Alt+\u2190/\u2192', desc: 'Move card to adjacent column' },
       { keys: mod + '+D', desc: 'Duplicate focused card' },
+      { keys: 'C', desc: 'Copy card as markdown' },
+      { keys: 'E', desc: 'Edit card (overlay if enabled)' },
+      { keys: 'P', desc: 'Park focused card' },
       { keys: 'Space', desc: 'Open card context menu' },
       { keys: 'Delete', desc: 'Delete focused card' },
       { keys: 'N', desc: 'New card (when no card focused)' },

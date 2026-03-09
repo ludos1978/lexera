@@ -214,6 +214,22 @@ const LexeraFileFormatRegistry = (function () {
   });
 
   register({
+    id: 'tsv',
+    label: 'TSV table',
+    emoji: '&#128451;',
+    previewPlaceholder: 'TSV preview is rendered into an SVG table for board view and export compatibility.',
+    preview: buildPreviewConfig('table', 'tsv-cache', 'svg', 'svg', function (pageNumber) {
+      return '-p' + normalizePageNumber(pageNumber);
+    }),
+    export: buildExportConfig('svg', 'svg', function (pageNumber) {
+      return '-p' + normalizePageNumber(pageNumber);
+    }),
+    matches: function (normalized) {
+      return /\.(tsv|tab)$/.test(normalized);
+    },
+  });
+
+  register({
     id: 'pdf',
     label: 'PDF file',
     emoji: '&#128196;',
@@ -242,7 +258,7 @@ const LexeraFileFormatRegistry = (function () {
       return '-p' + normalizePageNumber(pageNumber);
     }),
     matches: function (normalized) {
-      return /\.(doc|docx|odt|ppt|pptx|odp)$/.test(normalized);
+      return /\.(doc|docx|odt|rtf|ppt|pptx|odp)$/.test(normalized);
     },
   });
 
@@ -259,6 +275,22 @@ const LexeraFileFormatRegistry = (function () {
     }),
     matches: function (normalized) {
       return normalized.slice(-5) === '.epub';
+    },
+  });
+
+  register({
+    id: 'plaintext',
+    label: 'Text file',
+    emoji: '&#128196;',
+    previewPlaceholder: 'Text file preview is rendered into an SVG page for board view and export compatibility.',
+    preview: buildPreviewConfig('text', 'text-cache', 'svg', 'svg', function (pageNumber) {
+      return '-p' + normalizePageNumber(pageNumber);
+    }),
+    export: buildExportConfig('svg', 'svg', function (pageNumber) {
+      return '-p' + normalizePageNumber(pageNumber);
+    }),
+    matches: function (normalized) {
+      return /\.(txt|text|log|cfg|ini|conf)$/.test(normalized);
     },
   });
 
