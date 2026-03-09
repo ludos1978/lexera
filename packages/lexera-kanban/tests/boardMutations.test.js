@@ -89,11 +89,28 @@ function loadMutationFunctions() {
   }
   const tagStyleRoleSource = roleLines.join('\n');
 
+  // Extract TAG_STYLE_PRESETS constant
+  const presetsLine = findLine('var TAG_STYLE_PRESETS = {');
+  let presetsDepth = 0, presetsStarted = false;
+  const presetsLines = [];
+  for (let i = presetsLine - 1; i < lines.length; i++) {
+    presetsLines.push(lines[i]);
+    for (let c = 0; c < lines[i].length; c++) {
+      if (lines[i][c] === '{') { presetsDepth++; presetsStarted = true; }
+      if (lines[i][c] === '}') presetsDepth--;
+    }
+    if (presetsStarted && presetsDepth === 0) break;
+  }
+  const tagStylePresetsSource = presetsLines.join('\n');
+
   const fnDefs = [
     tagColorsSource,
     tagPaletteSource,
     tagCategoriesSource,
     tagStyleRoleSource,
+    tagStylePresetsSource,
+    'var _activeTagStylePreset = "default";',
+    'var _tagStyleUserOverrides = {};',
     extractFunction(findLine('function normalizePathForCompare(')),
     extractFunction(findLine('function stripPathSearchAndHash(')),
     extractFunction(findLine('function getFileNameFromPath(')),
@@ -142,6 +159,9 @@ function loadMutationFunctions() {
     extractFunction(findLine('function parseColorChannels(')),
     extractFunction(findLine('function getContrastingTextColor(')),
     extractFunction(findLine('function getTagColor(')),
+    extractFunction(findLine('function getResolvedCategoryRole(')),
+    extractFunction(findLine('function getTagStyleOverride(')),
+    extractFunction(findLine('function applyTagBorderSpecialRules(')),
     extractFunction(findLine('function buildTagStyleDescriptor(')),
     extractFunction(findLine('function isLayoutTagName(')),
     extractFunction(findLine('function isTagStyleEligible(')),

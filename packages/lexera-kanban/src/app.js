@@ -7256,6 +7256,48 @@ const LexeraDashboard = (function () {
     ]);
   }
 
+  function buildTagStylePresetItems(actionPrefix) {
+    var current = getActiveTagStylePreset();
+    var items = [];
+    var keys = Object.keys(TAG_STYLE_PRESETS);
+    for (var i = 0; i < keys.length; i++) {
+      var preset = TAG_STYLE_PRESETS[keys[i]];
+      items.push({
+        id: actionPrefix + ':' + keys[i],
+        label: (current === keys[i] ? '\u2713 ' : '') + preset.label + (preset.description ? ' \u2014 ' + preset.description : '')
+      });
+    }
+    return items;
+  }
+
+  function buildTagStyleRoleItems(normalizedTag) {
+    var TAG_STYLE_ROLES = [
+      { value: 'header', label: 'Header Bar' },
+      { value: 'footer', label: 'Footer Bar' },
+      { value: 'badge', label: 'Badge' },
+      { value: 'border-only', label: 'Border Only' },
+      { value: 'background', label: 'Background' },
+      { value: 'effect', label: 'Effect' },
+      { value: '', label: 'None' }
+    ];
+    var rawTag = normalizedTag.charAt(0) === '#' ? normalizedTag.substring(1) : normalizedTag;
+    var categoryKey = getTagCategoryKey(rawTag);
+    var currentRole = categoryKey ? getResolvedCategoryRole(categoryKey) : '';
+    var items = [];
+    for (var i = 0; i < TAG_STYLE_ROLES.length; i++) {
+      var r = TAG_STYLE_ROLES[i];
+      items.push({
+        id: 'tag-style-role:' + r.value,
+        label: (currentRole === r.value ? '\u2713 ' : '') + r.label
+      });
+    }
+    if (categoryKey) {
+      items.push({ separator: true });
+      items.push({ id: 'tag-style-role-info', label: 'Category: ' + categoryKey, disabled: true });
+    }
+    return items;
+  }
+
   function buildHtmlCommentModeItems(actionPrefix) {
     var current = normalizeHtmlCommentRenderMode(getBoardSettingValue('htmlCommentRenderMode', 'hidden'));
     return buildModeMenuItems(current, actionPrefix, [
@@ -9125,6 +9167,7 @@ const LexeraDashboard = (function () {
       { id: 'set-html-comments', label: 'HTML Comment Rendering', items: buildHtmlCommentModeItems('set-html-comments') },
       { id: 'set-html-content', label: 'HTML Content Rendering', items: buildHtmlContentModeItems('set-html-content') },
       { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildTagVisibilityModeItems('set-tag-visibility') },
+      { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
     ];
     if (parkedCount > 0) {
       items.push({ separator: true });
@@ -9346,6 +9389,13 @@ const LexeraDashboard = (function () {
     if (action.indexOf('set-tag-visibility:') === 0) {
       var tagVisibilityValue = normalizeTagVisibilityMode(action.substring('set-tag-visibility:'.length));
       await setBoardSettingValue('tagVisibility', tagVisibilityValue);
+      return;
+    }
+    if (action.indexOf('set-tag-style-preset:') === 0) {
+      var presetId = action.substring('set-tag-style-preset:'.length);
+      setActiveTagStylePreset(presetId);
+      renderColumns();
+      showNotification('Tag style: ' + (TAG_STYLE_PRESETS[presetId] ? TAG_STYLE_PRESETS[presetId].label : presetId));
       return;
     }
     if (action === 'toggle-html-comments') {
@@ -11295,7 +11345,9 @@ const LexeraDashboard = (function () {
       { separator: true },
       { id: 'rename-tag', label: 'Rename ' + normalizedTag + ' In This Board', disabled: !activeBoardId },
       { id: 'change-color', label: 'Change Color (' + currentColor + ')' },
-      { id: 'copy-tag', label: 'Copy ' + normalizedTag }
+      { id: 'copy-tag', label: 'Copy ' + normalizedTag },
+      { separator: true },
+      { id: 'tag-style-role', label: 'Style Role', items: buildTagStyleRoleItems(normalizedTag) }
     ];
     showNativeMenu(items, x, y, 'tag.menu').then(async function (action) {
       if (!action) return;
@@ -11329,6 +11381,20 @@ const LexeraDashboard = (function () {
       }
       if (action === 'copy-tag') {
         copyTextToClipboard(normalizedTag, 'Tag copied to clipboard', 'Failed to copy tag');
+        return;
+      }
+      if (action.indexOf('tag-style-role:') === 0) {
+        var newRole = action.substring('tag-style-role:'.length);
+        var rawTag = normalizedTag.charAt(0) === '#' ? normalizedTag.substring(1) : normalizedTag;
+        var catKey = getTagCategoryKey(rawTag);
+        if (!catKey) {
+          showNotification('Tag "' + normalizedTag + '" has no known category');
+          return;
+        }
+        setUserCategoryRole(catKey, newRole || null);
+        renderMainView();
+        showNotification('Style role for "' + catKey + '" set to ' + (newRole || 'none'));
+        return;
       }
     }).catch(function (err) {
       logFrontendIssue('warn', 'tag.menu', 'Failed to open rendered tag menu for ' + normalizedTag, err);
@@ -23864,6 +23930,205 @@ const LexeraDashboard = (function () {
     special: 'effect'
   };
 
+  // ── Configurable Tag Style System ─────────────────────────────────────
+  // Presets define category→role mappings and per-tag style overrides.
+  // Users can select a preset and add per-tag overrides via localStorage.
+
+  var TAG_STYLE_PRESETS = {
+    'default': {
+      label: 'Default',
+      description: 'Header bars for status/type, footer bars for priority, badges for platforms',
+      categoryRoles: null, // uses TAG_STYLE_ROLE_BY_CATEGORY as-is
+      tagOverrides: null
+    },
+    'minimal': {
+      label: 'Minimal',
+      description: 'Borders only, no header/footer bars or badges',
+      categoryRoles: {
+        importance: 'border-only', status: 'border-only', workflow: 'border-only',
+        organization: 'border-only', 'teaching-content': 'border-only',
+        'product-content': 'border-only', complexity: 'border-only',
+        type: 'border-only', category: 'border-only', impact: 'border-only',
+        schedule: 'border-only', overview: 'border-only', example: 'border-only',
+        deliveries: 'border-only', version: 'border-only',
+        priority: 'border-only', moscow: 'border-only',
+        'status-review': 'border-only', 'time-estimate': 'border-only',
+        'status-testing': 'border-only',
+        positivity: 'border-only', 'teaching-platform': 'border-only',
+        'product-platform': 'border-only',
+        colors: 'background', 'colors-dark': 'background',
+        'colors-light': 'background', 'colors-accessible': 'background',
+        special: 'effect'
+      },
+      tagOverrides: null
+    },
+    'full': {
+      label: 'Full',
+      description: 'Header and footer bars for all categories',
+      categoryRoles: {
+        importance: 'header', status: 'header', workflow: 'header',
+        organization: 'header', 'teaching-content': 'header',
+        'product-content': 'header', complexity: 'header',
+        type: 'header', category: 'header', impact: 'header',
+        schedule: 'header', overview: 'header', example: 'header',
+        deliveries: 'header', version: 'header',
+        priority: 'footer', moscow: 'footer',
+        'status-review': 'footer', 'time-estimate': 'footer',
+        'status-testing': 'footer',
+        positivity: 'header', 'teaching-platform': 'footer',
+        'product-platform': 'footer',
+        colors: 'background', 'colors-dark': 'background',
+        'colors-light': 'background', 'colors-accessible': 'background',
+        special: 'effect'
+      },
+      tagOverrides: null
+    },
+    'badges': {
+      label: 'Badges Only',
+      description: 'All categories shown as compact badges',
+      categoryRoles: {
+        importance: 'badge', status: 'badge', workflow: 'badge',
+        organization: 'badge', 'teaching-content': 'badge',
+        'product-content': 'badge', complexity: 'badge',
+        type: 'badge', category: 'badge', impact: 'badge',
+        schedule: 'badge', overview: 'badge', example: 'badge',
+        deliveries: 'badge', version: 'badge',
+        priority: 'badge', moscow: 'badge',
+        'status-review': 'badge', 'time-estimate': 'badge',
+        'status-testing': 'badge',
+        positivity: 'badge', 'teaching-platform': 'badge',
+        'product-platform': 'badge',
+        colors: 'background', 'colors-dark': 'background',
+        'colors-light': 'background', 'colors-accessible': 'background',
+        special: 'effect'
+      },
+      tagOverrides: null
+    },
+    'priority-focus': {
+      label: 'Priority Focus',
+      description: 'Priority as header, status as footer, type as badge',
+      categoryRoles: {
+        importance: 'header', status: 'footer', workflow: 'footer',
+        organization: 'badge', 'teaching-content': 'badge',
+        'product-content': 'badge', complexity: 'badge',
+        type: 'badge', category: 'badge', impact: 'header',
+        schedule: 'footer', overview: 'badge', example: 'badge',
+        deliveries: 'badge', version: 'badge',
+        priority: 'header', moscow: 'header',
+        'status-review': 'footer', 'time-estimate': 'badge',
+        'status-testing': 'footer',
+        positivity: 'badge', 'teaching-platform': 'badge',
+        'product-platform': 'badge',
+        colors: 'background', 'colors-dark': 'background',
+        'colors-light': 'background', 'colors-accessible': 'background',
+        special: 'effect'
+      },
+      tagOverrides: null
+    }
+  };
+
+  var _activeTagStylePreset = 'default';
+  var _tagStyleUserOverrides = {};
+
+  function loadTagStyleConfig() {
+    try {
+      var stored = localStorage.getItem('lexera-tag-style-config');
+      if (stored) {
+        var parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.preset && TAG_STYLE_PRESETS[parsed.preset]) {
+            _activeTagStylePreset = parsed.preset;
+          }
+          if (parsed.categoryRoles && typeof parsed.categoryRoles === 'object') {
+            _tagStyleUserOverrides.categoryRoles = parsed.categoryRoles;
+          }
+          if (parsed.tagOverrides && typeof parsed.tagOverrides === 'object') {
+            _tagStyleUserOverrides.tagOverrides = parsed.tagOverrides;
+          }
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  function saveTagStyleConfig() {
+    try {
+      var config = { preset: _activeTagStylePreset };
+      if (_tagStyleUserOverrides.categoryRoles) config.categoryRoles = _tagStyleUserOverrides.categoryRoles;
+      if (_tagStyleUserOverrides.tagOverrides) config.tagOverrides = _tagStyleUserOverrides.tagOverrides;
+      localStorage.setItem('lexera-tag-style-config', JSON.stringify(config));
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  function setActiveTagStylePreset(presetId) {
+    if (!TAG_STYLE_PRESETS[presetId]) return;
+    _activeTagStylePreset = presetId;
+    saveTagStyleConfig();
+  }
+
+  function getActiveTagStylePreset() {
+    return _activeTagStylePreset;
+  }
+
+  function getResolvedCategoryRole(categoryKey) {
+    // 1. User override for this category
+    if (_tagStyleUserOverrides.categoryRoles && _tagStyleUserOverrides.categoryRoles[categoryKey]) {
+      return _tagStyleUserOverrides.categoryRoles[categoryKey];
+    }
+    // 2. Active preset
+    var preset = TAG_STYLE_PRESETS[_activeTagStylePreset];
+    if (preset && preset.categoryRoles && preset.categoryRoles[categoryKey]) {
+      return preset.categoryRoles[categoryKey];
+    }
+    // 3. Default
+    return TAG_STYLE_ROLE_BY_CATEGORY[categoryKey] || '';
+  }
+
+  function getTagStyleOverride(tagNormalized) {
+    // 1. User per-tag overrides
+    if (_tagStyleUserOverrides.tagOverrides && _tagStyleUserOverrides.tagOverrides[tagNormalized]) {
+      return _tagStyleUserOverrides.tagOverrides[tagNormalized];
+    }
+    // 2. Active preset per-tag overrides
+    var preset = TAG_STYLE_PRESETS[_activeTagStylePreset];
+    if (preset && preset.tagOverrides && preset.tagOverrides[tagNormalized]) {
+      return preset.tagOverrides[tagNormalized];
+    }
+    return null;
+  }
+
+  function setUserCategoryRole(categoryKey, role) {
+    if (!_tagStyleUserOverrides.categoryRoles) _tagStyleUserOverrides.categoryRoles = {};
+    if (role) {
+      _tagStyleUserOverrides.categoryRoles[categoryKey] = role;
+    } else {
+      delete _tagStyleUserOverrides.categoryRoles[categoryKey];
+      if (Object.keys(_tagStyleUserOverrides.categoryRoles).length === 0) {
+        delete _tagStyleUserOverrides.categoryRoles;
+      }
+    }
+    saveTagStyleConfig();
+  }
+
+  function setUserTagStyleOverride(tagNormalized, overrideObj) {
+    if (!_tagStyleUserOverrides.tagOverrides) _tagStyleUserOverrides.tagOverrides = {};
+    if (overrideObj) {
+      _tagStyleUserOverrides.tagOverrides[tagNormalized] = overrideObj;
+    } else {
+      delete _tagStyleUserOverrides.tagOverrides[tagNormalized];
+      if (Object.keys(_tagStyleUserOverrides.tagOverrides).length === 0) {
+        delete _tagStyleUserOverrides.tagOverrides;
+      }
+    }
+    saveTagStyleConfig();
+  }
+
+  // Load tag style config on startup
+  loadTagStyleConfig();
+
   var EMOJI_SHORTCODES = {
     smile: '\u{1F604}',
     grin: '\u{1F601}',
@@ -23996,7 +24261,63 @@ const LexeraDashboard = (function () {
       filter: '',
       pattern: ''
     };
-    var styleRole = TAG_STYLE_ROLE_BY_CATEGORY[categoryKey] || '';
+
+    // Check for user per-tag override first
+    var tagOverride = getTagStyleOverride(normalized);
+    if (tagOverride) {
+      if (tagOverride.color) {
+        color = tagOverride.color;
+        descriptor.color = color;
+        descriptor.border.color = color;
+      }
+      if (tagOverride.border) {
+        descriptor.border.style = tagOverride.border.style || descriptor.border.style;
+        descriptor.border.width = tagOverride.border.width || descriptor.border.width;
+        descriptor.border.position = tagOverride.border.position || descriptor.border.position;
+        if (tagOverride.border.color) descriptor.border.color = tagOverride.border.color;
+      }
+      if (tagOverride.headerBar) {
+        var hLabel = tagOverride.headerBar.label || formatTagDisplayLabel(fullTag).toUpperCase();
+        descriptor.headerBar = {
+          label: hLabel,
+          color: tagOverride.headerBar.color || color,
+          labelColor: getContrastingTextColor(tagOverride.headerBar.color || color)
+        };
+      }
+      if (tagOverride.footerBar) {
+        var fLabel = tagOverride.footerBar.label || formatTagDisplayLabel(fullTag).toUpperCase();
+        descriptor.footerBar = {
+          label: fLabel,
+          color: tagOverride.footerBar.color || color,
+          labelColor: getContrastingTextColor(tagOverride.footerBar.color || color)
+        };
+      }
+      if (tagOverride.badge) {
+        descriptor.badge = {
+          label: tagOverride.badge.label || formatTagDisplayLabel(fullTag),
+          color: tagOverride.badge.color || color,
+          labelColor: getContrastingTextColor(tagOverride.badge.color || color)
+        };
+      }
+      if (tagOverride.background) {
+        descriptor.background = {
+          color: tagOverride.background.color || color,
+          alpha: typeof tagOverride.background.alpha === 'number' ? tagOverride.background.alpha : 0.14
+        };
+      }
+      if (tagOverride.opacity) descriptor.opacity = tagOverride.opacity;
+      if (tagOverride.filter) descriptor.filter = tagOverride.filter;
+      if (tagOverride.pattern) descriptor.pattern = tagOverride.pattern;
+      // If override provides explicit role fields, skip category-based defaults
+      if (tagOverride.headerBar || tagOverride.footerBar || tagOverride.badge ||
+          tagOverride.background || tagOverride.opacity || tagOverride.pattern) {
+        applyTagBorderSpecialRules(descriptor, normalized);
+        return descriptor;
+      }
+    }
+
+    // Resolve category role (configurable via presets and user overrides)
+    var styleRole = getResolvedCategoryRole(categoryKey);
     var label = formatTagDisplayLabel(fullTag).toUpperCase();
 
     if (styleRole === 'background') {
@@ -24023,6 +24344,8 @@ const LexeraDashboard = (function () {
         color: color,
         labelColor: getContrastingTextColor(color)
       };
+    } else if (styleRole === 'border-only') {
+      // Only border, no bar/badge/background
     } else if (styleRole === 'effect') {
       if (normalized === 'exclude') {
         descriptor.opacity = '0.55';
@@ -24048,6 +24371,11 @@ const LexeraDashboard = (function () {
       }
     }
 
+    applyTagBorderSpecialRules(descriptor, normalized);
+    return descriptor;
+  }
+
+  function applyTagBorderSpecialRules(descriptor, normalized) {
     if (normalized === 'critical' || normalized === 'urgent' || normalized === 'blocked') {
       descriptor.border.width = '3px';
       descriptor.border.style = 'dashed';
@@ -24056,8 +24384,6 @@ const LexeraDashboard = (function () {
     } else if (normalized === 'normal' || normalized === 'todo') {
       descriptor.border.style = 'dotted';
     }
-
-    return descriptor;
   }
 
   function renderEmojiShortcodes(text) {
