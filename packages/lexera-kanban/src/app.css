@@ -4860,6 +4860,34 @@ select.dialog-input option,
 .status-bar.status-warn .status-msg { color: #ffd37b; }
 .status-bar.status-error .status-msg { color: #ffd4d4; }
 
+.status-bar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.status-bar-tab {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.status-bar-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.status-bar-tab.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
 /* Log Panel (expands above status bar) */
 .log-panel {
   position: relative;

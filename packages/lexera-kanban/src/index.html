@@ -102,9 +102,13 @@
   <!-- Status Bar -->
   <div id="status-bar" class="status-bar">
     <span id="status-msg" class="status-msg"></span>
+    <div class="status-bar-tabs">
+      <button id="status-tab-stats" class="status-bar-tab" type="button" title="Toggle board statistics">Stats</button>
+      <button id="status-tab-processes" class="status-bar-tab" type="button" title="Toggle processes and logs">Processes</button>
+    </div>
   </div>
 
-  <!-- Log Panel (expandable from status bar) -->
+  <!-- Bottom Panel (expandable from status bar tabs) -->
   <div id="log-panel" class="log-panel hidden">
     <div class="log-panel-header">
       <div class="log-panel-header-main">
@@ -123,6 +127,7 @@
     <div class="log-panel-body">
       <div id="log-entries-backend" class="log-entries"></div>
       <div id="log-entries-frontend" class="log-entries hidden"></div>
+      <div id="log-entries-stats" class="log-entries hidden"></div>
     </div>
   </div>
 

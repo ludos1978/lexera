@@ -223,20 +223,41 @@ function replaceLogEntries(source, entries) {
 }
 
 function setActiveLogSource(source) {
-  activeLogSource = source === 'frontend' ? 'frontend' : 'backend';
+  if (source !== 'frontend' && source !== 'stats') source = 'backend';
+  activeLogSource = source;
   localStorage.setItem('lexera-log-source', activeLogSource);
 
   var backendBtn = getElLogTabBackend();
   var frontendBtn = getElLogTabFrontend();
   var backendPanel = getLogContainer('backend');
   var frontendPanel = getLogContainer('frontend');
+  var statsPanel = document.getElementById('log-entries-stats');
   var refreshBtn = getElLogRefreshBtn();
+  var logTitle = document.querySelector('.log-panel-title');
 
   if (backendBtn) backendBtn.classList.toggle('active', activeLogSource === 'backend');
   if (frontendBtn) frontendBtn.classList.toggle('active', activeLogSource === 'frontend');
   if (backendPanel) backendPanel.classList.toggle('hidden', activeLogSource !== 'backend');
   if (frontendPanel) frontendPanel.classList.toggle('hidden', activeLogSource !== 'frontend');
+  if (statsPanel) statsPanel.classList.toggle('hidden', activeLogSource !== 'stats');
   if (refreshBtn) refreshBtn.style.display = activeLogSource === 'backend' ? '' : 'none';
+
+  // Update title and hide log tabs when showing stats
+  var logTabs = document.querySelector('.log-panel-tabs');
+  if (activeLogSource === 'stats') {
+    if (logTitle) logTitle.textContent = 'Board Statistics';
+    if (logTabs) logTabs.style.display = 'none';
+  } else {
+    if (logTitle) logTitle.textContent = 'Logs';
+    if (logTabs) logTabs.style.display = '';
+  }
+
+  // Update status bar tab highlights
+  var statsTab = document.getElementById('status-tab-stats');
+  var processesTab = document.getElementById('status-tab-processes');
+  var panelVisible = !getElLogPanel().classList.contains('hidden');
+  if (statsTab) statsTab.classList.toggle('active', panelVisible && activeLogSource === 'stats');
+  if (processesTab) processesTab.classList.toggle('active', panelVisible && activeLogSource !== 'stats');
 }
 
 function lexeraLogWithTarget(level, target, message) {
@@ -448,11 +469,17 @@ document.addEventListener('DOMContentLoaded', function () {
   var frontendTab = getElLogTabFrontend();
   updateAppBottomInset();
 
-  // Click status bar to expand/collapse log panel
-  if (statusBar) statusBar.addEventListener('click', function () {
+  // Click status bar message area to expand/collapse log panel
+  var statusMsg = document.getElementById('status-msg');
+  if (statusMsg) statusMsg.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (activeLogSource === 'stats') setActiveLogSource('backend');
     if (panel) panel.classList.toggle('hidden');
     updateAppBottomInset();
+    setActiveLogSource(activeLogSource); // refresh tab highlights
   });
+
+  // Status bar tab handlers are set up in init() where toggleBoardStatsBar is accessible
 
   if (refreshBtn) refreshBtn.addEventListener('click', function (e) {
     e.stopPropagation();
@@ -467,6 +494,7 @@ document.addEventListener('DOMContentLoaded', function () {
     e.stopPropagation();
     panel.classList.add('hidden');
     updateAppBottomInset();
+    setActiveLogSource(activeLogSource); // clear tab highlights
   });
   if (backendTab) backendTab.addEventListener('click', function (e) {
     e.stopPropagation();
@@ -2652,6 +2680,27 @@ const LexeraDashboard = (function () {
     }
 
     document.addEventListener('keydown', handleKeyNavigation);
+
+    // Status bar tabs: Stats and Processes
+    var statusTabStats = document.getElementById('status-tab-stats');
+    if (statusTabStats) statusTabStats.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleBoardStatsBar();
+    });
+    var statusTabProcesses = document.getElementById('status-tab-processes');
+    if (statusTabProcesses) statusTabProcesses.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var logPanel = getElLogPanel();
+      var isProcessesActive = activeLogSource !== 'stats' && logPanel && !logPanel.classList.contains('hidden');
+      if (isProcessesActive) {
+        logPanel.classList.add('hidden');
+      } else {
+        setActiveLogSource('backend');
+        logPanel.classList.remove('hidden');
+      }
+      updateAppBottomInset();
+      setActiveLogSource(activeLogSource);
+    });
 
     // Management panel close button
     if (getElMgmtClose()) getElMgmtClose().addEventListener('click', function () {
@@ -6949,10 +6998,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn" id="btn-fold-cards" title="Collapse or expand all cards">Fold Cards</button>';
     html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold Columns</button>';
     html += '<button class="board-action-btn' + (stickyMode ? ' has-items' : '') + '" id="btn-pin-column-headers" title="Pin or unpin column headers">Pin Headers</button>';
-    html += '<button class="board-action-btn board-undo-redo-btn" id="btn-undo" title="Undo (Cmd/Ctrl+Z)">\u21A9</button>';
-    html += '<button class="board-action-btn board-undo-redo-btn" id="btn-redo" title="Redo (Cmd/Ctrl+Y)">\u21AA</button>';
-    html += '<button class="board-action-btn" id="btn-board-stats" title="Toggle board statistics">Stats</button>';
-    html += '<button class="board-action-btn" id="btn-running-processes" title="Open running processes and logs">Processes</button>';
+    // Undo/redo: keyboard only (Cmd/Ctrl+Z/Y), stats & processes: bottom bar tabs
     html += '<button class="board-action-btn" id="btn-save-tracking" title="Save now and inspect change tracking">Changes</button>';
     html += '<button class="board-action-btn" id="btn-theme-zoom" title="Visual style and zoom controls">Themes / Zoom</button>';
     html += '<button class="board-action-btn" id="btn-export" title="Export or pack board">Export / Pack</button>';
@@ -7011,12 +7057,7 @@ const LexeraDashboard = (function () {
         togglePinnedHeaders();
       });
     }
-    var undoBtn = document.getElementById('btn-undo');
-    var redoBtn = document.getElementById('btn-redo');
-    if (undoBtn) undoBtn.addEventListener('click', function () { undo(); });
-    if (redoBtn) redoBtn.addEventListener('click', function () { redo(); });
-    var statsBtn = document.getElementById('btn-board-stats');
-    if (statsBtn) statsBtn.addEventListener('click', function () { toggleBoardStatsBar(); });
+    // undo/redo and stats buttons removed from header (keyboard / bottom bar)
     if ($saveTrackingBtn) {
       $saveTrackingBtn.addEventListener('click', function (e) {
         e.preventDefault();
@@ -7034,13 +7075,7 @@ const LexeraDashboard = (function () {
         showSaveTrackingMenu($saveTrackingBtn, e.clientX, e.clientY);
       });
     }
-    var runningProcessesBtn = document.getElementById('btn-running-processes');
-    if (runningProcessesBtn) {
-      runningProcessesBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        openRunningProcessesPanel();
-      });
-    }
+    // processes button removed from header (bottom bar tab)
     var themeZoomBtn = document.getElementById('btn-theme-zoom');
     if (themeZoomBtn) {
       themeZoomBtn.addEventListener('click', function (e) {
@@ -12078,18 +12113,6 @@ const LexeraDashboard = (function () {
         stackEl.appendChild(stackContent);
         var stackFooter = document.createElement('div');
         stackFooter.className = 'board-stack-footer';
-        var stackCardCount = 0;
-        for (var sc = 0; sc < stackColumnEntries.length; sc++) {
-          var stackColCards = stackColumnEntries[sc].col && Array.isArray(stackColumnEntries[sc].col.cards)
-            ? stackColumnEntries[sc].col.cards
-            : [];
-          stackCardCount += stackColCards.length;
-        }
-        stackFooter.innerHTML =
-          '<span class="board-stack-footer-summary">' +
-            stackColCount + (stackColCount === 1 ? ' column' : ' columns') + ' · ' +
-            stackCardCount + (stackCardCount === 1 ? ' card' : ' cards') +
-          '</span>';
         stackEl.appendChild(stackFooter);
         applyTagStyleToEntity(stackEl, stack.title || '');
         rowContent.appendChild(stackEl);
@@ -12098,16 +12121,6 @@ const LexeraDashboard = (function () {
       rowEl.appendChild(rowContent);
       var rowFooter = document.createElement('div');
       rowFooter.className = 'board-row-footer';
-      var rowColumnCount = 0;
-      for (var rs = 0; rs < rowStacks.length; rs++) {
-        rowColumnCount += (rowStacks[rs] && Array.isArray(rowStacks[rs].columns)) ? rowStacks[rs].columns.length : 0;
-      }
-      rowFooter.innerHTML =
-        '<span class="board-row-footer-summary">' +
-          rowStacks.length + (rowStacks.length === 1 ? ' stack' : ' stacks') + ' · ' +
-          rowColumnCount + (rowColumnCount === 1 ? ' column' : ' columns') + ' · ' +
-          totalCards + (totalCards === 1 ? ' card' : ' cards') +
-        '</span>';
       rowEl.appendChild(rowFooter);
       applyTagStyleToEntity(rowEl, row.title || '');
       getElColumnsContainer().appendChild(rowEl);
@@ -19751,14 +19764,31 @@ const LexeraDashboard = (function () {
   var boardStatsBarVisible = false;
 
   function toggleBoardStatsBar() {
-    boardStatsBarVisible = !boardStatsBarVisible;
-    renderBoardStatsBar();
+    var panel = getElLogPanel();
+    var isStatsActive = activeLogSource === 'stats' && panel && !panel.classList.contains('hidden');
+    if (isStatsActive) {
+      // Close panel
+      boardStatsBarVisible = false;
+      if (panel) panel.classList.add('hidden');
+      updateAppBottomInset();
+      setActiveLogSource('backend');
+    } else {
+      // Open with stats
+      boardStatsBarVisible = true;
+      renderBoardStatsBar();
+      setActiveLogSource('stats');
+      if (panel) panel.classList.remove('hidden');
+      updateAppBottomInset();
+    }
   }
 
   function renderBoardStatsBar() {
-    var existing = document.querySelector('.board-stats-bar');
-    if (existing) existing.remove();
-    if (!boardStatsBarVisible || !fullBoardData) return;
+    var statsPanel = document.getElementById('log-entries-stats');
+    if (!statsPanel) return;
+    if (!boardStatsBarVisible || !fullBoardData) {
+      statsPanel.innerHTML = '';
+      return;
+    }
 
     var allCols = getAllColumnsFromBoardData(fullBoardData);
     var totalCards = 0;
@@ -19796,9 +19826,8 @@ const LexeraDashboard = (function () {
     var sortedTags = Object.keys(tagCounts).sort(function (a, b) { return tagCounts[b] - tagCounts[a]; });
     var topTags = sortedTags.slice(0, 10);
 
-    var bar = document.createElement('div');
-    bar.className = 'board-stats-bar';
-    var statsHtml = '<span class="board-stats-item"><strong>Cards:</strong> ' + totalCards + '</span>';
+    var statsHtml = '<div class="board-stats-bar">';
+    statsHtml += '<span class="board-stats-item"><strong>Cards:</strong> ' + totalCards + '</span>';
     statsHtml += '<span class="board-stats-item"><strong>Columns:</strong> ' + allCols.length + '</span>';
     statsHtml += '<span class="board-stats-item"><strong>Rows:</strong> ' + totalRows + '</span>';
     statsHtml += '<span class="board-stats-item"><strong>Words:</strong> ' + totalWords + '</span>';
@@ -19811,14 +19840,8 @@ const LexeraDashboard = (function () {
         statsHtml += '<span class="board-stats-tag">' + escapeHtml(topTags[j]) + ' <span class="board-stats-tag-count">' + tagCounts[topTags[j]] + '</span></span>';
       }
     }
-    bar.innerHTML = statsHtml;
-
-    var header = getElBoardHeader();
-    if (header && header.parentNode) {
-      var filterBar = document.querySelector('.board-tag-filter-bar');
-      var insertAfter = filterBar || header;
-      insertAfter.parentNode.insertBefore(bar, insertAfter.nextSibling);
-    }
+    statsHtml += '</div>';
+    statsPanel.innerHTML = statsHtml;
   }
 
   function parseOptionalSearchIndex(value) {
