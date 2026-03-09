@@ -1766,6 +1766,15 @@ body.show-special-characters .card-editor-textarea {
   background: var(--tag-label-bg, var(--tag-accent, var(--accent)));
 }
 
+/* Tag label appears after drag handle & collapse toggle, not before them */
+.card.tag-styled > .card-header[data-tag-style-label] > .card-drag-handle { order: 1; }
+.card.tag-styled > .card-header[data-tag-style-label] > .card-collapse-toggle { order: 2; }
+.card.tag-styled > .card-header[data-tag-style-label]::before { order: 3; }
+.card.tag-styled > .card-header[data-tag-style-label] > .card-title-container { order: 4; }
+.card.tag-styled > .card-header[data-tag-style-label] > .card-due-badge { order: 5; }
+.card.tag-styled > .card-header[data-tag-style-label] > .card-progress-badge { order: 6; }
+.card.tag-styled > .card-header[data-tag-style-label] > .card-menu-btn { order: 7; margin-left: auto; }
+
 .board-row.tag-styled > .board-row-header[data-tag-style-label]::before {
   writing-mode: horizontal-tb;
   transform: rotate(180deg);
@@ -2593,6 +2602,7 @@ u {
   height: 20px;
   opacity: 0.5;
   transition: opacity 0.15s;
+  margin-left: auto;
 }
 .card:hover .card-menu-btn,
 .card:focus-within .card-menu-btn { opacity: 0.95; }
