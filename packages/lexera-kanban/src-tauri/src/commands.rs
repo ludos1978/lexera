@@ -145,6 +145,40 @@ pub fn rename_path(from: String, to: String) -> Result<String, String> {
     Ok(to_resolved.to_string_lossy().to_string())
 }
 
+fn resolve_fs_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let raw = std::path::PathBuf::from(path);
+    if raw.is_absolute() {
+        Ok(raw)
+    } else {
+        std::env::current_dir()
+            .map_err(|e| format!("Cannot resolve path: {}", e))
+            .map(|cwd| cwd.join(raw))
+    }
+}
+
+#[tauri::command]
+pub fn read_text_file(path: String) -> Result<String, String> {
+    let resolved = resolve_fs_path(&path)?;
+    std::fs::read_to_string(&resolved)
+        .map_err(|e| format!("Failed to read '{}': {}", resolved.to_string_lossy(), e))
+}
+
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    let resolved = resolve_fs_path(&path)?;
+    if let Some(parent) = resolved.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create directory '{}': {}",
+                parent.to_string_lossy(),
+                e
+            )
+        })?;
+    }
+    std::fs::write(&resolved, content)
+        .map_err(|e| format!("Failed to write '{}': {}", resolved.to_string_lossy(), e))
+}
+
 #[tauri::command]
 pub fn toggle_devtools(window: tauri::WebviewWindow) -> Result<bool, String> {
     #[cfg(any(debug_assertions, target_os = "macos"))]

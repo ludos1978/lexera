@@ -90,6 +90,8 @@ fn main() {
             commands::open_url,
             commands::show_in_folder,
             commands::rename_path,
+            commands::read_text_file,
+            commands::write_text_file,
             commands::show_context_menu,
             commands::toggle_devtools,
             // Export commands
@@ -100,11 +102,14 @@ fn main() {
             export_commands::pandoc_export,
             export_commands::check_marp_available,
             export_commands::check_pandoc_available,
+            export_commands::check_embedded_renderer_statuses,
             export_commands::discover_marp_themes,
             export_commands::discover_marp_classes,
             export_commands::open_export_folder,
             export_commands::write_export_file,
             export_commands::remove_export_files,
+            export_commands::copy_export_assets,
+            export_commands::render_embedded_file,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

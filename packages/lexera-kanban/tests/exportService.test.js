@@ -4,6 +4,7 @@ import { loadIIFE } from './load-iife.js';
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
 let ES; // ExportService class
+let Registry;
 
 const mockInvoke = vi.fn();
 const mockFetch = vi.fn();
@@ -17,6 +18,11 @@ const mockWindow = {
 const mockLexeraLog = vi.fn();
 
 beforeAll(() => {
+  Registry = loadIIFE('plugins/fileFormatRegistry.js', 'LexeraFileFormatRegistry', {
+    window: mockWindow,
+    URL,
+  });
+  mockWindow.LexeraFileFormatRegistry = Registry;
   ES = loadIIFE('export/exportService.js', 'ExportService', {
     window: mockWindow,
     fetch: mockFetch,
@@ -26,7 +32,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  mockInvoke.mockReset();
+  mockFetch.mockReset();
+  mockLexeraLog.mockReset();
   mockWindow.LexeraApi.baseUrl = 'http://localhost:9000';
   mockWindow.LexeraApi.discover = vi.fn();
 });
@@ -175,6 +183,33 @@ describe('_transform', () => {
     const content = '---\nmarp: true\n---\n# Slide 1';
     const result = await ES._transform(content, { format: 'presentation' });
     expect(result).toBe(content);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('applies embed removal locally without REST when only embed handling differs', async () => {
+    const content = '![Demo](https://miro.com/app/embed/abc){.embed}';
+    const result = await ES._transform(content, {
+      format: 'presentation',
+      mode: 'save',
+      marpFormat: 'pdf',
+      embedHandling: 'remove',
+    });
+
+    expect(result).toBe('');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('forces iframe embeds for html presentation output', async () => {
+    const content = '![Demo](https://miro.com/app/embed/abc){.embed width=90% height=360}';
+    const result = await ES._transform(content, {
+      format: 'presentation',
+      mode: 'save',
+      marpFormat: 'html',
+    });
+
+    expect(result).toContain('<iframe');
+    expect(result).toContain('width="90%"');
+    expect(result).toContain('height="360"');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -480,6 +515,7 @@ describe('_output', () => {
     expect(mockInvoke).toHaveBeenCalledTimes(2);
     expect(mockInvoke.mock.calls[0][0]).toBe('write_export_file');
     expect(mockInvoke.mock.calls[1][0]).toBe('marp_export');
+    expect(mockInvoke.mock.calls[1][1].opts.browser).toBe('chrome');
     expect(result.success).toBe(true);
     expect(result.exportedPath).toBe('/out/board/board.pdf');
   });
@@ -542,8 +578,236 @@ describe('_output', () => {
 
     expect(mockInvoke).toHaveBeenCalledTimes(2);
     expect(mockInvoke.mock.calls[1][0]).toBe('marp_watch');
+    expect(mockInvoke.mock.calls[1][1].opts.browser).toBe('chrome');
     expect(result.success).toBe(true);
     expect(result.exportedPath).toBe('/out/pres/pres.md');
+  });
+
+  it('passes the selected Marp browser into preview launches', async () => {
+    mockInvoke
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ success: true, message: 'Watching' });
+
+    await ES._output('# Slides', {
+      mode: 'preview',
+      format: 'presentation',
+      targetFolder: '/out',
+      exportFolderName: 'pres',
+      marpBrowser: 'firefox',
+    });
+
+    expect(mockInvoke.mock.calls[1][1].opts.browser).toBe('firefox');
+  });
+
+  it('rewrites relative links before writing the markdown file', async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+
+    await ES._output('![Asset](assets/pic.png)', {
+      mode: 'save',
+      format: 'keep',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith('write_export_file', {
+      path: '/out/board/board.md',
+      content: '![Asset](../../src/workspace/assets/pic.png)',
+    });
+  });
+
+  it('packs selected linked assets before writing the markdown file', async () => {
+    mockInvoke
+      .mockResolvedValueOnce([
+        {
+          sourcePath: '/src/workspace/assets/pic.png',
+          targetPath: '/out/board/board-Media/pic.png',
+          success: true,
+          error: null,
+        },
+      ])
+      .mockResolvedValueOnce(undefined);
+
+    await ES._output('![Asset](assets/pic.png)', {
+      mode: 'save',
+      format: 'keep',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'pack-all',
+      packAssets: true,
+      packOptions: {
+        includeFiles: false,
+        includeImages: true,
+        includeVideos: false,
+        includeOtherMedia: false,
+        includeDocuments: false,
+        fileSizeLimitMB: 100,
+      },
+    });
+
+    expect(mockInvoke.mock.calls[0][0]).toBe('copy_export_assets');
+    expect(mockInvoke.mock.calls[0][1]).toEqual({
+      items: [
+        {
+          sourcePath: '/src/workspace/assets/pic.png',
+          targetPath: '/out/board/board-Media/pic.png',
+          maxBytes: 104857600,
+        },
+      ],
+    });
+    expect(mockInvoke.mock.calls[1]).toEqual([
+      'write_export_file',
+      {
+        path: '/out/board/board.md',
+        content: '![Asset](board-Media/pic.png)',
+      },
+    ]);
+  });
+
+  it('renders supported file embeds into export-compatible assets before writing markdown', async () => {
+    const absoluteSource = '/src/workspace/assets/budget.xlsx';
+    const targetRelative = ES.buildRenderedEmbedTargetRelativePath(
+      'board',
+      absoluteSource,
+      Registry.findByFilePath(absoluteSource),
+      Registry.getExportRenderConfig(absoluteSource, { pageNumber: 2 })
+    );
+
+    mockInvoke
+      .mockResolvedValueOnce({
+        success: true,
+        outputPath: '/out/board/' + targetRelative,
+        format: 'png',
+        error: null,
+      })
+      .mockResolvedValueOnce(undefined);
+
+    await ES._output('![Budget](assets/budget.xlsx){sheet=2}', {
+      mode: 'save',
+      format: 'document',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    expect(mockInvoke.mock.calls[0]).toEqual([
+      'render_embedded_file',
+      {
+        opts: {
+          pluginId: 'xlsx',
+          sourcePath: absoluteSource,
+          targetPath: '/out/board/' + targetRelative,
+          pageNumber: 2,
+          outputFormat: 'png',
+        },
+      },
+    ]);
+    expect(mockInvoke.mock.calls[1]).toEqual([
+      'write_export_file',
+      {
+        path: '/out/board/board.md',
+        content: '![Budget](' + targetRelative + '){sheet=2}',
+      },
+    ]);
+  });
+
+  it('renders raw excalidraw embeds into svg assets before writing markdown', async () => {
+    const absoluteSource = '/src/workspace/assets/sketch.excalidraw.json';
+    const targetRelative = ES.buildRenderedEmbedTargetRelativePath(
+      'board',
+      absoluteSource,
+      Registry.findByFilePath(absoluteSource),
+      Registry.getExportRenderConfig(absoluteSource, { pageNumber: 1 })
+    );
+
+    mockInvoke
+      .mockResolvedValueOnce({
+        success: true,
+        outputPath: '/out/board/' + targetRelative,
+        format: 'svg',
+        error: null,
+      })
+      .mockResolvedValueOnce(undefined);
+
+    await ES._output('![Sketch](assets/sketch.excalidraw.json)', {
+      mode: 'save',
+      format: 'presentation',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    expect(mockInvoke.mock.calls[0]).toEqual([
+      'render_embedded_file',
+      {
+        opts: {
+          pluginId: 'excalidraw',
+          sourcePath: absoluteSource,
+          targetPath: '/out/board/' + targetRelative,
+          pageNumber: 1,
+          outputFormat: 'svg',
+        },
+      },
+    ]);
+    expect(mockInvoke.mock.calls[1]).toEqual([
+      'write_export_file',
+      {
+        path: '/out/board/board.md',
+        content: '![Sketch](' + targetRelative + ')',
+      },
+    ]);
+  });
+
+  it('renders csv embeds into svg table assets before writing markdown', async () => {
+    const absoluteSource = '/src/workspace/assets/tasks.csv';
+    const targetRelative = ES.buildRenderedEmbedTargetRelativePath(
+      'board',
+      absoluteSource,
+      Registry.findByFilePath(absoluteSource),
+      Registry.getExportRenderConfig(absoluteSource, { pageNumber: 2 })
+    );
+
+    mockInvoke
+      .mockResolvedValueOnce({
+        success: true,
+        outputPath: '/out/board/' + targetRelative,
+        format: 'svg',
+        error: null,
+      })
+      .mockResolvedValueOnce(undefined);
+
+    await ES._output('![Tasks](assets/tasks.csv){page=2}', {
+      mode: 'save',
+      format: 'document',
+      targetFolder: '/out',
+      exportFolderName: 'board',
+      sourceFilePath: '/src/workspace/board.md',
+      linkHandlingMode: 'rewrite-only',
+    });
+
+    expect(mockInvoke.mock.calls[0]).toEqual([
+      'render_embedded_file',
+      {
+        opts: {
+          pluginId: 'csv',
+          sourcePath: absoluteSource,
+          targetPath: '/out/board/' + targetRelative,
+          pageNumber: 2,
+          outputFormat: 'svg',
+        },
+      },
+    ]);
+    expect(mockInvoke.mock.calls[1]).toEqual([
+      'write_export_file',
+      {
+        path: '/out/board/board.md',
+        content: '![Tasks](' + targetRelative + '){page=2}',
+      },
+    ]);
   });
 
   it('cleans up files on failure during save', async () => {

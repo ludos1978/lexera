@@ -4,8 +4,8 @@
   "identifier": "com.lexera.kanban",
   "build": {
     "frontendDist": "../src",
-    "beforeDevCommand": "cp ../lexera-shared/management.js ../lexera-shared/management.css src/",
-    "beforeBuildCommand": "cp ../lexera-shared/management.js ../lexera-shared/management.css src/"
+    "beforeDevCommand": "sh scripts/sync-excalidraw-assets.sh && cp ../lexera-shared/management.js ../lexera-shared/management.css src/",
+    "beforeBuildCommand": "sh scripts/sync-excalidraw-assets.sh && cp ../lexera-shared/management.js ../lexera-shared/management.css src/"
   },
   "bundle": {
     "icon": ["icons/icon.png"]

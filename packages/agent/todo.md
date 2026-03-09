@@ -65,12 +65,33 @@
 - [x] Restored selection-aware export backend handling so keep, kanban, presentation, and document exports all honor the chosen board subset.
 - [x] Added regression coverage for export-tree scope selection and backend subset export helpers.
 - [x] Restored inline `Escape` cancel behavior so the inline card editor closes without saving.
+- [x] Restored the export-preset dropdown and v1 preset application for the export settings that already exist in v2.
+- [x] Restored preset reset-to-custom behavior when export settings are changed manually after a preset is chosen.
+- [x] Restored the exclude-tags enable checkbox with default `#exclude` behavior when the filter is enabled.
+- [x] Restored the merge-includes export checkbox and wired it to the existing `stripIncludes` export pipeline option.
+- [x] Restored auto-export-on-save so a successful save export re-runs automatically after later board saves until it is stopped.
+- [x] Restored auto-export-on-save save hooks so manual save, autosave, and forced overwrite saves all trigger the active re-export configuration.
+- [x] Restored the export embed-handling dropdown and wired URL, fallback-image, remove, and Marp-HTML iframe behavior into the presentation export transforms.
+- [x] Restored the Marp browser dropdown and passed the selected browser through to both preview/watch and one-shot Marp export launches.
+- [x] Restored the link-and-asset handling dropdown with `rewrite-only`, `pack-linked`, `pack-all`, and `don't modify` export modes.
+- [x] Restored link-and-asset packing suboptions for files, images, videos, other media, documents, and the file-size limit input with local persistence.
+- [x] Added frontend export link rewriting so relative links are recalculated from the board file location to the exported markdown location.
+- [x] Added Tauri-backed export asset copying so selected linked files can be packed into the `{export-name}-Media` folder without failing the whole export on one bad file.
+- [x] Extended the `Share content` preset to select `pack-all`, enable all pack categories, and apply the 100 MB size limit default.
+- [x] Kept active auto-export dialog restore in sync with the new browser, embed, and link-pack controls.
+- [x] Added a shared file-format plugin registry in `packages/lexera-kanban` so renderable embed types are no longer hardcoded separately in preview and export code.
+- [x] Moved draw.io, Excalidraw, spreadsheet, PDF, office document, and EPUB embed detection onto the new plugin registry.
+- [x] Added export-time rendered embed replacement so supported local file embeds are converted into Marp/Pandoc-compatible image or SVG assets inside the export media folder.
+- [x] Added a Tauri-backed embedded-file renderer for draw.io, spreadsheets, PDF pages, office documents, and EPUB pages, and wired board preview cache generation through it.
+- [x] Added raw `.excalidraw` and `.excalidraw.json` SVG rendering through a local Playwright-based worker so Excalidraw files can participate in the same preview/export plugin pipeline.
+- [x] Surfaced embedded renderer failures inside the board preview placeholders so missing tools and render errors are no longer hidden behind a generic "preview unavailable" message.
+- [x] Added CSV table rendering to the shared plugin pipeline so CSV embeds preview as generated SVG tables in the board and export as Marp/Pandoc-compatible SVG assets instead of raw text.
+- [x] Exposed embedded renderer availability in the file-header settings menu so missing toolchains like draw.io, LibreOffice, Poppler, MuPDF, Node.js, and Excalidraw worker assets are visible before preview or export fails.
+- [x] Exposed per-embed renderer status and retry controls in the embed menu and file preview dialog so failed rendered previews can be diagnosed and rerun without reopening the board.
+- [x] Added a direct raw `.excalidraw` / `.excalidraw.json` overlay editor with file-backed save and reload so embedded diagrams can be edited without leaving the kanban.
 
 ## Open
-
-- [ ] Add the export-preset dropdown (`Marp presentation`, `Marp PDF`, `Share content`, `Custom settings`) from the export spec.
-- [ ] Add auto-export-on-save / re-export-until-stopped control to the export dialog and wire it to the export pipeline.
-- [ ] Add the merge-includes checkbox and wire `stripIncludes` / include-merging behavior from the export spec.
-- [ ] Add embed-handling controls for iframe/url exports (`show URL`, `fallback image`, `remove`).
-- [ ] Add Marp browser selection / auto-detect control for preview and export launches.
-- [ ] Add link-and-asset handling mode selection with pack options and file-size limit.
+- [ ] integrate a direct overlay editor or controlled external-edit bridge for `.drawio` files with reload/save-back handling that matches the preview/export plugin pipeline.
+- [ ] add more plugin-backed directly renderable tabular formats beyond CSV, starting with TSV and semicolon-separated spreadsheet exports routed through the same SVG table renderer.
+- [ ] add richer text-document plugin conversions for formats like RTF and plain-text report layouts so they can preview cleanly in the board and export as compatible images when embedded.
+- [ ] audit which file formats are realistic candidates for full-featured overlay editing, including tables, markdown/text, images, and diagram/document formats, and document the preferred integration strategy for each.

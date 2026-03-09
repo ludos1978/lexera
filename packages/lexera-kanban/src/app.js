@@ -7296,7 +7296,8 @@ const LexeraDashboard = (function () {
     pandocPageBreaks: 'lexera-export-pandoc-page-breaks'
   };
   var exportToolStatusCache = {
-    pandoc: { available: false, version: null, checkedAt: 0, pending: null, error: null }
+    pandoc: { available: false, version: null, checkedAt: 0, pending: null, error: null },
+    renderers: { rows: [], checkedAt: 0, pending: null, error: null }
   };
 
   function normalizeExportDialogFormat(value) {
@@ -7361,6 +7362,78 @@ const LexeraDashboard = (function () {
     if (status.available) return toolName + ': Ready' + (status.version ? ' (v' + status.version + ')' : '');
     if (status.error) return toolName + ': Unavailable';
     return toolName + ': Not Installed';
+  }
+
+  function formatEmbeddedRendererStatusSummary(cache) {
+    if (!cache) return 'Embedded Renderers: Unknown';
+    if (cache.pending) return 'Embedded Renderers: Checking…';
+    if (cache.error && (!cache.rows || cache.rows.length === 0)) return 'Embedded Renderers: Unavailable';
+    var rows = Array.isArray(cache.rows) ? cache.rows : [];
+    if (rows.length === 0) return 'Embedded Renderers: Unknown';
+    var readyCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].available) readyCount += 1;
+    }
+    return 'Embedded Renderers: ' + readyCount + '/' + rows.length + ' Ready';
+  }
+
+  function formatEmbeddedRendererStatusItem(status) {
+    if (!status) return 'Unknown Renderer';
+    var label = (status.label || 'Renderer') + ': ' + (status.available ? 'Ready' : 'Missing');
+    if (status.version) label += ' (' + status.version + ')';
+    if (!status.available && status.details) label += ' - ' + status.details;
+    return label;
+  }
+
+  async function refreshEmbeddedRendererStatuses(force) {
+    var cache = exportToolStatusCache.renderers;
+    var maxAgeMs = 30000;
+    if (!force && cache.checkedAt > 0 && (Date.now() - cache.checkedAt) < maxAgeMs && !cache.pending) {
+      return cache;
+    }
+    if (cache.pending) return cache.pending;
+    if (!hasTauri) {
+      cache.rows = [];
+      cache.error = 'tauri-unavailable';
+      cache.checkedAt = Date.now();
+      return cache;
+    }
+    cache.pending = tauriInvoke('check_embedded_renderer_statuses', {})
+      .then(function (rows) {
+        cache.rows = Array.isArray(rows) ? rows : [];
+        cache.error = null;
+        cache.checkedAt = Date.now();
+        cache.pending = null;
+        return cache;
+      })
+      .catch(function (err) {
+        cache.rows = [];
+        cache.error = err ? (err.message || String(err)) : 'unknown-error';
+        cache.checkedAt = Date.now();
+        cache.pending = null;
+        return cache;
+      });
+    return cache.pending;
+  }
+
+  function buildEmbeddedRendererStatusMenuItems() {
+    var cache = exportToolStatusCache.renderers;
+    var items = [
+      { id: 'file-renderer-status-summary', label: formatEmbeddedRendererStatusSummary(cache), disabled: true },
+      { id: 'file-renderer-refresh-status', label: 'Refresh Status' }
+    ];
+    var rows = cache && Array.isArray(cache.rows) ? cache.rows : [];
+    if (rows.length > 0) {
+      items.push({ separator: true });
+      for (var i = 0; i < rows.length; i++) {
+        items.push({
+          id: 'file-renderer-status-item:' + String(rows[i].id || i),
+          label: formatEmbeddedRendererStatusItem(rows[i]),
+          disabled: true
+        });
+      }
+    }
+    return items;
   }
 
   async function refreshExportToolStatus(toolName, force) {
@@ -7439,11 +7512,26 @@ const LexeraDashboard = (function () {
     return false;
   }
 
+  async function handleEmbeddedRendererMenuAction(action) {
+    if (action === 'file-renderer-refresh-status') {
+      await refreshEmbeddedRendererStatuses(true);
+      return true;
+    }
+    return false;
+  }
+
   async function triggerBoardExport(initialOptions) {
     if (!window.ExportUI) return;
     if (!window._exportUI) window._exportUI = new ExportUI();
     await window._exportUI.init(activeBoardId, fullBoardData, initialOptions || null);
     window._exportUI.show();
+  }
+
+  function triggerAutoExportAfterBoardSave(boardId) {
+    if (!boardId || !window.ExportUI || typeof window.ExportUI.handleBoardSaved !== 'function') return;
+    window.ExportUI.handleBoardSaved(boardId).catch(function (err) {
+      logFrontendIssue('warn', 'export.auto', 'Auto-export after save failed', err);
+    });
   }
 
   function openRunningProcessesPanel() {
@@ -8737,6 +8825,7 @@ const LexeraDashboard = (function () {
   async function showFileHeaderSettingsMenu(btnElement, forcedX, forcedY) {
     if (!btnElement) return;
     await refreshExportToolStatus('pandoc', false);
+    await refreshEmbeddedRendererStatuses(false);
     await refreshAvailableMarpClasses(false);
     var items = [
       {
@@ -8756,6 +8845,11 @@ const LexeraDashboard = (function () {
         id: 'file-pandoc-settings',
         label: 'Pandoc Document Export',
         items: buildFileHeaderPandocMenuItems()
+      },
+      {
+        id: 'file-renderer-settings',
+        label: 'Embedded Renderer Status',
+        items: buildEmbeddedRendererStatusMenuItems()
       },
       { separator: true },
       {
@@ -8880,6 +8974,9 @@ const LexeraDashboard = (function () {
       return;
     }
     if (await handleBoardPandocMenuAction(action)) {
+      return;
+    }
+    if (await handleEmbeddedRendererMenuAction(action)) {
       return;
     }
     if (action === 'undo') {
@@ -9398,6 +9495,7 @@ const LexeraDashboard = (function () {
       } catch (err) {
         logFrontendIssue('warn', 'board.save.force', 'Forced overwrite save succeeded but live sync session could not be reopened', err);
       }
+      triggerAutoExportAfterBoardSave(activeBoardId);
       showNotification('Local draft saved and overwrote the external board version.');
       return true;
     } catch (err) {
@@ -9587,6 +9685,7 @@ const LexeraDashboard = (function () {
         }
         saveSucceeded = true;
       } while (_savePending);
+      if (saveSucceeded) triggerAutoExportAfterBoardSave(activeBoardId);
       return saveSucceeded;
     } catch (err) {
       var failedSaveCrashsave = await writeBoardCrashsave('save-exception', fullBoardData, {
@@ -18953,6 +19052,9 @@ const LexeraDashboard = (function () {
   var pendingExternalEmbedPolicyCache = {};
   var fileInfoCache = {};
   var pendingFileInfoCache = {};
+  var pendingSpecialPreviewRenderCache = {};
+  var specialPreviewErrorCache = {};
+  var activeSpecialFileEditor = null;
   var MAX_INCLUDE_PREVIEW_DEPTH = 2;
 
   function isMarkdownPreviewExtension(ext) {
@@ -18974,13 +19076,26 @@ const LexeraDashboard = (function () {
     return value.split('#')[0].split('?')[0].toLowerCase();
   }
 
+  function getFileFormatRegistry() {
+    if (typeof window === 'undefined' || !window || !window.LexeraFileFormatRegistry) return null;
+    return window.LexeraFileFormatRegistry;
+  }
+
+  function getFileFormatPlugin(filePath) {
+    var registry = getFileFormatRegistry();
+    if (!registry || typeof registry.findByFilePath !== 'function') return null;
+    return registry.findByFilePath(filePath);
+  }
+
   function getSpecialPreviewType(filePath) {
+    var plugin = getFileFormatPlugin(filePath);
+    if (plugin && plugin.id) return plugin.id;
     var normalized = normalizeFilePathForDetection(filePath);
     if (!normalized) return '';
-    if (normalized.slice(-17) === '.excalidraw.json') return 'diagram-excalidraw';
-    if (normalized.slice(-12) === '.excalidraw') return 'diagram-excalidraw';
-    if (normalized.slice(-7) === '.drawio' || normalized.slice(-4) === '.dio') return 'diagram-drawio';
-    if (/\.(xlsx|xls|ods)$/.test(normalized)) return 'spreadsheet';
+    if (normalized.endsWith('.excalidraw.json') || normalized.endsWith('.excalidraw') || normalized.endsWith('.excalidraw.svg')) return 'excalidraw';
+    if (normalized.endsWith('.drawio') || normalized.endsWith('.dio')) return 'drawio';
+    if (/\.(xlsx|xls|ods)$/.test(normalized)) return 'xlsx';
+    if (normalized.endsWith('.csv')) return 'csv';
     if (normalized.slice(-5) === '.epub') return 'epub';
     if (/\.(doc|docx|odt|ppt|pptx|odp)$/.test(normalized)) return 'document';
     if (normalized.slice(-4) === '.pdf') return 'pdf';
@@ -18988,8 +19103,12 @@ const LexeraDashboard = (function () {
   }
 
   function getPreviewKindMeta(kind, filePath) {
+    var registry = getFileFormatRegistry();
+    if (registry && typeof registry.getPreviewMeta === 'function') {
+      return registry.getPreviewMeta(kind, filePath);
+    }
     if (kind === 'diagram') {
-      if (getSpecialPreviewType(filePath) === 'diagram-excalidraw') {
+      if (getSpecialPreviewType(filePath) === 'excalidraw') {
         return { label: 'Excalidraw file', emoji: '&#127912;' };
       }
       return { label: 'Draw.io file', emoji: '&#128202;' };
@@ -18997,6 +19116,7 @@ const LexeraDashboard = (function () {
     if (kind === 'spreadsheet') return { label: 'Spreadsheet file', emoji: '&#128200;' };
     if (kind === 'epub') return { label: 'EPUB file', emoji: '&#128218;' };
     if (kind === 'document') return { label: 'Document file', emoji: '&#128196;' };
+    if (kind === 'pdf') return { label: 'PDF file', emoji: '&#128196;' };
     return { label: 'File', emoji: '&#128196;' };
   }
 
@@ -19016,22 +19136,41 @@ const LexeraDashboard = (function () {
     return '<span class="embed-file-link"' + (extraStyleAttr || '') + '>' + meta.emoji + ' ' + escapeHtml(filename) + '</span>';
   }
 
-  function getSpecialPreviewPlaceholderText(previewKind) {
+  function getSpecialPreviewPlaceholderText(previewKind, filePath) {
+    var registry = getFileFormatRegistry();
+    if (registry && typeof registry.getPreviewPlaceholder === 'function') {
+      return registry.getPreviewPlaceholder(previewKind, filePath || '');
+    }
     if (previewKind === 'diagram') return 'Open the source file in a dedicated app for full diagram editing.';
     if (previewKind === 'spreadsheet') return 'Spreadsheet rendering is not available in this view yet.';
+    if (previewKind === 'table') return 'Table rendering is not available in this view yet.';
     if (previewKind === 'epub') return 'EPUB rendering is not available in this view yet.';
     if (previewKind === 'document') return 'Document rendering is not available in this view yet.';
     return 'Preview is not available in this view yet.';
   }
 
+  function isRenderedSpecialPreviewKind(previewKind) {
+    return previewKind === 'diagram' ||
+      previewKind === 'spreadsheet' ||
+      previewKind === 'table' ||
+      previewKind === 'epub' ||
+      previewKind === 'document';
+  }
+
   function getEmbedPreviewKind(filePath) {
     var ext = getFileExtension(filePath);
-    var special = getSpecialPreviewType(filePath);
     if (isMarkdownPreviewExtension(ext)) return 'markdown';
+    var registry = getFileFormatRegistry();
+    if (registry && typeof registry.getPreviewKind === 'function') {
+      var registryKind = registry.getPreviewKind(filePath);
+      if (registryKind) return registryKind;
+    }
     if (isTextPreviewExtension(ext)) return 'text';
+    var special = getSpecialPreviewType(filePath);
     if (special === 'pdf') return 'pdf';
-    if (special === 'diagram-drawio' || special === 'diagram-excalidraw') return 'diagram';
-    if (special === 'spreadsheet') return 'spreadsheet';
+    if (special === 'drawio' || special === 'excalidraw') return 'diagram';
+    if (special === 'xlsx') return 'spreadsheet';
+    if (special === 'csv') return 'table';
     if (special === 'epub') return 'epub';
     if (special === 'document') return 'document';
     return '';
@@ -19043,6 +19182,391 @@ const LexeraDashboard = (function () {
 
   function getFileInfoCacheKey(boardId, filePath) {
     return String(boardId || '') + '::' + String(filePath || '');
+  }
+
+  function setSpecialPreviewError(boardId, filePath, errorText) {
+    var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
+    if (!cacheKey) return;
+    if (errorText) {
+      specialPreviewErrorCache[cacheKey] = String(errorText);
+    } else {
+      delete specialPreviewErrorCache[cacheKey];
+    }
+  }
+
+  function getSpecialPreviewError(boardId, filePath) {
+    var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
+    return cacheKey ? specialPreviewErrorCache[cacheKey] || '' : '';
+  }
+
+  function buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath) {
+    var base = getSpecialPreviewPlaceholderText(previewKind, filePath);
+    var errorText = getSpecialPreviewError(boardId, filePath);
+    return errorText ? (base + ' ' + errorText) : base;
+  }
+
+  function shortenMenuStatusText(value, maxLength) {
+    var text = String(value || '').trim();
+    var limit = maxLength || 96;
+    if (text.length <= limit) return text;
+    return text.substring(0, Math.max(0, limit - 3)).trim() + '...';
+  }
+
+  function getRendererStatusRowsById() {
+    var rows = exportToolStatusCache.renderers && Array.isArray(exportToolStatusCache.renderers.rows)
+      ? exportToolStatusCache.renderers.rows
+      : [];
+    var map = {};
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].id) map[rows[i].id] = rows[i];
+    }
+    return map;
+  }
+
+  function getRendererStatusRequirementsForFile(filePath) {
+    var plugin = getFileFormatPlugin(filePath);
+    if (!plugin || !plugin.id) return [];
+    if (plugin.id === 'csv') {
+      return [{
+        id: 'csv-builtin',
+        label: 'Built-in CSV Renderer',
+        available: true,
+        version: null,
+        path: null,
+        details: 'No external CLI is required for CSV table rendering.'
+      }];
+    }
+    var neededIds = [];
+    if (plugin.id === 'drawio') neededIds = ['drawio'];
+    else if (plugin.id === 'xlsx') neededIds = ['soffice'];
+    else if (plugin.id === 'document') neededIds = ['soffice', 'pdftoppm'];
+    else if (plugin.id === 'epub') neededIds = ['mutool'];
+    else if (plugin.id === 'excalidraw') neededIds = ['node', 'excalidraw-assets'];
+    else neededIds = [];
+
+    var rowMap = getRendererStatusRowsById();
+    var out = [];
+    for (var i = 0; i < neededIds.length; i++) {
+      if (rowMap[neededIds[i]]) out.push(rowMap[neededIds[i]]);
+    }
+    return out;
+  }
+
+  function formatRendererStatusSummaryForFile(boardId, filePath) {
+    var rows = getRendererStatusRequirementsForFile(filePath);
+    if (rows.length === 0) return 'Renderer Status: No extra renderer required';
+    var readyCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].available) readyCount += 1;
+    }
+    var errorText = getSpecialPreviewError(boardId, filePath);
+    if (errorText) return 'Renderer Status: Last render failed';
+    return 'Renderer Status: ' + readyCount + '/' + rows.length + ' Ready';
+  }
+
+  function buildFileRendererStatusMenuItems(boardId, filePath) {
+    var items = [{
+      id: 'renderer-status-summary',
+      label: formatRendererStatusSummaryForFile(boardId, filePath),
+      disabled: true
+    }];
+    var errorText = getSpecialPreviewError(boardId, filePath);
+    if (errorText) {
+      items.push({
+        id: 'renderer-status-last-error',
+        label: 'Last Error: ' + shortenMenuStatusText(errorText, 120),
+        disabled: true
+      });
+    }
+    var rows = getRendererStatusRequirementsForFile(filePath);
+    if (rows.length > 0) {
+      items.push({ separator: true });
+      for (var i = 0; i < rows.length; i++) {
+        items.push({
+          id: 'renderer-status-row:' + String(rows[i].id || i),
+          label: formatEmbeddedRendererStatusItem(rows[i]),
+          disabled: true
+        });
+      }
+    }
+    return items;
+  }
+
+  async function showFileRendererStatusMenu(boardId, filePath, trigger) {
+    if (!filePath) return;
+    await refreshEmbeddedRendererStatuses(false);
+    var x = 0;
+    var y = 0;
+    if (trigger && typeof trigger.clientX === 'number' && typeof trigger.clientY === 'number') {
+      x = trigger.clientX;
+      y = trigger.clientY;
+    } else if (trigger && typeof trigger.getBoundingClientRect === 'function') {
+      var rect = trigger.getBoundingClientRect();
+      x = rect.right;
+      y = rect.bottom;
+    }
+    await showNativeMenu(buildFileRendererStatusMenuItems(boardId, filePath), x, y);
+  }
+
+  function getSpecialFileEditorKind(filePath) {
+    var normalized = normalizeFilePathForDetection(filePath);
+    if (!normalized) return '';
+    if (normalized.endsWith('.excalidraw') || normalized.endsWith('.excalidraw.json')) return 'excalidraw';
+    return '';
+  }
+
+  function getSpecialFileEditorAssetPath(kind) {
+    if (kind === 'excalidraw') return 'excalidraw-overlay.html';
+    return '';
+  }
+
+  async function resolveAbsoluteBoardFilePath(boardId, filePath) {
+    var fileRef = parseLocalFileReference(filePath);
+    if (!fileRef.path) return '';
+    if (isAbsoluteFilePath(fileRef.path) || !boardId) return fileRef.path;
+    return resolveBoardPath(boardId, fileRef.path, 'absolute');
+  }
+
+  function parseSpecialFileEditorInitialData(kind, content) {
+    if (kind !== 'excalidraw') return null;
+    var parsed = JSON.parse(String(content || '').trim() || '{}');
+    if (!parsed || parsed.type !== 'excalidraw' || !Array.isArray(parsed.elements)) {
+      throw new Error('Invalid Excalidraw JSON file');
+    }
+    return {
+      elements: parsed.elements || [],
+      appState: parsed.appState || { viewBackgroundColor: '#ffffff', gridSize: null },
+      files: parsed.files || {}
+    };
+  }
+
+  function refreshSpecialFileEditorActionState(editor) {
+    if (!editor || !editor.dialog) return;
+    var titleEl = editor.dialog.querySelector('.modal-title');
+    var saveBtn = editor.dialog.querySelector('[data-special-file-editor-action="save"]');
+    var reloadBtn = editor.dialog.querySelector('[data-special-file-editor-action="reload"]');
+    if (titleEl) {
+      titleEl.textContent = (getDisplayFileNameFromPath(editor.filePath) || editor.filePath) + (editor.dirty ? ' *' : '');
+    }
+    if (saveBtn) saveBtn.disabled = !editor.ready;
+    if (reloadBtn) reloadBtn.disabled = !editor.ready;
+  }
+
+  function postMessageToSpecialFileEditor(editor, type, payload) {
+    if (!editor || !editor.iframe || !editor.iframe.contentWindow) return;
+    editor.iframe.contentWindow.postMessage({
+      source: 'lexera-excalidraw-parent',
+      type: type,
+      payload: payload || {}
+    }, '*');
+  }
+
+  function closeSpecialFileEditorOverlay(editor, force) {
+    editor = editor || activeSpecialFileEditor;
+    if (!editor) return true;
+    if (!force && editor.dirty && !window.confirm('Discard unsaved Excalidraw changes?')) {
+      return false;
+    }
+    if (editor.overlay && editor.overlay.parentNode) editor.overlay.parentNode.removeChild(editor.overlay);
+    if (activeSpecialFileEditor === editor) activeSpecialFileEditor = null;
+    return true;
+  }
+
+  function handleSpecialFileEditorMessage(event) {
+    var message = event && event.data ? event.data : null;
+    var editor = activeSpecialFileEditor;
+    if (!editor || !message || message.source !== 'lexera-excalidraw-frame') return;
+    if (!editor.iframe || event.source !== editor.iframe.contentWindow) return;
+
+    if (message.type === 'frame-loaded') {
+      postMessageToSpecialFileEditor(editor, 'init', editor.initialScene || {});
+      return;
+    }
+    if (message.type === 'ready') {
+      editor.ready = true;
+      refreshSpecialFileEditorActionState(editor);
+      return;
+    }
+    if (message.type === 'dirty') {
+      editor.dirty = true;
+      refreshSpecialFileEditorActionState(editor);
+      return;
+    }
+    if (message.type === 'save-response') {
+      if (editor.pendingSaveResolve) {
+        editor.pendingSaveResolve(String(message.payload && message.payload.content ? message.payload.content : ''));
+        editor.pendingSaveResolve = null;
+        editor.pendingSaveReject = null;
+      }
+      return;
+    }
+    if (message.type === 'error') {
+      var errorMessage = message.payload && message.payload.message ? message.payload.message : 'Editor error';
+      if (editor.pendingSaveReject) {
+        editor.pendingSaveReject(new Error(errorMessage));
+        editor.pendingSaveResolve = null;
+        editor.pendingSaveReject = null;
+      }
+      showNotification(errorMessage);
+    }
+  }
+
+  window.addEventListener('message', handleSpecialFileEditorMessage);
+
+  function requestSpecialFileEditorSaveContent(editor) {
+    return new Promise(function (resolve, reject) {
+      if (!editor || !editor.ready) {
+        reject(new Error('Editor not ready'));
+        return;
+      }
+      editor.pendingSaveResolve = resolve;
+      editor.pendingSaveReject = reject;
+      postMessageToSpecialFileEditor(editor, 'request-save', {});
+      setTimeout(function () {
+        if (editor.pendingSaveReject === reject) {
+          editor.pendingSaveResolve = null;
+          editor.pendingSaveReject = null;
+          reject(new Error('Timed out waiting for editor save response'));
+        }
+      }, 5000);
+    });
+  }
+
+  async function reloadSpecialFileEditorOverlay(editor) {
+    if (!editor) return;
+    if (editor.dirty && !window.confirm('Reload the file and discard unsaved changes?')) return;
+    var content = await tauriInvoke('read_text_file', { path: editor.absolutePath });
+    editor.initialScene = parseSpecialFileEditorInitialData(editor.kind, content);
+    editor.dirty = false;
+    editor.ready = false;
+    refreshSpecialFileEditorActionState(editor);
+    postMessageToSpecialFileEditor(editor, 'init', editor.initialScene || {});
+  }
+
+  function refreshVisibleBoardFileEmbeds(boardId, filePath) {
+    if (!boardId || !filePath) return;
+    var containers = document.querySelectorAll('.embed-container[data-file-path][data-board-id]');
+    for (var i = 0; i < containers.length; i++) {
+      var container = containers[i];
+      if ((container.getAttribute('data-board-id') || '') !== boardId) continue;
+      if ((container.getAttribute('data-file-path') || '') !== filePath) continue;
+      container.classList.remove('embed-broken');
+      container.removeAttribute('data-embed-enhanced');
+      var preview = container.querySelector('.embed-preview');
+      if (preview) preview.remove();
+      enhanceSingleEmbedContainer(container);
+    }
+  }
+
+  async function saveSpecialFileEditorOverlay(editor) {
+    if (!editor) return;
+    var content = await requestSpecialFileEditorSaveContent(editor);
+    await tauriInvoke('write_text_file', {
+      path: editor.absolutePath,
+      content: content
+    });
+    editor.dirty = false;
+    refreshSpecialFileEditorActionState(editor);
+    clearCachedFilePreviewState(editor.boardId, editor.filePath);
+    refreshVisibleBoardFileEmbeds(editor.boardId, editor.filePath);
+    showNotification('Excalidraw file saved');
+  }
+
+  async function openSpecialFileEditorOverlay(boardId, filePath) {
+    var kind = getSpecialFileEditorKind(filePath);
+    if (!kind) {
+      openBoardFileInSystem(boardId, filePath);
+      return;
+    }
+    if (activeSpecialFileEditor && activeSpecialFileEditor.boardId === boardId && activeSpecialFileEditor.filePath === filePath) {
+      if (activeSpecialFileEditor.dialog && typeof activeSpecialFileEditor.dialog.focus === 'function') {
+        activeSpecialFileEditor.dialog.focus();
+      }
+      return;
+    }
+    if (activeSpecialFileEditor && !closeSpecialFileEditorOverlay(activeSpecialFileEditor, false)) {
+      return;
+    }
+
+    var absolutePath = await resolveAbsoluteBoardFilePath(boardId, filePath);
+    if (!absolutePath) {
+      showNotification('Could not resolve file path for editor');
+      return;
+    }
+    var rawContent = await tauriInvoke('read_text_file', { path: absolutePath });
+    var initialScene = parseSpecialFileEditorInitialData(kind, rawContent);
+    var editorPage = getSpecialFileEditorAssetPath(kind);
+    if (!editorPage) {
+      showNotification('No editor is available for this file type');
+      return;
+    }
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'modal-dialog special-file-editor-dialog';
+    dialog.setAttribute('tabindex', '-1');
+    dialog.innerHTML =
+      '<div class="modal-title">' + escapeHtml(getDisplayFileNameFromPath(filePath) || filePath) + '</div>' +
+      '<div class="special-file-editor-path">' + escapeHtml(filePath) + '</div>' +
+      '<div class="special-file-editor-frame-wrap">' +
+        '<iframe class="special-file-editor-frame" src="' + escapeAttr(editorPage) + '" title="Excalidraw editor"></iframe>' +
+      '</div>' +
+      '<div class="hidden-items-footer">' +
+        '<button class="board-action-btn" data-special-file-editor-action="save" disabled>Save</button>' +
+        '<button class="board-action-btn" data-special-file-editor-action="reload" disabled>Reload</button>' +
+        '<button class="board-action-btn" data-special-file-editor-action="open-system">Open in System App</button>' +
+        '<button class="board-action-btn" data-special-file-editor-action="close">Close</button>' +
+      '</div>';
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    var iframe = dialog.querySelector('.special-file-editor-frame');
+    var editor = {
+      kind: kind,
+      boardId: boardId,
+      filePath: filePath,
+      absolutePath: absolutePath,
+      overlay: overlay,
+      dialog: dialog,
+      iframe: iframe,
+      initialScene: initialScene,
+      ready: false,
+      dirty: false,
+      pendingSaveResolve: null,
+      pendingSaveReject: null
+    };
+    activeSpecialFileEditor = editor;
+    refreshSpecialFileEditorActionState(editor);
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeSpecialFileEditorOverlay(editor, false);
+    });
+    dialog.addEventListener('click', function (e) {
+      var button = e.target.closest('[data-special-file-editor-action]');
+      if (!button) return;
+      var action = button.getAttribute('data-special-file-editor-action');
+      if (action === 'save') {
+        saveSpecialFileEditorOverlay(editor).catch(function (err) {
+          showNotification(err && err.message ? err.message : 'Failed to save Excalidraw file');
+        });
+      } else if (action === 'reload') {
+        reloadSpecialFileEditorOverlay(editor).catch(function (err) {
+          showNotification(err && err.message ? err.message : 'Failed to reload Excalidraw file');
+        });
+      } else if (action === 'open-system') {
+        openBoardFileInSystem(boardId, filePath);
+      } else if (action === 'close') {
+        closeSpecialFileEditorOverlay(editor, false);
+      }
+    });
+    dialog.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSpecialFileEditorOverlay(editor, false);
+      }
+    });
+    dialog.focus();
   }
 
   function requestFileInfo(boardId, filePath) {
@@ -19074,6 +19598,7 @@ const LexeraDashboard = (function () {
     var cacheKey = getEmbedPreviewCacheKey(boardId, filePath);
     var infoKey = getFileInfoCacheKey(boardId, parseLocalFileReference(filePath).path);
     delete embedPreviewCache[cacheKey];
+    delete specialPreviewErrorCache[cacheKey];
     delete fileInfoCache[infoKey];
     delete pendingFileInfoCache[infoKey];
   }
@@ -19089,6 +19614,9 @@ const LexeraDashboard = (function () {
     });
     Object.keys(pendingFileInfoCache).forEach(function (key) {
       if (key.indexOf(prefix) === 0) delete pendingFileInfoCache[key];
+    });
+    Object.keys(specialPreviewErrorCache).forEach(function (key) {
+      if (key.indexOf(prefix) === 0) delete specialPreviewErrorCache[key];
     });
   }
 
@@ -19319,30 +19847,56 @@ const LexeraDashboard = (function () {
   function getEmbedPreviewPageNumber(previewKind, pageValue) {
     var pageNumber = parseInt(pageValue, 10);
     if (!(pageNumber > 0)) return 1;
-    if (previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
+    if (previewKind === 'spreadsheet' || previewKind === 'table' || previewKind === 'epub' || previewKind === 'document') {
       return pageNumber;
     }
     return 1;
   }
 
   function getSpecialPreviewRenderConfig(previewKind, filePath, pageNumber) {
-    var special = getSpecialPreviewType(filePath);
-    if (previewKind === 'diagram') {
-      if (special === 'diagram-excalidraw') {
-        return { cacheFolderName: 'excalidraw-cache', extension: 'svg', suffix: '' };
+    var registry = getFileFormatRegistry();
+    if (!registry || typeof registry.getPreviewRenderConfig !== 'function') return null;
+    return registry.getPreviewRenderConfig(filePath, {
+      pageNumber: getEmbedPreviewPageNumber(previewKind, pageNumber)
+    });
+  }
+
+  async function requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config) {
+    if (!hasTauri || !absoluteSourcePath || !cachePath || !config || config.supportsRuntimeRender === false) {
+      return false;
+    }
+    var renderKey = String(config.pluginId || '') + '::' + cachePath;
+    if (pendingSpecialPreviewRenderCache[renderKey]) {
+      return pendingSpecialPreviewRenderCache[renderKey];
+    }
+    pendingSpecialPreviewRenderCache[renderKey] = tauriInvoke('render_embedded_file', {
+      opts: {
+        pluginId: config.pluginId,
+        sourcePath: absoluteSourcePath,
+        targetPath: cachePath,
+        pageNumber: config.pageNumber || 1,
+        outputFormat: config.outputFormat || config.extension || 'png'
       }
-      return { cacheFolderName: 'drawio-cache', extension: 'png', suffix: '' };
-    }
-    if (previewKind === 'spreadsheet') {
-      return { cacheFolderName: 'xlsx-cache', extension: 'png', suffix: '-s' + getEmbedPreviewPageNumber(previewKind, pageNumber) };
-    }
-    if (previewKind === 'epub') {
-      return { cacheFolderName: 'epub-cache', extension: 'png', suffix: '-p' + getEmbedPreviewPageNumber(previewKind, pageNumber) };
-    }
-    if (previewKind === 'document') {
-      return { cacheFolderName: 'document-cache', extension: 'png', suffix: '-p' + getEmbedPreviewPageNumber(previewKind, pageNumber) };
-    }
-    return null;
+    }).then(function (result) {
+      delete pendingSpecialPreviewRenderCache[renderKey];
+      if (!result || !result.success) {
+        setSpecialPreviewError(boardId, filePath, result && result.error ? result.error : 'Renderer unavailable.');
+        return false;
+      }
+      setSpecialPreviewError(boardId, filePath, '');
+      return true;
+    }).catch(function (err) {
+      delete pendingSpecialPreviewRenderCache[renderKey];
+      setSpecialPreviewError(boardId, filePath, err && err.message ? err.message : String(err));
+      logFrontendIssue(
+        'warn',
+        'embed.preview.render',
+        'Failed to render preview asset for ' + absoluteSourcePath,
+        err
+      );
+      return false;
+    });
+    return pendingSpecialPreviewRenderCache[renderKey];
   }
 
   async function resolveCachedSpecialPreviewAsset(boardId, filePath, previewKind, options) {
@@ -19375,7 +19929,14 @@ const LexeraDashboard = (function () {
     if (!cacheDir) return null;
     var cachePath = cacheDir + '/' + buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
     var cacheInfo = await requestFileInfo(boardId, cachePath);
-    if (!cacheInfo || !cacheInfo.exists) return null;
+    if (!cacheInfo || !cacheInfo.exists) {
+      var rendered = await requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config);
+      if (!rendered) return null;
+      delete fileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
+      delete pendingFileInfoCache[getFileInfoCacheKey(boardId, cachePath)];
+      cacheInfo = await requestFileInfo(boardId, cachePath);
+      if (!cacheInfo || !cacheInfo.exists) return null;
+    }
 
     return {
       path: cachePath,
@@ -20379,7 +20940,7 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
+    if (isRenderedSpecialPreviewKind(previewKind)) {
       container.appendChild(previewEl);
       var previewPage = container.getAttribute('data-preview-page') || '';
       var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage });
@@ -20387,7 +20948,7 @@ const LexeraDashboard = (function () {
         previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
           previewKind,
           filePath,
-          getSpecialPreviewPlaceholderText(previewKind)
+          buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
         );
       }
       return;
@@ -20458,8 +21019,10 @@ const LexeraDashboard = (function () {
     var ext = getFileExtension(fileRef.path);
     var mediaCategory = getMediaCategory(ext);
     var previewKind = getEmbedPreviewKind(filePath);
+    var supportsRenderRetry = isRenderedSpecialPreviewKind(previewKind);
+    var specialEditorKind = getSpecialFileEditorKind(filePath);
     if (!filePath || !boardId) return;
-    if (!(previewKind === 'pdf' || previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document' || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
+    if (!(previewKind === 'pdf' || isRenderedSpecialPreviewKind(previewKind) || isTextPreviewExtension(ext) || mediaCategory === 'image' || mediaCategory === 'video' || mediaCategory === 'audio')) {
       openBoardFileInSystem(boardId, filePath);
       return;
     }
@@ -20472,6 +21035,9 @@ const LexeraDashboard = (function () {
       '<div class="modal-title">' + escapeHtml(getDisplayFileNameFromPath(filePath) || filePath) + '</div>' +
       '<div class="file-preview-body"><div class="embed-preview-loading">Loading preview...</div></div>' +
       '<div class="hidden-items-footer">' +
+        (specialEditorKind ? '<button class="board-action-btn" data-file-preview-action="edit-overlay">Edit Overlay</button>' : '') +
+        (supportsRenderRetry ? '<button class="board-action-btn" data-file-preview-action="retry-render">Retry Render</button>' : '') +
+        (supportsRenderRetry ? '<button class="board-action-btn" data-file-preview-action="renderer-status">Renderer Status</button>' : '') +
         '<button class="board-action-btn" data-file-preview-action="open-system">Open in System App</button>' +
         '<button class="board-action-btn" data-file-preview-action="close">Close</button>' +
       '</div>';
@@ -20488,87 +21054,102 @@ const LexeraDashboard = (function () {
       var action = actionBtn.getAttribute('data-file-preview-action');
       if (action === 'close') {
         overlay.remove();
+      } else if (action === 'edit-overlay') {
+        overlay.remove();
+        openSpecialFileEditorOverlay(boardId, filePath).catch(function (err) {
+          showNotification(err && err.message ? err.message : 'Failed to open overlay editor');
+        });
+      } else if (action === 'retry-render') {
+        clearCachedFilePreviewState(boardId, filePath);
+        body.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
+        renderPreviewBody();
+      } else if (action === 'renderer-status') {
+        showFileRendererStatusMenu(boardId, filePath, actionBtn);
       } else if (action === 'open-system') {
         openBoardFileInSystem(boardId, filePath);
       }
     });
 
-    if (previewKind === 'pdf') {
-      body.innerHTML =
-        '<iframe class="file-preview-frame" src="' +
-        LexeraApi.fileUrl(boardId, fileRef.path) +
-        '#toolbar=0&navpanes=0' +
-        (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '') +
-        '"></iframe>';
-      return;
-    }
-
-    if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
-      var modalPage = options && options.pageNumber ? options.pageNumber : '';
-      var rendered = await renderCachedSpecialPreview(body, boardId, filePath, previewKind, {
-        modal: true,
-        pageNumber: modalPage
-      });
-      if (!rendered) {
-        body.innerHTML = buildFilePreviewPlaceholderHtml(
-          previewKind,
-          filePath,
-          getSpecialPreviewPlaceholderText(previewKind)
-        );
+    async function renderPreviewBody() {
+      if (previewKind === 'pdf') {
+        body.innerHTML =
+          '<iframe class="file-preview-frame" src="' +
+          LexeraApi.fileUrl(boardId, fileRef.path) +
+          '#toolbar=0&navpanes=0' +
+          (fileRef.pageNumber ? '&page=' + fileRef.pageNumber : '') +
+          '"></iframe>';
+        return;
       }
-      return;
-    }
 
-    if (mediaCategory === 'image') {
-      body.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '" alt="' + escapeAttr(getDisplayFileNameFromPath(filePath) || filePath) + '"></div>';
-      return;
-    }
-
-    if (mediaCategory === 'video') {
-      body.innerHTML = '<div class="file-preview-media"><video class="file-preview-video" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '"></video></div>';
-      return;
-    }
-
-    if (mediaCategory === 'audio') {
-      body.innerHTML = '<div class="file-preview-media"><audio class="file-preview-audio" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '"></audio></div>';
-      return;
-    }
-
-    try {
-      var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
-      if (!response.ok) throw new Error('Failed to load preview');
-      var text = await response.text();
-      if (isMarkdownPreviewExtension(ext)) {
-        var previewPath = filePath;
-        if (isBoardRelativePath(filePath)) {
-          previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
+      if (isRenderedSpecialPreviewKind(previewKind)) {
+        var modalPage = options && options.pageNumber ? options.pageNumber : '';
+        var rendered = await renderCachedSpecialPreview(body, boardId, filePath, previewKind, {
+          modal: true,
+          pageNumber: modalPage
+        });
+        if (!rendered) {
+          body.innerHTML = buildFilePreviewPlaceholderHtml(
+            previewKind,
+            filePath,
+            buildSpecialPreviewPlaceholderMessage(previewKind, boardId, filePath)
+          );
         }
-        body.innerHTML = '<div class="file-preview-markdown">' +
-          renderCardContent(resolveMarkdownRelativeTargets(text, previewPath), boardId, {
-            footnoteDefs: {},
-            footnoteOrder: [],
-            abbrDefs: {},
-            embedCounter: 0
-          }, { nested: true }) +
-          '</div>';
-        applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
-        applyRenderedTagVisibility(body, currentTagVisibilityMode);
-        enhanceEmbeddedContent(body);
-        enhanceFileLinks(body);
-        enhanceIncludeDirectives(body);
-      } else {
-        body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
+        return;
       }
-      flushPendingDiagramQueues();
-    } catch (err) {
-      logFrontendIssue(
-        'warn',
-        'file.preview',
-        'Failed to render file preview for board ' + boardId + ' path ' + filePath,
-        err
-      );
-      body.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
+
+      if (mediaCategory === 'image') {
+        body.innerHTML = '<div class="file-preview-media"><img class="file-preview-image" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '" alt="' + escapeAttr(getDisplayFileNameFromPath(filePath) || filePath) + '"></div>';
+        return;
+      }
+
+      if (mediaCategory === 'video') {
+        body.innerHTML = '<div class="file-preview-media"><video class="file-preview-video" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '"></video></div>';
+        return;
+      }
+
+      if (mediaCategory === 'audio') {
+        body.innerHTML = '<div class="file-preview-media"><audio class="file-preview-audio" controls preload="metadata" src="' + escapeAttr(LexeraApi.fileUrl(boardId, fileRef.path)) + '"></audio></div>';
+        return;
+      }
+
+      try {
+        var response = await fetch(LexeraApi.fileUrl(boardId, fileRef.path));
+        if (!response.ok) throw new Error('Failed to load preview');
+        var text = await response.text();
+        if (isMarkdownPreviewExtension(ext)) {
+          var previewPath = filePath;
+          if (isBoardRelativePath(filePath)) {
+            previewPath = await resolveBoardPath(boardId, filePath, 'absolute');
+          }
+          body.innerHTML = '<div class="file-preview-markdown">' +
+            renderCardContent(resolveMarkdownRelativeTargets(text, previewPath), boardId, {
+              footnoteDefs: {},
+              footnoteOrder: [],
+              abbrDefs: {},
+              embedCounter: 0
+            }, { nested: true }) +
+            '</div>';
+          applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
+          applyRenderedTagVisibility(body, currentTagVisibilityMode);
+          enhanceEmbeddedContent(body);
+          enhanceFileLinks(body);
+          enhanceIncludeDirectives(body);
+        } else {
+          body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
+        }
+        flushPendingDiagramQueues();
+      } catch (err) {
+        logFrontendIssue(
+          'warn',
+          'file.preview',
+          'Failed to render file preview for board ' + boardId + ' path ' + filePath,
+          err
+        );
+        body.innerHTML = '<div class="embed-preview-error">Preview unavailable</div>';
+      }
     }
+
+    await renderPreviewBody();
   }
 
   function closeEmbedMenu() {
@@ -21321,13 +21902,20 @@ const LexeraDashboard = (function () {
     }
   }
 
-  function showEmbedMenu(container, btn) {
+  async function showEmbedMenu(container, btn) {
     var filePath = container.getAttribute('data-file-path') || '';
     var embedUrl = container.getAttribute('data-embed-url') || '';
     var isExternal = isExternalEmbedContainer(container);
     var externalPolicyAction = container.getAttribute('data-external-policy-action') || '';
     var isAbsolute = filePath && isAbsoluteFilePath(parseLocalFileReference(filePath).path);
+    var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
+    var previewKind = getEmbedPreviewKind(filePath);
+    var supportsRenderRetry = !isExternal && !!filePath && isRenderedSpecialPreviewKind(previewKind);
+    var specialEditorKind = !isExternal ? getSpecialFileEditorKind(filePath) : '';
     var btnRect = btn.getBoundingClientRect();
+    if (supportsRenderRetry) {
+      await refreshEmbeddedRendererStatuses(false);
+    }
     var items = isExternal
       ? [
           { id: 'open-page', label: 'Open Page Here', disabled: externalPolicyAction !== 'open_page' },
@@ -21339,7 +21927,13 @@ const LexeraDashboard = (function () {
           { id: 'delete', label: 'Delete Embed' },
         ]
       : [
-          { id: 'refresh', label: 'Force Refresh' },
+          specialEditorKind ? { id: 'edit-overlay', label: 'Edit Overlay' } : null,
+          { id: 'refresh', label: supportsRenderRetry ? 'Retry Render' : 'Force Refresh' },
+          supportsRenderRetry ? {
+            id: 'render-status',
+            label: 'Renderer Status',
+            items: buildFileRendererStatusMenuItems(boardId, filePath)
+          } : null,
           { id: 'info', label: 'Info' },
           { separator: true },
           { id: 'open-system', label: 'Open in System App' },
@@ -21352,6 +21946,9 @@ const LexeraDashboard = (function () {
           { separator: true },
           { id: 'delete', label: 'Delete Embed' },
         ];
+    if (!isExternal) {
+      items = items.filter(Boolean);
+    }
     if (!isExternal && !filePath) return;
     if (isExternal && !embedUrl) return;
     showNativeMenu(items, btnRect.right, btnRect.bottom).then(function (action) {
@@ -21397,6 +21994,13 @@ const LexeraDashboard = (function () {
       var nextUrl = promptForEmbedTarget(embedUrl, 'Edit embed URL');
       if (!nextUrl || nextUrl === embedUrl) return;
       updateEmbedTarget(container, nextUrl);
+
+    } else if (action === 'edit-overlay') {
+      closeEmbedMenu();
+      if (!boardId || !filePath) return;
+      openSpecialFileEditorOverlay(boardId, filePath).catch(function (err) {
+        showNotification(err && err.message ? err.message : 'Failed to open overlay editor');
+      });
 
     } else if (action === 'refresh') {
       clearCachedFilePreviewState(boardId || '', filePath || '');
@@ -21595,8 +22199,8 @@ const LexeraDashboard = (function () {
           if (!rendered && host) {
             host.innerHTML = buildFilePreviewPlaceholderHtml(
               'diagram',
-            resolvedPath,
-            getSpecialPreviewPlaceholderText('diagram')
+              resolvedPath,
+              buildSpecialPreviewPlaceholderMessage('diagram', boardId, resolvedPath)
             );
           }
         })
@@ -21606,7 +22210,7 @@ const LexeraDashboard = (function () {
           host.innerHTML = buildFilePreviewPlaceholderHtml(
             'diagram',
             resolvedPath,
-            getSpecialPreviewPlaceholderText('diagram')
+            buildSpecialPreviewPlaceholderMessage('diagram', boardId, resolvedPath)
           );
         }
       });
@@ -23423,7 +24027,7 @@ const LexeraDashboard = (function () {
         inner = '<video controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></video>';
       } else if (category === 'audio') {
         inner = '<audio controls preload="metadata" src="' + src + '"' + mediaStyleAttr + ' onerror="this.parentElement.classList.add(\'embed-broken\')"></audio>';
-      } else if (previewKind === 'diagram' || previewKind === 'spreadsheet' || previewKind === 'epub' || previewKind === 'document') {
+      } else if (isRenderedSpecialPreviewKind(previewKind)) {
         inner = getFileEmbedChipHtml(previewKind, filePath, mediaStyleAttr);
       } else if (category === 'document') {
         var documentFilename = getDisplayFileNameFromPath(filePath);
