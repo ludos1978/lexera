@@ -9137,6 +9137,7 @@ const LexeraDashboard = (function () {
         { id: 'sort-all-cards:duedate', label: 'By Due Date' }
       ] },
       { separator: true },
+      { id: 'set-board-theme', label: 'Visual Style', items: buildBoardThemeItems('set-board-theme') },
       { id: 'set-column-width', label: 'Column Width', items: buildColumnWidthModeItems('set-column-width') },
       { id: 'set-card-height', label: 'Card Height', items: buildCardHeightModeItems('set-card-height') },
       { id: 'set-whitespace', label: 'Whitespace', items: buildWhitespaceModeItems('set-whitespace') },
@@ -9168,7 +9169,6 @@ const LexeraDashboard = (function () {
       { id: 'set-html-content', label: 'HTML Content Rendering', items: buildHtmlContentModeItems('set-html-content') },
       { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildTagVisibilityModeItems('set-tag-visibility') },
       { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
-      { id: 'set-board-theme', label: 'Board Theme', items: buildBoardThemeItems('set-board-theme') },
     ];
     if (parkedCount > 0) {
       items.push({ separator: true });
@@ -9402,7 +9402,7 @@ const LexeraDashboard = (function () {
     if (action.indexOf('set-board-theme:') === 0) {
       var themeId = action.substring('set-board-theme:'.length);
       setBoardTheme(themeId);
-      showNotification('Board theme: ' + (BOARD_THEME_LABELS[themeId] || themeId));
+      showNotification('Visual style: ' + (BOARD_THEME_LABELS[themeId] || themeId));
       return;
     }
     if (action === 'toggle-html-comments') {
