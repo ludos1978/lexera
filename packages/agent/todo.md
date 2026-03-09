@@ -131,6 +131,8 @@
 
 ### UI Improvements
 - [x] Added keyboard shortcuts for focused card actions: Ctrl/Cmd+D to duplicate, Delete/Backspace to trash, Home/End to jump to first/last card in column, N to add a new card when no card is focused. Updated keyboard shortcuts help overlay with Card Navigation section.
+- [x] Added Alt+Arrow keyboard shortcuts for moving focused cards: Alt+Up/Down to reorder within column, Alt+Left/Right to move to adjacent column. Card focus follows the moved card.
+- [x] Added Space key to open context menu for the focused card, enabling fully keyboard-driven card operations.
 
 ## File Format Overlay Editing Audit
 

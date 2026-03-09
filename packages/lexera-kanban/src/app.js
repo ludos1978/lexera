@@ -2759,7 +2759,37 @@ const LexeraDashboard = (function () {
     if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
 
     var key = e.key;
-    if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
+    if ((key === 'ArrowUp' || key === 'ArrowDown') && e.altKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      if (key === 'ArrowUp' && cj > 0) {
+        moveCard(ci, cj, ci, cj - 1).then(function () {
+          var moved = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj - 1) + '"]');
+          if (moved) focusCard(moved);
+        });
+      } else if (key === 'ArrowDown') {
+        moveCard(ci, cj, ci, cj + 2).then(function () {
+          var moved = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="' + (cj + 1) + '"]');
+          if (moved) focusCard(moved);
+        });
+      }
+    } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && e.altKey && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      var colIndices = columns.map(function (c) { return c.index; });
+      var curPos = colIndices.indexOf(ci);
+      var targetPos = key === 'ArrowRight' ? curPos + 1 : curPos - 1;
+      if (targetPos >= 0 && targetPos < colIndices.length) {
+        var targetColIdx = colIndices[targetPos];
+        moveCard(ci, cj, targetColIdx, 0).then(function () {
+          var moved = getElColumnsContainer().querySelector('.card[data-col-index="' + targetColIdx + '"][data-card-index="0"]');
+          if (moved) focusCard(moved);
+        });
+      }
+    } else if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
       e.preventDefault();
       navigateCards(key);
     } else if (key === 'Enter' && focusedCardEl) {
@@ -2787,6 +2817,12 @@ const LexeraDashboard = (function () {
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       deleteCard(ci, cj);
+    } else if (key === ' ' && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      var rect = focusedCardEl.getBoundingClientRect();
+      showCardContextMenu(rect.left + 20, rect.top + 20, ci, cj);
     } else if (key === 'n' && !e.ctrlKey && !e.metaKey && !focusedCardEl && !mgmtPanelOpen) {
       e.preventDefault();
       var columns = activeBoardData ? activeBoardData.columns : [];
@@ -10653,7 +10689,10 @@ const LexeraDashboard = (function () {
       { keys: 'Home / End', desc: 'Jump to first / last card' },
       { keys: 'Enter', desc: 'Edit focused card' },
       { keys: 'Escape', desc: 'Unfocus card' },
+      { keys: 'Alt+\u2191/\u2193', desc: 'Move card up / down' },
+      { keys: 'Alt+\u2190/\u2192', desc: 'Move card to adjacent column' },
       { keys: mod + '+D', desc: 'Duplicate focused card' },
+      { keys: 'Space', desc: 'Open card context menu' },
       { keys: 'Delete', desc: 'Delete focused card' },
       { keys: 'N', desc: 'New card (when no card focused)' },
       { section: 'Other' },
