@@ -87,3 +87,14 @@
 - [x] Added keyboard shortcuts for focused card actions (duplicate, delete, navigate, park, edit, copy, reveal, insert, column jump).
 - [x] Added Alt+Arrow card move and Space context menu shortcuts.
 - [x] Added configurable tag style system with presets and per-tag/category overrides.
+
+
+- [x] put another tab into the bottom bar that manages the running processes! remove the processes bar from the top bar!
+- [x] remove undo/redo from the top bar! put it into the menu-bar (edit).
+- [x] put the "stats" into the bottom bar using another tab! remove it from the top bar!
+- [ ] in the burger menu (top right) there should only be style settings (global ones for the kanban board). put everything else into the menu bars! remove things that are in the view directly and in the burger menu (show parked, show trash, rename, open folder, copy as markdown, ...)
+- [ ] put everything that we add into a menubar not the burger menu!
+- [x] the row and stack info at the end is not needed, remove them.
+- [ ] can a window detect when its moved? the should immediately snap to the border when its moved in any way (dragging is not the only way).
+- [x] all elements (rows, stacks, columns, cards) share the same button order! drag, title, fold, burger-menu . we remove the edit button from all!
+- [x] when pressing any fold button it folds the item. if alt+pressing it folds all children!

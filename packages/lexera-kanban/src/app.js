@@ -9139,38 +9139,19 @@ const LexeraDashboard = (function () {
     closeColumnContextMenu();
     closeCardContextMenu();
 
-    var hasBoardFile = !!getActiveBoardFilePath();
-    var allStructureFolded = areAllBoardItemsFolded();
-    var allColumnsFolded = areAllColumnsFolded();
-    var allCardsFolded = areAllCardsCollapsed();
     var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
-    var parkedCount = getParkedCount();
-    var archivedCount = getArchivedCount();
-    var deletedCount = getDeletedCount();
-    var splitActive = splitViewMode !== 'single';
-    var splitOrientationLabel = splitViewMode === 'horizontal'
-      ? 'Split Orientation: Horizontal'
-      : (splitViewMode === 'vertical' ? 'Split Orientation: Vertical' : 'Split Orientation');
+    // Board settings menu: visual/layout style settings only
     var items = [
-      { id: 'undo', label: 'Undo', disabled: undoStack.length === 0 && !undoPendingSnapshot },
-      { id: 'redo', label: 'Redo', disabled: redoStack.length === 0 },
-      { id: 'add-row', label: 'Add Row' },
-      { separator: true },
-      { id: allStructureFolded ? 'unfold-all' : 'fold-all', label: allStructureFolded ? 'Unfold Structure' : 'Fold Structure' },
-      { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
-      { id: allCardsFolded ? 'unfold-cards' : 'fold-cards', label: allCardsFolded ? 'Unfold All Cards' : 'Fold All Cards' },
-      { id: 'sort-all-cards', label: 'Sort All Cards', items: [
-        { id: 'sort-all-cards:title', label: 'By Title' },
-        { id: 'sort-all-cards:tag', label: 'By Numeric Tag' },
-        { id: 'sort-all-cards:duedate', label: 'By Due Date' }
-      ] },
-      { separator: true },
       { id: 'set-board-theme', label: 'Visual Style', items: buildBoardThemeItems('set-board-theme') },
+      { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
+      { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildTagVisibilityModeItems('set-tag-visibility') },
+      { separator: true },
       { id: 'set-column-width', label: 'Column Width', items: buildColumnWidthModeItems('set-column-width') },
       { id: 'set-card-height', label: 'Card Height', items: buildCardHeightModeItems('set-card-height') },
       { id: 'set-whitespace', label: 'Whitespace', items: buildWhitespaceModeItems('set-whitespace') },
       { id: 'set-font-size', label: 'Font Size', items: buildFontSizeModeItems('set-font-size') },
       { id: 'set-font-family', label: 'Font Family', items: buildFontFamilyModeItems('set-font-family') },
+      { separator: true },
       { id: 'set-layout-rows', label: 'Layout Rows', items: buildLayoutRowsModeItems('set-layout-rows') },
       { id: 'set-row-height', label: 'Row Height', items: buildRowHeightModeItems('set-row-height') },
       { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetModeItems('set-layout-preset') },
@@ -9178,56 +9159,13 @@ const LexeraDashboard = (function () {
       { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildStickyHeaderModeItems('set-sticky-headers') },
       { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildArrowKeyFocusScrollModeItems('set-arrow-focus-scroll') },
       { separator: true },
-      { id: 'running-processes', label: 'Running Processes' },
-      { id: 'open-save-tracking', label: 'Save / Change Tracking' },
-      { id: 'save-now', label: 'Save Now' },
-      { id: 'open-management', label: 'Management' },
-      { id: 'open-theme-zoom', label: 'Themes / Zoom' },
-      { id: 'export-board', label: 'Export / Pack' },
-      { id: 'backend-settings', label: 'Backend Settings' },
-      { id: splitActive ? 'split-disable' : 'split-enable', label: splitActive ? 'Disable Split View' : 'Enable Split View' },
-      { id: 'split-orientation', label: splitOrientationLabel, disabled: !splitActive },
-      { id: 'toggle-inspector', label: 'Inspector' },
-      { separator: true },
+      { id: 'set-html-comments', label: 'HTML Comment Rendering', items: buildHtmlCommentModeItems('set-html-comments') },
+      { id: 'set-html-content', label: 'HTML Content Rendering', items: buildHtmlContentModeItems('set-html-content') },
       { id: 'toggle-overlay-editor', label: formatMenuToggleLabel(isOverlayEditorEnabled(), 'Overlay Editor Enabled') },
       { id: 'toggle-wysiwyg-editor', label: formatMenuToggleLabel(isWysiwygEditorEnabled(), 'WYSIWYG Editor Enabled') },
       { id: 'toggle-special-chars', label: formatMenuToggleLabel(isSpecialCharactersVisible(), 'Show Special Characters') },
       { id: 'toggle-marp-settings', label: formatMenuToggleLabel(isMarpSettingsEnabled(), 'Show Marp Settings') },
-      { id: 'set-html-comments', label: 'HTML Comment Rendering', items: buildHtmlCommentModeItems('set-html-comments') },
-      { id: 'set-html-content', label: 'HTML Content Rendering', items: buildHtmlContentModeItems('set-html-content') },
-      { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildTagVisibilityModeItems('set-tag-visibility') },
-      { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
     ];
-    if (parkedCount > 0) {
-      items.push({ separator: true });
-      items.push({ id: 'show-parked', label: 'Show Parked (' + parkedCount + ')' });
-    }
-    if (archivedCount > 0) {
-      items.push({ id: 'show-archived', label: 'Show Archived (' + archivedCount + ')' });
-    }
-    if (deletedCount > 0) {
-      items.push({ id: 'show-trash', label: 'Show Trash (' + deletedCount + ')' });
-    }
-    var recentIds = getRecentBoards();
-    var knownBoards = getKnownBoards();
-    var recentItems = [];
-    for (var ri = 0; ri < recentIds.length && recentItems.length < 8; ri++) {
-      if (recentIds[ri] === activeBoardId) continue;
-      for (var kb = 0; kb < knownBoards.length; kb++) {
-        if (knownBoards[kb].id === recentIds[ri]) {
-          recentItems.push({ id: 'recent:' + recentIds[ri], label: getBoardDisplayName(knownBoards[kb]) || 'Untitled' });
-          break;
-        }
-      }
-    }
-    if (recentItems.length > 0) {
-      items.push({ separator: true });
-      items.push({ id: 'recent-sub', label: 'Recent Boards', items: recentItems });
-    }
-    items.push({ separator: true });
-    items.push({ id: 'rename-file', label: 'Rename File', disabled: !hasBoardFile });
-    items.push({ id: 'open-folder', label: 'Open Folder', disabled: !hasBoardFile });
-    items.push({ id: 'copy-board-markdown', label: 'Copy Board as Markdown' });
 
     showNativeMenu(items, x, y).then(function (action) {
       handleBoardAction(action);
