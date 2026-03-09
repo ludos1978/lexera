@@ -116,108 +116,6 @@
   --tree-toggle-fg-hover: var(--text-bright);
 }
 
-/* ── Board Visual Theme: Gap Highlight ───────────────────────────────── */
-/* Flat, borderless elements. Separator lines drawn between siblings     */
-/* via column-rule / padding-based borders. !important overrides         */
-/* applyTheme() inline styles.                                           */
-[data-board-theme="gap-highlight"] {
-  /* Strip all element chrome */
-  --surface-row-bg: transparent !important;
-  --surface-row-border: transparent !important;
-  --surface-row-radius: 0;
-  --surface-row-shadow: none;
-  --row-content-bg: transparent;
-  --surface-stack-bg: transparent !important;
-  --surface-stack-border: transparent !important;
-  --surface-stack-radius: 0;
-  --surface-stack-shadow: none;
-  --stack-content-bg: transparent;
-  --surface-column-bg: transparent !important;
-  --surface-column-border: transparent !important;
-  --surface-column-radius: 0;
-  --surface-column-shadow: none;
-  --surface-header-bg: transparent !important;
-  --surface-header-border: transparent !important;
-  --surface-footer-bg: transparent !important;
-  --card-bg: transparent;
-  --card-border: transparent;
-  --card-radius: 0;
-  --card-shadow: none;
-  --card-gap: 0;
-  --card-list-padding: 4px 0;
-  /* Separator line color */
-  --gap-line-color: var(--border);
-}
-
-/* ── Card separators: 1px solid, 5px inset ──────────────────────────── */
-[data-board-theme="gap-highlight"] .column-cards {
-  padding: 2px 5px !important;
-  gap: 0 !important;
-}
-[data-board-theme="gap-highlight"] .card {
-  border: none !important;
-  border-left: 3px solid transparent !important;
-}
-[data-board-theme="gap-highlight"] .card + .card {
-  border-top: 1px solid var(--gap-line-color) !important;
-}
-
-/* ── Column separators: 2px dashed, 10px inset ─────────────────────── */
-[data-board-theme="gap-highlight"] .column {
-  border: none !important;
-  box-shadow: none !important;
-}
-[data-board-theme="gap-highlight"] .board-stack-content {
-  gap: 0 !important;
-  padding: 0 10px !important;
-}
-[data-board-theme="gap-highlight"] .column + .column {
-  border-top: 2px dashed var(--gap-line-color) !important;
-}
-
-/* ── Stack separators: 3px dashed, 20px inset ───────────────────────── */
-[data-board-theme="gap-highlight"] .board-stack {
-  border: none !important;
-  box-shadow: none !important;
-}
-[data-board-theme="gap-highlight"] .board-row-content {
-  gap: 0 !important;
-  padding: 20px 0 !important;
-}
-[data-board-theme="gap-highlight"] .board-stack + .board-stack {
-  border-left: 3px dashed var(--gap-line-color) !important;
-}
-
-/* ── Row separators: 3px dotted, 20px inset ─────────────────────────── */
-[data-board-theme="gap-highlight"] .board-row {
-  border: none !important;
-  box-shadow: none !important;
-}
-[data-board-theme="gap-highlight"] .columns-container {
-  padding: 20px !important;
-  gap: 0 !important;
-}
-[data-board-theme="gap-highlight"] .board-row + .board-row {
-  border-top: 3px dotted var(--gap-line-color) !important;
-}
-
-/* ── Header/footer: thin solid lines ────────────────────────────────── */
-[data-board-theme="gap-highlight"] .board-row-header {
-  border-right: 1px solid var(--gap-line-color) !important;
-}
-[data-board-theme="gap-highlight"] .board-stack-header {
-  border-bottom: 1px solid var(--gap-line-color) !important;
-  border-radius: 0 !important;
-}
-[data-board-theme="gap-highlight"] .column-header {
-  border-bottom: 1px solid var(--gap-line-color) !important;
-}
-[data-board-theme="gap-highlight"] .board-row-footer,
-[data-board-theme="gap-highlight"] .board-stack-footer,
-[data-board-theme="gap-highlight"] .column-footer {
-  border-top: 1px solid var(--gap-line-color) !important;
-}
-
 /* Dark theme vars are applied by JS via applyTheme() */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -5316,6 +5214,109 @@ select.dialog-input option,
     width: auto;
     max-width: 100%;
   }
+}
+
+/* ── Board Visual Theme: Gap Highlight ───────────────────────────────── */
+/* Placed at end of stylesheet so it naturally overrides all base rules.  */
+/* !important only on properties that compete with JS inline styles.     */
+[data-board-theme="gap-highlight"] {
+  --surface-row-bg: transparent !important;
+  --surface-row-border: transparent !important;
+  --surface-row-radius: 0;
+  --surface-row-shadow: none;
+  --row-content-bg: transparent;
+  --surface-stack-bg: transparent !important;
+  --surface-stack-border: transparent !important;
+  --surface-stack-radius: 0;
+  --surface-stack-shadow: none;
+  --stack-content-bg: transparent;
+  --surface-column-bg: transparent !important;
+  --surface-column-border: transparent !important;
+  --surface-column-radius: 0;
+  --surface-column-shadow: none;
+  --surface-header-bg: transparent !important;
+  --surface-header-border: transparent !important;
+  --surface-footer-bg: transparent !important;
+  --card-bg: transparent;
+  --card-border: transparent;
+  --card-radius: 0;
+  --card-shadow: none;
+  --card-gap: 0;
+  --card-list-padding: 0;
+  --gap-line-color: var(--border);
+}
+
+/* Cards: strip all borders, separator 1px solid, parent padding = 5px inset */
+[data-board-theme="gap-highlight"] .column-cards {
+  padding: 2px 5px !important;
+  gap: 0 !important;
+}
+[data-board-theme="gap-highlight"] .card {
+  border: none !important;
+  border-left: 3px solid transparent !important;
+  margin: 0 !important;
+}
+[data-board-theme="gap-highlight"] .card + .card {
+  border-top: 1px solid var(--gap-line-color) !important;
+}
+
+/* Columns: strip all borders, separator 2px dashed, parent padding = 10px inset */
+[data-board-theme="gap-highlight"] .column {
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+[data-board-theme="gap-highlight"] .board-stack-content {
+  gap: 0 !important;
+  padding: 10px !important;
+}
+[data-board-theme="gap-highlight"] .column + .column {
+  border-top: 2px dashed var(--gap-line-color) !important;
+}
+
+/* Stacks: strip all borders, separator 3px dashed, parent padding = 20px inset */
+[data-board-theme="gap-highlight"] .board-stack {
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+[data-board-theme="gap-highlight"] .board-row-content {
+  gap: 0 !important;
+  padding: 20px !important;
+}
+[data-board-theme="gap-highlight"] .board-stack + .board-stack {
+  border-left: 3px dashed var(--gap-line-color) !important;
+}
+
+/* Rows: strip all borders, separator 3px dotted, parent padding = 20px inset */
+[data-board-theme="gap-highlight"] .board-row {
+  border: none !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+[data-board-theme="gap-highlight"] .columns-container {
+  padding: 20px !important;
+  gap: 0 !important;
+}
+[data-board-theme="gap-highlight"] .board-row + .board-row {
+  border-top: 3px dotted var(--gap-line-color) !important;
+}
+
+/* Header/footer: thin solid separator lines */
+[data-board-theme="gap-highlight"] .board-row-header {
+  border-right: 1px solid var(--gap-line-color) !important;
+}
+[data-board-theme="gap-highlight"] .board-stack-header {
+  border-bottom: 1px solid var(--gap-line-color) !important;
+  border-radius: 0 !important;
+}
+[data-board-theme="gap-highlight"] .column-header {
+  border-bottom: 1px solid var(--gap-line-color) !important;
+}
+[data-board-theme="gap-highlight"] .board-row-footer,
+[data-board-theme="gap-highlight"] .board-stack-footer,
+[data-board-theme="gap-highlight"] .column-footer {
+  border-top: 1px solid var(--gap-line-color) !important;
 }
 
 /* Print styles */
