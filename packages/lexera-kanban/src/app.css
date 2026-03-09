@@ -5255,6 +5255,8 @@ select.dialog-input option,
   border: none !important;
   border-left: 3px solid transparent !important;
   margin: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 [data-board-theme="gap-highlight"] .card + .card {
   border-top: 1px solid var(--gap-line-color) !important;
