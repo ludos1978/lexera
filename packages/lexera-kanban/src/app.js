@@ -677,6 +677,12 @@ const LexeraDashboard = (function () {
     if (typeof applyBoardSettings === 'function') {
       applyBoardSettings();
     }
+
+    // Re-apply board visual theme — inline style overrides above would
+    // otherwise mask the [data-board-theme] CSS variable layer.
+    if (typeof applyBoardTheme === 'function') {
+      applyBoardTheme(_activeBoardTheme || 'bordered');
+    }
   }
 
   // Re-apply kanban-specific derived tokens on OS light/dark switch
@@ -9168,6 +9174,7 @@ const LexeraDashboard = (function () {
       { id: 'set-html-content', label: 'HTML Content Rendering', items: buildHtmlContentModeItems('set-html-content') },
       { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildTagVisibilityModeItems('set-tag-visibility') },
       { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
+      { id: 'set-board-theme', label: 'Board Theme', items: buildBoardThemeItems('set-board-theme') },
     ];
     if (parkedCount > 0) {
       items.push({ separator: true });
@@ -9396,6 +9403,12 @@ const LexeraDashboard = (function () {
       setActiveTagStylePreset(presetId);
       renderColumns();
       showNotification('Tag style: ' + (TAG_STYLE_PRESETS[presetId] ? TAG_STYLE_PRESETS[presetId].label : presetId));
+      return;
+    }
+    if (action.indexOf('set-board-theme:') === 0) {
+      var themeId = action.substring('set-board-theme:'.length);
+      setActiveBoardTheme(themeId);
+      showNotification('Board theme: ' + (BOARD_THEME_PRESETS[themeId] ? BOARD_THEME_PRESETS[themeId].label : themeId));
       return;
     }
     if (action === 'toggle-html-comments') {
@@ -24127,6 +24140,147 @@ const LexeraDashboard = (function () {
 
   // Load tag style config on startup
   loadTagStyleConfig();
+
+  // ── Board Visual Theme System ──────────────────────────────────────
+  var BOARD_THEME_PRESETS = {
+    'bordered': { label: 'Bordered', description: 'Borders around elements' },
+    'gap-highlight': { label: 'Gap Highlight', description: 'Highlighted spaces between elements' }
+  };
+
+  var _activeBoardTheme = 'bordered';
+
+  function loadBoardTheme() {
+    try {
+      var stored = localStorage.getItem('lexera-board-theme');
+      if (stored && BOARD_THEME_PRESETS[stored]) {
+        _activeBoardTheme = stored;
+      }
+    } catch (e) { /* ignore */ }
+    applyBoardTheme(_activeBoardTheme);
+  }
+
+  function saveBoardTheme() {
+    try {
+      localStorage.setItem('lexera-board-theme', _activeBoardTheme);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Inline style overrides for gap-highlight theme.
+  // These must be applied via inline style because applyTheme() also sets
+  // surface variables as inline styles, which would otherwise win over CSS rules.
+  var GAP_HIGHLIGHT_INLINE_VARS = [
+    'surface-row-bg', 'surface-row-border', 'surface-stack-bg',
+    'surface-stack-border', 'surface-column-border', 'surface-column-bg',
+    'surface-header-bg', 'surface-header-border', 'surface-footer-bg',
+    'card-bg', 'card-border',
+    'row-content-bg', 'stack-content-bg',
+    'board-row-gap', 'board-stack-gap', 'board-column-gap', 'board-inner-padding',
+    'surface-row-radius', 'surface-row-shadow',
+    'surface-stack-radius', 'surface-stack-shadow',
+    'surface-column-radius', 'surface-column-shadow',
+    'card-radius', 'card-shadow', 'card-gap', 'card-list-padding'
+  ];
+
+  function getGapHighlightValues(isDark) {
+    return {
+      'surface-row-bg': 'transparent',
+      'surface-row-border': 'transparent',
+      'surface-row-radius': 'var(--radius-md)',
+      'surface-row-shadow': 'none',
+      'row-content-bg': isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.06)',
+      'surface-stack-bg': 'transparent',
+      'surface-stack-border': 'transparent',
+      'surface-stack-radius': 'var(--radius-md)',
+      'surface-stack-shadow': 'none',
+      'stack-content-bg': isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.05)',
+      'surface-column-bg': isDark ? 'var(--bg-primary)' : 'var(--bg-primary)',
+      'surface-column-border': 'transparent',
+      'surface-column-radius': 'var(--radius-md)',
+      'surface-column-shadow': 'none',
+      'surface-header-bg': isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+      'surface-header-border': 'transparent',
+      'surface-footer-bg': isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.03)',
+      'card-bg': 'var(--bg-primary)',
+      'card-border': 'transparent',
+      'card-radius': 'var(--radius-md)',
+      'card-shadow': isDark ? '0 1px 4px rgba(0, 0, 0, 0.3)' : '0 1px 3px rgba(0, 0, 0, 0.08)',
+      'card-gap': '6px',
+      'card-list-padding': '6px',
+      'board-row-gap': 'calc(14px * var(--ui-scale))',
+      'board-stack-gap': 'calc(12px * var(--ui-scale))',
+      'board-column-gap': 'calc(10px * var(--ui-scale))',
+      'board-inner-padding': 'calc(10px * var(--ui-scale))'
+    };
+  }
+
+  function applyBoardTheme(themeId) {
+    if (!BOARD_THEME_PRESETS[themeId]) themeId = 'bordered';
+    _activeBoardTheme = themeId;
+    var root = document.documentElement;
+
+    if (themeId === 'bordered') {
+      root.removeAttribute('data-board-theme');
+      // Remove gap-highlight inline overrides so CSS/applyTheme values take effect
+      for (var i = 0; i < GAP_HIGHLIGHT_INLINE_VARS.length; i++) {
+        root.style.removeProperty('--' + GAP_HIGHLIGHT_INLINE_VARS[i]);
+      }
+      // Re-run applyTheme to restore the bordered surface values
+      var currentThemeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
+                            localStorage.getItem('lexera-theme') || 'lexera';
+      var theme = null;
+      for (var t = 0; t < THEMES.length; t++) {
+        if (THEMES[t].id === currentThemeId) { theme = THEMES[t]; break; }
+      }
+      if (!theme) theme = THEMES[0];
+      if (theme) {
+        var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var palette = isDark ? theme.dark : theme.light;
+        root.style.setProperty('--surface-row-bg', palette['--bg-primary'] || '');
+        root.style.setProperty('--surface-row-border', palette['--border'] || '');
+        root.style.setProperty('--surface-stack-bg', palette['--bg-secondary'] || '');
+        root.style.setProperty('--surface-stack-border', palette['--border'] || '');
+        root.style.setProperty('--surface-column-bg', palette['--bg-secondary'] || '');
+        root.style.setProperty('--surface-column-border', palette['--border'] || '');
+        root.style.setProperty('--surface-header-bg', palette['--bg-tertiary'] || palette['--bg-secondary'] || '');
+        root.style.setProperty('--surface-header-border', palette['--border'] || '');
+        root.style.setProperty('--surface-footer-bg', palette['--bg-secondary'] || '');
+      }
+    } else {
+      root.setAttribute('data-board-theme', themeId);
+      var isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var values = getGapHighlightValues(isDarkMode);
+      var keys = Object.keys(values);
+      for (var j = 0; j < keys.length; j++) {
+        root.style.setProperty('--' + keys[j], values[keys[j]]);
+      }
+    }
+  }
+
+  function setActiveBoardTheme(themeId) {
+    applyBoardTheme(themeId);
+    saveBoardTheme();
+  }
+
+  function getActiveBoardTheme() {
+    return _activeBoardTheme;
+  }
+
+  function buildBoardThemeItems(actionPrefix) {
+    var current = getActiveBoardTheme();
+    var items = [];
+    var keys = Object.keys(BOARD_THEME_PRESETS);
+    for (var i = 0; i < keys.length; i++) {
+      var preset = BOARD_THEME_PRESETS[keys[i]];
+      items.push({
+        id: actionPrefix + ':' + keys[i],
+        label: (current === keys[i] ? '\u2713 ' : '') + preset.label + (preset.description ? ' \u2014 ' + preset.description : '')
+      });
+    }
+    return items;
+  }
+
+  // Load board theme on startup
+  loadBoardTheme();
 
   var EMOJI_SHORTCODES = {
     smile: '\u{1F604}',

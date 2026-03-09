@@ -66,13 +66,25 @@
   --btn-fg: #333333;
   --surface-row-bg: rgba(0, 0, 0, 0.12);
   --surface-row-border: rgba(255, 255, 255, 0.04);
+  --surface-row-radius: var(--radius-lg);
+  --surface-row-shadow: none;
   --surface-stack-bg: rgba(0, 0, 0, 0.14);
   --surface-stack-border: rgba(0, 122, 204, 0.2);
+  --surface-stack-radius: var(--radius-lg);
+  --surface-stack-shadow: none;
   --surface-column-bg: var(--bg-secondary);
   --surface-column-border: var(--border);
+  --surface-column-radius: var(--radius-lg);
+  --surface-column-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
   --surface-header-bg: var(--bg-tertiary);
   --surface-header-border: var(--border);
   --surface-footer-bg: var(--bg-secondary);
+  --card-radius: 4px;
+  --card-shadow: none;
+  --card-gap: 4px;
+  --card-list-padding: 4px;
+  --row-content-bg: transparent;
+  --stack-content-bg: transparent;
   --title-row-color: var(--text-bright);
   --title-stack-color: var(--text-secondary);
   --title-column-color: var(--text-bright);
@@ -102,6 +114,94 @@
   --tree-guide: var(--border);
   --tree-toggle-fg: var(--text-primary);
   --tree-toggle-fg-hover: var(--text-bright);
+}
+
+/* ── Board Visual Theme: Gap Highlight ───────────────────────────────── */
+/* Replaces bordered elements with highlighted inter-element gaps.       */
+[data-board-theme="gap-highlight"] {
+  /* Wider gaps become the visual structure */
+  --board-row-gap: calc(14px * var(--ui-scale));
+  --board-stack-gap: calc(12px * var(--ui-scale));
+  --board-column-gap: calc(10px * var(--ui-scale));
+  --board-inner-padding: calc(10px * var(--ui-scale));
+
+  /* Row: no border, flat, gap-area background on content */
+  --surface-row-bg: transparent;
+  --surface-row-border: transparent;
+  --surface-row-radius: var(--radius-md);
+  --surface-row-shadow: none;
+  --row-content-bg: rgba(0, 0, 0, 0.06);
+
+  /* Stack: no border, gap-area background on content */
+  --surface-stack-bg: transparent;
+  --surface-stack-border: transparent;
+  --surface-stack-radius: var(--radius-md);
+  --surface-stack-shadow: none;
+  --stack-content-bg: rgba(0, 0, 0, 0.05);
+
+  /* Column: borderless, clean surface */
+  --surface-column-bg: var(--bg-primary);
+  --surface-column-border: transparent;
+  --surface-column-radius: var(--radius-md);
+  --surface-column-shadow: none;
+
+  /* Headers: tint instead of border separator */
+  --surface-header-bg: rgba(0, 0, 0, 0.04);
+  --surface-header-border: transparent;
+
+  /* Footer: subtle tint */
+  --surface-footer-bg: rgba(0, 0, 0, 0.03);
+
+  /* Card: borderless, elevated via shadow on gap background */
+  --card-bg: var(--bg-primary);
+  --card-border: transparent;
+  --card-radius: var(--radius-md);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --card-gap: 6px;
+  --card-list-padding: 6px;
+}
+
+/* Gap-highlight dark-mode adjustments */
+@media (prefers-color-scheme: dark) {
+  [data-board-theme="gap-highlight"] {
+    --row-content-bg: rgba(255, 255, 255, 0.04);
+    --stack-content-bg: rgba(255, 255, 255, 0.03);
+    --surface-header-bg: rgba(255, 255, 255, 0.04);
+    --surface-footer-bg: rgba(255, 255, 255, 0.02);
+    --card-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Gap-highlight: row content gets rounded corners to show gap background */
+[data-board-theme="gap-highlight"] .board-row-content {
+  border-radius: var(--radius-md);
+}
+[data-board-theme="gap-highlight"] .board-stack-content {
+  border-radius: var(--radius-md);
+}
+
+/* Gap-highlight: header separators use bottom-border replacement */
+[data-board-theme="gap-highlight"] .board-row-header {
+  border-right-color: transparent;
+}
+[data-board-theme="gap-highlight"] .board-row-footer {
+  border-top-color: transparent;
+}
+[data-board-theme="gap-highlight"] .board-stack-footer {
+  border-top-color: transparent;
+}
+
+/* Gap-highlight: column header/footer separators */
+[data-board-theme="gap-highlight"] .column-header {
+  border-bottom-color: transparent;
+}
+[data-board-theme="gap-highlight"] .column-footer {
+  border-top-color: transparent;
+}
+
+/* Gap-highlight: card left accent stays functional */
+[data-board-theme="gap-highlight"] .card {
+  border-left: 3px solid transparent;
 }
 
 /* Dark theme vars are applied by JS via applyTheme() */
@@ -1506,9 +1606,10 @@ body.show-special-characters .card-editor-textarea {
   min-width: 0;
   width: 100%;
   border: 1px solid var(--surface-row-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--surface-row-radius);
   overflow: hidden;
   background: var(--surface-row-bg);
+  box-shadow: var(--surface-row-shadow);
 }
 
 .board-row-header {
@@ -1615,6 +1716,7 @@ body.show-special-characters .card-editor-textarea {
   min-height: min(60px, 100%);
   flex: 1;
   min-width: 0;
+  background: var(--row-content-bg);
 }
 
 .board-row-footer {
@@ -1880,8 +1982,9 @@ body.show-special-characters .card-editor-textarea {
   flex: 0 0 var(--board-column-width, 280px);
   transition: min-width 0.15s, width 0.15s, flex 0.15s;
   border: 1px solid var(--surface-stack-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--surface-stack-radius);
   background: var(--surface-stack-bg);
+  box-shadow: var(--surface-stack-shadow);
 }
 
 .board-stack-header {
@@ -1892,7 +1995,7 @@ body.show-special-characters .card-editor-textarea {
   cursor: grab;
   user-select: none;
   background: var(--surface-header-bg);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-radius: var(--surface-stack-radius) var(--surface-stack-radius) 0 0;
   border-bottom: 1px solid var(--surface-header-border);
   flex-shrink: 0;
 }
@@ -1955,6 +2058,7 @@ body.show-special-characters .card-editor-textarea {
   padding: calc(var(--board-column-gap) + 1px);
   flex: 1;
   min-width: 0;
+  background: var(--stack-content-bg);
 }
 
 .board-stack-footer {
@@ -2346,10 +2450,10 @@ u {
 .column {
   background: var(--surface-column-bg);
   border: 1px solid var(--surface-column-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--surface-column-radius);
   display: flex;
   flex-direction: column;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+  box-shadow: var(--surface-column-shadow);
 }
 
 .column-header {
@@ -2487,7 +2591,7 @@ u {
 .column-cards {
   flex: 1;
   overflow: visible;
-  padding: 4px;
+  padding: var(--card-list-padding);
   min-height: 20px;
   user-select: none;
   -webkit-user-select: none;
@@ -2497,9 +2601,9 @@ u {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-left: 3px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--card-radius);
   padding: 0;
-  margin-bottom: 4px;
+  margin-bottom: var(--card-gap);
   font-size: 13px;
   line-height: 1.4;
   display: flex;
@@ -2509,6 +2613,7 @@ u {
   user-select: none;
   -webkit-user-select: none;
   overflow: hidden;
+  box-shadow: var(--card-shadow);
 }
 
 .card-header {
