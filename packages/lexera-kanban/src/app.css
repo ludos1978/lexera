@@ -117,9 +117,11 @@
 }
 
 /* ── Board Visual Theme: Gap Highlight ───────────────────────────────── */
-/* No borders or backgrounds — just thin lines in the gaps between       */
-/* elements. Uses !important to override applyTheme() inline styles.     */
+/* Flat, borderless elements. Separator lines drawn between siblings     */
+/* via column-rule / padding-based borders. !important overrides         */
+/* applyTheme() inline styles.                                           */
 [data-board-theme="gap-highlight"] {
+  /* Strip all element chrome */
   --surface-row-bg: transparent !important;
   --surface-row-border: transparent !important;
   --surface-row-radius: 0;
@@ -142,80 +144,64 @@
   --card-radius: 0;
   --card-shadow: none;
   --card-gap: 0;
-  --card-list-padding: 0;
+  --card-list-padding: 4px 0;
+  /* Separator line color */
+  --gap-line-color: var(--border);
 }
 
-/* Cards: 1px solid line, inset 5px from left/right */
+/* ── Card separators: 1px solid, 5px inset ──────────────────────────── */
+[data-board-theme="gap-highlight"] .column-cards {
+  padding: 2px 5px;
+}
+[data-board-theme="gap-highlight"] .card {
+  border-left: 3px solid transparent;
+}
 [data-board-theme="gap-highlight"] .card + .card {
-  position: relative;
-}
-[data-board-theme="gap-highlight"] .card + .card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 5px; right: 5px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--gap-line-color);
 }
 
-/* Columns: 2px dashed line, inset 10px from left/right */
+/* ── Column separators: 2px dashed, 10px inset ─────────────────────── */
 [data-board-theme="gap-highlight"] .board-stack-content {
   gap: 0;
-  padding: 0;
+  padding: 0 10px;
 }
 [data-board-theme="gap-highlight"] .column + .column {
-  position: relative;
-}
-[data-board-theme="gap-highlight"] .column + .column::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 10px; right: 10px;
-  border-top: 2px dashed var(--border);
+  border-top: 2px dashed var(--gap-line-color);
 }
 
-/* Stacks: 3px dashed line, inset 20px from top/bottom */
+/* ── Stack separators: 3px dashed, 20px inset ───────────────────────── */
 [data-board-theme="gap-highlight"] .board-row-content {
   gap: 0;
+  padding: 20px 0 !important;
 }
 [data-board-theme="gap-highlight"] .board-stack + .board-stack {
-  position: relative;
-}
-[data-board-theme="gap-highlight"] .board-stack + .board-stack::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 20px; bottom: 20px;
-  border-left: 3px dashed var(--border);
+  border-left: 3px dashed var(--gap-line-color);
 }
 
-/* Rows: 3px dotted line, inset 20px from left/right */
+/* ── Row separators: 3px dotted, 20px inset ─────────────────────────── */
+[data-board-theme="gap-highlight"] .columns-container {
+  padding-left: 20px;
+  padding-right: 20px;
+}
 [data-board-theme="gap-highlight"] .board-row + .board-row {
-  position: relative;
-}
-[data-board-theme="gap-highlight"] .board-row + .board-row::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 20px; right: 20px;
-  border-top: 3px dotted var(--border);
+  border-top: 3px dotted var(--gap-line-color);
 }
 
-/* Header/footer separators as thin lines */
+/* ── Header/footer: thin solid lines ────────────────────────────────── */
 [data-board-theme="gap-highlight"] .board-row-header {
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--gap-line-color);
 }
 [data-board-theme="gap-highlight"] .board-stack-header {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--gap-line-color);
   border-radius: 0;
 }
 [data-board-theme="gap-highlight"] .column-header {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--gap-line-color);
 }
 [data-board-theme="gap-highlight"] .board-row-footer,
 [data-board-theme="gap-highlight"] .board-stack-footer,
 [data-board-theme="gap-highlight"] .column-footer {
-  border-top: 1px solid var(--border);
-}
-
-/* Card left accent stays functional */
-[data-board-theme="gap-highlight"] .card {
-  border-left: 3px solid transparent;
+  border-top: 1px solid var(--gap-line-color);
 }
 
 /* Dark theme vars are applied by JS via applyTheme() */
