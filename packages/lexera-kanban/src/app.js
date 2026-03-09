@@ -2767,6 +2767,33 @@ const LexeraDashboard = (function () {
       var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
       var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
       openCardEditor(focusedCardEl, ci, cj, 'inline');
+    } else if (key === 'Home' && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var first = getElColumnsContainer().querySelector('.card[data-col-index="' + ci + '"][data-card-index="0"]');
+      if (first) focusCard(first);
+    } else if (key === 'End' && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var colCards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ci + '"]');
+      if (colCards.length > 0) focusCard(colCards[colCards.length - 1]);
+    } else if ((key === 'd' || key === 'D') && (e.ctrlKey || e.metaKey) && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      duplicateCard(ci, cj);
+    } else if ((key === 'Delete' || key === 'Backspace') && focusedCardEl) {
+      e.preventDefault();
+      var ci = parseInt(focusedCardEl.getAttribute('data-col-index'), 10);
+      var cj = parseInt(focusedCardEl.getAttribute('data-card-index'), 10);
+      deleteCard(ci, cj);
+    } else if (key === 'n' && !e.ctrlKey && !e.metaKey && !focusedCardEl && !mgmtPanelOpen) {
+      e.preventDefault();
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      if (columns.length > 0) {
+        addCardColumn = columns[0].index;
+        renderColumns();
+      }
     } else if (key === 'Escape' && mgmtPanelOpen) {
       closeManagementPanel();
     } else if (key === 'Escape' && focusedCardEl) {
@@ -10620,7 +10647,16 @@ const LexeraDashboard = (function () {
       { keys: mod + '+K', desc: 'Insert link' },
       { keys: mod + '+H', desc: 'Heading' },
       { keys: mod + '+`', desc: 'Inline code' },
-      { section: 'Navigation' },
+      { section: 'Card Navigation' },
+      { keys: '\u2191 / \u2193', desc: 'Move focus up / down' },
+      { keys: '\u2190 / \u2192', desc: 'Move focus left / right' },
+      { keys: 'Home / End', desc: 'Jump to first / last card' },
+      { keys: 'Enter', desc: 'Edit focused card' },
+      { keys: 'Escape', desc: 'Unfocus card' },
+      { keys: mod + '+D', desc: 'Duplicate focused card' },
+      { keys: 'Delete', desc: 'Delete focused card' },
+      { keys: 'N', desc: 'New card (when no card focused)' },
+      { section: 'Other' },
       { keys: '?', desc: 'Toggle this help' },
     ];
     var overlay = document.createElement('div');

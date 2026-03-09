@@ -129,6 +129,9 @@
 ### V1 Parity Gaps
 - [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
 
+### UI Improvements
+- [x] Added keyboard shortcuts for focused card actions: Ctrl/Cmd+D to duplicate, Delete/Backspace to trash, Home/End to jump to first/last card in column, N to add a new card when no card is focused. Updated keyboard shortcuts help overlay with Card Navigation section.
+
 ## File Format Overlay Editing Audit
 
 ### Diagrams
