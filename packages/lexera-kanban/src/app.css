@@ -145,31 +145,39 @@
   --card-list-padding: 0;
 }
 
-/* Gap lines between stacks (vertical) */
-[data-board-theme="gap-highlight"] .board-row-content {
-  gap: 0;
-}
-[data-board-theme="gap-highlight"] .board-stack + .board-stack {
-  border-left: 1px solid var(--border);
+/* Cards: 1px solid, 5px left/right margin */
+[data-board-theme="gap-highlight"] .card + .card {
+  border-top: 1px solid var(--border);
+  margin-left: 5px;
+  margin-right: 5px;
 }
 
-/* Gap lines between columns (horizontal) */
+/* Columns: 2px dashed, 10px left/right margin */
 [data-board-theme="gap-highlight"] .board-stack-content {
   gap: 0;
   padding: 0;
 }
 [data-board-theme="gap-highlight"] .column + .column {
-  border-top: 1px solid var(--border);
+  border-top: 2px dashed var(--border);
+  margin-left: 10px;
+  margin-right: 10px;
 }
 
-/* Gap lines between cards */
-[data-board-theme="gap-highlight"] .card + .card {
-  border-top: 1px solid var(--border);
+/* Stacks: 3px dashed, 20px top/bottom margin */
+[data-board-theme="gap-highlight"] .board-row-content {
+  gap: 0;
+}
+[data-board-theme="gap-highlight"] .board-stack + .board-stack {
+  border-left: 3px dashed var(--border);
+  margin-top: 20px;
+  margin-bottom: 20px;
 }
 
-/* Row separator lines */
+/* Rows: 3px dotted, 20px left/right margin */
 [data-board-theme="gap-highlight"] .board-row + .board-row {
-  border-top: 1px solid var(--border);
+  border-top: 3px dotted var(--border);
+  margin-left: 20px;
+  margin-right: 20px;
 }
 
 /* Header/footer separators as thin lines */
