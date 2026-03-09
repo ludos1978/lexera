@@ -11645,13 +11645,12 @@ const LexeraDashboard = (function () {
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
-      '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
       '<span class="drag-grip">\u22EE\u22EE</span>' +
       '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
+      '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
       '<span class="column-header-actions">' +
-        '<button class="column-edit-btn" title="Edit column title">&#9998;</button>' +
         '<button class="column-menu-btn burger-menu-btn" title="Column options">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';
     (function (columnEl, colIdx, rIdx, sIdx, cIdx) {
@@ -11678,6 +11677,16 @@ const LexeraDashboard = (function () {
         e.stopPropagation();
         var nowFolded = !columnEl.classList.contains('folded');
         columnEl.classList.toggle('folded', nowFolded);
+        if (e.altKey) {
+          // Alt+click: fold/unfold all cards in this column
+          var cards = columnEl.querySelectorAll('.card');
+          for (var ci = 0; ci < cards.length; ci++) {
+            cards[ci].classList.toggle('collapsed', nowFolded);
+            var toggle = cards[ci].querySelector('.card-collapse-toggle');
+            if (toggle) toggle.classList.toggle('expanded', !nowFolded);
+          }
+          saveCardCollapseState(activeBoardId);
+        }
         saveFoldState(activeBoardId);
       });
       header.addEventListener('contextmenu', function (e) {
@@ -11688,10 +11697,6 @@ const LexeraDashboard = (function () {
           stackIdx: sIdx,
           colLocalIdx: cIdx
         });
-      });
-      header.querySelector('.column-edit-btn').addEventListener('click', function (e) {
-        e.stopPropagation();
-        enterColumnRename(columnEl, colIdx);
       });
       header.querySelector('.column-menu-btn').addEventListener('click', function (e) {
         e.stopPropagation();
@@ -11730,20 +11735,6 @@ const LexeraDashboard = (function () {
       dragHandle.title = 'Drag to move card';
       headerRow.appendChild(dragHandle);
 
-      var toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
-      toggle.textContent = '\u25B6';
-      (function (toggleEl, el) {
-        toggleEl.addEventListener('click', function (e) {
-          e.stopPropagation();
-          el.classList.toggle('collapsed');
-          toggleEl.classList.toggle('expanded');
-          saveCardCollapseState(activeBoardId);
-        });
-      })(toggle, cardEl);
-      headerRow.appendChild(toggle);
-
       var titleContainer = document.createElement('div');
       titleContainer.className = 'card-title-container';
       var titleDisplay = document.createElement('div');
@@ -11751,6 +11742,34 @@ const LexeraDashboard = (function () {
       titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)));
       titleContainer.appendChild(titleDisplay);
       headerRow.appendChild(titleContainer);
+
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
+      toggle.textContent = '\u25B6';
+      (function (toggleEl, el) {
+        toggleEl.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (e.altKey) {
+            // Alt+click: fold/unfold all cards in the same column
+            var column = el.closest('.column');
+            if (column) {
+              var nowCollapsed = !el.classList.contains('collapsed');
+              var allCards = column.querySelectorAll('.card');
+              for (var ai = 0; ai < allCards.length; ai++) {
+                allCards[ai].classList.toggle('collapsed', nowCollapsed);
+                var t = allCards[ai].querySelector('.card-collapse-toggle');
+                if (t) t.classList.toggle('expanded', !nowCollapsed);
+              }
+            }
+          } else {
+            el.classList.toggle('collapsed');
+            toggleEl.classList.toggle('expanded');
+          }
+          saveCardCollapseState(activeBoardId);
+        });
+      })(toggle, cardEl);
+      headerRow.appendChild(toggle);
 
       var cardDueDate = extractFirstTemporalDateValue(card.content || '');
       if (cardDueDate) {
@@ -11951,12 +11970,11 @@ const LexeraDashboard = (function () {
         }
       }
       rowHeader.innerHTML =
-        '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         '<span class="drag-grip">\u22EE\u22EE</span>' +
         '<span class="board-row-title">' + escapeHtml(rowDisplayTitle.length > 40 ? rowDisplayTitle.slice(0, 40) + '\u2026' : rowDisplayTitle) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
+        '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         '<span class="row-header-actions">' +
-          '<button class="row-edit-btn" title="Edit row title">&#9998;</button>' +
           '<button class="row-menu-btn burger-menu-btn" title="Row options">' + BURGER_MENU_ICON_HTML + '</button>' +
         '</span>';
       (function (el, rowIdx) {
@@ -11978,10 +11996,6 @@ const LexeraDashboard = (function () {
         rowHeader.querySelector('.row-fold-btn').addEventListener('click', function (e) {
           e.stopPropagation();
           toggleRowFold(!!e.altKey);
-        });
-        rowHeader.querySelector('.row-edit-btn').addEventListener('click', function (e) {
-          e.stopPropagation();
-          renameRowOrStack('row', rowIdx);
         });
         rowHeader.querySelector('.row-menu-btn').addEventListener('click', function (e) {
           e.stopPropagation();
@@ -12033,12 +12047,11 @@ const LexeraDashboard = (function () {
         var stackColCount = stackColumnEntries.length;
         var stackDisplayTitle = stripHtmlComments(stack.title || '');
         stackHeader.innerHTML =
-          '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           '<span class="drag-grip">\u22EE\u22EE</span>' +
           '<span class="board-stack-title">' + (stackDisplayTitle ? escapeHtml(stackDisplayTitle.length > 40 ? stackDisplayTitle.slice(0, 40) + '\u2026' : stackDisplayTitle) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
+          '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           '<span class="stack-header-actions">' +
-            '<button class="stack-edit-btn" title="Edit stack title">&#9998;</button>' +
             '<button class="stack-menu-btn burger-menu-btn" title="Stack options">' + BURGER_MENU_ICON_HTML + '</button>' +
             (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
           '</span>';
@@ -12068,10 +12081,6 @@ const LexeraDashboard = (function () {
           stackHeader.querySelector('.stack-fold-btn').addEventListener('click', function (e) {
             e.stopPropagation();
             toggleStackFold(!!e.altKey);
-          });
-          stackHeader.querySelector('.stack-edit-btn').addEventListener('click', function (e) {
-            e.stopPropagation();
-            renameRowOrStack('stack', rIdx, sIdx);
           });
           stackHeader.querySelector('.stack-menu-btn').addEventListener('click', function (e) {
             e.stopPropagation();
