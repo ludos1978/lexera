@@ -145,39 +145,55 @@
   --card-list-padding: 0;
 }
 
-/* Cards: 1px solid, 5px left/right margin */
+/* Cards: 1px solid line, inset 5px from left/right */
 [data-board-theme="gap-highlight"] .card + .card {
+  position: relative;
+}
+[data-board-theme="gap-highlight"] .card + .card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 5px; right: 5px;
   border-top: 1px solid var(--border);
-  margin-left: 5px;
-  margin-right: 5px;
 }
 
-/* Columns: 2px dashed, 10px left/right margin */
+/* Columns: 2px dashed line, inset 10px from left/right */
 [data-board-theme="gap-highlight"] .board-stack-content {
   gap: 0;
   padding: 0;
 }
 [data-board-theme="gap-highlight"] .column + .column {
+  position: relative;
+}
+[data-board-theme="gap-highlight"] .column + .column::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 10px; right: 10px;
   border-top: 2px dashed var(--border);
-  margin-left: 10px;
-  margin-right: 10px;
 }
 
-/* Stacks: 3px dashed, 20px top/bottom margin */
+/* Stacks: 3px dashed line, inset 20px from top/bottom */
 [data-board-theme="gap-highlight"] .board-row-content {
   gap: 0;
 }
 [data-board-theme="gap-highlight"] .board-stack + .board-stack {
+  position: relative;
+}
+[data-board-theme="gap-highlight"] .board-stack + .board-stack::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 20px; bottom: 20px;
   border-left: 3px dashed var(--border);
-  margin-top: 20px;
-  margin-bottom: 20px;
 }
 
-/* Rows: 3px dotted, 20px left/right margin */
+/* Rows: 3px dotted line, inset 20px from left/right */
 [data-board-theme="gap-highlight"] .board-row + .board-row {
+  position: relative;
+}
+[data-board-theme="gap-highlight"] .board-row + .board-row::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 20px; right: 20px;
   border-top: 3px dotted var(--border);
-  margin-left: 20px;
-  margin-right: 20px;
 }
 
 /* Header/footer separators as thin lines */
