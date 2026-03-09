@@ -24224,27 +24224,6 @@ const LexeraDashboard = (function () {
       for (var i = 0; i < GAP_HIGHLIGHT_INLINE_VARS.length; i++) {
         root.style.removeProperty('--' + GAP_HIGHLIGHT_INLINE_VARS[i]);
       }
-      // Re-run applyTheme to restore the bordered surface values
-      var currentThemeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
-                            localStorage.getItem('lexera-theme') || 'lexera';
-      var theme = null;
-      for (var t = 0; t < THEMES.length; t++) {
-        if (THEMES[t].id === currentThemeId) { theme = THEMES[t]; break; }
-      }
-      if (!theme) theme = THEMES[0];
-      if (theme) {
-        var isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var palette = isDark ? theme.dark : theme.light;
-        root.style.setProperty('--surface-row-bg', palette['--bg-primary'] || '');
-        root.style.setProperty('--surface-row-border', palette['--border'] || '');
-        root.style.setProperty('--surface-stack-bg', palette['--bg-secondary'] || '');
-        root.style.setProperty('--surface-stack-border', palette['--border'] || '');
-        root.style.setProperty('--surface-column-bg', palette['--bg-secondary'] || '');
-        root.style.setProperty('--surface-column-border', palette['--border'] || '');
-        root.style.setProperty('--surface-header-bg', palette['--bg-tertiary'] || palette['--bg-secondary'] || '');
-        root.style.setProperty('--surface-header-border', palette['--border'] || '');
-        root.style.setProperty('--surface-footer-bg', palette['--bg-secondary'] || '');
-      }
     } else {
       root.setAttribute('data-board-theme', themeId);
       var isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -24259,6 +24238,13 @@ const LexeraDashboard = (function () {
   function setActiveBoardTheme(themeId) {
     applyBoardTheme(themeId);
     saveBoardTheme();
+    // When switching to bordered, re-apply the color theme so its surface
+    // variables (set as inline styles by applyTheme) are restored.
+    if (themeId === 'bordered') {
+      var colorThemeId = (typeof getLexeraCurrentThemeId === 'function' && getLexeraCurrentThemeId()) ||
+                          localStorage.getItem('lexera-theme') || 'lexera';
+      applyTheme(colorThemeId);
+    }
   }
 
   function getActiveBoardTheme() {
