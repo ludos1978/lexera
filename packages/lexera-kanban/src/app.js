@@ -606,7 +606,7 @@ const LexeraDashboard = (function () {
     foldCardsExpanded: '\u25BE',
     pinHeaders: '\uD83D\uDCCC',
     processes: '\u2699',
-    templatesZoom: '\u2315',
+    themeZoom: '\u2315',
     exportPack: '\u21EA'
   };
   var $uiScale = 1;
@@ -6954,7 +6954,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn" id="btn-board-stats" title="Toggle board statistics">Stats</button>';
     html += '<button class="board-action-btn" id="btn-running-processes" title="Open running processes and logs">Processes</button>';
     html += '<button class="board-action-btn" id="btn-save-tracking" title="Save now and inspect change tracking">Changes</button>';
-    html += '<button class="board-action-btn" id="btn-template-zoom" title="Template selection and zoom controls">Templates / Zoom</button>';
+    html += '<button class="board-action-btn" id="btn-theme-zoom" title="Visual style and zoom controls">Themes / Zoom</button>';
     html += '<button class="board-action-btn" id="btn-export" title="Export or pack board">Export / Pack</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Extended board settings">' + BURGER_MENU_ICON_HTML + '</button>';
     html += '</div>';
@@ -7041,12 +7041,12 @@ const LexeraDashboard = (function () {
         openRunningProcessesPanel();
       });
     }
-    var templateZoomBtn = document.getElementById('btn-template-zoom');
-    if (templateZoomBtn) {
-      templateZoomBtn.addEventListener('click', function (e) {
+    var themeZoomBtn = document.getElementById('btn-theme-zoom');
+    if (themeZoomBtn) {
+      themeZoomBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showTemplateZoomMenu(templateZoomBtn);
+        showThemeZoomMenu(themeZoomBtn);
       });
     }
     var createEmptyBtn = document.getElementById('btn-create-empty');
@@ -8014,25 +8014,29 @@ const LexeraDashboard = (function () {
     });
   }
 
-  function showTemplateZoomMenu(btnElement) {
+  function showThemeZoomMenu(btnElement) {
     if (!btnElement) return;
     var rect = btnElement.getBoundingClientRect();
     var zoomLevels = [0.8, 0.9, 1, 1.1, 1.25];
-    var items = [
-      { id: 'zoom-in', label: 'Zoom In (+)' },
-      { id: 'zoom-out', label: 'Zoom Out (-)' },
-      { id: 'zoom-reset', label: 'Reset Zoom (100%)' },
-      { separator: true },
-      { id: 'zoom-current', label: 'Current Zoom: ' + getUiScalePercentLabel(), disabled: true },
-      { separator: true },
-      { id: 'open-template-chooser', label: 'Open Templates' }
-    ];
-    items = zoomLevels.map(function (scale) {
+    var items = buildBoardThemeItems('set-board-theme');
+    items.push({ separator: true });
+    var zoomItems = zoomLevels.map(function (scale) {
       var percent = Math.round(scale * 100);
       return { id: 'ui-scale:' + scale, label: ($uiScale === scale ? '\u2713 ' : '') + 'Zoom ' + percent + '%' };
-    }).concat(items);
-    showNativeMenu(items, rect.right, rect.bottom, 'header.templateZoom').then(function (action) {
+    });
+    items = items.concat(zoomItems);
+    items.push({ separator: true });
+    items.push({ id: 'zoom-in', label: 'Zoom In (+)' });
+    items.push({ id: 'zoom-out', label: 'Zoom Out (-)' });
+    items.push({ id: 'zoom-reset', label: 'Reset Zoom (100%)' });
+    showNativeMenu(items, rect.right, rect.bottom, 'header.themeZoom').then(function (action) {
       if (!action) return;
+      if (action.indexOf('set-board-theme:') === 0) {
+        var themeId = action.substring('set-board-theme:'.length);
+        setBoardTheme(themeId);
+        showNotification('Visual style: ' + (BOARD_THEME_LABELS[themeId] || themeId));
+        return;
+      }
       if (action.indexOf('ui-scale:') === 0) {
         var nextScale = parseFloat(action.substring('ui-scale:'.length));
         if (isFinite(nextScale)) {
@@ -8041,22 +8045,11 @@ const LexeraDashboard = (function () {
         }
         return;
       }
-      if (action === 'zoom-in') {
-        nudgeUiScale(0.05);
-        return;
-      }
-      if (action === 'zoom-out') {
-        nudgeUiScale(-0.05);
-        return;
-      }
+      if (action === 'zoom-in') { nudgeUiScale(0.05); return; }
+      if (action === 'zoom-out') { nudgeUiScale(-0.05); return; }
       if (action === 'zoom-reset') {
         applyUiScale(1);
         showNotification('Zoom 100%');
-        return;
-      }
-      if (action === 'open-template-chooser') {
-        var templateBtn = document.getElementById('btn-create-template');
-        showHeaderSourceDropdown('template', templateBtn || btnElement);
       }
     });
   }
@@ -8744,7 +8737,7 @@ const LexeraDashboard = (function () {
     var archivedBtn = document.getElementById('btn-archived');
     var trashBtn = document.getElementById('btn-trash');
     var runningProcessesBtn = document.getElementById('btn-running-processes');
-    var templateZoomBtn = document.getElementById('btn-template-zoom');
+    var themeZoomBtn = document.getElementById('btn-theme-zoom');
     var exportBtn = document.getElementById('btn-export');
 
     var parkedCount = getParkedCount();
@@ -8824,7 +8817,7 @@ const LexeraDashboard = (function () {
       }
 
       setHeaderActionLabel(runningProcessesBtn, 'Processes', BOARD_HEADER_V1_COMPACT_ICONS.processes, 'Open running processes and logs');
-      setHeaderActionLabel(templateZoomBtn, 'Templates / Zoom', BOARD_HEADER_V1_COMPACT_ICONS.templatesZoom, 'Template selection and zoom controls');
+      setHeaderActionLabel(themeZoomBtn, 'Themes / Zoom', BOARD_HEADER_V1_COMPACT_ICONS.themeZoom, 'Visual style and zoom controls');
       setHeaderActionLabel(exportBtn, 'Export / Pack', BOARD_HEADER_V1_COMPACT_ICONS.exportPack, 'Export or pack board');
 
       if ($saveTrackingBtn) {
@@ -9154,7 +9147,7 @@ const LexeraDashboard = (function () {
       { id: 'open-save-tracking', label: 'Save / Change Tracking' },
       { id: 'save-now', label: 'Save Now' },
       { id: 'open-management', label: 'Management' },
-      { id: 'open-template-zoom', label: 'Templates / Zoom' },
+      { id: 'open-theme-zoom', label: 'Themes / Zoom' },
       { id: 'export-board', label: 'Export / Pack' },
       { id: 'backend-settings', label: 'Backend Settings' },
       { id: splitActive ? 'split-disable' : 'split-enable', label: splitActive ? 'Disable Split View' : 'Enable Split View' },
@@ -9329,9 +9322,9 @@ const LexeraDashboard = (function () {
       openManagementPanel();
       return;
     }
-    if (action === 'open-template-zoom') {
-      var tplBtn = document.getElementById('btn-template-zoom');
-      if (tplBtn) showTemplateZoomMenu(tplBtn);
+    if (action === 'open-theme-zoom') {
+      var tzBtn = document.getElementById('btn-theme-zoom');
+      if (tzBtn) showThemeZoomMenu(tzBtn);
       return;
     }
     if (action === 'file-open-board-settings') {
