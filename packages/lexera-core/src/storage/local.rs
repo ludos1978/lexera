@@ -335,6 +335,23 @@ impl LocalStorage {
         crdt_board.generation_meta = board.generation_meta.clone();
         crdt_board.format_hint = board.format_hint;
         crdt_board.reconcile_format_hint();
+
+        // The CRDT bridge returns legacy boards with flat `columns` but the
+        // parser always wraps them in Default row/stack (`rows`).  Align the
+        // CRDT board to match the parser convention so callers always see a
+        // consistent structure.
+        if crdt_board.rows.is_empty() && !crdt_board.columns.is_empty() {
+            crdt_board.rows = vec![crate::types::KanbanRow {
+                id: "row-default".to_string(),
+                title: "Default".to_string(),
+                stacks: vec![crate::types::KanbanStack {
+                    id: "stack-default".to_string(),
+                    title: "Default".to_string(),
+                    columns: std::mem::take(&mut crdt_board.columns),
+                }],
+            }];
+        }
+
         Some(crdt_board)
     }
 
@@ -1176,6 +1193,7 @@ impl LocalStorage {
         // saves already target the `-lexera2.md` path.
         let file_path_str = file_path.to_string_lossy();
         let is_legacy_redirect = board_to_write.format_hint == crate::types::BoardFormat::Legacy
+            && !board_to_write.has_explicit_hierarchy()
             && !file_path_str.contains("-lexera2");
         let (actual_path, redirected_path) = if is_legacy_redirect {
             let stem = file_path
@@ -3172,9 +3190,10 @@ kanban-plugin: board
             cols_mut[0].include_source = None;
         }
 
-        storage.write_board(&id, &board).unwrap();
+        let result = storage.write_board(&id, &board).unwrap();
+        let read_path = result.redirected_path.as_deref().unwrap_or(&board_path);
 
-        let on_disk_board = fs::read_to_string(&board_path).unwrap();
+        let on_disk_board = fs::read_to_string(read_path).unwrap();
         assert!(on_disk_board.contains("## Todo !!!include(./slides.md)!!!"));
         assert!(!on_disk_board.contains("- [ ] Task 1"));
 
@@ -3819,10 +3838,11 @@ kanban-plugin: board
         // Modify the board and write it back
         let mut board = storage.read_board(&id).unwrap();
         board.all_columns_mut()[0].cards[0].content = "Modified task".to_string();
-        storage.write_board(&id, &board).unwrap();
+        let result = storage.write_board(&id, &board).unwrap();
+        let read_path = result.redirected_path.as_deref().unwrap_or(&board_path);
 
         // Verify file content on disk matches what we wrote
-        let on_disk = fs::read_to_string(&board_path).unwrap();
+        let on_disk = fs::read_to_string(read_path).unwrap();
         assert!(
             on_disk.contains("Modified task"),
             "disk content should contain modified card"
@@ -3833,7 +3853,7 @@ kanban-plugin: board
         );
 
         // Verify no .tmp files are left behind
-        let tmp_path = board_path.with_extension("lexera-sync.tmp");
+        let tmp_path = read_path.with_extension("lexera-sync.tmp");
         assert!(
             !tmp_path.exists(),
             "temp file should be cleaned up after atomic write"
