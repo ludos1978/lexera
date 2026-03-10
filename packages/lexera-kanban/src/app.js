@@ -800,6 +800,20 @@ const LexeraDashboard = (function () {
     localStorage.setItem('lexera-show-marp-settings', enabled ? 'true' : 'false');
   }
 
+  /** Sync all View toggle check states to the native OS menu bar. */
+  function syncMenuCheckStates() {
+    if (!hasTauri) return;
+    var states = {
+      'view-special-chars': isSpecialCharactersVisible(),
+      'view-marp-settings': isMarpSettingsEnabled(),
+      'view-overlay-editor': isOverlayEditorEnabled(),
+      'view-wysiwyg-editor': isWysiwygEditorEnabled()
+    };
+    Object.keys(states).forEach(function (id) {
+      tauriInvoke('set_menu_check_state', { id: id, checked: states[id] });
+    });
+  }
+
   function normalizePathForCompare(path) {
     return String(path || '').replace(/\\/g, '/');
   }
@@ -1273,11 +1287,29 @@ const LexeraDashboard = (function () {
     }
   }
 
+  function setColumnChildrenFoldState(columnEl, folded) {
+    if (!columnEl) return;
+    var cards = columnEl.querySelectorAll('.card');
+    for (var i = 0; i < cards.length; i++) {
+      cards[i].classList.toggle('collapsed', folded);
+      var t = cards[i].querySelector('.card-collapse-toggle');
+      if (t) t.classList.toggle('expanded', !folded);
+    }
+  }
+
   function setRowChildrenFoldState(rowEl, folded) {
     if (!rowEl) return;
     var rowContent = rowEl.querySelector('.board-row-content');
     if (!rowContent) return;
     setDirectChildFoldState(rowContent, 'board-stack', folded);
+    // Cascade into columns and cards
+    var columns = rowEl.querySelectorAll('.column');
+    for (var i = 0; i < columns.length; i++) {
+      if (folded) columns[i].classList.add('folded');
+      else columns[i].classList.remove('folded');
+      setColumnChildrenFoldState(columns[i], folded);
+    }
+    saveCardCollapseState(activeBoardId);
   }
 
   function setStackChildrenFoldState(stackEl, folded) {
@@ -1285,6 +1317,12 @@ const LexeraDashboard = (function () {
     var stackContent = stackEl.querySelector('.board-stack-content');
     if (!stackContent) return;
     setDirectChildFoldState(stackContent, 'column', folded);
+    // Cascade into cards
+    var columns = stackEl.querySelectorAll('.column');
+    for (var i = 0; i < columns.length; i++) {
+      setColumnChildrenFoldState(columns[i], folded);
+    }
+    saveCardCollapseState(activeBoardId);
   }
 
   function reorderItems(items, sourceIdx, targetIdx, insertBefore) {
@@ -2787,6 +2825,13 @@ const LexeraDashboard = (function () {
         }
         addBoardsByPath(paths);
       });
+      // Native OS menu bar actions
+      tauriListen('menu-action', function (event) {
+        var action = event.payload;
+        if (action) handleBoardAction(action);
+      });
+      // Sync initial check states to native menu
+      syncMenuCheckStates();
     }
 
     setupSplitControls();
@@ -7035,10 +7080,15 @@ const LexeraDashboard = (function () {
       });
     }
     if (fileHeaderMenuBtn) {
+      var _fileMenuOpen = false;
       fileHeaderMenuBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showFileHeaderSettingsMenu(fileHeaderMenuBtn);
+        if (_fileMenuOpen) return;
+        _fileMenuOpen = true;
+        showFileHeaderSettingsMenu(fileHeaderMenuBtn).finally(function () {
+          _fileMenuOpen = false;
+        });
       });
     }
 
@@ -9070,18 +9120,11 @@ const LexeraDashboard = (function () {
 
   async function showFileHeaderSettingsMenu(btnElement, forcedX, forcedY) {
     if (!btnElement) return;
-    await refreshExportToolStatus('pandoc', false);
-    await refreshEmbeddedRendererStatuses(false);
-    await refreshAvailableMarpClasses(false);
+    // Refresh tool status in background — don't block menu from showing
+    refreshExportToolStatus('pandoc', false).catch(function () {});
+    refreshEmbeddedRendererStatuses(false).catch(function () {});
+    refreshAvailableMarpClasses(false).catch(function () {});
     var items = [
-      {
-        id: 'file-open-board-settings',
-        label: 'Open Board Settings Panel'
-      },
-      {
-        id: 'file-open-export-settings',
-        label: 'Open Export / Pack (Marp & Pandoc)'
-      },
       {
         id: 'file-marp-global',
         label: 'Marp YAML / Frontmatter',
@@ -9096,30 +9139,7 @@ const LexeraDashboard = (function () {
         id: 'file-renderer-settings',
         label: 'Embedded Renderer Status',
         items: buildEmbeddedRendererStatusMenuItems()
-      },
-      { separator: true },
-      {
-        id: 'file-header-sticky-mode',
-        label: 'Pinned Header Mode',
-        items: buildStickyHeaderModeItems('set-sticky-headers')
-      },
-      {
-        id: 'file-header-tag-visibility',
-        label: 'Tag Visibility',
-        items: buildTagVisibilityModeItems('set-tag-visibility')
-      },
-      {
-        id: 'file-header-html-comments',
-        label: 'HTML Comment Rendering',
-        items: buildHtmlCommentModeItems('set-html-comments')
-      },
-      {
-        id: 'file-header-html-content',
-        label: 'HTML Content Rendering',
-        items: buildHtmlContentModeItems('set-html-content')
-      },
-      { separator: true },
-      { id: 'file-toggle-marp-settings', label: formatMenuToggleLabel(isMarpSettingsEnabled(), 'Show Marp Settings') }
+      }
     ];
     var x = forcedX;
     var y = forcedY;
@@ -9128,7 +9148,7 @@ const LexeraDashboard = (function () {
       x = rect.right;
       y = rect.bottom;
     }
-    showNativeMenu(items, x, y, 'header.file').then(function (action) {
+    return showNativeMenu(items, x, y, 'header.file').then(function (action) {
       if (action) handleBoardAction(action);
     });
   }
@@ -9144,7 +9164,6 @@ const LexeraDashboard = (function () {
     var items = [
       { id: 'set-board-theme', label: 'Visual Style', items: buildBoardThemeItems('set-board-theme') },
       { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
-      { id: 'set-tag-visibility', label: 'Tag Visibility', items: buildTagVisibilityModeItems('set-tag-visibility') },
       { separator: true },
       { id: 'set-column-width', label: 'Column Width', items: buildColumnWidthModeItems('set-column-width') },
       { id: 'set-card-height', label: 'Card Height', items: buildCardHeightModeItems('set-card-height') },
@@ -9158,13 +9177,6 @@ const LexeraDashboard = (function () {
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
       { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildStickyHeaderModeItems('set-sticky-headers') },
       { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildArrowKeyFocusScrollModeItems('set-arrow-focus-scroll') },
-      { separator: true },
-      { id: 'set-html-comments', label: 'HTML Comment Rendering', items: buildHtmlCommentModeItems('set-html-comments') },
-      { id: 'set-html-content', label: 'HTML Content Rendering', items: buildHtmlContentModeItems('set-html-content') },
-      { id: 'toggle-overlay-editor', label: formatMenuToggleLabel(isOverlayEditorEnabled(), 'Overlay Editor Enabled') },
-      { id: 'toggle-wysiwyg-editor', label: formatMenuToggleLabel(isWysiwygEditorEnabled(), 'WYSIWYG Editor Enabled') },
-      { id: 'toggle-special-chars', label: formatMenuToggleLabel(isSpecialCharactersVisible(), 'Show Special Characters') },
-      { id: 'toggle-marp-settings', label: formatMenuToggleLabel(isMarpSettingsEnabled(), 'Show Marp Settings') },
     ];
 
     showNativeMenu(items, x, y).then(function (action) {
@@ -9314,6 +9326,7 @@ const LexeraDashboard = (function () {
     }
     if (action === 'file-toggle-marp-settings') {
       setMarpSettingsEnabled(!isMarpSettingsEnabled());
+      syncMenuCheckStates();
       return;
     }
     if (action.indexOf('set-sticky-headers:') === 0) {
@@ -9329,18 +9342,22 @@ const LexeraDashboard = (function () {
     }
     if (action === 'toggle-overlay-editor') {
       setOverlayEditorEnabled(!isOverlayEditorEnabled());
+      syncMenuCheckStates();
       return;
     }
     if (action === 'toggle-wysiwyg-editor') {
       setWysiwygEditorEnabled(!isWysiwygEditorEnabled());
+      syncMenuCheckStates();
       return;
     }
     if (action === 'toggle-special-chars') {
       setSpecialCharactersVisible(!isSpecialCharactersVisible());
+      syncMenuCheckStates();
       return;
     }
     if (action === 'toggle-marp-settings') {
       setMarpSettingsEnabled(!isMarpSettingsEnabled());
+      syncMenuCheckStates();
       return;
     }
     if (action.indexOf('set-html-comments:') === 0) {
@@ -9435,6 +9452,121 @@ const LexeraDashboard = (function () {
     }
     if (action === 'copy-board-markdown') {
       copyElementAsMarkdown('board', {});
+      return;
+    }
+    // Menu-bar actions: toggle fold (both directions from a single action)
+    if (action === 'toggle-fold-cards') {
+      toggleFoldAllCards();
+      return;
+    }
+    if (action === 'toggle-fold-columns') {
+      toggleFoldAllColumns();
+      return;
+    }
+    // Menu-bar actions: search
+    if (action === 'open-search') {
+      openSearchReplacePanel();
+      return;
+    }
+    if (action === 'open-search-replace') {
+      openSearchReplacePanel();
+      return;
+    }
+    // Menu-bar actions: paste as card (into first column)
+    if (action === 'paste-as-card') {
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      if (columns.length > 0) pasteClipboardAsCard(columns[0].index);
+      return;
+    }
+    // Menu-bar actions: zoom
+    if (action === 'zoom-in') {
+      nudgeUiScale(0.05);
+      return;
+    }
+    if (action === 'zoom-out') {
+      nudgeUiScale(-0.05);
+      return;
+    }
+    if (action === 'zoom-reset') {
+      applyUiScale(1);
+      showNotification('Zoom 100%');
+      return;
+    }
+    // Menu-bar actions: split view
+    if (action === 'split-enable-vertical') {
+      if (embeddedMode) return;
+      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
+      splitViewMode = 'vertical';
+      applySplitMode(false);
+      return;
+    }
+    if (action === 'split-enable-horizontal') {
+      if (embeddedMode) return;
+      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
+      splitViewMode = 'horizontal';
+      applySplitMode(false);
+      return;
+    }
+    // Menu-bar actions: recent boards
+    if (action === 'show-recent-boards') {
+      var sidebarBoardItems = document.querySelectorAll('.sidebar-board-item');
+      if (sidebarBoardItems.length > 0) sidebarBoardItems[0].scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    // Menu-bar actions: card/column focus navigation
+    if (action === 'focus-next-card') {
+      navigateCards('ArrowDown');
+      return;
+    }
+    if (action === 'focus-prev-card') {
+      navigateCards('ArrowUp');
+      return;
+    }
+    if (action === 'focus-next-column') {
+      navigateCards('ArrowRight');
+      return;
+    }
+    if (action === 'focus-prev-column') {
+      navigateCards('ArrowLeft');
+      return;
+    }
+    // Menu-bar actions: board structure
+    if (action === 'add-stack') {
+      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) {
+        await addStackToRow(activeBoardData.rows.length - 1);
+      }
+      return;
+    }
+    if (action === 'add-column') {
+      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) {
+        var lastRow = activeBoardData.rows[activeBoardData.rows.length - 1];
+        if (lastRow.stacks && lastRow.stacks.length > 0) {
+          await addColumnToStack(activeBoardData.rows.length - 1, lastRow.stacks.length - 1);
+        }
+      }
+      return;
+    }
+    if (action === 'add-card') {
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      if (columns.length > 0) {
+        addCardColumn = columns[0].index;
+        renderColumns();
+      }
+      return;
+    }
+    // Menu-bar actions: stats / processes
+    if (action === 'toggle-board-stats') {
+      toggleBoardStatsBar();
+      return;
+    }
+    if (action === 'show-processes') {
+      openRunningProcessesPanel();
+      return;
+    }
+    // Menu-bar actions: keyboard shortcuts help
+    if (action === 'show-keyboard-shortcuts') {
+      showKeyboardShortcutsHelp();
+      return;
     }
   }
 
@@ -11613,19 +11745,16 @@ const LexeraDashboard = (function () {
       });
       header.querySelector('.column-fold-btn').addEventListener('click', function (e) {
         e.stopPropagation();
-        var nowFolded = !columnEl.classList.contains('folded');
-        columnEl.classList.toggle('folded', nowFolded);
         if (e.altKey) {
-          // Alt+click: fold/unfold all cards in this column
-          var cards = columnEl.querySelectorAll('.card');
-          for (var ci = 0; ci < cards.length; ci++) {
-            cards[ci].classList.toggle('collapsed', nowFolded);
-            var toggle = cards[ci].querySelector('.card-collapse-toggle');
-            if (toggle) toggle.classList.toggle('expanded', !nowFolded);
-          }
+          // Alt+click: toggle all cards in this column without folding the column itself
+          var anyCardExpanded = !!columnEl.querySelector('.card:not(.collapsed)');
+          setColumnChildrenFoldState(columnEl, anyCardExpanded);
           saveCardCollapseState(activeBoardId);
+        } else {
+          var nowFolded = !columnEl.classList.contains('folded');
+          columnEl.classList.toggle('folded', nowFolded);
+          saveFoldState(activeBoardId);
         }
-        saveFoldState(activeBoardId);
       });
       header.addEventListener('contextmenu', function (e) {
         e.preventDefault();
@@ -11689,15 +11818,20 @@ const LexeraDashboard = (function () {
         toggleEl.addEventListener('click', function (e) {
           e.stopPropagation();
           if (e.altKey) {
-            // Alt+click: fold/unfold all cards in the same column
+            // Alt+click: fold/unfold all OTHER cards in the same column (not the clicked one)
             var column = el.closest('.column');
             if (column) {
-              var nowCollapsed = !el.classList.contains('collapsed');
+              var anyOtherExpanded = false;
               var allCards = column.querySelectorAll('.card');
               for (var ai = 0; ai < allCards.length; ai++) {
-                allCards[ai].classList.toggle('collapsed', nowCollapsed);
+                if (allCards[ai] === el) continue;
+                if (!allCards[ai].classList.contains('collapsed')) { anyOtherExpanded = true; break; }
+              }
+              for (var ai = 0; ai < allCards.length; ai++) {
+                if (allCards[ai] === el) continue;
+                allCards[ai].classList.toggle('collapsed', anyOtherExpanded);
                 var t = allCards[ai].querySelector('.card-collapse-toggle');
-                if (t) t.classList.toggle('expanded', !nowCollapsed);
+                if (t) t.classList.toggle('expanded', !anyOtherExpanded);
               }
             }
           } else {
@@ -11916,11 +12050,14 @@ const LexeraDashboard = (function () {
           '<button class="row-menu-btn burger-menu-btn" title="Row options">' + BURGER_MENU_ICON_HTML + '</button>' +
         '</span>';
       (function (el, rowIdx) {
-        function toggleRowFold(recursiveChildren) {
-          var nowFolded = !el.classList.contains('folded');
-          el.classList.toggle('folded', nowFolded);
-          if (recursiveChildren) {
-            setRowChildrenFoldState(el, nowFolded);
+        function toggleRowFold(childrenOnly) {
+          if (childrenOnly) {
+            // Alt+click: toggle children fold state without folding the row itself
+            var anyChildUnfolded = !!el.querySelector('.board-stack:not(.folded)');
+            setRowChildrenFoldState(el, anyChildUnfolded);
+          } else {
+            var nowFolded = !el.classList.contains('folded');
+            el.classList.toggle('folded', nowFolded);
           }
           saveFoldState(activeBoardId);
         }
@@ -11994,11 +12131,14 @@ const LexeraDashboard = (function () {
             (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
           '</span>';
         (function (el, rIdx, sIdx) {
-          function toggleStackFold(recursiveChildren) {
-            var nowFolded = !el.classList.contains('folded');
-            el.classList.toggle('folded', nowFolded);
-            if (recursiveChildren) {
-              setStackChildrenFoldState(el, nowFolded);
+          function toggleStackFold(childrenOnly) {
+            if (childrenOnly) {
+              // Alt+click: toggle children fold state without folding the stack itself
+              var anyChildUnfolded = !!el.querySelector('.column:not(.folded)');
+              setStackChildrenFoldState(el, anyChildUnfolded);
+            } else {
+              var nowFolded = !el.classList.contains('folded');
+              el.classList.toggle('folded', nowFolded);
             }
             saveFoldState(activeBoardId);
           }

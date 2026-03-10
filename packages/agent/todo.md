@@ -4,6 +4,26 @@
 
 - [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
 
+### Native OS Menu Bar (done)
+- [x] Add native OS menu bar with File, Edit, View, Go, Board, Help menus via Tauri `app_menu.rs`.
+- [x] Wire all menu actions to frontend via `menu-action` event → `handleBoardAction()`.
+- [x] Remove duplicate display settings from file header burger menu (now in native menus).
+- [x] Fix file header menu slowness — don't block menu display on async backend refreshes.
+- [ ] Add Smart Paste (Shift+Cmd+V): detect clipboard content type (URL, image path, markdown, presentation slides) and paste with appropriate formatting.
+
+### Alt+Click to Open Links and Embeds
+- [ ] Add Alt+Click handler on rendered card content: Alt+clicking a link opens it in the system browser, Alt+clicking an image opens the file in the system app, Alt+clicking an embed opens the source file. Use the existing `openInSystem` Tauri command.
+
+### Card Editor Improvements
+- [ ] Add drag-and-drop file support in the card overlay editor: dropping an image file into the editor textarea inserts a markdown image embed `![](relative-path)`, dropping other files inserts a file link. Resolve paths relative to the board file location.
+- [ ] Add image paste support in the card editor: pasting an image from clipboard saves it to a media folder next to the board file and inserts the markdown image embed.
+
+### Fold State Improvements
+- [ ] Persist row and stack fold states across board reloads — save fold state for each element by ID in localStorage alongside the existing column/card fold state, and restore on board render.
+
+### Layout Presets
+- [ ] Add named layout presets beyond Normal/Spacious — allow saving current board layout (column width, row height, spacing, font size, sticky mode) as a named preset, and loading/deleting saved presets from the Board menu or burger menu.
+
 ### Board Visual Theme System
 - [x] Extract all layout-relevant CSS into a theme variable layer: row/stack/column/card border (style, width, color, radius), background, box-shadow, gap sizes (row-gap, stack-gap, column-gap, card-gap), inner padding, and header separator styles.
 - [x] Define a "bordered" theme preset (the current look) that maps to the existing variable values — serves as the default and reference.
@@ -92,9 +112,19 @@
 - [x] put another tab into the bottom bar that manages the running processes! remove the processes bar from the top bar!
 - [x] remove undo/redo from the top bar! put it into the menu-bar (edit).
 - [x] put the "stats" into the bottom bar using another tab! remove it from the top bar!
-- [ ] in the burger menu (top right) there should only be style settings (global ones for the kanban board). put everything else into the menu bars! remove things that are in the view directly and in the burger menu (show parked, show trash, rename, open folder, copy as markdown, ...)
-- [ ] put everything that we add into a menubar not the burger menu!
+- [x] in the burger menu (top right) there should only be style settings (global ones for the kanban board). put everything else into the menu bars! remove things that are in the view directly and in the burger menu (show parked, show trash, rename, open folder, copy as markdown, ...)
+- [x] put everything that we add into a menubar not the burger menu!
 - [x] the row and stack info at the end is not needed, remove them.
-- [ ] can a window detect when its moved? the should immediately snap to the border when its moved in any way (dragging is not the only way).
+- [x] can a window detect when its moved? the should immediately snap to the border when its moved in any way (dragging is not the only way).
 - [x] all elements (rows, stacks, columns, cards) share the same button order! drag, title, fold, burger-menu . we remove the edit button from all!
 - [x] when pressing any fold button it folds the item. if alt+pressing it folds all children!
+- [x] the border lines should use the full height for rows (vertical row separators) and be at least the full height of the view (apart from the margins)
+
+- [x] the burger menu next to the filename and the burger menu to the right in the top bar have overlapping items. we dont need them multiple times.
+- [x] ADD additional features to the menu bar! do you understand what the menu bar is!?! it's the os options bar!on windows it's within the window, on osx it's in the top left of the window! Any additional features not directly in the view and placed there! DO NOT ANY FEATURES IN THE WINDOW UNLESS I TELL YOU TO DO SO!
+- [x] put as many features of the general features (not the location specific ones such as row, stack, column, card burger menu) to the menu-bar!
+- [x] make all icons within buttons the same size. some are very small others are quite big!
+- [x] there should be no left border on a row!
+- [x] the burger menu next to the filename is not working reliably. maybe it's so slow, or the button clicks dont allways react. it seems to open an external programm sometimes when i click it (the draw.io.app)
+
+- [ ] i want to be able to open 2 windows at once!

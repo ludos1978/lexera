@@ -198,6 +198,12 @@ pub fn toggle_devtools(window: tauri::WebviewWindow) -> Result<bool, String> {
     }
 }
 
+#[tauri::command]
+pub fn set_menu_check_state(app: AppHandle, id: String, checked: bool) -> Result<(), String> {
+    crate::app_menu::set_check_menu_state(&app, &id, checked);
+    Ok(())
+}
+
 #[derive(Deserialize, Clone)]
 pub struct NativeMenuItem {
     pub id: Option<String>,
