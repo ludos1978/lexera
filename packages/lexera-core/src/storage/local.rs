@@ -706,7 +706,31 @@ impl LocalStorage {
         mut board_to_write: KanbanBoard,
         mut crdt: Option<CrdtStore>,
         create_backup: bool,
-    ) -> Result<(), StorageError> {
+    ) -> Result<Option<PathBuf>, StorageError> {
+        // Legacy-format boards: redirect writes to a new file so the original
+        // is never overwritten.  The redirect only fires once — subsequent
+        // saves already target the `-lexera2.md` path.
+        let file_path_str = file_path.to_string_lossy();
+        let is_legacy_redirect = board_to_write.format_hint == crate::types::BoardFormat::Legacy
+            && !file_path_str.contains("-lexera2");
+        let (actual_path, redirected) = if is_legacy_redirect {
+            let stem = file_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy();
+            let new_name = format!("{}-lexera2.md", stem);
+            let new_path = file_path.with_file_name(&new_name);
+            log::info!(
+                "[lexera.storage.legacy_redirect] Board {} redirected from {:?} to {:?}",
+                board_id,
+                file_path,
+                new_path
+            );
+            (new_path.clone(), Some(new_path))
+        } else {
+            (file_path.to_path_buf(), None)
+        };
+        let file_path = &actual_path;
         board_to_write.generation_meta = Some(self.next_generation_meta(board_id, &board_to_write));
         if let Some(ref mut c) = crdt {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -807,7 +831,7 @@ impl LocalStorage {
             .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
             .insert(board_id.to_string(), state);
 
-        Ok(())
+        Ok(redirected)
     }
 
     fn commit_remote_board_state(
@@ -957,9 +981,13 @@ impl LocalStorage {
         board_id: &str,
         board: &KanbanBoard,
         base_board: Option<&KanbanBoard>,
-    ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+    ) -> Result<super::WriteResult, StorageError> {
         if self.is_remote_board(board_id) {
-            return self.write_remote_board_internal(board_id, board);
+            let merge_result = self.write_remote_board_internal(board_id, board)?;
+            return Ok(super::WriteResult {
+                merge_result,
+                redirected_path: None,
+            });
         }
         let lock = self.get_write_lock(board_id)?;
         let _guard =
@@ -1167,9 +1195,12 @@ impl LocalStorage {
             board_card_summary(&board_to_write)
         );
 
-        self.commit_board_state(board_id, &file_path, board_to_write, crdt_to_write, true)?;
+        let redirected_path = self.commit_board_state(board_id, &file_path, board_to_write, crdt_to_write, true)?;
 
-        Ok(merge_result)
+        Ok(super::WriteResult {
+            merge_result,
+            redirected_path,
+        })
     }
 
     pub fn write_board_from_base(
@@ -1177,7 +1208,7 @@ impl LocalStorage {
         board_id: &str,
         base_board: &KanbanBoard,
         board: &KanbanBoard,
-    ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+    ) -> Result<super::WriteResult, StorageError> {
         self.write_board_internal(board_id, board, Some(base_board))
     }
 
@@ -2343,7 +2374,8 @@ impl LocalStorage {
                 board,
                 Some(crdt),
                 false,
-            )
+            )?;
+            Ok(())
         }
     }
 
@@ -2512,7 +2544,7 @@ impl BoardStorage for LocalStorage {
         &self,
         board_id: &str,
         board: &KanbanBoard,
-    ) -> Result<Option<card_merge::MergeResult>, StorageError> {
+    ) -> Result<super::WriteResult, StorageError> {
         self.write_board_internal(board_id, board, None)
     }
 
@@ -2603,7 +2635,8 @@ impl BoardStorage for LocalStorage {
             }
         }
 
-        self.commit_board_state(board_id, &file_path, board, crdt, true)
+        self.commit_board_state(board_id, &file_path, board, crdt, true)?;
+        Ok(())
     }
 
     fn append_to_card(
@@ -2689,7 +2722,8 @@ impl BoardStorage for LocalStorage {
             }
         }
 
-        self.commit_board_state(board_id, &file_path, board, crdt, true)
+        self.commit_board_state(board_id, &file_path, board, crdt, true)?;
+        Ok(())
     }
 
     fn search(&self, query: &str) -> Vec<SearchResult> {

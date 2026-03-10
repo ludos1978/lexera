@@ -49,6 +49,11 @@ This file tracks the simplified v2 planning view with implementation priorities 
 | Component | Status | Priority | Blocked By |
 |-----------|--------|----------|------------|
 | Content plugin system | 📋 Spec'd | P2 | Phase 2 |
+| Diagram renderer registry | 📋 Spec'd | P2 | Phase 2 |
+| Content enhancer pipeline | 📋 Spec'd | P2 | Phase 2 |
+| Action dispatch registry | 📋 Spec'd | P2 | Phase 2 |
+| Menu contributor registry | 📋 Spec'd | P2 | Action registry |
+| Board settings descriptors | 📋 Spec'd | P2 | Action registry |
 | Live sync (WebSocket) | 🔜 Planned | P3 | Phase 3 |
 | Save coordinator and recovery | 🚧 In Progress | P0 | Phase 1 |
 | Quick capture | ✅ Baseline | P2 | Phase 1 |
@@ -131,6 +136,11 @@ This file tracks the simplified v2 planning view with implementation priorities 
 | `services/save` | 🚧 | ✅ | ✅ | ✅ |
 | `plugins/content` | ✅ | ✅ | - | ✅ |
 | `plugins/registry` | ✅ | ✅ | - | ✅ |
+| `plugins/diagram` | 📋 | ✅ | ✅ | ✅ |
+| `plugins/enhancer` | 📋 | ✅ | ✅ | ✅ |
+| `ux/actions` | 📋 | ✅ | ✅ | ✅ |
+| `ux/menu-contributors` | 📋 | ✅ | ✅ | ✅ |
+| `ux/board-settings` | 📋 | ✅ | ✅ | ✅ |
 | `sync` | ✅ | ✅ | ✅ | ✅ |
 
 ---

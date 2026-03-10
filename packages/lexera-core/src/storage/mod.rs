@@ -2,10 +2,22 @@ pub mod backup;
 pub mod local;
 pub mod registry;
 
+use std::path::PathBuf;
+
 use self::backup::CrashsaveEntry;
 use crate::merge::merge::MergeResult;
 use crate::search::SearchOptions;
 use crate::types::{BoardInfo, KanbanBoard, SearchResult};
+
+/// Result of a board write operation.
+#[derive(Debug, Clone)]
+pub struct WriteResult {
+    pub merge_result: Option<MergeResult>,
+    /// When a legacy-format board is saved for the first time, the write is
+    /// redirected to a new file (`{name}-lexera2.md`) so the original stays
+    /// untouched.  This field carries the new path when that happens.
+    pub redirected_path: Option<PathBuf>,
+}
 
 /// Abstract storage trait for board backends.
 /// Implementations: LocalStorage (filesystem), future: iCloud, Dropbox, etc.
@@ -17,12 +29,11 @@ pub trait BoardStorage: Send + Sync {
     fn read_board(&self, board_id: &str) -> Option<KanbanBoard>;
 
     /// Write a full board back to storage.
-    /// Returns Ok(None) for clean writes, Ok(Some(MergeResult)) when merge was needed.
     fn write_board(
         &self,
         board_id: &str,
         board: &KanbanBoard,
-    ) -> Result<Option<MergeResult>, StorageError>;
+    ) -> Result<WriteResult, StorageError>;
 
     /// Add a card to a specific column in a board.
     fn add_card(&self, board_id: &str, col_index: usize, content: &str)

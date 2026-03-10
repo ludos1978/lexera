@@ -5318,7 +5318,7 @@ select.dialog-input option,
 }
 [data-board-theme="gap-highlight"] .board-stack-content {
   gap: 0 !important;
-  padding: 10px !important;
+  padding: 4px !important;
 }
 [data-board-theme="gap-highlight"] .column + .column {
   border-top: 2px dashed var(--gap-line-color) !important;
@@ -5333,7 +5333,7 @@ select.dialog-input option,
 }
 [data-board-theme="gap-highlight"] .board-row-content {
   gap: 0 !important;
-  padding: 20px !important;
+  padding: 4px !important;
   align-items: stretch !important;
 }
 [data-board-theme="gap-highlight"] .board-stack + .board-stack {
@@ -5364,7 +5364,7 @@ select.dialog-input option,
 
 /* Header/footer: thin solid separator lines */
 [data-board-theme="gap-highlight"] .board-row-header {
-  border-right: 1px solid var(--gap-line-color) !important;
+  border-right: none !important;
 }
 [data-board-theme="gap-highlight"] .board-stack-header {
   border-bottom: none !important;
@@ -5379,7 +5379,7 @@ select.dialog-input option,
 [data-board-theme="gap-highlight"] .board-row-footer,
 [data-board-theme="gap-highlight"] .board-stack-footer,
 [data-board-theme="gap-highlight"] .column-footer {
-  border-top: 1px solid var(--gap-line-color) !important;
+  border-top: none !important;
 }
 
 /* Strip tag-styled gradients and backgrounds in gap-highlight */

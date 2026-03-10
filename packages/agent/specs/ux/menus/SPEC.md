@@ -424,3 +424,8 @@ closeAllMenus()
 - `cardMenus.js` - Card-specific menus
 - `columnMenus.js` - Column-specific menus
 - `tagMenus.js` - Tag click menus
+
+### Plugin Architecture (see related specs)
+- [Menu Contributors](../menu-contributors/SPEC.md) — contributor registry replacing four duplicated menu builders
+- [Action Registry](../actions/SPEC.md) — dispatch registry replacing five if/else chains
+- [Board Settings](../board-settings/SPEC.md) — settings descriptors replacing scattered format handlers

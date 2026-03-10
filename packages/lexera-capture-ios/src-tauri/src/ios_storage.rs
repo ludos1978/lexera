@@ -431,7 +431,7 @@ impl BoardStorage for IosStorage {
         &self,
         board_id: &str,
         board: &KanbanBoard,
-    ) -> Result<Option<lexera_core::merge::merge::MergeResult>, StorageError> {
+    ) -> Result<lexera_core::storage::WriteResult, StorageError> {
         {
             let mut boards = self.boards.write().unwrap_or_else(|p| {
                 log::warn!("[ios_storage.write_board] Lock was poisoned, recovering");
@@ -443,7 +443,10 @@ impl BoardStorage for IosStorage {
             state.board = board.clone();
         }
         self.write_board_file(board_id)?;
-        Ok(None)
+        Ok(lexera_core::storage::WriteResult {
+            merge_result: None,
+            redirected_path: None,
+        })
     }
 
     fn add_card(

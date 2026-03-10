@@ -302,7 +302,7 @@ pub async fn write_board(
     Json(board): Json<lexera_core::types::KanbanBoard>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
-    let result = state.storage.write_board(&board_id, &board).map_err(|e| {
+    let write_result = state.storage.write_board(&board_id, &board).map_err(|e| {
         let status = match &e {
             lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
             lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
@@ -323,9 +323,15 @@ pub async fn write_board(
     })?;
     emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
-    Ok(Json(build_write_board_response(
-        &state, &board_id, result, &board,
-    )))
+    let mut response = build_write_board_response(
+        &state, &board_id, write_result.merge_result, &board,
+    );
+    if let Some(ref redirected) = write_result.redirected_path {
+        response["redirectedPath"] = serde_json::Value::String(
+            redirected.to_string_lossy().to_string(),
+        );
+    }
+    Ok(Json(response))
 }
 
 /// POST /boards/{board_id}/crashsave -- persist the current draft as a recovery markdown file.
@@ -380,7 +386,7 @@ pub async fn write_board_with_base(
     Json(body): Json<SyncSaveBoardBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
-    let result = state
+    let write_result = state
         .storage
         .write_board_from_base(&board_id, &body.base_board, &body.board)
         .map_err(|e| {
@@ -407,12 +413,18 @@ pub async fn write_board_with_base(
         })?;
     emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
-    Ok(Json(build_write_board_response(
+    let mut response = build_write_board_response(
         &state,
         &board_id,
-        result,
+        write_result.merge_result,
         &body.board,
-    )))
+    );
+    if let Some(ref redirected) = write_result.redirected_path {
+        response["redirectedPath"] = serde_json::Value::String(
+            redirected.to_string_lossy().to_string(),
+        );
+    }
+    Ok(Json(response))
 }
 
 /// POST /boards/{board_id}/rebase -- merge a client draft against the latest board without saving.
