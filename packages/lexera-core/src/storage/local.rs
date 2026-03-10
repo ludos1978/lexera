@@ -706,31 +706,7 @@ impl LocalStorage {
         mut board_to_write: KanbanBoard,
         mut crdt: Option<CrdtStore>,
         create_backup: bool,
-    ) -> Result<Option<PathBuf>, StorageError> {
-        // Legacy-format boards: redirect writes to a new file so the original
-        // is never overwritten.  The redirect only fires once — subsequent
-        // saves already target the `-lexera2.md` path.
-        let file_path_str = file_path.to_string_lossy();
-        let is_legacy_redirect = board_to_write.format_hint == crate::types::BoardFormat::Legacy
-            && !file_path_str.contains("-lexera2");
-        let (actual_path, redirected) = if is_legacy_redirect {
-            let stem = file_path
-                .file_stem()
-                .unwrap_or_default()
-                .to_string_lossy();
-            let new_name = format!("{}-lexera2.md", stem);
-            let new_path = file_path.with_file_name(&new_name);
-            log::info!(
-                "[lexera.storage.legacy_redirect] Board {} redirected from {:?} to {:?}",
-                board_id,
-                file_path,
-                new_path
-            );
-            (new_path.clone(), Some(new_path))
-        } else {
-            (file_path.to_path_buf(), None)
-        };
-        let file_path = &actual_path;
+    ) -> Result<(), StorageError> {
         board_to_write.generation_meta = Some(self.next_generation_meta(board_id, &board_to_write));
         if let Some(ref mut c) = crdt {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -831,7 +807,7 @@ impl LocalStorage {
             .map_err(|e| StorageError::LockPoisoned(format!("boards write: {}", e)))?
             .insert(board_id.to_string(), state);
 
-        Ok(redirected)
+        Ok(())
     }
 
     fn commit_remote_board_state(
@@ -1195,7 +1171,31 @@ impl LocalStorage {
             board_card_summary(&board_to_write)
         );
 
-        let redirected_path = self.commit_board_state(board_id, &file_path, board_to_write, crdt_to_write, true)?;
+        // Legacy-format boards: redirect writes to a new file so the original
+        // is never overwritten.  The redirect only fires once — subsequent
+        // saves already target the `-lexera2.md` path.
+        let file_path_str = file_path.to_string_lossy();
+        let is_legacy_redirect = board_to_write.format_hint == crate::types::BoardFormat::Legacy
+            && !file_path_str.contains("-lexera2");
+        let (actual_path, redirected_path) = if is_legacy_redirect {
+            let stem = file_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy();
+            let new_name = format!("{}-lexera2.md", stem);
+            let new_path = file_path.with_file_name(&new_name);
+            log::info!(
+                "[lexera.storage.legacy_redirect] Board {} redirected from {:?} to {:?}",
+                board_id,
+                file_path,
+                new_path
+            );
+            (new_path.clone(), Some(new_path))
+        } else {
+            (file_path.clone(), None)
+        };
+
+        self.commit_board_state(board_id, &actual_path, board_to_write, crdt_to_write, true)?;
 
         Ok(super::WriteResult {
             merge_result,
@@ -2979,11 +2979,14 @@ kanban-plugin: board
         assert_eq!(cols[0].cards[0].content, "Existing");
         assert_eq!(cols[0].cards[0].kid, Some("a1b2c3d4".to_string()));
 
-        storage.write_board(&id, &board).unwrap();
+        let result = storage.write_board(&id, &board).unwrap();
+        let read_path = result.redirected_path.as_deref().unwrap_or(tmp.path());
 
-        let on_disk = fs::read_to_string(tmp.path()).unwrap();
+        let on_disk = fs::read_to_string(read_path).unwrap();
         assert!(on_disk.contains("- [ ] Existing\n"));
         assert!(!on_disk.contains("<!-- kid:"));
+        // Clean up redirected file
+        if let Some(ref p) = result.redirected_path { let _ = fs::remove_file(p); }
     }
 
     #[test]
