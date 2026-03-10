@@ -9,20 +9,36 @@
 - [x] Wire all menu actions to frontend via `menu-action` event → `handleBoardAction()`.
 - [x] Remove duplicate display settings from file header burger menu (now in native menus).
 - [x] Fix file header menu slowness — don't block menu display on async backend refreshes.
-- [ ] Add Smart Paste (Shift+Cmd+V): detect clipboard content type (URL, image path, markdown, presentation slides) and paste with appropriate formatting.
+- [x] Add Smart Paste (Shift+Cmd+V): detect clipboard content type (URL, image path, markdown, presentation slides) and paste with appropriate formatting.
 
-### Alt+Click to Open Links and Embeds
-- [ ] Add Alt+Click handler on rendered card content: Alt+clicking a link opens it in the system browser, Alt+clicking an image opens the file in the system app, Alt+clicking an embed opens the source file. Use the existing `openInSystem` Tauri command.
+### Alt+Click to Open Links and Embeds (done)
+- [x] Add Alt+Click handler on rendered card content: Alt+clicking a link opens it in the system browser, Alt+clicking an image opens the file in the system app, Alt+clicking an embed opens the source file. Use the existing `openInSystem` Tauri command.
 
 ### Card Editor Improvements
 - [ ] Add drag-and-drop file support in the card overlay editor: dropping an image file into the editor textarea inserts a markdown image embed `![](relative-path)`, dropping other files inserts a file link. Resolve paths relative to the board file location.
 - [ ] Add image paste support in the card editor: pasting an image from clipboard saves it to a media folder next to the board file and inserts the markdown image embed.
 
-### Fold State Improvements
-- [ ] Persist row and stack fold states across board reloads — save fold state for each element by ID in localStorage alongside the existing column/card fold state, and restore on board render.
+### Fold State Improvements (done)
+- [x] Persist row and stack fold states across board reloads — save fold state for each element by ID in localStorage alongside the existing column/card fold state, and restore on board render.
 
 ### Layout Presets
 - [ ] Add named layout presets beyond Normal/Spacious — allow saving current board layout (column width, row height, spacing, font size, sticky mode) as a named preset, and loading/deleting saved presets from the Board menu or burger menu.
+
+### Plugin Refactoring (app.js structural decomposition)
+
+Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md`, `ux/actions/SPEC.md`, `ux/menu-contributors/SPEC.md`, `ux/board-settings/SPEC.md`
+
+#### Phase 1 — Standalone registries (no cross-dependencies) ✅
+- [x] **Diagram Renderer Registry**: `diagramRegistry.js` — unified queue replacing hardcoded Mermaid/PlantUML.
+- [x] **Content Enhancer Pipeline**: `contentEnhancerRegistry.js` — priority-sorted pipeline replacing hardcoded chain.
+- [x] **Action Dispatch Registry**: `actionRegistry.js` — pattern-matched dispatch replacing 5 if/else chains.
+
+#### Phase 2 — Registry consumers (depend on Phase 1) ✅
+- [x] **Menu Contributor Registry**: `menuContributorRegistry.js` — 14 contributors replacing 4 inline menu builders. Unified `showElementContextMenu()`.
+- [x] **Board Settings Descriptor Registry**: `boardSettingRegistry.js` — 16 descriptors replacing 15 build*ModeItems functions + auto-wired action handlers.
+
+#### Phase 3 — Cross-boundary (Rust + JS) ✅
+- [x] **Rust Menu Simplification**: Replaced 96-arm match in `app_menu.rs` with data-driven `MENU_ACTION_MAP` const array + lookup function.
 
 ### Board Visual Theme System
 - [x] Extract all layout-relevant CSS into a theme variable layer: row/stack/column/card border (style, width, color, radius), background, box-shadow, gap sizes (row-gap, stack-gap, column-gap, card-gap), inner padding, and header separator styles.

@@ -2592,10 +2592,12 @@ u {
   flex: 1;
   overflow: hidden;
   min-width: 0;
-  display: none;
+  visibility: hidden;
+  height: 0;
 }
 .card.collapsed .card-title-container {
-  display: block;
+  visibility: visible;
+  height: auto;
 }
 .card-title-display {
   white-space: nowrap;

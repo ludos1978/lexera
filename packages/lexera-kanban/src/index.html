@@ -380,6 +380,34 @@
     </div>
   </div>
 
+  <!-- Early error catcher — must load before any app scripts -->
+  <script>
+  (function () {
+    var errors = [];
+    function showError(msg) {
+      errors.push(msg);
+      var banner = document.getElementById('js-error-banner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'js-error-banner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#b00020;color:#fff;font:12px/1.4 monospace;padding:8px 12px;max-height:40vh;overflow:auto;white-space:pre-wrap;cursor:pointer;';
+        banner.title = 'Click to dismiss';
+        banner.addEventListener('click', function () { banner.remove(); });
+        document.body.appendChild(banner);
+      }
+      banner.textContent = errors.join('\n\n');
+    }
+    window.onerror = function (msg, src, line, col) {
+      showError('[JS Error] ' + msg + '\n  at ' + (src || '?') + ':' + line + ':' + col);
+    };
+    window.onunhandledrejection = function (e) {
+      var reason = e.reason;
+      var detail = reason instanceof Error ? reason.message + '\n' + (reason.stack || '') : String(reason);
+      showError('[Unhandled Promise] ' + detail);
+    };
+  })();
+  </script>
+
   <script src="management.js"></script>
   <script src="api.js"></script>
   <script src="templates.js"></script>
@@ -391,6 +419,11 @@
   <script src="treeView.js"></script>
   <script src="wysiwyg-editor.js"></script>
   <script src="themes.js"></script>
+  <script src="diagramRegistry.js"></script>
+  <script src="contentEnhancerRegistry.js"></script>
+  <script src="actionRegistry.js"></script>
+  <script src="boardSettingRegistry.js"></script>
+  <script src="menuContributorRegistry.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

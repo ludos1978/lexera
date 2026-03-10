@@ -1,0 +1,57 @@
+(function () {
+  // handlers is a map: scope -> array of { pattern, handler, type }
+  // type is 'exact', 'prefix', or 'regex'
+  var handlers = {};
+
+  function parsePattern(pattern) {
+    if (pattern instanceof RegExp) return { type: 'regex', regex: pattern, raw: pattern.source };
+    if (typeof pattern === 'string' && pattern.indexOf('*') === pattern.length - 1) {
+      return { type: 'prefix', prefix: pattern.slice(0, -1), raw: pattern };
+    }
+    return { type: 'exact', value: pattern, raw: pattern };
+  }
+
+  function matches(parsed, action) {
+    if (parsed.type === 'exact') return action === parsed.value;
+    if (parsed.type === 'prefix') return action.indexOf(parsed.prefix) === 0;
+    if (parsed.type === 'regex') return parsed.regex.test(action);
+    return false;
+  }
+
+  var ActionRegistry = {
+    register: function (scope, pattern, handler) {
+      if (!handlers[scope]) handlers[scope] = [];
+      handlers[scope].push({ parsed: parsePattern(pattern), handler: handler });
+    },
+
+    registerGroup: function (scope, entries) {
+      for (var i = 0; i < entries.length; i++) {
+        ActionRegistry.register(scope, entries[i][0], entries[i][1]);
+      }
+    },
+
+    dispatch: function (scope, action, context) {
+      if (!action) return false;
+      var list = handlers[scope];
+      if (!list) return false;
+      for (var i = 0; i < list.length; i++) {
+        if (matches(list[i].parsed, action)) {
+          list[i].handler(action, context || {});
+          return true;
+        }
+      }
+      return false;
+    },
+
+    find: function (scope, action) {
+      var list = handlers[scope];
+      if (!list) return null;
+      for (var i = 0; i < list.length; i++) {
+        if (matches(list[i].parsed, action)) return list[i];
+      }
+      return null;
+    }
+  };
+
+  window.LexeraActionRegistry = ActionRegistry;
+})();

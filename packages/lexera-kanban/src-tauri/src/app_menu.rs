@@ -43,6 +43,7 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&MenuItemBuilder::with_id("edit-find-replace", "Find & Replace…").accelerator("CmdOrCtrl+Shift+H").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("edit-paste-as-card", "Paste as Card").build(app)?)
+        .item(&MenuItemBuilder::with_id("edit-smart-paste", "Smart Paste").build(app)?)
         .build()?;
 
     // ── View menu ──
@@ -285,151 +286,157 @@ pub fn set_check_menu_state(app: &tauri::AppHandle, id: &str, checked: bool) {
     }
 }
 
-/// Map native menu item IDs to frontend action strings for handleBoardAction().
+/// Menu ID → frontend action string mapping table.
+/// Each entry is (menu_id, action_string). Add new entries here to wire native menu items.
+const MENU_ACTION_MAP: &[(&str, &str)] = &[
+    // File
+    ("file-save", "save-now"),
+    ("file-rename", "rename-file"),
+    ("file-reveal", "open-folder"),
+    ("file-export", "file-open-export-settings"),
+    ("file-copy-markdown", "copy-board-markdown"),
+    ("file-board-settings", "file-open-board-settings"),
+    ("file-backend-settings", "backend-settings"),
+    // Edit
+    ("edit-undo", "undo"),
+    ("edit-redo", "redo"),
+    ("edit-find", "open-search"),
+    ("edit-find-replace", "open-search-replace"),
+    ("edit-paste-as-card", "paste-as-card"),
+    ("edit-smart-paste", "smart-paste"),
+    // View – fold
+    ("view-fold-cards", "toggle-fold-cards"),
+    ("view-fold-columns", "toggle-fold-columns"),
+    // View – pin headers
+    ("view-pin-headers-off", "set-sticky-headers:"),
+    ("view-pin-headers-top", "set-sticky-headers:top"),
+    ("view-pin-headers-bottom", "set-sticky-headers:bottom"),
+    // View – split
+    ("view-split-single", "split-disable"),
+    ("view-split-vertical", "split-enable-vertical"),
+    ("view-split-horizontal", "split-enable-horizontal"),
+    // View – tag visibility
+    ("view-tags-all", "set-tag-visibility:all"),
+    ("view-tags-no-layout", "set-tag-visibility:allexcludinglayout"),
+    ("view-tags-custom", "set-tag-visibility:custom"),
+    ("view-tags-mentions", "set-tag-visibility:mentions"),
+    ("view-tags-dim", "set-tag-visibility:dim"),
+    ("view-tags-hide", "set-tag-visibility:none"),
+    // View – HTML rendering
+    ("view-html-comments-render", "set-html-comments:html"),
+    ("view-html-comments-text", "set-html-comments:text"),
+    ("view-html-comments-dim", "set-html-comments:dim"),
+    ("view-html-content-render", "set-html-content:html"),
+    ("view-html-content-text", "set-html-content:text"),
+    // View – toggles
+    ("view-special-chars", "toggle-special-chars"),
+    ("view-marp-settings", "toggle-marp-settings"),
+    ("view-overlay-editor", "toggle-overlay-editor"),
+    ("view-wysiwyg-editor", "toggle-wysiwyg-editor"),
+    // View – zoom
+    ("view-zoom-in", "zoom-in"),
+    ("view-zoom-out", "zoom-out"),
+    ("view-zoom-reset", "zoom-reset"),
+    // View – inspector
+    ("view-inspector", "toggle-inspector"),
+    // Format – visual style
+    ("fmt-theme-bordered", "set-board-theme:bordered"),
+    ("fmt-theme-gap-highlight", "set-board-theme:gap-highlight"),
+    // Format – tag style
+    ("fmt-tag-style-default", "set-tag-style-preset:default"),
+    ("fmt-tag-style-minimal", "set-tag-style-preset:minimal"),
+    ("fmt-tag-style-full", "set-tag-style-preset:full"),
+    ("fmt-tag-style-badges", "set-tag-style-preset:badges"),
+    // Format – column width
+    ("fmt-col-width-250", "set-column-width:250px"),
+    ("fmt-col-width-350", "set-column-width:350px"),
+    ("fmt-col-width-450", "set-column-width:450px"),
+    ("fmt-col-width-550", "set-column-width:550px"),
+    ("fmt-col-width-650", "set-column-width:650px"),
+    ("fmt-col-width-third", "set-column-width:31.5vw"),
+    ("fmt-col-width-half", "set-column-width:48vw"),
+    ("fmt-col-width-twothird", "set-column-width:63vw"),
+    ("fmt-col-width-full", "set-column-width:95vw"),
+    // Format – card height
+    ("fmt-card-height-auto", "set-card-height:auto"),
+    ("fmt-card-height-200", "set-card-height:200px"),
+    ("fmt-card-height-400", "set-card-height:400px"),
+    ("fmt-card-height-600", "set-card-height:600px"),
+    ("fmt-card-height-third", "set-card-height:26.5vh"),
+    ("fmt-card-height-half", "set-card-height:43.5vh"),
+    ("fmt-card-height-twothird", "set-card-height:59vh"),
+    ("fmt-card-height-fullscreen", "set-card-height:92vh"),
+    // Format – whitespace
+    ("fmt-whitespace-compact", "set-whitespace:8px"),
+    ("fmt-whitespace-default", "set-whitespace:16px"),
+    ("fmt-whitespace-spacious", "set-whitespace:32px"),
+    // Format – font size
+    ("fmt-font-size-05x", "set-font-size:6.5px"),
+    ("fmt-font-size-075x", "set-font-size:9.75px"),
+    ("fmt-font-size-1x", "set-font-size:13px"),
+    ("fmt-font-size-125x", "set-font-size:16.25px"),
+    ("fmt-font-size-15x", "set-font-size:19.5px"),
+    ("fmt-font-size-2x", "set-font-size:26px"),
+    // Format – font family
+    ("fmt-font-system", "set-font-family:system"),
+    ("fmt-font-roboto", "set-font-family:roboto"),
+    ("fmt-font-opensans", "set-font-family:opensans"),
+    ("fmt-font-lato", "set-font-family:lato"),
+    ("fmt-font-inter", "set-font-family:inter"),
+    ("fmt-font-poppins", "set-font-family:poppins"),
+    ("fmt-font-helvetica", "set-font-family:helvetica"),
+    ("fmt-font-arial", "set-font-family:arial"),
+    ("fmt-font-georgia", "set-font-family:georgia"),
+    ("fmt-font-times", "set-font-family:times"),
+    ("fmt-font-firacode", "set-font-family:firacode"),
+    ("fmt-font-jetbrains", "set-font-family:jetbrains"),
+    ("fmt-font-sourcecodepro", "set-font-family:sourcecodepro"),
+    ("fmt-font-consolas", "set-font-family:consolas"),
+    // Format – layout rows
+    ("fmt-rows-1", "set-layout-rows:1"),
+    ("fmt-rows-2", "set-layout-rows:2"),
+    ("fmt-rows-3", "set-layout-rows:3"),
+    ("fmt-rows-4", "set-layout-rows:4"),
+    ("fmt-rows-5", "set-layout-rows:5"),
+    ("fmt-rows-6", "set-layout-rows:6"),
+    // Format – row height
+    ("fmt-row-height-auto", "set-row-height:auto"),
+    ("fmt-row-height-300", "set-row-height:300px"),
+    ("fmt-row-height-500", "set-row-height:500px"),
+    ("fmt-row-height-700", "set-row-height:700px"),
+    ("fmt-row-height-third", "set-row-height:31.5vh"),
+    ("fmt-row-height-half", "set-row-height:48vh"),
+    ("fmt-row-height-twothird", "set-row-height:63vh"),
+    ("fmt-row-height-fullscreen", "set-row-height:95vh"),
+    // Format – layout preset
+    ("fmt-preset-normal", "set-layout-preset:normal"),
+    ("fmt-preset-spacious", "set-layout-preset:spacious"),
+    // Go
+    ("go-recent-boards", "show-recent-boards"),
+    ("go-next-card", "focus-next-card"),
+    ("go-prev-card", "focus-prev-card"),
+    ("go-next-column", "focus-next-column"),
+    ("go-prev-column", "focus-prev-column"),
+    // Board
+    ("board-new-row", "add-row"),
+    ("board-new-stack", "add-stack"),
+    ("board-new-column", "add-column"),
+    ("board-new-card", "add-card"),
+    ("board-sort-title", "sort-all-cards:title"),
+    ("board-sort-tag", "sort-all-cards:tag"),
+    ("board-sort-due", "sort-all-cards:duedate"),
+    ("board-show-parked", "show-parked"),
+    ("board-show-archived", "show-archived"),
+    ("board-show-trash", "show-trash"),
+    ("board-statistics", "toggle-board-stats"),
+    ("board-processes", "show-processes"),
+    // Help
+    ("help-keyboard-shortcuts", "show-keyboard-shortcuts"),
+];
+
+/// Look up the frontend action string for a native menu item ID.
 pub fn menu_id_to_action(id: &str) -> Option<&'static str> {
-    match id {
-        // File
-        "file-save" => Some("save-now"),
-        "file-rename" => Some("rename-file"),
-        "file-reveal" => Some("open-folder"),
-        "file-export" => Some("file-open-export-settings"),
-        "file-copy-markdown" => Some("copy-board-markdown"),
-        "file-board-settings" => Some("file-open-board-settings"),
-        "file-backend-settings" => Some("backend-settings"),
-        // Edit
-        "edit-undo" => Some("undo"),
-        "edit-redo" => Some("redo"),
-        "edit-find" => Some("open-search"),
-        "edit-find-replace" => Some("open-search-replace"),
-        "edit-paste-as-card" => Some("paste-as-card"),
-        // View – fold
-        "view-fold-cards" => Some("toggle-fold-cards"),
-        "view-fold-columns" => Some("toggle-fold-columns"),
-        // View – pin headers
-        "view-pin-headers-off" => Some("set-sticky-headers:"),
-        "view-pin-headers-top" => Some("set-sticky-headers:top"),
-        "view-pin-headers-bottom" => Some("set-sticky-headers:bottom"),
-        // View – split
-        "view-split-single" => Some("split-disable"),
-        "view-split-vertical" => Some("split-enable-vertical"),
-        "view-split-horizontal" => Some("split-enable-horizontal"),
-        // View – tag visibility
-        "view-tags-all" => Some("set-tag-visibility:all"),
-        "view-tags-no-layout" => Some("set-tag-visibility:allexcludinglayout"),
-        "view-tags-custom" => Some("set-tag-visibility:custom"),
-        "view-tags-mentions" => Some("set-tag-visibility:mentions"),
-        "view-tags-dim" => Some("set-tag-visibility:dim"),
-        "view-tags-hide" => Some("set-tag-visibility:none"),
-        // View – HTML rendering
-        "view-html-comments-render" => Some("set-html-comments:html"),
-        "view-html-comments-text" => Some("set-html-comments:text"),
-        "view-html-comments-dim" => Some("set-html-comments:dim"),
-        "view-html-content-render" => Some("set-html-content:html"),
-        "view-html-content-text" => Some("set-html-content:text"),
-        // View – toggles
-        "view-special-chars" => Some("toggle-special-chars"),
-        "view-marp-settings" => Some("toggle-marp-settings"),
-        "view-overlay-editor" => Some("toggle-overlay-editor"),
-        "view-wysiwyg-editor" => Some("toggle-wysiwyg-editor"),
-        // View – zoom
-        "view-zoom-in" => Some("zoom-in"),
-        "view-zoom-out" => Some("zoom-out"),
-        "view-zoom-reset" => Some("zoom-reset"),
-        // View – inspector
-        "view-inspector" => Some("toggle-inspector"),
-        // Format – visual style
-        "fmt-theme-bordered" => Some("set-board-theme:bordered"),
-        "fmt-theme-gap-highlight" => Some("set-board-theme:gap-highlight"),
-        // Format – tag style
-        "fmt-tag-style-default" => Some("set-tag-style-preset:default"),
-        "fmt-tag-style-minimal" => Some("set-tag-style-preset:minimal"),
-        "fmt-tag-style-full" => Some("set-tag-style-preset:full"),
-        "fmt-tag-style-badges" => Some("set-tag-style-preset:badges"),
-        // Format – column width
-        "fmt-col-width-250" => Some("set-column-width:250px"),
-        "fmt-col-width-350" => Some("set-column-width:350px"),
-        "fmt-col-width-450" => Some("set-column-width:450px"),
-        "fmt-col-width-550" => Some("set-column-width:550px"),
-        "fmt-col-width-650" => Some("set-column-width:650px"),
-        "fmt-col-width-third" => Some("set-column-width:31.5vw"),
-        "fmt-col-width-half" => Some("set-column-width:48vw"),
-        "fmt-col-width-twothird" => Some("set-column-width:63vw"),
-        "fmt-col-width-full" => Some("set-column-width:95vw"),
-        // Format – card height
-        "fmt-card-height-auto" => Some("set-card-height:auto"),
-        "fmt-card-height-200" => Some("set-card-height:200px"),
-        "fmt-card-height-400" => Some("set-card-height:400px"),
-        "fmt-card-height-600" => Some("set-card-height:600px"),
-        "fmt-card-height-third" => Some("set-card-height:26.5vh"),
-        "fmt-card-height-half" => Some("set-card-height:43.5vh"),
-        "fmt-card-height-twothird" => Some("set-card-height:59vh"),
-        "fmt-card-height-fullscreen" => Some("set-card-height:92vh"),
-        // Format – whitespace
-        "fmt-whitespace-compact" => Some("set-whitespace:8px"),
-        "fmt-whitespace-default" => Some("set-whitespace:16px"),
-        "fmt-whitespace-spacious" => Some("set-whitespace:32px"),
-        // Format – font size
-        "fmt-font-size-05x" => Some("set-font-size:6.5px"),
-        "fmt-font-size-075x" => Some("set-font-size:9.75px"),
-        "fmt-font-size-1x" => Some("set-font-size:13px"),
-        "fmt-font-size-125x" => Some("set-font-size:16.25px"),
-        "fmt-font-size-15x" => Some("set-font-size:19.5px"),
-        "fmt-font-size-2x" => Some("set-font-size:26px"),
-        // Format – font family
-        "fmt-font-system" => Some("set-font-family:system"),
-        "fmt-font-roboto" => Some("set-font-family:roboto"),
-        "fmt-font-opensans" => Some("set-font-family:opensans"),
-        "fmt-font-lato" => Some("set-font-family:lato"),
-        "fmt-font-inter" => Some("set-font-family:inter"),
-        "fmt-font-poppins" => Some("set-font-family:poppins"),
-        "fmt-font-helvetica" => Some("set-font-family:helvetica"),
-        "fmt-font-arial" => Some("set-font-family:arial"),
-        "fmt-font-georgia" => Some("set-font-family:georgia"),
-        "fmt-font-times" => Some("set-font-family:times"),
-        "fmt-font-firacode" => Some("set-font-family:firacode"),
-        "fmt-font-jetbrains" => Some("set-font-family:jetbrains"),
-        "fmt-font-sourcecodepro" => Some("set-font-family:sourcecodepro"),
-        "fmt-font-consolas" => Some("set-font-family:consolas"),
-        // Format – layout rows
-        "fmt-rows-1" => Some("set-layout-rows:1"),
-        "fmt-rows-2" => Some("set-layout-rows:2"),
-        "fmt-rows-3" => Some("set-layout-rows:3"),
-        "fmt-rows-4" => Some("set-layout-rows:4"),
-        "fmt-rows-5" => Some("set-layout-rows:5"),
-        "fmt-rows-6" => Some("set-layout-rows:6"),
-        // Format – row height
-        "fmt-row-height-auto" => Some("set-row-height:auto"),
-        "fmt-row-height-300" => Some("set-row-height:300px"),
-        "fmt-row-height-500" => Some("set-row-height:500px"),
-        "fmt-row-height-700" => Some("set-row-height:700px"),
-        "fmt-row-height-third" => Some("set-row-height:31.5vh"),
-        "fmt-row-height-half" => Some("set-row-height:48vh"),
-        "fmt-row-height-twothird" => Some("set-row-height:63vh"),
-        "fmt-row-height-fullscreen" => Some("set-row-height:95vh"),
-        // Format – layout preset
-        "fmt-preset-normal" => Some("set-layout-preset:normal"),
-        "fmt-preset-spacious" => Some("set-layout-preset:spacious"),
-        // Go
-        "go-recent-boards" => Some("show-recent-boards"),
-        "go-next-card" => Some("focus-next-card"),
-        "go-prev-card" => Some("focus-prev-card"),
-        "go-next-column" => Some("focus-next-column"),
-        "go-prev-column" => Some("focus-prev-column"),
-        // Board
-        "board-new-row" => Some("add-row"),
-        "board-new-stack" => Some("add-stack"),
-        "board-new-column" => Some("add-column"),
-        "board-new-card" => Some("add-card"),
-        "board-sort-title" => Some("sort-all-cards:title"),
-        "board-sort-tag" => Some("sort-all-cards:tag"),
-        "board-sort-due" => Some("sort-all-cards:duedate"),
-        "board-show-parked" => Some("show-parked"),
-        "board-show-archived" => Some("show-archived"),
-        "board-show-trash" => Some("show-trash"),
-        "board-statistics" => Some("toggle-board-stats"),
-        "board-processes" => Some("show-processes"),
-        // Help
-        "help-keyboard-shortcuts" => Some("show-keyboard-shortcuts"),
-        _ => None,
-    }
+    MENU_ACTION_MAP.iter()
+        .find(|(menu_id, _)| *menu_id == id)
+        .map(|(_, action)| *action)
 }

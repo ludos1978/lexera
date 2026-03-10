@@ -570,13 +570,11 @@ const LexeraDashboard = (function () {
   var undoPendingSnapshot = null; // snapshot taken before the last mutation, awaiting delta computation
   var sidebarSyncEnabled = localStorage.getItem('lexera-sidebar-sync') === 'true';
   var hierarchyLocked = localStorage.getItem('lexera-hierarchy-locked') === 'true'; // default false
-  var mermaidIdCounter = 0;
-  var plantumlIdCounter = 0;
-  var mermaidReady = false;
-  var mermaidLoading = false;
-  var pendingMermaidRenders = [];
-  var pendingPlantUmlRenders = [];
-  var plantumlQueueProcessing = false;
+  var DiagramRegistry = window.LexeraDiagramRegistry;
+  var ContentEnhancerRegistry = window.LexeraContentEnhancerRegistry;
+  var ActionRegistry = window.LexeraActionRegistry;
+  var BoardSettingRegistry = window.LexeraBoardSettingRegistry;
+  var MenuContributorRegistry = window.LexeraMenuContributorRegistry;
   var currentTagVisibilityMode = 'allexcludinglayout';
   var currentArrowKeyFocusScrollMode = 'nearest';
   var currentHtmlCommentRenderMode = 'hidden';
@@ -7307,10 +7305,7 @@ const LexeraDashboard = (function () {
     var items = [];
     for (var i = 0; i < options.length; i++) {
       var option = options[i];
-      if (option && option.separator) {
-        items.push({ separator: true });
-        continue;
-      }
+      if (option && option.separator) { items.push({ separator: true }); continue; }
       items.push({
         id: actionPrefix + ':' + option.value,
         label: (currentValue === option.value ? '\u2713 ' : '') + option.label
@@ -7319,40 +7314,17 @@ const LexeraDashboard = (function () {
     return items;
   }
 
-  function buildStickyHeaderModeItems(actionPrefix) {
-    var current = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
-    var currentValue = current || 'off';
-    return buildModeMenuItems(currentValue, actionPrefix, [
-      { value: 'off', label: 'Off' },
-      { value: 'top', label: 'Top Edge' },
-      { value: 'bottom', label: 'Bottom Edge' }
-    ]);
-  }
-
-  function buildTagVisibilityModeItems(actionPrefix) {
-    var current = normalizeTagVisibilityMode(getBoardSettingValue('tagVisibility', 'allexcludinglayout'));
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'all', label: 'All Tags' },
-      { value: 'allexcludinglayout', label: 'All Except Layout Tags' },
-      { value: 'customonly', label: 'Custom Tags Only' },
-      { value: 'mentionsonly', label: 'Mentions Only' },
-      { value: 'dim', label: 'Dim Tags' },
-      { value: 'none', label: 'Hide Tags' }
-    ]);
-  }
-
-  function buildTagStylePresetItems(actionPrefix) {
-    var current = getActiveTagStylePreset();
-    var items = [];
-    var keys = Object.keys(TAG_STYLE_PRESETS);
-    for (var i = 0; i < keys.length; i++) {
-      var preset = TAG_STYLE_PRESETS[keys[i]];
-      items.push({
-        id: actionPrefix + ':' + keys[i],
-        label: (current === keys[i] ? '\u2713 ' : '') + preset.label + (preset.description ? ' \u2014 ' + preset.description : '')
-      });
+  function buildSettingMenuItems(settingId) {
+    var desc = BoardSettingRegistry.get(settingId);
+    if (!desc) return [];
+    var current;
+    if (desc.getCurrentValue) {
+      current = desc.getCurrentValue();
+    } else {
+      var raw = getBoardSettingValue(desc.settingsKey, desc.defaultValue);
+      current = desc.normalize ? desc.normalize(raw) : String(raw || desc.defaultValue);
     }
-    return items;
+    return BoardSettingRegistry.buildMenuItems(settingId, current);
   }
 
   function buildTagStyleRoleItems(normalizedTag) {
@@ -7383,54 +7355,6 @@ const LexeraDashboard = (function () {
     return items;
   }
 
-  function buildHtmlCommentModeItems(actionPrefix) {
-    var current = normalizeHtmlCommentRenderMode(getBoardSettingValue('htmlCommentRenderMode', 'hidden'));
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'hidden', label: 'Hide Comments' },
-      { value: 'text', label: 'Show as Text' },
-      { value: 'dim', label: 'Dim Comments' }
-    ]);
-  }
-
-  function buildHtmlContentModeItems(actionPrefix) {
-    var current = getHtmlContentRenderMode();
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'html', label: 'Render HTML' },
-      { value: 'text', label: 'Show as Text' }
-    ]);
-  }
-
-  function buildColumnWidthModeItems(actionPrefix) {
-    var current = normalizeColumnWidth(getBoardSettingValue('columnWidth', '450px')) || '450px';
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: '250px', label: '250px' },
-      { value: '350px', label: '350px' },
-      { value: '450px', label: '450px' },
-      { value: '550px', label: '550px' },
-      { value: '650px', label: '650px' },
-      { separator: true },
-      { value: '31.5vw', label: '1/3 Screen' },
-      { value: '48vw', label: '1/2 Screen' },
-      { value: '63vw', label: '2/3 Screen' },
-      { value: '95vw', label: 'Full Width' }
-    ]);
-  }
-
-  function buildCardHeightModeItems(actionPrefix) {
-    var current = String(getBoardSettingValue('cardMinHeight', 'auto') || 'auto').trim().toLowerCase();
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'auto', label: 'Auto' },
-      { separator: true },
-      { value: '200px', label: 'Small' },
-      { value: '400px', label: 'Medium' },
-      { value: '600px', label: 'Large' },
-      { separator: true },
-      { value: '26.5vh', label: '1/3 Screen' },
-      { value: '43.5vh', label: '1/2 Screen' },
-      { value: '59vh', label: '2/3 Screen' },
-      { value: '92vh', label: 'Full Screen' }
-    ]);
-  }
 
   function normalizeBoardFontSizeValue(rawValue) {
     var source = String(rawValue || '').trim().toLowerCase();
@@ -7446,17 +7370,6 @@ const LexeraDashboard = (function () {
     return '13px';
   }
 
-  function buildFontSizeModeItems(actionPrefix) {
-    var current = normalizeBoardFontSizeValue(getBoardSettingValue('fontSize', '13px'));
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: '6.5px', label: '0.5x' },
-      { value: '9.75px', label: '0.75x' },
-      { value: '13px', label: '1x' },
-      { value: '16.25px', label: '1.25x' },
-      { value: '19.5px', label: '1.5x' },
-      { value: '26px', label: '2x' }
-    ]);
-  }
 
   function normalizeBoardFontFamilyToken(rawValue) {
     var source = String(rawValue || '').trim().toLowerCase();
@@ -7497,53 +7410,6 @@ const LexeraDashboard = (function () {
     return null;
   }
 
-  function buildFontFamilyModeItems(actionPrefix) {
-    var current = normalizeBoardFontFamilyToken(getBoardSettingValue('fontFamily', ''));
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'system', label: 'System Default' },
-      { value: 'roboto', label: 'Roboto' },
-      { value: 'opensans', label: 'Open Sans' },
-      { value: 'lato', label: 'Lato' },
-      { value: 'plusjakarta', label: 'Plus Jakarta Sans' },
-      { value: 'inter', label: 'Inter' },
-      { value: 'poppins', label: 'Poppins' },
-      { separator: true },
-      { value: 'helvetica', label: 'Helvetica' },
-      { value: 'arial', label: 'Arial' },
-      { value: 'georgia', label: 'Georgia' },
-      { value: 'times', label: 'Times New Roman' },
-      { separator: true },
-      { value: 'firacode', label: 'Fira Code' },
-      { value: 'jetbrains', label: 'JetBrains Mono' },
-      { value: 'sourcecodepro', label: 'Source Code Pro' },
-      { value: 'consolas', label: 'Consolas' }
-    ]);
-  }
-
-  function buildLayoutPresetModeItems(actionPrefix) {
-    var current = String(getBoardSettingValue('layoutPreset', 'normal') || 'normal').toLowerCase();
-    if (current !== 'spacious') current = 'normal';
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'normal', label: 'Normal' },
-      { value: 'spacious', label: 'Spacious' }
-    ]);
-  }
-
-  function buildRowHeightModeItems(actionPrefix) {
-    var current = String(getBoardSettingValue('rowHeight', 'auto') || 'auto').trim().toLowerCase();
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'auto', label: 'Auto' },
-      { separator: true },
-      { value: '300px', label: 'Small' },
-      { value: '500px', label: 'Medium' },
-      { value: '700px', label: 'Large' },
-      { separator: true },
-      { value: '31.5vh', label: '1/3 Screen' },
-      { value: '48vh', label: '1/2 Screen' },
-      { value: '63vh', label: '2/3 Screen' },
-      { value: '95vh', label: 'Full Screen' }
-    ]);
-  }
 
   function normalizeWhitespaceValue(rawValue) {
     var source = String(rawValue || '').trim().toLowerCase();
@@ -7560,35 +7426,6 @@ const LexeraDashboard = (function () {
     return '16px';
   }
 
-  function buildWhitespaceModeItems(actionPrefix) {
-    var current = normalizeWhitespaceValue(getBoardSettingValue('whitespace', '16px')) || '16px';
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: '8px', label: 'Compact' },
-      { value: '16px', label: 'Default' },
-      { value: '32px', label: 'Spacious' }
-    ]);
-  }
-
-  function buildLayoutRowsModeItems(actionPrefix) {
-    var current = String(getBoardSettingValue('layoutRows', 1) || 1);
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: '1', label: '1 Row' },
-      { value: '2', label: '2 Rows' },
-      { value: '3', label: '3 Rows' },
-      { value: '4', label: '4 Rows' },
-      { value: '5', label: '5 Rows' },
-      { value: '6', label: '6 Rows' }
-    ]);
-  }
-
-  function buildArrowKeyFocusScrollModeItems(actionPrefix) {
-    var current = normalizeArrowKeyFocusScrollMode(getBoardSettingValue('arrowKeyFocusScroll', 'nearest'));
-    return buildModeMenuItems(current, actionPrefix, [
-      { value: 'nearest', label: 'Nearest' },
-      { value: 'center', label: 'Center' },
-      { value: 'disabled', label: 'Disabled' }
-    ]);
-  }
 
   var EXPORT_DEFAULT_STORAGE_KEYS = {
     marpTheme: 'lexera-export-marp-theme',
@@ -8103,7 +7940,7 @@ const LexeraDashboard = (function () {
     if (!btnElement) return;
     var rect = btnElement.getBoundingClientRect();
     var zoomLevels = [0.8, 0.9, 1, 1.1, 1.25];
-    var items = buildBoardThemeItems('set-board-theme');
+    var items = buildSettingMenuItems('boardTheme');
     items.push({ separator: true });
     var zoomItems = zoomLevels.map(function (scale) {
       var percent = Math.round(scale * 100);
@@ -9160,23 +8997,22 @@ const LexeraDashboard = (function () {
     closeCardContextMenu();
 
     var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
-    // Board settings menu: visual/layout style settings only
     var items = [
-      { id: 'set-board-theme', label: 'Visual Style', items: buildBoardThemeItems('set-board-theme') },
-      { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildTagStylePresetItems('set-tag-style-preset') },
+      { id: 'set-board-theme', label: 'Visual Style', items: buildSettingMenuItems('boardTheme') },
+      { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildSettingMenuItems('tagStylePreset') },
       { separator: true },
-      { id: 'set-column-width', label: 'Column Width', items: buildColumnWidthModeItems('set-column-width') },
-      { id: 'set-card-height', label: 'Card Height', items: buildCardHeightModeItems('set-card-height') },
-      { id: 'set-whitespace', label: 'Whitespace', items: buildWhitespaceModeItems('set-whitespace') },
-      { id: 'set-font-size', label: 'Font Size', items: buildFontSizeModeItems('set-font-size') },
-      { id: 'set-font-family', label: 'Font Family', items: buildFontFamilyModeItems('set-font-family') },
+      { id: 'set-column-width', label: 'Column Width', items: buildSettingMenuItems('columnWidth') },
+      { id: 'set-card-height', label: 'Card Height', items: buildSettingMenuItems('cardHeight') },
+      { id: 'set-whitespace', label: 'Whitespace', items: buildSettingMenuItems('whitespace') },
+      { id: 'set-font-size', label: 'Font Size', items: buildSettingMenuItems('fontSize') },
+      { id: 'set-font-family', label: 'Font Family', items: buildSettingMenuItems('fontFamily') },
       { separator: true },
-      { id: 'set-layout-rows', label: 'Layout Rows', items: buildLayoutRowsModeItems('set-layout-rows') },
-      { id: 'set-row-height', label: 'Row Height', items: buildRowHeightModeItems('set-row-height') },
-      { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetModeItems('set-layout-preset') },
+      { id: 'set-layout-rows', label: 'Layout Rows', items: buildSettingMenuItems('layoutRows') },
+      { id: 'set-row-height', label: 'Row Height', items: buildSettingMenuItems('rowHeight') },
+      { id: 'set-layout-preset', label: 'Layout Preset', items: buildSettingMenuItems('layoutPreset') },
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
-      { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildStickyHeaderModeItems('set-sticky-headers') },
-      { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildArrowKeyFocusScrollModeItems('set-arrow-focus-scroll') },
+      { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildSettingMenuItems('stickyHeaders') },
+      { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildSettingMenuItems('arrowFocusScroll') },
     ];
 
     showNativeMenu(items, x, y).then(function (action) {
@@ -9186,388 +9022,14 @@ const LexeraDashboard = (function () {
 
   async function handleBoardAction(action) {
     if (!action) return;
-    if (await handleBoardMarpMenuAction(action)) {
-      return;
-    }
-    if (await handleBoardPandocMenuAction(action)) {
-      return;
-    }
-    if (await handleEmbeddedRendererMenuAction(action)) {
-      return;
-    }
-    if (action.indexOf('recent:') === 0) {
-      var recentBoardId = action.substring(7);
-      if (recentBoardId) await selectBoard(recentBoardId);
-      return;
-    }
-    if (action === 'undo') {
-      await undo();
-      return;
-    }
-    if (action === 'redo') {
-      await redo();
-      return;
-    }
-    if (action === 'add-row') {
-      await addRow();
-      return;
-    }
-    if (action === 'fold-all' || action === 'unfold-all') {
-      toggleFoldAll();
-      return;
-    }
-    if (action === 'fold-columns' || action === 'unfold-columns') {
-      toggleFoldAllColumns();
-      return;
-    }
-    if (action === 'fold-cards' || action === 'unfold-cards') {
-      toggleFoldAllCards();
-      return;
-    }
-    if (action.indexOf('sort-all-cards:') === 0) {
-      var sortMode = action.substring('sort-all-cards:'.length);
-      var resolvedMode = sortMode === 'tag' ? 'tag' : sortMode === 'duedate' ? 'duedate' : 'title';
-      await sortAllCardsAcrossBoard(resolvedMode);
-      return;
-    }
-    if (action.indexOf('set-column-width:') === 0) {
-      var columnWidthValue = normalizeColumnWidth(action.substring('set-column-width:'.length));
-      await setBoardSettingValue('columnWidth', columnWidthValue || null);
-      return;
-    }
-    if (action.indexOf('set-card-height:') === 0) {
-      var cardHeightValue = String(action.substring('set-card-height:'.length) || 'auto').trim().toLowerCase();
-      await setBoardSettingValue('cardMinHeight', cardHeightValue === 'auto' ? 'auto' : cardHeightValue);
-      return;
-    }
-    if (action.indexOf('set-whitespace:') === 0) {
-      var whitespaceValue = normalizeWhitespaceValue(action.substring('set-whitespace:'.length));
-      await setBoardSettingValue('whitespace', whitespaceValue || null);
-      return;
-    }
-    if (action.indexOf('set-font-size:') === 0) {
-      var fontSizeValue = normalizeBoardFontSizeValue(action.substring('set-font-size:'.length));
-      await setBoardSettingValue('fontSize', fontSizeValue);
-      return;
-    }
-    if (action.indexOf('set-font-family:') === 0) {
-      var fontFamilyToken = action.substring('set-font-family:'.length);
-      await setBoardSettingValue('fontFamily', resolveBoardFontFamilyValue(fontFamilyToken));
-      return;
-    }
-    if (action.indexOf('set-layout-rows:') === 0) {
-      var layoutRowsValue = parseInt(action.substring('set-layout-rows:'.length), 10);
-      if (!isFinite(layoutRowsValue) || layoutRowsValue < 1) layoutRowsValue = 1;
-      if (layoutRowsValue > 6) layoutRowsValue = 6;
-      await setBoardSettingValue('layoutRows', layoutRowsValue);
-      return;
-    }
-    if (action.indexOf('set-row-height:') === 0) {
-      var rowHeightValue = String(action.substring('set-row-height:'.length) || 'auto').trim().toLowerCase();
-      await setBoardSettingValue('rowHeight', rowHeightValue === 'auto' ? 'auto' : rowHeightValue);
-      return;
-    }
-    if (action.indexOf('set-layout-preset:') === 0) {
-      var layoutPresetValue = String(action.substring('set-layout-preset:'.length) || '').trim().toLowerCase();
-      if (layoutPresetValue === 'spacious') {
-        await setBoardSettingValue('layoutPreset', 'spacious');
-        await setBoardSettingValue('layoutSpacing', 'spacious');
-      } else {
-        await setBoardSettingValue('layoutPreset', null);
-        await setBoardSettingValue('layoutSpacing', null);
-      }
-      return;
-    }
-    if (action === 'pin-headers' || action === 'unpin-headers') {
-      await togglePinnedHeaders();
-      return;
-    }
-    if (action === 'running-processes') {
-      openRunningProcessesPanel();
-      return;
-    }
-    if (action === 'open-save-tracking') {
-      var saveTrackingBtn = document.getElementById('btn-save-tracking');
-      if (saveTrackingBtn) showSaveTrackingMenu(saveTrackingBtn);
-      return;
-    }
-    if (action === 'save-now') {
-      if (activeBoardId && fullBoardData && isBoardDirty()) {
-        var saved = await saveFullBoard();
-        if (saved) clearBoardDirty();
-      } else {
-        var trackingBtn = document.getElementById('btn-save-tracking');
-        if (trackingBtn) showSaveTrackingMenu(trackingBtn);
-        else showNotification('No unsaved changes');
-      }
-      refreshBoardHeaderActionStates();
-      return;
-    }
-    if (action === 'open-management') {
-      openManagementPanel();
-      return;
-    }
-    if (action === 'open-theme-zoom') {
-      var tzBtn = document.getElementById('btn-theme-zoom');
-      if (tzBtn) showThemeZoomMenu(tzBtn);
-      return;
-    }
-    if (action === 'file-open-board-settings') {
-      openSettingsDialogForBoard(activeBoardId);
-      return;
-    }
-    if (action === 'file-open-export-settings') {
-      await triggerBoardExport();
-      return;
-    }
-    if (action === 'export-board') {
-      await triggerBoardExport();
-      return;
-    }
-    if (action === 'file-toggle-marp-settings') {
-      setMarpSettingsEnabled(!isMarpSettingsEnabled());
-      syncMenuCheckStates();
-      return;
-    }
-    if (action.indexOf('set-sticky-headers:') === 0) {
-      var stickyValue = action.substring('set-sticky-headers:'.length);
-      var normalizedSticky = normalizeStickyHeaderMode(stickyValue);
-      await setBoardSettingValue('stickyStackMode', normalizedSticky || null);
-      return;
-    }
-    if (action.indexOf('set-arrow-focus-scroll:') === 0) {
-      var focusScrollValue = normalizeArrowKeyFocusScrollMode(action.substring('set-arrow-focus-scroll:'.length));
-      await setBoardSettingValue('arrowKeyFocusScroll', focusScrollValue);
-      return;
-    }
-    if (action === 'toggle-overlay-editor') {
-      setOverlayEditorEnabled(!isOverlayEditorEnabled());
-      syncMenuCheckStates();
-      return;
-    }
-    if (action === 'toggle-wysiwyg-editor') {
-      setWysiwygEditorEnabled(!isWysiwygEditorEnabled());
-      syncMenuCheckStates();
-      return;
-    }
-    if (action === 'toggle-special-chars') {
-      setSpecialCharactersVisible(!isSpecialCharactersVisible());
-      syncMenuCheckStates();
-      return;
-    }
-    if (action === 'toggle-marp-settings') {
-      setMarpSettingsEnabled(!isMarpSettingsEnabled());
-      syncMenuCheckStates();
-      return;
-    }
-    if (action.indexOf('set-html-comments:') === 0) {
-      var htmlCommentValue = normalizeHtmlCommentRenderMode(action.substring('set-html-comments:'.length));
-      await setBoardSettingValue('htmlCommentRenderMode', htmlCommentValue);
-      return;
-    }
-    if (action.indexOf('set-html-content:') === 0) {
-      var htmlContentValue = action.substring('set-html-content:'.length) === 'html' ? 'html' : 'text';
-      await setBoardSettingValue('htmlContentRenderMode', htmlContentValue);
-      return;
-    }
-    if (action.indexOf('set-tag-visibility:') === 0) {
-      var tagVisibilityValue = normalizeTagVisibilityMode(action.substring('set-tag-visibility:'.length));
-      await setBoardSettingValue('tagVisibility', tagVisibilityValue);
-      return;
-    }
-    if (action.indexOf('set-tag-style-preset:') === 0) {
-      var presetId = action.substring('set-tag-style-preset:'.length);
-      setActiveTagStylePreset(presetId);
-      renderColumns();
-      showNotification('Tag style: ' + (TAG_STYLE_PRESETS[presetId] ? TAG_STYLE_PRESETS[presetId].label : presetId));
-      return;
-    }
-    if (action.indexOf('set-board-theme:') === 0) {
-      var themeId = action.substring('set-board-theme:'.length);
-      setBoardTheme(themeId);
-      showNotification('Visual style: ' + (BOARD_THEME_LABELS[themeId] || themeId));
-      return;
-    }
-    if (action === 'toggle-html-comments') {
-      var htmlCommentMode = normalizeHtmlCommentRenderMode(getBoardSettingValue('htmlCommentRenderMode', 'hidden'));
-      await setBoardSettingValue('htmlCommentRenderMode', htmlCommentMode === 'hidden' ? 'text' : 'hidden');
-      return;
-    }
-    if (action === 'toggle-html-content') {
-      await setBoardSettingValue('htmlContentRenderMode', getHtmlContentRenderMode() === 'html' ? 'text' : 'html');
-      return;
-    }
-    if (action === 'toggle-tag-visibility') {
-      var tagMode = normalizeTagVisibilityMode(getBoardSettingValue('tagVisibility', 'allexcludinglayout'));
-      await setBoardSettingValue('tagVisibility', tagMode === 'none' ? 'allexcludinglayout' : 'none');
-      return;
-    }
-    if (action === 'backend-settings' || action === 'settings' || action === 'collab') {
-      openConnectionWindow();
-      return;
-    }
-    if (action === 'split-enable') {
-      if (embeddedMode) return;
-      if (activeBoardId) {
-        splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-      }
-      splitViewMode = 'vertical';
-      applySplitMode(false);
-      return;
-    }
-    if (action === 'split-disable') {
-      if (embeddedMode) return;
-      splitViewMode = 'single';
-      applySplitMode(false);
-      return;
-    }
-    if (action === 'split-orientation') {
-      if (embeddedMode || splitViewMode === 'single') return;
-      splitViewMode = splitViewMode === 'vertical' ? 'horizontal' : 'vertical';
-      applySplitMode(true);
-      return;
-    }
-    if (action === 'toggle-inspector') {
-      toggleInspector();
-      return;
-    }
-    if (action === 'show-parked') {
-      showParkedItems();
-      return;
-    }
-    if (action === 'show-archived') {
-      showArchivedItems();
-      return;
-    }
-    if (action === 'show-trash') {
-      showDeletedItems();
-      return;
-    }
-    if (action === 'rename-file') {
-      renameActiveBoardFile();
-      return;
-    }
-    if (action === 'open-folder') {
-      openActiveBoardFolder();
-    }
-    if (action === 'copy-board-markdown') {
-      copyElementAsMarkdown('board', {});
-      return;
-    }
-    // Menu-bar actions: toggle fold (both directions from a single action)
-    if (action === 'toggle-fold-cards') {
-      toggleFoldAllCards();
-      return;
-    }
-    if (action === 'toggle-fold-columns') {
-      toggleFoldAllColumns();
-      return;
-    }
-    // Menu-bar actions: search
-    if (action === 'open-search') {
-      openSearchReplacePanel();
-      return;
-    }
-    if (action === 'open-search-replace') {
-      openSearchReplacePanel();
-      return;
-    }
-    // Menu-bar actions: paste as card (into first column)
-    if (action === 'paste-as-card') {
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      if (columns.length > 0) pasteClipboardAsCard(columns[0].index);
-      return;
-    }
-    // Menu-bar actions: zoom
-    if (action === 'zoom-in') {
-      nudgeUiScale(0.05);
-      return;
-    }
-    if (action === 'zoom-out') {
-      nudgeUiScale(-0.05);
-      return;
-    }
-    if (action === 'zoom-reset') {
-      applyUiScale(1);
-      showNotification('Zoom 100%');
-      return;
-    }
-    // Menu-bar actions: split view
-    if (action === 'split-enable-vertical') {
-      if (embeddedMode) return;
-      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-      splitViewMode = 'vertical';
-      applySplitMode(false);
-      return;
-    }
-    if (action === 'split-enable-horizontal') {
-      if (embeddedMode) return;
-      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
-      splitViewMode = 'horizontal';
-      applySplitMode(false);
-      return;
-    }
-    // Menu-bar actions: recent boards
-    if (action === 'show-recent-boards') {
-      var sidebarBoardItems = document.querySelectorAll('.sidebar-board-item');
-      if (sidebarBoardItems.length > 0) sidebarBoardItems[0].scrollIntoView({ behavior: 'smooth' });
-      return;
-    }
-    // Menu-bar actions: card/column focus navigation
-    if (action === 'focus-next-card') {
-      navigateCards('ArrowDown');
-      return;
-    }
-    if (action === 'focus-prev-card') {
-      navigateCards('ArrowUp');
-      return;
-    }
-    if (action === 'focus-next-column') {
-      navigateCards('ArrowRight');
-      return;
-    }
-    if (action === 'focus-prev-column') {
-      navigateCards('ArrowLeft');
-      return;
-    }
-    // Menu-bar actions: board structure
-    if (action === 'add-stack') {
-      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) {
-        await addStackToRow(activeBoardData.rows.length - 1);
-      }
-      return;
-    }
-    if (action === 'add-column') {
-      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) {
-        var lastRow = activeBoardData.rows[activeBoardData.rows.length - 1];
-        if (lastRow.stacks && lastRow.stacks.length > 0) {
-          await addColumnToStack(activeBoardData.rows.length - 1, lastRow.stacks.length - 1);
-        }
-      }
-      return;
-    }
-    if (action === 'add-card') {
-      var columns = activeBoardData ? activeBoardData.columns : [];
-      if (columns.length > 0) {
-        addCardColumn = columns[0].index;
-        renderColumns();
-      }
-      return;
-    }
-    // Menu-bar actions: stats / processes
-    if (action === 'toggle-board-stats') {
-      toggleBoardStatsBar();
-      return;
-    }
-    if (action === 'show-processes') {
-      openRunningProcessesPanel();
-      return;
-    }
-    // Menu-bar actions: keyboard shortcuts help
-    if (action === 'show-keyboard-shortcuts') {
-      showKeyboardShortcutsHelp();
-      return;
-    }
+    // Try registered actions first
+    if (ActionRegistry && ActionRegistry.dispatch('board', action, {})) return;
+    // Fallback: delegation to sub-handlers that do their own prefix matching
+    if (await handleBoardMarpMenuAction(action)) return;
+    if (await handleBoardPandocMenuAction(action)) return;
+    if (await handleEmbeddedRendererMenuAction(action)) return;
+    // Fallback for unregistered actions
+    traceFrontendAction('warn', 'action.board', 'Unhandled board action: ' + action);
   }
 
   function toggleFoldAll() {
@@ -10864,6 +10326,7 @@ const LexeraDashboard = (function () {
       { keys: mod + '+Y / ' + mod + '+Shift+Z', desc: 'Redo' },
       { keys: mod + '+F', desc: 'Search' },
       { keys: mod + '+Shift+H', desc: 'Search & Replace' },
+      { keys: mod + '+Shift+V', desc: 'Smart Paste (auto-format)' },
       { keys: mod + '+= / ' + mod + '+-', desc: 'Zoom in / out' },
       { keys: mod + '+0', desc: 'Reset zoom' },
       { keys: 'Alt+Enter', desc: 'Close panels' },
@@ -10900,6 +10363,7 @@ const LexeraDashboard = (function () {
       { keys: 'N', desc: 'New card (when no card focused)' },
       { keys: '1\u20139', desc: 'Jump to column by position' },
       { section: 'Other' },
+      { keys: 'Alt+Click', desc: 'Open link/image/embed in system app' },
       { keys: '?', desc: 'Toggle this help' },
     ];
     var overlay = document.createElement('div');
@@ -11161,6 +10625,13 @@ const LexeraDashboard = (function () {
     if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditing) {
       e.preventDefault();
       showKeyboardShortcutsHelp();
+      return;
+    }
+
+    // Smart Paste: Shift+Cmd/Ctrl+V — detect content type and paste with formatting
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v' && !isEditing) {
+      e.preventDefault();
+      smartPasteAsCard();
       return;
     }
   });
@@ -11979,12 +11450,7 @@ const LexeraDashboard = (function () {
     syncRenderedRowWidths();
     requestAnimationFrame(syncRenderedRowWidths);
 
-    flushPendingDiagramQueues();
-
     enhanceEmbeddedContent(getElColumnsContainer());
-    enhanceFileLinks(getElColumnsContainer());
-    enhanceIncludeDirectives(getElColumnsContainer());
-    enhanceColumnIncludeBadges(getElColumnsContainer());
     applyRenderedHtmlCommentVisibility(getElColumnsContainer(), currentHtmlCommentRenderMode);
     applyRenderedTagVisibility(getElColumnsContainer(), currentTagVisibilityMode);
     attachRenderedTagInteractions(getElColumnsContainer());
@@ -12724,180 +12190,71 @@ const LexeraDashboard = (function () {
   }
 
   function showRowContextMenu(x, y, rowIdx) {
-    closeRowStackMenu();
-    closeColumnContextMenu();
-    closeCardContextMenu();
-    var row = findFullDataRow(rowIdx);
-    var rowTitle = row ? (row.title || '') : '';
-
-    var nativeItems = [
-      { id: 'rename', label: 'Rename row' },
-      { id: 'add-stack', label: 'Add stack' },
-      { separator: true },
-      { id: 'reveal-all', label: 'Reveal all' },
-      { id: 'add-row-before', label: 'Insert row before' },
-      { id: 'add-row-after', label: 'Insert row after' },
-      { id: 'duplicate', label: 'Duplicate row' },
-      { separator: true },
-      { id: 'park', label: 'Park row' },
-      { id: 'archive', label: 'Archive row' },
-      { id: 'delete', label: 'Delete row' },
-      { separator: true },
-      { id: 'sort-sub', label: 'Sort all cards', items: [
-        { id: 'sort-title', label: 'Title' },
-        { id: 'sort-tag', label: 'Tag Value' },
-        { id: 'sort-duedate', label: 'Due Date' }
-      ]},
-      { separator: true },
-      { id: 'tag-add', label: 'Add Tag...' },
-      { id: 'tag-remove', label: 'Remove Tag...' },
-      { id: 'tag-clear', label: 'Clear Tags' },
-      { separator: true },
-    ];
-    nativeItems = nativeItems.concat(buildTagCategorySubmenus(rowTitle, 'tag-'));
-    var customSub = buildCustomTagsSubmenu(rowTitle, 'tag-custom-');
-    if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpMenuItems(rowTitle));
-    nativeItems.push({ separator: true });
-    nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
-    nativeItems.push({ id: 'export-row', label: 'Export row' });
-
-    showNativeMenu(nativeItems, x, y, 'row.menu').then(function (action) {
-      if (!action) return;
-      return handleRowAction(action, rowIdx);
-    }).catch(function (err) {
-      logFrontendIssue('error', 'row.menu', 'handleRowAction failed', err);
-    });
+    showElementContextMenu('row', x, y, { rowIdx: rowIdx });
   }
 
   function showStackContextMenu(x, y, rowIdx, stackIdx) {
+    showElementContextMenu('stack', x, y, { rowIdx: rowIdx, stackIdx: stackIdx });
+  }
+
+  function showElementContextMenu(scope, x, y, rawContext) {
     closeRowStackMenu();
     closeColumnContextMenu();
     closeCardContextMenu();
-    var stack = findFullDataStack(rowIdx, stackIdx);
-    var stackTitle = stack ? (stack.title || '') : '';
 
-    var nativeItems = [
-      { id: 'rename', label: 'Rename stack' },
-      { id: 'add-column', label: 'Add column' },
-      { separator: true },
-      { id: 'reveal-all', label: 'Reveal all' },
-      { id: 'add-stack-before', label: 'Insert stack before' },
-      { id: 'add-stack-after', label: 'Insert stack after' },
-      { id: 'duplicate', label: 'Duplicate stack' },
-      { separator: true },
-      { id: 'park', label: 'Park stack' },
-      { id: 'archive', label: 'Archive stack' },
-      { id: 'delete', label: 'Delete stack' },
-      { separator: true },
-      { id: 'sort-sub', label: 'Sort all cards', items: [
-        { id: 'sort-title', label: 'Title' },
-        { id: 'sort-tag', label: 'Tag Value' },
-        { id: 'sort-duedate', label: 'Due Date' }
-      ]},
-      { separator: true },
-      { id: 'tag-add', label: 'Add Tag...' },
-      { id: 'tag-remove', label: 'Remove Tag...' },
-      { id: 'tag-clear', label: 'Clear Tags' },
-      { separator: true },
-    ];
-    nativeItems = nativeItems.concat(buildTagCategorySubmenus(stackTitle, 'tag-'));
-    var customSub = buildCustomTagsSubmenu(stackTitle, 'tag-custom-');
-    if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpMenuItems(stackTitle));
-    nativeItems.push({ separator: true });
-    nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
-    nativeItems.push({ id: 'export-stack', label: 'Export stack' });
+    var context = {};
+    var keys = Object.keys(rawContext || {});
+    for (var ck = 0; ck < keys.length; ck++) context[keys[ck]] = rawContext[keys[ck]];
+    context.scope = scope;
 
-    showNativeMenu(nativeItems, x, y, 'stack.menu').then(function (action) {
+    // Prepare scope-specific context fields
+    if (scope === 'card') {
+      var col = getFullColumn(context.colIndex);
+      var cardText = '';
+      if (col) {
+        var fullIdx = getFullCardIndex(col, context.cardIndex);
+        if (fullIdx !== -1 && col.cards[fullIdx]) cardText = col.cards[fullIdx].content || '';
+      }
+      context.elementText = cardText;
+      context.visibleCardCount = 0;
+      if (activeBoardData && Array.isArray(activeBoardData.columns)) {
+        for (var vc = 0; vc < activeBoardData.columns.length; vc++) {
+          if (activeBoardData.columns[vc] && activeBoardData.columns[vc].index === context.colIndex) {
+            context.visibleCardCount = Array.isArray(activeBoardData.columns[vc].cards) ? activeBoardData.columns[vc].cards.length : 0;
+            break;
+          }
+        }
+      }
+      context.boardColumns = activeBoardData && Array.isArray(activeBoardData.columns) ? activeBoardData.columns : [];
+    } else if (scope === 'column') {
+      var ccol = getFullColumn(context.colIndex);
+      var colTitle = ccol ? (ccol.title || '') : '';
+      context.elementText = colTitle;
+      var layout = getColumnLayoutTags(colTitle);
+      context.isStacked = layout.stack;
+      context.currentSpan = layout.span ? parseInt(layout.span.match(/\d+/)[0], 10) : 1;
+      context.includePath = (ccol && ccol.includeSource && ccol.includeSource.rawPath)
+        ? String(ccol.includeSource.rawPath)
+        : extractIncludePathFromTitle(colTitle);
+      context.boardRows = activeBoardData && Array.isArray(activeBoardData.rows) ? activeBoardData.rows : [];
+      context.columnSortState = columnSortState;
+    } else if (scope === 'row') {
+      var row = findFullDataRow(context.rowIdx);
+      context.elementText = row ? (row.title || '') : '';
+    } else if (scope === 'stack') {
+      var stack = findFullDataStack(context.rowIdx, context.stackIdx);
+      context.elementText = stack ? (stack.title || '') : '';
+    }
+
+    var items = MenuContributorRegistry.buildMenu(scope, context);
+    var traceTarget = scope + '.menu';
+
+    showNativeMenu(items, x, y, traceTarget).then(function (action) {
       if (!action) return;
-      return handleStackAction(action, rowIdx, stackIdx);
+      ActionRegistry.dispatch(scope, action, context);
     }).catch(function (err) {
-      logFrontendIssue('error', 'stack.menu', 'handleStackAction failed', err);
+      logFrontendIssue('error', traceTarget, scope + ' menu action failed', err);
     });
-  }
-
-  async function handleRowAction(action, rowIdx) {
-    if (action === 'rename') {
-      renameRowOrStack('row', rowIdx);
-    } else if (action === 'add-stack') {
-      await addStackToRow(rowIdx);
-    } else if (action === 'reveal-all') {
-      revealRowContent(rowIdx);
-    } else if (action === 'insert-before' || action === 'add-row-before') {
-      await addRow(rowIdx);
-    } else if (action === 'insert-after' || action === 'add-row-after') {
-      await addRow(rowIdx + 1);
-    } else if (action === 'duplicate') {
-      await duplicateRow(rowIdx);
-    } else if (action === 'park') {
-      await setRowHiddenTag(rowIdx, '#hidden-internal-parked');
-    } else if (action === 'archive') {
-      await setRowHiddenTag(rowIdx, '#hidden-internal-archived');
-    } else if (action === 'delete') {
-      await deleteRow(rowIdx);
-    } else if (action === 'sort-title') {
-      await sortRowCards(rowIdx, 'title');
-    } else if (action === 'sort-tag') {
-      await sortRowCards(rowIdx, 'tag');
-    } else if (action === 'sort-duedate') {
-      await sortRowCards(rowIdx, 'duedate');
-    } else if (action === 'copy-markdown') {
-      copyElementAsMarkdown('row', { rowIdx: rowIdx });
-    } else if (action === 'export-row') {
-      await triggerBoardExport({
-        selection: {
-          scope: 'row',
-          rowIndex: rowIdx
-        }
-      });
-    } else if (String(action || '').indexOf('marp-') === 0) {
-      await handleEntityMarpMenuAction(action, 'row', { rowIdx: rowIdx });
-    } else if (action.indexOf('tag-') === 0) {
-      await handleEntityTagMenuAction(action, 'row', { rowIdx: rowIdx });
-    }
-  }
-
-  async function handleStackAction(action, rowIdx, stackIdx) {
-    if (action === 'rename') {
-      renameRowOrStack('stack', rowIdx, stackIdx);
-    } else if (action === 'add-column') {
-      await addColumnToStack(rowIdx, stackIdx);
-    } else if (action === 'reveal-all') {
-      revealStackContent(rowIdx, stackIdx);
-    } else if (action === 'insert-before' || action === 'add-stack-before') {
-      await addStackToRow(rowIdx, stackIdx);
-    } else if (action === 'insert-after' || action === 'add-stack-after') {
-      await addStackToRow(rowIdx, stackIdx + 1);
-    } else if (action === 'duplicate') {
-      await duplicateStack(rowIdx, stackIdx);
-    } else if (action === 'park') {
-      await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-parked');
-    } else if (action === 'archive') {
-      await setStackHiddenTag(rowIdx, stackIdx, '#hidden-internal-archived');
-    } else if (action === 'delete') {
-      await deleteStack(rowIdx, stackIdx);
-    } else if (action === 'sort-title') {
-      await sortStackCards(rowIdx, stackIdx, 'title');
-    } else if (action === 'sort-tag') {
-      await sortStackCards(rowIdx, stackIdx, 'tag');
-    } else if (action === 'sort-duedate') {
-      await sortStackCards(rowIdx, stackIdx, 'duedate');
-    } else if (action === 'copy-markdown') {
-      copyElementAsMarkdown('stack', { rowIdx: rowIdx, stackIdx: stackIdx });
-    } else if (action === 'export-stack') {
-      await triggerBoardExport({
-        selection: {
-          scope: 'stack',
-          rowIndex: rowIdx,
-          stackIndex: stackIdx
-        }
-      });
-    } else if (String(action || '').indexOf('marp-') === 0) {
-      await handleEntityMarpMenuAction(action, 'stack', { rowIdx: rowIdx, stackIdx: stackIdx });
-    } else if (action.indexOf('tag-') === 0) {
-      await handleEntityTagMenuAction(action, 'stack', { rowIdx: rowIdx, stackIdx: stackIdx });
-    }
   }
 
   function renameRowOrStack(type, rowIdx, stackIdx) {
@@ -13716,6 +13073,71 @@ const LexeraDashboard = (function () {
     } catch (err) {
       showNotification('Clipboard access denied');
     }
+  }
+
+  async function smartPasteAsCard(colIndex) {
+    if (!fullBoardData || !activeBoardId) return;
+    try {
+      var text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        showNotification('Clipboard is empty');
+        return;
+      }
+      text = text.trim();
+      var content = formatSmartPasteContent(text);
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      var targetCol = colIndex != null ? colIndex : (columns.length > 0 ? columns[0].index : null);
+      if (targetCol == null) return;
+      var column = getFullColumn(targetCol);
+      if (!column) return;
+      pushUndo();
+      var card = { id: 'card-' + Date.now(), content: content, checked: false };
+      column.cards.push(card);
+      await persistBoardMutation();
+      showNotification('Smart pasted as new card');
+    } catch (err) {
+      showNotification('Clipboard access denied');
+    }
+  }
+
+  function formatSmartPasteContent(text) {
+    // Single URL on its own line → markdown link
+    if (/^https?:\/\/\S+$/i.test(text)) {
+      var urlTitle = text.replace(/^https?:\/\/(www\.)?/i, '').split(/[?#]/)[0];
+      if (urlTitle.length > 60) urlTitle = urlTitle.substring(0, 57) + '...';
+      return '[' + urlTitle + '](' + text + ')';
+    }
+
+    // Image file path (local or relative) → markdown image embed
+    if (/\.(png|jpe?g|gif|svg|webp|bmp|ico|tiff?)$/i.test(text) && !/\n/.test(text)) {
+      return '![' + text.split('/').pop().split('\\').pop() + '](' + text + ')';
+    }
+
+    // Marp slide separators (--- on its own line) → split into multiple cards note
+    if (/^---\s*$/m.test(text) && text.indexOf('\n') !== -1) {
+      var lines = text.split('\n');
+      var hasMultipleSlides = 0;
+      for (var i = 0; i < lines.length; i++) {
+        if (/^---\s*$/.test(lines[i])) hasMultipleSlides++;
+      }
+      if (hasMultipleSlides >= 1) {
+        // Keep the content as-is; presentation slides are valid card content
+        return text;
+      }
+    }
+
+    // Multi-line text with bullet points or numbered lists → keep as markdown
+    if (/^(\s*[-*+]\s|\s*\d+\.\s)/m.test(text)) {
+      return text;
+    }
+
+    // Multi-line text starting with # → keep as markdown headings
+    if (/^#{1,6}\s/m.test(text)) {
+      return text;
+    }
+
+    // Everything else → use as-is
+    return text;
   }
 
   // --- Card DnD (pointer-based, bypasses broken WebKit HTML5 DnD) ---
@@ -16991,10 +16413,7 @@ const LexeraDashboard = (function () {
     var contentEl = cardEl.querySelector('.card-content');
     if (contentEl) {
       contentEl.innerHTML = renderCardContent(resolved, activeBoardId);
-      flushPendingDiagramQueues();
       enhanceEmbeddedContent(contentEl);
-      enhanceFileLinks(contentEl);
-      enhanceIncludeDirectives(contentEl);
       applyRenderedHtmlCommentVisibility(contentEl, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(contentEl, currentTagVisibilityMode);
     }
@@ -17521,10 +16940,7 @@ const LexeraDashboard = (function () {
     if (currentCardEditor.preview) {
       var resolved = getIncludeResolvedContent(value, currentCardEditor.colIndex);
       currentCardEditor.preview.innerHTML = renderCardContent(resolved, activeBoardId);
-      flushPendingDiagramQueues();
       enhanceEmbeddedContent(currentCardEditor.preview);
-      enhanceFileLinks(currentCardEditor.preview);
-      enhanceIncludeDirectives(currentCardEditor.preview);
       applyRenderedHtmlCommentVisibility(currentCardEditor.preview, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(currentCardEditor.preview, currentTagVisibilityMode);
     }
@@ -18515,136 +17931,7 @@ const LexeraDashboard = (function () {
   }
 
   function showCardContextMenu(x, y, colIndex, cardIndex) {
-    closeCardContextMenu();
-
-    var col = getFullColumn(colIndex);
-    var cardText = '';
-    var visibleCardCount = 0;
-    if (col) {
-      var fullIdx = getFullCardIndex(col, cardIndex);
-      if (fullIdx !== -1 && col.cards[fullIdx]) cardText = col.cards[fullIdx].content || '';
-    }
-    if (activeBoardData && Array.isArray(activeBoardData.columns)) {
-      for (var vc = 0; vc < activeBoardData.columns.length; vc++) {
-        var visibleCol = activeBoardData.columns[vc];
-        if (!visibleCol || visibleCol.index !== colIndex) continue;
-        visibleCardCount = Array.isArray(visibleCol.cards) ? visibleCol.cards.length : 0;
-        break;
-      }
-    }
-
-    var moveSubItems = [];
-    if (activeBoardData && Array.isArray(activeBoardData.columns)) {
-      for (var i = 0; i < activeBoardData.columns.length; i++) {
-        var targetCol = activeBoardData.columns[i];
-        if (!targetCol || targetCol.index === colIndex) continue;
-        var targetLabel = stripLayoutTags(stripInternalHiddenTags(targetCol.title || ''));
-        moveSubItems.push({
-          id: 'move-to:' + targetCol.index,
-          label: targetLabel || 'Untitled Column'
-        });
-      }
-    }
-
-    var nativeItems = [
-      { id: 'add-card', label: 'Add card' },
-      { separator: true },
-      { id: 'edit', label: 'Edit task (inline)' },
-      { id: 'edit-overlay', label: 'Edit task (overlay)', disabled: !isOverlayEditorEnabled() },
-      { id: 'reveal', label: 'Reveal content' },
-      { id: 'copy-markdown', label: 'Copy as markdown' },
-      { separator: true },
-      { id: 'insert-before', label: 'Insert card before' },
-      { id: 'insert-after', label: 'Insert card after' },
-      { id: 'duplicate', label: 'Duplicate card' },
-      { id: 'move-up', label: 'Move up', disabled: cardIndex <= 0 },
-      { id: 'move-down', label: 'Move down', disabled: visibleCardCount <= 0 || cardIndex >= (visibleCardCount - 1) },
-      { id: 'move-top', label: 'Move to top', disabled: cardIndex <= 0 },
-      { id: 'move-bottom', label: 'Move to bottom', disabled: visibleCardCount <= 0 || cardIndex >= (visibleCardCount - 1) },
-      { separator: true },
-      { id: 'park', label: 'Park card' },
-      { id: 'park-copy', label: 'Park copy' },
-      { id: 'archive', label: 'Archive card' },
-      { id: 'delete', label: 'Delete card' },
-      { separator: true },
-      { id: 'tag-add', label: 'Add Tag...' },
-      { id: 'tag-remove', label: 'Remove Tag...' },
-      { id: 'tag-clear', label: 'Clear Tags' },
-      { separator: true },
-    ];
-    if (moveSubItems.length > 0) {
-      nativeItems.push({ id: 'move-sub', label: 'Move to Column', items: moveSubItems });
-      var dupToItems = [];
-      for (var di = 0; di < moveSubItems.length; di++) {
-        dupToItems.push({ id: 'dup-to:' + moveSubItems[di].id.substring(8), label: moveSubItems[di].label });
-      }
-      nativeItems.push({ id: 'dup-to-sub', label: 'Duplicate to Column', items: dupToItems });
-      nativeItems.push({ separator: true });
-    }
-    nativeItems = nativeItems.concat(buildTagCategorySubmenus(cardText, 'tag-'));
-    var customSub = buildCustomTagsSubmenu(cardText, 'tag-custom-');
-    if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpMenuItems(cardText));
-
-    showNativeMenu(nativeItems, x, y, 'card.menu').then(function (action) {
-      if (action) return handleCardMenuAction(action, colIndex, cardIndex);
-    }).catch(function (err) {
-      logFrontendIssue('error', 'card.menu', 'handleCardMenuAction failed', err);
-    });
-  }
-
-  async function handleCardMenuAction(action, colIndex, cardIndex) {
-    if (action === 'add-card') {
-      addCardColumn = colIndex;
-      renderColumns();
-    } else if (action === 'edit' || action === 'edit-inline') {
-      var inlineCardEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
-      if (inlineCardEls.length > 0) openCardEditor(inlineCardEls[0], colIndex, cardIndex, 'inline');
-    } else if (action === 'edit-overlay') {
-      if (!isOverlayEditorEnabled()) {
-        showNotification('Overlay editor is disabled in header settings');
-        return;
-      }
-      var cardEls = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"][data-card-index="' + cardIndex + '"]');
-      if (cardEls.length > 0) openCardEditor(cardEls[0], colIndex, cardIndex, 'overlay');
-    } else if (action === 'reveal') {
-      revealCardContent(colIndex, cardIndex);
-    } else if (action === 'copy-markdown') {
-      copyElementAsMarkdown('card', { colIndex: colIndex, cardIndex: cardIndex });
-    } else if (action === 'insert-before') {
-      await insertCardAtIndex(colIndex, cardIndex);
-    } else if (action === 'insert-after') {
-      await insertCardAtIndex(colIndex, cardIndex + 1);
-    } else if (action === 'duplicate') {
-      await duplicateCard(colIndex, cardIndex);
-    } else if (action === 'move-up') {
-      if (cardIndex > 0) await moveCard(colIndex, cardIndex, colIndex, cardIndex - 1);
-    } else if (action === 'move-down') {
-      await moveCard(colIndex, cardIndex, colIndex, cardIndex + 2);
-    } else if (action === 'move-top') {
-      if (cardIndex > 0) await moveCard(colIndex, cardIndex, colIndex, 0);
-    } else if (action === 'move-bottom') {
-      var col = getFullColumn(colIndex);
-      if (col && cardIndex < col.cards.length - 1) await moveCard(colIndex, cardIndex, colIndex, col.cards.length);
-    } else if (action.indexOf('move-to:') === 0) {
-      var targetColIdx = parseInt(action.substring(8), 10);
-      if (isFinite(targetColIdx)) await moveCard(colIndex, cardIndex, targetColIdx, 0);
-    } else if (action.indexOf('dup-to:') === 0) {
-      var dupTargetIdx = parseInt(action.substring(7), 10);
-      if (isFinite(dupTargetIdx)) await duplicateCardToColumn(colIndex, cardIndex, dupTargetIdx);
-    } else if (action === 'park') {
-      await tagCard(colIndex, cardIndex, '#hidden-internal-parked');
-    } else if (action === 'park-copy') {
-      await parkCopyCard(colIndex, cardIndex);
-    } else if (action === 'archive') {
-      await tagCard(colIndex, cardIndex, '#hidden-internal-archived');
-    } else if (action === 'delete') {
-      await deleteCard(colIndex, cardIndex);
-    } else if (String(action || '').indexOf('marp-') === 0) {
-      await handleEntityMarpMenuAction(action, 'card', { colIndex: colIndex, cardIndex: cardIndex });
-    } else if (action.indexOf('tag-') === 0) {
-      await handleEntityTagMenuAction(action, 'card', { colIndex: colIndex, cardIndex: cardIndex });
-    }
+    showElementContextMenu('card', x, y, { colIndex: colIndex, cardIndex: cardIndex });
   }
 
   async function duplicateCard(colIndex, cardIndex) {
@@ -18943,98 +18230,9 @@ const LexeraDashboard = (function () {
   }
 
   function showColumnContextMenu(x, y, colIndex, context) {
-    closeColumnContextMenu();
-    closeCardContextMenu();
-    var col = getFullColumn(colIndex);
-    var colTitle = col ? (col.title || '') : '';
-    var layout = getColumnLayoutTags(colTitle);
-    var isStacked = layout.stack;
-    var currentSpan = layout.span ? parseInt(layout.span.match(/\d+/)[0], 10) : 1;
-    var includePath = col && col.includeSource && col.includeSource.rawPath
-      ? String(col.includeSource.rawPath)
-      : extractIncludePathFromTitle(colTitle);
-    var stackMoveItems = [];
-    if (activeBoardData && Array.isArray(activeBoardData.rows)) {
-      for (var r = 0; r < activeBoardData.rows.length; r++) {
-        var row = activeBoardData.rows[r];
-        if (!row || !Array.isArray(row.stacks)) continue;
-        var rowLabel = stripHtmlComments(stripInternalHiddenTags(row.title || '')) || 'Row ' + (r + 1);
-        for (var s = 0; s < row.stacks.length; s++) {
-          if (context && context.rowIdx === r && context.stackIdx === s) continue;
-          var stack = row.stacks[s];
-          if (!stack) continue;
-          var stackLabel = stripHtmlComments(stripInternalHiddenTags(stack.title || '')) || 'Stack ' + (s + 1);
-          stackMoveItems.push({
-            id: 'move-to-stack-' + r + '-' + s,
-            label: rowLabel + ' / ' + stackLabel
-          });
-        }
-      }
-    }
-
-    var nativeItems = [
-      { id: 'rename', label: 'Rename column' },
-      { id: 'add-card', label: 'Add card' },
-      { id: 'add-card-top', label: 'Add card at top' },
-      { id: 'paste-as-card', label: 'Paste as card' },
-      { separator: true },
-      { id: 'reveal-all', label: 'Reveal all' },
-      { id: 'add-before', label: 'Insert column before' },
-      { id: 'add-after', label: 'Insert column after' },
-      { id: 'duplicate', label: 'Duplicate column' },
-      { separator: true },
-      { id: 'fold-all', label: 'Fold all cards' },
-      { id: 'unfold-all', label: 'Unfold all cards' },
-      { separator: true },
-      { id: 'park', label: 'Park column' },
-      { id: 'archive', label: 'Archive column' },
-      { id: 'delete', label: 'Delete column' },
-      { separator: true },
-      { id: 'tag-add', label: 'Add Tag...' },
-      { id: 'tag-remove', label: 'Remove Tag...' },
-      { id: 'tag-clear', label: 'Clear Tags' },
-      { separator: true },
-    ];
-    nativeItems = nativeItems.concat(buildTagCategorySubmenus(colTitle, 'tag-'));
-    var customSub = buildCustomTagsSubmenu(colTitle, 'tag-custom-');
-    if (customSub) nativeItems.push(customSub);
-    nativeItems = nativeItems.concat(buildMarpMenuItems(colTitle));
-    nativeItems.push({ separator: true });
-    nativeItems.push({ id: 'width-sub', label: 'Width (span ' + currentSpan + ')', items: [
-      { id: 'set-span-1', label: (currentSpan === 1 ? '\u2713 ' : '') + 'Span 1 (default)' },
-      { id: 'set-span-2', label: (currentSpan === 2 ? '\u2713 ' : '') + 'Span 2' },
-      { id: 'set-span-3', label: (currentSpan === 3 ? '\u2713 ' : '') + 'Span 3' },
-      { id: 'set-span-4', label: (currentSpan === 4 ? '\u2713 ' : '') + 'Span 4' }
-    ]});
-    nativeItems.push({ id: 'toggle-stacked', label: (isStacked ? '\u2713 ' : '') + 'Stacked column' });
-    nativeItems.push({ id: 'sort-sub', label: 'Sort by', items: [
-      { id: 'sort-title', label: 'Title' + (columnSortState[colIndex + ':title'] ? (columnSortState[colIndex + ':title'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
-      { id: 'sort-tag', label: 'Tag Value' + (columnSortState[colIndex + ':tag'] ? (columnSortState[colIndex + ':tag'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
-      { id: 'sort-duedate', label: 'Due Date' + (columnSortState[colIndex + ':duedate'] ? (columnSortState[colIndex + ':duedate'] === 'asc' ? ' \u2191' : ' \u2193') : '') }
-    ]});
-    if (stackMoveItems.length > 0) {
-      nativeItems.push({ separator: true });
-      nativeItems.push({ id: 'move-sub', label: 'Move to Stack', items: stackMoveItems });
-    }
-    nativeItems.push({ separator: true });
-    nativeItems.push({ id: 'copy-markdown', label: 'Copy as markdown' });
-    nativeItems.push({ id: 'export-column', label: 'Export column' });
-    nativeItems.push({ separator: true });
-    if (includePath) {
-      nativeItems.push({ id: 'preview-include', label: 'Preview Include File' });
-      nativeItems.push({ id: 'open-include', label: 'Open Include in System App' });
-      nativeItems.push({ id: 'edit-include', label: 'Edit Include File' });
-      nativeItems.push({ id: 'disable-include', label: 'Disable Include Mode' });
-    } else {
-      nativeItems.push({ id: 'enable-include', label: 'Enable Include Mode' });
-    }
-
-    showNativeMenu(nativeItems, x, y, 'column.menu').then(function (action) {
-      if (!action) return;
-      return handleColumnAction(action, colIndex, context);
-    }).catch(function (err) {
-      logFrontendIssue('error', 'column.menu', 'handleColumnAction failed', err);
-    });
+    var ctx = { colIndex: colIndex };
+    if (context) { ctx.rowIdx = context.rowIdx; ctx.stackIdx = context.stackIdx; ctx.colLocalIdx = context.colLocalIdx; }
+    showElementContextMenu('column', x, y, ctx);
   }
 
   async function setColumnIncludePath(colIndex, nextPath) {
@@ -19168,85 +18366,6 @@ const LexeraDashboard = (function () {
     await persistBoardMutation({ refreshSidebar: true });
   }
 
-  async function handleColumnAction(action, colIndex, context) {
-    var stackMoveMatch = String(action || '').match(/^move-to-stack-(\d+)-(\d+)$/);
-    if (stackMoveMatch) {
-      await moveColumnToStack(colIndex, parseInt(stackMoveMatch[1], 10), parseInt(stackMoveMatch[2], 10));
-      return;
-    }
-    if (action === 'rename') {
-      var colCardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + colIndex + '"]');
-      var colRootEl = colCardsEl ? colCardsEl.closest('.column') : null;
-      if (colRootEl) enterColumnRename(colRootEl, colIndex);
-    } else if (action === 'add-card') {
-      addCardColumn = colIndex;
-      renderColumns();
-    } else if (action === 'add-card-top') {
-      await insertCardAtIndex(colIndex, 0);
-    } else if (action === 'paste-as-card') {
-      await pasteClipboardAsCard(colIndex);
-    } else if (action === 'reveal-all') {
-      revealColumnContent(colIndex);
-    } else if (action === 'add-before') {
-      if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, true))) {
-        await addColumn(colIndex);
-      }
-    } else if (action === 'add-after') {
-      if (!(context && await addColumnRelativeToDisplayPosition(context.rowIdx, context.stackIdx, context.colLocalIdx, false))) {
-        await addColumn(colIndex + 1);
-      }
-    } else if (action === 'duplicate') {
-      await duplicateColumn(colIndex);
-    } else if (action === 'fold-all') {
-      toggleColCards(colIndex, true);
-    } else if (action === 'unfold-all') {
-      toggleColCards(colIndex, false);
-    } else if (action === 'park') {
-      await setColumnHiddenTag(colIndex, '#hidden-internal-parked');
-    } else if (action === 'archive') {
-      await setColumnHiddenTag(colIndex, '#hidden-internal-archived');
-    } else if (action === 'delete') {
-      await deleteColumn(colIndex);
-    } else if (action === 'toggle-width') {
-      await toggleColumnWidth(colIndex);
-    } else if (action.indexOf('set-span-') === 0) {
-      await setColumnSpan(colIndex, parseInt(action.substring(9), 10));
-    } else if (action === 'toggle-stacked') {
-      await toggleTag('column', { colIndex: colIndex }, '#stack');
-    } else if (action === 'sort-title') {
-      sortColumnCards(colIndex, 'title');
-    } else if (action === 'sort-tag') {
-      sortColumnCards(colIndex, 'tag');
-    } else if (action === 'sort-duedate') {
-      sortColumnCards(colIndex, 'duedate');
-    } else if (action === 'copy-markdown') {
-      copyElementAsMarkdown('column', { colIndex: colIndex });
-    } else if (action === 'export-column') {
-      exportColumn(colIndex);
-    } else if (action === 'preview-include') {
-      var previewCol = getFullColumn(colIndex);
-      var previewPath = previewCol && previewCol.includeSource && previewCol.includeSource.rawPath
-        ? String(previewCol.includeSource.rawPath)
-        : extractIncludePathFromTitle(previewCol && previewCol.title ? previewCol.title : '');
-      if (previewPath) showBoardFilePreview(activeBoardId, previewPath);
-    } else if (action === 'open-include') {
-      var openCol = getFullColumn(colIndex);
-      var openPath = openCol && openCol.includeSource && openCol.includeSource.rawPath
-        ? String(openCol.includeSource.rawPath)
-        : extractIncludePathFromTitle(openCol && openCol.title ? openCol.title : '');
-      if (openPath) openBoardFileInSystem(activeBoardId, openPath);
-    } else if (action === 'enable-include') {
-      await enableColumnIncludeMode(colIndex);
-    } else if (action === 'edit-include') {
-      await editColumnIncludeFile(colIndex);
-    } else if (action === 'disable-include') {
-      await disableColumnIncludeMode(colIndex);
-    } else if (String(action || '').indexOf('marp-') === 0) {
-      await handleEntityMarpMenuAction(action, 'column', { colIndex: colIndex });
-    } else if (action.indexOf('tag-') === 0) {
-      await handleEntityTagMenuAction(action, 'column', { colIndex: colIndex });
-    }
-  }
 
   async function setColumnHiddenTag(colIndex, tag) {
     traceFrontendAction('info', 'column.hiddenTag', 'setColumnHiddenTag called', { colIndex: colIndex, tag: tag });
@@ -21930,18 +21049,8 @@ const LexeraDashboard = (function () {
   }
 
   async function enhanceEmbeddedContent(root) {
-    if (!root || !root.querySelectorAll) return;
-    var externalContainers = root.querySelectorAll('.external-embed-container[data-embed-url]');
-    for (var h = 0; h < externalContainers.length; h++) {
-      enhanceSingleExternalEmbedContainer(externalContainers[h]);
-    }
-    var containers = root.querySelectorAll('.embed-container[data-file-path][data-board-id]');
-    for (var i = 0; i < containers.length; i++) {
-      enhanceSingleEmbedContainer(containers[i]);
-    }
-    var inlineContainers = root.querySelectorAll('.inline-file-embed-container[data-file-path][data-board-id]');
-    for (var j = 0; j < inlineContainers.length; j++) {
-      enhanceSingleInlineFileEmbed(inlineContainers[j]);
+    if (ContentEnhancerRegistry) {
+      ContentEnhancerRegistry.enhance(root, { boardId: activeBoardId });
     }
   }
 
@@ -21992,14 +21101,6 @@ const LexeraDashboard = (function () {
     });
   }
 
-  async function enhanceFileLinks(root) {
-    if (!root || !root.querySelectorAll) return;
-    var links = root.querySelectorAll('.markdown-file-link[data-file-path]');
-    for (var i = 0; i < links.length; i++) {
-      enhanceSingleFileLink(links[i]);
-    }
-  }
-
   async function enhanceSingleFileLink(link) {
     if (!link || link.getAttribute('data-link-enhanced') === '1') return;
     var boardId = link.getAttribute('data-board-id') || activeBoardId || '';
@@ -22043,10 +21144,7 @@ const LexeraDashboard = (function () {
       body.innerHTML = renderEmbedPreviewContent(kind, boardId, previewPath, text);
       applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
       applyRenderedTagVisibility(body, currentTagVisibilityMode);
-      flushPendingDiagramQueues();
       enhanceEmbeddedContent(body);
-      enhanceFileLinks(body);
-      enhanceIncludeDirectives(body);
     } catch (err) {
       logFrontendIssue(
         'warn',
@@ -22056,22 +21154,6 @@ const LexeraDashboard = (function () {
       );
       container.classList.add('embed-broken');
       body.innerHTML = '<div class="broken-include-placeholder">Inline file unavailable</div>';
-    }
-  }
-
-  async function enhanceIncludeDirectives(root) {
-    if (!root || !root.querySelectorAll) return;
-    var containers = root.querySelectorAll('.include-inline-container[data-file-path]');
-    for (var i = 0; i < containers.length; i++) {
-      enhanceSingleIncludeDirective(containers[i]);
-    }
-  }
-
-  async function enhanceColumnIncludeBadges(root) {
-    if (!root || !root.querySelectorAll) return;
-    var badges = root.querySelectorAll('.column-include-badge[data-include-path]');
-    for (var i = 0; i < badges.length; i++) {
-      enhanceSingleColumnIncludeBadge(badges[i]);
     }
   }
 
@@ -22150,10 +21232,7 @@ const LexeraDashboard = (function () {
         nested[i].setAttribute('data-include-depth', String(depth + 1));
       }
 
-      flushPendingDiagramQueues();
       enhanceEmbeddedContent(body);
-      enhanceFileLinks(body);
-      enhanceIncludeDirectives(body);
     } catch (err) {
       logFrontendIssue(
         'warn',
@@ -22385,12 +21464,9 @@ const LexeraDashboard = (function () {
           applyRenderedHtmlCommentVisibility(body, currentHtmlCommentRenderMode);
           applyRenderedTagVisibility(body, currentTagVisibilityMode);
           enhanceEmbeddedContent(body);
-          enhanceFileLinks(body);
-          enhanceIncludeDirectives(body);
         } else {
           body.innerHTML = '<pre class="file-preview-text">' + escapeHtml(text) + '</pre>';
         }
-        flushPendingDiagramQueues();
       } catch (err) {
         logFrontendIssue(
           'warn',
@@ -22405,6 +21481,52 @@ const LexeraDashboard = (function () {
     await renderPreviewBody();
   }
 
+  // Register content enhancers
+  if (ContentEnhancerRegistry) {
+    ContentEnhancerRegistry.register({
+      id: 'external-embed',
+      selector: '.external-embed-container[data-embed-url]',
+      priority: 10,
+      enhance: function (el) { enhanceSingleExternalEmbedContainer(el); }
+    });
+    ContentEnhancerRegistry.register({
+      id: 'file-embed',
+      selector: '.embed-container[data-file-path][data-board-id]',
+      priority: 20,
+      enhance: function (el) { enhanceSingleEmbedContainer(el); }
+    });
+    ContentEnhancerRegistry.register({
+      id: 'inline-file-embed',
+      selector: '.inline-file-embed-container[data-file-path][data-board-id]',
+      priority: 30,
+      enhance: function (el) { enhanceSingleInlineFileEmbed(el); }
+    });
+    ContentEnhancerRegistry.register({
+      id: 'file-link',
+      selector: '.markdown-file-link[data-file-path]',
+      priority: 40,
+      enhance: function (el) { enhanceSingleFileLink(el); }
+    });
+    ContentEnhancerRegistry.register({
+      id: 'column-include-badge',
+      selector: '.column-include-badge[data-include-path]',
+      priority: 50,
+      enhance: function (el) { enhanceSingleColumnIncludeBadge(el); }
+    });
+    ContentEnhancerRegistry.register({
+      id: 'include-directive',
+      selector: '.include-inline-container[data-file-path]',
+      priority: 60,
+      enhance: function (el) { enhanceSingleIncludeDirective(el); }
+    });
+    ContentEnhancerRegistry.register({
+      id: 'diagram-flush',
+      selector: null,
+      priority: 100,
+      enhance: function () { flushPendingDiagramQueues(); }
+    });
+  }
+
   function closeEmbedMenu() {
     if (activeEmbedMenu) {
       activeEmbedMenu.remove();
@@ -22413,6 +21535,65 @@ const LexeraDashboard = (function () {
   }
 
   document.addEventListener('click', function (e) {
+    // Alt+Click: open links in system browser, images/embeds in system app
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      var cardContent = e.target.closest('.card-content');
+      if (cardContent) {
+        // Alt+click on an anchor link → open URL in system browser
+        var altLink = e.target.closest('a[href]');
+        if (altLink) {
+          e.preventDefault();
+          e.stopPropagation();
+          var href = altLink.getAttribute('data-original-href') || altLink.getAttribute('href') || '';
+          if (/^https?:\/\//i.test(href) || /^mailto:/i.test(href)) {
+            openUrlInSystem(href);
+          } else if (href && href.charAt(0) !== '#') {
+            openBoardFileInSystem(activeBoardId, href);
+          }
+          return;
+        }
+        // Alt+click on an image → open image file in system app
+        var altImg = e.target.closest('img');
+        if (altImg) {
+          e.preventDefault();
+          e.stopPropagation();
+          var imgSrc = altImg.getAttribute('data-original-src') || altImg.getAttribute('src') || '';
+          if (imgSrc) openBoardFileInSystem(activeBoardId, imgSrc);
+          return;
+        }
+        // Alt+click on an embed container → open embedded file
+        var altEmbed = e.target.closest('.embed-container[data-file-path]');
+        if (altEmbed) {
+          e.preventDefault();
+          e.stopPropagation();
+          openBoardFileInSystem(
+            altEmbed.getAttribute('data-board-id') || activeBoardId || '',
+            altEmbed.getAttribute('data-file-path') || ''
+          );
+          return;
+        }
+        // Alt+click on an inline file embed → open the file
+        var altInline = e.target.closest('.inline-file-embed-container[data-file-path]');
+        if (altInline) {
+          e.preventDefault();
+          e.stopPropagation();
+          openBoardFileInSystem(
+            altInline.getAttribute('data-board-id') || activeBoardId || '',
+            altInline.getAttribute('data-file-path') || ''
+          );
+          return;
+        }
+        // Alt+click on an external embed → open URL in browser
+        var altExternal = e.target.closest('.external-embed-container[data-embed-url]');
+        if (altExternal) {
+          e.preventDefault();
+          e.stopPropagation();
+          openUrlInSystem(altExternal.getAttribute('data-embed-url') || '');
+          return;
+        }
+      }
+    }
+
     var wikiMenuBtn = e.target.closest('.wiki-menu-btn');
     if (wikiMenuBtn) {
       e.preventDefault();
@@ -22951,12 +22132,18 @@ const LexeraDashboard = (function () {
       y = containerRect.top;
     }
     var diagramType = container.getAttribute('data-diagram-type') || 'diagram';
-    var typeLabel = diagramType === 'mermaid' ? 'Mermaid' : 'PlantUML';
-    showNativeMenu([
+    var plugin = DiagramRegistry ? DiagramRegistry.getById(diagramType) : null;
+    var menuItems = plugin && plugin.menuItems ? plugin.menuItems(container.getAttribute('data-diagram-code') || '') : [
       { id: 'copy-svg', label: 'Copy SVG' },
-      { id: 'copy-code', label: 'Copy ' + typeLabel + ' Code' },
-    ], x, y).then(function (action) {
-      if (action) handleDiagramAction(action, container);
+      { id: 'copy-code', label: 'Copy Code' },
+    ];
+    showNativeMenu(menuItems, x, y).then(function (action) {
+      if (!action) return;
+      if (plugin && plugin.handleMenuAction) {
+        plugin.handleMenuAction(action, container);
+      } else {
+        handleDiagramAction(action, container);
+      }
     });
   }
 
@@ -23425,13 +22612,17 @@ const LexeraDashboard = (function () {
   };
 
   window.queueMermaidRender = function (id, code) {
-    pendingMermaidRenders.push({ id: id, code: code });
-    flushPendingDiagramQueues();
+    if (DiagramRegistry) {
+      DiagramRegistry.enqueue('mermaid', id, code, getCurrentEditorBoardId() || activeBoardId || '');
+      DiagramRegistry.flush();
+    }
   };
 
   window.queuePlantUMLRender = function (id, code) {
-    pendingPlantUmlRenders.push({ id: id, code: code, boardId: getCurrentEditorBoardId() || activeBoardId || '' });
-    flushPendingDiagramQueues();
+    if (DiagramRegistry) {
+      DiagramRegistry.enqueue('plantuml', id, code, getCurrentEditorBoardId() || activeBoardId || '');
+      DiagramRegistry.flush();
+    }
   };
 
   window.processDiagramQueue = flushPendingDiagramQueues;
@@ -24257,12 +23448,6 @@ const LexeraDashboard = (function () {
     try { localStorage.setItem('lexera-board-theme', id); } catch (e) { /* */ }
   }
 
-  function buildBoardThemeItems(actionPrefix) {
-    var current = getBoardTheme();
-    return BOARD_THEMES.map(function (id) {
-      return { id: actionPrefix + ':' + id, label: (current === id ? '\u2713 ' : '') + BOARD_THEME_LABELS[id] };
-    });
-  }
 
   // Restore saved theme on startup
   try {
@@ -25157,95 +24342,84 @@ const LexeraDashboard = (function () {
   }
 
   function flushPendingDiagramQueues() {
-    if (pendingMermaidRenders.length > 0) {
-      if (mermaidReady) processMermaidQueue();
-      else loadMermaidLibrary();
-    }
-    if (pendingPlantUmlRenders.length > 0) {
-      processPlantUmlQueue();
-    }
+    if (DiagramRegistry) DiagramRegistry.flush();
   }
 
-  function loadMermaidLibrary() {
-    if (mermaidReady || mermaidLoading) return;
-    mermaidLoading = true;
-    var script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
-    script.onload = function () {
-      mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose', fontFamily: 'inherit' });
-      mermaidReady = true;
-      mermaidLoading = false;
-      processMermaidQueue();
-    };
-    script.onerror = function () {
-      mermaidLoading = false;
-      // Show error in all pending placeholders
-      for (var i = 0; i < pendingMermaidRenders.length; i++) {
-        var el = document.getElementById(pendingMermaidRenders[i].id);
-        if (el) el.innerHTML = '<span class="mermaid-error">Failed to load Mermaid library</span>';
-      }
-      pendingMermaidRenders = [];
-    };
-    document.head.appendChild(script);
-  }
-
-  function processMermaidQueue() {
-    if (!mermaidReady || pendingMermaidRenders.length === 0) return;
-    var queue = pendingMermaidRenders.slice();
-    pendingMermaidRenders = [];
-    queue.forEach(function (item) {
-      var el = document.getElementById(item.id);
-      if (!el) return;
-      try {
-        mermaid.render(item.id + '-svg', item.code).then(function (result) {
-          el.className = 'mermaid-diagram';
-          el.innerHTML = result.svg;
-        }).catch(function (err) {
-          el.innerHTML = '<span class="mermaid-error">Mermaid error: ' + escapeHtml(err.message || String(err)) + '</span>';
+  if (DiagramRegistry) {
+    DiagramRegistry.register({
+      id: 'mermaid',
+      languages: ['mermaid'],
+      _ready: false,
+      _loading: false,
+      isReady: function () { return this._ready; },
+      init: function () {
+        var self = this;
+        if (self._ready) return Promise.resolve();
+        if (self._loading) return new Promise(function (resolve) {
+          var check = setInterval(function () { if (self._ready) { clearInterval(check); resolve(); } }, 50);
         });
-      } catch (err) {
-        el.innerHTML = '<span class="mermaid-error">Mermaid error: ' + escapeHtml(err.message || String(err)) + '</span>';
+        self._loading = true;
+        return new Promise(function (resolve, reject) {
+          var script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+          script.onload = function () {
+            mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose', fontFamily: 'inherit' });
+            self._ready = true;
+            self._loading = false;
+            resolve();
+          };
+          script.onerror = function () {
+            self._loading = false;
+            reject(new Error('Failed to load Mermaid library'));
+          };
+          document.head.appendChild(script);
+        });
+      },
+      render: function (id, code) {
+        return mermaid.render(id + '-svg', code).then(function (result) { return result.svg; });
+      },
+      placeholder: function (id) {
+        return '<div class="mermaid-placeholder" id="' + id + '">Loading diagram...</div>';
+      },
+      menuItems: function () {
+        return [
+          { id: 'copy-svg', label: 'Copy SVG' },
+          { id: 'copy-code', label: 'Copy Mermaid Code' },
+        ];
+      },
+      handleMenuAction: function (action, container) {
+        handleDiagramAction(action, container);
       }
     });
-  }
 
-  async function processPlantUmlQueue() {
-    if (plantumlQueueProcessing || pendingPlantUmlRenders.length === 0) return;
-    plantumlQueueProcessing = true;
-    var queue = pendingPlantUmlRenders.slice();
-    pendingPlantUmlRenders = [];
-
-    for (var i = 0; i < queue.length; i++) {
-      var item = queue[i];
-      var el = document.getElementById(item.id);
-      if (!el) continue;
-      try {
-        var asset = await resolveCachedPlantUmlAsset(item.boardId, item.code);
-        if (!asset) {
-          el.classList.add('plantuml-missing');
-          continue;
-        }
-        var response = await fetch(asset.url);
-        if (!response.ok) throw new Error('Failed to load PlantUML cache');
-        el.className = 'plantuml-diagram';
-        el.innerHTML = await response.text();
-        el.style.margin = '8px 0';
-        el.style.overflow = 'auto';
-        var svg = el.querySelector('svg');
-        if (svg) {
-          svg.style.display = 'block';
-          svg.style.maxWidth = '100%';
-          svg.style.height = 'auto';
-        }
-      } catch (err) {
-        el.classList.add('plantuml-missing');
+    DiagramRegistry.register({
+      id: 'plantuml',
+      languages: ['plantuml', 'puml'],
+      _ready: true,
+      isReady: function () { return true; },
+      init: function () { return Promise.resolve(); },
+      render: function (id, code, boardId) {
+        return resolveCachedPlantUmlAsset(boardId, code).then(function (asset) {
+          if (!asset) return Promise.reject(new Error('PlantUML render unavailable'));
+          return fetch(asset.url).then(function (response) {
+            if (!response.ok) throw new Error('Failed to load PlantUML cache');
+            return response.text();
+          });
+        });
+      },
+      placeholder: function (id, code) {
+        return '<div class="plantuml-placeholder" id="' + id + '"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(code) + '</code></pre></div>';
+      },
+      menuItems: function () {
+        return [
+          { id: 'copy-svg', label: 'Copy SVG' },
+          { id: 'copy-code', label: 'Copy PlantUML Code' },
+        ];
+      },
+      handleMenuAction: function (action, container) {
+        handleDiagramAction(action, container);
       }
-    }
-
-    plantumlQueueProcessing = false;
-    if (pendingPlantUmlRenders.length > 0) {
-      processPlantUmlQueue();
-    }
+    });
   }
 
   function escapeRegex(str) {
@@ -25395,22 +24569,15 @@ const LexeraDashboard = (function () {
           codeLines.push(lines[i]);
           i++;
         }
-        if (lang.toLowerCase() === 'mermaid') {
-          var mermaidId = 'mermaid-' + (++mermaidIdCounter);
-          var code = codeLines.join('\n');
-          html += '<div class="diagram-overlay-container" data-diagram-type="mermaid" data-diagram-code="' + escapeAttr(code) + '" style="position:relative;display:block">' +
+        var diagramPlugin = DiagramRegistry ? DiagramRegistry.findByLanguage(lang.toLowerCase()) : null;
+        if (diagramPlugin) {
+          var diagId = DiagramRegistry.nextId(diagramPlugin.id);
+          var diagCode = codeLines.join('\n');
+          html += '<div class="diagram-overlay-container" data-diagram-type="' + escapeAttr(diagramPlugin.id) + '" data-diagram-code="' + escapeAttr(diagCode) + '" style="position:relative;display:block">' +
             '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1">&#8942;</button>' +
-            '<div class="mermaid-placeholder" id="' + mermaidId + '">Loading diagram...</div>' +
+            diagramPlugin.placeholder(diagId, diagCode) +
             '</div>';
-          pendingMermaidRenders.push({ id: mermaidId, code: code });
-        } else if (lang.toLowerCase() === 'plantuml' || lang.toLowerCase() === 'puml') {
-          var plantumlId = 'plantuml-' + (++plantumlIdCounter);
-          var plantumlCode = codeLines.join('\n');
-          html += '<div class="diagram-overlay-container" data-diagram-type="plantuml" data-diagram-code="' + escapeAttr(plantumlCode) + '" style="position:relative;display:block">' +
-            '<button class="embed-menu-btn diagram-menu-btn" title="Diagram actions" style="opacity:1">&#8942;</button>' +
-            '<div class="plantuml-placeholder" id="' + plantumlId + '"><div class="plantuml-title">PlantUML</div><pre class="code-block"><code class="language-plantuml">' + escapeHtml(plantumlCode) + '</code></pre></div>' +
-            '</div>';
-          pendingPlantUmlRenders.push({ id: plantumlId, code: plantumlCode, boardId: boardId || activeBoardId || '' });
+          DiagramRegistry.enqueue(diagramPlugin.id, diagId, diagCode, boardId || activeBoardId || '');
         } else {
           var langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
           html += '<pre class="code-block"><code' + langClass + '>' + escapeHtml(codeLines.join('\n')) + '</code></pre>';
@@ -26129,6 +25296,740 @@ const LexeraDashboard = (function () {
           }
         }
       });
+    });
+  }
+
+  // ===== Action Registry Registrations =====
+  if (ActionRegistry) {
+    // ----- Board scope -----
+    // Recent boards
+    ActionRegistry.register('board', 'recent:*', function (action) { var id = action.substring(7); if (id) selectBoard(id); });
+
+    // Undo/redo
+    ActionRegistry.register('board', 'undo', function () { undo(); });
+    ActionRegistry.register('board', 'redo', function () { redo(); });
+
+    // Board structure
+    ActionRegistry.register('board', 'add-row', function () { addRow(); });
+    ActionRegistry.register('board', 'add-stack', function () {
+      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) addStackToRow(activeBoardData.rows.length - 1);
+    });
+    ActionRegistry.register('board', 'add-column', function () {
+      if (activeBoardData && activeBoardData.rows && activeBoardData.rows.length > 0) {
+        var lastRow = activeBoardData.rows[activeBoardData.rows.length - 1];
+        if (lastRow.stacks && lastRow.stacks.length > 0) addColumnToStack(activeBoardData.rows.length - 1, lastRow.stacks.length - 1);
+      }
+    });
+    ActionRegistry.register('board', 'add-card', function () {
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      if (columns.length > 0) { addCardColumn = columns[0].index; renderColumns(); }
+    });
+
+    // Fold
+    ActionRegistry.register('board', 'fold-all', function () { toggleFoldAll(); });
+    ActionRegistry.register('board', 'unfold-all', function () { toggleFoldAll(); });
+    ActionRegistry.register('board', 'fold-columns', function () { toggleFoldAllColumns(); });
+    ActionRegistry.register('board', 'unfold-columns', function () { toggleFoldAllColumns(); });
+    ActionRegistry.register('board', 'fold-cards', function () { toggleFoldAllCards(); });
+    ActionRegistry.register('board', 'unfold-cards', function () { toggleFoldAllCards(); });
+    ActionRegistry.register('board', 'toggle-fold-cards', function () { toggleFoldAllCards(); });
+    ActionRegistry.register('board', 'toggle-fold-columns', function () { toggleFoldAllColumns(); });
+
+    // Sorting
+    ActionRegistry.register('board', 'sort-all-cards:*', function (action) {
+      var sortMode = action.substring('sort-all-cards:'.length);
+      var resolvedMode = sortMode === 'tag' ? 'tag' : sortMode === 'duedate' ? 'duedate' : 'title';
+      sortAllCardsAcrossBoard(resolvedMode);
+    });
+
+    // ── Board Setting Descriptors ─────────────────────────────────────
+    BoardSettingRegistry.register({
+      id: 'columnWidth', label: 'Column Width', category: 'format',
+      settingsKey: 'columnWidth', actionPrefix: 'set-column-width', defaultValue: '450px',
+      normalize: normalizeColumnWidth,
+      options: [
+        { value: '250px', label: '250px' }, { value: '350px', label: '350px' },
+        { value: '450px', label: '450px' }, { value: '550px', label: '550px' },
+        { value: '650px', label: '650px' }, { separator: true },
+        { value: '31.5vw', label: '1/3 Screen' }, { value: '48vw', label: '1/2 Screen' },
+        { value: '63vw', label: '2/3 Screen' }, { value: '95vw', label: 'Full Width' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'cardHeight', label: 'Card Height', category: 'format',
+      settingsKey: 'cardMinHeight', actionPrefix: 'set-card-height', defaultValue: 'auto',
+      normalize: function (v) { return String(v || 'auto').trim().toLowerCase(); },
+      options: [
+        { value: 'auto', label: 'Auto' }, { separator: true },
+        { value: '200px', label: 'Small' }, { value: '400px', label: 'Medium' },
+        { value: '600px', label: 'Large' }, { separator: true },
+        { value: '26.5vh', label: '1/3 Screen' }, { value: '43.5vh', label: '1/2 Screen' },
+        { value: '59vh', label: '2/3 Screen' }, { value: '92vh', label: 'Full Screen' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'whitespace', label: 'Whitespace', category: 'format',
+      settingsKey: 'whitespace', actionPrefix: 'set-whitespace', defaultValue: '16px',
+      normalize: normalizeWhitespaceValue,
+      options: [
+        { value: '8px', label: 'Compact' }, { value: '16px', label: 'Default' },
+        { value: '32px', label: 'Spacious' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'fontSize', label: 'Font Size', category: 'format',
+      settingsKey: 'fontSize', actionPrefix: 'set-font-size', defaultValue: '13px',
+      normalize: normalizeBoardFontSizeValue,
+      options: [
+        { value: '6.5px', label: '0.5x' }, { value: '9.75px', label: '0.75x' },
+        { value: '13px', label: '1x' }, { value: '16.25px', label: '1.25x' },
+        { value: '19.5px', label: '1.5x' }, { value: '26px', label: '2x' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'fontFamily', label: 'Font Family', category: 'format',
+      settingsKey: 'fontFamily', actionPrefix: 'set-font-family', defaultValue: 'system',
+      normalize: normalizeBoardFontFamilyToken,
+      resolve: resolveBoardFontFamilyValue,
+      options: [
+        { value: 'system', label: 'System Default' },
+        { value: 'roboto', label: 'Roboto' }, { value: 'opensans', label: 'Open Sans' },
+        { value: 'lato', label: 'Lato' }, { value: 'plusjakarta', label: 'Plus Jakarta Sans' },
+        { value: 'inter', label: 'Inter' }, { value: 'poppins', label: 'Poppins' },
+        { separator: true },
+        { value: 'helvetica', label: 'Helvetica' }, { value: 'arial', label: 'Arial' },
+        { value: 'georgia', label: 'Georgia' }, { value: 'times', label: 'Times New Roman' },
+        { separator: true },
+        { value: 'firacode', label: 'Fira Code' }, { value: 'jetbrains', label: 'JetBrains Mono' },
+        { value: 'sourcecodepro', label: 'Source Code Pro' }, { value: 'consolas', label: 'Consolas' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'layoutRows', label: 'Layout Rows', category: 'format',
+      settingsKey: 'layoutRows', actionPrefix: 'set-layout-rows', defaultValue: '1',
+      normalize: function (v) {
+        var n = parseInt(v, 10);
+        if (!isFinite(n) || n < 1) n = 1; if (n > 6) n = 6;
+        return String(n);
+      },
+      options: [
+        { value: '1', label: '1 Row' }, { value: '2', label: '2 Rows' },
+        { value: '3', label: '3 Rows' }, { value: '4', label: '4 Rows' },
+        { value: '5', label: '5 Rows' }, { value: '6', label: '6 Rows' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'rowHeight', label: 'Row Height', category: 'format',
+      settingsKey: 'rowHeight', actionPrefix: 'set-row-height', defaultValue: 'auto',
+      normalize: function (v) { return String(v || 'auto').trim().toLowerCase(); },
+      options: [
+        { value: 'auto', label: 'Auto' }, { separator: true },
+        { value: '300px', label: 'Small' }, { value: '500px', label: 'Medium' },
+        { value: '700px', label: 'Large' }, { separator: true },
+        { value: '31.5vh', label: '1/3 Screen' }, { value: '48vh', label: '1/2 Screen' },
+        { value: '63vh', label: '2/3 Screen' }, { value: '95vh', label: 'Full Screen' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'layoutPreset', label: 'Layout Preset', category: 'format',
+      settingsKey: 'layoutPreset', actionPrefix: 'set-layout-preset', defaultValue: 'normal',
+      normalize: function (v) { var s = String(v || 'normal').toLowerCase(); return s === 'spacious' ? 'spacious' : 'normal'; },
+      handler: function (raw) {
+        var v = String(raw || '').trim().toLowerCase();
+        if (v === 'spacious') {
+          setBoardSettingValue('layoutPreset', 'spacious');
+          setBoardSettingValue('layoutSpacing', 'spacious');
+        } else {
+          setBoardSettingValue('layoutPreset', null);
+          setBoardSettingValue('layoutSpacing', null);
+        }
+      },
+      options: [
+        { value: 'normal', label: 'Normal' }, { value: 'spacious', label: 'Spacious' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'stickyHeaders', label: 'Pinned Header Mode', category: 'format',
+      settingsKey: 'stickyStackMode', actionPrefix: 'set-sticky-headers', defaultValue: '',
+      normalize: function (v) { return normalizeStickyHeaderMode(v) || 'off'; },
+      options: [
+        { value: 'off', label: 'Off' }, { value: 'top', label: 'Top Edge' },
+        { value: 'bottom', label: 'Bottom Edge' }
+      ],
+      handler: function (raw) {
+        var v = normalizeStickyHeaderMode(raw);
+        setBoardSettingValue('stickyStackMode', v || null);
+      }
+    });
+    BoardSettingRegistry.register({
+      id: 'arrowFocusScroll', label: 'Arrow Key Focus Scroll', category: 'format',
+      settingsKey: 'arrowKeyFocusScroll', actionPrefix: 'set-arrow-focus-scroll', defaultValue: 'nearest',
+      normalize: normalizeArrowKeyFocusScrollMode,
+      options: [
+        { value: 'nearest', label: 'Nearest' }, { value: 'center', label: 'Center' },
+        { value: 'disabled', label: 'Disabled' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'htmlComments', label: 'HTML Comments', category: 'display',
+      settingsKey: 'htmlCommentRenderMode', actionPrefix: 'set-html-comments', defaultValue: 'hidden',
+      normalize: normalizeHtmlCommentRenderMode,
+      options: [
+        { value: 'hidden', label: 'Hide Comments' }, { value: 'text', label: 'Show as Text' },
+        { value: 'dim', label: 'Dim Comments' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'htmlContent', label: 'HTML Content', category: 'display',
+      settingsKey: 'htmlContentRenderMode', actionPrefix: 'set-html-content', defaultValue: 'html',
+      normalize: function (v) { return v === 'html' ? 'html' : 'text'; },
+      options: [
+        { value: 'html', label: 'Render HTML' }, { value: 'text', label: 'Show as Text' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'tagVisibility', label: 'Tag Visibility', category: 'display',
+      settingsKey: 'tagVisibility', actionPrefix: 'set-tag-visibility', defaultValue: 'allexcludinglayout',
+      normalize: normalizeTagVisibilityMode,
+      options: [
+        { value: 'all', label: 'All Tags' }, { value: 'allexcludinglayout', label: 'All Except Layout Tags' },
+        { value: 'customonly', label: 'Custom Tags Only' }, { value: 'mentionsonly', label: 'Mentions Only' },
+        { value: 'dim', label: 'Dim Tags' }, { value: 'none', label: 'Hide Tags' }
+      ]
+    });
+    BoardSettingRegistry.register({
+      id: 'tagStylePreset', label: 'Tag Style Preset', category: 'display',
+      settingsKey: null, actionPrefix: 'set-tag-style-preset', defaultValue: 'default',
+      getCurrentValue: function () { return getActiveTagStylePreset(); },
+      handler: function (raw) {
+        setActiveTagStylePreset(raw);
+        renderColumns();
+        showNotification('Tag style: ' + (TAG_STYLE_PRESETS[raw] ? TAG_STYLE_PRESETS[raw].label : raw));
+      },
+      options: (function () {
+        var items = [];
+        var keys = Object.keys(TAG_STYLE_PRESETS);
+        for (var i = 0; i < keys.length; i++) {
+          var p = TAG_STYLE_PRESETS[keys[i]];
+          items.push({ value: keys[i], label: p.label + (p.description ? ' \u2014 ' + p.description : '') });
+        }
+        return items;
+      })()
+    });
+    BoardSettingRegistry.register({
+      id: 'boardTheme', label: 'Visual Style', category: 'display',
+      settingsKey: null, actionPrefix: 'set-board-theme', defaultValue: 'bordered',
+      getCurrentValue: function () { return getBoardTheme(); },
+      handler: function (raw) {
+        setBoardTheme(raw);
+        showNotification('Visual style: ' + (BOARD_THEME_LABELS[raw] || raw));
+      },
+      options: BOARD_THEMES.map(function (id) {
+        return { value: id, label: BOARD_THEME_LABELS[id] };
+      })
+    });
+
+    // Auto-wire board setting action handlers from descriptors
+    var allSettingDescs = BoardSettingRegistry.getAll();
+    for (var bsi = 0; bsi < allSettingDescs.length; bsi++) {
+      (function (desc) {
+        ActionRegistry.register('board', desc.actionPrefix + ':*', function (action) {
+          var raw = action.substring(desc.actionPrefix.length + 1);
+          if (desc.handler) {
+            desc.handler(raw);
+          } else {
+            var v = desc.normalize ? desc.normalize(raw) : raw;
+            if (desc.resolve) v = desc.resolve(v);
+            setBoardSettingValue(desc.settingsKey, v || null);
+          }
+        });
+      })(allSettingDescs[bsi]);
+    }
+
+    // Feature toggles
+    ActionRegistry.register('board', 'pin-headers', function () { togglePinnedHeaders(); });
+    ActionRegistry.register('board', 'unpin-headers', function () { togglePinnedHeaders(); });
+    ActionRegistry.register('board', 'toggle-overlay-editor', function () { setOverlayEditorEnabled(!isOverlayEditorEnabled()); syncMenuCheckStates(); });
+    ActionRegistry.register('board', 'toggle-wysiwyg-editor', function () { setWysiwygEditorEnabled(!isWysiwygEditorEnabled()); syncMenuCheckStates(); });
+    ActionRegistry.register('board', 'toggle-special-chars', function () { setSpecialCharactersVisible(!isSpecialCharactersVisible()); syncMenuCheckStates(); });
+    ActionRegistry.register('board', 'toggle-marp-settings', function () { setMarpSettingsEnabled(!isMarpSettingsEnabled()); syncMenuCheckStates(); });
+    ActionRegistry.register('board', 'toggle-html-comments', function () {
+      var mode = normalizeHtmlCommentRenderMode(getBoardSettingValue('htmlCommentRenderMode', 'hidden'));
+      setBoardSettingValue('htmlCommentRenderMode', mode === 'hidden' ? 'text' : 'hidden');
+    });
+    ActionRegistry.register('board', 'toggle-html-content', function () {
+      setBoardSettingValue('htmlContentRenderMode', getHtmlContentRenderMode() === 'html' ? 'text' : 'html');
+    });
+    ActionRegistry.register('board', 'toggle-tag-visibility', function () {
+      var mode = normalizeTagVisibilityMode(getBoardSettingValue('tagVisibility', 'allexcludinglayout'));
+      setBoardSettingValue('tagVisibility', mode === 'none' ? 'allexcludinglayout' : 'none');
+    });
+    ActionRegistry.register('board', 'toggle-inspector', function () { toggleInspector(); });
+    ActionRegistry.register('board', 'file-toggle-marp-settings', function () { setMarpSettingsEnabled(!isMarpSettingsEnabled()); syncMenuCheckStates(); });
+
+    // Save/export/settings
+    ActionRegistry.register('board', 'save-now', function () {
+      if (activeBoardId && fullBoardData && isBoardDirty()) {
+        saveFullBoard().then(function (saved) { if (saved) clearBoardDirty(); });
+      } else {
+        var trackingBtn = document.getElementById('btn-save-tracking');
+        if (trackingBtn) showSaveTrackingMenu(trackingBtn);
+        else showNotification('No unsaved changes');
+      }
+      refreshBoardHeaderActionStates();
+    });
+    ActionRegistry.register('board', 'file-open-board-settings', function () { openSettingsDialogForBoard(activeBoardId); });
+    ActionRegistry.register('board', 'file-open-export-settings', function () { triggerBoardExport(); });
+    ActionRegistry.register('board', 'export-board', function () { triggerBoardExport(); });
+
+    // Panels
+    ActionRegistry.register('board', 'running-processes', function () { openRunningProcessesPanel(); });
+    ActionRegistry.register('board', 'show-processes', function () { openRunningProcessesPanel(); });
+    ActionRegistry.register('board', 'open-save-tracking', function () {
+      var btn = document.getElementById('btn-save-tracking');
+      if (btn) showSaveTrackingMenu(btn);
+    });
+    ActionRegistry.register('board', 'open-management', function () { openManagementPanel(); });
+    ActionRegistry.register('board', 'open-theme-zoom', function () {
+      var btn = document.getElementById('btn-theme-zoom');
+      if (btn) showThemeZoomMenu(btn);
+    });
+
+    // View management
+    ActionRegistry.register('board', 'show-parked', function () { showParkedItems(); });
+    ActionRegistry.register('board', 'show-archived', function () { showArchivedItems(); });
+    ActionRegistry.register('board', 'show-trash', function () { showDeletedItems(); });
+    ActionRegistry.register('board', 'rename-file', function () { renameActiveBoardFile(); });
+    ActionRegistry.register('board', 'open-folder', function () { openActiveBoardFolder(); });
+    ActionRegistry.register('board', 'copy-board-markdown', function () { copyElementAsMarkdown('board', {}); });
+
+    // Backend/connection
+    ActionRegistry.register('board', 'backend-settings', function () { openConnectionWindow(); });
+    ActionRegistry.register('board', 'settings', function () { openConnectionWindow(); });
+    ActionRegistry.register('board', 'collab', function () { openConnectionWindow(); });
+
+    // Split view
+    ActionRegistry.register('board', 'split-enable', function () {
+      if (embeddedMode) return;
+      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
+      splitViewMode = 'vertical'; applySplitMode(false);
+    });
+    ActionRegistry.register('board', 'split-disable', function () {
+      if (embeddedMode) return;
+      splitViewMode = 'single'; applySplitMode(false);
+    });
+    ActionRegistry.register('board', 'split-orientation', function () {
+      if (embeddedMode || splitViewMode === 'single') return;
+      splitViewMode = splitViewMode === 'vertical' ? 'horizontal' : 'vertical'; applySplitMode(true);
+    });
+    ActionRegistry.register('board', 'split-enable-vertical', function () {
+      if (embeddedMode) return;
+      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
+      splitViewMode = 'vertical'; applySplitMode(false);
+    });
+    ActionRegistry.register('board', 'split-enable-horizontal', function () {
+      if (embeddedMode) return;
+      if (activeBoardId) splitPaneBoards[normalizeSplitPane(activeSplitPane)] = activeBoardId;
+      splitViewMode = 'horizontal'; applySplitMode(false);
+    });
+
+    // Search
+    ActionRegistry.register('board', 'open-search', function () { openSearchReplacePanel(); });
+    ActionRegistry.register('board', 'open-search-replace', function () { openSearchReplacePanel(); });
+    ActionRegistry.register('board', 'paste-as-card', function () {
+      var columns = activeBoardData ? activeBoardData.columns : [];
+      if (columns.length > 0) pasteClipboardAsCard(columns[0].index);
+    });
+    ActionRegistry.register('board', 'smart-paste', function () {
+      smartPasteAsCard();
+    });
+
+    // Zoom
+    ActionRegistry.register('board', 'zoom-in', function () { nudgeUiScale(0.05); });
+    ActionRegistry.register('board', 'zoom-out', function () { nudgeUiScale(-0.05); });
+    ActionRegistry.register('board', 'zoom-reset', function () { applyUiScale(1); showNotification('Zoom 100%'); });
+
+    // Navigation
+    ActionRegistry.register('board', 'show-recent-boards', function () {
+      var items = document.querySelectorAll('.sidebar-board-item');
+      if (items.length > 0) items[0].scrollIntoView({ behavior: 'smooth' });
+    });
+    ActionRegistry.register('board', 'focus-next-card', function () { navigateCards('ArrowDown'); });
+    ActionRegistry.register('board', 'focus-prev-card', function () { navigateCards('ArrowUp'); });
+    ActionRegistry.register('board', 'focus-next-column', function () { navigateCards('ArrowRight'); });
+    ActionRegistry.register('board', 'focus-prev-column', function () { navigateCards('ArrowLeft'); });
+
+    // Stats
+    ActionRegistry.register('board', 'toggle-board-stats', function () { toggleBoardStatsBar(); });
+    ActionRegistry.register('board', 'show-keyboard-shortcuts', function () { showKeyboardShortcutsHelp(); });
+
+    // ----- Card scope -----
+    ActionRegistry.register('card', 'add-card', function (action, ctx) { addCardColumn = ctx.colIndex; renderColumns(); });
+    ActionRegistry.register('card', 'edit', function (action, ctx) {
+      var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
+      if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'inline');
+    });
+    ActionRegistry.register('card', 'edit-inline', function (action, ctx) {
+      var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
+      if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'inline');
+    });
+    ActionRegistry.register('card', 'edit-overlay', function (action, ctx) {
+      if (!isOverlayEditorEnabled()) { showNotification('Overlay editor is disabled in header settings'); return; }
+      var els = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + ctx.colIndex + '"][data-card-index="' + ctx.cardIndex + '"]');
+      if (els.length > 0) openCardEditor(els[0], ctx.colIndex, ctx.cardIndex, 'overlay');
+    });
+    ActionRegistry.register('card', 'reveal', function (action, ctx) { revealCardContent(ctx.colIndex, ctx.cardIndex); });
+    ActionRegistry.register('card', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
+    ActionRegistry.register('card', 'insert-before', function (action, ctx) { insertCardAtIndex(ctx.colIndex, ctx.cardIndex); });
+    ActionRegistry.register('card', 'insert-after', function (action, ctx) { insertCardAtIndex(ctx.colIndex, ctx.cardIndex + 1); });
+    ActionRegistry.register('card', 'duplicate', function (action, ctx) { duplicateCard(ctx.colIndex, ctx.cardIndex); });
+    ActionRegistry.register('card', 'move-up', function (action, ctx) { if (ctx.cardIndex > 0) moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, ctx.cardIndex - 1); });
+    ActionRegistry.register('card', 'move-down', function (action, ctx) { moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, ctx.cardIndex + 2); });
+    ActionRegistry.register('card', 'move-top', function (action, ctx) { if (ctx.cardIndex > 0) moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, 0); });
+    ActionRegistry.register('card', 'move-bottom', function (action, ctx) {
+      var col = getFullColumn(ctx.colIndex);
+      if (col && ctx.cardIndex < col.cards.length - 1) moveCard(ctx.colIndex, ctx.cardIndex, ctx.colIndex, col.cards.length);
+    });
+    ActionRegistry.register('card', 'move-to:*', function (action, ctx) {
+      var targetColIdx = parseInt(action.substring(8), 10);
+      if (isFinite(targetColIdx)) moveCard(ctx.colIndex, ctx.cardIndex, targetColIdx, 0);
+    });
+    ActionRegistry.register('card', 'dup-to:*', function (action, ctx) {
+      var dupTargetIdx = parseInt(action.substring(7), 10);
+      if (isFinite(dupTargetIdx)) duplicateCardToColumn(ctx.colIndex, ctx.cardIndex, dupTargetIdx);
+    });
+    ActionRegistry.register('card', 'park', function (action, ctx) { tagCard(ctx.colIndex, ctx.cardIndex, '#hidden-internal-parked'); });
+    ActionRegistry.register('card', 'park-copy', function (action, ctx) { parkCopyCard(ctx.colIndex, ctx.cardIndex); });
+    ActionRegistry.register('card', 'archive', function (action, ctx) { tagCard(ctx.colIndex, ctx.cardIndex, '#hidden-internal-archived'); });
+    ActionRegistry.register('card', 'delete', function (action, ctx) { deleteCard(ctx.colIndex, ctx.cardIndex); });
+    ActionRegistry.register('card', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
+    ActionRegistry.register('card', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'card', { colIndex: ctx.colIndex, cardIndex: ctx.cardIndex }); });
+
+    // ----- Column scope -----
+    ActionRegistry.register('column', /^move-to-stack-(\d+)-(\d+)$/, function (action, ctx) {
+      var m = action.match(/^move-to-stack-(\d+)-(\d+)$/);
+      if (m) moveColumnToStack(ctx.colIndex, parseInt(m[1], 10), parseInt(m[2], 10));
+    });
+    ActionRegistry.register('column', 'rename', function (action, ctx) {
+      var colCardsEl = getElColumnsContainer().querySelector('.column-cards[data-col-index="' + ctx.colIndex + '"]');
+      var colRootEl = colCardsEl ? colCardsEl.closest('.column') : null;
+      if (colRootEl) enterColumnRename(colRootEl, ctx.colIndex);
+    });
+    ActionRegistry.register('column', 'add-card', function (action, ctx) { addCardColumn = ctx.colIndex; renderColumns(); });
+    ActionRegistry.register('column', 'add-card-top', function (action, ctx) { insertCardAtIndex(ctx.colIndex, 0); });
+    ActionRegistry.register('column', 'paste-as-card', function (action, ctx) { pasteClipboardAsCard(ctx.colIndex); });
+    ActionRegistry.register('column', 'smart-paste', function (action, ctx) { smartPasteAsCard(ctx.colIndex); });
+    ActionRegistry.register('column', 'reveal-all', function (action, ctx) { revealColumnContent(ctx.colIndex); });
+    ActionRegistry.register('column', 'add-before', function (action, ctx) {
+      if (!(ctx.rowIdx !== undefined && addColumnRelativeToDisplayPosition(ctx.rowIdx, ctx.stackIdx, ctx.colLocalIdx, true))) {
+        addColumn(ctx.colIndex);
+      }
+    });
+    ActionRegistry.register('column', 'add-after', function (action, ctx) {
+      if (!(ctx.rowIdx !== undefined && addColumnRelativeToDisplayPosition(ctx.rowIdx, ctx.stackIdx, ctx.colLocalIdx, false))) {
+        addColumn(ctx.colIndex + 1);
+      }
+    });
+    ActionRegistry.register('column', 'duplicate', function (action, ctx) { duplicateColumn(ctx.colIndex); });
+    ActionRegistry.register('column', 'fold-all', function (action, ctx) { toggleColCards(ctx.colIndex, true); });
+    ActionRegistry.register('column', 'unfold-all', function (action, ctx) { toggleColCards(ctx.colIndex, false); });
+    ActionRegistry.register('column', 'park', function (action, ctx) { setColumnHiddenTag(ctx.colIndex, '#hidden-internal-parked'); });
+    ActionRegistry.register('column', 'archive', function (action, ctx) { setColumnHiddenTag(ctx.colIndex, '#hidden-internal-archived'); });
+    ActionRegistry.register('column', 'delete', function (action, ctx) { deleteColumn(ctx.colIndex); });
+    ActionRegistry.register('column', 'toggle-width', function (action, ctx) { toggleColumnWidth(ctx.colIndex); });
+    ActionRegistry.register('column', 'set-span-*', function (action, ctx) { setColumnSpan(ctx.colIndex, parseInt(action.substring(9), 10)); });
+    ActionRegistry.register('column', 'toggle-stacked', function (action, ctx) { toggleTag('column', { colIndex: ctx.colIndex }, '#stack'); });
+    ActionRegistry.register('column', 'sort-title', function (action, ctx) { sortColumnCards(ctx.colIndex, 'title'); });
+    ActionRegistry.register('column', 'sort-tag', function (action, ctx) { sortColumnCards(ctx.colIndex, 'tag'); });
+    ActionRegistry.register('column', 'sort-duedate', function (action, ctx) { sortColumnCards(ctx.colIndex, 'duedate'); });
+    ActionRegistry.register('column', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('column', { colIndex: ctx.colIndex }); });
+    ActionRegistry.register('column', 'export-column', function (action, ctx) { exportColumn(ctx.colIndex); });
+    ActionRegistry.register('column', 'preview-include', function (action, ctx) {
+      var col = getFullColumn(ctx.colIndex);
+      var path = col && col.includeSource && col.includeSource.rawPath ? String(col.includeSource.rawPath) : extractIncludePathFromTitle(col && col.title ? col.title : '');
+      if (path) showBoardFilePreview(activeBoardId, path);
+    });
+    ActionRegistry.register('column', 'open-include', function (action, ctx) {
+      var col = getFullColumn(ctx.colIndex);
+      var path = col && col.includeSource && col.includeSource.rawPath ? String(col.includeSource.rawPath) : extractIncludePathFromTitle(col && col.title ? col.title : '');
+      if (path) openBoardFileInSystem(activeBoardId, path);
+    });
+    ActionRegistry.register('column', 'enable-include', function (action, ctx) { enableColumnIncludeMode(ctx.colIndex); });
+    ActionRegistry.register('column', 'edit-include', function (action, ctx) { editColumnIncludeFile(ctx.colIndex); });
+    ActionRegistry.register('column', 'disable-include', function (action, ctx) { disableColumnIncludeMode(ctx.colIndex); });
+    ActionRegistry.register('column', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'column', { colIndex: ctx.colIndex }); });
+    ActionRegistry.register('column', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'column', { colIndex: ctx.colIndex }); });
+
+    // ----- Row scope -----
+    ActionRegistry.register('row', 'rename', function (action, ctx) { renameRowOrStack('row', ctx.rowIdx); });
+    ActionRegistry.register('row', 'add-stack', function (action, ctx) { addStackToRow(ctx.rowIdx); });
+    ActionRegistry.register('row', 'reveal-all', function (action, ctx) { revealRowContent(ctx.rowIdx); });
+    ActionRegistry.register('row', 'insert-before', function (action, ctx) { addRow(ctx.rowIdx); });
+    ActionRegistry.register('row', 'add-row-before', function (action, ctx) { addRow(ctx.rowIdx); });
+    ActionRegistry.register('row', 'insert-after', function (action, ctx) { addRow(ctx.rowIdx + 1); });
+    ActionRegistry.register('row', 'add-row-after', function (action, ctx) { addRow(ctx.rowIdx + 1); });
+    ActionRegistry.register('row', 'duplicate', function (action, ctx) { duplicateRow(ctx.rowIdx); });
+    ActionRegistry.register('row', 'park', function (action, ctx) { setRowHiddenTag(ctx.rowIdx, '#hidden-internal-parked'); });
+    ActionRegistry.register('row', 'archive', function (action, ctx) { setRowHiddenTag(ctx.rowIdx, '#hidden-internal-archived'); });
+    ActionRegistry.register('row', 'delete', function (action, ctx) { deleteRow(ctx.rowIdx); });
+    ActionRegistry.register('row', 'sort-title', function (action, ctx) { sortRowCards(ctx.rowIdx, 'title'); });
+    ActionRegistry.register('row', 'sort-tag', function (action, ctx) { sortRowCards(ctx.rowIdx, 'tag'); });
+    ActionRegistry.register('row', 'sort-duedate', function (action, ctx) { sortRowCards(ctx.rowIdx, 'duedate'); });
+    ActionRegistry.register('row', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('row', { rowIdx: ctx.rowIdx }); });
+    ActionRegistry.register('row', 'export-row', function (action, ctx) {
+      triggerBoardExport({ selection: { scope: 'row', rowIndex: ctx.rowIdx } });
+    });
+    ActionRegistry.register('row', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
+    ActionRegistry.register('row', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'row', { rowIdx: ctx.rowIdx }); });
+
+    // ----- Stack scope -----
+    ActionRegistry.register('stack', 'rename', function (action, ctx) { renameRowOrStack('stack', ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'add-column', function (action, ctx) { addColumnToStack(ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'reveal-all', function (action, ctx) { revealStackContent(ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'insert-before', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'add-stack-before', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'insert-after', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx + 1); });
+    ActionRegistry.register('stack', 'add-stack-after', function (action, ctx) { addStackToRow(ctx.rowIdx, ctx.stackIdx + 1); });
+    ActionRegistry.register('stack', 'duplicate', function (action, ctx) { duplicateStack(ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'park', function (action, ctx) { setStackHiddenTag(ctx.rowIdx, ctx.stackIdx, '#hidden-internal-parked'); });
+    ActionRegistry.register('stack', 'archive', function (action, ctx) { setStackHiddenTag(ctx.rowIdx, ctx.stackIdx, '#hidden-internal-archived'); });
+    ActionRegistry.register('stack', 'delete', function (action, ctx) { deleteStack(ctx.rowIdx, ctx.stackIdx); });
+    ActionRegistry.register('stack', 'sort-title', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'title'); });
+    ActionRegistry.register('stack', 'sort-tag', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'tag'); });
+    ActionRegistry.register('stack', 'sort-duedate', function (action, ctx) { sortStackCards(ctx.rowIdx, ctx.stackIdx, 'duedate'); });
+    ActionRegistry.register('stack', 'copy-markdown', function (action, ctx) { copyElementAsMarkdown('stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+    ActionRegistry.register('stack', 'export-stack', function (action, ctx) {
+      triggerBoardExport({ selection: { scope: 'stack', rowIndex: ctx.rowIdx, stackIndex: ctx.stackIdx } });
+    });
+    ActionRegistry.register('stack', 'marp-*', function (action, ctx) { handleEntityMarpMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+    ActionRegistry.register('stack', 'tag-*', function (action, ctx) { handleEntityTagMenuAction(action, 'stack', { rowIdx: ctx.rowIdx, stackIdx: ctx.stackIdx }); });
+
+    // ── Menu Contributor Registrations ───────────────────────────────────
+    // Card header: add card
+    MenuContributorRegistry.register({
+      id: 'core-card-header', scopes: ['card'], priority: 5, section: 'header',
+      build: function () {
+        return [{ id: 'add-card', label: 'Add card' }];
+      }
+    });
+    // Card edit section
+    MenuContributorRegistry.register({
+      id: 'core-card-edit', scopes: ['card'], priority: 10, section: 'edit',
+      build: function () {
+        return [
+          { id: 'edit', label: 'Edit task (inline)' },
+          { id: 'edit-overlay', label: 'Edit task (overlay)', disabled: !isOverlayEditorEnabled() },
+          { id: 'reveal', label: 'Reveal content' },
+          { id: 'copy-markdown', label: 'Copy as markdown' }
+        ];
+      }
+    });
+    // Rename (column, row, stack)
+    MenuContributorRegistry.register({
+      id: 'core-rename', scopes: ['column', 'row', 'stack'], priority: 5, section: 'header',
+      build: function (scope) {
+        return [{ id: 'rename', label: 'Rename ' + scope }];
+      }
+    });
+    // Add items (column, row, stack)
+    MenuContributorRegistry.register({
+      id: 'core-add', scopes: ['column', 'row', 'stack'], priority: 7, section: 'header',
+      build: function (scope) {
+        if (scope === 'column') return [
+          { id: 'add-card', label: 'Add card' },
+          { id: 'add-card-top', label: 'Add card at top' },
+          { id: 'paste-as-card', label: 'Paste as card' }
+        ];
+        if (scope === 'row') return [{ id: 'add-stack', label: 'Add stack' }];
+        if (scope === 'stack') return [{ id: 'add-column', label: 'Add column' }];
+        return null;
+      }
+    });
+    // Structure: reveal, insert, duplicate (all scopes)
+    MenuContributorRegistry.register({
+      id: 'core-structure', scopes: ['card', 'column', 'row', 'stack'], priority: 20, section: 'structure',
+      build: function (scope, ctx) {
+        if (scope === 'card') return [
+          { id: 'insert-before', label: 'Insert card before' },
+          { id: 'insert-after', label: 'Insert card after' },
+          { id: 'duplicate', label: 'Duplicate card' },
+          { id: 'move-up', label: 'Move up', disabled: ctx.cardIndex <= 0 },
+          { id: 'move-down', label: 'Move down', disabled: ctx.visibleCardCount <= 0 || ctx.cardIndex >= (ctx.visibleCardCount - 1) },
+          { id: 'move-top', label: 'Move to top', disabled: ctx.cardIndex <= 0 },
+          { id: 'move-bottom', label: 'Move to bottom', disabled: ctx.visibleCardCount <= 0 || ctx.cardIndex >= (ctx.visibleCardCount - 1) }
+        ];
+        var items = [{ id: 'reveal-all', label: 'Reveal all' }];
+        if (scope === 'column') {
+          items.push({ id: 'add-before', label: 'Insert column before' });
+          items.push({ id: 'add-after', label: 'Insert column after' });
+          items.push({ id: 'duplicate', label: 'Duplicate column' });
+        } else if (scope === 'row') {
+          items.push({ id: 'add-row-before', label: 'Insert row before' });
+          items.push({ id: 'add-row-after', label: 'Insert row after' });
+          items.push({ id: 'duplicate', label: 'Duplicate row' });
+        } else if (scope === 'stack') {
+          items.push({ id: 'add-stack-before', label: 'Insert stack before' });
+          items.push({ id: 'add-stack-after', label: 'Insert stack after' });
+          items.push({ id: 'duplicate', label: 'Duplicate stack' });
+        }
+        return items;
+      }
+    });
+    // Fold/unfold (column only)
+    MenuContributorRegistry.register({
+      id: 'core-fold', scopes: ['column'], priority: 25, section: 'fold',
+      build: function () {
+        return [
+          { id: 'fold-all', label: 'Fold all cards' },
+          { id: 'unfold-all', label: 'Unfold all cards' }
+        ];
+      }
+    });
+    // Visibility: park, archive, delete (all scopes)
+    MenuContributorRegistry.register({
+      id: 'core-visibility', scopes: ['card', 'column', 'row', 'stack'], priority: 30, section: 'visibility',
+      build: function (scope) {
+        var items = [
+          { id: 'park', label: 'Park ' + scope }
+        ];
+        if (scope === 'card') items.push({ id: 'park-copy', label: 'Park copy' });
+        items.push({ id: 'archive', label: 'Archive ' + scope });
+        items.push({ id: 'delete', label: 'Delete ' + scope });
+        return items;
+      }
+    });
+    // Sort (column, row, stack)
+    MenuContributorRegistry.register({
+      id: 'core-sort', scopes: ['column', 'row', 'stack'], priority: 35, section: 'sort',
+      build: function (scope, ctx) {
+        if (scope === 'column') {
+          var ci = ctx.colIndex;
+          var ss = ctx.columnSortState || {};
+          return [{ id: 'sort-sub', label: 'Sort by', items: [
+            { id: 'sort-title', label: 'Title' + (ss[ci + ':title'] ? (ss[ci + ':title'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
+            { id: 'sort-tag', label: 'Tag Value' + (ss[ci + ':tag'] ? (ss[ci + ':tag'] === 'asc' ? ' \u2191' : ' \u2193') : '') },
+            { id: 'sort-duedate', label: 'Due Date' + (ss[ci + ':duedate'] ? (ss[ci + ':duedate'] === 'asc' ? ' \u2191' : ' \u2193') : '') }
+          ]}];
+        }
+        return [{ id: 'sort-sub', label: 'Sort all cards', items: [
+          { id: 'sort-title', label: 'Title' },
+          { id: 'sort-tag', label: 'Tag Value' },
+          { id: 'sort-duedate', label: 'Due Date' }
+        ]}];
+      }
+    });
+    // Tag operations (all scopes)
+    MenuContributorRegistry.register({
+      id: 'core-tag-ops', scopes: ['card', 'column', 'row', 'stack'], priority: 40, section: 'tags',
+      build: function () {
+        return [
+          { id: 'tag-add', label: 'Add Tag...' },
+          { id: 'tag-remove', label: 'Remove Tag...' },
+          { id: 'tag-clear', label: 'Clear Tags' }
+        ];
+      }
+    });
+    // Move-to submenus (card, column)
+    MenuContributorRegistry.register({
+      id: 'core-move-to', scopes: ['card', 'column'], priority: 45, section: 'move-to',
+      build: function (scope, ctx) {
+        if (scope === 'card') {
+          var cols = ctx.boardColumns || [];
+          var moveSubItems = [];
+          for (var i = 0; i < cols.length; i++) {
+            if (!cols[i] || cols[i].index === ctx.colIndex) continue;
+            var lbl = stripLayoutTags(stripInternalHiddenTags(cols[i].title || ''));
+            moveSubItems.push({ id: 'move-to:' + cols[i].index, label: lbl || 'Untitled Column' });
+          }
+          if (moveSubItems.length === 0) return null;
+          var items = [{ id: 'move-sub', label: 'Move to Column', items: moveSubItems }];
+          var dupToItems = [];
+          for (var di = 0; di < moveSubItems.length; di++) {
+            dupToItems.push({ id: 'dup-to:' + moveSubItems[di].id.substring(8), label: moveSubItems[di].label });
+          }
+          items.push({ id: 'dup-to-sub', label: 'Duplicate to Column', items: dupToItems });
+          return items;
+        }
+        if (scope === 'column') {
+          var rows = ctx.boardRows || [];
+          var stackMoveItems = [];
+          for (var r = 0; r < rows.length; r++) {
+            var row = rows[r];
+            if (!row || !Array.isArray(row.stacks)) continue;
+            var rowLabel = stripHtmlComments(stripInternalHiddenTags(row.title || '')) || 'Row ' + (r + 1);
+            for (var s = 0; s < row.stacks.length; s++) {
+              if (ctx.rowIdx === r && ctx.stackIdx === s) continue;
+              var stack = row.stacks[s];
+              if (!stack) continue;
+              var stackLabel = stripHtmlComments(stripInternalHiddenTags(stack.title || '')) || 'Stack ' + (s + 1);
+              stackMoveItems.push({ id: 'move-to-stack-' + r + '-' + s, label: rowLabel + ' / ' + stackLabel });
+            }
+          }
+          if (stackMoveItems.length === 0) return null;
+          return [{ id: 'move-sub', label: 'Move to Stack', items: stackMoveItems }];
+        }
+        return null;
+      }
+    });
+    // Tag category submenus + custom tags (all scopes)
+    MenuContributorRegistry.register({
+      id: 'core-tag-categories', scopes: ['card', 'column', 'row', 'stack'], priority: 50, section: 'tag-categories',
+      build: function (scope, ctx) {
+        var text = ctx.elementText || '';
+        var items = buildTagCategorySubmenus(text, 'tag-');
+        var customSub = buildCustomTagsSubmenu(text, 'tag-custom-');
+        if (customSub) items.push(customSub);
+        return items.length > 0 ? items : null;
+      }
+    });
+    // Marp directives (all scopes)
+    MenuContributorRegistry.register({
+      id: 'marp-directives', scopes: ['card', 'column', 'row', 'stack'], priority: 55, section: 'marp',
+      build: function (scope, ctx) {
+        var items = buildMarpMenuItems(ctx.elementText || '');
+        return items.length > 0 ? items : null;
+      }
+    });
+    // Layout: width/span, stacked (column only)
+    MenuContributorRegistry.register({
+      id: 'core-layout', scopes: ['column'], priority: 60, section: 'layout',
+      build: function (scope, ctx) {
+        var cs = ctx.currentSpan || 1;
+        return [
+          { id: 'width-sub', label: 'Width (span ' + cs + ')', items: [
+            { id: 'set-span-1', label: (cs === 1 ? '\u2713 ' : '') + 'Span 1 (default)' },
+            { id: 'set-span-2', label: (cs === 2 ? '\u2713 ' : '') + 'Span 2' },
+            { id: 'set-span-3', label: (cs === 3 ? '\u2713 ' : '') + 'Span 3' },
+            { id: 'set-span-4', label: (cs === 4 ? '\u2713 ' : '') + 'Span 4' }
+          ]},
+          { id: 'toggle-stacked', label: (ctx.isStacked ? '\u2713 ' : '') + 'Stacked column' }
+        ];
+      }
+    });
+    // Copy/export (column, row, stack)
+    MenuContributorRegistry.register({
+      id: 'core-copy-export', scopes: ['column', 'row', 'stack'], priority: 65, section: 'copy-export',
+      build: function (scope) {
+        return [
+          { id: 'copy-markdown', label: 'Copy as markdown' },
+          { id: 'export-' + scope, label: 'Export ' + scope }
+        ];
+      }
+    });
+    // Include file options (column only)
+    MenuContributorRegistry.register({
+      id: 'core-include', scopes: ['column'], priority: 70, section: 'include',
+      build: function (scope, ctx) {
+        if (ctx.includePath) {
+          return [
+            { id: 'preview-include', label: 'Preview Include File' },
+            { id: 'open-include', label: 'Open Include in System App' },
+            { id: 'edit-include', label: 'Edit Include File' },
+            { id: 'disable-include', label: 'Disable Include Mode' }
+          ];
+        }
+        return [{ id: 'enable-include', label: 'Enable Include Mode' }];
+      }
     });
   }
 
