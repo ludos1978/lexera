@@ -13,9 +13,8 @@ use crate::types::{BoardInfo, KanbanBoard, SearchResult};
 #[derive(Debug, Clone)]
 pub struct WriteResult {
     pub merge_result: Option<MergeResult>,
-    /// When a legacy-format board is saved for the first time, the write is
-    /// redirected to a new file (`{name}-lexera2.md`) so the original stays
-    /// untouched.  This field carries the new path when that happens.
+    /// When a legacy-format board is saved, the write is redirected to a new
+    /// file (`{name}-lexera2.md`) so the original stays untouched.
     pub redirected_path: Option<PathBuf>,
 }
 

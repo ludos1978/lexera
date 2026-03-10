@@ -1189,8 +1189,10 @@ impl LocalStorage {
         );
 
         // Legacy-format boards: redirect writes to a new file so the original
-        // is never overwritten.  The redirect only fires once — subsequent
-        // saves already target the `-lexera2.md` path.
+        // is never overwritten.  The check on has_explicit_hierarchy() allows
+        // boards that the user promoted to new format (added rows/stacks) to
+        // write back to the original path.  Subsequent saves already target the
+        // `-lexera2.md` path.
         let file_path_str = file_path.to_string_lossy();
         let is_legacy_redirect = board_to_write.format_hint == crate::types::BoardFormat::Legacy
             && !board_to_write.has_explicit_hierarchy()
@@ -2997,14 +2999,12 @@ kanban-plugin: board
         assert_eq!(cols[0].cards[0].content, "Existing");
         assert_eq!(cols[0].cards[0].kid, Some("a1b2c3d4".to_string()));
 
-        let result = storage.write_board(&id, &board).unwrap();
-        let read_path = result.redirected_path.as_deref().unwrap_or(tmp.path());
+        storage.write_board(&id, &board).unwrap();
+        let board_path = storage.get_board_path(&id).unwrap();
 
-        let on_disk = fs::read_to_string(read_path).unwrap();
+        let on_disk = fs::read_to_string(&board_path).unwrap();
         assert!(on_disk.contains("- [ ] Existing\n"));
         assert!(!on_disk.contains("<!-- kid:"));
-        // Clean up redirected file
-        if let Some(ref p) = result.redirected_path { let _ = fs::remove_file(p); }
     }
 
     #[test]
@@ -3190,10 +3190,10 @@ kanban-plugin: board
             cols_mut[0].include_source = None;
         }
 
-        let result = storage.write_board(&id, &board).unwrap();
-        let read_path = result.redirected_path.as_deref().unwrap_or(&board_path);
+        storage.write_board(&id, &board).unwrap();
+        let board_file = storage.get_board_path(&id).unwrap();
 
-        let on_disk_board = fs::read_to_string(read_path).unwrap();
+        let on_disk_board = fs::read_to_string(&board_file).unwrap();
         assert!(on_disk_board.contains("## Todo !!!include(./slides.md)!!!"));
         assert!(!on_disk_board.contains("- [ ] Task 1"));
 
@@ -3838,11 +3838,11 @@ kanban-plugin: board
         // Modify the board and write it back
         let mut board = storage.read_board(&id).unwrap();
         board.all_columns_mut()[0].cards[0].content = "Modified task".to_string();
-        let result = storage.write_board(&id, &board).unwrap();
-        let read_path = result.redirected_path.as_deref().unwrap_or(&board_path);
+        storage.write_board(&id, &board).unwrap();
+        let board_file = storage.get_board_path(&id).unwrap();
 
         // Verify file content on disk matches what we wrote
-        let on_disk = fs::read_to_string(read_path).unwrap();
+        let on_disk = fs::read_to_string(&board_file).unwrap();
         assert!(
             on_disk.contains("Modified task"),
             "disk content should contain modified card"
@@ -3853,7 +3853,7 @@ kanban-plugin: board
         );
 
         // Verify no .tmp files are left behind
-        let tmp_path = read_path.with_extension("lexera-sync.tmp");
+        let tmp_path = board_file.with_extension("lexera-sync.tmp");
         assert!(
             !tmp_path.exists(),
             "temp file should be cleaned up after atomic write"
