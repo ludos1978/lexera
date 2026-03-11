@@ -25,10 +25,12 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-header">
-        <select id="workspace-select" class="workspace-select" title="Active workspace"></select>
+        <div class="workspace-select-wrap">
+          <select id="workspace-select" class="workspace-select" title="Active workspace"></select>
+        </div>
         <div class="sidebar-header-actions">
-          <button id="btn-sidebar-sync" class="sidebar-btn" title="Sync hierarchy with view">&#8982;</button>
-          <button id="btn-sidebar-lock" class="sidebar-btn" title="Lock hierarchy (prevent add/remove)">&#128274;</button>
+          <button id="btn-sidebar-sync" class="sidebar-btn" title="Sync hierarchy with view">&#8597;</button>
+          <button id="btn-sidebar-lock" class="sidebar-btn" title="Lock hierarchy (prevent add/remove)">&#128274;&#65038;</button>
         </div>
       </div>
       <div id="board-list" class="board-list"></div>
@@ -40,13 +42,15 @@
         <div class="sidebar-dashboard-controls">
           <div class="dashboard-query-row">
             <input id="dashboard-search-input" class="dashboard-search-input" type="text" placeholder="Search board content...">
-            <button id="btn-dashboard-search" class="sidebar-btn dashboard-search-btn" type="button" title="Run dashboard search">&#128269;</button>
+            <button id="btn-dashboard-search" class="sidebar-btn dashboard-search-btn" type="button" title="Run dashboard search">&#8981;</button>
           </div>
           <div class="dashboard-filter-row">
-            <select id="dashboard-scope-select" class="dashboard-select" title="Search scope">
-              <option value="active">Active Board</option>
-              <option value="all">All Boards</option>
-            </select>
+            <div class="workspace-select-wrap dashboard-select-wrap">
+              <select id="dashboard-scope-select" class="dashboard-select" title="Search scope">
+                <option value="active">Active Board</option>
+                <option value="all">All Boards</option>
+              </select>
+            </div>
             <button id="btn-dashboard-pin" class="board-action-btn" type="button" title="Pin current dashboard query">Pin</button>
           </div>
           <div class="dashboard-quick-row">
@@ -419,6 +423,7 @@
   <script src="treeView.js"></script>
   <script src="wysiwyg-editor.js"></script>
   <script src="themes.js"></script>
+  <script src="visualThemes.js"></script>
   <script src="diagramRegistry.js"></script>
   <script src="contentEnhancerRegistry.js"></script>
   <script src="actionRegistry.js"></script>

@@ -178,7 +178,7 @@ const LexeraApi = (function () {
     }
     clearTimeout(timeoutId);
     if (res.status === 304) {
-      return { notModified: true, revision };
+      return { notModified: true, version: revision };
     }
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);

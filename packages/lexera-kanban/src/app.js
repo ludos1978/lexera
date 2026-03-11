@@ -654,6 +654,20 @@ const LexeraDashboard = (function () {
   // LEXERA_THEMES and applyLexeraTheme are provided by the shared themes.js script.
   // THEMES is an alias for backward compatibility within app.js.
   var THEMES = (typeof LEXERA_THEMES !== 'undefined') ? LEXERA_THEMES : [];
+  var VISUAL_THEMES = (typeof LEXERA_VISUAL_THEMES !== 'undefined') ? LEXERA_VISUAL_THEMES : [
+    { id: 'classic', name: 'Classic', description: 'Balanced Lexera layout' }
+  ];
+  var VISUAL_THEME_LABELS = {};
+  for (var visualThemeIdx = 0; visualThemeIdx < VISUAL_THEMES.length; visualThemeIdx++) {
+    VISUAL_THEME_LABELS[VISUAL_THEMES[visualThemeIdx].id] = VISUAL_THEMES[visualThemeIdx].name;
+  }
+
+  function applyVisualTheme(themeId) {
+    if (typeof applyLexeraVisualTheme === 'function') {
+      return applyLexeraVisualTheme(themeId);
+    }
+    return null;
+  }
 
   function applyTheme(themeId) {
     // Use shared theme applier for base CSS variables
@@ -721,6 +735,7 @@ const LexeraDashboard = (function () {
   const BURGER_MENU_ICON_HTML = '<span class="burger-lines" aria-hidden="true"></span>';
 
   // Apply on load after DOM refs exist so board settings can safely re-apply theme-derived styles.
+  applyVisualTheme(localStorage.getItem('lexera-visual-theme') || 'classic');
   applyTheme(localStorage.getItem('lexera-theme') || 'lexera');
   cardEditorMode = normalizeCardEditorMode(localStorage.getItem('lexera-card-editor-mode') || 'dual');
   cardEditorFontScale = normalizeCardEditorFontScale(localStorage.getItem('lexera-card-editor-font-scale') || '1');
@@ -4770,7 +4785,7 @@ const LexeraDashboard = (function () {
   // Lock button: controls add/remove board capability
   function updateLockButton(btn) {
     if (!btn) return;
-    btn.innerHTML = hierarchyLocked ? '&#128274;' : '&#128275;';
+    btn.innerHTML = hierarchyLocked ? '&#128274;&#65038;' : '&#128275;&#65038;';
     btn.title = hierarchyLocked ? 'Unlock hierarchy (allow add/remove)' : 'Lock hierarchy (prevent add/remove)';
     btn.classList.toggle('active', !hierarchyLocked);
   }
@@ -7038,8 +7053,6 @@ const LexeraDashboard = (function () {
 
     html += '<div class="board-header-zone board-header-zone-right">';
     html += '<div class="board-header-actions board-header-actions-right">';
-    html += '<button class="board-action-btn" id="btn-fold-cards" title="Collapse or expand all cards">Fold Cards</button>';
-    html += '<button class="board-action-btn" id="btn-fold-all" title="Fold/unfold all columns">Fold Columns</button>';
     html += '<button class="board-action-btn' + (stickyMode ? ' has-items' : '') + '" id="btn-pin-column-headers" title="Pin or unpin column headers">Pin Headers</button>';
     // Undo/redo: keyboard only (Cmd/Ctrl+Z/Y), stats & processes: bottom bar tabs
     html += '<button class="board-action-btn" id="btn-save-tracking" title="Save now and inspect change tracking">Changes</button>';
@@ -7052,8 +7065,8 @@ const LexeraDashboard = (function () {
     loadTemplatesOnce();
 
     // Refresh board-header-lifetime cached refs
-    $foldAllBtn = document.getElementById('btn-fold-all');
-    $foldAllCardsBtn = document.getElementById('btn-fold-cards');
+    $foldAllBtn = null;
+    $foldAllCardsBtn = null;
     $pinHeadersBtn = document.getElementById('btn-pin-column-headers');
     $saveTrackingBtn = document.getElementById('btn-save-tracking');
 
@@ -7090,16 +7103,6 @@ const LexeraDashboard = (function () {
       });
     }
 
-    if ($foldAllBtn) {
-      $foldAllBtn.addEventListener('click', function () {
-        toggleFoldAllColumns();
-      });
-    }
-    if ($foldAllCardsBtn) {
-      $foldAllCardsBtn.addEventListener('click', function () {
-        toggleFoldAllCards();
-      });
-    }
     if ($pinHeadersBtn) {
       $pinHeadersBtn.addEventListener('click', function () {
         togglePinnedHeaders();
@@ -7940,7 +7943,7 @@ const LexeraDashboard = (function () {
     if (!btnElement) return;
     var rect = btnElement.getBoundingClientRect();
     var zoomLevels = [0.8, 0.9, 1, 1.1, 1.25];
-    var items = buildSettingMenuItems('boardTheme');
+    var items = buildSettingMenuItems('visualTheme');
     items.push({ separator: true });
     var zoomItems = zoomLevels.map(function (scale) {
       var percent = Math.round(scale * 100);
@@ -7953,10 +7956,8 @@ const LexeraDashboard = (function () {
     items.push({ id: 'zoom-reset', label: 'Reset Zoom (100%)' });
     showNativeMenu(items, rect.right, rect.bottom, 'header.themeZoom').then(function (action) {
       if (!action) return;
-      if (action.indexOf('set-board-theme:') === 0) {
-        var themeId = action.substring('set-board-theme:'.length);
-        setBoardTheme(themeId);
-        showNotification('Visual style: ' + (BOARD_THEME_LABELS[themeId] || themeId));
+      if (action.indexOf('set-visual-theme:') === 0) {
+        handleBoardAction(action);
         return;
       }
       if (action.indexOf('ui-scale:') === 0) {
@@ -8997,8 +8998,10 @@ const LexeraDashboard = (function () {
     closeCardContextMenu();
 
     var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
+    var allColumnsFolded = areAllColumnsFolded();
+    var allCardsCollapsed = areAllCardsCollapsed();
     var items = [
-      { id: 'set-board-theme', label: 'Visual Style', items: buildSettingMenuItems('boardTheme') },
+      { id: 'set-visual-theme', label: 'Visual Theme', items: buildSettingMenuItems('visualTheme') },
       { id: 'set-tag-style-preset', label: 'Tag Style Preset', items: buildSettingMenuItems('tagStylePreset') },
       { separator: true },
       { id: 'set-column-width', label: 'Column Width', items: buildSettingMenuItems('columnWidth') },
@@ -9010,6 +9013,8 @@ const LexeraDashboard = (function () {
       { id: 'set-layout-rows', label: 'Layout Rows', items: buildSettingMenuItems('layoutRows') },
       { id: 'set-row-height', label: 'Row Height', items: buildSettingMenuItems('rowHeight') },
       { id: 'set-layout-preset', label: 'Layout Preset', items: buildSettingMenuItems('layoutPreset') },
+      { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
+      { id: allCardsCollapsed ? 'unfold-cards' : 'fold-cards', label: allCardsCollapsed ? 'Unfold All Cards' : 'Fold All Cards' },
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
       { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildSettingMenuItems('stickyHeaders') },
       { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildSettingMenuItems('arrowFocusScroll') },
@@ -11368,12 +11373,6 @@ const LexeraDashboard = (function () {
       })(cardEl, col.index, j, menuBtn);
       applyTagStyleToEntity(cardEl, card.content || '');
       cardsEl.appendChild(cardEl);
-    }
-    if (col.cards.length === 0) {
-      var emptyPlaceholder = document.createElement('div');
-      emptyPlaceholder.className = 'column-empty-placeholder';
-      emptyPlaceholder.textContent = 'No cards yet';
-      cardsEl.appendChild(emptyPlaceholder);
     }
     colEl.appendChild(cardsEl);
 
@@ -23429,33 +23428,8 @@ const LexeraDashboard = (function () {
   // Load tag style config on startup
   loadTagStyleConfig();
 
-  // ── Board Visual Theme ──────────────────────────────────────────────
-  // CSS does all the work via [data-board-theme]. JS just toggles the attribute.
-  var BOARD_THEMES = ['bordered', 'gap-highlight'];
-  var BOARD_THEME_LABELS = { 'bordered': 'Bordered', 'gap-highlight': 'Gap Highlight' };
-
-  function getBoardTheme() {
-    return document.documentElement.getAttribute('data-board-theme') || 'bordered';
-  }
-
-  function setBoardTheme(id) {
-    if (BOARD_THEMES.indexOf(id) < 0) id = 'bordered';
-    if (id === 'bordered') {
-      document.documentElement.removeAttribute('data-board-theme');
-    } else {
-      document.documentElement.setAttribute('data-board-theme', id);
-    }
-    try { localStorage.setItem('lexera-board-theme', id); } catch (e) { /* */ }
-  }
-
-
-  // Restore saved theme on startup
-  try {
-    var savedTheme = localStorage.getItem('lexera-board-theme');
-    if (savedTheme && BOARD_THEMES.indexOf(savedTheme) >= 0 && savedTheme !== 'bordered') {
-      document.documentElement.setAttribute('data-board-theme', savedTheme);
-    }
-  } catch (e) { /* */ }
+  // ── Visual Themes ───────────────────────────────────────────────────
+  // CSS does all the work via [data-visual-theme]. JS only toggles the active theme.
 
   var EMOJI_SHORTCODES = {
     smile: '\u{1F604}',
@@ -25517,15 +25491,21 @@ const LexeraDashboard = (function () {
       })()
     });
     BoardSettingRegistry.register({
-      id: 'boardTheme', label: 'Visual Style', category: 'display',
-      settingsKey: null, actionPrefix: 'set-board-theme', defaultValue: 'bordered',
-      getCurrentValue: function () { return getBoardTheme(); },
-      handler: function (raw) {
-        setBoardTheme(raw);
-        showNotification('Visual style: ' + (BOARD_THEME_LABELS[raw] || raw));
+      id: 'visualTheme', label: 'Visual Theme', category: 'display',
+      settingsKey: null, actionPrefix: 'set-visual-theme', defaultValue: 'classic',
+      getCurrentValue: function () {
+        return (typeof getLexeraCurrentVisualThemeId === 'function' && getLexeraCurrentVisualThemeId()) || 'classic';
       },
-      options: BOARD_THEMES.map(function (id) {
-        return { value: id, label: BOARD_THEME_LABELS[id] };
+      handler: function (raw) {
+        var applied = applyVisualTheme(raw);
+        var label = (applied && applied.name) || VISUAL_THEME_LABELS[String(raw || '').trim()] || String(raw || 'classic');
+        showNotification('Visual theme: ' + label);
+      },
+      options: VISUAL_THEMES.map(function (theme) {
+        return {
+          value: theme.id,
+          label: theme.name + (theme.description ? ' \u2014 ' + theme.description : '')
+        };
       })
     });
 
@@ -25545,6 +25525,16 @@ const LexeraDashboard = (function () {
         });
       })(allSettingDescs[bsi]);
     }
+    ActionRegistry.register('board', 'set-ui-template:*', function (action) {
+      var raw = action.substring('set-ui-template:'.length);
+      var applied = applyVisualTheme(raw);
+      showNotification('Visual theme: ' + ((applied && applied.name) || VISUAL_THEME_LABELS[raw] || raw));
+    });
+    ActionRegistry.register('board', 'set-board-theme:*', function (action) {
+      var raw = action.substring('set-board-theme:'.length);
+      var applied = applyVisualTheme(raw);
+      showNotification('Visual theme: ' + ((applied && applied.name) || VISUAL_THEME_LABELS[raw] || raw));
+    });
 
     // Feature toggles
     ActionRegistry.register('board', 'pin-headers', function () { togglePinnedHeaders(); });
