@@ -58,9 +58,10 @@ var TreeView = (function () {
 
   // --- Recursive renderer ---
 
-  function renderNode(node, parentLastFlags, isLast, options, nodePadLeft) {
+  function renderNode(node, parentLastFlags, isLast, options, nodePadLeft, depth) {
     var fragment = document.createDocumentFragment();
     var esc = options.escapeHtml || function (s) { return s; };
+    var level = depth || 0;
 
     // Determine toggle
     var hasChildren = node.children && node.children.length > 0;
@@ -71,6 +72,7 @@ var TreeView = (function () {
     var el = document.createElement('div');
     el.className = 'tree-node' + (node.type ? ' tree-' + node.type : '');
     if (node.id) el.setAttribute('data-tree-id', node.id);
+    el.setAttribute('data-tree-depth', String(level));
 
     // Set arbitrary attributes
     if (node.attrs) {
@@ -98,6 +100,7 @@ var TreeView = (function () {
     if (Array.isArray(node.children)) {
       var childContainer = document.createElement('div');
       childContainer.className = 'tree-children' + (node.expanded ? ' expanded' : '');
+      childContainer.setAttribute('data-tree-depth', String(level + 1));
 
       // Let caller customize the children container (e.g. add drop-zone classes)
       if (options.onChildrenContainer) {
@@ -109,7 +112,7 @@ var TreeView = (function () {
 
       for (var i = 0; i < node.children.length; i++) {
         var childIsLast = i === node.children.length - 1;
-        var childFrag = renderNode(node.children[i], childIndent, childIsLast, options, nodePadLeft);
+        var childFrag = renderNode(node.children[i], childIndent, childIsLast, options, nodePadLeft, level + 1);
         childContainer.appendChild(childFrag);
       }
       fragment.appendChild(childContainer);
@@ -133,7 +136,7 @@ var TreeView = (function () {
     var nodePadLeft = computeNodePadLeft();
     for (var i = 0; i < nodes.length; i++) {
       var isLast = i === nodes.length - 1;
-      container.appendChild(renderNode(nodes[i], [], isLast, options, nodePadLeft));
+      container.appendChild(renderNode(nodes[i], [], isLast, options, nodePadLeft, 0));
     }
   }
 

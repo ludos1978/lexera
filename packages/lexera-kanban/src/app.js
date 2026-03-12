@@ -1251,40 +1251,96 @@ const LexeraDashboard = (function () {
   function getFoldedColumns(boardId) {
     var saved = localStorage.getItem('lexera-col-fold:' + boardId);
     if (!saved) return [];
-    try { return JSON.parse(saved); } catch (e) { return []; }
+    try { return normalizeFoldStorageList(JSON.parse(saved)); } catch (e) { return []; }
   }
 
   function getFoldedItems(boardId, kind) {
     var saved = localStorage.getItem('lexera-' + kind + '-fold:' + boardId);
     if (!saved) return [];
-    try { return JSON.parse(saved); } catch (e) { return []; }
+    try { return normalizeFoldStorageList(JSON.parse(saved)); } catch (e) { return []; }
+  }
+
+  function normalizeFoldStorageList(values) {
+    var list = Array.isArray(values) ? values : [];
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] == null) continue;
+      var value = String(list[i] || '').trim();
+      if (!value || seen[value]) continue;
+      seen[value] = true;
+      out.push(value);
+    }
+    return out;
+  }
+
+  function getRowFoldKey(row, rowIdx) {
+    var rowId = row && row.id != null ? String(row.id || '').trim() : '';
+    if (rowId) return 'row:id:' + rowId;
+    return 'row:path:' + (typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1);
+  }
+
+  function getStackFoldKey(stack, rowIdx, stackIdx) {
+    var stackId = stack && stack.id != null ? String(stack.id || '').trim() : '';
+    if (stackId) return 'stack:id:' + stackId;
+    var safeRowIdx = typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1;
+    var safeStackIdx = typeof stackIdx === 'number' && isFinite(stackIdx) ? stackIdx : -1;
+    return 'stack:path:' + safeRowIdx + ':' + safeStackIdx;
+  }
+
+  function getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
+    var colId = col && col.id != null ? String(col.id || '').trim() : '';
+    if (colId) return 'column:id:' + colId;
+    if (col && typeof col.index === 'number' && isFinite(col.index)) {
+      return 'column:index:' + col.index;
+    }
+    var safeRowIdx = typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1;
+    var safeStackIdx = typeof stackIdx === 'number' && isFinite(stackIdx) ? stackIdx : -1;
+    if (typeof colFullIdx === 'number' && isFinite(colFullIdx)) {
+      return 'column:path:' + safeRowIdx + ':' + safeStackIdx + ':' + colFullIdx;
+    }
+    var safeColLocalIdx = typeof colLocalIdx === 'number' && isFinite(colLocalIdx) ? colLocalIdx : -1;
+    return 'column:display:' + safeRowIdx + ':' + safeStackIdx + ':' + safeColLocalIdx;
+  }
+
+  function hasSavedFoldMatch(savedValues, foldKey, legacyValue) {
+    var saved = Array.isArray(savedValues) ? savedValues : [];
+    var normalizedKey = String(foldKey || '').trim();
+    var normalizedLegacy = String(legacyValue || '').trim();
+    for (var i = 0; i < saved.length; i++) {
+      var current = String(saved[i] || '').trim();
+      if (!current) continue;
+      if (normalizedKey && current === normalizedKey) return true;
+      if (normalizedLegacy && current === normalizedLegacy) return true;
+    }
+    return false;
   }
 
   function saveFoldState(boardId) {
     var folded = [];
-    var cols = getElColumnsContainer().querySelectorAll('.column[data-col-title]');
+    var cols = getElColumnsContainer().querySelectorAll('.column[data-fold-key]');
     for (var i = 0; i < cols.length; i++) {
       if (cols[i].classList.contains('folded')) {
-        folded.push(cols[i].getAttribute('data-col-title'));
+        folded.push(cols[i].getAttribute('data-fold-key'));
       }
     }
     localStorage.setItem('lexera-col-fold:' + boardId, JSON.stringify(folded));
 
     // Also save row/stack fold states for new format
     var rowFolded = [];
-    var rows = getElColumnsContainer().querySelectorAll('.board-row[data-row-title]');
+    var rows = getElColumnsContainer().querySelectorAll('.board-row[data-fold-key]');
     for (var i = 0; i < rows.length; i++) {
       if (rows[i].classList.contains('folded')) {
-        rowFolded.push(rows[i].getAttribute('data-row-title'));
+        rowFolded.push(rows[i].getAttribute('data-fold-key'));
       }
     }
     localStorage.setItem('lexera-row-fold:' + boardId, JSON.stringify(rowFolded));
 
     var stackFolded = [];
-    var stacks = getElColumnsContainer().querySelectorAll('.board-stack[data-stack-title]');
+    var stacks = getElColumnsContainer().querySelectorAll('.board-stack[data-fold-key]');
     for (var i = 0; i < stacks.length; i++) {
       if (stacks[i].classList.contains('folded')) {
-        stackFolded.push(stacks[i].getAttribute('data-stack-title'));
+        stackFolded.push(stacks[i].getAttribute('data-fold-key'));
       }
     }
     localStorage.setItem('lexera-stack-fold:' + boardId, JSON.stringify(stackFolded));
@@ -1336,6 +1392,49 @@ const LexeraDashboard = (function () {
       setColumnChildrenFoldState(columns[i], folded);
     }
     saveCardCollapseState(activeBoardId);
+  }
+
+  function toggleColumnFoldElement(columnEl, childrenOnly) {
+    if (!columnEl) return false;
+    if (childrenOnly) {
+      var anyCardExpanded = !!columnEl.querySelector('.card:not(.collapsed)');
+      setColumnChildrenFoldState(columnEl, anyCardExpanded);
+      saveCardCollapseState(activeBoardId);
+    } else {
+      var nowFolded = !columnEl.classList.contains('folded');
+      columnEl.classList.toggle('folded', nowFolded);
+      saveFoldState(activeBoardId);
+    }
+    refreshBoardHeaderActionStates();
+    return true;
+  }
+
+  function toggleStackFoldElement(stackEl, childrenOnly) {
+    if (!stackEl) return false;
+    if (childrenOnly) {
+      var anyChildUnfolded = !!stackEl.querySelector('.column:not(.folded)');
+      setStackChildrenFoldState(stackEl, anyChildUnfolded);
+    } else {
+      var nowFolded = !stackEl.classList.contains('folded');
+      stackEl.classList.toggle('folded', nowFolded);
+    }
+    saveFoldState(activeBoardId);
+    refreshBoardHeaderActionStates();
+    return true;
+  }
+
+  function toggleRowFoldElement(rowEl, childrenOnly) {
+    if (!rowEl) return false;
+    if (childrenOnly) {
+      var anyChildUnfolded = !!rowEl.querySelector('.board-stack:not(.folded)');
+      setRowChildrenFoldState(rowEl, anyChildUnfolded);
+    } else {
+      var nowFolded = !rowEl.classList.contains('folded');
+      rowEl.classList.toggle('folded', nowFolded);
+    }
+    saveFoldState(activeBoardId);
+    refreshBoardHeaderActionStates();
+    return true;
   }
 
   function reorderItems(items, sourceIdx, targetIdx, insertBefore) {
@@ -2444,12 +2543,14 @@ const LexeraDashboard = (function () {
     if (!getElDashboardPinnedList()) return;
     getElDashboardPinnedList().innerHTML = '';
     if (!dashboardState.pinnedQueries || dashboardState.pinnedQueries.length === 0) {
+      setDashboardGroupEmptyState(getElDashboardPinnedList(), true);
       var empty = document.createElement('div');
       empty.className = 'dashboard-empty';
       empty.textContent = 'No pinned searches';
       getElDashboardPinnedList().appendChild(empty);
       return;
     }
+    setDashboardGroupEmptyState(getElDashboardPinnedList(), false);
 
     for (var i = 0; i < dashboardState.pinnedQueries.length; i++) {
       (function (query) {
@@ -2496,17 +2597,27 @@ const LexeraDashboard = (function () {
     }
   }
 
-  function renderDashboardResultItems(targetEl, items, emptyText) {
+  function setDashboardGroupEmptyState(targetEl, isEmpty) {
+    if (!targetEl || typeof targetEl.closest !== 'function') return;
+    var group = targetEl.closest('.dashboard-group');
+    if (!group) return;
+    group.classList.toggle('is-empty', !!isEmpty);
+  }
+
+  function renderDashboardResultItems(targetEl, items, emptyText, options) {
+    options = options || {};
     if (!targetEl) return;
     targetEl.innerHTML = '';
 
     if (!items || items.length === 0) {
+      setDashboardGroupEmptyState(targetEl, !!options.collapseWhenEmpty);
       var empty = document.createElement('div');
       empty.className = 'dashboard-empty';
       empty.textContent = emptyText;
       targetEl.appendChild(empty);
       return;
     }
+    setDashboardGroupEmptyState(targetEl, false);
 
     for (var i = 0; i < items.length; i++) {
       (function (item) {
@@ -2550,17 +2661,20 @@ const LexeraDashboard = (function () {
     renderDashboardResultItems(
       getElDashboardResultsList(),
       dashboardState.results,
-      scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search')
+      scopeHint || loadingNote || (dashboardState.query ? 'No matching tasks' : 'Type a query to search'),
+      { collapseWhenEmpty: !dashboardState.loading && !dashboardState.query }
     );
     renderDashboardResultItems(
       getElDashboardDeadlineList(),
       dashboardState.deadlines,
-      scopeHint || loadingNote || 'No open tasks with due dates'
+      scopeHint || loadingNote || 'No open tasks with due dates',
+      { collapseWhenEmpty: !dashboardState.loading }
     );
     renderDashboardResultItems(
       getElDashboardOverdueList(),
       dashboardState.overdue,
-      scopeHint || loadingNote || 'No overdue tasks'
+      scopeHint || loadingNote || 'No overdue tasks',
+      { collapseWhenEmpty: !dashboardState.loading }
     );
   }
 
@@ -3789,20 +3903,23 @@ const LexeraDashboard = (function () {
   }
 
   // Convert kanban rows/stacks/columns/cards into generic TreeView node arrays.
+  // Keep the full row -> stack -> column -> card structure even for single-row or
+  // single-stack boards. Collapsing those levels into breadcrumbs saves a few pixels
+  // but harms scanability and makes the sidebar tree less trustworthy as a hierarchy.
   function buildSidebarTreeNodes(rows, boardId, treeState, hasTreeState, singleRow, singleStack) {
     var nodes = [];
     for (var ri = 0; ri < rows.length; ri++) {
       var row = rows[ri];
       var rowId = row.id || ('row-' + ri);
       var rowExpanded = hasTreeState ? treeState.rows.indexOf(rowId) === -1 : (singleRow ? true : false);
-      var rowIsLast = ri === rows.length - 1;
+      var rowCardCount = countCardsInRow(row);
 
       var stackNodes = [];
       for (var si = 0; si < row.stacks.length; si++) {
         var stack = row.stacks[si];
         var stackId = stack.id || ('stack-' + ri + '-' + si);
         var stackExpanded = hasTreeState ? treeState.stacks.indexOf(stackId) === -1 : (singleStack ? true : false);
-        var stackIsLast = si === row.stacks.length - 1;
+        var stackCardCount = countCardsInStack(stack);
 
         var colNodes = [];
         var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
@@ -3858,45 +3975,37 @@ const LexeraDashboard = (function () {
           });
         }
 
-        if (!singleStack) {
-          stackNodes.push({
-            id: stackId,
-            label: stack.title || 'Stack ' + (si + 1),
-            count: countCardsInStack(stack),
-            type: 'stack',
-            expanded: stackExpanded,
-            grip: true,
-            children: colNodes,
-            attrs: {
-              'data-board-id': boardId,
-              'data-row-index': ri.toString(),
-              'data-stack-index': si.toString(),
-              'data-tree-drag': 'tree-stack'
-            }
-          });
-        } else {
-          stackNodes = stackNodes.concat(colNodes);
-        }
-      }
-
-      if (!singleRow) {
-        nodes.push({
-          id: rowId,
-          label: row.title || 'Row ' + (ri + 1),
-          count: countCardsInRow(row),
-          type: 'row',
-          expanded: rowExpanded,
+        stackNodes.push({
+          id: stackId,
+          label: stack.title || 'Stack ' + (si + 1),
+          count: row.stacks.length > 1 ? stackCardCount : null,
+          type: 'stack',
+          expanded: stackExpanded,
           grip: true,
-          children: stackNodes,
+          children: colNodes,
           attrs: {
             'data-board-id': boardId,
             'data-row-index': ri.toString(),
-            'data-tree-drag': 'tree-row'
+            'data-stack-index': si.toString(),
+            'data-tree-drag': 'tree-stack'
           }
         });
-      } else {
-        nodes = nodes.concat(stackNodes);
       }
+
+      nodes.push({
+        id: rowId,
+        label: row.title || 'Row ' + (ri + 1),
+        count: rows.length > 1 ? rowCardCount : null,
+        type: 'row',
+        expanded: rowExpanded,
+        grip: true,
+        children: stackNodes,
+        attrs: {
+          'data-board-id': boardId,
+          'data-row-index': ri.toString(),
+          'data-tree-drag': 'tree-row'
+        }
+      });
     }
     return nodes;
   }
@@ -4452,16 +4561,7 @@ const LexeraDashboard = (function () {
       var hasContent = rows.length > 0;
       var singleRow = rows.length === 1;
       var singleStack = singleRow && (rows[0].stacks || []).length === 1;
-      // Build breadcrumb title: "Board / Row / Stack" when levels are compressed
       var displayTitle = escapeHtml(boardName);
-      if (singleRow) {
-        var rowTitle = rows[0].title || 'Row 1';
-        displayTitle += ' <span class="board-item-separator">/</span> ' + escapeHtml(rowTitle);
-        if (singleStack && rows[0].stacks && rows[0].stacks[0]) {
-          var stackTitle = rows[0].stacks[0].title || 'Stack 1';
-          displayTitle += ' <span class="board-item-separator">/</span> ' + escapeHtml(stackTitle);
-        }
-      }
       var presenceCount = (boardPresenceCache[board.id] || []).length;
       var presenceBadge = presenceCount > 0
         ? '<span class="board-presence-badge" title="' + presenceCount + ' user(s) online">' + presenceCount + '</span>'
@@ -8622,7 +8722,7 @@ const LexeraDashboard = (function () {
   }
 
   function areAllColumnsFolded() {
-    var foldables = getElColumnsContainer().querySelectorAll('.column[data-col-title]');
+    var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key]');
     if (foldables.length === 0) return false;
     for (var i = 0; i < foldables.length; i++) {
       if (!foldables[i].classList.contains('folded')) return false;
@@ -8631,7 +8731,7 @@ const LexeraDashboard = (function () {
   }
 
   function areAllBoardItemsFolded() {
-    var foldables = getElColumnsContainer().querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
+    var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key], .board-row[data-fold-key], .board-stack[data-fold-key]');
     if (foldables.length === 0) return false;
     for (var i = 0; i < foldables.length; i++) {
       if (!foldables[i].classList.contains('folded')) return false;
@@ -8932,7 +9032,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleFoldAllColumns() {
-    var foldables = getElColumnsContainer().querySelectorAll('.column[data-col-title]');
+    var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key]');
     if (foldables.length === 0) return;
     var allFolded = areAllColumnsFolded();
     for (var i = 0; i < foldables.length; i++) {
@@ -9038,7 +9138,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleFoldAll() {
-    var foldables = getElColumnsContainer().querySelectorAll('.column[data-col-title], .board-row[data-row-title], .board-stack[data-stack-title]');
+    var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key], .board-row[data-fold-key], .board-stack[data-fold-key]');
     var allFolded = areAllBoardItemsFolded();
     for (var i = 0; i < foldables.length; i++) {
       if (allFolded) {
@@ -11162,16 +11262,18 @@ const LexeraDashboard = (function () {
   /**
    * Build a single column element (header, cards, footer) — shared by both formats.
    */
-  function buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx) {
+  function buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
     var displayTitle = stripLayoutTags(col.title);
+    var colFoldKey = getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx);
 
     var colEl = document.createElement('div');
     colEl.className = 'column';
     colEl.setAttribute('data-col-title', col.title);
+    colEl.setAttribute('data-fold-key', colFoldKey);
     if (typeof rowIdx === 'number') colEl.setAttribute('data-row-index', rowIdx.toString());
     if (typeof stackIdx === 'number') colEl.setAttribute('data-stack-index', stackIdx.toString());
     if (typeof colLocalIdx === 'number') colEl.setAttribute('data-col-local-index', colLocalIdx.toString());
-    if (foldedCols.indexOf(col.title) !== -1) {
+    if (hasSavedFoldMatch(foldedCols, colFoldKey, col.title)) {
       colEl.classList.add('folded');
     }
     var colLayout = getColumnLayoutTags(col.title);
@@ -11191,17 +11293,17 @@ const LexeraDashboard = (function () {
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
+      '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
       '<span class="drag-grip">\u22EE\u22EE</span>' +
       '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
-      '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
       '<span class="column-header-actions">' +
         '<button class="column-menu-btn burger-menu-btn" title="Column options">' + BURGER_MENU_ICON_HTML + '</button>' +
       '</span>';
     (function (columnEl, colIdx, rIdx, sIdx, cIdx) {
       header.addEventListener('click', function (e) {
-        var includeBadge = e.target.closest('.column-include-badge[data-include-path]');
+        var includeBadge = targetClosest(e.target, '.column-include-badge[data-include-path]');
         if (includeBadge) {
           e.preventDefault();
           e.stopPropagation();
@@ -11211,26 +11313,15 @@ const LexeraDashboard = (function () {
           else showBoardFilePreview(activeBoardId, includePath);
           return;
         }
-        if (e.target.closest('.column-title')) return;
-        if (e.target.closest('button, .drag-grip, .column-rename-input')) return;
+        if (targetClosest(e.target, '.column-title')) return;
+        if (targetClosest(e.target, 'button, .drag-grip, .column-rename-input')) return;
         if (!e.altKey) return;
         e.stopPropagation();
-        var nowFolded = !columnEl.classList.contains('folded');
-        columnEl.classList.toggle('folded', nowFolded);
-        saveFoldState(activeBoardId);
+        toggleColumnFoldElement(columnEl, true);
       });
       header.querySelector('.column-fold-btn').addEventListener('click', function (e) {
         e.stopPropagation();
-        if (e.altKey) {
-          // Alt+click: toggle all cards in this column without folding the column itself
-          var anyCardExpanded = !!columnEl.querySelector('.card:not(.collapsed)');
-          setColumnChildrenFoldState(columnEl, anyCardExpanded);
-          saveCardCollapseState(activeBoardId);
-        } else {
-          var nowFolded = !columnEl.classList.contains('folded');
-          columnEl.classList.toggle('folded', nowFolded);
-          saveFoldState(activeBoardId);
-        }
+        toggleColumnFoldElement(columnEl, !!e.altKey);
       });
       header.addEventListener('contextmenu', function (e) {
         e.preventDefault();
@@ -11272,6 +11363,12 @@ const LexeraDashboard = (function () {
       var headerRow = document.createElement('div');
       headerRow.className = 'card-header';
 
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
+      toggle.textContent = '\u25B6';
+      headerRow.appendChild(toggle);
+
       var dragHandle = document.createElement('div');
       dragHandle.className = 'card-drag-handle';
       dragHandle.textContent = '\u22EE\u22EE';
@@ -11285,11 +11382,6 @@ const LexeraDashboard = (function () {
       titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)));
       titleContainer.appendChild(titleDisplay);
       headerRow.appendChild(titleContainer);
-
-      var toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
-      toggle.textContent = '\u25B6';
       (function (toggleEl, el) {
         toggleEl.addEventListener('click', function (e) {
           e.stopPropagation();
@@ -11485,11 +11577,13 @@ const LexeraDashboard = (function () {
     for (var r = 0; r < rows.length; r++) {
       var row = rows[r];
       var rowStacks = Array.isArray(row.stacks) ? row.stacks : [];
+      var rowFoldKey = getRowFoldKey(row, r);
       var rowEl = document.createElement('div');
       rowEl.className = 'board-row';
       rowEl.setAttribute('data-row-title', row.title);
+      rowEl.setAttribute('data-fold-key', rowFoldKey);
       rowEl.setAttribute('data-row-index', r.toString());
-      if (foldedRows.indexOf(row.title) !== -1) {
+      if (hasSavedFoldMatch(foldedRows, rowFoldKey, row.title)) {
         rowEl.classList.add('folded');
       }
 
@@ -11507,35 +11601,24 @@ const LexeraDashboard = (function () {
         }
       }
       rowHeader.innerHTML =
+        '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         '<span class="drag-grip">\u22EE\u22EE</span>' +
         '<span class="board-row-title">' + escapeHtml(rowDisplayTitle.length > 40 ? rowDisplayTitle.slice(0, 40) + '\u2026' : rowDisplayTitle) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
-        '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
         '<span class="row-header-actions">' +
           '<button class="row-menu-btn burger-menu-btn" title="Row options">' + BURGER_MENU_ICON_HTML + '</button>' +
         '</span>';
       (function (el, rowIdx) {
-        function toggleRowFold(childrenOnly) {
-          if (childrenOnly) {
-            // Alt+click: toggle children fold state without folding the row itself
-            var anyChildUnfolded = !!el.querySelector('.board-stack:not(.folded)');
-            setRowChildrenFoldState(el, anyChildUnfolded);
-          } else {
-            var nowFolded = !el.classList.contains('folded');
-            el.classList.toggle('folded', nowFolded);
-          }
-          saveFoldState(activeBoardId);
-        }
         rowHeader.addEventListener('click', function (e) {
-          if (e.target.closest('.board-row-title')) return;
-          if (e.target.closest('button, .drag-grip')) return;
+          if (targetClosest(e.target, '.board-row-title')) return;
+          if (targetClosest(e.target, 'button, .drag-grip')) return;
           if (!e.altKey) return;
           e.stopPropagation();
-          toggleRowFold(true);
+          toggleRowFoldElement(el, true);
         });
         rowHeader.querySelector('.row-fold-btn').addEventListener('click', function (e) {
           e.stopPropagation();
-          toggleRowFold(!!e.altKey);
+          toggleRowFoldElement(el, !!e.altKey);
         });
         rowHeader.querySelector('.row-menu-btn').addEventListener('click', function (e) {
           e.stopPropagation();
@@ -11570,14 +11653,16 @@ const LexeraDashboard = (function () {
 
       for (var s = 0; s < rowStacks.length; s++) {
         var stack = rowStacks[s];
+        var stackFoldKey = getStackFoldKey(stack, r, s);
         var stackEl = document.createElement('div');
         stackEl.className = 'board-stack';
         stackEl.setAttribute('data-stack-title', stack.title);
+        stackEl.setAttribute('data-fold-key', stackFoldKey);
         stackEl.setAttribute('data-row-index', r.toString());
         stackEl.setAttribute('data-stack-index', s.toString());
         var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
         var isEmptyStack = stackColumnEntries.length === 0;
-        if (foldedStacks.indexOf(stack.title) !== -1) {
+        if (hasSavedFoldMatch(foldedStacks, stackFoldKey, stack.title)) {
           stackEl.classList.add('folded');
         }
 
@@ -11587,26 +11672,15 @@ const LexeraDashboard = (function () {
         var stackColCount = stackColumnEntries.length;
         var stackDisplayTitle = stripHtmlComments(stack.title || '');
         stackHeader.innerHTML =
+          '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           '<span class="drag-grip">\u22EE\u22EE</span>' +
           '<span class="board-stack-title">' + (stackDisplayTitle ? escapeHtml(stackDisplayTitle.length > 40 ? stackDisplayTitle.slice(0, 40) + '\u2026' : stackDisplayTitle) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
-          '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           '<span class="stack-header-actions">' +
             '<button class="stack-menu-btn burger-menu-btn" title="Stack options">' + BURGER_MENU_ICON_HTML + '</button>' +
             (isEmptyStack ? '<button class="stack-delete-btn" title="Delete empty stack">\u00d7</button>' : '') +
           '</span>';
         (function (el, rIdx, sIdx) {
-          function toggleStackFold(childrenOnly) {
-            if (childrenOnly) {
-              // Alt+click: toggle children fold state without folding the stack itself
-              var anyChildUnfolded = !!el.querySelector('.column:not(.folded)');
-              setStackChildrenFoldState(el, anyChildUnfolded);
-            } else {
-              var nowFolded = !el.classList.contains('folded');
-              el.classList.toggle('folded', nowFolded);
-            }
-            saveFoldState(activeBoardId);
-          }
           var deleteBtn = stackHeader.querySelector('.stack-delete-btn');
           if (deleteBtn) {
             deleteBtn.addEventListener('click', function (e) {
@@ -11615,15 +11689,15 @@ const LexeraDashboard = (function () {
             });
           }
           stackHeader.addEventListener('click', function (e) {
-            if (e.target.closest('.board-stack-title')) return;
-            if (e.target.closest('button, .drag-grip, .column-rename-input')) return;
+            if (targetClosest(e.target, '.board-stack-title')) return;
+            if (targetClosest(e.target, 'button, .drag-grip, .column-rename-input')) return;
             if (!e.altKey) return;
             e.stopPropagation();
-            toggleStackFold(true);
+            toggleStackFoldElement(el, true);
           });
           stackHeader.querySelector('.stack-fold-btn').addEventListener('click', function (e) {
             e.stopPropagation();
-            toggleStackFold(!!e.altKey);
+            toggleStackFoldElement(el, !!e.altKey);
           });
           stackHeader.querySelector('.stack-menu-btn').addEventListener('click', function (e) {
             e.stopPropagation();
@@ -11656,7 +11730,7 @@ const LexeraDashboard = (function () {
 
         for (var c = 0; c < stackColumnEntries.length; c++) {
           var col = stackColumnEntries[c].col;
-          var colEl = buildColumnElement(col, foldedCols, collapsedCards, r, s, c);
+          var colEl = buildColumnElement(col, foldedCols, collapsedCards, r, s, c, stackColumnEntries[c].fullIndex);
           // Column drag via grip is handled by the pointer-based drag system
           // Column DnD handled by the pointer-based drag system
           stackContent.appendChild(colEl);
@@ -14282,6 +14356,35 @@ const LexeraDashboard = (function () {
     }
   });
 
+  getElColumnsContainer().addEventListener('click', function (e) {
+    try {
+      var columnFoldBtn = targetClosest(e.target, '.column-fold-btn');
+      if (columnFoldBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleColumnFoldElement(targetClosest(columnFoldBtn, '.column'), !!e.altKey);
+        return;
+      }
+
+      var stackFoldBtn = targetClosest(e.target, '.stack-fold-btn');
+      if (stackFoldBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleStackFoldElement(targetClosest(stackFoldBtn, '.board-stack'), !!e.altKey);
+        return;
+      }
+
+      var rowFoldBtn = targetClosest(e.target, '.row-fold-btn');
+      if (rowFoldBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleRowFoldElement(targetClosest(rowFoldBtn, '.board-row'), !!e.altKey);
+      }
+    } catch (err) {
+      logFrontendIssue('error', 'fold.click', 'Error in delegated fold click handler', err);
+    }
+  });
+
   // Main board: row/stack/column drag starts from header area (not just grip)
   getElColumnsContainer().addEventListener('mousedown', function (e) {
     try {
@@ -16495,7 +16598,7 @@ const LexeraDashboard = (function () {
     cardEl.classList.remove('collapsed');
     contentEl.innerHTML =
       '<textarea class="card-edit-input card-inline-textarea" spellcheck="false" style="' +
-        escapeAttr('display:block;width:100%;min-height:120px;resize:vertical;overflow:auto;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px') +
+        escapeAttr('display:block;width:100%;min-height:120px;resize:vertical;overflow:auto') +
       '"></textarea>';
 
     var textarea = contentEl.querySelector('.card-inline-textarea');
@@ -24013,43 +24116,6 @@ const LexeraDashboard = (function () {
     }
   }
 
-  function buildTagStyleBadgeDescriptor(label, color, labelColor) {
-    return {
-      label: String(label || ''),
-      color: color || '#4b5563',
-      labelColor: labelColor || getContrastingTextColor(color || '#4b5563')
-    };
-  }
-
-  function renderTagStyleBadgeRail(targetEl, badges, entityType, slot) {
-    if (!targetEl || !Array.isArray(badges) || badges.length === 0) return;
-    var rail = document.createElement('span');
-    rail.className = 'tag-style-badge-rail tag-style-generated tag-style-' + slot;
-    for (var i = 0; i < badges.length; i++) {
-      if (!badges[i] || !badges[i].label) continue;
-      var badge = document.createElement('span');
-      badge.className = 'tag-style-badge';
-      badge.textContent = badges[i].label;
-      badge.style.setProperty('--tag-badge-bg', badges[i].color);
-      badge.style.setProperty('--tag-badge-fg', badges[i].labelColor);
-      rail.appendChild(badge);
-    }
-    if (!rail.childNodes.length) return;
-
-    if (slot === 'header') {
-      var beforeNode = null;
-      if (entityType === 'row') beforeNode = targetEl.querySelector(':scope > .row-header-actions');
-      else if (entityType === 'stack') beforeNode = targetEl.querySelector(':scope > .stack-header-actions');
-      else if (entityType === 'column') beforeNode = targetEl.querySelector(':scope > .column-header-actions');
-      else if (entityType === 'card') beforeNode = targetEl.querySelector(':scope > .card-menu-btn');
-      if (beforeNode) targetEl.insertBefore(rail, beforeNode);
-      else targetEl.appendChild(rail);
-      return;
-    }
-
-    targetEl.appendChild(rail);
-  }
-
   function applyTagStyleToEntity(containerEl, styleSourceText) {
     if (!containerEl || !containerEl.style) return;
     var entityType = getTagStyleEntityType(containerEl);
@@ -24073,7 +24139,6 @@ const LexeraDashboard = (function () {
     if (headerEl) headerEl.removeAttribute('data-tag-style-label');
     if (footerEl) footerEl.removeAttribute('data-tag-style-label');
 
-    var numericTags = extractAllNumericTags(styleSourceText);
     var allTags = extractAllTags(styleSourceText);
     var styleTags = [];
     for (var i = 0; i < allTags.length; i++) {
@@ -24083,25 +24148,7 @@ const LexeraDashboard = (function () {
 
     var primaryTag = styleTags.length > 0 ? styleTags[0] : '';
     var descriptor = primaryTag ? buildTagStyleDescriptor(primaryTag) : null;
-    var headerBadges = [];
-    var footerBadges = [];
-
-    for (var nt = 0; nt < numericTags.length; nt++) {
-      headerBadges.push(buildTagStyleBadgeDescriptor(numericTags[nt].tag, '#4b5563', '#ffffff'));
-    }
-
-    for (var st = 0; st < styleTags.length; st++) {
-      var tagDescriptor = buildTagStyleDescriptor(styleTags[st]);
-      if (tagDescriptor && tagDescriptor.badge) {
-        headerBadges.push(buildTagStyleBadgeDescriptor(
-          tagDescriptor.badge.label,
-          tagDescriptor.badge.color,
-          tagDescriptor.badge.labelColor
-        ));
-      }
-    }
-
-    if (!descriptor && headerBadges.length === 0 && footerBadges.length === 0) {
+    if (!descriptor) {
       if (entityType === 'card' && footerEl && footerEl.parentNode) footerEl.parentNode.removeChild(footerEl);
       return;
     }
@@ -24113,25 +24160,6 @@ const LexeraDashboard = (function () {
       containerEl.style.setProperty('--tag-accent-soft', toTagAccentRgba(color, 0.14));
       containerEl.style.setProperty('--tag-accent-soft-strong', toTagAccentRgba(color, 0.24));
       containerEl.style.setProperty('--tag-accent-muted', toTagAccentRgba(color, 0.42));
-
-      var headerLabel = descriptor.headerBar && descriptor.headerBar.label
-        ? descriptor.headerBar.label
-        : (primaryTag ? primaryTag : '');
-      if (headerEl && headerLabel) {
-        headerEl.setAttribute('data-tag-style-label', headerLabel);
-        containerEl.style.setProperty('--tag-label-bg', descriptor.headerBar && descriptor.headerBar.color ? descriptor.headerBar.color : color);
-        containerEl.style.setProperty('--tag-label-fg', descriptor.headerBar && descriptor.headerBar.labelColor ? descriptor.headerBar.labelColor : getContrastingTextColor(color));
-      }
-
-      var footerLabel = descriptor.footerBar && descriptor.footerBar.label ? descriptor.footerBar.label : '';
-      if (footerLabel) {
-        footerEl = getTagStyleFooterElement(containerEl, entityType, entityType === 'card');
-        if (footerEl) {
-          footerEl.setAttribute('data-tag-style-label', footerLabel);
-          containerEl.style.setProperty('--tag-footer-label-bg', descriptor.footerBar && descriptor.footerBar.color ? descriptor.footerBar.color : color);
-          containerEl.style.setProperty('--tag-footer-label-fg', descriptor.footerBar && descriptor.footerBar.labelColor ? descriptor.footerBar.labelColor : getContrastingTextColor(color));
-        }
-      }
 
       if (descriptor.border) {
         containerEl.style.setProperty('--tag-border-color', descriptor.border.color || color);
@@ -24154,15 +24182,7 @@ const LexeraDashboard = (function () {
       if (descriptor.pattern === 'stripes') containerEl.classList.add('tag-style-pattern-stripes');
       if (descriptor.pattern === 'stripes-h') containerEl.classList.add('tag-style-pattern-stripes-h');
     }
-
-    if (headerEl && headerBadges.length > 0) {
-      renderTagStyleBadgeRail(headerEl, headerBadges, entityType, 'header');
-    }
-    if (footerEl && footerBadges.length > 0) {
-      renderTagStyleBadgeRail(footerEl, footerBadges, entityType, 'footer');
-    } else if (entityType === 'card' && footerEl && !footerEl.getAttribute('data-tag-style-label') && footerEl.parentNode) {
-      footerEl.parentNode.removeChild(footerEl);
-    }
+    if (entityType === 'card' && footerEl && footerEl.parentNode) footerEl.parentNode.removeChild(footerEl);
   }
 
   function countCheckboxes(content) {

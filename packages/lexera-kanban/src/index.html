@@ -13,10 +13,7 @@
   <!-- Header -->
   <div class="header">
     <div class="header-main">
-      <div class="header-actions">
-        <button id="btn-inspector" class="btn-icon" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>
-        <div id="connection-dot" class="connection-dot"></div>
-      </div>
+      <div class="header-actions"></div>
     </div>
   </div>
 
@@ -105,10 +102,18 @@
 
   <!-- Status Bar -->
   <div id="status-bar" class="status-bar">
+    <div class="status-bar-left">
+      <div class="status-bar-tabs">
+        <button id="status-tab-stats" class="status-bar-tab" type="button" title="Toggle board statistics">Stats</button>
+        <button id="status-tab-processes" class="status-bar-tab" type="button" title="Toggle processes and logs">Processes</button>
+      </div>
+    </div>
     <span id="status-msg" class="status-msg"></span>
-    <div class="status-bar-tabs">
-      <button id="status-tab-stats" class="status-bar-tab" type="button" title="Toggle board statistics">Stats</button>
-      <button id="status-tab-processes" class="status-bar-tab" type="button" title="Toggle processes and logs">Processes</button>
+    <div class="status-bar-right">
+      <button id="btn-connection-status" class="status-bar-icon-btn" type="button" title="Backend settings and connection status">
+        <span id="connection-dot" class="connection-dot" aria-hidden="true"></span>
+      </button>
+      <button id="btn-inspector" class="status-bar-icon-btn" type="button" title="Open Inspector (F12 / Ctrl+Shift+I / Alt+I)">&lt;&gt;</button>
     </div>
   </div>
 
