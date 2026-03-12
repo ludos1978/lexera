@@ -6326,9 +6326,9 @@ const LexeraDashboard = (function () {
     if (hasItems) {
       for (var i = 0; i < items.length; i++) {
         var item = items[i];
-        var kindLabel = item.kind === 'row' ? 'Row' : item.kind === 'stack' ? 'Stack' : item.kind === 'column' ? 'Column' : 'Card';
+        var kindLabel = getCreationEntityLabel(item.kind);
         html += '<div class="hidden-items-dropdown-item" data-idx="' + i + '">';
-        html += '<span class="drag-grip">\u22EE\u22EE</span>';
+        html += buildCreationEntityDragIconHtml(item.kind);
         html += '<span class="hidden-item-kind">' + kindLabel + '</span>';
         html += '<span class="hidden-item-title">' + escapeHtml(item.title) + '</span>';
         html += '<span class="hidden-item-loc">' + escapeHtml(buildHiddenItemLocation(item)) + '</span>';
@@ -7023,7 +7023,9 @@ const LexeraDashboard = (function () {
         for (var i = 0; i < list.length; i++) {
           var item = list[i];
           html += '<div class="hidden-items-dropdown-item header-source-dropdown-item' + (item.disabled ? ' disabled' : '') + '" data-source-index="' + i + '">';
-          html += '<span class="drag-grip" data-source-grip="' + i + '">' + (item.disabled ? '' : '\u22EE\u22EE') + '</span>';
+          html += item.disabled
+            ? buildCreationEntityDragIconHtml(item.entityType)
+            : buildCreationEntityDragIconHtml(item.entityType, ['data-source-grip="' + i + '"', 'title="Drag ' + getCreationEntityLabel(item.entityType).toLowerCase() + '"']);
           html += '<span class="hidden-item-kind">' + escapeHtml(getCreationEntityLabel(item.entityType)) + '</span>';
           html += '<span class="hidden-item-title">' + escapeHtml(item.title || '') + '</span>';
           html += '<span class="hidden-item-loc">' + escapeHtml(item.subtitle || '') + '</span>';
@@ -7398,6 +7400,30 @@ const LexeraDashboard = (function () {
     if (value === 'stack') return 'Stack';
     if (value === 'column') return 'Column';
     return 'Card';
+  }
+
+  function getCreationEntityDragIconSvg(entityType) {
+    var value = String(entityType || '').trim().toLowerCase();
+    if (value === 'row') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="6" rx="1"></rect><rect x="3" y="13" width="18" height="8" rx="1"></rect></svg>';
+    }
+    if (value === 'stack') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="4" height="18" rx="1"></rect><rect x="10" y="3" width="4" height="18" rx="1"></rect><rect x="17" y="3" width="4" height="18" rx="1"></rect></svg>';
+    }
+    if (value === 'column') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="13" height="11" rx="2" stroke-dasharray="4 2"></rect><rect x="9" y="9" width="13" height="11" rx="2"></rect></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="8" y1="9" x2="16" y2="9"></line><line x1="8" y1="13" x2="13" y2="13"></line></svg>';
+  }
+
+  function buildCreationEntityDragIconHtml(entityType, extraAttrs) {
+    var value = String(entityType || '').trim().toLowerCase();
+    if (value !== 'row' && value !== 'stack' && value !== 'column' && value !== 'card') value = 'card';
+    var attrs = Array.isArray(extraAttrs) ? extraAttrs.join(' ') : '';
+    if (attrs) attrs = ' ' + attrs;
+    return '<span class="drag-grip entity-drag-icon entity-drag-icon-' + value + '"' + attrs + '>' +
+      getCreationEntityDragIconSvg(value) +
+      '</span>';
   }
 
   function formatMenuToggleLabel(enabled, label) {
@@ -11294,7 +11320,7 @@ const LexeraDashboard = (function () {
     header.className = 'column-header';
     header.innerHTML =
       '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
-      '<span class="drag-grip">\u22EE\u22EE</span>' +
+      buildCreationEntityDragIconHtml('column', ['title="Drag to move column"']) +
       '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
@@ -11370,8 +11396,8 @@ const LexeraDashboard = (function () {
       headerRow.appendChild(toggle);
 
       var dragHandle = document.createElement('div');
-      dragHandle.className = 'card-drag-handle';
-      dragHandle.textContent = '\u22EE\u22EE';
+      dragHandle.className = 'card-drag-handle entity-drag-icon entity-drag-icon-card';
+      dragHandle.innerHTML = getCreationEntityDragIconSvg('card');
       dragHandle.title = 'Drag to move card';
       headerRow.appendChild(dragHandle);
 
@@ -11409,7 +11435,6 @@ const LexeraDashboard = (function () {
           saveCardCollapseState(activeBoardId);
         });
       })(toggle, cardEl);
-      headerRow.appendChild(toggle);
 
       var cardDueDate = extractFirstTemporalDateValue(card.content || '');
       if (cardDueDate) {
@@ -11602,7 +11627,7 @@ const LexeraDashboard = (function () {
       }
       rowHeader.innerHTML =
         '<button class="row-fold-btn fold-btn" title="Fold row">\u25B6</button>' +
-        '<span class="drag-grip">\u22EE\u22EE</span>' +
+        buildCreationEntityDragIconHtml('row', ['title="Drag to move row"']) +
         '<span class="board-row-title">' + escapeHtml(rowDisplayTitle.length > 40 ? rowDisplayTitle.slice(0, 40) + '\u2026' : rowDisplayTitle) + '</span>' +
         '<span class="board-row-count">' + totalCards + '</span>' +
         '<span class="row-header-actions">' +
@@ -11673,7 +11698,7 @@ const LexeraDashboard = (function () {
         var stackDisplayTitle = stripHtmlComments(stack.title || '');
         stackHeader.innerHTML =
           '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
-          '<span class="drag-grip">\u22EE\u22EE</span>' +
+          buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
           '<span class="board-stack-title">' + (stackDisplayTitle ? escapeHtml(stackDisplayTitle.length > 40 ? stackDisplayTitle.slice(0, 40) + '\u2026' : stackDisplayTitle) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
           '<span class="stack-header-actions">' +

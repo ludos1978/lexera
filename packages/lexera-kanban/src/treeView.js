@@ -34,6 +34,20 @@ var TreeView = (function () {
     return 6 * (parseFloat(s) || 1);
   }
 
+  function getNodeDragIconSvg(nodeType) {
+    var value = String(nodeType || '').trim().toLowerCase();
+    if (value === 'row') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="6" rx="1"></rect><rect x="3" y="13" width="18" height="8" rx="1"></rect></svg>';
+    }
+    if (value === 'stack') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="4" height="18" rx="1"></rect><rect x="10" y="3" width="4" height="18" rx="1"></rect><rect x="17" y="3" width="4" height="18" rx="1"></rect></svg>';
+    }
+    if (value === 'column') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="13" height="11" rx="2" stroke-dasharray="4 2"></rect><rect x="9" y="9" width="13" height="11" rx="2"></rect></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="8" y1="9" x2="16" y2="9"></line><line x1="8" y1="13" x2="13" y2="13"></line></svg>';
+  }
+
   function buildIndentHtml(parentLastFlags, isLast) {
     var h = '<span class="tree-indent">';
     for (var g = 0; g < parentLastFlags.length; g++) {
@@ -91,7 +105,7 @@ var TreeView = (function () {
       '<span class="tree-label">' + esc(node.label) + '</span>' +
       (node.count != null ? '<span class="tree-count">' + node.count + '</span>' : '') +
       (showGrip
-        ? '<span class="tree-grip" title="' + escAttr(node.gripTitle || 'Drag to reorder') + '">\u22EE\u22EE</span>'
+        ? '<span class="tree-grip entity-drag-icon entity-drag-icon-' + escAttr(node.type || 'card') + '" title="' + escAttr(node.gripTitle || 'Drag to reorder') + '">' + getNodeDragIconSvg(node.type) + '</span>'
         : '');
 
     fragment.appendChild(el);

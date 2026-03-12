@@ -62,6 +62,7 @@ function loadAppUtils() {
     extractFunction(findLine('function extractHtmlComments(')),
     extractFunction(findLine('function stripHtmlComments(')),
     extractFunction(findLine('function buildSourceSummaryLabel(')),
+    extractFunction(findLine('function getCreationEntityDragIconSvg(')),
     extractFunction(findLine('function normalizeIncomingImageBase64(')),
     extractFunction(findLine('function decodeBase64BinaryStringToUint8Array(')),
     extractFunction(findLine('function stripLayoutTags(')),
@@ -84,6 +85,7 @@ function loadAppUtils() {
       parseLocalFileReference,
       normalizeWikiLookupKey,
       buildSourceSummaryLabel,
+      getCreationEntityDragIconSvg,
       normalizeIncomingImageBase64,
       decodeBase64BinaryStringToUint8Array,
       stripLayoutTags,
@@ -236,6 +238,32 @@ describe('buildSourceSummaryLabel', () => {
     const label = U.buildSourceSummaryLabel('a'.repeat(90), 'fallback');
     expect(label.length).toBe(80);
     expect(label.endsWith('...')).toBe(true);
+  });
+});
+
+describe('getCreationEntityDragIconSvg', () => {
+  it('returns the row icon markup', () => {
+    const svg = U.getCreationEntityDragIconSvg('row');
+    expect(svg).toContain('width="18" height="6"');
+    expect(svg).toContain('width="18" height="8"');
+  });
+
+  it('returns the stack icon markup', () => {
+    const svg = U.getCreationEntityDragIconSvg('stack');
+    expect(svg).toContain('width="4" height="18"');
+    expect(svg.match(/width="4" height="18"/g)?.length).toBe(3);
+  });
+
+  it('returns the column icon markup', () => {
+    const svg = U.getCreationEntityDragIconSvg('column');
+    expect(svg).toContain('stroke-dasharray="4 2"');
+    expect(svg).toContain('width="13" height="11"');
+  });
+
+  it('falls back to the card icon markup', () => {
+    const svg = U.getCreationEntityDragIconSvg('card');
+    expect(svg).toContain('x1="8" y1="9" x2="16" y2="9"');
+    expect(svg).toContain('x1="8" y1="13" x2="13" y2="13"');
   });
 });
 
