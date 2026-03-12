@@ -224,6 +224,9 @@ mod tests {
             )),
             app_handle: None,
             collab_dir: tmp.join("collab"),
+            ludos_sync: Arc::new(tokio::sync::Mutex::new(
+                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
+            )),
             shutdown_tx,
         }
     }

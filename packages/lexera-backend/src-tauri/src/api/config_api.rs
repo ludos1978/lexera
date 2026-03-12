@@ -9,7 +9,8 @@ use std::path::PathBuf;
 
 use lexera_core::watcher::types::BoardChangeEvent;
 
-use crate::config::{normalize_workspace_setup, save_config, WorkspaceEntry};
+use crate::config::{normalize_workspace_setup, save_config, LudosSyncModuleConfig, WorkspaceEntry};
+use crate::ludos_sync::spawn_ludos_sync_reconcile;
 use crate::state::AppState;
 
 use super::ErrorResponse;
@@ -66,6 +67,106 @@ pub async fn set_theme(
     log::info!("[config] Theme changed to '{}'", body.theme);
     notify_config_changed(&state);
     Ok(Json(serde_json::json!({ "theme": body.theme })))
+}
+
+// ── Ludos Sync Module ────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateLudosSyncRequest {
+    pub enabled: bool,
+    pub port: u16,
+    pub bookmarks_enabled: bool,
+    pub calendar_enabled: bool,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+pub async fn get_ludos_sync_config(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let cfg = state.config.lock().ok().map(|guard| guard.clone());
+    let config = cfg
+        .as_ref()
+        .map(|guard| guard.ludos_sync.clone())
+        .unwrap_or_default();
+    let status = {
+        let mut manager = state.ludos_sync.lock().await;
+        cfg.as_ref()
+            .map(|guard| manager.status(guard))
+            .unwrap_or_else(|| manager.status(&crate::config::SyncConfig::default()))
+    };
+
+    Json(serde_json::json!({
+        "config": config,
+        "status": status,
+    }))
+}
+
+pub async fn update_ludos_sync_config(
+    State(state): State<AppState>,
+    Json(body): Json<UpdateLudosSyncRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if body.port == 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "ludos-sync port must be greater than 0".to_string(),
+            }),
+        ));
+    }
+
+    let config_path = state.config_path.clone();
+    let next = LudosSyncModuleConfig {
+        enabled: body.enabled,
+        port: body.port,
+        bookmarks_enabled: body.bookmarks_enabled,
+        calendar_enabled: body.calendar_enabled,
+        username: body.username.clone().filter(|value| !value.trim().is_empty()),
+        password: body.password.clone().filter(|value| !value.trim().is_empty()),
+    };
+
+    {
+        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        cfg.ludos_sync = next.clone();
+        if let Err(e) = save_config(&config_path, &cfg) {
+            log::error!("Failed to save config after ludos-sync update: {}", e);
+        }
+    }
+
+    notify_config_changed(&state);
+    spawn_ludos_sync_reconcile(state.clone());
+
+    let status = {
+        let cfg = state.config.lock().ok().map(|guard| guard.clone());
+        let mut manager = state.ludos_sync.lock().await;
+        cfg.as_ref()
+            .map(|guard| manager.status(guard))
+            .unwrap_or_else(|| manager.status(&crate::config::SyncConfig::default()))
+    };
+
+    Ok(Json(serde_json::json!({
+        "config": next,
+        "status": status,
+    })))
+}
+
+pub async fn restart_ludos_sync(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let cfg = state.config.lock().map_err(|_| lock_error())?.clone();
+    let status = {
+        let mut manager = state.ludos_sync.lock().await;
+        manager.restart(&cfg).await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
+        manager.status(&cfg)
+    };
+
+    Ok(Json(serde_json::json!({ "status": status })))
 }
 
 // ── Workspaces ─────────────────────────────────────────────────────────
@@ -165,6 +266,7 @@ pub async fn create_workspace(
         cfg.workspaces.push(WorkspaceEntry {
             id: id.clone(),
             name: name.clone(),
+            ..WorkspaceEntry::default()
         });
         normalize_workspace_setup(&mut cfg);
         if let Err(e) = save_config(&config_path, &cfg) {
@@ -442,6 +544,7 @@ fn canonicalize_path(path: &str) -> String {
 
 fn notify_config_changed(state: &AppState) {
     let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
+    spawn_ludos_sync_reconcile(state.clone());
 }
 
 fn lock_error() -> (StatusCode, Json<ErrorResponse>) {

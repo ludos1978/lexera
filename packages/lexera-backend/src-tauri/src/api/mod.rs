@@ -7,6 +7,7 @@ use axum::{
 use serde::Serialize;
 
 mod board;
+mod calendar;
 mod capture_api;
 mod config_api;
 mod events;
@@ -46,6 +47,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   POST /boards/:boardId/find-file            -> search for files by name in board dir
 ///   POST /boards/:boardId/convert-path        -> convert relative<->absolute path in card
 ///   GET  /search?q=term                       -> search cards
+///   GET  /calendar/tasks                      -> shared temporal calendar/dashboard task list
 ///   GET  /config/theme                        -> current theme ID
 ///   PUT  /config/theme                        -> update theme ID
 ///   GET  /events                              -> SSE stream of board changes
@@ -162,6 +164,14 @@ pub fn api_router() -> Router<AppState> {
             get(config_api::get_theme).put(config_api::set_theme),
         )
         .route(
+            "/config/ludos-sync",
+            get(config_api::get_ludos_sync_config).put(config_api::update_ludos_sync_config),
+        )
+        .route(
+            "/config/ludos-sync/restart",
+            axum::routing::post(config_api::restart_ludos_sync),
+        )
+        .route(
             "/config/workspaces",
             get(config_api::list_workspaces).post(config_api::create_workspace),
         )
@@ -177,6 +187,7 @@ pub fn api_router() -> Router<AppState> {
             "/config/boards/{board_id}/workspaces",
             axum::routing::put(config_api::assign_board_workspaces),
         )
+        .route("/calendar/tasks", get(calendar::list_calendar_tasks))
         .route("/status", get(events::status))
         .route(
             "/open-connection-window",

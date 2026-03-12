@@ -4685,6 +4685,50 @@ select.dialog-input option,
 .hidden-items-dropdown-item .drag-grip.entity-drag-icon:hover {
   color: var(--text-primary);
 }
+
+.board-row-header .drag-grip.entity-drag-icon,
+.board-stack-header .drag-grip.entity-drag-icon,
+.column-header .drag-grip.entity-drag-icon,
+.card-drag-handle.entity-drag-icon,
+.tree-grip.entity-drag-icon {
+  border: 1px solid var(--icon-btn-border, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--icon-btn-bg, var(--btn-bg));
+  box-shadow: none;
+  opacity: 0.62;
+  color: var(--text-secondary);
+}
+
+.board-row-header:hover .drag-grip.entity-drag-icon,
+.board-stack-header:hover .drag-grip.entity-drag-icon,
+.column-header:hover .drag-grip.entity-drag-icon,
+.card:hover .card-drag-handle.entity-drag-icon,
+.card:focus-within .card-drag-handle.entity-drag-icon,
+.tree-node:hover .tree-grip.entity-drag-icon,
+.board-row-header .drag-grip.entity-drag-icon:focus-visible,
+.board-stack-header .drag-grip.entity-drag-icon:focus-visible,
+.column-header .drag-grip.entity-drag-icon:focus-visible,
+.card-drag-handle.entity-drag-icon:focus-visible,
+.tree-grip.entity-drag-icon:focus-visible {
+  color: var(--text-primary);
+}
+
+.board-row-header .drag-grip.entity-drag-icon:hover,
+.board-stack-header .drag-grip.entity-drag-icon:hover,
+.column-header .drag-grip.entity-drag-icon:hover,
+.card-drag-handle.entity-drag-icon:hover,
+.tree-grip.entity-drag-icon:hover,
+.board-row-header .drag-grip.entity-drag-icon:focus-visible,
+.board-stack-header .drag-grip.entity-drag-icon:focus-visible,
+.column-header .drag-grip.entity-drag-icon:focus-visible,
+.card-drag-handle.entity-drag-icon:focus-visible,
+.tree-grip.entity-drag-icon:focus-visible {
+  opacity: 1;
+  color: var(--icon-btn-fg-hover, var(--text-bright));
+  border-color: var(--icon-btn-border-hover, var(--text-secondary));
+  background: var(--icon-btn-bg-hover, var(--btn-bg-hover));
+  box-shadow: none;
+}
 .hidden-items-dropdown-item .hidden-item-kind {
   font-size: 10px;
   opacity: 0.55;
@@ -6497,8 +6541,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .card-menu-btn,
 :root[data-visual-theme="sleek"] .embed-menu-btn,
 :root[data-visual-theme="sleek"] .burger-menu-btn,
-:root[data-visual-theme="sleek"] .board-item-remove,
-:root[data-visual-theme="sleek"] .card-drag-handle {
+:root[data-visual-theme="sleek"] .board-item-remove {
   border-radius: 0;
   border: none;
   background: transparent;
@@ -6555,13 +6598,13 @@ select.export-input {
   opacity: 0.14;
 }
 
-:root[data-visual-theme="sleek"] .card-drag-handle {
+:root[data-visual-theme="sleek"] .card-drag-handle:not(.entity-drag-icon) {
   opacity: 0.28;
   color: color-mix(in srgb, var(--text-muted) 88%, transparent);
 }
 
-:root[data-visual-theme="sleek"] .card:hover .card-drag-handle,
-:root[data-visual-theme="sleek"] .card:focus-within .card-drag-handle {
+:root[data-visual-theme="sleek"] .card:hover .card-drag-handle:not(.entity-drag-icon),
+:root[data-visual-theme="sleek"] .card:focus-within .card-drag-handle:not(.entity-drag-icon) {
   opacity: 0.92;
   color: var(--text-bright);
   background: var(--bg-hover);
@@ -6609,7 +6652,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .embed-menu-btn:hover,
 :root[data-visual-theme="sleek"] .burger-menu-btn:hover,
 :root[data-visual-theme="sleek"] .board-item-remove:hover,
-:root[data-visual-theme="sleek"] .card-drag-handle:hover {
+:root[data-visual-theme="sleek"] .card-drag-handle:not(.entity-drag-icon):hover {
   border-color: transparent;
   background: var(--bg-hover);
   color: var(--text-bright);
@@ -6726,7 +6769,7 @@ select.export-input {
   color: var(--text-secondary);
 }
 
-:root[data-visual-theme="sleek"] .tree-grip {
+:root[data-visual-theme="sleek"] .tree-grip:not(.entity-drag-icon) {
   border: none;
   border-radius: 0;
   background: transparent;
@@ -6735,12 +6778,12 @@ select.export-input {
   margin-left: calc(2px * var(--ui-scale));
 }
 
-:root[data-visual-theme="sleek"] .tree-node:hover .tree-grip,
-:root[data-visual-theme="sleek"] .tree-grip:focus-visible {
+:root[data-visual-theme="sleek"] .tree-node:hover .tree-grip:not(.entity-drag-icon),
+:root[data-visual-theme="sleek"] .tree-grip:not(.entity-drag-icon):focus-visible {
   opacity: 0.88;
 }
 
-:root[data-visual-theme="sleek"] .tree-grip:hover {
+:root[data-visual-theme="sleek"] .tree-grip:not(.entity-drag-icon):hover {
   border-color: transparent;
   background: var(--bg-hover);
 }

@@ -210,6 +210,10 @@ const LexeraApi = (function () {
     return request('/search?' + params.toString(), { timeoutMs: LONG_TIMEOUT_MS });
   }
 
+  async function getCalendarTasks() {
+    return request('/calendar/tasks', { timeoutMs: LONG_TIMEOUT_MS });
+  }
+
   async function checkStatus() {
     try {
       const url = await discover();
@@ -784,7 +788,7 @@ const LexeraApi = (function () {
   return {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     probeExternalEmbed,
-    openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search,
+    openLiveSyncSession, applyLiveSyncBoard, importLiveSyncUpdates, closeLiveSyncSession, search, getCalendarTasks,
     checkStatus, connectSSE, getLogs, connectLogStream, mediaUrl, fileUrl, fileInfo, uploadMedia, addBoard, removeBoard,
     getCaptureHistory, removeCaptureEntry,
     connectSync, disconnectSync, isSyncConnected, getSyncBoardId, sendSyncUpdate, sendEditingPresence,

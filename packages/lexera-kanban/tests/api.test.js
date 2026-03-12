@@ -526,6 +526,20 @@ describe('search', () => {
   });
 });
 
+describe('getCalendarTasks', () => {
+  it('requests /calendar/tasks', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ results: [] }),
+    });
+
+    const result = await Api.getCalendarTasks();
+
+    expect(result).toEqual({ results: [] });
+    expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:13080/calendar/tasks');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // saveBoard — PUT request
 // ═══════════════════════════════════════════════════════════════════════════

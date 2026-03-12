@@ -37,11 +37,20 @@ pub async fn sse_events(
 
 pub async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
+    let config_snapshot = state.config.lock().ok().map(|cfg| cfg.clone());
+    let ludos_sync = {
+        let mut manager = state.ludos_sync.lock().await;
+        config_snapshot
+            .as_ref()
+            .map(|cfg| manager.status(cfg))
+            .unwrap_or_else(|| manager.status(&crate::config::SyncConfig::default()))
+    };
     Json(serde_json::json!({
         "status": "running",
         "port": actual_port,
         "bind_address": state.bind_address,
         "incoming": state.incoming,
+        "ludosSync": ludos_sync,
     }))
 }
 
@@ -153,6 +162,9 @@ mod tests {
             )),
             app_handle: None,
             collab_dir: tmp.join("collab"),
+            ludos_sync: Arc::new(tokio::sync::Mutex::new(
+                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
+            )),
             shutdown_tx,
         }
     }

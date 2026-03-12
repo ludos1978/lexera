@@ -2482,6 +2482,60 @@ const LexeraDashboard = (function () {
     return isNaN(stamp) ? Number.POSITIVE_INFINITY : stamp;
   }
 
+  function formatLocalDateValue(date) {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+    var year = String(date.getFullYear());
+    var month = String(date.getMonth() + 1).padStart(2, '0');
+    var day = String(date.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+  }
+
+  function dashboardCalendarBaseDate(item) {
+    return item && (item.dueDate || item.effectiveDate) ? String(item.dueDate || item.effectiveDate) : '';
+  }
+
+  function isDashboardCalendarQuery(query) {
+    var normalized = String(query || '').trim().toLowerCase();
+    return normalized === 'is:open due:any' ||
+      normalized === 'is:open due:overdue' ||
+      normalized === 'is:open due:today' ||
+      normalized === 'is:open due:week';
+  }
+
+  function filterCalendarTasksForDashboardQuery(tasks, query) {
+    var normalized = String(query || '').trim().toLowerCase();
+    var openTasks = Array.isArray(tasks) ? tasks.filter(function (item) {
+      return item && item.checked !== true;
+    }) : [];
+    if (!normalized) return [];
+    if (normalized === 'is:open due:any') return openTasks;
+    if (normalized === 'is:open due:overdue') {
+      return openTasks.filter(function (item) { return !!(item && item.isOverdue); });
+    }
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayValue = formatLocalDateValue(today);
+    if (normalized === 'is:open due:today') {
+      return openTasks.filter(function (item) {
+        return dashboardCalendarBaseDate(item) === todayValue;
+      });
+    }
+    if (normalized === 'is:open due:week') {
+      var weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+      var weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      var weekStartValue = formatLocalDateValue(weekStart);
+      var weekEndValue = formatLocalDateValue(weekEnd);
+      return openTasks.filter(function (item) {
+        var value = dashboardCalendarBaseDate(item);
+        return value && value >= weekStartValue && value <= weekEndValue;
+      });
+    }
+    return [];
+  }
+
   function sortSearchByDueDateAsc(results) {
     return results.slice().sort(function (a, b) {
       var ad = parseSearchDateValue(a && a.dueDate);
@@ -2494,6 +2548,11 @@ const LexeraDashboard = (function () {
       var bc = String(b && b.cardContent || '').toLowerCase();
       return ac < bc ? -1 : (ac > bc ? 1 : 0);
     });
+  }
+
+  function asCalendarTaskArray(payload) {
+    if (!payload || !Array.isArray(payload.results)) return [];
+    return payload.results;
   }
 
   function limitedSearchResults(results, maxCount) {
@@ -2513,9 +2572,15 @@ const LexeraDashboard = (function () {
     return line.length > 62 ? line.slice(0, 59) + '...' : line;
   }
 
+  function dashboardItemTitle(item) {
+    if (item && item.summary) return String(item.summary);
+    return dashboardCardTitle(item && item.cardContent);
+  }
+
   function dashboardDueLabel(result) {
     if (!result) return '';
     if (result.isOverdue) return 'Overdue';
+    if (result.displayDate) return result.displayDate;
     if (result.dueDate) return result.dueDate;
     return '';
   }
@@ -2628,7 +2693,7 @@ const LexeraDashboard = (function () {
         main.className = 'dashboard-item-main';
         var title = document.createElement('div');
         title.className = 'dashboard-item-title';
-        title.textContent = dashboardCardTitle(item.cardContent);
+        title.textContent = dashboardItemTitle(item);
         var meta = document.createElement('div');
         meta.className = 'dashboard-item-meta';
         meta.textContent = (item.boardTitle || 'Untitled') + ' / ' + buildSearchResultLocation(item);
@@ -2695,22 +2760,29 @@ const LexeraDashboard = (function () {
 
     try {
       var query = dashboardState.query ? dashboardState.query.trim() : '';
-      var queryPromise = query
+      var calendarScopedQuery = isDashboardCalendarQuery(query);
+      var queryPromise = query && !calendarScopedQuery
         ? LexeraApi.search(query)
         : Promise.resolve({ results: [] });
-      var deadlinePromise = LexeraApi.search('is:open due:any');
-      var overduePromise = LexeraApi.search('is:open due:overdue');
+      var calendarPromise = LexeraApi.getCalendarTasks();
 
-      var resolved = await Promise.all([queryPromise, deadlinePromise, overduePromise]);
+      var resolved = await Promise.all([queryPromise, calendarPromise]);
       if (refreshId !== dashboardRefreshSeq) return;
 
-      var scopedQuery = filterDashboardResultsByScope(asSearchResultArray(resolved[0]));
-      var scopedDeadlines = filterDashboardResultsByScope(asSearchResultArray(resolved[1]));
-      var scopedOverdue = filterDashboardResultsByScope(asSearchResultArray(resolved[2]));
+      var scopedCalendar = filterDashboardResultsByScope(asCalendarTaskArray(resolved[1]));
+      var scopedQuery = calendarScopedQuery
+        ? filterCalendarTasksForDashboardQuery(scopedCalendar, query)
+        : filterDashboardResultsByScope(asSearchResultArray(resolved[0]));
+      var openCalendar = scopedCalendar.filter(function (item) {
+        return item && item.checked !== true;
+      });
+      var overdueCalendar = openCalendar.filter(function (item) {
+        return item && item.isOverdue;
+      });
 
       dashboardState.results = limitedSearchResults(scopedQuery, 80);
-      dashboardState.deadlines = limitedSearchResults(sortSearchByDueDateAsc(scopedDeadlines), 40);
-      dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(scopedOverdue), 40);
+      dashboardState.deadlines = limitedSearchResults(sortSearchByDueDateAsc(openCalendar), 40);
+      dashboardState.overdue = limitedSearchResults(sortSearchByDueDateAsc(overdueCalendar), 40);
     } catch (err) {
       if (refreshId !== dashboardRefreshSeq) return;
       logFrontendIssue('error', 'dashboard.search', 'Failed to refresh', err);

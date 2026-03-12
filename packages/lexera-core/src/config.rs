@@ -2,18 +2,36 @@
 use serde::{Deserialize, Serialize};
 
 /// A workspace: a named group of boards.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorkspaceEntry {
     pub id: String,
     pub name: String,
+    #[serde(default, alias = "bookmarkSync", skip_serializing_if = "Option::is_none")]
+    pub bookmark_sync: Option<bool>,
+    #[serde(default, alias = "calendarSync", skip_serializing_if = "Option::is_none")]
+    pub calendar_sync: Option<bool>,
+    #[serde(default, alias = "calendarSlug", skip_serializing_if = "Option::is_none")]
+    pub calendar_slug: Option<String>,
+    #[serde(default, alias = "calendarName", skip_serializing_if = "Option::is_none")]
+    pub calendar_name: Option<String>,
 }
 
 /// A board entry in the config file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BoardEntry {
     pub file: String,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default, alias = "xbelName", skip_serializing_if = "Option::is_none")]
+    pub xbel_name: Option<String>,
+    #[serde(default, alias = "bookmarkSync", skip_serializing_if = "Option::is_none")]
+    pub bookmark_sync: Option<bool>,
+    #[serde(default, alias = "calendarSync", skip_serializing_if = "Option::is_none")]
+    pub calendar_sync: Option<bool>,
+    #[serde(default, alias = "calendarSlug", skip_serializing_if = "Option::is_none")]
+    pub calendar_slug: Option<String>,
+    #[serde(default, alias = "calendarName", skip_serializing_if = "Option::is_none")]
+    pub calendar_name: Option<String>,
     /// Workspaces this board belongs to.  Backwards-compatible: reads the old
     /// single `workspace_id` field and promotes it into `workspace_ids`.
     #[serde(

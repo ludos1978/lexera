@@ -41,8 +41,46 @@ pub struct RemoteConnectionEntry {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LudosSyncModuleConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_ludos_sync_port")]
+    pub port: u16,
+    #[serde(default = "default_module_feature_enabled")]
+    pub bookmarks_enabled: bool,
+    #[serde(default = "default_module_feature_enabled")]
+    pub calendar_enabled: bool,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
 fn default_remote_connection_enabled() -> bool {
     true
+}
+
+fn default_ludos_sync_port() -> u16 {
+    13081
+}
+
+fn default_module_feature_enabled() -> bool {
+    true
+}
+
+impl Default for LudosSyncModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: default_ludos_sync_port(),
+            bookmarks_enabled: default_module_feature_enabled(),
+            calendar_enabled: default_module_feature_enabled(),
+            username: None,
+            password: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +103,8 @@ pub struct SyncConfig {
     pub default_workspace: Option<String>,
     #[serde(default, alias = "remoteConnections")]
     pub remote_connections: Vec<RemoteConnectionEntry>,
+    #[serde(default, alias = "ludosSync")]
+    pub ludos_sync: LudosSyncModuleConfig,
 }
 
 fn default_port() -> u16 {
@@ -95,6 +135,7 @@ impl Default for SyncConfig {
             workspaces: Vec::new(),
             default_workspace: None,
             remote_connections: Vec::new(),
+            ludos_sync: LudosSyncModuleConfig::default(),
         }
     }
 }
@@ -248,6 +289,7 @@ pub fn normalize_workspace_setup(config: &mut SyncConfig) -> bool {
         config.workspaces.push(WorkspaceEntry {
             id: id.clone(),
             name: "Default".to_string(),
+            ..WorkspaceEntry::default()
         });
         config.default_workspace = Some(id);
         changed = true;
@@ -517,6 +559,7 @@ mod tests {
                 file: "board.md".to_string(),
                 name: None,
                 workspace_ids: Vec::new(),
+                ..BoardEntry::default()
             }],
             ..SyncConfig::default()
         };
@@ -535,12 +578,14 @@ mod tests {
             workspaces: vec![WorkspaceEntry {
                 id: ws_id.clone(),
                 name: "Main".to_string(),
+                ..WorkspaceEntry::default()
             }],
             default_workspace: None,
             boards: vec![BoardEntry {
                 file: "board.md".to_string(),
                 name: None,
                 workspace_ids: vec!["missing".to_string(), ws_id.clone(), ws_id.clone()],
+                ..BoardEntry::default()
             }],
             ..SyncConfig::default()
         };
@@ -567,10 +612,12 @@ mod tests {
                 WorkspaceEntry {
                     id: ws_a.clone(),
                     name: "A".to_string(),
+                    ..WorkspaceEntry::default()
                 },
                 WorkspaceEntry {
                     id: ws_b.clone(),
                     name: "B".to_string(),
+                    ..WorkspaceEntry::default()
                 },
             ],
             default_workspace: Some(ws_a.clone()),
@@ -579,11 +626,13 @@ mod tests {
                     file: non_canonical.to_string_lossy().to_string(),
                     name: None,
                     workspace_ids: vec![ws_a.clone()],
+                    ..BoardEntry::default()
                 },
                 BoardEntry {
                     file: canonical.to_string_lossy().to_string(),
                     name: Some("Board".to_string()),
                     workspace_ids: vec![ws_b.clone()],
+                    ..BoardEntry::default()
                 },
             ],
             ..SyncConfig::default()
@@ -611,6 +660,7 @@ mod tests {
                 file: "test.md".to_string(),
                 name: Some("Test Board".to_string()),
                 workspace_ids: Vec::new(),
+                ..BoardEntry::default()
             }],
             incoming: Some(IncomingConfig {
                 board: "inbox.md".to_string(),
@@ -621,6 +671,7 @@ mod tests {
             workspaces: Vec::new(),
             default_workspace: None,
             remote_connections: Vec::new(),
+            ludos_sync: LudosSyncModuleConfig::default(),
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -651,11 +702,13 @@ mod tests {
                     file: "a.md".to_string(),
                     name: None,
                     workspace_ids: Vec::new(),
+                    ..BoardEntry::default()
                 },
                 BoardEntry {
                     file: "b.md".to_string(),
                     name: Some("B".to_string()),
                     workspace_ids: Vec::new(),
+                    ..BoardEntry::default()
                 },
             ],
             incoming: Some(IncomingConfig {
@@ -673,6 +726,7 @@ mod tests {
                 invite_token: Some("token-xyz".to_string()),
                 enabled: true,
             }],
+            ludos_sync: LudosSyncModuleConfig::default(),
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();

@@ -1,4 +1,5 @@
 pub mod api;
+mod calendar_tasks;
 mod capture;
 mod clipboard_watcher;
 /// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
@@ -7,6 +8,7 @@ pub mod connection_window;
 pub mod discovery;
 pub mod export_api;
 mod log_bridge;
+mod ludos_sync;
 mod server;
 pub mod state;
 pub mod sync_client;
@@ -504,6 +506,12 @@ pub fn run() {
             let sync_hub = Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new()));
             let sync_client = Arc::new(tokio::sync::Mutex::new(crate::sync_client::SyncClientManager::new()));
             let discovery = Arc::new(std::sync::Mutex::new(crate::discovery::DiscoveryService::new()));
+            let ludos_sync = Arc::new(tokio::sync::Mutex::new(crate::ludos_sync::LudosSyncManager::new(
+                dirs::config_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(config::CONFIG_DIR_NAME)
+                    .join("ludos-sync.generated.json"),
+            )));
 
             let app_handle = app.handle().clone();
             let discovery_bind = bind_address.clone();
@@ -534,10 +542,23 @@ pub fn run() {
                 discovery: discovery.clone(),
                 app_handle: Some(app_handle.clone()),
                 collab_dir,
+                ludos_sync: ludos_sync.clone(),
                 shutdown_tx,
             };
 
             app.manage(app_state.clone());
+
+            crate::ludos_sync::spawn_ludos_sync_reconcile(app_state.clone());
+
+            let ludos_sync_shutdown_state = app_state.clone();
+            let mut ludos_sync_shutdown_rx = shutdown_rx.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = ludos_sync_shutdown_rx.changed().await;
+                let mut manager = ludos_sync_shutdown_state.ludos_sync.lock().await;
+                if let Err(e) = manager.stop().await {
+                    log::error!("[ludos-sync] Failed to stop on shutdown: {}", e);
+                }
+            });
 
             // Restore persisted remote backend connections (joined boards).
             // These are saved in sync.json so remote mirrors survive restarts,

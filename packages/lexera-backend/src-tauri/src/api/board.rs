@@ -657,6 +657,11 @@ pub async fn add_board_endpoint(
             cfg.boards.push(crate::config::BoardEntry {
                 file: file_str,
                 name: None,
+                xbel_name: None,
+                bookmark_sync: None,
+                calendar_sync: None,
+                calendar_slug: None,
+                calendar_name: None,
                 workspace_ids: default_ws.into_iter().collect(),
             });
             cfg_changed = true;
@@ -665,6 +670,7 @@ pub async fn add_board_endpoint(
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.add_board] Failed to save config: {}", e);
             }
+            crate::ludos_sync::spawn_ludos_sync_reconcile(state.clone());
         }
     }
 
@@ -757,6 +763,7 @@ pub async fn remove_board_endpoint(
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.remove_board] Failed to save config: {}", e);
             }
+            crate::ludos_sync::spawn_ludos_sync_reconcile(state.clone());
         }
     }
 
@@ -1018,6 +1025,9 @@ mod tests {
             )),
             app_handle: None,
             collab_dir: tmp.join("collab"),
+            ludos_sync: Arc::new(tokio::sync::Mutex::new(
+                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
+            )),
             shutdown_tx,
         }
     }
