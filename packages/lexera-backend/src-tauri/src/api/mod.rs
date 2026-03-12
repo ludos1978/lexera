@@ -180,12 +180,20 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::put(config_api::update_workspace).delete(config_api::delete_workspace),
         )
         .route(
+            "/config/workspaces/{id}/sync",
+            axum::routing::put(config_api::update_workspace_sync),
+        )
+        .route(
             "/config/default-workspace",
             axum::routing::put(config_api::set_default_workspace),
         )
         .route(
             "/config/boards/{board_id}/workspaces",
             axum::routing::put(config_api::assign_board_workspaces),
+        )
+        .route(
+            "/config/boards/{board_id}/sync",
+            axum::routing::put(config_api::update_board_sync),
         )
         .route("/calendar/tasks", get(calendar::list_calendar_tasks))
         .route("/status", get(events::status))

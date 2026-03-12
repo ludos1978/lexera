@@ -1,7 +1,6 @@
 use crate::config::{LudosSyncModuleConfig, SyncConfig};
 use crate::state::AppState;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use tokio::process::{Child, Command};
 
@@ -210,11 +209,6 @@ async fn wait_for_status(configured_port: u16) -> Result<u16, String> {
 
 fn generated_config_json(config: &SyncConfig) -> Result<serde_json::Value, String> {
     let module = &config.ludos_sync;
-    let workspace_names: BTreeMap<String, String> = config
-        .workspaces
-        .iter()
-        .map(|workspace| (workspace.id.clone(), workspace.name.clone()))
-        .collect();
 
     let mut workspaces = serde_json::Map::new();
     for workspace in &config.workspaces {
@@ -239,9 +233,10 @@ fn generated_config_json(config: &SyncConfig) -> Result<serde_json::Value, Strin
             workspace.id.clone(),
             serde_json::json!({
                 "boards": boards,
-                "bookmarkSync": module.bookmarks_enabled,
-                "calendarSync": module.calendar_enabled,
-                "calendarName": workspace_names.get(&workspace.id).cloned().unwrap_or_else(|| workspace.name.clone()),
+                "bookmarkSync": workspace.bookmark_sync,
+                "calendarSync": workspace.calendar_sync,
+                "calendarSlug": workspace.calendar_slug,
+                "calendarName": workspace.calendar_name,
             }),
         );
     }

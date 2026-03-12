@@ -353,6 +353,9 @@ mod tests {
         assert_eq!(json["status"], "running");
         assert_eq!(json["bind_address"], "127.0.0.1");
         assert_eq!(json["port"], 0);
+        assert_eq!(json["ludosSync"]["enabled"], false);
+        assert_eq!(json["ludosSync"]["running"], false);
+        assert_eq!(json["ludosSync"]["configuredPort"], 13081);
     }
 
     #[tokio::test]

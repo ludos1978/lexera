@@ -48,16 +48,15 @@ pub struct CrashsaveBoardBody {
 pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Value> {
     let boards = state.storage.list_boards();
 
-    // Enrich each board with workspace_ids from config (config stores by file path)
-    let workspace_map: std::collections::HashMap<String, Vec<String>> = state
+    // Enrich each board with workspace membership and sync overrides from config
+    let board_config_map: std::collections::HashMap<String, crate::config::BoardEntry> = state
         .config
         .lock()
         .ok()
         .map(|cfg| {
             cfg.boards
                 .iter()
-                .filter(|b| !b.workspace_ids.is_empty())
-                .map(|b| (b.file.clone(), b.workspace_ids.clone()))
+                .map(|b| (b.file.clone(), b.clone()))
                 .collect()
         })
         .unwrap_or_default();
@@ -66,8 +65,13 @@ pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Valu
         .into_iter()
         .map(|b| {
             let mut val = serde_json::to_value(&b).unwrap_or_default();
-            if let Some(ws_ids) = workspace_map.get(&b.file_path) {
-                val["workspaceIds"] = serde_json::json!(ws_ids);
+            if let Some(entry) = board_config_map.get(&b.file_path) {
+                val["workspaceIds"] = serde_json::json!(entry.workspace_ids);
+                val["xbelName"] = serde_json::json!(entry.xbel_name);
+                val["bookmarkSync"] = serde_json::json!(entry.bookmark_sync);
+                val["calendarSync"] = serde_json::json!(entry.calendar_sync);
+                val["calendarSlug"] = serde_json::json!(entry.calendar_slug);
+                val["calendarName"] = serde_json::json!(entry.calendar_name);
             }
             val
         })
@@ -1107,6 +1111,55 @@ kanban-plugin: board
         let json = body_json(resp.into_body()).await;
         let board_id = json["boardId"].as_str().unwrap().to_string();
         assert!(!board_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_boards_includes_sync_overrides_from_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "sync.md", MINIMAL_BOARD);
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.boards.push(crate::config::BoardEntry {
+                file: std::fs::canonicalize(&board_path)
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string(),
+                xbel_name: Some("bookmarks.xbel".to_string()),
+                bookmark_sync: Some(false),
+                calendar_sync: Some(true),
+                calendar_slug: Some("team".to_string()),
+                calendar_name: Some("Team Calendar".to_string()),
+                workspace_ids: vec!["ws-1".to_string()],
+                ..crate::config::BoardEntry::default()
+            });
+        }
+        let app = test_router(state);
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/boards")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let boards = json["boards"].as_array().unwrap();
+        let board = boards
+            .iter()
+            .find(|entry| entry["id"].as_str() == Some(&board_id))
+            .unwrap();
+        assert_eq!(board["xbelName"], "bookmarks.xbel");
+        assert_eq!(board["bookmarkSync"], false);
+        assert_eq!(board["calendarSync"], true);
+        assert_eq!(board["calendarSlug"], "team");
+        assert_eq!(board["calendarName"], "Team Calendar");
+        assert_eq!(board["workspaceIds"][0], "ws-1");
     }
 
     #[tokio::test]

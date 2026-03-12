@@ -717,8 +717,15 @@ mod tests {
             }),
             templates_path: Some("/my/templates".to_string()),
             theme: Some("nord".to_string()),
-            workspaces: Vec::new(),
-            default_workspace: None,
+            workspaces: vec![WorkspaceEntry {
+                id: "ws-main".to_string(),
+                name: "Main".to_string(),
+                bookmark_sync: Some(false),
+                calendar_sync: Some(true),
+                calendar_slug: Some("team".to_string()),
+                calendar_name: Some("Team Calendar".to_string()),
+            }],
+            default_workspace: Some("ws-main".to_string()),
             remote_connections: vec![RemoteConnectionEntry {
                 local_board_id: "remote-abc123".to_string(),
                 remote_board_id: "abc123".to_string(),
@@ -742,6 +749,15 @@ mod tests {
         assert_eq!(loaded.incoming.as_ref().unwrap().board, "inbox.md");
         assert_eq!(loaded.incoming.as_ref().unwrap().column, 0);
         assert_eq!(loaded.theme, Some("nord".to_string()));
+        assert_eq!(loaded.workspaces.len(), 1);
+        assert_eq!(loaded.workspaces[0].bookmark_sync, Some(false));
+        assert_eq!(loaded.workspaces[0].calendar_sync, Some(true));
+        assert_eq!(loaded.workspaces[0].calendar_slug.as_deref(), Some("team"));
+        assert_eq!(
+            loaded.workspaces[0].calendar_name.as_deref(),
+            Some("Team Calendar")
+        );
+        assert_eq!(loaded.default_workspace.as_deref(), Some("ws-main"));
         assert_eq!(loaded.remote_connections.len(), 1);
         assert_eq!(
             loaded.remote_connections[0].remote_board_id,
