@@ -161,6 +161,7 @@ fn main() {
             commands::rename_path,
             commands::read_text_file,
             commands::write_text_file,
+            commands::read_clipboard_image,
             commands::show_context_menu,
             commands::toggle_devtools,
             commands::set_menu_check_state,
@@ -180,6 +181,7 @@ fn main() {
             export_commands::remove_export_files,
             export_commands::copy_export_assets,
             export_commands::render_embedded_file,
+            export_commands::render_plantuml_code,
         ])
         .on_window_event(|window, event| {
             match event {

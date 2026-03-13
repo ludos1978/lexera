@@ -28,6 +28,19 @@ export interface BoardState {
   icalTasks?: IcalTask[];
 }
 
+function deriveBoardDisplayName(state: Pick<BoardState, 'filePath' | 'calendarName' | 'board' | 'calendarSlug'>): string {
+  const explicitName = String(state.calendarName || '').trim();
+  if (explicitName) return explicitName;
+
+  const fileBaseName = path.basename(state.filePath || '', '.md').trim();
+  if (fileBaseName) return fileBaseName;
+
+  const parsedTitle = String(state.board?.title || '').trim();
+  if (parsedTitle) return parsedTitle;
+
+  return String(state.calendarSlug || '').trim();
+}
+
 export class BoardFileWatcher {
   private boardStates = new Map<string, BoardState>();
   private watchers = new Map<string, FSWatcher>();
@@ -178,7 +191,7 @@ export class BoardFileWatcher {
     // Use filePath as boardId so tasks from different boards get unique UIDs
     // even when multiple boards share the same calendar slug (workspace mode)
     const tasks = IcalMapper.columnsToIcalTasks(state.board.columns, state.filePath, state.lastModified);
-    const calName = state.calendarName || state.board.title || state.calendarSlug;
+    const calName = deriveBoardDisplayName(state);
     const ical = IcalMapper.generateCalendar(tasks, calName);
     state.icalTasks = tasks;
     state.icalCache = ical;
@@ -243,6 +256,10 @@ export class BoardFileWatcher {
    */
   getCalendarBoards(): BoardState[] {
     return Array.from(this.boardStates.values()).filter(s => !!s.calendarSlug);
+  }
+
+  getBoardDisplayName(state: BoardState): string {
+    return deriveBoardDisplayName(state);
   }
 
   /**

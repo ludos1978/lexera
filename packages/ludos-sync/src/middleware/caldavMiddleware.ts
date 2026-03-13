@@ -28,6 +28,19 @@ const xmlParser = new XMLParser({
   removeNSPrefix: false,
 });
 
+const PRINCIPAL_REPORT_SET = `<D:supported-report-set>
+  <D:supported-report><D:report><D:expand-property/></D:report></D:supported-report>
+  <D:supported-report><D:report><D:principal-property-search/></D:report></D:supported-report>
+  <D:supported-report><D:report><D:principal-search-property-set/></D:report></D:supported-report>
+</D:supported-report-set>`;
+
+const CALENDAR_REPORT_SET = `<D:supported-report-set>
+  <D:supported-report><D:report><D:expand-property/></D:report></D:supported-report>
+  <D:supported-report><D:report><C:calendar-query/></D:report></D:supported-report>
+  <D:supported-report><D:report><C:calendar-multiget/></D:report></D:supported-report>
+  <D:supported-report><D:report><C:free-busy-query/></D:report></D:supported-report>
+</D:supported-report-set>`;
+
 /**
  * Extract Depth header value, defaulting to 'infinity'.
  */
@@ -111,14 +124,117 @@ function compositeCtag(boards: { icalEtag?: string }[]): string {
   return `"${hash}"`;
 }
 
+function decodeBasicAuthUsername(req: Request): string | null {
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Basic ')) return null;
+  try {
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+    const colonIndex = decoded.indexOf(':');
+    if (colonIndex === -1) return null;
+    const username = decoded.slice(0, colonIndex).trim();
+    return username || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildCalendarUserAddressSet(principalHref: string, username: string | null): string {
+  const safeUser = escapeXml(username || 'lexera');
+  return `<C:calendar-user-address-set><D:href>${principalHref}</D:href><D:href>mailto:${safeUser}@localhost</D:href></C:calendar-user-address-set>`;
+}
+
+function buildPrincipalCollectionSet(basePath: string): string {
+  return `<D:principal-collection-set><D:href>${basePath}/principals/</D:href><D:href>/principals/</D:href></D:principal-collection-set>`;
+}
+
+function buildPrincipalProps(req: Request, basePath: string, principalHref: string, calendarsHref: string): string[] {
+  const username = decodeBasicAuthUsername(req);
+  return [
+    `<D:resourcetype><D:principal/></D:resourcetype>`,
+    `<D:current-user-principal><D:href>${principalHref}</D:href></D:current-user-principal>`,
+    `<D:principal-URL><D:href>${principalHref}</D:href></D:principal-URL>`,
+    buildPrincipalCollectionSet(basePath),
+    `<C:calendar-home-set><D:href>${calendarsHref}</D:href></C:calendar-home-set>`,
+    buildCalendarUserAddressSet(principalHref, username),
+    `<D:owner><D:href>${principalHref}</D:href></D:owner>`,
+    `<D:displayname>${escapeXml(username || 'Lexera')}</D:displayname>`,
+    PRINCIPAL_REPORT_SET,
+    READ_ONLY_PRIVILEGE_SET,
+  ];
+}
+
+function buildCalendarHomeProps(principalHref: string): string[] {
+  return [
+    `<D:resourcetype><D:collection/></D:resourcetype>`,
+    `<D:displayname>Calendars</D:displayname>`,
+    `<D:owner><D:href>${principalHref}</D:href></D:owner>`,
+    CALENDAR_REPORT_SET,
+    READ_ONLY_PRIVILEGE_SET,
+  ];
+}
+
+function buildCalendarProps(name: string, ctag: string, principalHref: string): string[] {
+  return [
+    `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
+    `<D:displayname>${escapeXml(name)}</D:displayname>`,
+    `<C:calendar-description>${escapeXml(name)}</C:calendar-description>`,
+    `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
+    `<D:owner><D:href>${principalHref}</D:href></D:owner>`,
+    `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
+    `<C:schedule-calendar-transp><C:transparent/></C:schedule-calendar-transp>`,
+    CALENDAR_REPORT_SET,
+    READ_ONLY_PRIVILEGE_SET,
+  ];
+}
+
+function extractHrefValuesFromObject(node: unknown): string[] {
+  if (typeof node === 'string') return [];
+  if (Array.isArray(node)) return node.flatMap(item => extractHrefValuesFromObject(item));
+  if (!node || typeof node !== 'object') return [];
+
+  const hrefs: string[] = [];
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key.toLowerCase().endsWith('href')) {
+      if (typeof value === 'string') {
+        hrefs.push(value);
+      } else {
+        hrefs.push(...extractHrefValuesFromObject(value));
+      }
+      continue;
+    }
+    hrefs.push(...extractHrefValuesFromObject(value));
+  }
+  return hrefs;
+}
+
+function stringifyDavBody(body: unknown): string {
+  if (typeof body === 'string') return body;
+  if (Buffer.isBuffer(body)) return body.toString('utf8');
+  if (body == null) return '';
+  if (typeof body !== 'object') return String(body);
+
+  try {
+    const hrefs = extractHrefValuesFromObject(body);
+    if (hrefs.length > 0) {
+      return hrefs.map(href => `<D:href>${href}</D:href>`).join('');
+    }
+    return JSON.stringify(body);
+  } catch {
+    return String(body);
+  }
+}
+
 /**
  * Parse requested property names from PROPFIND body.
  * Returns null if no specific props requested (allprop).
  */
-function parseRequestedProps(body: string): Set<string> | null {
-  if (!body || body.trim().length === 0) return null;
+function parseRequestedProps(body: unknown): Set<string> | null {
+  const bodyText = stringifyDavBody(body);
+  if (!bodyText || bodyText.trim().length === 0) return null;
   try {
-    const parsed = xmlParser.parse(body);
+    const parsed = typeof body === 'object' && body !== null
+      ? body as Record<string, unknown>
+      : xmlParser.parse(bodyText);
     const propfind = parsed['D:propfind'] || parsed['d:propfind'] || parsed['propfind'] || {};
     const prop = propfind['D:prop'] || propfind['d:prop'] || propfind['prop'];
     if (!prop) return null;
@@ -132,19 +248,23 @@ function parseRequestedProps(body: string): Set<string> | null {
  * Extract property element names from a PROPPATCH XML body.
  * Returns raw element names (e.g. "A:calendar-color", "D:displayname").
  */
-function extractProppatchPropNames(body: string): string[] {
-  if (!body || body.trim().length === 0) return [];
+function extractProppatchPropNames(body: unknown): string[] {
+  const bodyText = stringifyDavBody(body);
+  if (!bodyText || bodyText.trim().length === 0) return [];
   try {
     // Match self-closing or opening tags inside <D:prop> (or <prop>, <d:prop>)
     // This regex-based approach is more robust than XML parsing for varying NS prefixes.
-    const propBlockMatch = body.match(/<[^>]*prop[^>]*>([\s\S]*?)<\/[^>]*prop[^>]*>/i);
+    const propBlockMatch = bodyText.match(/<[^>]*prop[^>]*>([\s\S]*?)<\/[^>]*prop[^>]*>/i);
     if (!propBlockMatch) return [];
     const propBlock = propBlockMatch[1];
     const tagRegex = /<([a-zA-Z][a-zA-Z0-9:_-]*)[^/>]*\/?>/g;
     const names: string[] = [];
     let match;
     while ((match = tagRegex.exec(propBlock)) !== null) {
-      names.push(match[1]);
+      const rawName = match[1];
+      const localName = rawName.split(':').pop()?.toLowerCase() || rawName.toLowerCase();
+      if (localName === 'set' || localName === 'prop') continue;
+      names.push(rawName);
     }
     return names;
   } catch {
@@ -157,13 +277,40 @@ function extractProppatchPropNames(body: string): string[] {
  */
 export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: string): Router {
   const router = Router();
+  const allowedMethods = 'OPTIONS, GET, HEAD, PROPFIND, REPORT, PROPPATCH, PUT, DELETE, MKCALENDAR';
+  const principalHref = `${basePath}/principal/` || '/principal/';
+  const calendarsHref = `${basePath}/calendars/` || '/calendars/';
+
+  function sendPrincipalCollection(req: Request, res: Response): void {
+    const depth = getDepth(req);
+    const responses: string[] = [
+      davResponse(`${basePath}/principals/` || '/principals/', [
+        `<D:resourcetype><D:collection/></D:resourcetype>`,
+        `<D:current-user-principal><D:href>${principalHref}</D:href></D:current-user-principal>`,
+        buildPrincipalCollectionSet(basePath),
+        `<D:displayname>Principals</D:displayname>`,
+        PRINCIPAL_REPORT_SET,
+      ]),
+    ];
+    if (depth !== '0') {
+      responses.push(davResponse(principalHref, buildPrincipalProps(req, basePath, principalHref, calendarsHref)));
+    }
+    res.status(207).type('application/xml; charset=utf-8').send(multistatus(responses));
+  }
+
+  function sendPrincipalAlias(req: Request, res: Response): void {
+    const aliasHref = req.path || principalHref;
+    res.status(207).type('application/xml; charset=utf-8').send(multistatus([
+      davResponse(aliasHref, buildPrincipalProps(req, basePath, principalHref, calendarsHref)),
+    ]));
+  }
 
   // -- OPTIONS: DAV compliance --
   router.use((_req: Request, res: Response, next) => {
     res.setHeader('DAV', '1, calendar-access');
-    res.setHeader('Allow', 'OPTIONS, GET, HEAD, PROPFIND, REPORT');
+    res.setHeader('Allow', allowedMethods);
     // Signal read-only access to CalDAV clients
-    res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, HEAD, PROPFIND, REPORT');
+    res.setHeader('Access-Control-Allow-Methods', allowedMethods);
     next();
   });
 
@@ -204,6 +351,8 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       davResponse(`${basePath}/`, [
         `<D:resourcetype><D:collection/></D:resourcetype>`,
         `<D:current-user-principal><D:href>${basePath}/principal/</D:href></D:current-user-principal>`,
+        buildPrincipalCollectionSet(basePath),
+        PRINCIPAL_REPORT_SET,
         `<D:displayname>Ludos Kanban CalDAV</D:displayname>`,
       ]),
     ];
@@ -220,16 +369,31 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
 
     log.verbose(`[CalDAV] PROPFIND /principal/`);
 
-    const responses = [
-      davResponse(`${basePath}/principal/`, [
-        `<D:resourcetype><D:principal/></D:resourcetype>`,
-        `<D:current-user-principal><D:href>${basePath}/principal/</D:href></D:current-user-principal>`,
-        `<C:calendar-home-set><D:href>${basePath}/calendars/</D:href></C:calendar-home-set>`,
-        `<D:displayname>Ludos Kanban</D:displayname>`,
-      ]),
-    ];
+    const responses = [davResponse(`${basePath}/principal/`, buildPrincipalProps(req, basePath, principalHref, calendarsHref))];
 
     res.status(207).type('application/xml; charset=utf-8').send(multistatus(responses));
+  });
+
+  // -- PROPFIND /principals/ --
+  router.all('/principals/', (req: Request, res: Response) => {
+    if (req.method !== 'PROPFIND') {
+      res.status(405).end();
+      return;
+    }
+
+    log.verbose(`[CalDAV] PROPFIND /principals/`);
+    sendPrincipalCollection(req, res);
+  });
+
+  // -- PROPFIND aliases used by Apple Calendar on some setups --
+  router.all(['/principals/*', '/calendar/dav/*'], (req: Request, res: Response) => {
+    if (req.method !== 'PROPFIND') {
+      res.status(405).end();
+      return;
+    }
+
+    log.verbose(`[CalDAV] PROPFIND alias ${req.path}`);
+    sendPrincipalAlias(req, res);
   });
 
   // -- PROPFIND /calendars/ --
@@ -245,10 +409,7 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
     const responses: string[] = [];
 
     // The collection itself
-    responses.push(davResponse(`${basePath}/calendars/`, [
-      `<D:resourcetype><D:collection/></D:resourcetype>`,
-      `<D:displayname>Calendars</D:displayname>`,
-    ]));
+    responses.push(davResponse(`${basePath}/calendars/`, buildCalendarHomeProps(principalHref)));
 
     // List calendar collections if depth > 0 (deduplicated by slug)
     if (depth !== '0') {
@@ -261,15 +422,9 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
         slugBoards.get(slug)!.push(board);
       }
       for (const [slug, boards] of slugBoards) {
-        const name = boards[0].calendarName || boards[0].board.title || slug;
+        const name = boardWatcher.getBoardDisplayName(boards[0]) || slug;
         const ctag = compositeCtag(boards);
-        responses.push(davResponse(`${basePath}/calendars/${slug}/`, [
-          `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
-          `<D:displayname>${escapeXml(name)}</D:displayname>`,
-          `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
-          `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
-          READ_ONLY_PRIVILEGE_SET,
-        ]));
+        responses.push(davResponse(`${basePath}/calendars/${slug}/`, buildCalendarProps(name, ctag, principalHref)));
       }
     }
 
@@ -315,17 +470,11 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
     }
 
     const responses: string[] = [];
-    const name = boards[0].calendarName || boards[0].board.title || slug;
+    const name = boardWatcher.getBoardDisplayName(boards[0]) || slug;
     const ctag = compositeCtag(boards);
 
     // The collection itself
-    responses.push(davResponse(`${basePath}/calendars/${slug}/`, [
-      `<D:resourcetype><D:collection/><C:calendar/></D:resourcetype>`,
-      `<D:displayname>${escapeXml(name)}</D:displayname>`,
-      `<CS:getctag>${escapeXml(ctag)}</CS:getctag>`,
-      `<C:supported-calendar-component-set><C:comp name="VEVENT"/><C:comp name="VTODO"/></C:supported-calendar-component-set>`,
-      READ_ONLY_PRIVILEGE_SET,
-    ]));
+    responses.push(davResponse(`${basePath}/calendars/${slug}/`, buildCalendarProps(name, ctag, principalHref)));
 
     // List .ics members if depth > 0 or REPORT
     if (depth !== '0' || req.method === 'REPORT') {
@@ -399,7 +548,7 @@ export function createCaldavRouter(boardWatcher: BoardFileWatcher, basePath: str
       if (b.icalTasks) { allTasks = allTasks.concat(b.icalTasks); }
     }
     allTasks = deduplicateTasks(allTasks);
-    const calName = boards[0].calendarName || boards[0].board.title || slug;
+    const calName = boardWatcher.getBoardDisplayName(boards[0]) || slug;
     const fullCal = IcalMapper.generateCalendar(allTasks, calName);
     const etag = compositeCtag(boards);
 
@@ -463,16 +612,19 @@ ${propXml}
  *   - calendar-multiget: client requests specific resources by href
  *   - calendar-query: client requests resources matching a filter (time-range)
  */
-function parseReportBody(body: string, basePath: string, slug: string): {
+function parseReportBody(body: unknown, basePath: string, slug: string): {
   type: 'multiget' | 'calendar-query' | 'unknown';
   requestedUids?: Set<string>;
   timeRangeStart?: Date;
   timeRangeEnd?: Date;
 } {
-  if (!body || body.trim().length === 0) return { type: 'unknown' };
+  const bodyText = stringifyDavBody(body);
+  if (!bodyText || bodyText.trim().length === 0) return { type: 'unknown' };
 
   try {
-    const parsed = xmlParser.parse(body);
+    const parsed = typeof body === 'object' && body !== null
+      ? body as Record<string, unknown>
+      : xmlParser.parse(bodyText);
 
     // Detect calendar-multiget (check all possible namespace prefixes)
     const multigetKey = Object.keys(parsed).find(k => k.toLowerCase().includes('calendar-multiget'));
@@ -484,12 +636,31 @@ function parseReportBody(body: string, basePath: string, slug: string): {
       // which varies depending on namespace prefixes and element count.
       const hrefRegex = /<[^>]*href[^>]*>\s*([^<]+?)\s*<\/[^>]*href[^>]*>/gi;
       let hrefMatch;
-      while ((hrefMatch = hrefRegex.exec(body)) !== null) {
+      while ((hrefMatch = hrefRegex.exec(bodyText)) !== null) {
         const href = hrefMatch[1].trim();
         if (href.endsWith('.ics')) {
           const filename = href.substring(href.lastIndexOf('/') + 1);
           const uid = filename.replace('.ics', '');
           if (uid.length > 0) requestedUids.add(uid);
+        }
+      }
+
+      if (requestedUids.size === 0) {
+        for (const href of extractHrefValuesFromObject(parsed[multigetKey] as Record<string, unknown>)) {
+          if (href.endsWith('.ics')) {
+            const filename = href.substring(href.lastIndexOf('/') + 1);
+            const uid = filename.replace('.ics', '');
+            if (uid.length > 0) requestedUids.add(uid);
+          }
+        }
+      }
+
+      if (requestedUids.size === 0) {
+        const escapedBase = `${basePath}/calendars/${slug}/`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const uidRegex = new RegExp(`${escapedBase}([^<\\s]+?)\\.ics`, 'gi');
+        let uidMatch;
+        while ((uidMatch = uidRegex.exec(bodyText)) !== null) {
+          if (uidMatch[1]) requestedUids.add(uidMatch[1]);
         }
       }
 
@@ -585,3 +756,12 @@ function parseIcalTimestamp(ts: string): Date | null {
   }
   return null;
 }
+
+export const __test = {
+  extractHrefValuesFromObject,
+  stringifyDavBody,
+  parseRequestedProps,
+  extractProppatchPropNames,
+  parseReportBody,
+  applyReportFilter,
+};

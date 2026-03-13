@@ -139,6 +139,13 @@ function extractHashTags(content: string): string[] {
   return tags;
 }
 
+function normalizeLegacyTemporalPrefixes(text: string): string {
+  return String(text || '').replace(
+    /(^|[\s(])!((?:today|tomorrow|yesterday|date\([^)]+\)|days[+-]\d+|\d{4}[-.]?(?:w|kw)\d{1,2}|(?:w|kw)\d{1,2}|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|:\d{1,2}-:\d{1,2}|\d{1,2}(?::\d{2})?(?:am|pm)?-\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,4}[./-]\d{1,2}(?:[./-]\d{2,4})?|\d{1,2}(?::\d{2})?(?:am|pm)?))/gi,
+    '$1@$2'
+  );
+}
+
 /**
  * Fold long iCal lines at 75 octets per RFC 5545.
  */
@@ -183,19 +190,21 @@ export class IcalMapper {
     for (const column of columns) {
       // Skip archived/deleted columns
       if (isArchivedOrDeleted(column.title || '')) continue;
+      const normalizedColumnTitle = normalizeLegacyTemporalPrefixes(column.title || '');
 
       for (const task of column.cards) {
         const content = task.content || '';
+        const normalizedContent = normalizeLegacyTemporalPrefixes(content);
 
         // Skip archived/deleted tasks
         if (isArchivedOrDeleted(content)) continue;
-        const hashTags = extractHashTags(content);
+        const hashTags = extractHashTags(normalizedContent);
         const categories = [column.title, ...hashTags];
         const checked = task.checked === true;
-        const taskSummaryLine = content.split('\n')[0] || '';
+        const taskSummaryLine = normalizedContent.split('\n')[0] || '';
 
         // Shared temporal resolution (same logic as DashboardScanner)
-        const resolved = resolveTaskTemporals(content, column.title || null);
+        const resolved = resolveTaskTemporals(normalizedContent, normalizedColumnTitle || null);
 
         for (const r of resolved) {
           const occKey = `${column.title}\0${r.lineContent}`;

@@ -125,25 +125,29 @@ pub async fn update_ludos_sync_config(
         username: body.username.clone().filter(|value| !value.trim().is_empty()),
         password: body.password.clone().filter(|value| !value.trim().is_empty()),
     };
+    let cfg_snapshot;
 
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
         cfg.ludos_sync = next.clone();
+        cfg_snapshot = cfg.clone();
         if let Err(e) = save_config(&config_path, &cfg) {
             log::error!("Failed to save config after ludos-sync update: {}", e);
         }
     }
 
-    notify_config_changed(&state);
-    spawn_ludos_sync_reconcile(state.clone());
-
     let status = {
-        let cfg = state.config.lock().ok().map(|guard| guard.clone());
         let mut manager = state.ludos_sync.lock().await;
-        cfg.as_ref()
-            .map(|guard| manager.status(guard))
-            .unwrap_or_else(|| manager.status(&crate::config::SyncConfig::default()))
+        if let Err(e) = manager.reconcile(&cfg_snapshot).await {
+            log::error!("Failed to reconcile ludos-sync after config update: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            ));
+        }
+        manager.status(&cfg_snapshot)
     };
+    let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
 
     Ok(Json(serde_json::json!({
         "config": next,
@@ -796,6 +800,13 @@ mod tests {
         assert_eq!(json["config"]["enabled"], false);
         assert_eq!(json["config"]["port"], 13081);
         assert_eq!(json["status"]["running"], false);
+        assert_eq!(json["status"]["bookmarksUrl"], "http://localhost:13081/bookmarks/");
+        assert_eq!(json["status"]["caldavUrl"], "http://localhost:13081/caldav/");
+        assert_eq!(
+            json["status"]["caldavDiscoveryUrl"],
+            "http://localhost:13081/.well-known/caldav"
+        );
+        assert_eq!(json["status"]["authEnabled"], false);
     }
 
     #[tokio::test]
@@ -831,6 +842,8 @@ mod tests {
         assert_eq!(json["config"]["port"], 13123);
         assert_eq!(json["config"]["username"], "sync-user");
         assert_eq!(json["status"]["configuredPort"], 13123);
+        assert_eq!(json["status"]["authEnabled"], true);
+        assert_eq!(json["status"]["authUsername"], "sync-user");
 
         let cfg = state.config.lock().unwrap().clone();
         assert_eq!(cfg.ludos_sync.port, 13123);

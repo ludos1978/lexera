@@ -8,7 +8,7 @@
 ///   %% footer %%
 ///
 /// Line-by-line port of packages/shared/src/markdownParser.ts.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::include::resolver::resolve_include_path;
@@ -167,6 +167,129 @@ fn is_description_boundary(lines: &[&str], i: usize, new_format: bool) -> bool {
         || (!new_format && next_line.starts_with("## "))
 }
 
+fn legacy_column_row_index(title: &str) -> usize {
+    for token in title.split_whitespace() {
+        let lower = token.to_ascii_lowercase();
+        if let Some(rest) = lower.strip_prefix("#row") {
+            if rest.is_empty() {
+                return 1;
+            }
+            if let Ok(parsed) = rest.parse::<usize>() {
+                return parsed.max(1);
+            }
+        }
+    }
+    1
+}
+
+fn legacy_column_has_stack_tag(title: &str) -> bool {
+    title
+        .split_whitespace()
+        .any(|token| token.eq_ignore_ascii_case("#stack"))
+}
+
+fn strip_legacy_row_stack_tags(title: &str) -> String {
+    let parts: Vec<&str> = title
+        .split_whitespace()
+        .filter(|token| {
+            let lower = token.to_ascii_lowercase();
+            if lower == "#stack" {
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("#row") {
+                return !(rest.is_empty() || rest.chars().all(|c| c.is_ascii_digit()));
+            }
+            true
+        })
+        .collect();
+    parts.join(" ").trim().to_string()
+}
+
+fn convert_legacy_columns_to_rows(parsed_columns: Vec<KanbanColumn>) -> Vec<KanbanRow> {
+    if parsed_columns.is_empty() {
+        return Vec::new();
+    }
+
+    let mut rows_by_index: BTreeMap<usize, Vec<(KanbanColumn, bool)>> = BTreeMap::new();
+    for mut column in parsed_columns {
+        let row_index = legacy_column_row_index(&column.title);
+        let has_stack_tag = legacy_column_has_stack_tag(&column.title);
+        column.title = strip_legacy_row_stack_tags(&column.title);
+        rows_by_index
+            .entry(row_index)
+            .or_default()
+            .push((column, has_stack_tag));
+    }
+
+    let has_any_tags = rows_by_index.len() > 1
+        || rows_by_index.keys().any(|idx| *idx != 1)
+        || rows_by_index
+            .values()
+            .any(|cols| cols.iter().any(|(_, has_stack)| *has_stack));
+    let multiple_rows = rows_by_index.len() > 1 || rows_by_index.keys().any(|idx| *idx != 1);
+    let mut rows = Vec::new();
+
+    for (row_index, row_columns) in rows_by_index {
+        let stacks = if !has_any_tags {
+            // No #row/#stack tags: all columns go into a single Default stack
+            let all_columns: Vec<KanbanColumn> =
+                row_columns.into_iter().map(|(col, _)| col).collect();
+            vec![KanbanStack {
+                id: generate_id("stack"),
+                title: "Default".to_string(),
+                columns: all_columns,
+            }]
+        } else {
+            // Has tags: group columns into stacks based on #stack tags
+            let mut groups: Vec<Vec<KanbanColumn>> = Vec::new();
+            for (column, has_stack_tag) in row_columns {
+                if has_stack_tag && !groups.is_empty() {
+                    groups.last_mut().unwrap().push(column);
+                } else {
+                    groups.push(vec![column]);
+                }
+            }
+
+            let multiple_stacks = groups.len() > 1;
+            groups
+                .into_iter()
+                .enumerate()
+                .map(|(stack_index, group)| {
+                    let derive_title = multiple_stacks || multiple_rows;
+                    KanbanStack {
+                        id: generate_id("stack"),
+                        title: {
+                            let stack_title = group
+                                .first()
+                                .map(|column| column.title.trim())
+                                .filter(|title| !title.is_empty())
+                                .unwrap_or("");
+                            if stack_title.is_empty() {
+                                format!("Stack {}", stack_index + 1)
+                            } else {
+                                stack_title.to_string()
+                            }
+                        },
+                        columns: group,
+                    }
+                })
+                .collect()
+        };
+
+        rows.push(KanbanRow {
+            id: generate_id("row"),
+            title: if multiple_rows {
+                format!("Row {}", row_index)
+            } else {
+                "Default".to_string()
+            },
+            stacks,
+        });
+    }
+
+    rows
+}
+
 /// Parse legacy format: ## = column header, cards as list items.
 /// Columns are wrapped in a Default row / Default stack so that the board
 /// always uses the rows/stacks/columns hierarchy internally.
@@ -310,19 +433,10 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
         parsed_columns.push(col);
     }
 
-    // Wrap parsed columns in a Default row / Default stack so the board
-    // always uses the unified rows hierarchy. board.columns stays empty.
-    if !parsed_columns.is_empty() {
-        board.rows.push(KanbanRow {
-            id: generate_id("row"),
-            title: "Default".to_string(),
-            stacks: vec![KanbanStack {
-                id: generate_id("stack"),
-                title: "Default".to_string(),
-                columns: parsed_columns,
-            }],
-        });
-    }
+    // Convert legacy flat columns into rows/stacks using the same layout tags
+    // the UI understands: #rowN selects the row bucket and #stack appends the
+    // column to the preceding stack anchor in that row.
+    board.rows = convert_legacy_columns_to_rows(parsed_columns);
 
     if !footer_lines.is_empty() {
         board.kanban_footer = Some(footer_lines.join("\n"));
@@ -947,6 +1061,42 @@ columnWidth: 450px
 %%
 ";
 
+    const LEGACY_STACK_TAG_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Base
+- [ ] Base task
+
+## Child #stack
+- [ ] Child task
+
+## Next
+- [ ] Next task
+
+## Sibling #stack
+- [ ] Sibling task
+";
+
+    const LEGACY_ROW_AND_STACK_TAG_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Todo
+- [ ] Row 1 task
+
+## Backlog #row2
+- [ ] Row 2 task
+
+## Doing #row2 #stack
+- [ ] Row 2 second task
+
+## Done
+- [ ] Final row 1 task
+";
+
     #[test]
     fn test_parse_basic_board() {
         let board = parse_markdown(SAMPLE_BOARD);
@@ -1183,20 +1333,58 @@ kanban-plugin: board
     }
 
     #[test]
-    fn test_legacy_format_uses_default_wrapper() {
-        // Legacy boards with ## headers are wrapped in a Default row/stack
+    fn test_legacy_format_uses_row_and_stack_hierarchy() {
         let board = parse_markdown(SAMPLE_BOARD);
         assert!(board.valid);
         assert_eq!(board.format_hint, BoardFormat::Legacy);
-        // Columns are accessible via all_columns()
         assert_eq!(board.all_columns().len(), 2);
-        // Internally stored in a Default row/stack
         assert_eq!(board.rows.len(), 1);
         assert_eq!(board.rows[0].title, "Default");
         assert_eq!(board.rows[0].stacks.len(), 1);
         assert_eq!(board.rows[0].stacks[0].title, "Default");
-        // board.columns is empty (columns live in the rows hierarchy)
+        assert_eq!(board.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(board.rows[0].stacks[0].columns[0].title, "Todo");
+        assert_eq!(board.rows[0].stacks[0].columns[1].title, "Done");
         assert!(board.columns.is_empty());
+    }
+
+    #[test]
+    fn test_legacy_format_groups_stack_columns_with_previous_anchor() {
+        let board = parse_markdown(LEGACY_STACK_TAG_BOARD);
+        assert!(board.valid);
+        assert_eq!(board.rows.len(), 1);
+        assert_eq!(board.rows[0].stacks.len(), 2);
+
+        assert_eq!(board.rows[0].stacks[0].title, "Base");
+        assert_eq!(board.rows[0].stacks[0].columns.len(), 2);
+        assert_eq!(board.rows[0].stacks[0].columns[0].title, "Base");
+        assert_eq!(board.rows[0].stacks[0].columns[1].title, "Child");
+
+        assert_eq!(board.rows[0].stacks[1].title, "Next");
+        assert_eq!(board.rows[0].stacks[1].columns.len(), 2);
+        assert_eq!(board.rows[0].stacks[1].columns[0].title, "Next");
+        assert_eq!(board.rows[0].stacks[1].columns[1].title, "Sibling");
+    }
+
+    #[test]
+    fn test_legacy_format_groups_rows_by_row_number_before_stacking() {
+        let board = parse_markdown(LEGACY_ROW_AND_STACK_TAG_BOARD);
+        assert!(board.valid);
+        assert_eq!(board.rows.len(), 2);
+
+        assert_eq!(board.rows[0].title, "Row 1");
+        assert_eq!(board.rows[0].stacks.len(), 2);
+        assert_eq!(board.rows[0].stacks[0].title, "Todo");
+        assert_eq!(board.rows[0].stacks[0].columns[0].title, "Todo");
+        assert_eq!(board.rows[0].stacks[1].title, "Done");
+        assert_eq!(board.rows[0].stacks[1].columns[0].title, "Done");
+
+        assert_eq!(board.rows[1].title, "Row 2");
+        assert_eq!(board.rows[1].stacks.len(), 1);
+        assert_eq!(board.rows[1].stacks[0].title, "Backlog");
+        assert_eq!(board.rows[1].stacks[0].columns.len(), 2);
+        assert_eq!(board.rows[1].stacks[0].columns[0].title, "Backlog");
+        assert_eq!(board.rows[1].stacks[0].columns[1].title, "Doing");
     }
 
     #[test]

@@ -23,6 +23,169 @@ interface TrackedSocket extends Socket {
   _processNamePromise?: Promise<string>;
 }
 
+const DAV_ALLOWED_METHODS = 'OPTIONS, GET, HEAD, PROPFIND, REPORT, PROPPATCH, PUT, DELETE, MKCALENDAR';
+
+function setDavHeaders(res: express.Response): void {
+  res.setHeader('DAV', '1, calendar-access');
+  res.setHeader('Allow', DAV_ALLOWED_METHODS);
+  res.setHeader('Access-Control-Allow-Methods', DAV_ALLOWED_METHODS);
+}
+
+function isUnauthenticatedCaldavDiscoveryRequest(req: express.Request): boolean {
+  const method = String(req.method || '').toUpperCase();
+  if (method !== 'PROPFIND' && method !== 'OPTIONS' && method !== 'HEAD') {
+    return false;
+  }
+  const pathOnly = String(req.path || req.url || '');
+  return pathOnly === '/.well-known/caldav'
+    || pathOnly === '/'
+    || pathOnly === '/caldav'
+    || pathOnly === '/caldav/'
+    || pathOnly === '/caldav/principal/'
+    || pathOnly === '/principals'
+    || pathOnly === '/principals/'
+    || pathOnly.startsWith('/principals/')
+    || pathOnly === '/calendar/dav'
+    || pathOnly === '/calendar/dav/'
+    || pathOnly.startsWith('/calendar/dav/');
+}
+
+function isLoopbackAddress(address: string | undefined | null): boolean {
+  const value = String(address || '').trim();
+  return value === '::1'
+    || value === '127.0.0.1'
+    || value === '::ffff:127.0.0.1'
+    || value === '::ffff:7f00:1';
+}
+
+function isUnauthenticatedLoopbackCalendarReadRequest(req: express.Request): boolean {
+  const method = String(req.method || '').toUpperCase();
+  if (!['PROPFIND', 'REPORT', 'GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    return false;
+  }
+  if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+    return false;
+  }
+  const pathOnly = String(req.path || req.url || '');
+  return pathOnly === '/caldav/calendars'
+    || pathOnly === '/caldav/calendars/'
+    || pathOnly.startsWith('/caldav/calendars/');
+}
+
+function caldavMultistatus(responses: string[]): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+${responses.join('\n')}
+</D:multistatus>`;
+}
+
+function caldavResponse(href: string, props: string[]): string {
+  return `  <D:response>
+    <D:href>${href}</D:href>
+    <D:propstat>
+      <D:prop>
+${props.map(p => '        ' + p).join('\n')}
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>`;
+}
+
+function buildPrincipalCollectionSet(): string {
+  return '<D:principal-collection-set><D:href>/principals/</D:href><D:href>/caldav/principals/</D:href></D:principal-collection-set>';
+}
+
+function buildPrincipalReportSet(): string {
+  return `<D:supported-report-set>
+  <D:supported-report><D:report><D:expand-property/></D:report></D:supported-report>
+  <D:supported-report><D:report><D:principal-property-search/></D:report></D:supported-report>
+  <D:supported-report><D:report><D:principal-search-property-set/></D:report></D:supported-report>
+</D:supported-report-set>`;
+}
+
+function buildCalendarUserAddressSet(username: string | null): string {
+  const safeUser = String(username || 'lexera')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<C:calendar-user-address-set><D:href>/caldav/principal/</D:href><D:href>mailto:${safeUser}@localhost</D:href></C:calendar-user-address-set>`;
+}
+
+function decodeBasicAuthUsername(req: express.Request): string | null {
+  const authHeader = String(req.headers.authorization || '');
+  if (!authHeader.startsWith('Basic ')) return null;
+  try {
+    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
+    const colonIndex = decoded.indexOf(':');
+    if (colonIndex === -1) return null;
+    const username = decoded.slice(0, colonIndex).trim();
+    return username || null;
+  } catch {
+    return null;
+  }
+}
+
+function sendDiscoveryRoot(res: express.Response): void {
+  setDavHeaders(res);
+  res.status(207).type('application/xml; charset=utf-8').send(caldavMultistatus([
+    caldavResponse('/', [
+      '<D:resourcetype><D:collection/></D:resourcetype>',
+      '<D:current-user-principal><D:href>/caldav/principal/</D:href></D:current-user-principal>',
+      buildPrincipalCollectionSet(),
+      buildPrincipalReportSet(),
+      '<D:displayname>Lexera CalDAV</D:displayname>',
+    ]),
+  ]));
+}
+
+function sendDiscoveryPrincipals(req: express.Request, res: express.Response): void {
+  setDavHeaders(res);
+  const depth = String(req.headers.depth || '0');
+  const username = decodeBasicAuthUsername(req);
+  const responses = [
+    caldavResponse('/principals/', [
+      '<D:resourcetype><D:collection/></D:resourcetype>',
+      '<D:current-user-principal><D:href>/caldav/principal/</D:href></D:current-user-principal>',
+      buildPrincipalCollectionSet(),
+      buildPrincipalReportSet(),
+      '<D:displayname>Principals</D:displayname>',
+    ]),
+  ];
+  if (depth !== '0') {
+    responses.push(caldavResponse('/caldav/principal/', [
+      '<D:resourcetype><D:principal/></D:resourcetype>',
+      '<D:current-user-principal><D:href>/caldav/principal/</D:href></D:current-user-principal>',
+      '<D:principal-URL><D:href>/caldav/principal/</D:href></D:principal-URL>',
+      buildPrincipalCollectionSet(),
+      '<C:calendar-home-set><D:href>/caldav/calendars/</D:href></C:calendar-home-set>',
+      buildCalendarUserAddressSet(username),
+      '<D:owner><D:href>/caldav/principal/</D:href></D:owner>',
+      buildPrincipalReportSet(),
+      `<D:displayname>${username || 'Lexera'}</D:displayname>`,
+    ]));
+  }
+  res.status(207).type('application/xml; charset=utf-8').send(caldavMultistatus(responses));
+}
+
+function sendDiscoveryPrincipalAlias(req: express.Request, res: express.Response): void {
+  setDavHeaders(res);
+  const href = String(req.path || '/caldav/principal/');
+  const username = decodeBasicAuthUsername(req);
+  res.status(207).type('application/xml; charset=utf-8').send(caldavMultistatus([
+    caldavResponse(href, [
+      '<D:resourcetype><D:principal/></D:resourcetype>',
+      '<D:current-user-principal><D:href>/caldav/principal/</D:href></D:current-user-principal>',
+      '<D:principal-URL><D:href>/caldav/principal/</D:href></D:principal-URL>',
+      buildPrincipalCollectionSet(),
+      '<C:calendar-home-set><D:href>/caldav/calendars/</D:href></C:calendar-home-set>',
+      buildCalendarUserAddressSet(username),
+      '<D:owner><D:href>/caldav/principal/</D:href></D:owner>',
+      buildPrincipalReportSet(),
+      `<D:displayname>${username || 'Lexera'}</D:displayname>`,
+    ]),
+  ]));
+}
+
 export interface ServerInfo {
   port: number;
   address: string;
@@ -72,9 +235,19 @@ export class SyncServer {
       const { username, password } = config.auth;
       log.verbose('Basic Auth enabled for all endpoints');
       this.app.use((req, res, next) => {
+        if (isUnauthenticatedCaldavDiscoveryRequest(req)) {
+          log.verbose(`Auth bypass for CalDAV discovery: ${req.method} ${req.url}`);
+          next();
+          return;
+        }
+        if (isUnauthenticatedLoopbackCalendarReadRequest(req)) {
+          log.verbose(`Auth bypass for loopback CalDAV read: ${req.method} ${req.url}`);
+          next();
+          return;
+        }
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Basic ')) {
-          log.warn(`Auth rejected: ${req.method} ${req.url} — missing Basic Auth header`);
+          log.verbose(`Auth rejected: ${req.method} ${req.url} — missing Basic Auth header`);
           res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
           res.status(401).send('Authentication required');
           return;
@@ -82,7 +255,7 @@ export class SyncServer {
         const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
         const colonIndex = decoded.indexOf(':');
         if (colonIndex === -1) {
-          log.warn(`Auth rejected: ${req.method} ${req.url} — malformed header`);
+          log.verbose(`Auth rejected: ${req.method} ${req.url} — malformed header`);
           res.setHeader('WWW-Authenticate', 'Basic realm="ludos-sync"');
           res.status(401).send('Authentication required');
           return;
@@ -125,8 +298,38 @@ export class SyncServer {
       res.redirect(301, '/caldav/principal/');
     });
 
-    // Parse XML bodies for CalDAV
-    this.app.use('/caldav', express.text({ type: ['application/xml', 'text/xml'], limit: '1mb' }));
+    // Apple Calendar also probes several root-level CalDAV discovery aliases before sending credentials.
+    // Serve those explicitly so verification can complete against the managed Lexera backend module.
+    this.app.all('/', (req, res, next) => {
+      if (req.method !== 'PROPFIND') {
+        next();
+        return;
+      }
+      sendDiscoveryRoot(res);
+    });
+    this.app.all(['/principals', '/principals/'], (req, res, next) => {
+      if (req.method !== 'PROPFIND') {
+        next();
+        return;
+      }
+      sendDiscoveryPrincipals(req, res);
+    });
+    this.app.all(['/principals/*', '/calendar/dav', '/calendar/dav/', '/calendar/dav/*'], (req, res, next) => {
+      if (req.method !== 'PROPFIND') {
+        next();
+        return;
+      }
+      sendDiscoveryPrincipalAlias(req, res);
+    });
+
+    // Parse XML bodies for CalDAV. Accept both classic XML content types and +xml variants.
+    this.app.use('/caldav', express.text({
+      type: (req) => {
+        const contentType = String(req.headers['content-type'] || '').toLowerCase();
+        return contentType.includes('xml');
+      },
+      limit: '1mb',
+    }));
 
     // Mount CalDAV router
     const caldavRouter = createCaldavRouter(this.boardWatcher, '/caldav');
@@ -246,7 +449,7 @@ export class SyncServer {
 
         if (wantCalendar) {
           const slug = opts.calendarSlug || path.basename(filePath, '.md');
-          const name = opts.calendarName;
+          const name = opts.calendarName || board.name || path.basename(filePath, '.md');
           this.boardWatcher.addBoard(filePath, undefined, { calendarSlug: slug, calendarName: name });
           log.verbose(`Watching board (calendar): ${filePath} -> slug=${slug}`);
         }

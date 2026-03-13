@@ -63,16 +63,30 @@ function loadAppUtils() {
     extractFunction(findLine('function stripHtmlComments(')),
     extractFunction(findLine('function buildSourceSummaryLabel(')),
     extractFunction(findLine('function getCreationEntityDragIconSvg(')),
+    extractFunction(findLine('function stashRenderedHtmlToken(')),
+    extractFunction(findLine('function restoreRenderedHtmlTokens(')),
+    extractFunction(findLine('function extractAngleBracketAutolinks(')),
+    extractFunction(findLine('function buildAngleBracketAutolinkHtml(')),
+    extractFunction(findLine('function getMediaCategory(')),
+    extractFunction(findLine('function getFileExtension(')),
+    extractFunction(findLine('function inferExternalMediaCategoryFromUrl(')),
     extractFunction(findLine('function normalizeIncomingImageBase64(')),
     extractFunction(findLine('function decodeBase64BinaryStringToUint8Array(')),
+    extractFunction(findLine('function sanitizeBuiltInDiagramFileName(')),
+    extractFunction(findLine('function buildPastedEmbedImageFileName(')),
+    extractFunction(findLine('function getUploadedMediaEmbedTarget(')),
     extractFunction(findLine('function stripLayoutTags(')),
+    extractFunction(findLine('function stripLegacyImportStructureTags(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
+    extractFunction(findLine('function getLegacyImportRowNumber(')),
+    extractFunction(findLine('function buildRowsFromLegacyColumns(')),
     extractFunction(findLine('function reconstructColumnTitle(')),
     extractFunction(findLine('function normalizeRatio(')),
     extractFunction(findLine('function reorderItems(')),
     extractFunction(findLine('function normalizeDroppedPath(')),
     extractFunction(findLine('function shouldKeepInlineEditorOpenOnBlur(')),
     extractFunction(findLine('function shouldCancelInlineEditorOnEscape(')),
+    extractFunction(findLine('function syncConnectionStatusButton(')),
   ];
 
   const wrappedSource = `
@@ -86,23 +100,44 @@ function loadAppUtils() {
       normalizeWikiLookupKey,
       buildSourceSummaryLabel,
       getCreationEntityDragIconSvg,
+      stashRenderedHtmlToken,
+      restoreRenderedHtmlTokens,
+      extractAngleBracketAutolinks,
+      buildAngleBracketAutolinkHtml,
+      getMediaCategory,
+      getFileExtension,
+      inferExternalMediaCategoryFromUrl,
       normalizeIncomingImageBase64,
       decodeBase64BinaryStringToUint8Array,
+      sanitizeBuiltInDiagramFileName,
+      buildPastedEmbedImageFileName,
+      getUploadedMediaEmbedTarget,
       stripLayoutTags,
+      stripLegacyImportStructureTags,
       getColumnLayoutTags,
+      getLegacyImportRowNumber,
+      buildRowsFromLegacyColumns,
       reconstructColumnTitle,
       normalizeRatio,
       reorderItems,
       normalizeDroppedPath,
       shouldKeepInlineEditorOpenOnBlur,
       shouldCancelInlineEditorOnEscape,
+      syncConnectionStatusButton,
     };
   `;
 
   // The functions reference URL (global in browser) — Node has it natively.
   const atobShim = (value) => Buffer.from(String(value || ''), 'base64').toString('binary');
-  const factory = new Function('URL', 'atob', wrappedSource);
-  return factory(URL, atobShim);
+  const escapeHtmlShim = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  const escapeAttrShim = escapeHtmlShim;
+  const factory = new Function('URL', 'atob', 'escapeHtml', 'escapeAttr', wrappedSource);
+  return factory(URL, atobShim, escapeHtmlShim, escapeAttrShim);
 }
 
 let U; // utility functions under test
@@ -190,6 +225,48 @@ describe('parseLocalFileReference', () => {
   });
 });
 
+describe('inline render token helpers', () => {
+  it('protects generated embed HTML from the later tag pass', () => {
+    const htmlTokens = [];
+    const token = U.stashRenderedHtmlToken(
+      htmlTokens,
+      '<span class="embed-file-link">&#128206; example.bin</span><button class="embed-menu-btn">&#8942;</button>'
+    );
+
+    const afterTagPass = token.replace(/(^|[\s&|!])(#[^\s&|!]+)/g, (match, pre, tag) => {
+      return pre + '<span class="tag" data-tag="' + tag + '">' + tag + '</span>';
+    });
+    const restored = U.restoreRenderedHtmlTokens(afterTagPass, htmlTokens);
+
+    expect(restored).toContain('&#128206; example.bin');
+    expect(restored).toContain('&#8942;');
+    expect(restored).not.toContain('data-tag="#128206;"');
+    expect(restored).not.toContain('data-tag="#8942;"');
+  });
+
+  it('extracts angle-bracket autolinks before html parsing and rebuilds them as anchors', () => {
+    const extracted = U.extractAngleBracketAutolinks('See <https://www.youtube.com/@LevelDesignLobby/videos>');
+    expect(extracted.text).toBe('See @@AUTOLINKTOKEN0@@');
+    expect(extracted.links).toEqual(['https://www.youtube.com/@LevelDesignLobby/videos']);
+
+    const rebuilt = extracted.text.replace(/@@AUTOLINKTOKEN(\d+)@@/g, (_, index) => {
+      return U.buildAngleBracketAutolinkHtml(extracted.links[Number(index)]);
+    });
+
+    expect(rebuilt).toContain('<a href="https://www.youtube.com/@LevelDesignLobby/videos" target="_blank" rel="noopener noreferrer">');
+    expect(rebuilt).toContain('https://www.youtube.com/@LevelDesignLobby/videos</a>');
+    expect(rebuilt).not.toContain('<https:');
+  });
+
+  it('detects extensionless googleusercontent image urls as images', () => {
+    expect(
+      U.inferExternalMediaCategoryFromUrl(
+        'https://yt3.googleusercontent.com/bMVIjxhJITY5gAwz2T1R1YOYauALN0GzX2DS5P0TuZeTCphXCrIqTEvIGbrAPDF9r0AZO5NjuYw=w2276-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj'
+      )
+    ).toBe('image');
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // stripLayoutTags
 // ═══════════════════════════════════════════════════════════════════════════
@@ -225,6 +302,12 @@ describe('stripLayoutTags', () => {
   });
 });
 
+describe('stripLegacyImportStructureTags', () => {
+  it('removes only #row and #stack from legacy import titles', () => {
+    expect(U.stripLegacyImportStructureTags('Col #row2 #stack #span3')).toBe('Col #span3');
+  });
+});
+
 describe('buildSourceSummaryLabel', () => {
   it('collapses whitespace and trims the result', () => {
     expect(U.buildSourceSummaryLabel('  alpha   beta \n gamma  ', 'fallback')).toBe('alpha beta gamma');
@@ -242,6 +325,12 @@ describe('buildSourceSummaryLabel', () => {
 });
 
 describe('getCreationEntityDragIconSvg', () => {
+  it('returns the board icon markup', () => {
+    const svg = U.getCreationEntityDragIconSvg('board');
+    expect(svg).toContain('width="18" height="18"');
+    expect(svg).toContain('width="12" height="5"');
+  });
+
   it('returns the row icon markup', () => {
     const svg = U.getCreationEntityDragIconSvg('row');
     expect(svg).toContain('width="18" height="6"');
@@ -274,6 +363,16 @@ describe('incoming capture base64 helpers', () => {
 
   it('decodes base64 payloads into bytes', () => {
     expect(Array.from(U.decodeBase64BinaryStringToUint8Array('YWJj'))).toEqual([97, 98, 99]);
+  });
+
+  it('builds a sanitized png filename for pasted embed images', () => {
+    expect(U.buildPastedEmbedImageFileName('folder/custom:name')).toBe('custom-name.png');
+  });
+
+  it('prefers the relative media path returned by uploads', () => {
+    expect(U.getUploadedMediaEmbedTarget({ path: 'Board-Media/example.png', filename: 'example.png' }))
+      .toBe('Board-Media/example.png');
+    expect(U.getUploadedMediaEmbedTarget({ filename: 'example.png' })).toBe('example.png');
   });
 });
 
@@ -355,6 +454,32 @@ describe('getColumnLayoutTags', () => {
     expect(result.stack).toBe(false);
     expect(result.header).toBe(false);
     expect(result.footer).toBe(false);
+  });
+});
+
+describe('legacy import row/stack grouping helpers', () => {
+  it('parses the legacy row number from the column title', () => {
+    expect(U.getLegacyImportRowNumber('Column #row2 #stack')).toBe(2);
+    expect(U.getLegacyImportRowNumber('Column')).toBe(1);
+  });
+
+  it('groups flat legacy columns into numbered rows and stack chains', () => {
+    const rows = U.buildRowsFromLegacyColumns([
+      { title: 'Todo', cards: [] },
+      { title: 'Backlog #row2', cards: [] },
+      { title: 'Doing #row2 #stack', cards: [] },
+      { title: 'Done', cards: [] },
+    ], 'Board');
+
+    expect(rows.length).toBe(2);
+    expect(rows[0].title).toBe('Row 1');
+    expect(rows[0].stacks.length).toBe(2);
+    expect(rows[0].stacks[0].columns[0].title).toBe('Todo');
+    expect(rows[0].stacks[1].columns[0].title).toBe('Done');
+
+    expect(rows[1].title).toBe('Row 2');
+    expect(rows[1].stacks.length).toBe(1);
+    expect(rows[1].stacks[0].columns.map((c) => c.title)).toEqual(['Backlog', 'Doing']);
   });
 });
 
@@ -544,6 +669,61 @@ describe('shouldCancelInlineEditorOnEscape', () => {
   it('returns false for other keys or missing events', () => {
     expect(U.shouldCancelInlineEditorOnEscape({ key: 'Enter' })).toBe(false);
     expect(U.shouldCancelInlineEditorOnEscape(null)).toBe(false);
+  });
+});
+
+describe('syncConnectionStatusButton', () => {
+  function createClassList() {
+    const values = new Set();
+    return {
+      toggle(name, enabled) {
+        if (enabled) values.add(name);
+        else values.delete(name);
+      },
+      contains(name) {
+        return values.has(name);
+      },
+    };
+  }
+
+  it('marks the button and dot as connected and updates accessibility text', () => {
+    const button = {
+      classList: createClassList(),
+      attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; },
+      title: '',
+    };
+    const dot = { classList: createClassList() };
+
+    U.syncConnectionStatusButton(button, dot, true);
+
+    expect(button.classList.contains('connected')).toBe(true);
+    expect(button.classList.contains('disconnected')).toBe(false);
+    expect(button.attributes['data-connection-state']).toBe('connected');
+    expect(button.attributes['aria-label']).toContain('connected');
+    expect(button.title).toContain('connected');
+    expect(dot.classList.contains('connected')).toBe(true);
+    expect(dot.classList.contains('disconnected')).toBe(false);
+  });
+
+  it('marks the button and dot as disconnected', () => {
+    const button = {
+      classList: createClassList(),
+      attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; },
+      title: '',
+    };
+    const dot = { classList: createClassList() };
+
+    U.syncConnectionStatusButton(button, dot, false);
+
+    expect(button.classList.contains('connected')).toBe(false);
+    expect(button.classList.contains('disconnected')).toBe(true);
+    expect(button.attributes['data-connection-state']).toBe('disconnected');
+    expect(button.attributes['aria-label']).toContain('disconnected');
+    expect(button.title).toContain('disconnected');
+    expect(dot.classList.contains('connected')).toBe(false);
+    expect(dot.classList.contains('disconnected')).toBe(true);
   });
 });
 

@@ -566,10 +566,6 @@ async fn register_user(
             StatusCode::CONFLICT,
             Json(ErrorResponse::new("User ID already exists")),
         ),
-        _ => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new(&e.to_string())),
-        ),
     })?;
 
     Ok(Json(SuccessResponse { success: true }))

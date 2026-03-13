@@ -176,6 +176,24 @@ pub fn subscribe() -> broadcast::Receiver<BackendLogEntry> {
     LOG_HUB.tx.subscribe()
 }
 
+pub fn push_external_entry(
+    level: impl Into<String>,
+    target: impl Into<String>,
+    message: impl Into<String>,
+) {
+    let entry = BackendLogEntry {
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+        level: level.into(),
+        target: target.into(),
+        message: message.into(),
+    };
+    LOG_HUB.push(entry.clone());
+    LOG_FILE.append_entry(&entry);
+}
+
 pub fn log_file_path() -> String {
     LOG_FILE.path.display().to_string()
 }

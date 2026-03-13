@@ -47,6 +47,7 @@ export class SharedMarkdownParser {
    */
   static parseMarkdown(content: string): KanbanBoard {
     const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const usesHierarchicalColumns = lines.some(line => line.startsWith('### '));
 
     const board: KanbanBoard = {
       valid: false,
@@ -64,6 +65,15 @@ export class SharedMarkdownParser {
     let yamlLines: string[] = [];
     let footerLines: string[] = [];
     let yamlStartFound = false;
+    const isColumnHeader = (value: string): boolean => {
+      return usesHierarchicalColumns ? value.startsWith('### ') : value.startsWith('## ');
+    };
+    const isStructuralBoundary = (value: string | null): boolean => {
+      if (value === null) return true;
+      if (isColumnHeader(value)) return true;
+      if (usesHierarchicalColumns && (value.startsWith('# ') || value.startsWith('## '))) return true;
+      return value.startsWith('- ') || value.startsWith('%%') || value.startsWith('---');
+    };
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -109,8 +119,13 @@ export class SharedMarkdownParser {
         continue;
       }
 
+      if (!currentColumn && !currentTask && !board.title && line.startsWith('# ')) {
+        board.title = line.substring(2).trim();
+        continue;
+      }
+
       // Parse column header
-      if (line.startsWith('## ')) {
+      if (isColumnHeader(line)) {
         if (collectingDescription && currentTask && currentColumn) {
           currentColumn.cards.push(currentTask);
           collectingDescription = false;
@@ -158,12 +173,7 @@ export class SharedMarkdownParser {
             nextIndex++;
           }
           const nextLine = nextIndex < lines.length ? lines[nextIndex] : null;
-          const isStructuralBoundary = nextLine === null
-            || nextLine.startsWith('## ')
-            || nextLine.startsWith('- ')
-            || nextLine.startsWith('%%')
-            || nextLine.startsWith('---');
-          if (isStructuralBoundary) {
+          if (isStructuralBoundary(nextLine)) {
             continue;
           }
         }

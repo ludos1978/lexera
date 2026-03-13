@@ -356,6 +356,9 @@ mod tests {
         assert_eq!(json["ludosSync"]["enabled"], false);
         assert_eq!(json["ludosSync"]["running"], false);
         assert_eq!(json["ludosSync"]["configuredPort"], 13081);
+        assert_eq!(json["ludosSync"]["bookmarksUrl"], "http://localhost:13081/bookmarks/");
+        assert_eq!(json["ludosSync"]["caldavUrl"], "http://localhost:13081/caldav/");
+        assert_eq!(json["ludosSync"]["authEnabled"], false);
     }
 
     #[tokio::test]
@@ -379,6 +382,41 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp.into_body()).await;
         assert_eq!(json["port"], 9876);
+    }
+
+    #[tokio::test]
+    async fn list_logs_returns_recent_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = test_state(tmp.path());
+        let app = test_router(state);
+
+        crate::log_bridge::push_external_entry(
+            "info",
+            "lexera.test.logs",
+            "hello from logs test",
+        );
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/logs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = body_json(resp.into_body()).await;
+        let entries = json["entries"].as_array().expect("entries array");
+        assert!(entries.iter().any(|entry| {
+            entry["target"] == "lexera.test.logs"
+                && entry["message"]
+                    .as_str()
+                    .map(|message| message.contains("hello from logs test"))
+                    .unwrap_or(false)
+        }));
+        assert!(json["filePath"].as_str().is_some());
     }
 
     // -- Helper functions for reading SSE streams --

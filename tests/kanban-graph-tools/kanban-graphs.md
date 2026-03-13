@@ -3,9 +3,18 @@
 kanban-plugin: board
 
 fontSize: 1_0x
+generation: 10
+contentHash: d41aae321982e1ca89c788fdc04b0cffabcc0128ccb4391099615b0601d43927
+resolvedHash: 0f6c680867e9740961f4f831066173d468d9fd47cb7441a3a89a46203ff53572
+writerId: ef524ba5-36c2-4e86-8e1b-3ae90b51fbb8
+stickyStackMode: top
 ---
 
-## Mermaid Diagram Tests 13
+# ROW
+
+## PlantUML Diagram Tests
+
+### PlantUML Diagram Tests
 - [ ] ## graph styles
   This file tests various Mermaid diagram types for the Markdown Kanban extension. 
 - [ ] Test 1: Simple Flowchart
@@ -114,8 +123,11 @@ fontSize: 1_0x
   ![Mermaid Diagram](Media-kanban-graphs/mermaid-1765231704283.svg)
   
   
+- [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
 
-## PlantUML Diagram Tests
+## Mermaid Diagram Tests 13
+
+### Mermaid Diagram Tests 13
 - [ ] Test 1: Simple Sequence Diagram
   ```plantuml
   Alice -> Bob: Authentication Request
@@ -181,6 +193,8 @@ fontSize: 1_0x
   
 
 ## includes
+
+### includes
 - [ ] excali
   ![excali.excalidraw](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/excali.excalidraw)
   
@@ -203,5 +217,7 @@ fontSize: 1_0x
   
 - [ ] draw
   ![draw.drawio](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/draw.drawio)
+- [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
+- [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
 
 

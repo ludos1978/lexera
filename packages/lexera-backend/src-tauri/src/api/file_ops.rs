@@ -28,9 +28,6 @@ pub struct FindFileBody {
 
 #[derive(Deserialize)]
 pub struct ConvertPathBody {
-    #[serde(rename = "cardId")]
-    #[allow(dead_code)]
-    card_id: String,
     path: String,
     to: String, // "relative" or "absolute"
 }
@@ -408,6 +405,42 @@ kanban-plugin: board
             .await
             .unwrap();
 
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        // Relative traversal outside the board dir: FORBIDDEN if the target exists, NOT_FOUND otherwise
+        assert!(
+            resp.status() == StatusCode::FORBIDDEN || resp.status() == StatusCode::NOT_FOUND,
+            "Expected FORBIDDEN or NOT_FOUND for traversal, got {}",
+            resp.status()
+        );
+    }
+
+    #[tokio::test]
+    async fn serve_file_blocks_absolute_path_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = tmp.path().join("board.md");
+        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
+
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+
+        let app = test_router(state);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(&format!(
+                        "/boards/{}/file?path=/etc/passwd",
+                        board_id
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Absolute path outside the board directory must be rejected
+        assert!(
+            resp.status() == StatusCode::FORBIDDEN || resp.status() == StatusCode::NOT_FOUND,
+            "Expected FORBIDDEN or NOT_FOUND for /etc/passwd, got {}",
+            resp.status()
+        );
     }
 }

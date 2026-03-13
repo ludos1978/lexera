@@ -1,4 +1,3 @@
-
 ## Title
 
 ![](./green.png)
@@ -14,4 +13,3 @@
 ## Title 3
 
 ![](../blue.png)
-

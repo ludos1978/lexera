@@ -1515,12 +1515,34 @@ impl LocalStorage {
             (state.file_path.clone(), state.crdt.take())
         };
 
-        let content = fs::read_to_string(&file_path)?;
+        // Helper to restore the CRDT back into the board state.
+        // Called on early-return / error paths so the CRDT is never lost.
+        let restore_crdt = |crdt: Option<CrdtStore>, boards: &RwLock<HashMap<String, BoardState>>, id: &str| {
+            if let Some(crdt) = crdt {
+                if let Ok(mut boards) = boards.write() {
+                    if let Some(state) = boards.get_mut(id) {
+                        state.crdt = Some(crdt);
+                    }
+                }
+            }
+        };
+
+        let content = match fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                restore_crdt(old_crdt, &self.boards, board_id);
+                return Err(e.into());
+            }
+        };
         let board_dir = file_path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let mut board = Self::normalize_board_for_write(
-            &self.parse_with_includes(&content, board_id, &board_dir, &file_path)?,
-            &board_dir,
-        );
+        let parsed = match self.parse_with_includes(&content, board_id, &board_dir, &file_path) {
+            Ok(b) => b,
+            Err(e) => {
+                restore_crdt(old_crdt, &self.boards, board_id);
+                return Err(e);
+            }
+        };
+        let mut board = Self::normalize_board_for_write(&parsed, &board_dir);
 
         // Staleness check: reject loads with a lower generation than what we have in memory
         let new_gen = board
@@ -1541,14 +1563,7 @@ impl LocalStorage {
                 new_gen,
                 current_gen
             );
-            // Put the CRDT back before returning
-            if let Some(crdt) = old_crdt {
-                if let Ok(mut boards) = self.boards.write() {
-                    if let Some(state) = boards.get_mut(board_id) {
-                        state.crdt = Some(crdt);
-                    }
-                }
-            }
+            restore_crdt(old_crdt, &self.boards, board_id);
             return Ok(());
         }
         if new_gen == current_gen && new_gen > 0 {
@@ -1574,13 +1589,7 @@ impl LocalStorage {
                 && existing_resolved_hash.as_deref() == Some(&new_resolved_hash)
             {
                 // Same generation, same content — no real change
-                if let Some(crdt) = old_crdt {
-                    if let Ok(mut boards) = self.boards.write() {
-                        if let Some(state) = boards.get_mut(board_id) {
-                            state.crdt = Some(crdt);
-                        }
-                    }
-                }
+                restore_crdt(old_crdt, &self.boards, board_id);
                 return Ok(());
             }
             log::warn!(
@@ -1590,7 +1599,13 @@ impl LocalStorage {
             );
         }
 
-        let metadata = fs::metadata(&file_path)?;
+        let metadata = match fs::metadata(&file_path) {
+            Ok(m) => m,
+            Err(e) => {
+                restore_crdt(old_crdt, &self.boards, board_id);
+                return Err(e.into());
+            }
+        };
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
 
         // Update CRDT with changes from disk

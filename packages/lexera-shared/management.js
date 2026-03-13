@@ -49,6 +49,7 @@ var ManagementUI = (function () {
   var cachedDefaultWorkspaceId = null;
   var cachedBoards = [];
   var currentConfig = null;
+  var currentLudosSync = null;
   var expandedBoardId = null;
   var activeBoardTab = {};
   var initialized = false;
@@ -56,6 +57,14 @@ var ManagementUI = (function () {
   var delegateChangeHandler = null;
   var lastMutationAt = 0;
   var SELF_ECHO_WINDOW_MS = 2000;
+  var logEntries = [];
+  var logFilePath = '';
+  var logStreamSource = null;
+  var logStreamRetryTimer = null;
+  var logStreamState = 'idle';
+  var logViewerPaused = false;
+  var logFilter = 'all';
+  var MAX_RENDERED_LOG_ENTRIES = 500;
 
   // ── Helpers ──
 
@@ -68,6 +77,30 @@ var ManagementUI = (function () {
 
   function notify(msg) {
     if (callbacks && typeof callbacks.onNotify === 'function') callbacks.onNotify(msg);
+  }
+
+  function normalizeOptionalText(value) {
+    if (value == null) return null;
+    var trimmed = String(value).trim();
+    return trimmed ? trimmed : null;
+  }
+
+  function renderTriStateSelectHtml(attrs, value) {
+    var current = value == null ? '' : String(Boolean(value));
+    var attrText = attrs ? ' ' + attrs : '';
+    var html = '<select class="mgmt-field-input" ' + attrText + '>';
+    html += '<option value=""' + (current === '' ? ' selected' : '') + '>(inherit)</option>';
+    html += '<option value="true"' + (current === 'true' ? ' selected' : '') + '>Enabled</option>';
+    html += '<option value="false"' + (current === 'false' ? ' selected' : '') + '>Disabled</option>';
+    html += '</select>';
+    return html;
+  }
+
+  function parseTriStateSelectValue(select) {
+    if (!select) return null;
+    if (select.value === 'true') return true;
+    if (select.value === 'false') return false;
+    return null;
   }
 
   function confirm(msg, onOk) {
@@ -107,6 +140,11 @@ var ManagementUI = (function () {
   }
 
   function destroy() {
+    disconnectLogStream();
+    if (logStreamRetryTimer) {
+      clearTimeout(logStreamRetryTimer);
+      logStreamRetryTimer = null;
+    }
     if (delegateHandler) {
       document.removeEventListener('click', delegateHandler);
       delegateHandler = null;
@@ -123,10 +161,16 @@ var ManagementUI = (function () {
     cachedDefaultWorkspaceId = null;
     cachedBoards = [];
     currentConfig = null;
+    currentLudosSync = null;
     expandedBoardId = null;
     activeBoardTab = {};
     initialized = false;
     lastMutationAt = 0;
+    logEntries = [];
+    logFilePath = '';
+    logStreamState = 'idle';
+    logViewerPaused = false;
+    logFilter = 'all';
   }
 
   function refresh(section) {
@@ -137,6 +181,7 @@ var ManagementUI = (function () {
     if (section === 'connections') { loadConnections(); return; }
     if (section === 'peers') { loadDiscoveredPeers(); return; }
     if (section === 'workspaces') { loadWorkspaces(); return; }
+    if (section === 'logs') { loadLogs(); return; }
     loadAll();
   }
 
@@ -147,6 +192,8 @@ var ManagementUI = (function () {
       loadNetworkInterfaces(),
       loadTheme(),
       loadWorkspaces(),
+      loadLudosSyncConfig(),
+      loadLogs(),
     ]);
     await loadMyBoards();
     await loadConnections();
@@ -162,6 +209,7 @@ var ManagementUI = (function () {
     html += '<div class="mgmt-top-tab-bar">';
     html += '<button class="mgmt-top-tab active" data-mgmt-top-tab="sharing">Sharing</button>';
     html += '<button class="mgmt-top-tab" data-mgmt-top-tab="config">Configuration</button>';
+    html += '<button class="mgmt-top-tab" data-mgmt-top-tab="logs">Logs</button>';
     html += '</div>';
 
     // ── Sharing tab ──
@@ -263,6 +311,37 @@ var ManagementUI = (function () {
     html += '<div id="mgmt-server-restart-note" class="mgmt-restart-note" style="display:none"></div>';
     html += '</div>';
 
+    // WebDAV / CalDAV
+    html += '<div class="mgmt-section" data-mgmt-section="ludos-sync">';
+    html += '<div class="mgmt-section-title">WebDAV / CalDAV</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-ludos-enabled"> Enable module</label>';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label" for="mgmt-ludos-port">Port</label>';
+    html += '<input class="mgmt-field-input" type="number" id="mgmt-ludos-port" min="1" max="65535" placeholder="13081">';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-ludos-bookmarks-enabled"> WebDAV bookmarks</label>';
+    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-ludos-calendar-enabled"> CalDAV calendar</label>';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label" for="mgmt-ludos-username">Username</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-ludos-username" placeholder="Optional">';
+    html += '</div>';
+    html += '<div class="mgmt-field-row">';
+    html += '<label class="mgmt-field-label" for="mgmt-ludos-password">Password</label>';
+    html += '<input class="mgmt-field-input" type="password" id="mgmt-ludos-password" placeholder="Optional">';
+    html += '</div>';
+    html += '<div class="mgmt-field-row" style="justify-content:flex-end">';
+    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="restart-ludos-sync">Restart</button>';
+    html += '<button class="mgmt-btn mgmt-btn-primary mgmt-btn-small" data-mgmt-action="save-ludos-sync">Save</button>';
+    html += '</div>';
+    html += '<div id="mgmt-ludos-sync-status" class="mgmt-info-stack"></div>';
+    html += '<div id="mgmt-ludos-sync-endpoints" class="mgmt-info-stack"></div>';
+    html += '<div id="mgmt-ludos-sync-config-path" class="mgmt-info-text"></div>';
+    html += '</div>';
+
     // Theme
     html += '<div class="mgmt-section" data-mgmt-section="theme">';
     html += '<div class="mgmt-section-title">Theme</div>';
@@ -277,6 +356,27 @@ var ManagementUI = (function () {
     html += '</div>';
 
     html += '</div>'; // end config tab
+
+    // ── Logs tab ──
+    html += '<div class="mgmt-top-tab-content" data-mgmt-top-panel="logs">';
+    html += '<div class="mgmt-section" data-mgmt-section="logs">';
+    html += '<div class="mgmt-section-title">Logs</div>';
+    html += '<div class="mgmt-field-row mgmt-log-toolbar">';
+    html += '<label class="mgmt-field-label" for="mgmt-log-filter">Source</label>';
+    html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-log-filter">';
+    html += '<option value="all">All</option>';
+    html += '<option value="backend">Backend</option>';
+    html += '<option value="ludos-sync">WebDAV / CalDAV</option>';
+    html += '<option value="errors">Warnings / Errors</option>';
+    html += '</select>';
+    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="toggle-log-pause">Pause</button>';
+    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="refresh-logs">Refresh</button>';
+    html += '</div>';
+    html += '<div id="mgmt-log-meta" class="mgmt-info-stack"></div>';
+    html += '<div id="mgmt-log-file" class="mgmt-info-text"></div>';
+    html += '<div id="mgmt-logs-view" class="mgmt-log-view"><div class="mgmt-list-empty">Loading logs...</div></div>';
+    html += '</div>';
+    html += '</div>'; // end logs tab
 
     container.innerHTML = html;
 
@@ -302,6 +402,7 @@ var ManagementUI = (function () {
         topTab.classList.add('active');
         var panel = container.querySelector('[data-mgmt-top-panel="' + tabName + '"]');
         if (panel) panel.classList.add('active');
+        if (tabName === 'logs') renderLogs(false);
         return;
       }
 
@@ -363,6 +464,13 @@ var ManagementUI = (function () {
         return;
       }
 
+      var logFilterSelect = e.target.closest('#mgmt-log-filter');
+      if (logFilterSelect) {
+        logFilter = logFilterSelect.value || 'all';
+        renderLogs();
+        return;
+      }
+
       // Theme select
       var themeSelect = e.target.closest('#mgmt-theme-select');
       if (themeSelect) {
@@ -417,6 +525,10 @@ var ManagementUI = (function () {
       case 'add-board': addBoard(); break;
       case 'save-name': saveName(); break;
       case 'save-server': saveServerConfig(); break;
+      case 'save-ludos-sync': saveLudosSyncConfig(); break;
+      case 'restart-ludos-sync': restartLudosSync(); break;
+      case 'toggle-log-pause': toggleLogPause(); break;
+      case 'refresh-logs': loadLogs(); break;
       case 'join-remote': joinRemote(); break;
       case 'create-invite': createInvite(boardId); break;
       case 'revoke-invite': revokeInvite(boardId, btn.getAttribute('data-mgmt-token')); break;
@@ -428,6 +540,8 @@ var ManagementUI = (function () {
       case 'use-peer': usePeer(btn.getAttribute('data-mgmt-peer-url')); break;
       case 'rename-workspace': renameWorkspace(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'delete-workspace': deleteWorkspace(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-ws-name')); break;
+      case 'save-workspace-sync': saveWorkspaceSync(btn.getAttribute('data-mgmt-ws-id')); break;
+      case 'save-board-sync': saveBoardSync(boardId); break;
     }
   }
 
@@ -657,6 +771,272 @@ var ManagementUI = (function () {
     } catch (e) { /* ignore */ }
   }
 
+  // ── Ludos Sync / WebDAV / CalDAV ──
+
+  function renderLudosSyncStatus(data) {
+    var statusEl = container.querySelector('#mgmt-ludos-sync-status');
+    var endpointsEl = container.querySelector('#mgmt-ludos-sync-endpoints');
+    var configPathEl = container.querySelector('#mgmt-ludos-sync-config-path');
+    if (!statusEl || !endpointsEl || !configPathEl) return;
+
+    var status = data && data.status ? data.status : {};
+    var statusText = status.running ? 'Running' : 'Stopped';
+    var html = '';
+    html += '<div><strong>Status:</strong> ' + statusText + '</div>';
+    html += '<div><strong>Enabled:</strong> ' + (status.enabled ? 'Yes' : 'No') + '</div>';
+    html += '<div><strong>WebDAV:</strong> ' + (status.bookmarksEnabled ? 'On' : 'Off') + '</div>';
+    html += '<div><strong>CalDAV:</strong> ' + (status.calendarEnabled ? 'On' : 'Off') + '</div>';
+    if (status.pid) html += '<div><strong>PID:</strong> ' + esc(status.pid) + '</div>';
+    html += '<div><strong>Auth:</strong> ' + (status.authEnabled ? ('Enabled' + (status.authUsername ? ' (' + esc(status.authUsername) + ')' : '')) : 'Disabled') + '</div>';
+    statusEl.innerHTML = html;
+
+    var endpoints = '';
+    if (status.bookmarksUrl) endpoints += '<div><strong>Bookmarks:</strong> ' + esc(status.bookmarksUrl) + '</div>';
+    if (status.caldavUrl) endpoints += '<div><strong>CalDAV:</strong> ' + esc(status.caldavUrl) + '</div>';
+    if (status.caldavDiscoveryUrl) endpoints += '<div><strong>Discovery:</strong> ' + esc(status.caldavDiscoveryUrl) + '</div>';
+    endpointsEl.innerHTML = endpoints;
+    configPathEl.textContent = status.generatedConfigPath ? ('Generated config: ' + status.generatedConfigPath) : '';
+  }
+
+  async function loadLudosSyncConfig() {
+    try {
+      currentLudosSync = await api.get('/config/ludos-sync');
+    } catch (e) {
+      currentLudosSync = null;
+    }
+
+    var config = currentLudosSync && currentLudosSync.config ? currentLudosSync.config : {};
+    var enabledInput = container.querySelector('#mgmt-ludos-enabled');
+    var portInput = container.querySelector('#mgmt-ludos-port');
+    var bookmarksInput = container.querySelector('#mgmt-ludos-bookmarks-enabled');
+    var calendarInput = container.querySelector('#mgmt-ludos-calendar-enabled');
+    var usernameInput = container.querySelector('#mgmt-ludos-username');
+    var passwordInput = container.querySelector('#mgmt-ludos-password');
+
+    if (enabledInput) enabledInput.checked = !!config.enabled;
+    if (portInput) portInput.value = config.port || 13081;
+    if (bookmarksInput) bookmarksInput.checked = config.bookmarksEnabled !== false;
+    if (calendarInput) calendarInput.checked = config.calendarEnabled !== false;
+    if (usernameInput) usernameInput.value = config.username || '';
+    if (passwordInput) passwordInput.value = config.password || '';
+
+    renderLudosSyncStatus(currentLudosSync);
+  }
+
+  async function saveLudosSyncConfig() {
+    var enabledInput = container.querySelector('#mgmt-ludos-enabled');
+    var portInput = container.querySelector('#mgmt-ludos-port');
+    var bookmarksInput = container.querySelector('#mgmt-ludos-bookmarks-enabled');
+    var calendarInput = container.querySelector('#mgmt-ludos-calendar-enabled');
+    var usernameInput = container.querySelector('#mgmt-ludos-username');
+    var passwordInput = container.querySelector('#mgmt-ludos-password');
+
+    var port = parseInt(portInput && portInput.value ? portInput.value : '13081', 10);
+    if (isNaN(port) || port <= 0 || port > 65535) {
+      notify('Port must be between 1 and 65535');
+      return;
+    }
+
+    var payload = {
+      enabled: !!(enabledInput && enabledInput.checked),
+      port: port,
+      bookmarksEnabled: !!(bookmarksInput && bookmarksInput.checked),
+      calendarEnabled: !!(calendarInput && calendarInput.checked),
+      username: normalizeOptionalText(usernameInput && usernameInput.value),
+      password: normalizeOptionalText(passwordInput && passwordInput.value),
+    };
+
+    if (payload.enabled && !payload.bookmarksEnabled && !payload.calendarEnabled) {
+      notify('Enable at least one of WebDAV bookmarks or CalDAV calendar');
+      return;
+    }
+
+    try {
+      currentLudosSync = await api.put('/config/ludos-sync', payload);
+      renderLudosSyncStatus(currentLudosSync);
+      notify('WebDAV / CalDAV config saved');
+    } catch (e) {
+      notify('Failed to save WebDAV / CalDAV config: ' + (e.message || e));
+    }
+  }
+
+  async function restartLudosSync() {
+    try {
+      currentLudosSync = await api.post('/config/ludos-sync/restart', {});
+      renderLudosSyncStatus({ status: currentLudosSync.status || currentLudosSync });
+      notify('WebDAV / CalDAV module restarted');
+    } catch (e) {
+      notify('Failed to restart WebDAV / CalDAV module: ' + (e.message || e));
+    }
+  }
+
+  // ── Logs ──
+
+  function normalizeLogEntry(entry) {
+    if (!entry) return null;
+    return {
+      timestampMs: Number(entry.timestampMs || entry.timestamp_ms || Date.now()),
+      level: String(entry.level || 'info').toLowerCase(),
+      target: String(entry.target || 'backend'),
+      message: String(entry.message || ''),
+    };
+  }
+
+  function logSourceForEntry(entry) {
+    return entry && String(entry.target || '').indexOf('ludos-sync') === 0 ? 'ludos-sync' : 'backend';
+  }
+
+  function formatLogTimestamp(timestampMs) {
+    try {
+      return new Date(timestampMs).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function logMatchesFilter(entry) {
+    if (logFilter === 'backend') return logSourceForEntry(entry) === 'backend';
+    if (logFilter === 'ludos-sync') return logSourceForEntry(entry) === 'ludos-sync';
+    if (logFilter === 'errors') return entry.level === 'warn' || entry.level === 'error';
+    return true;
+  }
+
+  function renderLogs(shouldStickToBottom) {
+    var viewEl = container && container.querySelector ? container.querySelector('#mgmt-logs-view') : null;
+    var metaEl = container && container.querySelector ? container.querySelector('#mgmt-log-meta') : null;
+    var fileEl = container && container.querySelector ? container.querySelector('#mgmt-log-file') : null;
+    var pauseBtn = container && container.querySelector ? container.querySelector('[data-mgmt-action="toggle-log-pause"]') : null;
+    var filterSelect = container && container.querySelector ? container.querySelector('#mgmt-log-filter') : null;
+    if (!viewEl || !metaEl || !fileEl) return;
+
+    var nearBottom = typeof shouldStickToBottom === 'boolean'
+      ? shouldStickToBottom
+      : (viewEl.scrollHeight - (viewEl.scrollTop + viewEl.clientHeight) < 24);
+    var filtered = logEntries.filter(logMatchesFilter);
+    var rendered = filtered.slice(-MAX_RENDERED_LOG_ENTRIES);
+    var html = '';
+
+    if (!rendered.length) {
+      html = '<div class="mgmt-list-empty">No matching log entries</div>';
+    } else {
+      for (var i = 0; i < rendered.length; i++) {
+        var entry = rendered[i];
+        var source = logSourceForEntry(entry);
+        var sourceLabel = source === 'ludos-sync' ? 'WebDAV / CalDAV' : 'Backend';
+        html += '<div class="mgmt-log-line mgmt-log-level-' + esc(entry.level) + '">';
+        html += '<span class="mgmt-log-ts">' + esc(formatLogTimestamp(entry.timestampMs)) + '</span>';
+        html += '<span class="mgmt-log-source mgmt-log-source-' + esc(source) + '">' + esc(sourceLabel) + '</span>';
+        html += '<span class="mgmt-log-target">' + esc(entry.target) + '</span>';
+        html += '<span class="mgmt-log-message">' + esc(entry.message) + '</span>';
+        html += '</div>';
+      }
+    }
+
+    viewEl.innerHTML = html;
+    if (nearBottom) viewEl.scrollTop = viewEl.scrollHeight;
+    if (pauseBtn) pauseBtn.textContent = logViewerPaused ? 'Resume' : 'Pause';
+    if (filterSelect && filterSelect.value !== logFilter) filterSelect.value = logFilter;
+
+    var totalCount = logEntries.length;
+    var matchingCount = filtered.length;
+    var streamText = logStreamState === 'live'
+      ? 'Live'
+      : (logStreamState === 'retrying' ? 'Reconnecting' : (logStreamState === 'error' ? 'Stream error' : 'Snapshot'));
+    var metaHtml = '';
+    metaHtml += '<div><strong>Viewer:</strong> ' + (logViewerPaused ? 'Paused' : 'Streaming') + '</div>';
+    metaHtml += '<div><strong>Stream:</strong> ' + streamText + '</div>';
+    metaHtml += '<div><strong>Entries:</strong> ' + matchingCount + ' shown / ' + totalCount + ' loaded</div>';
+    metaEl.innerHTML = metaHtml;
+    fileEl.textContent = logFilePath ? ('Aggregated log file: ' + logFilePath) : '';
+  }
+
+  function replaceLogEntries(entries, filePath) {
+    logEntries = (entries || [])
+      .map(normalizeLogEntry)
+      .filter(Boolean)
+      .sort(function (a, b) { return a.timestampMs - b.timestampMs; });
+    logFilePath = filePath || '';
+    renderLogs(true);
+  }
+
+  function appendLogEntry(entry) {
+    var normalized = normalizeLogEntry(entry);
+    if (!normalized) return;
+    logEntries.push(normalized);
+    while (logEntries.length > 2000) logEntries.shift();
+    if (!logViewerPaused) renderLogs();
+  }
+
+  function disconnectLogStream() {
+    if (logStreamSource && typeof logStreamSource.close === 'function') {
+      logStreamSource.close();
+    }
+    logStreamSource = null;
+  }
+
+  function scheduleLogStreamRetry() {
+    if (logStreamRetryTimer) return;
+    logStreamState = 'retrying';
+    renderLogs(false);
+    logStreamRetryTimer = setTimeout(function () {
+      logStreamRetryTimer = null;
+      connectLogStream();
+    }, 1500);
+  }
+
+  function connectLogStream() {
+    if (!callbacks || typeof callbacks.openLogStream !== 'function') {
+      logStreamState = 'idle';
+      renderLogs(false);
+      return;
+    }
+    if (logStreamSource) return;
+
+    var source = callbacks.openLogStream(function (entry) {
+      logStreamState = 'live';
+      appendLogEntry(entry);
+    }, function () {
+      logStreamState = 'live';
+      renderLogs(false);
+    }, function () {
+      disconnectLogStream();
+      logStreamState = 'error';
+      renderLogs(false);
+      scheduleLogStreamRetry();
+    });
+
+    if (!source) {
+      scheduleLogStreamRetry();
+      return;
+    }
+
+    logStreamState = 'connecting';
+    logStreamSource = source;
+    renderLogs(false);
+  }
+
+  async function loadLogs() {
+    try {
+      var data = await api.get('/logs');
+      replaceLogEntries(data && data.entries ? data.entries : [], data && data.filePath ? data.filePath : '');
+      connectLogStream();
+    } catch (e) {
+      logStreamState = 'error';
+      renderLogs(false);
+      notify('Failed to load logs: ' + (e.message || e));
+    }
+  }
+
+  function toggleLogPause() {
+    logViewerPaused = !logViewerPaused;
+    renderLogs(false);
+  }
+
   // ── Workspaces ──
 
   async function loadWorkspaces() {
@@ -683,6 +1063,7 @@ var ManagementUI = (function () {
     for (var i = 0; i < cachedWorkspaces.length; i++) {
       var ws = cachedWorkspaces[i];
       var boardCount = typeof ws.board_count === 'number' ? ws.board_count : null;
+      html += '<div class="mgmt-workspace-block">';
       html += '<div class="mgmt-workspace-row">';
       html += '<input class="mgmt-field-input mgmt-ws-name-input" data-mgmt-ws-name-id="' + esc(ws.id) + '" value="' + esc(ws.name) + '">';
       if (boardCount != null) {
@@ -690,6 +1071,21 @@ var ManagementUI = (function () {
       }
       html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="rename-workspace" data-mgmt-ws-id="' + esc(ws.id) + '">Rename</button>';
       html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-danger" data-mgmt-action="delete-workspace" data-mgmt-ws-id="' + esc(ws.id) + '" data-mgmt-ws-name="' + esc(ws.name) + '">&times;</button>';
+      html += '</div>';
+      html += '<div class="mgmt-subsection-title">Sync Defaults</div>';
+      html += '<div class="mgmt-sync-grid">';
+      html += '<label>Bookmark Sync</label>';
+      html += renderTriStateSelectHtml('id="mgmt-ws-bookmark-sync-' + esc(ws.id) + '"', ws.bookmarkSync);
+      html += '<label>Calendar Sync</label>';
+      html += renderTriStateSelectHtml('id="mgmt-ws-calendar-sync-' + esc(ws.id) + '"', ws.calendarSync);
+      html += '<label>Calendar Slug</label>';
+      html += '<input class="mgmt-field-input" type="text" id="mgmt-ws-calendar-slug-' + esc(ws.id) + '" value="' + esc(ws.calendarSlug || '') + '" placeholder="Optional">';
+      html += '<label>Calendar Name</label>';
+      html += '<input class="mgmt-field-input" type="text" id="mgmt-ws-calendar-name-' + esc(ws.id) + '" value="' + esc(ws.calendarName || '') + '" placeholder="Optional">';
+      html += '</div>';
+      html += '<div class="mgmt-settings-actions">';
+      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-workspace-sync" data-mgmt-ws-id="' + esc(ws.id) + '">Save Sync Defaults</button>';
+      html += '</div>';
       html += '</div>';
     }
     el.innerHTML = html;
@@ -768,6 +1164,28 @@ var ManagementUI = (function () {
       loadMyBoards();
     } catch (e) {
       notify('Failed to assign workspaces: ' + (e.message || e));
+    }
+  }
+
+  async function saveWorkspaceSync(wsId) {
+    var bookmarkSelect = container.querySelector('#mgmt-ws-bookmark-sync-' + wsId);
+    var calendarSelect = container.querySelector('#mgmt-ws-calendar-sync-' + wsId);
+    var slugInput = container.querySelector('#mgmt-ws-calendar-slug-' + wsId);
+    var nameInput = container.querySelector('#mgmt-ws-calendar-name-' + wsId);
+
+    var payload = {
+      bookmarkSync: parseTriStateSelectValue(bookmarkSelect),
+      calendarSync: parseTriStateSelectValue(calendarSelect),
+      calendarSlug: normalizeOptionalText(slugInput && slugInput.value),
+      calendarName: normalizeOptionalText(nameInput && nameInput.value),
+    };
+
+    try {
+      await api.put('/config/workspaces/' + wsId + '/sync', payload);
+      await loadWorkspaces();
+      notify('Workspace sync defaults saved');
+    } catch (e) {
+      notify('Failed to save workspace sync defaults: ' + (e.message || e));
     }
   }
 
@@ -886,7 +1304,27 @@ var ManagementUI = (function () {
   }
 
   function renderBoardSettingsForm(boardId, settings) {
-    var html = '<div class="mgmt-settings-grid">';
+    var board = cachedBoards.filter(function (b) { return b.id === boardId; })[0] || {};
+    var html = '';
+    html += '<div class="mgmt-subsection-title">WebDAV / CalDAV Overrides</div>';
+    html += '<div class="mgmt-sync-grid">';
+    html += '<label>XBEL Name</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-board-xbel-name-' + esc(boardId) + '" value="' + esc(board.xbelName || board.xbel_name || '') + '" placeholder="Optional">';
+    html += '<label>Bookmark Sync</label>';
+    html += renderTriStateSelectHtml('id="mgmt-board-bookmark-sync-' + esc(boardId) + '"', board.bookmarkSync != null ? board.bookmarkSync : board.bookmark_sync);
+    html += '<label>Calendar Sync</label>';
+    html += renderTriStateSelectHtml('id="mgmt-board-calendar-sync-' + esc(boardId) + '"', board.calendarSync != null ? board.calendarSync : board.calendar_sync);
+    html += '<label>Calendar Slug</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-board-calendar-slug-' + esc(boardId) + '" value="' + esc(board.calendarSlug || board.calendar_slug || '') + '" placeholder="Optional">';
+    html += '<label>Calendar Name</label>';
+    html += '<input class="mgmt-field-input" type="text" id="mgmt-board-calendar-name-' + esc(boardId) + '" value="' + esc(board.calendarName || board.calendar_name || '') + '" placeholder="Optional">';
+    html += '</div>';
+    html += '<div class="mgmt-settings-actions">';
+    html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-board-sync" data-mgmt-board="' + esc(boardId) + '">Save Sync Overrides</button>';
+    html += '</div>';
+
+    html += '<div class="mgmt-subsection-title">Board Display Settings</div>';
+    html += '<div class="mgmt-settings-grid">';
     for (var i = 0; i < BOARD_SETTINGS_FIELDS.length; i++) {
       var f = BOARD_SETTINGS_FIELDS[i];
       var val = settings[f.key] != null ? settings[f.key] : '';
@@ -908,6 +1346,24 @@ var ManagementUI = (function () {
     html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-settings" data-mgmt-board="' + esc(boardId) + '">Save Settings</button>';
     html += '</div>';
     return html;
+  }
+
+  async function saveBoardSync(boardId) {
+    var payload = {
+      xbelName: normalizeOptionalText((container.querySelector('#mgmt-board-xbel-name-' + boardId) || {}).value),
+      bookmarkSync: parseTriStateSelectValue(container.querySelector('#mgmt-board-bookmark-sync-' + boardId)),
+      calendarSync: parseTriStateSelectValue(container.querySelector('#mgmt-board-calendar-sync-' + boardId)),
+      calendarSlug: normalizeOptionalText((container.querySelector('#mgmt-board-calendar-slug-' + boardId) || {}).value),
+      calendarName: normalizeOptionalText((container.querySelector('#mgmt-board-calendar-name-' + boardId) || {}).value),
+    };
+
+    try {
+      await api.put('/config/boards/' + boardId + '/sync', payload);
+      await loadMyBoards();
+      notify('Board sync overrides saved');
+    } catch (e) {
+      notify('Failed to save board sync overrides: ' + (e.message || e));
+    }
   }
 
   function toggleBoardDetails(boardId) {

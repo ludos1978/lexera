@@ -1,9 +1,13 @@
 /// Tauri commands for the kanban viewer.
+use base64::Engine;
+use clipboard_rs::{common::RustImage, Clipboard, ClipboardContext as CrsContext};
 use serde::Deserialize;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{AppHandle, LogicalPosition, Position, Window};
+
+const MAX_CLIPBOARD_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 
 /// Read the backend URL from the shared config file (~/.config/lexera/sync.json).
 #[tauri::command]
@@ -177,6 +181,45 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
     }
     std::fs::write(&resolved, content)
         .map_err(|e| format!("Failed to write '{}': {}", resolved.to_string_lossy(), e))
+}
+
+#[tauri::command]
+pub fn read_clipboard_image() -> Result<serde_json::Value, String> {
+    let ctx = CrsContext::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;
+    let image = ctx
+        .get_image()
+        .map_err(|_| "No image found in clipboard".to_string())?;
+
+    let (width, height) = image.get_size();
+    if width == 0 || height == 0 {
+        return Err("Clipboard image has invalid dimensions".to_string());
+    }
+
+    let png = image
+        .to_png()
+        .map_err(|e| format!("Failed to convert clipboard image to PNG: {}", e))?;
+    let png_bytes = png.get_bytes();
+    if png_bytes.is_empty() {
+        return Err("Clipboard image is empty".to_string());
+    }
+    if png_bytes.len() > MAX_CLIPBOARD_IMAGE_BYTES {
+        return Err(format!(
+            "Clipboard image exceeds {} bytes",
+            MAX_CLIPBOARD_IMAGE_BYTES
+        ));
+    }
+
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let filename = format!("clipboard-{}.png", timestamp);
+    let data = base64::engine::general_purpose::STANDARD.encode(png_bytes);
+
+    Ok(serde_json::json!({
+        "data": data,
+        "filename": filename,
+    }))
 }
 
 #[tauri::command]

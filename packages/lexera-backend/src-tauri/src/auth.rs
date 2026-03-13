@@ -289,20 +289,8 @@ struct AuthData {
 
 #[derive(Debug, Error)]
 pub enum AuthError {
-    #[error("User not found")]
-    UserNotFound,
-
     #[error("User already exists")]
     UserAlreadyExists,
-
-    #[error("Room not found")]
-    RoomNotFound,
-
-    #[error("Permission denied")]
-    PermissionDenied,
-
-    #[error("Invalid role")]
-    InvalidRole,
 }
 
 #[cfg(test)]

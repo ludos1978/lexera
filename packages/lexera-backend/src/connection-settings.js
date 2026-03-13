@@ -190,6 +190,24 @@
     if (fallbackPeersInterval) { clearInterval(fallbackPeersInterval); fallbackPeersInterval = null; }
   }
 
+  function openLogStream(onEntry, onOpen, onError) {
+    if (!baseUrl) return null;
+    var es = new EventSource(baseUrl + '/logs/stream');
+    es.onmessage = function (event) {
+      if (!onEntry) return;
+      try {
+        onEntry(JSON.parse(event.data));
+      } catch (_) {}
+    };
+    es.onopen = function (event) {
+      if (onOpen) onOpen(event);
+    };
+    es.onerror = function (event) {
+      if (onError) onError(event);
+    };
+    return es;
+  }
+
   // ── Init ──
 
   async function ensureBackendConnection(reason) {
@@ -218,6 +236,7 @@
           onThemeChange: function (themeId) {
             if (typeof applyLexeraTheme === 'function') applyLexeraTheme(themeId);
           },
+          openLogStream: openLogStream,
           onNotify: function (msg) {
             console.info('[management]', msg);
           },

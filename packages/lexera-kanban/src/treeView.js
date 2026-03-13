@@ -21,7 +21,7 @@
 var TreeView = (function () {
   'use strict';
 
-  var GUIDE_WIDTH = 12; // px per indent level
+  var GUIDE_WIDTH = 12; // fallback px per indent level
 
   // --- Internal helpers ---
 
@@ -29,13 +29,31 @@ var TreeView = (function () {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   }
 
+  function readCssPixelVar(name, fallback) {
+    var raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+    var value = parseFloat(raw);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
   function computeNodePadLeft() {
     var s = getComputedStyle(document.documentElement).getPropertyValue('--ui-scale');
     return 6 * (parseFloat(s) || 1);
   }
 
+  function computeGuideWidth() {
+    return readCssPixelVar('--tree-indent-step', GUIDE_WIDTH);
+  }
+
+  function computeGuideCenter(guideWidth) {
+    var fallback = Math.max(0, Math.round((guideWidth || GUIDE_WIDTH) / 2) - 1);
+    return readCssPixelVar('--tree-indent-guide-center', fallback);
+  }
+
   function getNodeDragIconSvg(nodeType) {
     var value = String(nodeType || '').trim().toLowerCase();
+    if (value === 'board') {
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"></rect><rect x="6" y="6" width="5" height="5" rx="1"></rect><rect x="13" y="6" width="5" height="5" rx="1"></rect><rect x="6" y="13" width="12" height="5" rx="1"></rect></svg>';
+    }
     if (value === 'row') {
       return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="6" rx="1"></rect><rect x="3" y="13" width="18" height="8" rx="1"></rect></svg>';
     }
@@ -60,20 +78,52 @@ var TreeView = (function () {
 
   function applyChildrenGuides(container, parentLastFlags, nodeLeftPad) {
     container.style.position = 'relative';
+    var guideWidth = computeGuideWidth();
+    var guideCenter = computeGuideCenter(guideWidth);
     for (var g = 0; g < parentLastFlags.length; g++) {
       if (!parentLastFlags[g]) {
         var line = document.createElement('span');
         line.className = 'tree-children-guide';
-        line.style.left = (nodeLeftPad + g * GUIDE_WIDTH + 5) + 'px';
+        line.style.left = (nodeLeftPad + g * guideWidth + guideCenter) + 'px';
         container.appendChild(line);
       }
     }
   }
 
+  function getNodeEntry(nodeEl) {
+    if (!nodeEl || !nodeEl.parentElement) return null;
+    var entry = nodeEl.parentElement;
+    return entry.classList && entry.classList.contains('tree-entry') ? entry : null;
+  }
+
+  function getNodeChildrenContainer(nodeEl) {
+    var entry = getNodeEntry(nodeEl);
+    if (!entry) return null;
+    for (var i = 0; i < entry.children.length; i++) {
+      var child = entry.children[i];
+      if (child.classList && child.classList.contains('tree-children')) {
+        return child;
+      }
+    }
+    return null;
+  }
+
+  function getChildrenOwnerNode(childrenEl) {
+    if (!childrenEl || !childrenEl.parentElement) return null;
+    var entry = childrenEl.parentElement;
+    if (!entry.classList || !entry.classList.contains('tree-entry')) return null;
+    for (var i = 0; i < entry.children.length; i++) {
+      var child = entry.children[i];
+      if (child.classList && child.classList.contains('tree-node')) {
+        return child;
+      }
+    }
+    return null;
+  }
+
   // --- Recursive renderer ---
 
   function renderNode(node, parentLastFlags, isLast, options, nodePadLeft, depth) {
-    var fragment = document.createDocumentFragment();
     var esc = options.escapeHtml || function (s) { return s; };
     var level = depth || 0;
 
@@ -82,11 +132,21 @@ var TreeView = (function () {
     var showToggle = node.hasToggle != null ? node.hasToggle : hasChildren;
     var showGrip = node.grip !== false;
 
+    var entry = document.createElement('div');
+    entry.className = 'tree-entry' + (node.type ? ' tree-entry-' + node.type : '');
+    entry.setAttribute('data-tree-depth', String(level));
+    entry.setAttribute('role', 'none');
+
     // Create .tree-node
     var el = document.createElement('div');
     el.className = 'tree-node' + (node.type ? ' tree-' + node.type : '');
     if (node.id) el.setAttribute('data-tree-id', node.id);
     el.setAttribute('data-tree-depth', String(level));
+    el.setAttribute('role', 'treeitem');
+    el.setAttribute('aria-level', String(level));
+    if (showToggle) {
+      el.setAttribute('aria-expanded', node.expanded ? 'true' : 'false');
+    }
 
     // Set arbitrary attributes
     if (node.attrs) {
@@ -97,24 +157,36 @@ var TreeView = (function () {
       }
     }
 
+    var presenceHtml = '<span class="tree-meta-presence tree-meta-presence-spacer" aria-hidden="true"></span>';
+    var countHtml = '<span class="tree-count' + (node.count != null ? '' : ' hidden') + '">' +
+      (node.count != null ? esc(String(node.count)) : '') +
+      '</span>';
+    var actionHtml = '<span class="tree-meta-action tree-meta-action-spacer" aria-hidden="true"></span>';
+    var gripHtml = showGrip
+      ? '<span class="tree-grip entity-drag-icon entity-drag-icon-' + escAttr(node.type || 'card') + '" title="' + escAttr(node.gripTitle || 'Drag to reorder') + '">' + getNodeDragIconSvg(node.type) + '</span>'
+      : '<span class="tree-grip tree-grip-spacer" aria-hidden="true"></span>';
+
     el.innerHTML =
       buildIndentHtml(parentLastFlags, isLast) +
       (showToggle
         ? '<span class="tree-toggle' + (node.expanded ? ' expanded' : '') + '"></span>'
         : '<span class="tree-toggle-spacer"></span>') +
       '<span class="tree-label">' + esc(node.label) + '</span>' +
-      (node.count != null ? '<span class="tree-count">' + node.count + '</span>' : '') +
-      (showGrip
-        ? '<span class="tree-grip entity-drag-icon entity-drag-icon-' + escAttr(node.type || 'card') + '" title="' + escAttr(node.gripTitle || 'Drag to reorder') + '">' + getNodeDragIconSvg(node.type) + '</span>'
-        : '');
+      '<span class="tree-meta">' +
+        presenceHtml +
+        countHtml +
+        actionHtml +
+        gripHtml +
+      '</span>';
 
-    fragment.appendChild(el);
+    entry.appendChild(el);
 
     // Render children container (also for empty arrays — supports empty drop zones)
     if (Array.isArray(node.children)) {
       var childContainer = document.createElement('div');
       childContainer.className = 'tree-children' + (node.expanded ? ' expanded' : '');
       childContainer.setAttribute('data-tree-depth', String(level + 1));
+      childContainer.setAttribute('role', 'group');
 
       // Let caller customize the children container (e.g. add drop-zone classes)
       if (options.onChildrenContainer) {
@@ -129,10 +201,10 @@ var TreeView = (function () {
         var childFrag = renderNode(node.children[i], childIndent, childIsLast, options, nodePadLeft, level + 1);
         childContainer.appendChild(childFrag);
       }
-      fragment.appendChild(childContainer);
+      entry.appendChild(childContainer);
     }
 
-    return fragment;
+    return entry;
   }
 
   // --- Public API ---
@@ -144,13 +216,18 @@ var TreeView = (function () {
    * @param {Object} [options] - Rendering options
    * @param {Function} [options.escapeHtml] - HTML escape function for labels
    * @param {Function} [options.onChildrenContainer] - Callback(el, node) to customize children containers
+   * @param {string} [options.variant] - Optional visual variant (adds .tree-view-{variant})
    */
   function render(container, nodes, options) {
     options = options || {};
+    container.classList.add('tree-view');
+    if (options.variant) {
+      container.classList.add('tree-view-' + options.variant);
+    }
     var nodePadLeft = computeNodePadLeft();
     for (var i = 0; i < nodes.length; i++) {
       var isLast = i === nodes.length - 1;
-      container.appendChild(renderNode(nodes[i], [], isLast, options, nodePadLeft, 0));
+      container.appendChild(renderNode(nodes[i], [], isLast, options, nodePadLeft, 1));
     }
   }
 
@@ -162,11 +239,12 @@ var TreeView = (function () {
   function toggleNode(nodeEl) {
     var toggle = nodeEl.querySelector('.tree-toggle');
     if (!toggle) return null;
-    var children = nodeEl.nextElementSibling;
-    if (!children || !children.classList.contains('tree-children')) return null;
+    var children = getNodeChildrenContainer(nodeEl);
+    if (!children) return null;
     var expanding = !children.classList.contains('expanded');
     children.classList.toggle('expanded');
     toggle.classList.toggle('expanded');
+    nodeEl.setAttribute('aria-expanded', expanding ? 'true' : 'false');
     return expanding;
   }
 
@@ -181,6 +259,8 @@ var TreeView = (function () {
     for (var i = 0; i < childContainers.length; i++) {
       if (expand) childContainers[i].classList.add('expanded');
       else childContainers[i].classList.remove('expanded');
+      var ownerNode = getChildrenOwnerNode(childContainers[i]);
+      if (ownerNode) ownerNode.setAttribute('aria-expanded', expand ? 'true' : 'false');
     }
     for (var i = 0; i < childToggles.length; i++) {
       if (expand) childToggles[i].classList.add('expanded');
@@ -192,9 +272,12 @@ var TreeView = (function () {
     render: render,
     toggleNode: toggleNode,
     setDescendantsExpanded: setDescendantsExpanded,
+    getNodeChildrenContainer: getNodeChildrenContainer,
+    getChildrenOwnerNode: getChildrenOwnerNode,
     buildIndentHtml: buildIndentHtml,
     applyChildrenGuides: applyChildrenGuides,
     computeNodePadLeft: computeNodePadLeft,
+    computeGuideWidth: computeGuideWidth,
     GUIDE_WIDTH: GUIDE_WIDTH
   };
 })();

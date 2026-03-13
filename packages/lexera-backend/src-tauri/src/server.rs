@@ -3,8 +3,12 @@ use crate::collab_api::collab_router;
 use crate::state::AppState;
 use crate::sync_ws::sync_router;
 /// HTTP server: spawns axum on a background tokio task.
+use axum::extract::DefaultBodyLimit;
 use axum::Router;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+
+/// Maximum request body size (50 MB). Boards can contain embedded images.
+const MAX_BODY_SIZE: usize = 50 * 1024 * 1024;
 
 /// Fallback ports to try when the configured port is in use.
 const FALLBACK_PORTS: &[u16] = &[13080, 12080, 14080, 11080, 15080];
@@ -51,6 +55,7 @@ fn build_app(state: AppState) -> Router {
     api_router()
         .merge(collab_router())
         .merge(sync_router())
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .layer(cors)
         .with_state(state)
 }

@@ -87,6 +87,22 @@ pub struct RenderEmbeddedFileResult {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenderPlantUmlOptions {
+    pub code: String,
+    pub target_path: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPlantUmlResult {
+    pub success: bool,
+    pub svg: Option<String>,
+    pub output_path: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PandocExportOptions {
     pub input_path: String,
     pub output_path: String,
@@ -248,6 +264,31 @@ fn find_node_cli() -> Option<PathBuf> {
     probe_command(&candidates, &["--version"])
 }
 
+fn find_java_cli() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let candidates = [
+        "/usr/bin/java",
+        "/opt/homebrew/opt/openjdk/bin/java",
+        "/usr/local/opt/openjdk/bin/java",
+        "java",
+    ];
+    #[cfg(target_os = "windows")]
+    let candidates = ["java.exe", "java"];
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let candidates = ["/usr/bin/java", "/usr/local/bin/java", "java"];
+    probe_command(&candidates, &["-version"])
+}
+
+fn find_graphviz_dot_cli() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let candidates = ["/opt/homebrew/bin/dot", "/usr/local/bin/dot", "/usr/bin/dot", "dot"];
+    #[cfg(target_os = "windows")]
+    let candidates = ["dot.exe", "dot"];
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let candidates = ["/usr/bin/dot", "/usr/local/bin/dot", "dot"];
+    probe_command(&candidates, &["-V"])
+}
+
 fn repo_root_dir() -> Result<PathBuf, String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest_dir
@@ -256,6 +297,15 @@ fn repo_root_dir() -> Result<PathBuf, String> {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf())
         .ok_or_else(|| "Failed to resolve repository root".to_string())
+}
+
+fn find_plantuml_jar() -> Option<PathBuf> {
+    let repo_root = repo_root_dir().ok()?;
+    let candidates = [
+        repo_root.join("node_modules/node-plantuml/vendor/plantuml.jar"),
+        repo_root.join("packages/lexera-kanban/node_modules/node-plantuml/vendor/plantuml.jar"),
+    ];
+    candidates.into_iter().find(|path| path.is_file())
 }
 
 fn read_command_version(command: &Path, args: &[&str]) -> Option<String> {
@@ -270,6 +320,94 @@ fn read_command_version(command: &Path, args: &[&str]) -> Option<String> {
         .next()
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
+}
+
+fn normalize_plantuml_source(code: &str) -> String {
+    let trimmed = code.trim();
+    if trimmed.is_empty() {
+        return "@startuml\n@enduml\n".to_string();
+    }
+    let has_explicit_start = trimmed
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_ascii_lowercase().starts_with("@start"))
+        .unwrap_or(false);
+    if has_explicit_start {
+        let mut normalized = trimmed.to_string();
+        if !normalized.ends_with('\n') {
+            normalized.push('\n');
+        }
+        return normalized;
+    }
+    format!("@startuml\n{}\n@enduml\n", trimmed)
+}
+
+fn build_plantuml_renderer_status() -> EmbeddedRendererStatus {
+    let java_path = find_java_cli();
+    let jar_path = find_plantuml_jar();
+    let dot_path = find_graphviz_dot_cli();
+    let available = java_path.is_some() && jar_path.is_some();
+    let mut details = Vec::new();
+    if let Some(path) = jar_path.as_ref() {
+        details.push(format!("JAR: {}", path.display()));
+    } else {
+        details.push("Missing PlantUML JAR (node-plantuml vendor package).".to_string());
+    }
+    if let Some(path) = dot_path.as_ref() {
+        details.push(format!("Graphviz dot: {}", path.display()));
+    } else {
+        details.push("Graphviz dot not found; some diagram types may fail.".to_string());
+    }
+    EmbeddedRendererStatus {
+        id: "plantuml".to_string(),
+        label: "PlantUML".to_string(),
+        available,
+        version: java_path
+            .as_ref()
+            .and_then(|path| read_command_version(path, &["-version"])),
+        path: java_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string())
+            .or_else(|| jar_path.as_ref().map(|path| path.to_string_lossy().to_string())),
+        details: Some(details.join(" | ")),
+    }
+}
+
+fn render_plantuml_svg_content(code: &str) -> Result<String, String> {
+    let java = find_java_cli().ok_or_else(|| "Java not found for PlantUML rendering".to_string())?;
+    let jar = find_plantuml_jar().ok_or_else(|| "PlantUML JAR not found (node-plantuml vendor package missing)".to_string())?;
+    let temp_dir = create_temp_render_dir("plantuml")?;
+    let input_path = temp_dir.join("diagram.puml");
+    let output_path = temp_dir.join("diagram.svg");
+
+    fs::write(&input_path, normalize_plantuml_source(code))
+        .map_err(|e| format!("Failed to write PlantUML source: {}", e))?;
+
+    let mut args = vec![
+        "-Djava.awt.headless=true".to_string(),
+        "-jar".to_string(),
+        jar.to_string_lossy().to_string(),
+        "-Playout=smetana".to_string(),
+        "-tsvg".to_string(),
+    ];
+    if let Some(dot) = find_graphviz_dot_cli() {
+        args.push("-graphvizdot".to_string());
+        args.push(dot.to_string_lossy().to_string());
+    }
+    args.push(input_path.to_string_lossy().to_string());
+
+    let render_result = run_command_capture(&java, &args, Some(&temp_dir))
+        .and_then(|_| fs::read_to_string(&output_path).map_err(|e| format!("Failed to read rendered PlantUML SVG: {}", e)));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    render_result.and_then(|svg| {
+        if svg.contains("<svg") {
+            Ok(svg)
+        } else {
+            Err("PlantUML produced invalid SVG output".to_string())
+        }
+    })
 }
 
 fn build_renderer_cli_status(
@@ -1339,6 +1477,46 @@ pub async fn render_embedded_file(opts: RenderEmbeddedFileOptions) -> Result<Ren
     }
 }
 
+#[tauri::command]
+pub async fn render_plantuml_code(opts: RenderPlantUmlOptions) -> Result<RenderPlantUmlResult, String> {
+    if let Some(target) = opts.target_path.as_ref() {
+        let target_path = PathBuf::from(target);
+        if target_path.is_file() {
+            let svg = fs::read_to_string(&target_path)
+                .map_err(|e| format!("Failed to read cached PlantUML SVG: {}", e))?;
+            return Ok(RenderPlantUmlResult {
+                success: true,
+                svg: Some(svg),
+                output_path: Some(target.clone()),
+                error: None,
+            });
+        }
+    }
+
+    match render_plantuml_svg_content(&opts.code) {
+        Ok(svg) => {
+            if let Some(target) = opts.target_path.as_ref() {
+                let target_path = PathBuf::from(target);
+                ensure_parent_dir(&target_path)?;
+                fs::write(&target_path, svg.as_bytes())
+                    .map_err(|e| format!("Failed to write PlantUML cache {}: {}", target_path.display(), e))?;
+            }
+            Ok(RenderPlantUmlResult {
+                success: true,
+                svg: Some(svg),
+                output_path: opts.target_path,
+                error: None,
+            })
+        }
+        Err(err) => Ok(RenderPlantUmlResult {
+            success: false,
+            svg: None,
+            output_path: opts.target_path,
+            error: Some(err),
+        }),
+    }
+}
+
 /// Run Marp CLI for a one-shot export (PDF, PPTX, HTML).
 #[tauri::command]
 pub async fn marp_export(opts: MarpExportOptions) -> Result<MarpResult, String> {
@@ -1654,6 +1832,7 @@ pub async fn check_pandoc_available() -> CliStatus {
 #[tauri::command]
 pub async fn check_embedded_renderer_statuses() -> Vec<EmbeddedRendererStatus> {
     vec![
+        build_plantuml_renderer_status(),
         build_renderer_cli_status(
             "drawio",
             "Draw.io CLI",
@@ -1890,7 +2069,7 @@ pub async fn copy_export_assets(items: Vec<ExportAssetCopyItem>) -> Result<Vec<E
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_delimited_text_separator, parse_delimited_rows, render_csv_text_to_svg,
+        detect_delimited_text_separator, normalize_plantuml_source, parse_delimited_rows, render_csv_text_to_svg,
     };
 
     #[test]
@@ -1917,5 +2096,19 @@ mod tests {
         assert!(svg.contains("tasks.csv"));
         assert!(svg.contains("Delimiter: comma | Page 2"));
         assert!(svg.contains("Rows 2 | Columns 3"));
+    }
+
+    #[test]
+    fn wraps_plain_plantuml_source() {
+        let normalized = normalize_plantuml_source("Alice -> Bob: hello");
+        assert!(normalized.starts_with("@startuml\n"));
+        assert!(normalized.ends_with("@enduml\n"));
+    }
+
+    #[test]
+    fn preserves_explicit_plantuml_block() {
+        let source = "@startuml\nAlice -> Bob: hello\n@enduml";
+        let normalized = normalize_plantuml_source(source);
+        assert_eq!(normalized, "@startuml\nAlice -> Bob: hello\n@enduml\n");
     }
 }
