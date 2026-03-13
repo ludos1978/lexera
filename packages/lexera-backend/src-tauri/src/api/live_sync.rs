@@ -510,4 +510,197 @@ kanban-plugin: board
 
         close_session(&session.session_id).unwrap();
     }
+
+    /// Helper to build a new-format board for live sync tests.
+    fn make_new_format_board(
+        rows: Vec<(&str, Vec<(&str, Vec<(&str, Vec<(&str, bool)>)>)>)>,
+    ) -> KanbanBoard {
+        use lexera_core::types::*;
+        KanbanBoard {
+            valid: true,
+            title: "Test".into(),
+            columns: Vec::new(),
+            rows: rows
+                .into_iter()
+                .map(|(rt, stacks)| KanbanRow {
+                    id: format!("row-{}", rt),
+                    title: rt.into(),
+                    stacks: stacks
+                        .into_iter()
+                        .map(|(st, cols)| KanbanStack {
+                            id: format!("stack-{}", st),
+                            title: st.into(),
+                            columns: cols
+                                .into_iter()
+                                .map(|(ct, cards)| KanbanColumn {
+                                    id: format!("col-{}", ct),
+                                    title: ct.into(),
+                                    cards: cards
+                                        .into_iter()
+                                        .map(|(content, checked)| KanbanCard {
+                                            id: "t".into(),
+                                            content: content.into(),
+                                            checked,
+                                            kid: Some(format!("kid-{}", content)),
+                                        })
+                                        .collect(),
+                                    include_source: None,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            yaml_header: Some("---\nkanban-plugin: board\n---".into()),
+            kanban_footer: None,
+            board_settings: None,
+            generation_meta: None,
+            format_hint: BoardFormat::New,
+        }
+    }
+
+    #[test]
+    fn test_live_sync_apply_preserves_cards_on_noop_save() {
+        // Simulates the original bug: user opens board, makes no structural
+        // changes, saves. CRDT should preserve all content.
+        let board = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("C1", vec![("alpha", false), ("beta", false)])])]),
+        ]);
+        let board_dir = PathBuf::from(".");
+        let session = open_session("preserve-test", board.clone(), board_dir, None).unwrap();
+
+        // User saves with identical content (no changes)
+        let result = apply_board(&session.session_id, board.clone()).unwrap();
+        let cards: Vec<&str> = result.board.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(cards.contains(&"alpha"), "alpha preserved");
+        assert!(cards.contains(&"beta"), "beta preserved");
+
+        close_session(&session.session_id).unwrap();
+    }
+
+    #[test]
+    fn test_live_sync_apply_add_card_preserves_existing() {
+        let board = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("C1", vec![("alpha", false)])])]),
+        ]);
+        let board_dir = PathBuf::from(".");
+        let session = open_session("add-card-test", board.clone(), board_dir, None).unwrap();
+
+        // User adds a card
+        let mut incoming = board.clone();
+        incoming.rows[0].stacks[0].columns[0].cards.push(
+            lexera_core::types::KanbanCard {
+                id: "t".into(),
+                content: "gamma".into(),
+                checked: false,
+                kid: Some("kid-gamma".into()),
+            },
+        );
+
+        let result = apply_board(&session.session_id, incoming).unwrap();
+        let cards: Vec<&str> = result.board.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(cards.contains(&"alpha"), "alpha preserved");
+        assert!(cards.contains(&"gamma"), "gamma added");
+
+        close_session(&session.session_id).unwrap();
+    }
+
+    #[test]
+    fn test_live_sync_apply_delete_row_preserves_siblings() {
+        let board = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("C1", vec![("alpha", false)])])]),
+            ("R2", vec![("S2", vec![("C2", vec![("beta", false)])])]),
+        ]);
+        let board_dir = PathBuf::from(".");
+        let session = open_session("del-row-test", board.clone(), board_dir, None).unwrap();
+
+        // User deletes R2
+        let mut incoming = board.clone();
+        incoming.rows.retain(|r| r.title != "R2");
+
+        let result = apply_board(&session.session_id, incoming).unwrap();
+        assert_eq!(result.board.rows.len(), 1);
+        assert_eq!(result.board.rows[0].title, "R1");
+        let cards: Vec<&str> = result.board.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(cards.contains(&"alpha"), "alpha in R1 preserved");
+
+        close_session(&session.session_id).unwrap();
+    }
+
+    #[test]
+    fn test_live_sync_apply_add_stack_preserves_existing() {
+        let board = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("C1", vec![("alpha", false)])])]),
+        ]);
+        let board_dir = PathBuf::from(".");
+        let session = open_session("add-stack-test", board.clone(), board_dir, None).unwrap();
+
+        // User adds a new stack
+        let mut incoming = board.clone();
+        incoming.rows[0].stacks.push(lexera_core::types::KanbanStack {
+            id: "stack-S2".into(),
+            title: "S2".into(),
+            columns: vec![lexera_core::types::KanbanColumn {
+                id: "col-C2".into(),
+                title: "C2".into(),
+                cards: vec![],
+                include_source: None,
+            }],
+        });
+
+        let result = apply_board(&session.session_id, incoming).unwrap();
+        let stack_titles: Vec<&str> = result.board.rows[0]
+            .stacks.iter().map(|s| s.title.as_str()).collect();
+        assert!(stack_titles.contains(&"S1"), "S1 preserved");
+        assert!(stack_titles.contains(&"S2"), "S2 added");
+
+        close_session(&session.session_id).unwrap();
+    }
+
+    #[test]
+    fn test_live_sync_sequential_edits_no_data_loss() {
+        // Simulates the real-world scenario: multiple sequential saves.
+        let board = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![
+                ("C1", vec![("card1", false), ("card2", false)]),
+                ("C2", vec![("card3", false)]),
+            ])]),
+        ]);
+        let board_dir = PathBuf::from(".");
+        let session = open_session("sequential-test", board.clone(), board_dir, None).unwrap();
+
+        // Edit 1: add a card to C1
+        let mut edit1 = board.clone();
+        edit1.rows[0].stacks[0].columns[0].cards.push(
+            lexera_core::types::KanbanCard {
+                id: "t".into(),
+                content: "new-card".into(),
+                checked: false,
+                kid: Some("kid-new-card".into()),
+            },
+        );
+        let r1 = apply_board(&session.session_id, edit1).unwrap();
+
+        // Edit 2: based on result of edit 1, rename column title
+        let mut edit2 = r1.board.clone();
+        edit2.rows[0].stacks[0].columns[0].title = "C1-Renamed".into();
+        let r2 = apply_board(&session.session_id, edit2).unwrap();
+
+        // Verify nothing lost
+        let col = &r2.board.rows[0].stacks[0].columns[0];
+        assert_eq!(col.title, "C1-Renamed");
+        let cards: Vec<&str> = col.cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(cards.contains(&"card1"), "card1 preserved");
+        assert!(cards.contains(&"card2"), "card2 preserved");
+        assert!(cards.contains(&"new-card"), "new-card preserved");
+
+        let col2_cards: Vec<&str> = r2.board.rows[0].stacks[0].columns[1]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(col2_cards.contains(&"card3"), "card3 in C2 preserved");
+
+        close_session(&session.session_id).unwrap();
+    }
 }

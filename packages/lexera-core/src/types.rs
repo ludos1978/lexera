@@ -227,6 +227,14 @@ impl KanbanBoard {
         }
     }
 
+    /// Total number of cards across all columns (rows + flat columns).
+    pub fn total_card_count(&self) -> usize {
+        self.all_columns()
+            .iter()
+            .map(|col| col.cards.len())
+            .sum()
+    }
+
     pub fn revision_token(&self) -> Option<String> {
         self.generation_meta
             .as_ref()

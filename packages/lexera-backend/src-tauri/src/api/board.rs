@@ -1248,4 +1248,399 @@ kanban-plugin: board
 
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
+
+    // ── New-format board for 3-way merge integration tests ──────────
+
+    const NEW_FORMAT_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+# Row1
+
+## Stack1
+
+### ColA
+- [ ] card-a1
+- [ ] card-a2
+
+### ColB
+- [ ] card-b1
+
+## Stack2
+
+### ColC
+- [ ] card-c1
+";
+
+    /// Helper: add a new-format board and return (board_id, initial_board).
+    async fn add_new_format_board(
+        tmp: &std::path::Path,
+        name: &str,
+    ) -> (AppState, String, lexera_core::types::KanbanBoard) {
+        let board_path = write_board_file(tmp, name, NEW_FORMAT_BOARD);
+        let state = test_state(tmp);
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        let board = state.storage.read_board(&board_id).unwrap();
+        (state, board_id, board)
+    }
+
+    /// Helper: call POST /boards/{id}/sync-save with base and incoming boards.
+    async fn sync_save(
+        app: Router,
+        board_id: &str,
+        base: &lexera_core::types::KanbanBoard,
+        incoming: &lexera_core::types::KanbanBoard,
+    ) -> (StatusCode, serde_json::Value) {
+        let body = serde_json::json!({
+            "baseBoard": base,
+            "board": incoming,
+        });
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/boards/{}/sync-save", board_id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = resp.status();
+        let json = body_json(resp.into_body()).await;
+        (status, json)
+    }
+
+    #[tokio::test]
+    async fn sync_save_add_card_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "add-card.md").await;
+
+        // User adds a card to ColA
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns[0].cards.push(
+            lexera_core::types::KanbanCard {
+                id: "new".into(),
+                content: "new-card".into(),
+                checked: false,
+                kid: Some("kid-new".into()),
+            },
+        );
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(col_a_cards.contains(&"new-card"), "new card should be saved");
+        assert!(col_a_cards.contains(&"card-a1"), "existing cards preserved");
+        assert!(col_a_cards.contains(&"card-a2"), "existing cards preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_delete_card_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "del-card.md").await;
+
+        // User removes card-a2
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns[0].cards.retain(|c| c.content != "card-a2");
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(!col_a_cards.contains(&"card-a2"), "card-a2 should be removed");
+        assert!(col_a_cards.contains(&"card-a1"), "card-a1 preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_add_column_preserves_existing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "add-col.md").await;
+
+        // User adds a new column to Stack1
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns.push(
+            lexera_core::types::KanbanColumn {
+                id: "col-new".into(),
+                title: "NewCol".into(),
+                cards: vec![lexera_core::types::KanbanCard {
+                    id: "n".into(),
+                    content: "new-col-card".into(),
+                    checked: false,
+                    kid: Some("kid-nc".into()),
+                }],
+                include_source: None,
+            },
+        );
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_titles: Vec<&str> = saved.rows[0].stacks[0]
+            .columns.iter().map(|c| c.title.as_str()).collect();
+        assert!(col_titles.contains(&"NewCol"), "new column added");
+        assert!(col_titles.contains(&"ColA"), "ColA preserved");
+        assert!(col_titles.contains(&"ColB"), "ColB preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_delete_column_preserves_siblings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "del-col.md").await;
+
+        // User deletes ColB from Stack1
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns.retain(|c| c.title != "ColB");
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_titles: Vec<&str> = saved.rows[0].stacks[0]
+            .columns.iter().map(|c| c.title.as_str()).collect();
+        assert!(!col_titles.contains(&"ColB"), "ColB removed");
+        assert!(col_titles.contains(&"ColA"), "ColA preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_add_stack_preserves_existing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "add-stack.md").await;
+
+        // User adds a new stack to Row1
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks.push(lexera_core::types::KanbanStack {
+            id: "stack-new".into(),
+            title: "NewStack".into(),
+            columns: vec![lexera_core::types::KanbanColumn {
+                id: "col-ns".into(),
+                title: "NSCol".into(),
+                cards: vec![],
+                include_source: None,
+            }],
+        });
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let stack_titles: Vec<&str> = saved.rows[0]
+            .stacks.iter().map(|s| s.title.as_str()).collect();
+        assert!(stack_titles.contains(&"NewStack"), "new stack added");
+        assert!(stack_titles.contains(&"Stack1"), "Stack1 preserved");
+        assert!(stack_titles.contains(&"Stack2"), "Stack2 preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_delete_stack_preserves_siblings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "del-stack.md").await;
+
+        // User deletes Stack2
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks.retain(|s| s.title != "Stack2");
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let stack_titles: Vec<&str> = saved.rows[0]
+            .stacks.iter().map(|s| s.title.as_str()).collect();
+        assert!(!stack_titles.contains(&"Stack2"), "Stack2 removed");
+        assert!(stack_titles.contains(&"Stack1"), "Stack1 preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_add_row_preserves_existing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "add-row.md").await;
+
+        // User adds a new row
+        let mut incoming = base.clone();
+        incoming.rows.push(lexera_core::types::KanbanRow {
+            id: "row-new".into(),
+            title: "Row2".into(),
+            stacks: vec![lexera_core::types::KanbanStack {
+                id: "stack-r2".into(),
+                title: "R2Stack".into(),
+                columns: vec![lexera_core::types::KanbanColumn {
+                    id: "col-r2".into(),
+                    title: "R2Col".into(),
+                    cards: vec![],
+                    include_source: None,
+                }],
+            }],
+        });
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let row_titles: Vec<&str> = saved.rows.iter().map(|r| r.title.as_str()).collect();
+        assert!(row_titles.contains(&"Row2"), "new row added");
+        assert!(row_titles.contains(&"Row1"), "Row1 preserved");
+    }
+
+    #[tokio::test]
+    async fn sync_save_delete_row_preserves_siblings() {
+        // Start with a 2-row board
+        let two_row_md = "\
+---
+kanban-plugin: board
+---
+
+# RowA
+
+## StackA
+
+### ColX
+- [ ] card-x1
+
+# RowB
+
+## StackB
+
+### ColY
+- [ ] card-y1
+";
+        let tmp = tempfile::tempdir().unwrap();
+        let board_path = write_board_file(tmp.path(), "del-row.md", two_row_md);
+        let state = test_state(tmp.path());
+        let board_id = state.storage.add_board(&board_path).unwrap();
+        let base = state.storage.read_board(&board_id).unwrap();
+        assert_eq!(base.rows.len(), 2);
+
+        // User deletes RowB
+        let mut incoming = base.clone();
+        incoming.rows.retain(|r| r.title != "RowB");
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        assert_eq!(saved.rows.len(), 1);
+        assert_eq!(saved.rows[0].title, "RowA");
+    }
+
+    #[tokio::test]
+    async fn sync_save_rename_column_preserves_cards() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "rename-col.md").await;
+
+        // User renames ColA -> ColA-Renamed
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns[0].title = "ColA-Renamed".into();
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col = &saved.rows[0].stacks[0].columns[0];
+        assert_eq!(col.title, "ColA-Renamed");
+        assert_eq!(col.cards.len(), 2, "cards preserved after rename");
+    }
+
+    #[tokio::test]
+    async fn sync_save_move_card_between_columns() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "move-card.md").await;
+
+        // User moves card-a1 from ColA to ColB
+        let mut incoming = base.clone();
+        let card = incoming.rows[0].stacks[0].columns[0]
+            .cards.remove(0); // card-a1
+        incoming.rows[0].stacks[0].columns[1].cards.push(card);
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &incoming).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        let col_b_cards: Vec<&str> = saved.rows[0].stacks[0].columns[1]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(!col_a_cards.contains(&"card-a1"), "card-a1 moved from ColA");
+        assert!(col_b_cards.contains(&"card-a1"), "card-a1 moved to ColB");
+        assert!(col_b_cards.contains(&"card-b1"), "card-b1 still in ColB");
+    }
+
+    #[tokio::test]
+    async fn sync_save_multiple_edits_sequential() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "multi-edit.md").await;
+
+        // Edit 1: add a card
+        let mut edit1 = base.clone();
+        edit1.rows[0].stacks[0].columns[0].cards.push(
+            lexera_core::types::KanbanCard {
+                id: "e1".into(),
+                content: "edit1-card".into(),
+                checked: false,
+                kid: Some("kid-e1".into()),
+            },
+        );
+
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &edit1).await;
+        assert_eq!(status, StatusCode::OK);
+
+        // Edit 2: read current state, then add another card
+        let base2 = state.storage.read_board(&board_id).unwrap();
+        let mut edit2 = base2.clone();
+        edit2.rows[0].stacks[0].columns[0].cards.push(
+            lexera_core::types::KanbanCard {
+                id: "e2".into(),
+                content: "edit2-card".into(),
+                checked: false,
+                kid: Some("kid-e2".into()),
+            },
+        );
+
+        let app2 = test_router(state.clone());
+        let (status2, _) = sync_save(app2, &board_id, &base2, &edit2).await;
+        assert_eq!(status2, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        let col_a_cards: Vec<&str> = saved.rows[0].stacks[0].columns[0]
+            .cards.iter().map(|c| c.content.as_str()).collect();
+        assert!(col_a_cards.contains(&"card-a1"));
+        assert!(col_a_cards.contains(&"card-a2"));
+        assert!(col_a_cards.contains(&"edit1-card"));
+        assert!(col_a_cards.contains(&"edit2-card"));
+    }
+
+    #[tokio::test]
+    async fn sync_save_idempotent_no_change() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, board_id, base) = add_new_format_board(tmp.path(), "idempotent.md").await;
+
+        // Save the same board back (no changes)
+        let app = test_router(state.clone());
+        let (status, _) = sync_save(app, &board_id, &base, &base).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let saved = state.storage.read_board(&board_id).unwrap();
+        assert_eq!(saved.rows.len(), base.rows.len());
+        assert_eq!(
+            saved.rows[0].stacks[0].columns[0].cards.len(),
+            base.rows[0].stacks[0].columns[0].cards.len(),
+        );
+    }
 }

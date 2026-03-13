@@ -2,7 +2,7 @@
 ///
 /// Converts boards to/from a Loro CRDT representation, applies diffs as
 /// minimal CRDT operations, and provides undo/redo and persistence.
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::Path;
 
@@ -644,7 +644,7 @@ impl CrdtStore {
             // Sync column structure/titles BEFORE card diffs so that column lookups
             // by stable ID resolve correctly even when a column has been renamed.
             if has_structural_change {
-                self.sync_column_structure(incoming)?;
+                self.sync_column_structure(incoming, current)?;
             } else {
                 self.sync_column_order(incoming)?;
             }
@@ -1231,41 +1231,55 @@ impl CrdtStore {
         false
     }
 
-    /// Synchronize column structure — ensure the CRDT's row/stack/column
-    /// structure matches the incoming board exactly (add missing, remove extra).
-    fn sync_column_structure(&self, incoming: &KanbanBoard) -> io::Result<()> {
+    /// Synchronize column structure using 3-way merge — compares CRDT state,
+    /// incoming board (what the user saved), and current board (what the user
+    /// started editing from) to correctly handle concurrent additions and
+    /// intentional deletions.
+    fn sync_column_structure(&self, incoming: &KanbanBoard, current: &KanbanBoard) -> io::Result<()> {
         let root = self.doc.get_map("root");
         let format = get_string(&root, "format");
 
         if format == "new" {
             if let Some(rows_list) = get_movable_list(&root, "rows") {
-                // Reorder existing rows to match incoming order by ID
-                let row_ids: Vec<String> = incoming.rows.iter().map(|r| r.id.clone()).collect();
-                reorder_list_by_id(&rows_list, &row_ids, "id")?;
+                // Collect CRDT row IDs
+                let crdt_row_ids: Vec<String> = (0..rows_list.len())
+                    .filter_map(|i| get_map_at(&rows_list, i).map(|m| get_string(&m, "id")))
+                    .collect();
+                let incoming_row_ids: HashSet<&str> =
+                    incoming.rows.iter().map(|r| r.id.as_str()).collect();
+                let current_row_ids: HashSet<&str> =
+                    current.rows.iter().map(|r| r.id.as_str()).collect();
 
-                // Sync rows: add missing, update existing, remove extra
-                for (ri, row) in incoming.rows.iter().enumerate() {
-                    // Add missing rows
-                    if ri >= rows_list.len() {
+                // Phase 1: Delete rows that user intentionally removed (reverse order)
+                // A row should be deleted if: it's in CRDT, user saw it (in current),
+                // and user removed it (not in incoming).
+                for i in (0..rows_list.len()).rev() {
+                    if i < crdt_row_ids.len() {
+                        let id = &crdt_row_ids[i];
+                        if !incoming_row_ids.contains(id.as_str())
+                            && current_row_ids.contains(id.as_str())
+                        {
+                            let _ = rows_list.delete(i, 1);
+                        }
+                    }
+                }
+
+                // Phase 2: Add new rows from incoming that don't exist in CRDT
+                let crdt_row_id_set: HashSet<String> = crdt_row_ids.iter().cloned().collect();
+                for row in &incoming.rows {
+                    if !crdt_row_id_set.contains(&row.id) {
                         let row_map: LoroMap =
                             rows_list.push_container(LoroMap::new()).map_err(loro_err)?;
                         row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                        row_map
-                            .insert("title", row.title.as_str())
-                            .map_err(loro_err)?;
+                        row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
                         let stacks_list: LoroMovableList = row_map
                             .insert_container("stacks", LoroMovableList::new())
                             .map_err(loro_err)?;
                         for stack in &row.stacks {
                             let stack_map: LoroMap = stacks_list
-                                .push_container(LoroMap::new())
-                                .map_err(loro_err)?;
-                            stack_map
-                                .insert("id", stack.id.as_str())
-                                .map_err(loro_err)?;
-                            stack_map
-                                .insert("title", stack.title.as_str())
-                                .map_err(loro_err)?;
+                                .push_container(LoroMap::new()).map_err(loro_err)?;
+                            stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
+                            stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
                             let cols_list: LoroMovableList = stack_map
                                 .insert_container("columns", LoroMovableList::new())
                                 .map_err(loro_err)?;
@@ -1273,130 +1287,39 @@ impl CrdtStore {
                                 let data = ColumnData {
                                     id: col.id.clone(),
                                     title: col.title.clone(),
-                                    cards: col
-                                        .cards
-                                        .iter()
-                                        .map(|c| CardData {
-                                            kid: c.kid.clone().unwrap_or_default(),
-                                            content: card_identity::strip_kid(&c.content),
-                                            checked: c.checked,
-                                        })
-                                        .collect(),
+                                    cards: col.cards.iter().map(|c| CardData {
+                                        kid: c.kid.clone().unwrap_or_default(),
+                                        content: card_identity::strip_kid(&c.content),
+                                        checked: c.checked,
+                                    }).collect(),
                                 };
                                 insert_column_data(&cols_list, &data)?;
                             }
                         }
-                        continue;
-                    }
-
-                    if let Some(row_map) = get_map_at(&rows_list, ri) {
-                        // Update row title/id if changed
-                        row_map.insert("id", row.id.as_str()).map_err(loro_err)?;
-                        row_map
-                            .insert("title", row.title.as_str())
-                            .map_err(loro_err)?;
-
-                        if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
-                            // Reorder existing stacks to match incoming order by ID
-                            let stack_ids: Vec<String> =
-                                row.stacks.iter().map(|s| s.id.clone()).collect();
-                            reorder_list_by_id(&stacks_list, &stack_ids, "id")?;
-
-                            for (si, stack) in row.stacks.iter().enumerate() {
-                                if si >= stacks_list.len() {
-                                    let stack_map: LoroMap = stacks_list
-                                        .push_container(LoroMap::new())
-                                        .map_err(loro_err)?;
-                                    stack_map
-                                        .insert("id", stack.id.as_str())
-                                        .map_err(loro_err)?;
-                                    stack_map
-                                        .insert("title", stack.title.as_str())
-                                        .map_err(loro_err)?;
-                                    let cols_list: LoroMovableList = stack_map
-                                        .insert_container("columns", LoroMovableList::new())
-                                        .map_err(loro_err)?;
-                                    for col in &stack.columns {
-                                        let data = ColumnData {
-                                            id: col.id.clone(),
-                                            title: col.title.clone(),
-                                            cards: col
-                                                .cards
-                                                .iter()
-                                                .map(|c| CardData {
-                                                    kid: c.kid.clone().unwrap_or_default(),
-                                                    content: card_identity::strip_kid(&c.content),
-                                                    checked: c.checked,
-                                                })
-                                                .collect(),
-                                        };
-                                        insert_column_data(&cols_list, &data)?;
-                                    }
-                                    continue;
-                                }
-
-                                if let Some(stack_map) = get_map_at(&stacks_list, si) {
-                                    // Update stack title/id if changed
-                                    stack_map
-                                        .insert("id", stack.id.as_str())
-                                        .map_err(loro_err)?;
-                                    stack_map
-                                        .insert("title", stack.title.as_str())
-                                        .map_err(loro_err)?;
-
-                                    if let Some(cols_list) = get_movable_list(&stack_map, "columns")
-                                    {
-                                        // Reorder existing columns to match incoming order by ID
-                                        let col_ids: Vec<String> =
-                                            stack.columns.iter().map(|c| c.id.clone()).collect();
-                                        reorder_list_by_id(&cols_list, &col_ids, "id")?;
-
-                                        for (ci, col) in stack.columns.iter().enumerate() {
-                                            if ci >= cols_list.len() {
-                                                let data = ColumnData {
-                                                    id: col.id.clone(),
-                                                    title: col.title.clone(),
-                                                    cards: col
-                                                        .cards
-                                                        .iter()
-                                                        .map(|c| CardData {
-                                                            kid: c.kid.clone().unwrap_or_default(),
-                                                            content: card_identity::strip_kid(
-                                                                &c.content,
-                                                            ),
-                                                            checked: c.checked,
-                                                        })
-                                                        .collect(),
-                                                };
-                                                insert_column_data(&cols_list, &data)?;
-                                            } else if let Some(col_map) = get_map_at(&cols_list, ci)
-                                            {
-                                                // Update column title/id if changed
-                                                col_map
-                                                    .insert("id", col.id.as_str())
-                                                    .map_err(loro_err)?;
-                                                col_map
-                                                    .insert("title", col.title.as_str())
-                                                    .map_err(loro_err)?;
-                                            }
-                                        }
-                                        // Remove extra columns (deleted from end to avoid index shift)
-                                        while cols_list.len() > stack.columns.len() {
-                                            let _ = cols_list.delete(cols_list.len() - 1, 1);
-                                        }
-                                    }
-                                }
-                            }
-                            // Remove extra stacks
-                            while stacks_list.len() > row.stacks.len() {
-                                let _ = stacks_list.delete(stacks_list.len() - 1, 1);
-                            }
-                        }
                     }
                 }
-                // Remove extra rows
-                while rows_list.len() > incoming.rows.len() {
-                    let _ = rows_list.delete(rows_list.len() - 1, 1);
+
+                // Phase 3: Reorder — incoming items first, preserved items at end
+                let row_ids: Vec<String> = incoming.rows.iter().map(|r| r.id.clone()).collect();
+                reorder_list_by_id(&rows_list, &row_ids, "id")?;
+
+                // Phase 4: Update existing rows and recurse into stacks/columns
+                for row in &incoming.rows {
+                    let pos = (0..rows_list.len()).find(|&i| {
+                        get_map_at(&rows_list, i)
+                            .map(|m| get_string(&m, "id") == row.id)
+                            .unwrap_or(false)
+                    });
+                    let Some(ri) = pos else { continue };
+                    let Some(row_map) = get_map_at(&rows_list, ri) else { continue };
+
+                    row_map.insert("title", row.title.as_str()).map_err(loro_err)?;
+
+                    // 3-way merge for stacks within this row
+                    if let Some(stacks_list) = get_movable_list(&row_map, "stacks") {
+                        let current_row = current.rows.iter().find(|r| r.id == row.id);
+                        self.sync_stacks_3way(&stacks_list, &row.stacks, current_row)?;
+                    }
                 }
             }
         } else if incoming.format_hint == BoardFormat::New && !incoming.rows.is_empty() {
@@ -1485,6 +1408,154 @@ impl CrdtStore {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// 3-way merge for stacks within a row.
+    /// Same pattern as row-level: delete intentionally removed → add missing → reorder → update.
+    fn sync_stacks_3way(
+        &self,
+        stacks_list: &LoroMovableList,
+        incoming_stacks: &[KanbanStack],
+        current_row: Option<&KanbanRow>,
+    ) -> io::Result<()> {
+        let crdt_stack_ids: Vec<String> = (0..stacks_list.len())
+            .filter_map(|i| get_map_at(stacks_list, i).map(|m| get_string(&m, "id")))
+            .collect();
+        let incoming_stack_ids: HashSet<&str> =
+            incoming_stacks.iter().map(|s| s.id.as_str()).collect();
+        let current_stack_ids: HashSet<&str> = current_row
+            .map(|r| r.stacks.iter().map(|s| s.id.as_str()).collect())
+            .unwrap_or_default();
+
+        // Phase 1: Delete stacks that user intentionally removed (reverse order)
+        for i in (0..stacks_list.len()).rev() {
+            if i < crdt_stack_ids.len() {
+                let id = &crdt_stack_ids[i];
+                if !incoming_stack_ids.contains(id.as_str())
+                    && current_stack_ids.contains(id.as_str())
+                {
+                    let _ = stacks_list.delete(i, 1);
+                }
+            }
+        }
+
+        // Phase 2: Add new stacks from incoming that don't exist in CRDT
+        let crdt_stack_id_set: HashSet<String> = crdt_stack_ids.iter().cloned().collect();
+        for stack in incoming_stacks {
+            if !crdt_stack_id_set.contains(&stack.id) {
+                let stack_map: LoroMap =
+                    stacks_list.push_container(LoroMap::new()).map_err(loro_err)?;
+                stack_map.insert("id", stack.id.as_str()).map_err(loro_err)?;
+                stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+                let cols_list: LoroMovableList = stack_map
+                    .insert_container("columns", LoroMovableList::new())
+                    .map_err(loro_err)?;
+                for col in &stack.columns {
+                    let data = ColumnData {
+                        id: col.id.clone(),
+                        title: col.title.clone(),
+                        cards: col.cards.iter().map(|c| CardData {
+                            kid: c.kid.clone().unwrap_or_default(),
+                            content: card_identity::strip_kid(&c.content),
+                            checked: c.checked,
+                        }).collect(),
+                    };
+                    insert_column_data(&cols_list, &data)?;
+                }
+            }
+        }
+
+        // Phase 3: Reorder — incoming items first, preserved items at end
+        let stack_ids: Vec<String> = incoming_stacks.iter().map(|s| s.id.clone()).collect();
+        reorder_list_by_id(stacks_list, &stack_ids, "id")?;
+
+        // Phase 4: Update existing stacks and recurse into columns
+        for stack in incoming_stacks {
+            let pos = (0..stacks_list.len()).find(|&i| {
+                get_map_at(stacks_list, i)
+                    .map(|m| get_string(&m, "id") == stack.id)
+                    .unwrap_or(false)
+            });
+            let Some(si) = pos else { continue };
+            let Some(stack_map) = get_map_at(stacks_list, si) else { continue };
+
+            stack_map.insert("title", stack.title.as_str()).map_err(loro_err)?;
+
+            // 3-way merge for columns within this stack
+            if let Some(cols_list) = get_movable_list(&stack_map, "columns") {
+                let current_stack = current_row
+                    .and_then(|r| r.stacks.iter().find(|s| s.id == stack.id));
+                self.sync_columns_3way(&cols_list, &stack.columns, current_stack)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// 3-way merge for columns within a stack.
+    /// Same pattern: delete intentionally removed → add missing → reorder → update titles.
+    fn sync_columns_3way(
+        &self,
+        cols_list: &LoroMovableList,
+        incoming_columns: &[KanbanColumn],
+        current_stack: Option<&KanbanStack>,
+    ) -> io::Result<()> {
+        let crdt_col_ids: Vec<String> = (0..cols_list.len())
+            .filter_map(|i| get_map_at(cols_list, i).map(|m| get_string(&m, "id")))
+            .collect();
+        let incoming_col_ids: HashSet<&str> =
+            incoming_columns.iter().map(|c| c.id.as_str()).collect();
+        let current_col_ids: HashSet<&str> = current_stack
+            .map(|s| s.columns.iter().map(|c| c.id.as_str()).collect())
+            .unwrap_or_default();
+
+        // Phase 1: Delete columns that user intentionally removed (reverse order)
+        for i in (0..cols_list.len()).rev() {
+            if i < crdt_col_ids.len() {
+                let id = &crdt_col_ids[i];
+                if !incoming_col_ids.contains(id.as_str())
+                    && current_col_ids.contains(id.as_str())
+                {
+                    let _ = cols_list.delete(i, 1);
+                }
+            }
+        }
+
+        // Phase 2: Add new columns from incoming that don't exist in CRDT
+        let crdt_col_id_set: HashSet<String> = crdt_col_ids.iter().cloned().collect();
+        for col in incoming_columns {
+            if !crdt_col_id_set.contains(&col.id) {
+                let data = ColumnData {
+                    id: col.id.clone(),
+                    title: col.title.clone(),
+                    cards: col.cards.iter().map(|c| CardData {
+                        kid: c.kid.clone().unwrap_or_default(),
+                        content: card_identity::strip_kid(&c.content),
+                        checked: c.checked,
+                    }).collect(),
+                };
+                insert_column_data(cols_list, &data)?;
+            }
+        }
+
+        // Phase 3: Reorder — incoming items first, preserved items at end
+        let col_ids: Vec<String> = incoming_columns.iter().map(|c| c.id.clone()).collect();
+        reorder_list_by_id(cols_list, &col_ids, "id")?;
+
+        // Phase 4: Update titles of existing columns (card sync handled separately)
+        for col in incoming_columns {
+            let pos = (0..cols_list.len()).find(|&i| {
+                get_map_at(cols_list, i)
+                    .map(|m| get_string(&m, "id") == col.id)
+                    .unwrap_or(false)
+            });
+            let Some(ci) = pos else { continue };
+            let Some(col_map) = get_map_at(cols_list, ci) else { continue };
+
+            col_map.insert("title", col.title.as_str()).map_err(loro_err)?;
+        }
+
         Ok(())
     }
 
@@ -4942,5 +5013,448 @@ mod tests {
             .filter_map(|(_, kid)| kid.as_deref())
             .collect();
         assert_eq!(all_kids.len(), 3, "Should have exactly 3 cards total");
+    }
+
+    // ================================================================
+    // 3-way structural merge tests
+    // ================================================================
+
+    /// Helper: simulate a peer adding a row to an existing CRDT by creating
+    /// a second board and applying it.
+    fn add_peer_row(store: &mut CrdtStore, base: &KanbanBoard, peer_row: (&str, Vec<(&str, Vec<(&str, Vec<KanbanCard>)>)>)) {
+        let mut peer_board = base.clone();
+        peer_board.rows.push(KanbanRow {
+            id: format!("row-{}", peer_row.0),
+            title: peer_row.0.to_string(),
+            stacks: peer_row.1.into_iter().map(|(st, cols)| KanbanStack {
+                id: format!("stack-{}", st),
+                title: st.to_string(),
+                columns: cols.into_iter().map(|(ct, cards)| KanbanColumn {
+                    id: format!("col-{}", ct),
+                    title: ct.to_string(),
+                    cards,
+                    include_source: None,
+                }).collect(),
+            }).collect(),
+        });
+        store.apply_board(&peer_board, base).unwrap();
+    }
+
+    #[test]
+    fn test_3way_preserves_unknown_rows() {
+        // Base: Row A, Row B
+        let base = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Peer adds Row C (user never sees it)
+        add_peer_row(&mut store, &base, ("C", vec![
+            ("SC", vec![("ColC", vec![make_card("k003", "peer card", false)])])
+        ]));
+
+        // User sends back the same base (didn't change anything, never saw C)
+        let incoming = base.clone();
+        let current = base.clone();
+        store.apply_board(&incoming, &current).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows.len(), 3, "Row C from peer should be preserved");
+        assert_eq!(result.rows[0].title, "A");
+        assert_eq!(result.rows[1].title, "B");
+        assert_eq!(result.rows[2].title, "C");
+        // Verify peer's cards survived
+        let peer_cards: Vec<_> = result.rows[2].stacks[0].columns[0].cards.iter()
+            .filter_map(|c| c.kid.as_deref())
+            .collect();
+        assert!(peer_cards.contains(&"k003"), "Peer card should survive");
+    }
+
+    #[test]
+    fn test_3way_deletes_intentionally_removed_rows() {
+        // Base: Row A, Row B, Row C
+        let base = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // User deletes Row B
+        let mut incoming = base.clone();
+        incoming.rows.remove(1); // Remove B
+        store.apply_board(&incoming, &base).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0].title, "A");
+        assert_eq!(result.rows[1].title, "C");
+    }
+
+    #[test]
+    fn test_3way_combined_add_delete_preserve() {
+        // Base: Row A, Row B, Row C
+        let base = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Peer adds Row D while user is editing
+        add_peer_row(&mut store, &base, ("D", vec![
+            ("SD", vec![("ColD", vec![make_card("k004", "peer card D", false)])])
+        ]));
+
+        // User deletes B, adds E (never saw D)
+        let incoming = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+            ("E", vec![("SE", vec![("ColE", vec![make_card("k005", "E", false)])])]),
+        ]);
+        store.apply_board(&incoming, &base).unwrap();
+
+        let result = store.to_board();
+        let row_titles: Vec<&str> = result.rows.iter().map(|r| r.title.as_str()).collect();
+        assert!(row_titles.contains(&"A"), "A should remain");
+        assert!(!row_titles.contains(&"B"), "B should be deleted (user removed it)");
+        assert!(row_titles.contains(&"C"), "C should remain");
+        assert!(row_titles.contains(&"D"), "D should be preserved (peer added, user never saw)");
+        assert!(row_titles.contains(&"E"), "E should be added (user added)");
+        assert_eq!(result.rows.len(), 4);
+    }
+
+    #[test]
+    fn test_3way_preserves_unknown_stacks() {
+        // Base: Row R1 with stacks SA, SB
+        let base = make_new_format_board(vec![
+            ("R1", vec![
+                ("SA", vec![("ColA", vec![make_card("k001", "A", false)])]),
+                ("SB", vec![("ColB", vec![make_card("k002", "B", false)])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Peer adds stack SC to R1
+        let mut peer_board = base.clone();
+        peer_board.rows[0].stacks.push(KanbanStack {
+            id: "stack-SC".to_string(),
+            title: "SC".to_string(),
+            columns: vec![KanbanColumn {
+                id: "col-ColC".to_string(),
+                title: "ColC".to_string(),
+                cards: vec![make_card("k003", "peer stack card", false)],
+                include_source: None,
+            }],
+        });
+        store.apply_board(&peer_board, &base).unwrap();
+
+        // User sends back base (never saw SC)
+        store.apply_board(&base, &base).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows[0].stacks.len(), 3, "Peer stack SC should be preserved");
+        let stack_titles: Vec<&str> = result.rows[0].stacks.iter().map(|s| s.title.as_str()).collect();
+        assert!(stack_titles.contains(&"SC"));
+    }
+
+    #[test]
+    fn test_3way_preserves_unknown_columns() {
+        // Base: Row R1, Stack S1, Column ColA
+        let base = make_new_format_board(vec![
+            ("R1", vec![
+                ("S1", vec![("ColA", vec![make_card("k001", "A", false)])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Peer adds ColB to S1
+        let mut peer_board = base.clone();
+        peer_board.rows[0].stacks[0].columns.push(KanbanColumn {
+            id: "col-ColB".to_string(),
+            title: "ColB".to_string(),
+            cards: vec![make_card("k002", "peer column card", false)],
+            include_source: None,
+        });
+        store.apply_board(&peer_board, &base).unwrap();
+
+        // User sends back base (never saw ColB)
+        store.apply_board(&base, &base).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows[0].stacks[0].columns.len(), 2, "Peer column ColB should be preserved");
+        let col_titles: Vec<&str> = result.rows[0].stacks[0].columns.iter().map(|c| c.title.as_str()).collect();
+        assert!(col_titles.contains(&"ColB"));
+    }
+
+    #[test]
+    fn test_3way_preserves_cards_in_unknown_rows() {
+        // Base: just Row A
+        let base = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Peer adds Row X with multiple cards
+        add_peer_row(&mut store, &base, ("X", vec![
+            ("SX", vec![("ColX", vec![
+                make_card("kx01", "peer card 1", false),
+                make_card("kx02", "peer card 2", true),
+                make_card("kx03", "peer card 3", false),
+            ])])
+        ]));
+
+        // User edits only Row A (adds a card), never sees Row X
+        let mut incoming = base.clone();
+        incoming.rows[0].stacks[0].columns[0].cards.push(make_card("k002", "user added", false));
+        store.apply_board(&incoming, &base).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows.len(), 2, "Both rows should exist");
+
+        // Verify peer cards survived
+        let peer_row = result.rows.iter().find(|r| r.title == "X").unwrap();
+        let peer_cards: Vec<_> = peer_row.stacks[0].columns[0].cards.iter()
+            .filter_map(|c| c.kid.as_deref())
+            .collect();
+        assert_eq!(peer_cards.len(), 3, "All 3 peer cards should survive");
+        assert!(peer_cards.contains(&"kx01"));
+        assert!(peer_cards.contains(&"kx02"));
+        assert!(peer_cards.contains(&"kx03"));
+
+        // Verify user's card was added
+        let user_row = result.rows.iter().find(|r| r.title == "A").unwrap();
+        let user_kids: Vec<_> = user_row.stacks[0].columns[0].cards.iter()
+            .filter_map(|c| c.kid.as_deref())
+            .collect();
+        assert!(user_kids.contains(&"k002"), "User's added card should be there");
+    }
+
+    #[test]
+    fn test_3way_user_adds_row_while_peer_adds_row() {
+        // Both user and peer independently add new rows
+        let base = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Peer adds Row P
+        add_peer_row(&mut store, &base, ("P", vec![
+            ("SP", vec![("ColP", vec![make_card("kp01", "peer row", false)])])
+        ]));
+
+        // User adds Row U
+        let mut incoming = base.clone();
+        incoming.rows.push(KanbanRow {
+            id: "row-U".to_string(),
+            title: "U".to_string(),
+            stacks: vec![KanbanStack {
+                id: "stack-SU".to_string(),
+                title: "SU".to_string(),
+                columns: vec![KanbanColumn {
+                    id: "col-ColU".to_string(),
+                    title: "ColU".to_string(),
+                    cards: vec![make_card("ku01", "user row", false)],
+                    include_source: None,
+                }],
+            }],
+        });
+        store.apply_board(&incoming, &base).unwrap();
+
+        let result = store.to_board();
+        let titles: Vec<&str> = result.rows.iter().map(|r| r.title.as_str()).collect();
+        assert!(titles.contains(&"A"), "Original row preserved");
+        assert!(titles.contains(&"P"), "Peer row preserved");
+        assert!(titles.contains(&"U"), "User row added");
+        assert_eq!(result.rows.len(), 3);
+    }
+
+    #[test]
+    fn test_3way_hidden_deleted_rows_preserved_when_not_in_current() {
+        // Simulates the exact bug: hidden-deleted rows exist in CRDT
+        // but frontend loads without them
+        let full_board = make_new_format_board(vec![
+            ("Deleted1 #hidden-internal-deleted", vec![
+                ("Default", vec![("Col1", vec![make_card("k001", "trash", false)])]),
+            ]),
+            ("Board", vec![
+                ("Stack1", vec![("ColA", vec![
+                    make_card("k002", "visible card", false),
+                    make_card("k003", "another card", false),
+                ])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&full_board).unwrap();
+
+        // Frontend loads only the visible row (current has both, but incoming
+        // scenario: current = what frontend started with = full board)
+        // User edits only the Board row
+        let mut incoming = full_board.clone();
+        incoming.rows[1].stacks[0].columns[0].cards.push(
+            make_card("k004", "user added card", false)
+        );
+
+        // current = full_board (frontend started with all rows)
+        store.apply_board(&incoming, &full_board).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows.len(), 2, "Hidden-deleted row should still exist");
+        assert_eq!(result.rows[0].title, "Deleted1 #hidden-internal-deleted");
+    }
+
+    #[test]
+    fn test_3way_snapshot_missing_rows_does_not_lose_them() {
+        // THE critical bug scenario: frontend's fullBoardData gets replaced
+        // with a snapshot missing rows, then sends it as incoming.
+        // With 3-way merge, if the rows were never in `current`, they're preserved.
+        let full_board = make_new_format_board(vec![
+            ("HiddenRow #hidden-internal-deleted", vec![
+                ("Default", vec![("HCol", vec![make_card("kh01", "hidden card", false)])]),
+            ]),
+            ("Board", vec![
+                ("MainStack", vec![("MainCol", vec![
+                    make_card("km01", "main card 1", false),
+                    make_card("km02", "main card 2", false),
+                ])]),
+            ]),
+        ]);
+        let mut store = CrdtStore::from_board(&full_board).unwrap();
+
+        // Scenario: snapshot only has "Board" row (HiddenRow got lost somehow).
+        // But `current` also only has "Board" row (because the snapshot was
+        // adopted by the frontend as both fullBoardData AND saveBase).
+        let snapshot = make_new_format_board(vec![
+            ("Board", vec![
+                ("MainStack", vec![("MainCol", vec![
+                    make_card("km01", "main card 1", false),
+                    make_card("km02", "main card 2", false),
+                ])]),
+            ]),
+        ]);
+
+        // current = snapshot (frontend started from the incomplete snapshot)
+        // incoming = snapshot (user didn't change anything)
+        store.apply_board(&snapshot, &snapshot).unwrap();
+
+        let result = store.to_board();
+        // HiddenRow should be preserved because it wasn't in `current`
+        assert_eq!(result.rows.len(), 2, "HiddenRow should be preserved (not in current, so not intentionally deleted)");
+        let titles: Vec<&str> = result.rows.iter().map(|r| r.title.as_str()).collect();
+        assert!(titles.contains(&"HiddenRow #hidden-internal-deleted"));
+        assert!(titles.contains(&"Board"));
+    }
+
+    #[test]
+    fn test_3way_user_renames_row_title() {
+        let base = make_new_format_board(vec![
+            ("OldTitle", vec![("S1", vec![("Col1", vec![make_card("k001", "card", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        let mut incoming = base.clone();
+        incoming.rows[0].title = "NewTitle".to_string();
+        store.apply_board(&incoming, &base).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows[0].title, "NewTitle");
+        assert_eq!(result.rows[0].stacks[0].columns[0].cards.len(), 1);
+    }
+
+    #[test]
+    fn test_3way_user_reorders_rows() {
+        let base = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // User reorders: C, A, B
+        let incoming = make_new_format_board(vec![
+            ("C", vec![("SC", vec![("ColC", vec![make_card("k003", "C", false)])])]),
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+        ]);
+        store.apply_board(&incoming, &base).unwrap();
+
+        let result = store.to_board();
+        assert_eq!(result.rows.len(), 3);
+        assert_eq!(result.rows[0].title, "C");
+        assert_eq!(result.rows[1].title, "A");
+        assert_eq!(result.rows[2].title, "B");
+    }
+
+    #[test]
+    fn test_3way_multiple_sequential_edits() {
+        // Simulates a realistic editing session with multiple saves
+        let base = make_new_format_board(vec![
+            ("R1", vec![("S1", vec![("Col1", vec![make_card("k001", "card1", false)])])]),
+            ("R2", vec![("S2", vec![("Col2", vec![make_card("k002", "card2", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&base).unwrap();
+
+        // Edit 1: User adds a card to R1
+        let mut edit1 = base.clone();
+        edit1.rows[0].stacks[0].columns[0].cards.push(make_card("k003", "new card", false));
+        store.apply_board(&edit1, &base).unwrap();
+        let after_edit1 = store.to_board();
+
+        // Edit 2: User adds a new row R3 (current = result of edit 1)
+        let mut edit2 = after_edit1.clone();
+        edit2.rows.push(KanbanRow {
+            id: "row-R3".to_string(),
+            title: "R3".to_string(),
+            stacks: vec![KanbanStack {
+                id: "stack-S3".to_string(),
+                title: "S3".to_string(),
+                columns: vec![KanbanColumn {
+                    id: "col-Col3".to_string(),
+                    title: "Col3".to_string(),
+                    cards: vec![make_card("k004", "row3 card", false)],
+                    include_source: None,
+                }],
+            }],
+        });
+        store.apply_board(&edit2, &after_edit1).unwrap();
+        let after_edit2 = store.to_board();
+
+        // Edit 3: User deletes R2 (current = result of edit 2)
+        let mut edit3 = after_edit2.clone();
+        edit3.rows.retain(|r| r.title != "R2");
+        store.apply_board(&edit3, &after_edit2).unwrap();
+
+        let final_result = store.to_board();
+        let titles: Vec<&str> = final_result.rows.iter().map(|r| r.title.as_str()).collect();
+        assert!(titles.contains(&"R1"));
+        assert!(!titles.contains(&"R2"), "R2 should be deleted");
+        assert!(titles.contains(&"R3"));
+        assert_eq!(final_result.rows.len(), 2);
+
+        // Verify card from edit 1 survived
+        let r1 = final_result.rows.iter().find(|r| r.title == "R1").unwrap();
+        assert!(r1.stacks[0].columns[0].cards.len() >= 2, "Added card should survive through edits");
+    }
+
+    #[test]
+    fn test_3way_empty_current_preserves_all_crdt_items() {
+        // When current is empty (e.g., first sync), nothing should be deleted
+        let board = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+            ("B", vec![("SB", vec![("ColB", vec![make_card("k002", "B", false)])])]),
+        ]);
+        let mut store = CrdtStore::from_board(&board).unwrap();
+
+        // Empty current = first sync, incoming only has row A
+        let incoming = make_new_format_board(vec![
+            ("A", vec![("SA", vec![("ColA", vec![make_card("k001", "A", false)])])]),
+        ]);
+        let empty_current = make_new_format_board(vec![]);
+
+        store.apply_board(&incoming, &empty_current).unwrap();
+
+        let result = store.to_board();
+        // Row B should be preserved because it wasn't in current
+        assert_eq!(result.rows.len(), 2, "Row B should be preserved (not in empty current)");
     }
 }
