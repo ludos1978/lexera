@@ -1840,6 +1840,9 @@ body.show-special-characters .card-editor-textarea {
 .board-row-title {
   order: 20;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .board-row-count {
   order: 10;
@@ -3229,6 +3232,15 @@ u {
 
 .embed-container:hover .embed-menu-btn {
   opacity: 1;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.embed-container .embed-menu-btn:hover {
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 /* Broken embed state */
@@ -6901,6 +6913,19 @@ select.export-input {
   color: var(--text-bright);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 52%, transparent);
   opacity: 1;
+}
+
+:root[data-visual-theme="sleek"] .embed-container:hover .embed-menu-btn {
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+:root[data-visual-theme="sleek"] .embed-container .embed-menu-btn:hover {
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: none;
 }
 
 :root[data-visual-theme="sleek"] .board-action-btn.has-items,
