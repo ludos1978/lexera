@@ -556,6 +556,7 @@ impl BoardStorage for IosStorage {
                             checked: card.checked,
                             hash_tags: meta.hash_tags.clone(),
                             temporal_tags: meta.temporal_tags.clone(),
+                            links: meta.links.clone(),
                             due_date: meta.due_date.map(|d| d.to_string()),
                             is_overdue: meta.is_overdue,
                             row_index: None,

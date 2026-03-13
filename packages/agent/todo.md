@@ -40,12 +40,12 @@
     - tag visibility
 
 - [ ] smaller problems
-  - the management window must have sharing as the first tab, and configuration as second!
+  - ~~the management window must have sharing as the first tab, and configuration as second!~~ (already done)
   - it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!
-  - the system beeps when i press escape while having the board open. why?
-  - when i click outside the quick capture window it should get small immediately
+  - ~~the system beeps when i press escape while having the board open. why?~~ (fixed: 8abf6ee8)
+  - ~~when i click outside the quick capture window it should get small immediately~~ (already done: Focused(false) handler)
   - the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
-  - also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards 
+  - ~~also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards~~ (already done: unfoldSearchTarget + focusSearchResultCard navigates through hierarchy)
   - fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!
     - the lexera kanban view can have one or multiple windows open
     - find a solution for the management interface to solve this.
@@ -53,7 +53,7 @@
 
 - [x] make the management interface being shared between the backend and the frontend kanban (collaboration)
 
-- [ ] make the board zoomable by scrolling.
+- [x] make the board zoomable by scrolling. (already done: Cmd/Ctrl+Scroll zoom via nudgeUiScale)
 
 - [ ] the clipboard should only show the current level within the search and not a hierarchical display. it lists the items and if i press left it goes higher, right it goes into the objects. it should show immediately if a new item is added by cmd+v
 
@@ -111,15 +111,15 @@ if the clipboard is pasted:
 
 - [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
 
-- [ ] when searching allow to limit seaches for l: links
+- [x] when searching allow to limit seaches for l: links
 
 
-- [ ] fix the font in the kanban workspace selection
-- [ ] right clicking on board elements should allow adding row/stack/column/card which are appended after the current element.
+- [x] fix the font in the kanban workspace selection (font-family: inherit already present)
+- [x] right clicking on board elements should allow adding row/stack/column/card which are appended after the current element. (insert-after/add-after actions already registered)
 - [ ] dragging an element (row/stack/column/card) from the view to the hierarchy should allow positioning it within a specific place! also dragging within the hiearchy and within the view must still work for all elements.
 - [ ] when editing it should do the least possible changes versus non editing the same field. curently it seems to add a margin padding around the text which serves no functionality!
-- [ ] the title of a row is not properly cut off. it overlaps the right burger menu.
-- [ ] the burger menu over an image is barely visible on hover. make it have a stronger contrast bg/fg
+- [x] the title of a row is not properly cut off. it overlaps the right burger menu. (overflow/ellipsis CSS already present)
+- [x] the burger menu over an image is barely visible on hover. make it have a stronger contrast bg/fg (fixed: 15ed3d7e)
 - [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
 
 ### Native OS Menu Bar (done)
@@ -133,8 +133,8 @@ if the clipboard is pasted:
 - [x] Add Alt+Click handler on rendered card content: Alt+clicking a link opens it in the system browser, Alt+clicking an image opens the file in the system app, Alt+clicking an embed opens the source file. Use the existing `openInSystem` Tauri command.
 
 ### Card Editor Improvements
-- [ ] Add drag-and-drop file support in the card overlay editor: dropping an image file into the editor textarea inserts a markdown image embed `![](relative-path)`, dropping other files inserts a file link. Resolve paths relative to the board file location.
-- [ ] Add image paste support in the card editor: pasting an image from clipboard saves it to a media folder next to the board file and inserts the markdown image embed.
+- [x] Add drag-and-drop file support in the card overlay editor: dropping an image file into the editor textarea inserts a markdown image embed `![](relative-path)`, dropping other files inserts a file link. Resolve paths relative to the board file location. (resolveDropContent + uploadFileAndBuildMarkdown already implemented)
+- [x] Add image paste support in the card editor: pasting an image from clipboard saves it to a media folder next to the board file and inserts the markdown image embed. (handleEditorPasteImage already implemented)
 
 ### Fold State Improvements (done)
 - [x] Persist row and stack fold states across board reloads — save fold state for each element by ID in localStorage alongside the existing column/card fold state, and restore on board render.

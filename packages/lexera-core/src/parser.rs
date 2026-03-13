@@ -250,12 +250,10 @@ fn convert_legacy_columns_to_rows(parsed_columns: Vec<KanbanColumn>) -> Vec<Kanb
                 }
             }
 
-            let multiple_stacks = groups.len() > 1;
             groups
                 .into_iter()
                 .enumerate()
                 .map(|(stack_index, group)| {
-                    let derive_title = multiple_stacks || multiple_rows;
                     KanbanStack {
                         id: generate_id("stack"),
                         title: {

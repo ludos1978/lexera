@@ -295,6 +295,8 @@ pub struct SearchResult {
     pub hash_tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub temporal_tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub due_date: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

@@ -22,6 +22,7 @@ pub enum DueFilter {
 pub struct SearchCardMeta {
     pub hash_tags: Vec<String>,
     pub temporal_tags: Vec<String>,
+    pub links: Vec<String>,
     pub due_date: Option<NaiveDate>,
     pub is_overdue: bool,
 }
@@ -30,12 +31,14 @@ impl SearchCardMeta {
     pub fn from_card(content: &str, checked: bool) -> Self {
         let hash_tags = extract_hash_tags(content);
         let temporal_tags = extract_temporal_tags(content);
+        let links = extract_links(content);
         let today = Local::now().date_naive();
         let due_date = derive_due_date(&temporal_tags, today);
         let is_overdue = due_date.map(|d| d < today && !checked).unwrap_or(false);
         Self {
             hash_tags,
             temporal_tags,
+            links,
             due_date,
             is_overdue,
         }
@@ -57,6 +60,7 @@ enum SearchTerm {
     Temporal(String),
     Board(String),
     Column(String),
+    Link(String),
     IsChecked(bool),
     Due(DueFilter),
     DueDate(NaiveDate),
@@ -174,6 +178,11 @@ impl SearchEngine {
             SearchTerm::Column(value) => {
                 contains_text(doc.column_title, value, self.case_sensitive)
             }
+            SearchTerm::Link(value) => doc
+                .meta
+                .links
+                .iter()
+                .any(|link| contains_text(link, value, self.case_sensitive)),
             SearchTerm::IsChecked(checked) => doc.checked == *checked,
             SearchTerm::Due(mode) => self.matches_due(*mode, doc),
             SearchTerm::DueDate(target) => doc.meta.due_date == Some(*target),
@@ -289,6 +298,7 @@ fn parse_token(raw_token: String, case_sensitive: bool, today: NaiveDate) -> Opt
             "tag" => Some(SearchTerm::Tag(normalize_hash_tag(value))),
             "date" | "temporal" => Some(SearchTerm::Temporal(normalize_temporal_tag(value))),
             "re" | "regex" => Regex::new(value).ok().map(SearchTerm::Regex),
+            "l" | "link" => Some(SearchTerm::Link(normalize_case(value, case_sensitive))),
             _ => None,
         };
         if let Some(term) = term {
@@ -407,6 +417,60 @@ pub fn extract_temporal_tags(content: &str) -> Vec<String> {
         }
     }
     tags
+}
+
+fn markdown_link_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\[([^\]]*)\]\(([^)]+)\)").expect("valid markdown link regex"))
+}
+
+fn wiki_link_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\[\[([^\[\]]+?)\]\]").expect("valid wiki link regex"))
+}
+
+fn bare_url_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?:^|\s)(https?://[^\s>)\]]+)").expect("valid bare url regex")
+    })
+}
+
+/// Extract all links from card content: markdown links `[text](url)`,
+/// wiki links `[[target]]`, and bare URLs `https://...`.
+pub fn extract_links(content: &str) -> Vec<String> {
+    let mut links = Vec::new();
+
+    // Markdown links: [text](url "optional title")
+    for cap in markdown_link_regex().captures_iter(content) {
+        let url = cap[2].split_whitespace().next().unwrap_or("").trim_matches('"');
+        if !url.is_empty() && !links.iter().any(|l: &String| l == url) {
+            links.push(url.to_string());
+        }
+    }
+
+    // Wiki links: [[target]] or [[target|display]]
+    for cap in wiki_link_regex().captures_iter(content) {
+        let inner = &cap[1];
+        let target = if let Some(pipe) = inner.find('|') {
+            inner[..pipe].trim()
+        } else {
+            inner.trim()
+        };
+        if !target.is_empty() && !links.iter().any(|l: &String| l == target) {
+            links.push(target.to_string());
+        }
+    }
+
+    // Bare URLs: https://example.com
+    for cap in bare_url_regex().captures_iter(content) {
+        let url = &cap[1];
+        if !links.iter().any(|l: &String| l == url) {
+            links.push(url.to_string());
+        }
+    }
+
+    links
 }
 
 fn derive_due_date(temporal_tags: &[String], today: NaiveDate) -> Option<NaiveDate> {
@@ -594,6 +658,7 @@ mod tests {
         let meta = SearchCardMeta {
             hash_tags: vec!["#finance".into()],
             temporal_tags: vec!["@2000-01-01".into()],
+            links: vec![],
             due_date: NaiveDate::from_ymd_opt(2000, 1, 1),
             is_overdue: true,
         };
@@ -871,6 +936,7 @@ mod tests {
         let meta1 = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec!["@2000-01-01".into()],
+            links: vec![],
             due_date: NaiveDate::from_ymd_opt(2000, 1, 1),
             is_overdue: true,
         };
@@ -887,6 +953,7 @@ mod tests {
         let meta2 = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec!["@2000-01-01".into()],
+            links: vec![],
             due_date: NaiveDate::from_ymd_opt(2000, 1, 1),
             is_overdue: false, // checked cards are not overdue
         };
@@ -907,6 +974,7 @@ mod tests {
         let meta1 = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec!["@2030-06-01".into()],
+            links: vec![],
             due_date: NaiveDate::from_ymd_opt(2030, 6, 1),
             is_overdue: false,
         };
@@ -922,6 +990,7 @@ mod tests {
         let meta2 = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: None,
             is_overdue: false,
         };
@@ -946,6 +1015,7 @@ mod tests {
         let meta_this_week = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: Some(engine.week_start),
             is_overdue: false,
         };
@@ -962,6 +1032,7 @@ mod tests {
         let meta_end_week = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: Some(engine.week_end),
             is_overdue: false,
         };
@@ -978,6 +1049,7 @@ mod tests {
         let meta_next_week = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: Some(engine.week_end + Duration::days(1)),
             is_overdue: false,
         };
@@ -994,6 +1066,7 @@ mod tests {
         let meta_prev_week = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: Some(engine.week_start - Duration::days(1)),
             is_overdue: false,
         };
@@ -1014,6 +1087,7 @@ mod tests {
         let meta1 = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: Some(engine.today + Duration::days(30)),
             is_overdue: false,
         };
@@ -1030,6 +1104,7 @@ mod tests {
         let meta2 = SearchCardMeta {
             hash_tags: vec![],
             temporal_tags: vec![],
+            links: vec![],
             due_date: Some(engine.today),
             is_overdue: false,
         };
@@ -1292,5 +1367,127 @@ mod tests {
         let tokens = split_query_tokens(r#"hello \"world"#);
         // The backslash escapes the quote, so it's part of the token
         assert!(tokens.iter().any(|t| t.contains('"')));
+    }
+
+    // ---------------------------------------------------------------
+    // Link extraction
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_extract_links_markdown() {
+        let links = extract_links("Check [Google](https://google.com) and [Docs](./readme.md)");
+        assert_eq!(links.len(), 2);
+        assert!(links.contains(&"https://google.com".to_string()));
+        assert!(links.contains(&"./readme.md".to_string()));
+    }
+
+    #[test]
+    fn test_extract_links_wiki() {
+        let links = extract_links("See [[ProjectPlan]] and [[notes|My Notes]]");
+        assert_eq!(links.len(), 2);
+        assert!(links.contains(&"ProjectPlan".to_string()));
+        assert!(links.contains(&"notes".to_string()));
+    }
+
+    #[test]
+    fn test_extract_links_bare_url() {
+        let links = extract_links("Visit https://example.com/page?q=1 for details");
+        assert_eq!(links.len(), 1);
+        assert!(links.contains(&"https://example.com/page?q=1".to_string()));
+    }
+
+    #[test]
+    fn test_extract_links_dedup() {
+        let links = extract_links("[a](https://x.com) and https://x.com again");
+        assert_eq!(links.len(), 1);
+    }
+
+    #[test]
+    fn test_extract_links_empty() {
+        let links = extract_links("No links here, just text");
+        assert!(links.is_empty());
+    }
+
+    // ---------------------------------------------------------------
+    // Link search prefix
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_link_search_matches() {
+        let engine = SearchEngine::compile("l:github.com", SearchOptions::default());
+        let meta = SearchCardMeta::from_card(
+            "Check [repo](https://github.com/user/repo) for updates",
+            false,
+        );
+        let doc = SearchDocument {
+            board_title: "Dev",
+            column_title: "Todo",
+            card_content: "Check [repo](https://github.com/user/repo) for updates",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_link_search_no_match() {
+        let engine = SearchEngine::compile("l:gitlab.com", SearchOptions::default());
+        let meta = SearchCardMeta::from_card(
+            "Check [repo](https://github.com/user/repo)",
+            false,
+        );
+        let doc = SearchDocument {
+            board_title: "Dev",
+            column_title: "Todo",
+            card_content: "Check [repo](https://github.com/user/repo)",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(!engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_link_search_wiki_link() {
+        let engine = SearchEngine::compile("link:ProjectPlan", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("See [[ProjectPlan]] for details", false);
+        let doc = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "See [[ProjectPlan]] for details",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_link_search_negation() {
+        let engine = SearchEngine::compile("task -l:github.com", SearchOptions::default());
+        let meta = SearchCardMeta::from_card(
+            "task with [link](https://github.com/repo)",
+            false,
+        );
+        let doc = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "task with [link](https://github.com/repo)",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(!engine.matches(&doc));
+    }
+
+    #[test]
+    fn test_link_search_bare_url() {
+        let engine = SearchEngine::compile("l:example.com", SearchOptions::default());
+        let meta = SearchCardMeta::from_card("Visit https://example.com/page", false);
+        let doc = SearchDocument {
+            board_title: "A",
+            column_title: "B",
+            card_content: "Visit https://example.com/page",
+            checked: false,
+            meta: &meta,
+        };
+        assert!(engine.matches(&doc));
     }
 }
