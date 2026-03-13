@@ -6958,7 +6958,7 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] {
   --sidebar-tree-item-height: calc(18px * var(--ui-scale));
-  --sidebar-tree-indent-step: calc(18px * var(--ui-scale));
+  --sidebar-tree-indent-step: calc(12px * var(--ui-scale));
   --sidebar-tree-root-offset: 0px;
   --sidebar-tree-indent-col: var(--sidebar-tree-indent-step);
   --tree-indent-step: var(--sidebar-tree-indent-step);
@@ -7234,7 +7234,7 @@ select.export-input {
 :root[data-visual-theme="sleek"] .indent-guide.branch::after,
 :root[data-visual-theme="sleek"] .indent-guide.corner::after {
   left: 4px;
-  right: calc(-1 * var(--sidebar-tree-toggle-col));
+  right: 0;
 }
 
 :root[data-visual-theme="sleek"] .tree-toggle::before,
@@ -7279,6 +7279,15 @@ select.export-input {
   border-left: none;
   border-top: 1px solid color-mix(in srgb, var(--text-muted) 24%, transparent);
   transform: translateY(-50%);
+}
+
+:root[data-visual-theme="sleek"] .tree-view-compact .tree-toggle.expanded::before,
+:root[data-visual-theme="sleek"] .tree-view-host-compact .board-item-toggle.expanded::before {
+  top: 50%;
+  bottom: auto;
+  height: 0;
+  border-left: none;
+  border-top: 1px solid color-mix(in srgb, var(--text-muted) 24%, transparent);
 }
 
 :root[data-visual-theme="sleek"] .tree-view-compact .tree-toggle,

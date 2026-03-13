@@ -2,6 +2,124 @@
 
 ## Open
 
+- [ ] we want an open canvas board styling option. there is a ordered and a canvas board structure. for the canvas board option we add these functions:
+  - Context — we are extending a VS Code extension that renders markdown files as Kanban boards. Currently the layout is flat: rows contain columns contain cards. We are adding a parameter system so users can define spatial layouts using {key:value} syntax in markdown headings. The hierarchy is: # rows → ## stacks (positioned containers) → ### columns (sequential lists) → * [ ] cards. Stacks can be freely positioned within a row, columns flow sequentially inside stacks, cards flow sequentially inside columns.
+  - Add parameter parser — write a function that extracts {key:value, key:value} blocks from markdown heading lines and card lines. Return parsed key-value pairs as a typed object. Strip the param block from display text. Handle missing, empty, and malformed params gracefully.
+  - Integrate params into data model — extend the existing markdown parser so stacks, columns, and cards carry their parsed params. Define typed interfaces: stacks get x, y, w, h, dir, columns get w (weight), cards get span. All params are optional with sensible defaults so existing files without params render unchanged.
+  - Render the layout — use stack params to position stacks within their row (CSS grid or similar). Use column weight to size columns within a stack. Use card span to let cards occupy multiple units. Stacks without params fall back to current sequential flow.
+  - Preserve params on edit — ensure drag-and-drop, inline editing, and reordering preserve {params} blocks correctly in the markdown source.
+  - Write tests — cover param parsing, default fallbacks, layout rendering, and round-trip preservation through edits.
+
+- [ ] i want the top menu bar have the following structure
+  left aligned
+  - filename
+  - file header settings (marp, pandoc, etc settings that are file specific in one or multiple burger menus.)
+
+  middle aligned:
+  - empty card, column, stack, rows to drag into the board
+  - template card, column, stack, rows to drag into the board
+  - card, columns stacks, rows generated from clipboard content
+  - predefined templates for cards, for example draw.io files, excalidraw files, other file formats that we coud later directly embed to edit
+  - a separator
+  - individual dropdowns for incoming, park, archive, trash
+
+  right side aligned:
+  - fold all cards, fold all columns
+  - pin column headers (when they are outside the view they are stick to header footer of the view)
+  - runnign processes
+  - save system and change tracking
+  - templates selection (maybe zoom)
+  - export / pack
+  - burger menu for extended settings
+    - overlay editor enabled
+    - wysiwyg edtior enabled
+    - show special characters
+    - show marp settings
+    - html comment rendering
+    - html content rendering 
+    - tag visibility
+
+- [ ] smaller problems
+  - the management window must have sharing as the first tab, and configuration as second!
+  - it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!
+  - the system beeps when i press escape while having the board open. why?
+  - when i click outside the quick capture window it should get small immediately
+  - the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
+  - also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards 
+  - fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!
+    - the lexera kanban view can have one or multiple windows open
+    - find a solution for the management interface to solve this.
+  - it might be that the background of the application is not transparent? because on the right side the rounded border shows the background, but on the left side it shows some white parts
+
+- [x] make the management interface being shared between the backend and the frontend kanban (collaboration)
+
+- [ ] make the board zoomable by scrolling.
+
+- [ ] the clipboard should only show the current level within the search and not a hierarchical display. it lists the items and if i press left it goes higher, right it goes into the objects. it should show immediately if a new item is added by cmd+v
+
+- [ ] the clipboard should only be a vertical line with the title of the last copy-paste value. can we somehow detect/hide passwords? it should fold similar to the columns. when unfolded it displays the same way we have right now. the user can define a default workspace which is used as board search area, if he presses left it switches to workspace selection. we must have a hierarchy stored "workspaces > kanban boards" (with the subitems > rows > stacks > columns > cards shown when going right with the cursor). the backend must store the workspaces and boards, the frontend and the clipboard accesses these settings and uses the backend to navigate the contents of the boards. 
+
+- [ ] make sure the clipboard and the backend also use light / dark styles. templates that should be applied to all parts of the application. for that the backend should have a separate "configuration" which doesnt do regular maintenence and sharing aspects. the server bind address and port, as well as the identity should be there as well as the theme selection. theme should be shared among front and backend. the settings should be stored.
+
+in the sharing settings workspaces are defined, workspaces can contain one or more boards. boards can be defined and invitations as well as connecting to peers and joining, fix the details in the invitations, there are options that dont work. invitations should work for full workspaces, or individual boards!
+
+- [ ] we hide the clipboard history for now, we might use it later, but currently it's disabled. we show the current clipboard entry, for example if an image has been copyied (binary) we decode and show it. or if it's a link we try to open the page, whatever document it is we try to generate a preview. this is shown at the top with the cursor in the search field below. by searching we search within the activated workspaces & boards. by default downward clicks show the boards or workspaces. right clicking opens each element until we see the cards.
+if the clipboard is pasted:
+- into a board : its placed in the incomding (same as park)
+- into a row, stack, column : it's placed at the end as a card, if needed stack or columns are created to accomodate the card.
+- into a card : its appended to the cards content.
+
+- [ ] integrate this https://sidemark.org/guide/examples.html or https://github.com/TheGesturalist/gest-critic-markup-kit (i actually prefer critic-markdown)
+
+- [ ] add a theme that allows setting these style settings:
+  - the stack title and frame only is a line of text, as if it's on the top of the row. content below should not be indented. If it's empty we show an empty line. we show a 2 pixel dashed line below it and no other styling, except if it's defined by tags that style content.
+  - stacks are separated by a vertical line of 1px solid it's at least the height of the view.
+  - the columns are separated by a 2 pixel solid line.
+  - the cards are separated by a 1 pixel solid line.
+  - rows are sre separated by a horizontal line of 3px solid, it's at least the width of the view.
+  what values do we need to make configurable for this to work.
+
+- [ ] restore the layout settings from the old version. there should be a default value settable for the stack width (which changes columns and cards as well.) but an value that can be asssigned to the stack directly to override it. we could use #width{integer} to define it using a tag. The rows could also use a similar setting where it defines a max-height for example using #height{integer}.
+
+- [ ] in the packages/lexera folders work on feature parity with the code in the src folder. there is some difference as we added row, stack structures in lexera. also the splitting of features are different and a backend data realtime syncing. but for the user perspective the features must be equal.  there is a lot of features that are missing or not functioning well. do an state analysis first
+
+- [ ] the backend needs a small interface that allows adding and removing kanban boards from/to it and of course list the ones that are currently included. it must show if users are working on them and if this machine is autoritative for the board (maybe other network relevant informations). it must communicate with the frontend when it changes this. 
+
+- [ ] i want to be able to setup multiple workspaces. 
+  - each workspace has specific boards open
+  - it can have specific layouts
+  - it can have a specific theme
+  - maybe more...
+
+- [ ] the file format should be changed to \                                                                
+  ---\                                                                                                  
+  yaml-header\                                                                                          
+  ---\                                                                                                  
+  # row name\                                                                                           
+  ## stack name\                                                                                        
+  ### column name\                                                                                      
+  - [ ] card name\                                                                                      
+    ...\                                                                                                
+  - [ ] ...\                                                                                            
+  \                                                                                                     
+  all of the elements should be moveable and foldable individuall. so a row can be folded, a stack can  
+  be folded and columns as well and cards. they can be dragged around and placed as needed. we will     
+  think about layout options for the groups later. currently rows are horizontally listed items,        
+  stacks are vertically listed items, column contain verticall listed items (the cards).
+
+- [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
+
+- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
+
+- [ ] when searching allow to limit seaches for l: links
+
+
+- [ ] fix the font in the kanban workspace selection
+- [ ] right clicking on board elements should allow adding row/stack/column/card which are appended after the current element.
+- [ ] dragging an element (row/stack/column/card) from the view to the hierarchy should allow positioning it within a specific place! also dragging within the hiearchy and within the view must still work for all elements.
+- [ ] when editing it should do the least possible changes versus non editing the same field. curently it seems to add a margin padding around the text which serves no functionality!
+- [ ] the title of a row is not properly cut off. it overlaps the right burger menu.
+- [ ] the burger menu over an image is barely visible on hover. make it have a stronger contrast bg/fg
 - [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
 
 ### Native OS Menu Bar (done)
