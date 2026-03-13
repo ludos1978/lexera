@@ -159,8 +159,9 @@ mod tests {
             title: "Test".to_string(),
             columns: columns
                 .into_iter()
-                .map(|(title, cards)| KanbanColumn {
-                    id: "col".to_string(),
+                .enumerate()
+                .map(|(i, (title, cards))| KanbanColumn {
+                    id: format!("col-{}", i),
                     title: title.to_string(),
                     cards,
                     include_source: None,

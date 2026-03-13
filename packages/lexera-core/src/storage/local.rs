@@ -296,6 +296,28 @@ impl LocalStorage {
         Self::board_visible_signature(a) == Self::board_visible_signature(b)
     }
 
+    /// Compare the card content of include columns between two boards.
+    /// Returns true when every include column has the same cards in both boards.
+    fn include_columns_match(a: &KanbanBoard, b: &KanbanBoard) -> bool {
+        let a_cols = a.all_columns();
+        let b_cols = b.all_columns();
+        for a_col in &a_cols {
+            if a_col.include_source.is_none() {
+                continue;
+            }
+            let a_content = slide_parser::generate_slides(&a_col.cards);
+            let b_content = b_cols
+                .iter()
+                .find(|bc| bc.id == a_col.id || bc.title == a_col.title)
+                .map(|bc| slide_parser::generate_slides(&bc.cards))
+                .unwrap_or_default();
+            if a_content != b_content {
+                return false;
+            }
+        }
+        true
+    }
+
     fn board_from_crdt_if_semantically_equal(
         board: &KanbanBoard,
         crdt: &CrdtStore,
@@ -323,6 +345,19 @@ impl LocalStorage {
                 board_kid_sample(&crdt_board, 6),
                 board_card_summary(&normalized_board),
                 board_card_summary(&crdt_board)
+            );
+            return None;
+        }
+
+        // The visible-content signature excludes include-column cards (they
+        // live in external files, not in the board markdown).  If include
+        // content changed on disk, the CRDT snapshot is stale even though
+        // the board markdown is identical.  Compare include columns' cards
+        // explicitly so the CRDT gets rebuilt from the freshly-parsed board.
+        if !Self::include_columns_match(&normalized_board, &crdt_board) {
+            log::info!(
+                target: "lexera.storage.read_board",
+                "CRDT snapshot rejected: include column content differs from disk"
             );
             return None;
         }
