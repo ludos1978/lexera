@@ -1398,4 +1398,47 @@ kanban-plugin: board
         );
         assert_eq!(board.all_columns().len(), 1);
     }
+
+    // ---------------------------------------------------------------
+    // Markdown text idempotency: parse → generate → parse → generate
+    // must produce identical markdown on the second generation.
+    // ---------------------------------------------------------------
+
+    #[test]
+    fn test_legacy_format_text_idempotency() {
+        let board1 = parse_markdown(SAMPLE_BOARD);
+        let md1 = generate_markdown(&board1);
+        let board2 = parse_markdown(&md1);
+        let md2 = generate_markdown(&board2);
+        assert_eq!(md1, md2, "Legacy format markdown should be idempotent after first normalization");
+    }
+
+    #[test]
+    fn test_new_format_text_idempotency() {
+        let board1 = parse_markdown(NEW_FORMAT_BOARD);
+        let md1 = generate_markdown(&board1);
+        let board2 = parse_markdown(&md1);
+        let md2 = generate_markdown(&board2);
+        assert_eq!(md1, md2, "New format markdown should be idempotent after first normalization");
+    }
+
+    #[test]
+    fn test_multiline_card_text_idempotency() {
+        let md = "---\nkanban-plugin: board\n---\n\n# Row\n\n## Stack\n\n### Col\n- [ ] Title line\n  Description line 1\n  Description line 2\n\n- [x] Another card\n  with continuation\n";
+        let board1 = parse_markdown(md);
+        let md1 = generate_markdown(&board1);
+        let board2 = parse_markdown(&md1);
+        let md2 = generate_markdown(&board2);
+        assert_eq!(md1, md2, "Multiline card content should be idempotent");
+    }
+
+    #[test]
+    fn test_card_with_tags_text_idempotency() {
+        let md = "---\nkanban-plugin: board\n---\n\n# Row\n\n## Stack\n\n### Col\n- [ ] Task #tag1 #tag2 @2026-01-15\n  Some description with [link](https://example.com)\n  And a [[wiki-link]]\n";
+        let board1 = parse_markdown(md);
+        let md1 = generate_markdown(&board1);
+        let board2 = parse_markdown(&md1);
+        let md2 = generate_markdown(&board2);
+        assert_eq!(md1, md2, "Cards with tags and links should be idempotent");
+    }
 }
