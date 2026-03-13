@@ -3133,6 +3133,7 @@ const LexeraDashboard = (function () {
       $searchInput.addEventListener('input', onSearchInput);
       $searchInput.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
+          e.preventDefault();
           $searchInput.value = '';
           exitSearchMode();
         }
@@ -3397,9 +3398,13 @@ const LexeraDashboard = (function () {
         renderColumns();
       }
     } else if (key === 'Escape' && mgmtPanelOpen) {
+      e.preventDefault();
       closeManagementPanel();
     } else if (key === 'Escape' && focusedCardEl) {
+      e.preventDefault();
       unfocusCard();
+    } else if (key === 'Escape') {
+      e.preventDefault();
     }
   }
 
@@ -6863,7 +6868,7 @@ const LexeraDashboard = (function () {
       }
     }
     function keyListener(e) {
-      if (e.key === 'Escape') closeHiddenItemsDropdown();
+      if (e.key === 'Escape') { e.preventDefault(); closeHiddenItemsDropdown(); }
     }
     // Delay to avoid the opening click from closing
     setTimeout(function () {
@@ -7435,7 +7440,7 @@ const LexeraDashboard = (function () {
         }
       }
       function keyListener(e) {
-        if (e.key === 'Escape') closeHeaderSourceDropdown();
+        if (e.key === 'Escape') { e.preventDefault(); closeHeaderSourceDropdown(); }
       }
       setTimeout(function () {
         document.addEventListener('mousedown', closeListener, true);
@@ -11319,7 +11324,7 @@ const LexeraDashboard = (function () {
             customInput.classList.add('tag-color-picker-input-invalid');
           }
         }
-        if (e.key === 'Escape') cleanup(null);
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(null); }
       });
 
       customInput.addEventListener('input', function () {
@@ -11902,6 +11907,7 @@ const LexeraDashboard = (function () {
               submitCard(colIndex, textarea.value);
             }
             if (e.key === 'Escape') {
+              e.preventDefault();
               addCardColumn = null;
               renderColumns();
             }
@@ -13767,9 +13773,11 @@ const LexeraDashboard = (function () {
         return;
       }
       if (currentCardEditor) {
+        e.preventDefault();
         closeCardEditorOverlay({ save: false });
         return;
       }
+      e.preventDefault();
       if (cardDrag && cardDrag.started) cancelCardDrag();
       else if (cardDrag) {
         cardDrag = null;
@@ -20397,6 +20405,7 @@ const LexeraDashboard = (function () {
 
     dialog.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !e.target.closest('.plaintext-editor-textarea')) {
+        e.preventDefault();
         closeSpecialFileEditorOverlay(editor, false);
       }
       if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
@@ -20468,6 +20477,7 @@ const LexeraDashboard = (function () {
     });
     dialog.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
+        e.preventDefault();
         clearCachedFilePreviewState(boardId, filePath);
         refreshVisibleBoardFileEmbeds(boardId, filePath);
         closeSpecialFileEditorOverlay(editor, true);
