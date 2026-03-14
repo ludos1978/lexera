@@ -132,7 +132,7 @@ in the sharing settings workspaces are defined, workspaces can contain one or mo
 - [x] when editing it should do the least possible changes versus non editing the same field. curently it seems to add a margin padding around the text which serves no functionality! (fixed: 3c68600b — removed 120px min-height, textarea now sizes to content, font-size inherits board setting)
 - [x] the title of a row is not properly cut off. it overlaps the right burger menu. (overflow/ellipsis CSS already present)
 - [x] the burger menu over an image is barely visible on hover. make it have a stronger contrast bg/fg (fixed: 15ed3d7e)
-- [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
+- ~~Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.~~ (done: 825b77c5 — POST /search/files endpoint with workspace/category filtering, "Files" button in card editor toolbar opens search dialog with category tabs and clickable results inserting markdown embeds)
 
 ### Native OS Menu Bar (done)
 - [x] Add native OS menu bar with File, Edit, View, Go, Board, Help menus via Tauri `app_menu.rs`.
