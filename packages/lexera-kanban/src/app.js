@@ -13895,6 +13895,10 @@ const LexeraDashboard = (function () {
       getElBoardList().querySelectorAll('.tree-column.drop-target, .tree-stack.drop-target, .tree-row.drop-target, .board-item.drop-target'),
       'drop-target'
     );
+    removeClassesFromNodeList(
+      getElBoardList().querySelectorAll('.tree-drop-above, .tree-drop-below'),
+      ['tree-drop-above', 'tree-drop-below']
+    );
   }
 
   function findSidebarColumnAt(mx, my) {
@@ -13992,10 +13996,10 @@ const LexeraDashboard = (function () {
       return { kind: 'header-trash', sidebarNode: null, container: null };
     }
 
-    var isTreeCardDrag = ptrDrag && ptrDrag.type === 'tree-card';
+    var isCardDrag = (ptrDrag && ptrDrag.type === 'tree-card') || (cardDrag && cardDrag.started);
 
-    // Tree card-to-card: precise between-card positioning in hierarchy
-    if (isTreeCardDrag) {
+    // Card-to-card: precise between-card positioning in hierarchy
+    if (isCardDrag) {
       var treeCardTarget = getTreeCardDropTarget(mx, my);
       if (treeCardTarget) {
         var tcInsertIdx = treeCardTarget.before ? treeCardTarget.cardIndex : treeCardTarget.cardIndex + 1;
@@ -14055,8 +14059,9 @@ const LexeraDashboard = (function () {
       }
     }
 
-    // Cards from tree can only go into columns — skip stack/row/board fallbacks
-    if (!isTreeCardDrag) {
+    // Tree-originated card drags only go into columns; board card drags also target stacks/rows/boards
+    var isTreeOnlyCardDrag = ptrDrag && ptrDrag.type === 'tree-card';
+    if (!isTreeOnlyCardDrag) {
       // Sidebar stack drop: append to last column in stack.
       var sidebarStackNode = findNodeAtPoint(getElBoardList().querySelectorAll('.tree-stack[data-tree-drag="tree-stack"]'), mx, my);
       if (sidebarStackNode) {
@@ -15370,7 +15375,7 @@ const LexeraDashboard = (function () {
   }
 
   function getTreeCardDropTarget(mx, my) {
-    var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-card"]'), mx, my, true);
+    var treeTarget = ptrFindStrictHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-card"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
     if (!treeTarget) return null;
     var boardId = treeTarget.node.getAttribute('data-board-id') || activeBoardId;
     var rowIdx = parseInt(treeTarget.node.getAttribute('data-row-index'), 10);
