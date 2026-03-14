@@ -2,6 +2,12 @@
 
 ## Open
 
+- [ ] we need shortcuts to be defineable. for example meta+1 should do \n\n---:\n\n where the cursor is placed. i'd like a system as vscode has it, which is configurable.
+
+- [ ] if i alt click on a fold icon in the hierarchy, it should fold all children, but not the item itself (the same as in the view)!
+
+- [ ] when i disable elements that show in the sidebar (cound, users, darg icon) it should free up space for the titles!
+
 - [ ] we want an open canvas board styling option. there is a ordered and a canvas board structure. for the canvas board option we add these functions:
   - Context — we are extending a VS Code extension that renders markdown files as Kanban boards. Currently the layout is flat: rows contain columns contain cards. We are adding a parameter system so users can define spatial layouts using {key:value} syntax in markdown headings. The hierarchy is: # rows → ## stacks (positioned containers) → ### columns (sequential lists) → * [ ] cards. Stacks can be freely positioned within a row, columns flow sequentially inside stacks, cards flow sequentially inside columns.
   - Add parameter parser — write a function that extracts {key:value, key:value} blocks from markdown heading lines and card lines. Return parsed key-value pairs as a typed object. Strip the param block from display text. Handle missing, empty, and malformed params gracefully.
@@ -262,5 +268,5 @@ Specs: `packages/agent/specs/plugins/diagram/SPEC.md`, `plugins/enhancer/SPEC.md
 - [x] there should be no left border on a row!
 - [x] the burger menu next to the filename is not working reliably. maybe it's so slow, or the button clicks dont allways react. it seems to open an external programm sometimes when i click it (the draw.io.app)
 
-- [ ] i want to be able to open 2 windows at once!
+- ~~i want to be able to open 2 windows at once!~~ (done: f0d93979 — Cmd+N opens new windows, menu events route to focused window, secondary windows close normally)
 - [x] remove the "collapse or expand all cards" and the "fold/unfold all columns" from the top bar and put it into a menu-bar option.
