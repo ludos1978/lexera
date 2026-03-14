@@ -189,6 +189,10 @@ pub fn api_router() -> Router<AppState> {
             axum::routing::put(config_api::update_workspace_sync),
         )
         .route(
+            "/config/workspaces/{id}/appearance",
+            axum::routing::put(config_api::update_workspace_appearance),
+        )
+        .route(
             "/config/default-workspace",
             axum::routing::put(config_api::set_default_workspace),
         )

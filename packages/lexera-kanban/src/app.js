@@ -4886,6 +4886,16 @@ const LexeraDashboard = (function () {
     localStorage.setItem('lexera-active-workspace', activeWorkspaceId);
   }
 
+  function applyWorkspaceAppearance(workspaceId) {
+    if (!workspaceId || workspaceId === ALL_WORKSPACES_ID) return;
+    var ws = null;
+    for (var i = 0; i < workspaces.length; i++) {
+      if (workspaces[i].id === workspaceId) { ws = workspaces[i]; break; }
+    }
+    if (!ws) return;
+    if (ws.theme) applyVisualTheme(ws.theme);
+  }
+
   function resolveActiveWorkspaceId(defaultWorkspaceId) {
     var knownWorkspaceIds = workspaces.map(function (ws) { return ws.id; });
     var storedIsValid = activeWorkspaceId === ALL_WORKSPACES_ID
@@ -4937,6 +4947,7 @@ const LexeraDashboard = (function () {
 
     sel.onchange = function () {
       setActiveWorkspaceId(sel.value);
+      applyWorkspaceAppearance(sel.value);
       renderBoardList();
     };
   }

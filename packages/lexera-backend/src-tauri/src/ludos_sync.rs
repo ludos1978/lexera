@@ -487,6 +487,8 @@ mod tests {
                 calendar_sync: Some(true),
                 calendar_slug: Some("workspace-slug".to_string()),
                 calendar_name: Some("Workspace Calendar".to_string()),
+                theme: None,
+                layout_preset: None,
             }],
             ludos_sync: LudosSyncModuleConfig {
                 enabled: true,

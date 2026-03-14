@@ -199,6 +199,14 @@ pub struct UpdateWorkspaceSyncRequest {
 }
 
 #[derive(Deserialize)]
+pub struct UpdateWorkspaceAppearanceRequest {
+    #[serde(default)]
+    pub theme: Option<String>,
+    #[serde(default)]
+    pub layout_preset: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct SetDefaultWorkspaceRequest {
     pub workspace_id: Option<String>,
 }
@@ -245,6 +253,8 @@ pub async fn list_workspaces(State(state): State<AppState>) -> Json<serde_json::
                         "calendarSync": w.calendar_sync,
                         "calendarSlug": w.calendar_slug,
                         "calendarName": w.calendar_name,
+                        "theme": w.theme,
+                        "layoutPreset": w.layout_preset,
                     })
                 })
                 .collect::<Vec<serde_json::Value>>()
@@ -417,6 +427,47 @@ pub async fn update_workspace_sync(
         "calendarSync": body.calendar_sync,
         "calendarSlug": calendar_slug,
         "calendarName": calendar_name,
+    })))
+}
+
+/// PUT /config/workspaces/{id}/appearance — update workspace theme and layout preset.
+pub async fn update_workspace_appearance(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<String>,
+    Json(body): Json<UpdateWorkspaceAppearanceRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let config_path = state.config_path.clone();
+    let theme = normalize_optional_text(body.theme);
+    let layout_preset = normalize_optional_text(body.layout_preset);
+
+    {
+        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
+        let ws = cfg.workspaces.iter_mut().find(|w| w.id == workspace_id);
+        match ws {
+            Some(workspace) => {
+                workspace.theme = theme.clone();
+                workspace.layout_preset = layout_preset.clone();
+            }
+            None => {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "Workspace not found".to_string(),
+                    }),
+                ));
+            }
+        }
+        if let Err(e) = save_config(&config_path, &cfg) {
+            log::error!("Failed to save config after workspace appearance update: {}", e);
+        }
+    }
+
+    log::info!("[config] Updated workspace appearance for {}", workspace_id);
+    notify_config_changed(&state);
+    Ok(Json(serde_json::json!({
+        "id": workspace_id,
+        "theme": theme,
+        "layoutPreset": layout_preset,
     })))
 }
 

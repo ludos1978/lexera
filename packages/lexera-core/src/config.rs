@@ -14,6 +14,12 @@ pub struct WorkspaceEntry {
     pub calendar_slug: Option<String>,
     #[serde(default, alias = "calendarName", skip_serializing_if = "Option::is_none")]
     pub calendar_name: Option<String>,
+    /// Visual theme for this workspace (e.g. "bordered", "gap-highlight", "lines").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// Layout preset name for this workspace.
+    #[serde(default, alias = "layoutPreset", skip_serializing_if = "Option::is_none")]
+    pub layout_preset: Option<String>,
 }
 
 /// A board entry in the config file.

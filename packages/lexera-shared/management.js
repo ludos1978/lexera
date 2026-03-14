@@ -541,6 +541,7 @@ var ManagementUI = (function () {
       case 'rename-workspace': renameWorkspace(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'delete-workspace': deleteWorkspace(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-ws-name')); break;
       case 'save-workspace-sync': saveWorkspaceSync(btn.getAttribute('data-mgmt-ws-id')); break;
+      case 'save-workspace-appearance': saveWorkspaceAppearance(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'save-board-sync': saveBoardSync(boardId); break;
     }
   }
@@ -1086,6 +1087,22 @@ var ManagementUI = (function () {
       html += '<div class="mgmt-settings-actions">';
       html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-workspace-sync" data-mgmt-ws-id="' + esc(ws.id) + '">Save Sync Defaults</button>';
       html += '</div>';
+      html += '<div class="mgmt-subsection-title">Appearance</div>';
+      html += '<div class="mgmt-sync-grid">';
+      html += '<label>Theme</label>';
+      html += '<select class="mgmt-field-input" id="mgmt-ws-theme-' + esc(ws.id) + '">';
+      html += '<option value=""' + (!ws.theme ? ' selected' : '') + '>Default</option>';
+      var themeOptions = ['bordered', 'gap-highlight', 'lines'];
+      for (var t = 0; t < themeOptions.length; t++) {
+        html += '<option value="' + themeOptions[t] + '"' + (ws.theme === themeOptions[t] ? ' selected' : '') + '>' + themeOptions[t].charAt(0).toUpperCase() + themeOptions[t].slice(1) + '</option>';
+      }
+      html += '</select>';
+      html += '<label>Layout Preset</label>';
+      html += '<input class="mgmt-field-input" type="text" id="mgmt-ws-layout-preset-' + esc(ws.id) + '" value="' + esc(ws.layoutPreset || '') + '" placeholder="Default">';
+      html += '</div>';
+      html += '<div class="mgmt-settings-actions">';
+      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-workspace-appearance" data-mgmt-ws-id="' + esc(ws.id) + '">Save Appearance</button>';
+      html += '</div>';
       html += '</div>';
     }
     el.innerHTML = html;
@@ -1186,6 +1203,24 @@ var ManagementUI = (function () {
       notify('Workspace sync defaults saved');
     } catch (e) {
       notify('Failed to save workspace sync defaults: ' + (e.message || e));
+    }
+  }
+
+  async function saveWorkspaceAppearance(wsId) {
+    var themeSelect = container.querySelector('#mgmt-ws-theme-' + wsId);
+    var layoutInput = container.querySelector('#mgmt-ws-layout-preset-' + wsId);
+
+    var payload = {
+      theme: normalizeOptionalText(themeSelect && themeSelect.value),
+      layout_preset: normalizeOptionalText(layoutInput && layoutInput.value),
+    };
+
+    try {
+      await api.put('/config/workspaces/' + wsId + '/appearance', payload);
+      await loadWorkspaces();
+      notify('Workspace appearance saved');
+    } catch (e) {
+      notify('Failed to save workspace appearance: ' + (e.message || e));
     }
   }
 
