@@ -11792,6 +11792,8 @@ const LexeraDashboard = (function () {
     getElColumnsContainer().classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     getElColumnsContainer().classList.remove('html-comments-hide', 'html-comments-dim');
     getElColumnsContainer().classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
+    // Reset canvas zoom when leaving canvas mode
+    if ($canvasZoom !== 1) applyCanvasZoom(1);
     getElColumnsContainer().removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
@@ -12264,18 +12266,23 @@ const LexeraDashboard = (function () {
         var stackWidthTag = getElementSizeTag(stack.title, 'width');
         if (stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
 
-        // Canvas layout: apply inline params for positioning and sizing
+        // Canvas layout: apply position/size params (canvas-only)
         var stackParams = stack.params || {};
-        if (isCanvasLayout && !stackParams.x && !stackParams.y) {
-          // Visual-only default position for stacks without saved coordinates
-          stackEl.style.left = (20 + (s % 4) * 320) + 'px';
-          stackEl.style.top = (20 + Math.floor(s / 4) * 300) + 'px';
-        } else {
-          if (stackParams.x) stackEl.style.left = stackParams.x + 'px';
-          if (stackParams.y) stackEl.style.top = stackParams.y + 'px';
+        if (isCanvasLayout) {
+          if (stackParams.x) {
+            stackEl.style.left = stackParams.x + 'px';
+          } else {
+            stackEl.style.left = (20 + (s % 4) * 320) + 'px';
+          }
+          if (stackParams.y) {
+            stackEl.style.top = stackParams.y + 'px';
+          } else {
+            stackEl.style.top = (20 + Math.floor(s / 4) * 300) + 'px';
+          }
+          if (stackParams.w) stackEl.style.width = stackParams.w + 'px';
+          if (stackParams.h) stackEl.style.height = stackParams.h + 'px';
         }
-        if (stackParams.w) stackEl.style.width = stackParams.w + 'px';
-        if (stackParams.h) stackEl.style.height = stackParams.h + 'px';
+        // dir param applies in all layout modes
         if (stackParams.dir) stackEl.setAttribute('data-stack-dir', stackParams.dir);
 
         // Canvas mode: persist resize when user drags the CSS resize handle
