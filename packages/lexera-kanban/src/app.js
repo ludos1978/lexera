@@ -740,10 +740,15 @@ const LexeraDashboard = (function () {
 
   applySidebarTreeDisplayOptions(sidebarTreeDisplayOptions);
 
-  function applyTheme(themeId) {
+  function applyTheme(themeId, skipBackendSync) {
     // Use shared theme applier for base CSS variables
     if (typeof applyLexeraTheme === 'function') {
       applyLexeraTheme(themeId);
+    }
+
+    // Persist to backend so all Lexera UIs share the same theme
+    if (!skipBackendSync && window.LexeraApi && typeof LexeraApi.setTheme === 'function') {
+      LexeraApi.setTheme(themeId).catch(function () { /* ignore */ });
     }
 
     // Find the active theme and palette for kanban-specific derived tokens
@@ -4085,6 +4090,16 @@ const LexeraDashboard = (function () {
 
     connectSSEIfReady();
     connectBackendLogStreamIfReady();
+
+    // Sync theme from backend (backend is authoritative when available)
+    try {
+      var themeData = await LexeraApi.getTheme();
+      if (themeData && themeData.theme) {
+        applyTheme(themeData.theme, true);
+      }
+    } catch (err) {
+      // Keep localStorage theme on failure
+    }
 
     try {
       // Load workspaces
@@ -10442,7 +10457,7 @@ const LexeraDashboard = (function () {
       },
       callbacks: {
         onThemeChange: function (themeId) {
-          if (typeof applyTheme === 'function') applyTheme(themeId);
+          if (typeof applyTheme === 'function') applyTheme(themeId, true);
         },
         openLogStream: function (onEntry, onOpen, onError) {
           var es = LexeraApi.connectLogStream(onEntry);

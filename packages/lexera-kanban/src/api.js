@@ -785,6 +785,18 @@ const LexeraApi = (function () {
     return request('/collab/discovered-peers');
   }
 
+  async function getTheme() {
+    return request('/config/theme');
+  }
+
+  async function setTheme(themeId) {
+    return request('/config/theme', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: themeId }),
+    });
+  }
+
   return {
     discover, request, getBoards, getBoardColumns, getBoardColumnsCached, addCard, saveBoard, saveBoardWithBase, rebaseBoardWithBase, createBoardCrashsave,
     probeExternalEmbed,
@@ -800,5 +812,6 @@ const LexeraApi = (function () {
     getBoardSettings, updateBoardSettings,
     getNetworkInterfaces, updateServerConfig,
     getConnections, connectRemote, disconnectRemote, getDiscoveredPeers,
+    getTheme, setTheme,
   };
 })();
