@@ -5042,31 +5042,37 @@ const LexeraDashboard = (function () {
               return;
             }
 
-            // Toggle arrow click (Alt+click = recursive)
+            // Toggle arrow click (Alt+click = fold children only, not self)
             if (target.classList.contains('tree-toggle')) {
               e.stopPropagation();
               var node = target.closest('.tree-node');
               if (!node) return;
               var children = getSidebarTreeChildrenContainer(node);
               if (children) {
-                var expanding = !children.classList.contains('expanded');
-                children.classList.toggle('expanded');
-                target.classList.toggle('expanded');
-                node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
-                // Persist fold state
-                var treeId = node.getAttribute('data-tree-id');
-                if (treeId) {
-                  if (node.classList.contains('tree-row')) {
-                    toggleSidebarTreeNode(boardId, 'rows', treeId);
-                  } else if (node.classList.contains('tree-stack')) {
-                    toggleSidebarTreeNode(boardId, 'stacks', treeId);
-                  } else if (node.classList.contains('tree-column')) {
-                    toggleSidebarTreeNode(boardId, 'columns', treeId);
-                  }
-                }
-                // Alt+click: recursively expand/collapse all descendants
                 if (e.altKey) {
-                  setDescendantTreeState(children, expanding, boardId);
+                  // Alt+click: fold/unfold all descendants, leave self unchanged
+                  var childNodes = children.querySelectorAll('.tree-children');
+                  var allCollapsed = true;
+                  for (var ci = 0; ci < childNodes.length; ci++) {
+                    if (childNodes[ci].classList.contains('expanded')) { allCollapsed = false; break; }
+                  }
+                  setDescendantTreeState(children, allCollapsed, boardId);
+                } else {
+                  var expanding = !children.classList.contains('expanded');
+                  children.classList.toggle('expanded');
+                  target.classList.toggle('expanded');
+                  node.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+                  // Persist fold state
+                  var treeId = node.getAttribute('data-tree-id');
+                  if (treeId) {
+                    if (node.classList.contains('tree-row')) {
+                      toggleSidebarTreeNode(boardId, 'rows', treeId);
+                    } else if (node.classList.contains('tree-stack')) {
+                      toggleSidebarTreeNode(boardId, 'stacks', treeId);
+                    } else if (node.classList.contains('tree-column')) {
+                      toggleSidebarTreeNode(boardId, 'columns', treeId);
+                    }
+                  }
                 }
               }
               return;
