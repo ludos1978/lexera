@@ -5729,7 +5729,8 @@ const LexeraDashboard = (function () {
     text = text || '';
     if (text.indexOf('#hidden-internal-deleted') !== -1 ||
         text.indexOf('#hidden-internal-archived') !== -1 ||
-        text.indexOf('#hidden-internal-parked') !== -1) return true;
+        text.indexOf('#hidden-internal-parked') !== -1 ||
+        text.indexOf('#hidden-internal-incoming') !== -1) return true;
     // Plain #hidden tag also hides from display (but not #hidden-internal-*)
     if (/(^|\s)#hidden(\s|$)/.test(text)) return true;
     return false;
@@ -5741,7 +5742,7 @@ const LexeraDashboard = (function () {
 
   function stripInternalHiddenTags(text) {
     return (text || '')
-      .replace(/\s*#hidden-internal-(?:parked|archived|deleted)\b/g, '')
+      .replace(/\s*#hidden-internal-(?:incoming|parked|archived|deleted)\b/g, '')
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n');
   }
@@ -6328,7 +6329,7 @@ const LexeraDashboard = (function () {
 
   function captureStableCardRestoreTarget(target) {
     if (!target || !target.boardId) return null;
-    if (target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
+    if (target.kind === 'header-incoming' || target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
       return null;
     }
     if (isFinite(target.rowIndex) && isFinite(target.stackIndex) && isFinite(target.colIndex)) {
@@ -6862,7 +6863,7 @@ const LexeraDashboard = (function () {
               clearCardDragOverHighlights();
               clearHeaderDropTargetHighlights();
               var target = resolveCardDropTarget(ev.clientX, ev.clientY);
-              if (target && target.kind !== 'header-park' && target.kind !== 'header-archive' && target.kind !== 'header-trash') {
+              if (target && target.kind !== 'header-incoming' && target.kind !== 'header-park' && target.kind !== 'header-archive' && target.kind !== 'header-trash') {
                 if (target.container) {
                   target.container.classList.add('card-drag-over');
                   showCardDropIndicator(target.container, target.insertIdx);
@@ -7554,7 +7555,7 @@ const LexeraDashboard = (function () {
   }
 
   function renderBoardHeader() {
-    var incomingCount = getIncomingCaptureCount();
+    var incomingCount = getIncomingCount() + getIncomingCaptureCount();
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
@@ -7580,7 +7581,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn" id="btn-create-template" title="Create from reusable templates">Template</button>';
     html += '<button class="board-action-btn" id="btn-create-clipboard" title="Create from clipboard content">Clipboard</button>';
     html += '<span class="board-header-separator" aria-hidden="true"></span>';
-    html += '<button class="board-action-btn' + (incomingCount > 0 ? ' has-items' : '') + '" id="btn-incoming" title="Incoming (clipboard-fed)">Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : '') + '</button>';
+    html += '<button class="board-action-btn header-drop-target' + (incomingCount > 0 ? ' has-items' : '') + '" id="btn-incoming" title="Incoming — drop cards here to mark as incoming">Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (parkedCount > 0 ? ' has-items' : '') + '" id="btn-parked" title="Show parked items — drop cards here to park">Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
@@ -7705,7 +7706,7 @@ const LexeraDashboard = (function () {
       incomingBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showHeaderSourceDropdown('incoming', incomingBtn);
+        showIncomingItems(incomingBtn);
       });
     }
     var exportBtn = document.getElementById('btn-export');
@@ -7766,6 +7767,10 @@ const LexeraDashboard = (function () {
 
   function getDeletedCount() {
     return getHiddenItemCount('#hidden-internal-deleted');
+  }
+
+  function getIncomingCount() {
+    return getHiddenItemCount('#hidden-internal-incoming');
   }
 
   function getIncomingCaptureCount() {
@@ -9264,7 +9269,7 @@ const LexeraDashboard = (function () {
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
-    var incomingCount = getIncomingCaptureCount();
+    var incomingCount = getIncomingCount() + getIncomingCaptureCount();
 
     function setHeaderActionLabel(btn, fullLabel, compactLabel, title) {
       if (!btn) return;
@@ -9648,6 +9653,16 @@ const LexeraDashboard = (function () {
     }
     saveFoldState(activeBoardId);
     refreshBoardHeaderActionStates();
+  }
+
+  function showIncomingItems(btnElement) {
+    var btn = btnElement || document.getElementById('btn-incoming');
+    showHiddenItemsDropdown(btn, '#hidden-internal-incoming', 'Incoming', 'No incoming items',
+      [
+        { id: 'restore', label: 'Place', handler: function (item) { return updateHiddenItemTag(item, null); } },
+        { id: 'trash', label: 'Trash', danger: true, handler: function (item) { return updateHiddenItemTag(item, '#hidden-internal-deleted'); } }
+      ]
+    );
   }
 
   function showParkedItems(btnElement) {
@@ -14092,10 +14107,14 @@ const LexeraDashboard = (function () {
   }
 
   function resolveCardDropTarget(mx, my) {
-    // Header drop targets: Park / Archive / Trash buttons
+    // Header drop targets: Incoming / Park / Archive / Trash buttons
+    var incomingBtn = document.getElementById('btn-incoming');
     var parkedBtn = document.getElementById('btn-parked');
     var archiveBtn = document.getElementById('btn-archived');
     var trashBtn = document.getElementById('btn-trash');
+    if (incomingBtn && isPointInsideRect(mx, my, incomingBtn.getBoundingClientRect())) {
+      return { kind: 'header-incoming', sidebarNode: null, container: null };
+    }
     if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) {
       return { kind: 'header-park', sidebarNode: null, container: null };
     }
@@ -14288,8 +14307,8 @@ const LexeraDashboard = (function () {
 
     if (!target) return false;
 
-    if (target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
-      var hdrBtnId = target.kind === 'header-park' ? 'btn-parked' : target.kind === 'header-archive' ? 'btn-archived' : 'btn-trash';
+    if (target.kind === 'header-incoming' || target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
+      var hdrBtnId = target.kind === 'header-incoming' ? 'btn-incoming' : target.kind === 'header-park' ? 'btn-parked' : target.kind === 'header-archive' ? 'btn-archived' : 'btn-trash';
       var hdrBtn = document.getElementById(hdrBtnId);
       if (hdrBtn) hdrBtn.classList.add('drop-target');
       return true;
@@ -14328,9 +14347,10 @@ const LexeraDashboard = (function () {
     var target = resolveCardDropTarget(mx, my);
     if (!target) return false;
 
-    // Header drop targets: park, archive, or trash the dragged card
-    if (target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
-      var tag = target.kind === 'header-park' ? '#hidden-internal-parked'
+    // Header drop targets: incoming, park, archive, or trash the dragged card
+    if (target.kind === 'header-incoming' || target.kind === 'header-park' || target.kind === 'header-archive' || target.kind === 'header-trash') {
+      var tag = target.kind === 'header-incoming' ? '#hidden-internal-incoming'
+        : target.kind === 'header-park' ? '#hidden-internal-parked'
         : target.kind === 'header-archive' ? '#hidden-internal-archived'
         : '#hidden-internal-deleted';
       var srcColIndex = source.flatColIndex;
@@ -15130,7 +15150,8 @@ const LexeraDashboard = (function () {
     if (type !== 'board') {
       var headerTag = resolveHeaderDropTag(mx, my);
       if (headerTag) {
-        var hdrBtnId = headerTag === '#hidden-internal-parked' ? 'btn-parked'
+        var hdrBtnId = headerTag === '#hidden-internal-incoming' ? 'btn-incoming'
+          : headerTag === '#hidden-internal-parked' ? 'btn-parked'
           : headerTag === '#hidden-internal-archived' ? 'btn-archived' : 'btn-trash';
         var hdrBtn = document.getElementById(hdrBtnId);
         if (hdrBtn) hdrBtn.classList.add('drop-target');
@@ -15602,9 +15623,11 @@ const LexeraDashboard = (function () {
   // Resolve header drop target (Park/Archive/Trash) at the given point.
   // Returns the hidden tag string or null if not over a header button.
   function resolveHeaderDropTag(mx, my) {
+    var incomingBtn = document.getElementById('btn-incoming');
     var parkedBtn = document.getElementById('btn-parked');
     var archiveBtn = document.getElementById('btn-archived');
     var trashBtn = document.getElementById('btn-trash');
+    if (incomingBtn && isPointInsideRect(mx, my, incomingBtn.getBoundingClientRect())) return '#hidden-internal-incoming';
     if (parkedBtn && isPointInsideRect(mx, my, parkedBtn.getBoundingClientRect())) return '#hidden-internal-parked';
     if (archiveBtn && isPointInsideRect(mx, my, archiveBtn.getBoundingClientRect())) return '#hidden-internal-archived';
     if (trashBtn && isPointInsideRect(mx, my, trashBtn.getBoundingClientRect())) return '#hidden-internal-deleted';
@@ -19833,7 +19856,8 @@ const LexeraDashboard = (function () {
         var card = col.cards[ki];
         if (!card) continue;
         var cardContent = card.content || '';
-        if (hasInternalHiddenTag(cardContent, '#hidden-internal-parked') ||
+        if (hasInternalHiddenTag(cardContent, '#hidden-internal-incoming') ||
+            hasInternalHiddenTag(cardContent, '#hidden-internal-parked') ||
             hasInternalHiddenTag(cardContent, '#hidden-internal-archived') ||
             hasInternalHiddenTag(cardContent, '#hidden-internal-deleted')) continue;
         totalCards++;
@@ -24008,7 +24032,8 @@ const LexeraDashboard = (function () {
             md += '## ' + (bcol.title || '') + '\n\n';
             for (var k = 0; k < bcol.cards.length; k++) {
               var cardContent = bcol.cards[k].content || '';
-              if (hasInternalHiddenTag(cardContent, '#hidden-internal-parked') ||
+              if (hasInternalHiddenTag(cardContent, '#hidden-internal-incoming') ||
+                  hasInternalHiddenTag(cardContent, '#hidden-internal-parked') ||
                   hasInternalHiddenTag(cardContent, '#hidden-internal-archived') ||
                   hasInternalHiddenTag(cardContent, '#hidden-internal-deleted')) continue;
               md += cardContent + '\n\n';

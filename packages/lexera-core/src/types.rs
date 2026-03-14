@@ -19,6 +19,7 @@ pub enum BoardFormat {
 pub const HIDDEN_TAG_PARKED: &str = "#hidden-internal-parked";
 pub const HIDDEN_TAG_DELETED: &str = "#hidden-internal-deleted";
 pub const HIDDEN_TAG_ARCHIVED: &str = "#hidden-internal-archived";
+pub const HIDDEN_TAG_INCOMING: &str = "#hidden-internal-incoming";
 
 /// Check whether a text block is archived or deleted.
 /// Parked items are NOT excluded — they are temporarily hidden

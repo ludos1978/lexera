@@ -1012,8 +1012,9 @@
         showStatus('Card added to column', 'success');
       } else if (target.type === 'board') {
         const colIndex = (target.columns && target.columns.length > 0) ? target.columns[0].index : 0;
-        await apiPost(`/boards/${target.boardId}/columns/${colIndex}/cards`, { content });
-        showStatus('Card added to board', 'success');
+        const incomingContent = '#hidden-internal-incoming\n' + content;
+        await apiPost(`/boards/${target.boardId}/columns/${colIndex}/cards`, { content: incomingContent });
+        showStatus('Added to incoming', 'success');
       } else if (target.type === 'row' || target.type === 'stack') {
         let colIndex = 0;
         if (target.type === 'row' && target.data) {
