@@ -2,6 +2,8 @@
 
 ## Open
 
+- ~~incoming is allways only a card. it lists all elemtns that have been added to the board by the quick clipboard tool. if elements arent added to a specific location they are only added to the incoming (using a tag)~~ (done: ca6bc56d — quick-capture board-level paste applies #hidden-internal-incoming tag, incoming dropdown with Place/Trash actions, drag-drop target support)
+
 - ~~remove the split view icon from the view. we just keep it in the menu bar.~~ (done: 2d3d9b42 — removed split view buttons from board header, available via native View menu)
 
 - ~~paths of embeds within included files are relative to the include file, not the main file.~~ (done: 922d995e — adjustPathForIncludeContext converts board-relative paths to include-relative)
@@ -20,6 +22,8 @@
 - [x] ~~when i disable elements that show in the sidebar (cound, users, darg icon) it should free up space for the titles!~~ (done: d898ec74)
 
 - ~~we want an open canvas board styling option (alternative setting to the current layout structure).~~ (done: 907fc923 + 8adaae04 — {key:value} param parser in Rust, canvas layout mode with absolute positioning, board layout toggle in Format menu)
+
+- [ ] in the open canvas mode i must be able to position the stacks anywhere on the board, not locked next to each other (or only if placed nearby). ITS an open board layout. where users can move stacks anywhere. like in miro! 
 
 - [ ] i want the top menu bar have the following structure
   left aligned
@@ -57,9 +61,9 @@
   - ~~when i click outside the quick capture window it should get small immediately~~ (already done: Focused(false) handler)
   - ~~the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!~~ (already done: strip-clip-label with writing-mode: vertical-rl and renderClipboardSummary() populates it; was invisible until L44 fix)
   - ~~also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards~~ (already done: unfoldSearchTarget + focusSearchResultCard navigates through hierarchy)
-  - fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!
+  - ~~fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!~~ (already done: management UI has full workspace CRUD, multi-workspace board assignment with checkboxes, default workspace selection via config_api.rs)
     - the lexera kanban view can have one or multiple windows open
-    - find a solution for the management interface to solve this.
+    - ~~find a solution for the management interface to solve this.~~ (already done: shared management.js with workspace tab, board assignment checkboxes)
   - ~~it might be that the background of the application is not transparent? because on the right side the rounded border shows the background, but on the left side it shows some white parts~~ (fixed: 4c065526 — added transparent: true to tauri.conf.json)
 
 - [x] make the management interface being shared between the backend and the frontend kanban (collaboration)
@@ -103,7 +107,7 @@ in the sharing settings workspaces are defined, workspaces can contain one or mo
   - it can have a specific theme
   - maybe more...
 
-- [ ] the file format should be changed to \                                                                
+- [x] the file format should be changed to \                                                                
   ---\                                                                                                  
   yaml-header\                                                                                          
   ---\                                                                                                  
