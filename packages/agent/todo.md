@@ -44,12 +44,12 @@
   - ~~it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!~~ (fixed: ea6215e0 — trust initial HTML strip-mode class instead of querying window.innerWidth on startup)
   - ~~the system beeps when i press escape while having the board open. why?~~ (fixed: 8abf6ee8)
   - ~~when i click outside the quick capture window it should get small immediately~~ (already done: Focused(false) handler)
-  - the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
+  - ~~the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!~~ (already done: strip-clip-label with writing-mode: vertical-rl and renderClipboardSummary() populates it; was invisible until L44 fix)
   - ~~also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards~~ (already done: unfoldSearchTarget + focusSearchResultCard navigates through hierarchy)
   - fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!
     - the lexera kanban view can have one or multiple windows open
     - find a solution for the management interface to solve this.
-  - it might be that the background of the application is not transparent? because on the right side the rounded border shows the background, but on the left side it shows some white parts
+  - ~~it might be that the background of the application is not transparent? because on the right side the rounded border shows the background, but on the left side it shows some white parts~~ (fixed: 4c065526 — added transparent: true to tauri.conf.json)
 
 - [x] make the management interface being shared between the backend and the frontend kanban (collaboration)
 
