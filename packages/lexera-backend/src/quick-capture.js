@@ -79,7 +79,9 @@
     els.statusMsg = document.getElementById('status-msg');
 
     setupEventListeners();
-    syncModeFromWindowSize();
+    // Trust the initial body class (strip-mode) set in HTML rather than
+    // querying window.innerWidth which may be unreliable before layout settles.
+    isExpanded = document.body.classList.contains('expanded-mode');
     window.addEventListener('resize', syncModeFromWindowSize);
     renderClipboardSummary();
     await loadClipboardSummary();

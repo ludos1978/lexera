@@ -2877,6 +2877,48 @@ u {
 }
 .card.collapsed .card-content { display: none; }
 
+/* CriticMarkup inline styles */
+.critic.critic-add {
+  color: #388a6c;
+  text-decoration: none;
+  background: rgba(56, 138, 108, 0.12);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.critic.critic-del {
+  color: #d32f2f;
+  text-decoration: line-through;
+  background: rgba(211, 47, 47, 0.08);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.critic.critic-sub {
+  padding: 0 2px;
+  border-radius: 2px;
+}
+del.critic.critic-sub {
+  color: #d32f2f;
+  text-decoration: line-through;
+  background: rgba(211, 47, 47, 0.08);
+}
+ins.critic.critic-sub {
+  color: #388a6c;
+  text-decoration: none;
+  background: rgba(56, 138, 108, 0.12);
+}
+.critic.critic-comment {
+  color: var(--text-secondary);
+  font-style: italic;
+  background: rgba(0, 122, 204, 0.08);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.critic.critic-highlight {
+  background: rgba(255, 213, 79, 0.4);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 .card-footer {
   display: flex;
   align-items: center;

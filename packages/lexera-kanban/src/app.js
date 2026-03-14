@@ -25761,6 +25761,13 @@ const LexeraDashboard = (function () {
       return pre + '<sup>' + value + '</sup>';
     });
 
+    // CriticMarkup: {++addition++}, {--deletion--}, {~~old~>new~~}, {>>comment<<}, {==highlight==}
+    safe = safe.replace(/\{~~([^~]*?)~&gt;([^~]*?)~~\}/g, '<del class="critic critic-sub">$1</del><ins class="critic critic-sub">$2</ins>');
+    safe = safe.replace(/\{\+\+([^+]*?)\+\+\}/g, '<ins class="critic critic-add">$1</ins>');
+    safe = safe.replace(/\{--([^-]*?)--\}/g, '<del class="critic critic-del">$1</del>');
+    safe = safe.replace(/\{&gt;&gt;([^&]*?)&lt;&lt;\}/g, '<span class="critic critic-comment">$1</span>');
+    safe = safe.replace(/\{==([^=]*?)==\}/g, '<mark class="critic critic-highlight">$1</mark>');
+
     // Inline code: `code`
     safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
 
