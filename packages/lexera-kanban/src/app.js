@@ -1123,6 +1123,8 @@ const LexeraDashboard = (function () {
       .replace(/\s*#header\b/gi, '')
       .replace(/\s*#footer\b/gi, '')
       .replace(/\s*#wip-\d+\b/gi, '')
+      .replace(/\s*#width\{\d+\}/gi, '')
+      .replace(/\s*#height\{\d+\}/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -1218,6 +1220,13 @@ const LexeraDashboard = (function () {
       footer: !!footerMatch,
       wipLimit: wipMatch ? parseInt(wipMatch[1], 10) : 0
     };
+  }
+
+  function getElementSizeTag(title, tagName) {
+    var match = String(title || '').match(new RegExp('#' + tagName + '\\{(\\d+)\\}', 'i'));
+    if (!match) return 0;
+    var val = parseInt(match[1], 10);
+    return isFinite(val) && val > 0 ? val : 0;
   }
 
   function getLegacyImportRowNumber(title) {
@@ -11223,7 +11232,7 @@ const LexeraDashboard = (function () {
 
   function isLayoutTagName(tagName) {
     var normalized = String(tagName || '').trim().replace(/^#/, '').toLowerCase();
-    return /^(row\d*|span\d*|stack|sticky|header|footer)$/.test(normalized);
+    return /^(row\d*|span\d*|stack|sticky|header|footer|width\{\d+\}|height\{\d+\})$/.test(normalized);
   }
 
   function applyRenderedTagVisibility(root, mode) {
@@ -12016,12 +12025,14 @@ const LexeraDashboard = (function () {
       if (hasSavedFoldMatch(foldedRows, rowFoldKey, row.title)) {
         rowEl.classList.add('folded');
       }
+      var rowHeightTag = getElementSizeTag(row.title, 'height');
+      if (rowHeightTag > 0) rowEl.style.setProperty('--board-row-height', rowHeightTag + 'px');
 
       // Row header
       var rowHeader = document.createElement('div');
       rowHeader.className = 'board-row-header';
       var rowTitle = typeof row.title === 'string' ? row.title : '';
-      var rowDisplayTitle = stripHtmlComments(rowTitle);
+      var rowDisplayTitle = stripLayoutTags(rowTitle);
       var totalCards = 0;
       for (var si = 0; si < rowStacks.length; si++) {
         var cardCols = Array.isArray(rowStacks[si].columns) ? rowStacks[si].columns : [];
@@ -12095,12 +12106,14 @@ const LexeraDashboard = (function () {
         if (hasSavedFoldMatch(foldedStacks, stackFoldKey, stack.title)) {
           stackEl.classList.add('folded');
         }
+        var stackWidthTag = getElementSizeTag(stack.title, 'width');
+        if (stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
 
         // Stack header
         var stackHeader = document.createElement('div');
         stackHeader.className = 'board-stack-header';
         var stackColCount = stackColumnEntries.length;
-        var stackDisplayTitle = stripHtmlComments(stack.title || '');
+        var stackDisplayTitle = stripLayoutTags(stack.title || '');
         stackHeader.innerHTML =
           '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
           buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +

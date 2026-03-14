@@ -14,6 +14,11 @@
       id: 'gap',
       name: 'Gap',
       description: 'Whitespace and separators over boxes'
+    },
+    {
+      id: 'lines',
+      name: 'Lines',
+      description: 'Clean line separators, no boxes'
     }
   ];
 
@@ -23,6 +28,7 @@
     if (source === 'sleek' || source === 'minimal' || source === 'modern') return 'sleek';
     if (source === 'bordered' || source === 'boxed' || source === 'outline') return 'classic';
     if (source === 'gap' || source === 'gap-highlight' || source === 'gaphighlight') return 'gap';
+    if (source === 'lines' || source === 'line' || source === 'line-separator') return 'lines';
     return 'classic';
   }
 

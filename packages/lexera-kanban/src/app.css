@@ -5687,6 +5687,137 @@ select.dialog-input option,
   box-shadow: none !important;
 }
 
+/* ── Lines theme ────────────────────────────────────────────────── */
+[data-visual-theme="lines"] {
+  --surface-row-bg: transparent !important;
+  --surface-row-border: transparent !important;
+  --surface-row-radius: 0;
+  --surface-row-shadow: none;
+  --row-content-bg: transparent;
+  --surface-stack-bg: transparent !important;
+  --surface-stack-border: transparent !important;
+  --surface-stack-radius: 0;
+  --surface-stack-shadow: none;
+  --stack-content-bg: transparent;
+  --surface-column-bg: transparent !important;
+  --surface-column-border: transparent !important;
+  --surface-column-radius: 0;
+  --surface-column-shadow: none;
+  --surface-header-bg: transparent !important;
+  --surface-header-border: transparent !important;
+  --surface-footer-bg: transparent !important;
+  --card-bg: transparent;
+  --card-border: transparent;
+  --card-radius: 0;
+  --card-shadow: none;
+  --card-gap: 0;
+  --card-list-padding: 0;
+  --lines-color: var(--border);
+}
+/* Rows: 3px solid horizontal separator */
+[data-visual-theme="lines"] .board-row {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  min-width: 100%;
+}
+[data-visual-theme="lines"] .board-row + .board-row {
+  border-top: 3px solid var(--lines-color) !important;
+}
+[data-visual-theme="lines"] .board-row-header {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding-left: 0;
+}
+[data-visual-theme="lines"] .board-row-content {
+  padding: 0 !important;
+}
+/* Stacks: 1px solid vertical separator, 2px dashed line below header */
+[data-visual-theme="lines"] .board-stack {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+[data-visual-theme="lines"] .board-stack + .board-stack {
+  border-left: 1px solid var(--lines-color) !important;
+}
+[data-visual-theme="lines"] .board-stack-header {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px dashed var(--lines-color) !important;
+  border-radius: 0 !important;
+  padding-left: 0;
+}
+[data-visual-theme="lines"] .board-stack-content {
+  padding: 0 !important;
+}
+/* Columns: 2px solid separator */
+[data-visual-theme="lines"] .column {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+[data-visual-theme="lines"] .column + .column {
+  border-top: 2px solid var(--lines-color) !important;
+}
+[data-visual-theme="lines"] .column-header {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+[data-visual-theme="lines"] .column-cards {
+  padding: 0 !important;
+}
+/* Cards: 1px solid separator */
+[data-visual-theme="lines"] .card {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+[data-visual-theme="lines"] .card + .card {
+  border-top: 1px solid var(--lines-color) !important;
+}
+[data-visual-theme="lines"] .card.editing {
+  outline: 1px solid var(--accent) !important;
+}
+/* Footers */
+[data-visual-theme="lines"] .board-row-footer,
+[data-visual-theme="lines"] .board-stack-footer,
+[data-visual-theme="lines"] .column-footer {
+  background: transparent !important;
+  border: none !important;
+}
+/* Board container */
+[data-visual-theme="lines"] .columns-container {
+  background: var(--bg-primary) !important;
+}
+[data-visual-theme="lines"] .columns-container.new-format {
+  gap: 0 !important;
+}
+[data-visual-theme="lines"] .columns-container.new-format .board-row:not(.folded) {
+  min-height: auto;
+}
+/* Tag-styled elements: strip backgrounds in lines theme */
+[data-visual-theme="lines"] .tag-styled > .board-row-header,
+[data-visual-theme="lines"] .tag-styled > .board-stack-header,
+[data-visual-theme="lines"] .tag-styled > .column-header,
+[data-visual-theme="lines"] .tag-styled > .card-header {
+  background: transparent !important;
+}
+[data-visual-theme="lines"] .tag-styled > .board-row-content,
+[data-visual-theme="lines"] .tag-styled > .board-stack-content,
+[data-visual-theme="lines"] .tag-styled > .column-cards,
+[data-visual-theme="lines"] .tag-styled > .card-content {
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
 /* Print styles */
 @media print {
   body { background: white; color: black; }
