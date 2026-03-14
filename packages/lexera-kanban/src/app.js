@@ -11289,23 +11289,30 @@ const LexeraDashboard = (function () {
 
   var $canvasZoom = 1;
 
-  function applyCanvasZoom(zoom, originX, originY) {
+  function applyCanvasZoom(zoom, localOriginX, localOriginY) {
     var container = getElColumnsContainer();
     if (!container) return;
+    var oldZoom = $canvasZoom;
     $canvasZoom = zoom;
     container.style.transform = zoom === 1 ? '' : 'scale(' + zoom + ')';
-    if (originX != null && originY != null) {
-      container.style.transformOrigin = originX + 'px ' + originY + 'px';
+    // Adjust scroll to keep the point under the cursor stationary
+    if (localOriginX != null && localOriginY != null && oldZoom !== zoom) {
+      var scrollParent = container.parentElement;
+      if (scrollParent) {
+        var scaleDiff = zoom - oldZoom;
+        scrollParent.scrollLeft += localOriginX * scaleDiff;
+        scrollParent.scrollTop += localOriginY * scaleDiff;
+      }
     }
     showNotification('Canvas Zoom ' + Math.round(zoom * 100) + '%');
   }
 
-  function nudgeCanvasZoom(delta, originX, originY) {
+  function nudgeCanvasZoom(delta, localOriginX, localOriginY) {
     var next = Math.round(($canvasZoom + delta) * 100) / 100;
     if (next < 0.25) next = 0.25;
     if (next > 3) next = 3;
     if (next === $canvasZoom) return;
-    applyCanvasZoom(next, originX, originY);
+    applyCanvasZoom(next, localOriginX, localOriginY);
   }
 
   document.addEventListener('wheel', function (e) {
@@ -11319,8 +11326,10 @@ const LexeraDashboard = (function () {
     if (getBoardSettingValue('boardLayout') === 'canvas') {
       var container = getElColumnsContainer();
       var rect = container ? container.getBoundingClientRect() : null;
-      var ox = rect ? e.clientX - rect.left : undefined;
-      var oy = rect ? e.clientY - rect.top : undefined;
+      // Convert screen-space mouse offset to local (unscaled) coordinates
+      var z = $canvasZoom || 1;
+      var ox = rect ? (e.clientX - rect.left) / z : undefined;
+      var oy = rect ? (e.clientY - rect.top) / z : undefined;
       nudgeCanvasZoom(e.deltaY < 0 ? 0.1 : -0.1, ox, oy);
     } else {
       nudgeUiScale(e.deltaY < 0 ? 0.05 : -0.05);
@@ -15129,10 +15138,13 @@ const LexeraDashboard = (function () {
         if (canvasParent) {
           var parentRect = canvasParent.getBoundingClientRect();
           var elRect = ptrDrag.el.getBoundingClientRect();
+          // getBoundingClientRect returns screen-space coords (scaled by transform),
+          // but style.left/top are in the element's local (unscaled) space
+          var z = $canvasZoom || 1;
           ptrDrag.el.style.position = 'absolute';
-          ptrDrag.el.style.left = Math.round(elRect.left - parentRect.left) + 'px';
-          ptrDrag.el.style.top = Math.round(elRect.top - parentRect.top) + 'px';
-          ptrDrag.el.style.width = elRect.width + 'px';
+          ptrDrag.el.style.left = Math.round((elRect.left - parentRect.left) / z) + 'px';
+          ptrDrag.el.style.top = Math.round((elRect.top - parentRect.top) / z) + 'px';
+          ptrDrag.el.style.width = Math.round(elRect.width / z) + 'px';
         }
         ptrDrag.el.style.zIndex = '100';
         var sel = window.getSelection();
@@ -15176,8 +15188,10 @@ const LexeraDashboard = (function () {
       var canvasRowContent = ptrDrag.el.closest('.board-row-content');
       if (canvasRowContent) {
         var canvasRect = canvasRowContent.getBoundingClientRect();
-        var canvasX = Math.max(0, Math.round(e.clientX - canvasRect.left - ptrDrag.grabOffsetX));
-        var canvasY = Math.max(0, Math.round(e.clientY - canvasRect.top - ptrDrag.grabOffsetY));
+        // Screen-space offset divided by zoom to get local coordinates
+        var z = $canvasZoom || 1;
+        var canvasX = Math.max(0, Math.round((e.clientX - canvasRect.left - ptrDrag.grabOffsetX) / z));
+        var canvasY = Math.max(0, Math.round((e.clientY - canvasRect.top - ptrDrag.grabOffsetY) / z));
         ptrDrag.el.style.left = canvasX + 'px';
         ptrDrag.el.style.top = canvasY + 'px';
       }
