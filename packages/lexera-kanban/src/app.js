@@ -12152,7 +12152,6 @@ const LexeraDashboard = (function () {
   function renderNewFormatBoard() {
     var rows = activeBoardData.rows;
     var isCanvasLayout = getBoardSettingValue('boardLayout') === 'canvas';
-    var canvasPositionsAssigned = false;
     var foldedCols = getFoldedColumns(activeBoardId);
     var foldedRows = getFoldedItems(activeBoardId, 'row');
     var foldedStacks = getFoldedItems(activeBoardId, 'stack');
@@ -12268,18 +12267,9 @@ const LexeraDashboard = (function () {
         // Canvas layout: apply inline params for positioning and sizing
         var stackParams = stack.params || {};
         if (isCanvasLayout && !stackParams.x && !stackParams.y) {
-          // Auto-assign grid position for stacks without explicit coordinates
-          var autoX = 20 + (s % 4) * 320;
-          var autoY = 20 + Math.floor(s / 4) * 300;
-          stackEl.style.left = autoX + 'px';
-          stackEl.style.top = autoY + 'px';
-          var fullStack = findFullDataStack(r, s);
-          if (fullStack) {
-            if (!fullStack.params) fullStack.params = {};
-            fullStack.params.x = String(autoX);
-            fullStack.params.y = String(autoY);
-            canvasPositionsAssigned = true;
-          }
+          // Visual-only default position for stacks without saved coordinates
+          stackEl.style.left = (20 + (s % 4) * 320) + 'px';
+          stackEl.style.top = (20 + Math.floor(s / 4) * 300) + 'px';
         } else {
           if (stackParams.x) stackEl.style.left = stackParams.x + 'px';
           if (stackParams.y) stackEl.style.top = stackParams.y + 'px';
@@ -12400,10 +12390,6 @@ const LexeraDashboard = (function () {
       rowEl.appendChild(rowFooter);
       applyTagStyleToEntity(rowEl, row.title || '');
       getElColumnsContainer().appendChild(rowEl);
-    }
-    // Persist auto-assigned canvas positions so they survive reload
-    if (canvasPositionsAssigned) {
-      persistBoardMutation({ skipRender: true });
     }
   }
 
