@@ -11294,15 +11294,14 @@ const LexeraDashboard = (function () {
     if (!container) return;
     var oldZoom = $canvasZoom;
     $canvasZoom = zoom;
-    container.style.transform = zoom === 1 ? '' : 'scale(' + zoom + ')';
+    container.style.zoom = zoom === 1 ? '' : zoom;
     // Adjust scroll to keep the point under the cursor stationary
     if (localOriginX != null && localOriginY != null && oldZoom !== zoom) {
-      var scrollParent = container.parentElement;
-      if (scrollParent) {
-        var scaleDiff = zoom - oldZoom;
-        scrollParent.scrollLeft += localOriginX * scaleDiff;
-        scrollParent.scrollTop += localOriginY * scaleDiff;
-      }
+      var ratio = oldZoom / zoom;
+      var oldScrollLeft = container.scrollLeft;
+      var oldScrollTop = container.scrollTop;
+      container.scrollLeft = oldScrollLeft * ratio + localOriginX * (1 - ratio);
+      container.scrollTop = oldScrollTop * ratio + localOriginY * (1 - ratio);
     }
     showNotification('Canvas Zoom ' + Math.round(zoom * 100) + '%');
   }
@@ -12153,6 +12152,7 @@ const LexeraDashboard = (function () {
   function renderNewFormatBoard() {
     var rows = activeBoardData.rows;
     var isCanvasLayout = getBoardSettingValue('boardLayout') === 'canvas';
+    var canvasPositionsAssigned = false;
     var foldedCols = getFoldedColumns(activeBoardId);
     var foldedRows = getFoldedItems(activeBoardId, 'row');
     var foldedStacks = getFoldedItems(activeBoardId, 'stack');
@@ -12267,8 +12267,23 @@ const LexeraDashboard = (function () {
 
         // Canvas layout: apply inline params for positioning and sizing
         var stackParams = stack.params || {};
-        if (stackParams.x) stackEl.style.left = stackParams.x + 'px';
-        if (stackParams.y) stackEl.style.top = stackParams.y + 'px';
+        if (isCanvasLayout && !stackParams.x && !stackParams.y) {
+          // Auto-assign grid position for stacks without explicit coordinates
+          var autoX = 20 + (s % 4) * 320;
+          var autoY = 20 + Math.floor(s / 4) * 300;
+          stackEl.style.left = autoX + 'px';
+          stackEl.style.top = autoY + 'px';
+          var fullStack = findFullDataStack(r, s);
+          if (fullStack) {
+            if (!fullStack.params) fullStack.params = {};
+            fullStack.params.x = String(autoX);
+            fullStack.params.y = String(autoY);
+            canvasPositionsAssigned = true;
+          }
+        } else {
+          if (stackParams.x) stackEl.style.left = stackParams.x + 'px';
+          if (stackParams.y) stackEl.style.top = stackParams.y + 'px';
+        }
         if (stackParams.w) stackEl.style.width = stackParams.w + 'px';
         if (stackParams.h) stackEl.style.height = stackParams.h + 'px';
         if (stackParams.dir) stackEl.setAttribute('data-stack-dir', stackParams.dir);
@@ -12385,6 +12400,10 @@ const LexeraDashboard = (function () {
       rowEl.appendChild(rowFooter);
       applyTagStyleToEntity(rowEl, row.title || '');
       getElColumnsContainer().appendChild(rowEl);
+    }
+    // Persist auto-assigned canvas positions so they survive reload
+    if (canvasPositionsAssigned) {
+      persistBoardMutation({ skipRender: true });
     }
   }
 
@@ -15229,11 +15248,17 @@ const LexeraDashboard = (function () {
 
   // Safety net for interrupted drags (window focus loss, tab hide).
   window.addEventListener('blur', function () {
-    if (ptrDrag || dragLayoutLocks) cleanupPtrDrag();
+    if (ptrDrag || dragLayoutLocks) {
+      var wasCanvas = ptrDrag && ptrDrag.canvasMove;
+      cleanupPtrDrag();
+      if (wasCanvas) renderColumns();
+    }
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden' && (ptrDrag || dragLayoutLocks)) {
+      var wasCanvas = ptrDrag && ptrDrag.canvasMove;
       cleanupPtrDrag();
+      if (wasCanvas) renderColumns();
     }
   });
 
@@ -16647,8 +16672,6 @@ const LexeraDashboard = (function () {
           ptrDrag.el.style.zIndex = '';
           ptrDrag.el.style.width = '';
           ptrDrag.el.style.position = '';
-          // Re-render to restore positions from params
-          renderColumns();
         }
       }
       if (ptrDrag.ghost) ptrDrag.ghost.remove();
