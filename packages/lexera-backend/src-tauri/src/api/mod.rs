@@ -46,6 +46,7 @@ const TEMPLATE_COPY_RATE_LIMIT: usize = 2;
 ///   GET  /boards/:boardId/file-info?path=...  -> file metadata (size, type, etc.)
 ///   POST /boards/:boardId/find-file            -> search for files by name in board dir
 ///   POST /boards/:boardId/convert-path        -> convert relative<->absolute path in card
+///   POST /search/files                          -> search files across boards
 ///   GET  /search?q=term                       -> search cards
 ///   GET  /calendar/tasks                      -> shared temporal calendar/dashboard task list
 ///   GET  /config/theme                        -> current theme ID
@@ -70,6 +71,10 @@ pub fn api_router() -> Router<AppState> {
         .route(
             "/boards/{board_id}/find-file",
             axum::routing::post(file_ops::find_file),
+        )
+        .route(
+            "/search/files",
+            axum::routing::post(file_ops::search_files),
         )
         .route_layer(axum::middleware::from_fn_with_state(
             RateLimiter::new(FIND_FILE_RATE_LIMIT),

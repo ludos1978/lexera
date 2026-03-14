@@ -32,6 +32,15 @@ pub struct ConvertPathBody {
     to: String, // "relative" or "absolute"
 }
 
+#[derive(Deserialize)]
+pub struct SearchFilesBody {
+    query: String,
+    #[serde(default)]
+    workspace_id: Option<String>,
+    #[serde(default)]
+    category: Option<String>, // "image", "video", "audio", "document", or empty for all
+}
+
 /// GET /boards/{board_id}/file?path=... -- serve any file relative to the board directory.
 pub async fn serve_file(
     State(state): State<AppState>,
@@ -189,6 +198,169 @@ pub async fn find_file(
     Ok(Json(serde_json::json!({
         "query": body.filename,
         "matches": matches,
+    })))
+}
+
+/// POST /search/files -- search for files across all boards (optionally filtered by workspace).
+/// Returns results with board context, media category, and relative paths suitable for embedding.
+pub async fn search_files(
+    State(state): State<AppState>,
+    Json(body): Json<SearchFilesBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let query = body.query.trim().to_string();
+    if query.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Search query must not be empty".to_string(),
+            }),
+        ));
+    }
+
+    // Collect board IDs and their paths, filtered by workspace if specified.
+    let board_dirs: Vec<(String, String, std::path::PathBuf)> = {
+        let cfg = state.config.lock().map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to lock config".to_string(),
+                }),
+            )
+        })?;
+
+        let boards_in_scope: Vec<&crate::config::BoardEntry> = if let Some(ref ws_id) = body.workspace_id {
+            cfg.boards
+                .iter()
+                .filter(|b| b.workspace_ids.iter().any(|id| id == ws_id))
+                .collect()
+        } else {
+            cfg.boards.iter().collect()
+        };
+
+        boards_in_scope
+            .iter()
+            .filter_map(|b| {
+                let file_path = std::path::PathBuf::from(&b.file);
+                let board_dir = file_path.parent()?;
+                let board_name = b
+                    .name
+                    .clone()
+                    .or_else(|| {
+                        file_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or_else(|| "Untitled".to_string());
+                let board_id =
+                    lexera_core::storage::local::LocalStorage::board_id_from_path(&file_path);
+                Some((board_id, board_name, board_dir.to_path_buf()))
+            })
+            .collect()
+    };
+
+    let category_filter = body.category.clone();
+    let target = query.to_lowercase();
+
+    let results = tokio::task::spawn_blocking(move || {
+        let mut results: Vec<serde_json::Value> = Vec::new();
+        let max_total = 50usize;
+
+        for (board_id, board_name, board_dir) in &board_dirs {
+            if results.len() >= max_total {
+                break;
+            }
+
+            fn walk_search(
+                dir: &std::path::Path,
+                base: &std::path::Path,
+                target: &str,
+                category_filter: &Option<String>,
+                results: &mut Vec<(String, String)>,
+                depth: usize,
+                max_results: usize,
+            ) {
+                if depth > 5 || results.len() >= max_results {
+                    return;
+                }
+                let entries = match std::fs::read_dir(dir) {
+                    Ok(e) => e,
+                    Err(_) => return,
+                };
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        walk_search(
+                            &path,
+                            base,
+                            target,
+                            category_filter,
+                            results,
+                            depth + 1,
+                            max_results,
+                        );
+                    } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        if !name.to_lowercase().contains(target) {
+                            continue;
+                        }
+                        let ext = path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("");
+                        if let Some(ref cat) = category_filter {
+                            if media_category(Some(ext)) != cat.as_str() {
+                                continue;
+                            }
+                        }
+                        let rel = path
+                            .strip_prefix(base)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| path.to_string_lossy().to_string());
+                        results.push((rel, ext.to_string()));
+                        if results.len() >= max_results {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            let remaining = max_total - results.len();
+            let mut board_matches: Vec<(String, String)> = Vec::new();
+            walk_search(
+                board_dir,
+                board_dir,
+                &target,
+                &category_filter,
+                &mut board_matches,
+                0,
+                remaining,
+            );
+
+            for (rel_path, ext) in board_matches {
+                let cat = media_category(Some(&ext));
+                let filename = std::path::Path::new(&rel_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&rel_path)
+                    .to_string();
+                results.push(serde_json::json!({
+                    "boardId": board_id,
+                    "boardName": board_name,
+                    "path": rel_path,
+                    "filename": filename,
+                    "category": cat,
+                    "previewable": is_previewable(Some(&ext)),
+                }));
+            }
+        }
+        results
+    })
+    .await
+    .unwrap_or_default();
+
+    Ok(Json(serde_json::json!({
+        "query": body.query,
+        "results": results,
     })))
 }
 

@@ -16799,6 +16799,141 @@ const LexeraDashboard = (function () {
     });
   }
 
+  // ── File search dialog for card editor ──────────────────────────────
+  function openFileSearchDialog(textarea) {
+    if (!textarea) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay file-search-overlay';
+    var dialog = document.createElement('div');
+    dialog.className = 'dialog file-search-dialog';
+    dialog.innerHTML =
+      '<div class="file-search-header">' +
+        '<div class="file-search-title">Search Files</div>' +
+        '<div class="file-search-categories" role="group">' +
+          '<button class="board-action-btn file-search-cat active" type="button" data-cat="">All</button>' +
+          '<button class="board-action-btn file-search-cat" type="button" data-cat="image">Images</button>' +
+          '<button class="board-action-btn file-search-cat" type="button" data-cat="document">Docs</button>' +
+          '<button class="board-action-btn file-search-cat" type="button" data-cat="video">Video</button>' +
+          '<button class="board-action-btn file-search-cat" type="button" data-cat="audio">Audio</button>' +
+        '</div>' +
+        '<button class="btn-small btn-cancel file-search-close" type="button">Close</button>' +
+      '</div>' +
+      '<input class="file-search-input" type="text" placeholder="Type to search files..." spellcheck="false" />' +
+      '<div class="file-search-results"></div>';
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    var input = dialog.querySelector('.file-search-input');
+    var resultsEl = dialog.querySelector('.file-search-results');
+    var activeCategory = '';
+    var searchTimer = null;
+
+    function closeDialog() {
+      if (searchTimer) clearTimeout(searchTimer);
+      overlay.remove();
+      textarea.focus();
+    }
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeDialog();
+    });
+    dialog.querySelector('.file-search-close').addEventListener('click', closeDialog);
+    dialog.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.stopPropagation(); closeDialog(); }
+    });
+
+    // Category filter buttons
+    dialog.addEventListener('click', function (e) {
+      var catBtn = e.target.closest('[data-cat]');
+      if (!catBtn) return;
+      activeCategory = catBtn.getAttribute('data-cat');
+      dialog.querySelectorAll('.file-search-cat').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-cat') === activeCategory);
+      });
+      doSearch();
+    });
+
+    function doSearch() {
+      var q = input.value.trim();
+      if (q.length < 2) {
+        resultsEl.innerHTML = '<div class="file-search-hint">Type at least 2 characters to search</div>';
+        return;
+      }
+      resultsEl.innerHTML = '<div class="file-search-hint">Searching...</div>';
+      var body = { query: q };
+      if (activeCategory) body.category = activeCategory;
+      LexeraApi.request('/search/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(function (data) {
+        var results = data && data.results ? data.results : [];
+        if (results.length === 0) {
+          resultsEl.innerHTML = '<div class="file-search-hint">No files found</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < results.length; i++) {
+          var r = results[i];
+          var catClass = 'badge-' + (r.category || 'unknown');
+          html += '<div class="file-search-item" data-index="' + i + '">' +
+            '<span class="file-search-badge ' + catClass + '">' + escapeHtml(r.category || '?') + '</span>' +
+            '<span class="file-search-filename">' + escapeHtml(r.filename) + '</span>' +
+            '<span class="file-search-board">' + escapeHtml(r.boardName) + '</span>' +
+            '<span class="file-search-path">' + escapeHtml(r.path) + '</span>' +
+          '</div>';
+        }
+        resultsEl.innerHTML = html;
+        resultsEl._results = results;
+      }).catch(function () {
+        resultsEl.innerHTML = '<div class="file-search-hint">Search failed</div>';
+      });
+    }
+
+    // Click result to insert
+    resultsEl.addEventListener('click', function (e) {
+      var item = e.target.closest('.file-search-item');
+      if (!item || !resultsEl._results) return;
+      var idx = parseInt(item.getAttribute('data-index'), 10);
+      var r = resultsEl._results[idx];
+      if (!r) return;
+      var embed = '';
+      if (r.category === 'image') {
+        embed = '![' + r.filename + '](' + r.path + ')';
+      } else {
+        embed = '[' + r.filename + '](' + r.path + ')';
+      }
+      // If the result is from a different board, use the file API URL
+      if (r.boardId && activeBoardId && r.boardId !== activeBoardId) {
+        var url = LexeraApi.fileUrl(r.boardId, r.path);
+        if (r.category === 'image') {
+          embed = '![' + r.filename + '](' + url + ')';
+        } else {
+          embed = '[' + r.filename + '](' + url + ')';
+        }
+      }
+      insertAtCursor(textarea, embed);
+      closeDialog();
+      textarea.dispatchEvent(new Event('input'));
+    });
+
+    input.addEventListener('input', function () {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(doSearch, 300);
+    });
+
+    input.focus();
+  }
+
+  function insertAtCursor(textarea, text) {
+    var start = textarea.selectionStart;
+    var end = textarea.selectionEnd;
+    var before = textarea.value.substring(0, start);
+    var after = textarea.value.substring(end);
+    textarea.value = before + text + after;
+    textarea.selectionStart = textarea.selectionEnd = start + text.length;
+  }
+
   function syncCardEditorTextareaFromWysiwyg() {
     if (
       !currentCardEditor ||
@@ -17343,6 +17478,7 @@ const LexeraDashboard = (function () {
         '<button class="board-action-btn" type="button" data-card-editor-fmt="code" title="Inline code">Code</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="link" title="Link">Link</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="image" title="Image">Image</button>' +
+        '<button class="board-action-btn" type="button" data-card-editor-action="file-search" title="Search files across workspace">Files</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="heading" title="Heading">H2</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="quote" title="Quote">Quote</button>' +
         '<button class="board-action-btn" type="button" data-card-editor-fmt="task" title="Checklist item">Task</button>' +
@@ -17424,6 +17560,7 @@ const LexeraDashboard = (function () {
         if (action === 'save') closeCardEditorOverlay({ save: true });
         else if (action === 'cancel') closeCardEditorOverlay({ save: false });
         else if (action === 'font-scale') openCardEditorFontScaleMenu(actionBtn);
+        else if (action === 'file-search') openFileSearchDialog(textarea);
         return;
       }
       var fmtBtn = e.target.closest('[data-card-editor-fmt]');
