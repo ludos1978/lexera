@@ -117,7 +117,7 @@ if the clipboard is pasted:
 - [x] fix the font in the kanban workspace selection (font-family: inherit already present)
 - [x] right clicking on board elements should allow adding row/stack/column/card which are appended after the current element. (insert-after/add-after actions already registered)
 - [ ] dragging an element (row/stack/column/card) from the view to the hierarchy should allow positioning it within a specific place! also dragging within the hiearchy and within the view must still work for all elements.
-- [ ] when editing it should do the least possible changes versus non editing the same field. curently it seems to add a margin padding around the text which serves no functionality!
+- [x] when editing it should do the least possible changes versus non editing the same field. curently it seems to add a margin padding around the text which serves no functionality! (fixed: 3c68600b — removed 120px min-height, textarea now sizes to content, font-size inherits board setting)
 - [x] the title of a row is not properly cut off. it overlaps the right burger menu. (overflow/ellipsis CSS already present)
 - [x] the burger menu over an image is barely visible on hover. make it have a stronger contrast bg/fg (fixed: 15ed3d7e)
 - [ ] Add workspace file/media search and indexing so users can search for files across the workspace when embedding images, documents, and media into cards, with format-aware results and batch selection.
@@ -140,7 +140,7 @@ if the clipboard is pasted:
 - [x] Persist row and stack fold states across board reloads — save fold state for each element by ID in localStorage alongside the existing column/card fold state, and restore on board render.
 
 ### Layout Presets
-- [ ] Add named layout presets beyond Normal/Spacious — allow saving current board layout (column width, row height, spacing, font size, sticky mode) as a named preset, and loading/deleting saved presets from the Board menu or burger menu.
+- [x] Add named layout presets beyond Normal/Spacious — allow saving current board layout (column width, row height, spacing, font size, sticky mode) as a named preset, and loading/deleting saved presets from the Board menu or burger menu. (done: 3c68600b — save/load/delete custom presets via board context menu, stored in localStorage)
 
 ### Plugin Refactoring (app.js structural decomposition)
 
