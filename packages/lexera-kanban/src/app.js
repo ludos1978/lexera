@@ -21330,6 +21330,49 @@ const LexeraDashboard = (function () {
     return parts.join('/');
   }
 
+  /// Compute the relative path from `fromDir` to `toPath`, both relative to the
+  /// same base directory. Returns the shortest relative path.
+  function computeRelativePath(fromDir, toPath) {
+    var from = normalizePathForCompare(String(fromDir || '')).split('/').filter(function (s) { return s && s !== '.'; });
+    var to = normalizePathForCompare(String(toPath || '')).split('/').filter(function (s) { return s && s !== '.'; });
+
+    // Resolve .. in both paths
+    function resolveSegments(parts) {
+      var res = [];
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i] === '..') { if (res.length > 0) res.pop(); }
+        else res.push(parts[i]);
+      }
+      return res;
+    }
+    from = resolveSegments(from);
+    to = resolveSegments(to);
+
+    // Find common prefix length
+    var common = 0;
+    while (common < from.length && common < to.length && from[common] === to[common]) common++;
+
+    // Build relative path: go up for remaining fromDir segments, then down for remaining toPath segments
+    var result = [];
+    for (var u = common; u < from.length; u++) result.push('..');
+    for (var d = common; d < to.length; d++) result.push(to[d]);
+    return result.join('/') || '.';
+  }
+
+  /// If the container is inside an include column, convert a board-relative path
+  /// to be relative to the include file's directory instead.
+  function adjustPathForIncludeContext(container, boardRelPath) {
+    var cardEl = container ? container.closest('.card[data-card-id]') : null;
+    if (!cardEl) return boardRelPath;
+    var cardRef = findCardRefById(cardEl.getAttribute('data-card-id'));
+    if (!cardRef) return boardRelPath;
+    var col = cardRef.column;
+    if (!col || !col.includeSource || !col.includeSource.rawPath) return boardRelPath;
+    var includeDir = getDirNameFromPath(col.includeSource.rawPath);
+    if (!includeDir) return boardRelPath;
+    return computeRelativePath(includeDir, boardRelPath);
+  }
+
   function resolveMarkdownRelativeTargets(content, includeFilePath) {
     var baseDir = getDirNameFromPath(includeFilePath);
     if (!baseDir) return String(content || '');
@@ -23109,7 +23152,8 @@ const LexeraDashboard = (function () {
 
     } else if (action && action.indexOf('pick-path:') === 0) {
       closeEmbedMenu();
-      updateBoardFileLinkTarget(container, action.substring(10) + (fileRef.suffix || ''));
+      var pickedPath = adjustPathForIncludeContext(container, action.substring(10));
+      updateBoardFileLinkTarget(container, pickedPath + (fileRef.suffix || ''));
 
     } else if (action === 'close-info') {
       closeEmbedMenu();
@@ -23207,7 +23251,8 @@ const LexeraDashboard = (function () {
 
     } else if (action && action.indexOf('pick-path:') === 0) {
       closeEmbedMenu();
-      updateIncludeTarget(container, action.substring(10) + (fileRef.suffix || ''));
+      var pickedIncPath = adjustPathForIncludeContext(container, action.substring(10));
+      updateIncludeTarget(container, pickedIncPath + (fileRef.suffix || ''));
 
     } else if (action === 'close-info') {
       closeEmbedMenu();
@@ -23447,7 +23492,7 @@ const LexeraDashboard = (function () {
       deleteEmbedFromSource(container);
 
     } else if (action && action.indexOf('pick-path:') === 0) {
-      var newPath = action.substring(10);
+      var newPath = adjustPathForIncludeContext(container, action.substring(10));
       closeEmbedMenu();
       updateEmbedTarget(container, newPath + (fileRef.suffix || ''));
     }

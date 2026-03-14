@@ -139,6 +139,7 @@ pub async fn find_file(
 
         fn walk(
             dir: &std::path::Path,
+            base: &std::path::Path,
             target: &str,
             matches: &mut Vec<String>,
             depth: usize,
@@ -155,10 +156,14 @@ pub async fn find_file(
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    walk(&path, target, matches, depth + 1, max_depth, max_results);
+                    walk(&path, base, target, matches, depth + 1, max_depth, max_results);
                 } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name.to_lowercase().contains(target) {
-                        matches.push(path.to_string_lossy().to_string());
+                        // Return path relative to the board directory
+                        let rel = path.strip_prefix(base)
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|_| path.to_string_lossy().to_string());
+                        matches.push(rel);
                         if matches.len() >= max_results {
                             return;
                         }
@@ -168,6 +173,7 @@ pub async fn find_file(
         }
 
         walk(
+            &board_dir,
             &board_dir,
             &target,
             &mut matches,
