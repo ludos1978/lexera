@@ -101,11 +101,10 @@ in the sharing settings workspaces are defined, workspaces can contain one or mo
 
 - ~~the backend needs a small interface that allows adding and removing kanban boards from/to it and of course list the ones that are currently included. it must show if users are working on them and if this machine is autoritative for the board (maybe other network relevant informations). it must communicate with the frontend when it changes this.~~ (done: 55dd8a11 — board management UI shows presence indicators (green dot + peer count) and Local/Remote authority badges, add/remove already existed)
 
-- [ ] i want to be able to setup multiple workspaces. 
-  - each workspace has specific boards open
-  - it can have specific layouts
-  - it can have a specific theme
-  - maybe more...
+- ~~i want to be able to setup multiple workspaces.~~ (done: workspace CRUD already existed; c9b2cd8b adds per-workspace theme and layout_preset fields, PUT /config/workspaces/{id}/appearance endpoint, management UI appearance section, kanban applies workspace theme on switch)
+  - ~~each workspace has specific boards open~~ (already done: board-to-workspace assignment via management UI)
+  - ~~it can have specific layouts~~ (done: c9b2cd8b — layout_preset field on WorkspaceEntry)
+  - ~~it can have a specific theme~~ (done: c9b2cd8b — theme field on WorkspaceEntry, applied on workspace switch)
 
 - [x] the file format should be changed to \                                                                
   ---\                                                                                                  
