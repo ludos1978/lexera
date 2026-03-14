@@ -2388,6 +2388,7 @@ body.show-special-characters .card-editor-textarea {
 
 /* Board setting: canvas layout — stacks are freely positioned within rows */
 .columns-container.layout-canvas .board-row-content {
+  display: block;
   position: relative;
   min-height: 600px;
   overflow: visible;
@@ -2395,7 +2396,6 @@ body.show-special-characters .card-editor-textarea {
 
 .columns-container.layout-canvas .board-stack {
   position: absolute;
-  flex: none;
   cursor: grab;
 }
 
@@ -2404,9 +2404,11 @@ body.show-special-characters .card-editor-textarea {
   cursor: grabbing;
 }
 
-/* Stacks without explicit x/y params fall back to flow layout */
+/* Stacks without explicit x/y params: auto-layout at top-left */
 .columns-container.layout-canvas .board-stack:not([style*="left"]) {
   position: relative;
+  display: inline-block;
+  vertical-align: top;
 }
 
 /* Canvas mode: card span uses grid-like behavior */

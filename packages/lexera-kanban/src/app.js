@@ -15064,6 +15064,16 @@ const LexeraDashboard = (function () {
       if (ptrDrag.type === 'board-stack' && getBoardSettingValue('boardLayout') === 'canvas') {
         ptrDrag.canvasMove = true;
         ptrDrag.el.classList.add('dragging');
+        // Convert from relative flow to absolute positioning before moving
+        var canvasParent = ptrDrag.el.closest('.board-row-content');
+        if (canvasParent) {
+          var parentRect = canvasParent.getBoundingClientRect();
+          var elRect = ptrDrag.el.getBoundingClientRect();
+          ptrDrag.el.style.position = 'absolute';
+          ptrDrag.el.style.left = Math.round(elRect.left - parentRect.left) + 'px';
+          ptrDrag.el.style.top = Math.round(elRect.top - parentRect.top) + 'px';
+          ptrDrag.el.style.width = elRect.width + 'px';
+        }
         ptrDrag.el.style.zIndex = '100';
         var sel = window.getSelection();
         if (sel) sel.removeAllRanges();
@@ -15503,7 +15513,10 @@ const LexeraDashboard = (function () {
     if (!stack.params) stack.params = {};
     stack.params.x = String(newX);
     stack.params.y = String(newY);
+    // Clean up temporary drag styles; persistBoardMutation re-renders with params
     stackEl.style.zIndex = '';
+    stackEl.style.width = '';
+    stackEl.style.position = '';
     persistBoardMutation();
   }
 
@@ -16556,7 +16569,13 @@ const LexeraDashboard = (function () {
     if (ptrDrag) {
       if (ptrDrag.el) {
         ptrDrag.el.classList.remove('dragging');
-        if (ptrDrag.canvasMove) ptrDrag.el.style.zIndex = '';
+        if (ptrDrag.canvasMove) {
+          ptrDrag.el.style.zIndex = '';
+          ptrDrag.el.style.width = '';
+          ptrDrag.el.style.position = '';
+          // Re-render to restore positions from params
+          renderColumns();
+        }
       }
       if (ptrDrag.ghost) ptrDrag.ghost.remove();
       ptrDrag = null;
