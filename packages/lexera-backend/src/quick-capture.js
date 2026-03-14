@@ -188,24 +188,65 @@
       return;
     }
 
-    const summary = document.createElement('div');
-    summary.className = 'clipboard-summary';
+    // Rich preview container
+    const preview = document.createElement('div');
+    preview.className = 'clipboard-rich-preview';
 
+    // Badge row
+    const header = document.createElement('div');
+    header.className = 'clipboard-summary';
     const badge = document.createElement('span');
     badge.className = 'clipboard-type-badge';
     badge.textContent = clipboardData.type === 'image' ? 'IMG' : clipboardData.type === 'url' ? 'URL' : 'TXT';
-    summary.appendChild(badge);
-
+    header.appendChild(badge);
     const label = document.createElement('span');
     label.className = 'clipboard-summary-text' + (clipboardData.isPassword ? ' clipboard-password-warning' : '');
     label.textContent = clipboardData.summary;
-    summary.appendChild(label);
+    header.appendChild(label);
+    preview.appendChild(header);
 
-    els.clipboardPreview.appendChild(summary);
+    // Rich content area
+    if (clipboardData.type === 'image' && clipboardData.imageData) {
+      const img = document.createElement('img');
+      img.className = 'clipboard-image-preview';
+      img.src = 'data:image/png;base64,' + clipboardData.imageData;
+      img.alt = 'Clipboard image';
+      preview.appendChild(img);
+    } else if (clipboardData.type === 'url' && clipboardData.fullText) {
+      const urlBox = document.createElement('div');
+      urlBox.className = 'clipboard-url-preview';
+      const link = document.createElement('a');
+      link.className = 'clipboard-url-link';
+      link.textContent = clipboardData.fullText.trim();
+      link.title = clipboardData.fullText.trim();
+      link.href = '#';
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        tauriInvoke('plugin:shell|open', { path: clipboardData.fullText.trim() }).catch(log);
+      });
+      urlBox.appendChild(link);
+      preview.appendChild(urlBox);
+    } else if (clipboardData.type === 'text' && clipboardData.fullText && !clipboardData.isPassword) {
+      const textBox = document.createElement('div');
+      textBox.className = 'clipboard-text-preview';
+      // Show first 6 lines
+      const lines = clipboardData.fullText.split('\n');
+      const displayLines = lines.slice(0, 6);
+      textBox.textContent = displayLines.join('\n');
+      if (lines.length > 6) {
+        const more = document.createElement('span');
+        more.className = 'clipboard-text-more';
+        more.textContent = '... +' + (lines.length - 6) + ' more lines';
+        textBox.appendChild(more);
+      }
+      preview.appendChild(textBox);
+    }
+
+    els.clipboardPreview.appendChild(preview);
   }
 
   async function loadClipboardSummary() {
-    clipboardData = { type: 'empty', summary: '', isPassword: false };
+    clipboardData = { type: 'empty', summary: '', isPassword: false, fullText: '', imageData: null };
     const failures = [];
 
     // Preferred path: lightweight clipboard summary (does not transfer large image payloads)
@@ -216,24 +257,31 @@
         if (summary.image && typeof summary.image.width === 'number' && typeof summary.image.height === 'number') {
           imageLabel += ` ${summary.image.width}x${summary.image.height}`;
         }
-        clipboardData = { type: 'image', summary: imageLabel, isPassword: false };
+        clipboardData = { type: 'image', summary: imageLabel, isPassword: false, fullText: '', imageData: null };
+        // Load actual image data for preview
+        try {
+          const imgResult = await tauriInvoke('read_clipboard_image');
+          if (imgResult && imgResult.data) clipboardData.imageData = imgResult.data;
+        } catch (e) { /* preview without image */ }
         renderClipboardSummary();
         return;
       }
       if (summary && summary.kind === 'text' && typeof summary.text === 'string' && summary.text.trim()) {
         const trimmed = summary.text.trim();
         if (looksLikePassword(trimmed)) {
-          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true };
+          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true, fullText: '', imageData: null };
         } else if (isUrl(trimmed)) {
           let hostname = 'link';
           try { hostname = new URL(trimmed).hostname; } catch (e) { /* ignore */ }
-          clipboardData = { type: 'url', summary: hostname, isPassword: false };
+          clipboardData = { type: 'url', summary: hostname, isPassword: false, fullText: trimmed, imageData: null };
         } else {
           const firstLine = trimmed.split('\n')[0].trim();
           clipboardData = {
             type: 'text',
             summary: firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine,
             isPassword: false,
+            fullText: trimmed,
+            imageData: null,
           };
         }
         renderClipboardSummary();
@@ -251,7 +299,7 @@
     try {
       const imgResult = await tauriInvoke('read_clipboard_image');
       if (imgResult && imgResult.data) {
-        clipboardData = { type: 'image', summary: 'Image (clipboard)', isPassword: false };
+        clipboardData = { type: 'image', summary: 'Image (clipboard)', isPassword: false, fullText: '', imageData: imgResult.data };
         renderClipboardSummary();
         return;
       }
@@ -265,17 +313,19 @@
       if (text && text.trim()) {
         const trimmed = text.trim();
         if (looksLikePassword(trimmed)) {
-          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true };
+          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true, fullText: '', imageData: null };
         } else if (isUrl(trimmed)) {
           let hostname = 'link';
           try { hostname = new URL(trimmed).hostname; } catch (e) { /* ignore */ }
-          clipboardData = { type: 'url', summary: hostname, isPassword: false };
+          clipboardData = { type: 'url', summary: hostname, isPassword: false, fullText: trimmed, imageData: null };
         } else {
           const firstLine = text.split('\n')[0].trim();
           clipboardData = {
             type: 'text',
             summary: firstLine.length > 60 ? firstLine.substring(0, 60) + '...' : firstLine,
             isPassword: false,
+            fullText: trimmed,
+            imageData: null,
           };
         }
         renderClipboardSummary();
