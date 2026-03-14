@@ -5447,6 +5447,8 @@ const LexeraDashboard = (function () {
     columnSortState = {};
     boardStatsBarVisible = false;
     closeSearchReplacePanel();
+    // Reset canvas zoom on board load
+    if ($canvasZoom !== 1) applyCanvasZoom(1);
     var loadStage = 'start';
     try {
       loadStage = 'clear-caches';
@@ -11285,6 +11287,27 @@ const LexeraDashboard = (function () {
     }
   });
 
+  var $canvasZoom = 1;
+
+  function applyCanvasZoom(zoom, originX, originY) {
+    var container = getElColumnsContainer();
+    if (!container) return;
+    $canvasZoom = zoom;
+    container.style.transform = zoom === 1 ? '' : 'scale(' + zoom + ')';
+    if (originX != null && originY != null) {
+      container.style.transformOrigin = originX + 'px ' + originY + 'px';
+    }
+    showNotification('Canvas Zoom ' + Math.round(zoom * 100) + '%');
+  }
+
+  function nudgeCanvasZoom(delta, originX, originY) {
+    var next = Math.round(($canvasZoom + delta) * 100) / 100;
+    if (next < 0.25) next = 0.25;
+    if (next > 3) next = 3;
+    if (next === $canvasZoom) return;
+    applyCanvasZoom(next, originX, originY);
+  }
+
   document.addEventListener('wheel', function (e) {
     if (!(e.ctrlKey || e.metaKey)) return;
     if (!activeBoardData) return;
@@ -11293,7 +11316,15 @@ const LexeraDashboard = (function () {
     if (!target.closest('#board-header, #columns-container')) return;
     if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
     e.preventDefault();
-    nudgeUiScale(e.deltaY < 0 ? 0.05 : -0.05);
+    if (getBoardSettingValue('boardLayout') === 'canvas') {
+      var container = getElColumnsContainer();
+      var rect = container ? container.getBoundingClientRect() : null;
+      var ox = rect ? e.clientX - rect.left : undefined;
+      var oy = rect ? e.clientY - rect.top : undefined;
+      nudgeCanvasZoom(e.deltaY < 0 ? 0.1 : -0.1, ox, oy);
+    } else {
+      nudgeUiScale(e.deltaY < 0 ? 0.05 : -0.05);
+    }
   }, { passive: false });
 
   function normalizeStickyHeaderMode(rawMode) {
@@ -12112,6 +12143,7 @@ const LexeraDashboard = (function () {
    */
   function renderNewFormatBoard() {
     var rows = activeBoardData.rows;
+    var isCanvasLayout = getBoardSettingValue('boardLayout') === 'canvas';
     var foldedCols = getFoldedColumns(activeBoardId);
     var foldedRows = getFoldedItems(activeBoardId, 'row');
     var foldedStacks = getFoldedItems(activeBoardId, 'stack');
@@ -12224,13 +12256,41 @@ const LexeraDashboard = (function () {
         var stackWidthTag = getElementSizeTag(stack.title, 'width');
         if (stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
 
-        // Canvas layout: apply inline params for positioning
+        // Canvas layout: apply inline params for positioning and sizing
         var stackParams = stack.params || {};
         if (stackParams.x) stackEl.style.left = stackParams.x + 'px';
         if (stackParams.y) stackEl.style.top = stackParams.y + 'px';
         if (stackParams.w) stackEl.style.width = stackParams.w + 'px';
         if (stackParams.h) stackEl.style.height = stackParams.h + 'px';
         if (stackParams.dir) stackEl.setAttribute('data-stack-dir', stackParams.dir);
+
+        // Canvas mode: persist resize when user drags the CSS resize handle
+        if (isCanvasLayout) {
+          (function (el, rIdx, sIdx) {
+            var resizeTimer = null;
+            var observer = new ResizeObserver(function (entries) {
+              if (ptrDrag) return; // ignore resize during drag
+              var entry = entries[0];
+              if (!entry) return;
+              var newW = Math.round(entry.contentRect.width);
+              var newH = Math.round(entry.contentRect.height);
+              clearTimeout(resizeTimer);
+              resizeTimer = setTimeout(function () {
+                var fullStack = findFullDataStack(rIdx, sIdx);
+                if (!fullStack) return;
+                var curW = fullStack.params && fullStack.params.w ? parseInt(fullStack.params.w, 10) : 0;
+                var curH = fullStack.params && fullStack.params.h ? parseInt(fullStack.params.h, 10) : 0;
+                if (Math.abs(newW - curW) < 5 && Math.abs(newH - curH) < 5) return;
+                pushUndo();
+                if (!fullStack.params) fullStack.params = {};
+                fullStack.params.w = String(newW);
+                fullStack.params.h = String(newH);
+                persistBoardMutation({ skipRender: true });
+              }, 400);
+            });
+            observer.observe(el);
+          })(stackEl, r, s);
+        }
 
         // Stack header
         var stackHeader = document.createElement('div');
@@ -27062,9 +27122,15 @@ const LexeraDashboard = (function () {
     });
 
     // Zoom
-    ActionRegistry.register('board', 'zoom-in', function () { nudgeUiScale(0.05); });
-    ActionRegistry.register('board', 'zoom-out', function () { nudgeUiScale(-0.05); });
-    ActionRegistry.register('board', 'zoom-reset', function () { applyUiScale(1); showNotification('Zoom 100%'); });
+    ActionRegistry.register('board', 'zoom-in', function () {
+      if (getBoardSettingValue('boardLayout') === 'canvas') { nudgeCanvasZoom(0.1); } else { nudgeUiScale(0.05); }
+    });
+    ActionRegistry.register('board', 'zoom-out', function () {
+      if (getBoardSettingValue('boardLayout') === 'canvas') { nudgeCanvasZoom(-0.1); } else { nudgeUiScale(-0.05); }
+    });
+    ActionRegistry.register('board', 'zoom-reset', function () {
+      if (getBoardSettingValue('boardLayout') === 'canvas') { applyCanvasZoom(1); } else { applyUiScale(1); showNotification('Zoom 100%'); }
+    });
 
     // Navigation
     ActionRegistry.register('board', 'show-recent-boards', function () {
