@@ -17,6 +17,8 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
 
     // ── File menu ──
     let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&MenuItemBuilder::with_id("file-new-window", "New Window").accelerator("CmdOrCtrl+N").build(app)?)
+        .separator()
         .item(&MenuItemBuilder::with_id("file-save", "Save").accelerator("CmdOrCtrl+S").build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("file-rename", "Rename Board File").build(app)?)
@@ -290,6 +292,7 @@ pub fn set_check_menu_state(app: &tauri::AppHandle, id: &str, checked: bool) {
 /// Each entry is (menu_id, action_string). Add new entries here to wire native menu items.
 const MENU_ACTION_MAP: &[(&str, &str)] = &[
     // File
+    ("file-new-window", "new-window"),
     ("file-save", "save-now"),
     ("file-rename", "rename-file"),
     ("file-reveal", "open-folder"),

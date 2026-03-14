@@ -4135,7 +4135,7 @@ const LexeraDashboard = (function () {
           renderMainView();
         }
       } else if (!activeBoardId && !searchMode) {
-        var lastBoard = embeddedMode ? embeddedPreferredBoardId : localStorage.getItem('lexera-last-board');
+        var lastBoard = embeddedMode ? embeddedPreferredBoardId : (urlParams.get('board') || localStorage.getItem('lexera-last-board'));
         if (lastBoard) {
           var found = findBoardMeta(lastBoard);
           if (found) {
@@ -26183,6 +26183,11 @@ const LexeraDashboard = (function () {
     // ----- Board scope -----
     // Recent boards
     ActionRegistry.register('board', 'recent:*', function (action) { var id = action.substring(7); if (id) selectBoard(id); });
+
+    // Window management
+    ActionRegistry.register('board', 'new-window', function () {
+      if (hasTauri) tauriInvoke('open_new_window', { boardId: null });
+    });
 
     // Undo/redo
     ActionRegistry.register('board', 'undo', function () { undo(); });

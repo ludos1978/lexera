@@ -7,7 +7,32 @@ mod export_commands;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WebviewUrl};
+
+static WINDOW_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
+#[tauri::command]
+fn open_new_window(app: tauri::AppHandle, board_id: Option<String>) -> Result<String, String> {
+    let n = WINDOW_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let label = format!("kanban-{}", n);
+
+    let mut url_str = String::from("index.html");
+    if let Some(ref bid) = board_id {
+        url_str.push_str("?board=");
+        url_str.push_str(bid);
+    }
+    let url = WebviewUrl::App(url_str.into());
+
+    tauri::WebviewWindowBuilder::new(&app, &label, url)
+        .title("Lexera Kanban")
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(600.0, 400.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| format!("Failed to create window: {}", e))?;
+
+    Ok(label)
+}
 
 fn write_kanban_crash_report(report: &str) {
     let crash_path = dirs::config_dir()
@@ -147,13 +172,24 @@ fn main() {
         .on_menu_event(|app, event| {
             let id = event.id().0.as_str();
             if let Some(action) = app_menu::menu_id_to_action(id) {
-                if let Some(window) = app.get_webview_window("main") {
+                // Handle Rust-side actions that don't go to the frontend
+                if action == "new-window" {
+                    let _ = open_new_window(app.clone(), None);
+                    return;
+                }
+                // Route to the focused window, falling back to "main"
+                let target = app.webview_windows().values()
+                    .find(|w| w.is_focused().unwrap_or(false))
+                    .cloned()
+                    .or_else(|| app.get_webview_window("main"));
+                if let Some(window) = target {
                     let _ = window.emit("menu-action", action);
                 }
             }
         })
         .manage(export_commands::MarpWatchState::new())
         .invoke_handler(tauri::generate_handler![
+            open_new_window,
             commands::get_backend_url,
             commands::open_in_system,
             commands::open_url,
@@ -186,8 +222,11 @@ fn main() {
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                    api.prevent_close();
-                    let _ = window.minimize();
+                    // Only prevent close on the main window; secondary windows close normally
+                    if window.label() == "main" {
+                        api.prevent_close();
+                        let _ = window.minimize();
+                    }
                 }
                 tauri::WindowEvent::Moved(_pos) => {
                     snap_window_to_edges(window);
