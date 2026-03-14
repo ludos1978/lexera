@@ -21074,16 +21074,28 @@ const LexeraDashboard = (function () {
   }
 
   async function resolveCachedSpecialPreviewAsset(boardId, filePath, previewKind, options) {
-    if (!boardId || !filePath) return null;
+    if (!boardId || !filePath) {
+      logFrontendIssue('warn', 'embed.preview.resolve', 'Missing boardId or filePath for preview', { boardId: boardId, filePath: filePath });
+      return null;
+    }
     var config = getSpecialPreviewRenderConfig(previewKind, filePath, options && options.pageNumber);
-    if (!config) return null;
+    if (!config) {
+      logFrontendIssue('warn', 'embed.preview.resolve', 'No render config for previewKind=' + previewKind, { filePath: filePath });
+      return null;
+    }
 
     var boardFilePath = getBoardFilePathForId(boardId);
-    if (!boardFilePath) return null;
+    if (!boardFilePath) {
+      logFrontendIssue('warn', 'embed.preview.resolve', 'No board file path for boardId=' + boardId);
+      return null;
+    }
 
     var fileRef = parseLocalFileReference(filePath);
     var sourceInfo = await requestFileInfo(boardId, fileRef.path);
-    if (!sourceInfo || !sourceInfo.exists) return null;
+    if (!sourceInfo || !sourceInfo.exists) {
+      logFrontendIssue('warn', 'embed.preview.resolve', 'Source file does not exist: ' + fileRef.path);
+      return null;
+    }
 
     var mtimeMs = 0;
     if (typeof sourceInfo.lastModifiedMs === 'number' && isFinite(sourceInfo.lastModifiedMs)) {
@@ -21091,18 +21103,25 @@ const LexeraDashboard = (function () {
     } else if (typeof sourceInfo.lastModified === 'number' && isFinite(sourceInfo.lastModified)) {
       mtimeMs = sourceInfo.lastModified * 1000;
     }
-    if (!(mtimeMs > 0)) return null;
+    if (!(mtimeMs > 0)) {
+      logFrontendIssue('warn', 'embed.preview.resolve', 'Source file has no valid mtime: ' + fileRef.path);
+      return null;
+    }
 
     var absoluteSourcePath = fileRef.path;
     if (!isAbsoluteFilePath(absoluteSourcePath)) {
       absoluteSourcePath = await resolveBoardPath(boardId, fileRef.path, 'absolute');
     }
-    if (!isAbsoluteFilePath(absoluteSourcePath)) return null;
+    if (!isAbsoluteFilePath(absoluteSourcePath)) {
+      logFrontendIssue('warn', 'embed.preview.resolve', 'Could not resolve absolute path for: ' + fileRef.path);
+      return null;
+    }
 
     var cacheDir = buildDiagramCacheDir(boardFilePath, absoluteSourcePath, config.cacheFolderName);
     if (!cacheDir) return null;
     var cachePath = cacheDir + '/' + buildDiagramCacheFileName(absoluteSourcePath, mtimeMs, config.extension, config.suffix);
-    var cacheInfo = await requestFileInfo(boardId, cachePath);
+    var forceRerender = !!(options && options.forceRerender);
+    var cacheInfo = forceRerender ? null : await requestFileInfo(boardId, cachePath);
     if (!cacheInfo || !cacheInfo.exists) {
       var rendered = await requestRenderedSpecialPreviewAsset(boardId, filePath, absoluteSourcePath, cachePath, config);
       if (!rendered) return null;
@@ -21114,7 +21133,7 @@ const LexeraDashboard = (function () {
 
     return {
       path: cachePath,
-      url: LexeraApi.fileUrl(boardId, cachePath),
+      url: LexeraApi.fileUrl(boardId, cachePath) + (forceRerender ? '?t=' + Date.now() : ''),
       alt: getDisplayFileNameFromPath(filePath) || filePath
     };
   }
@@ -22110,8 +22129,9 @@ const LexeraDashboard = (function () {
     }
   }
 
-  async function enhanceSingleEmbedContainer(container) {
-    if (!container || container.getAttribute('data-embed-enhanced') === '1') return;
+  async function enhanceSingleEmbedContainer(container, enhanceOpts) {
+    enhanceOpts = enhanceOpts || {};
+    if (!container || (!enhanceOpts.forceRerender && container.getAttribute('data-embed-enhanced') === '1')) return;
     var boardId = container.getAttribute('data-board-id') || activeBoardId || '';
     var filePath = container.getAttribute('data-file-path') || '';
     if (!boardId || !filePath) return;
@@ -22140,7 +22160,7 @@ const LexeraDashboard = (function () {
     if (isRenderedSpecialPreviewKind(previewKind)) {
       container.appendChild(previewEl);
       var previewPage = container.getAttribute('data-preview-page') || '';
-      var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage });
+      var rendered = await renderCachedSpecialPreview(previewEl, boardId, filePath, previewKind, { pageNumber: previewPage, forceRerender: !!enhanceOpts.forceRerender });
       if (!rendered) {
         previewEl.innerHTML = buildFilePreviewPlaceholderHtml(
           previewKind,
@@ -22259,7 +22279,7 @@ const LexeraDashboard = (function () {
       } else if (action === 'retry-render') {
         clearCachedFilePreviewState(boardId, filePath);
         body.innerHTML = '<div class="embed-preview-loading">Loading preview...</div>';
-        renderPreviewBody();
+        renderPreviewBody({ forceRerender: true });
       } else if (action === 'renderer-status') {
         showFileRendererStatusMenu(boardId, filePath, actionBtn);
       } else if (action === 'open-system') {
@@ -22267,7 +22287,8 @@ const LexeraDashboard = (function () {
       }
     });
 
-    async function renderPreviewBody() {
+    async function renderPreviewBody(renderOpts) {
+      renderOpts = renderOpts || {};
       if (previewKind === 'pdf') {
         body.innerHTML =
           '<iframe class="file-preview-frame" src="' +
@@ -22282,7 +22303,8 @@ const LexeraDashboard = (function () {
         var modalPage = options && options.pageNumber ? options.pageNumber : '';
         var rendered = await renderCachedSpecialPreview(body, boardId, filePath, previewKind, {
           modal: true,
-          pageNumber: modalPage
+          pageNumber: modalPage,
+          forceRerender: !!renderOpts.forceRerender
         });
         if (!rendered) {
           body.innerHTML = buildFilePreviewPlaceholderHtml(
@@ -23376,7 +23398,7 @@ const LexeraDashboard = (function () {
       container.removeAttribute('data-embed-enhanced');
       var preview = container.querySelector('.embed-preview');
       if (preview) preview.remove();
-      enhanceSingleEmbedContainer(container);
+      enhanceSingleEmbedContainer(container, { forceRerender: true });
       closeEmbedMenu();
 
     } else if (action === 'info') {
