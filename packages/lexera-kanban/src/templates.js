@@ -527,6 +527,7 @@ const LexeraTemplates = (function () {
       });
       overlay.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') {
+          e.preventDefault();
           cleanup(null);
         }
       });

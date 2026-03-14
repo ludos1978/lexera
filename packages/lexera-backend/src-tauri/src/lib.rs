@@ -176,6 +176,15 @@ pub fn run() {
                 api.prevent_close();
                 let _ = _window.hide();
             }
+            // Collapse quick-capture window immediately when it loses focus.
+            // The JS blur handler is unreliable for borderless always-on-top
+            // windows on macOS, so we handle it at the native Tauri level.
+            if let tauri::WindowEvent::Focused(false) = event {
+                if _window.label() == "quick-capture" {
+                    let app = _window.app_handle().clone();
+                    let _ = capture::collapse_capture(app);
+                }
+            }
         })
         .setup(move |app| {
             // Hide from Dock, show only as menu bar (tray) app

@@ -746,6 +746,7 @@ class ExportUI {
             if (e.key === 'Escape') {
                 var m = document.getElementById('export-modal');
                 if (m && m.style.display !== 'none') {
+                    e.preventDefault();
                     self.hide();
                 }
             }
