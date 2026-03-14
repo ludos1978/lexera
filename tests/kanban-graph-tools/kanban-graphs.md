@@ -3,10 +3,10 @@
 kanban-plugin: board
 
 fontSize: 1_0x
-generation: 10
-contentHash: d41aae321982e1ca89c788fdc04b0cffabcc0128ccb4391099615b0601d43927
-resolvedHash: 0f6c680867e9740961f4f831066173d468d9fd47cb7441a3a89a46203ff53572
-writerId: ef524ba5-36c2-4e86-8e1b-3ae90b51fbb8
+generation: 17
+contentHash: a9c7f404d66dbc8e5121927faf838853b5c7fc289d5a2767dd59ec9fe9239b84
+resolvedHash: 2255fe07dd77dc0536719d136783c82609e602124a46e5a88375a518a0af24b6
+writerId: 3da36485-1b99-4e8a-ad95-1a2eef80e0ea
 stickyStackMode: top
 ---
 
@@ -197,24 +197,7 @@ stickyStackMode: top
 ### includes
 - [ ] excali
   ![excali.excalidraw](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/excali.excalidraw)
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+- [ ] https://hslu.zoom.us/rec/share/PPNQMgKCVuRxwdBGlt0JJa4ORduA-KgPCDLL0jPBU1smvMQc8YC-gA2nn3A-DmQY.8Tr6Q8hARl-wiLtP #hidden-internal-deleted
 - [ ] draw
   ![draw.drawio](/Users/rspoerri/_REPOSITORIES/_TINKERING_REPOs/markdown-kanban-obsidian/tests/kanban-graph-tools/draw.drawio)
 - [ ] the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
