@@ -3132,6 +3132,19 @@ const LexeraDashboard = (function () {
     });
     if (embeddedMode) document.body.classList.add('embedded-mode');
     if (typeof window.updateAppBottomInset === 'function') window.updateAppBottomInset();
+
+    // Load user keybindings from ~/.config/lexera/keybindings.json
+    if (hasTauri && window.LexeraKeybindingRegistry) {
+      tauriInvoke('read_keybindings', {}).then(function (json) {
+        window.LexeraKeybindingRegistry.loadFromJson(json);
+        if (json) traceFrontendAction('info', 'keybinding.load', 'Loaded user keybindings');
+      }).catch(function (err) {
+        traceFrontendAction('warn', 'keybinding.load', 'Failed to load keybindings', err);
+        window.LexeraKeybindingRegistry.loadFromJson('');
+      });
+    } else if (window.LexeraKeybindingRegistry) {
+      window.LexeraKeybindingRegistry.loadFromJson('');
+    }
     ensureSidebarTreeDefaultState();
     setupSearchControls();
     setupDashboardControls();
@@ -10937,6 +10950,23 @@ const LexeraDashboard = (function () {
       { keys: 'Alt+Click', desc: 'Open link/image/embed in system app' },
       { keys: '?', desc: 'Toggle this help' },
     ];
+    // Append user-defined keybindings
+    if (window.LexeraKeybindingRegistry) {
+      var userBindings = window.LexeraKeybindingRegistry.getUserBindings();
+      if (userBindings.length > 0) {
+        shortcuts.push({ section: 'Custom Keybindings' });
+        for (var ui = 0; ui < userBindings.length; ui++) {
+          var ub = userBindings[ui];
+          var desc = ub.description || ub.action;
+          if (ub.action === 'insert-text' && !ub.description) desc = 'Insert text snippet';
+          if (ub.action === 'insert-formatting' && !ub.description) desc = 'Insert formatting';
+          shortcuts.push({
+            keys: window.LexeraKeybindingRegistry.formatKeyDisplay(ub.key),
+            desc: desc + ' (' + ub.when + ')'
+          });
+        }
+      }
+    }
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay shortcuts-help-overlay';
     var dialog = document.createElement('div');
@@ -11132,6 +11162,16 @@ const LexeraDashboard = (function () {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', function (e) {
+    // Check user-defined keybindings first (board context when not editing)
+    if (window.LexeraKeybindingRegistry && !isEditing) {
+      var kb = window.LexeraKeybindingRegistry.match(e, 'board');
+      if (kb) {
+        e.preventDefault();
+        window.LexeraKeybindingRegistry.execute(kb, null, null);
+        return;
+      }
+    }
+
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '=' || e.key === '+')) {
       e.preventDefault();
       nudgeUiScale(0.05);
@@ -17137,6 +17177,15 @@ const LexeraDashboard = (function () {
         closeInlineCardEditor({ save: true });
         return;
       }
+      // Check user-defined keybindings for editor context
+      if (window.LexeraKeybindingRegistry) {
+        var kb = window.LexeraKeybindingRegistry.match(e, 'editor');
+        if (kb) {
+          e.preventDefault();
+          window.LexeraKeybindingRegistry.execute(kb, textarea, insertFormatting);
+          return;
+        }
+      }
       } catch (err) {
         logFrontendIssue('error', 'editor.inline', 'Error in inline editor keydown handler', err);
       }
@@ -17471,6 +17520,15 @@ const LexeraDashboard = (function () {
         e.preventDefault();
         closeCardEditorOverlay({ save: false });
         return;
+      }
+      // Check user-defined keybindings for editor context
+      if (window.LexeraKeybindingRegistry) {
+        var kb = window.LexeraKeybindingRegistry.match(e, 'editor');
+        if (kb) {
+          e.preventDefault();
+          window.LexeraKeybindingRegistry.execute(kb, textarea, insertFormatting);
+          return;
+        }
       }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
         if (e.key === '1') {

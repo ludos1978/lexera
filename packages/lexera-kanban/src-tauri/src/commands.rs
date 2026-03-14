@@ -183,6 +183,34 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to write '{}': {}", resolved.to_string_lossy(), e))
 }
 
+fn keybindings_path() -> std::path::PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("lexera")
+        .join("keybindings.json")
+}
+
+#[tauri::command]
+pub fn read_keybindings() -> Result<String, String> {
+    let path = keybindings_path();
+    match std::fs::read_to_string(&path) {
+        Ok(content) => Ok(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(format!("Failed to read keybindings: {}", e)),
+    }
+}
+
+#[tauri::command]
+pub fn write_keybindings(content: String) -> Result<(), String> {
+    let path = keybindings_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write keybindings: {}", e))
+}
+
 #[tauri::command]
 pub fn read_clipboard_image() -> Result<serde_json::Value, String> {
     let ctx = CrsContext::new().map_err(|e| format!("Failed to access clipboard: {}", e))?;

@@ -2,7 +2,13 @@
 
 ## Open
 
-- [ ] we need shortcuts to be defineable. for example meta+1 should do \n\n---:\n\n where the cursor is placed. i'd like a system as vscode has it, which is configurable.
+- [ ] paths of embeds within included files are relative to the include file, not the main file. so if main file is in /main/file.md and include is in /include.md then images are relative to / when within the include file. if the embeds are in the main file, they would be relative to /main/ . of course this only is relevant for relative paths!
+
+- [ ] automatic path fix doesnt work. it doesnt seem to replace the path or re-render the board after the modification. it 
+
+- [ ] 
+
+- ~~we need shortcuts to be defineable. for example meta+1 should do \n\n---:\n\n where the cursor is placed. i'd like a system as vscode has it, which is configurable.~~ (done: keybindingRegistry.js + ~/.config/lexera/keybindings.json)
 
 - ~~the options what shows in the hierarchy should be in a burger menu on the top right of the hierarchy display. move the lock and the fold icons there as well!~~ (done: a7b9fe40)
 

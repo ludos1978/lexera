@@ -197,6 +197,8 @@ fn main() {
             commands::rename_path,
             commands::read_text_file,
             commands::write_text_file,
+            commands::read_keybindings,
+            commands::write_keybindings,
             commands::read_clipboard_image,
             commands::show_context_menu,
             commands::toggle_devtools,

@@ -1,6 +1,6 @@
 {
   "name": "lexera-kanban",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "scripts": {
     "dev": "cargo tauri dev",
