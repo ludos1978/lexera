@@ -41,7 +41,7 @@
 
 - [ ] smaller problems
   - ~~the management window must have sharing as the first tab, and configuration as second!~~ (already done)
-  - it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!
+  - ~~it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!~~ (fixed: ea6215e0 — trust initial HTML strip-mode class instead of querying window.innerWidth on startup)
   - ~~the system beeps when i press escape while having the board open. why?~~ (fixed: 8abf6ee8)
   - ~~when i click outside the quick capture window it should get small immediately~~ (already done: Focused(false) handler)
   - the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!
@@ -69,7 +69,7 @@ if the clipboard is pasted:
 - into a row, stack, column : it's placed at the end as a card, if needed stack or columns are created to accomodate the card.
 - into a card : its appended to the cards content.
 
-- [ ] integrate this https://sidemark.org/guide/examples.html or https://github.com/TheGesturalist/gest-critic-markup-kit (i actually prefer critic-markdown)
+- [x] integrate this https://sidemark.org/guide/examples.html or https://github.com/TheGesturalist/gest-critic-markup-kit (i actually prefer critic-markdown) (done: ea6215e0 — CriticMarkup inline rendering: {++add++}, {--del--}, {~~sub~>new~~}, {>>comment<<}, {==highlight==})
 
 - [x] add a theme that allows setting these style settings:
   - the stack title and frame only is a line of text, as if it's on the top of the row. content below should not be indented. If it's empty we show an empty line. we show a 2 pixel dashed line below it and no other styling, except if it's defined by tags that style content.
