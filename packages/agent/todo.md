@@ -2,6 +2,8 @@
 
 ## Open
 
+- ~~remove the split view icon from the view. we just keep it in the menu bar.~~ (done: 2d3d9b42 — removed split view buttons from board header, available via native View menu)
+
 - ~~paths of embeds within included files are relative to the include file, not the main file.~~ (done: 922d995e — adjustPathForIncludeContext converts board-relative paths to include-relative)
 
 - ~~automatic path fix doesnt work. it doesnt seem to replace the path or re-render the board after the modification.~~ (done: 922d995e — find-file API now returns board-relative paths instead of absolute)
@@ -17,13 +19,7 @@
 
 - [x] ~~when i disable elements that show in the sidebar (cound, users, darg icon) it should free up space for the titles!~~ (done: d898ec74)
 
-- [ ] we want an open canvas board styling option. there is a ordered and a canvas board structure. for the canvas board option we add these functions:
-  - Context — we are extending a VS Code extension that renders markdown files as Kanban boards. Currently the layout is flat: rows contain columns contain cards. We are adding a parameter system so users can define spatial layouts using {key:value} syntax in markdown headings. The hierarchy is: # rows → ## stacks (positioned containers) → ### columns (sequential lists) → * [ ] cards. Stacks can be freely positioned within a row, columns flow sequentially inside stacks, cards flow sequentially inside columns.
-  - Add parameter parser — write a function that extracts {key:value, key:value} blocks from markdown heading lines and card lines. Return parsed key-value pairs as a typed object. Strip the param block from display text. Handle missing, empty, and malformed params gracefully.
-  - Integrate params into data model — extend the existing markdown parser so stacks, columns, and cards carry their parsed params. Define typed interfaces: stacks get x, y, w, h, dir, columns get w (weight), cards get span. All params are optional with sensible defaults so existing files without params render unchanged.
-  - Render the layout — use stack params to position stacks within their row (CSS grid or similar). Use column weight to size columns within a stack. Use card span to let cards occupy multiple units. Stacks without params fall back to current sequential flow.
-  - Preserve params on edit — ensure drag-and-drop, inline editing, and reordering preserve {params} blocks correctly in the markdown source.
-  - Write tests — cover param parsing, default fallbacks, layout rendering, and round-trip preservation through edits.
+- ~~we want an open canvas board styling option (alternative setting to the current layout structure).~~ (done: 907fc923 + 8adaae04 — {key:value} param parser in Rust, canvas layout mode with absolute positioning, board layout toggle in Format menu)
 
 - [ ] i want the top menu bar have the following structure
   left aligned
