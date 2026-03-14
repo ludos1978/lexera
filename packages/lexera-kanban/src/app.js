@@ -5729,7 +5729,7 @@ const LexeraDashboard = (function () {
                 visibleColumns.push(visibleCol);
                 return visibleCol;
               });
-            return { id: stack.id, title: stack.title, columns: cols };
+            return { id: stack.id, title: stack.title, columns: cols, params: stack.params };
           });
         return { id: row.id, title: row.title, stacks: stacks };
       });
