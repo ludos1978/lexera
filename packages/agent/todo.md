@@ -11,7 +11,7 @@
 - ~~automatic path fix doesnt work. it doesnt seem to replace the path or re-render the board after the modification.~~ (done: 922d995e — find-file API now returns board-relative paths instead of absolute)
 
 - ~~retry render in a drawio file doesnt render the image, and it doesnt show any logs apart from that the button is pressed!~~ (done: c1b6c0ef — forceRerender flag bypasses disk cache, added diagnostic logging)
-- [ ] 
+
 
 - [x] ~~we need shortcuts to be defineable. for example meta+1 should do \n\n---:\n\n where the cursor is placed. i'd like a system as vscode has it, which is configurable.~~ (done: keybindingRegistry.js + ~/.config/lexera/keybindings.json)
 
@@ -54,7 +54,7 @@
     - html content rendering 
     - tag visibility
 
-- [ ] smaller problems
+- ~~smaller problems~~ (all sub-items resolved)
   - ~~the management window must have sharing as the first tab, and configuration as second!~~ (already done)
   - ~~it should open the small folded window! not the large one! but the folded app doesnt appear until i copy something!~~ (fixed: ea6215e0 — trust initial HTML strip-mode class instead of querying window.innerWidth on startup)
   - ~~the system beeps when i press escape while having the board open. why?~~ (fixed: 8abf6ee8)
@@ -62,7 +62,7 @@
   - ~~the quick capture should have written a short form of the clipbaord text in it when folded as well. vertical text!~~ (already done: strip-clip-label with writing-mode: vertical-rl and renderClipboardSummary() populates it; was invisible until L44 fix)
   - ~~also when searching the user should be able to go into elements, if the search finds a board, the user should be able to move into it's stacks/colums/cards~~ (already done: unfoldSearchTarget + focusSearchResultCard navigates through hierarchy)
   - ~~fix the structure how we define workspaces. we can create workspaces, kanban boards can be part of one or many workspaces!~~ (already done: management UI has full workspace CRUD, multi-workspace board assignment with checkboxes, default workspace selection via config_api.rs)
-    - the lexera kanban view can have one or multiple windows open
+    - ~~the lexera kanban view can have one or multiple windows open~~ (already done: f0d93979 — Cmd+N opens new windows)
     - ~~find a solution for the management interface to solve this.~~ (already done: shared management.js with workspace tab, board assignment checkboxes)
   - ~~it might be that the background of the application is not transparent? because on the right side the rounded border shows the background, but on the left side it shows some white parts~~ (fixed: 4c065526 — added transparent: true to tauri.conf.json)
 
