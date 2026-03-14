@@ -23,7 +23,7 @@
 
 - ~~we want an open canvas board styling option (alternative setting to the current layout structure).~~ (done: 907fc923 + 8adaae04 — {key:value} param parser in Rust, canvas layout mode with absolute positioning, board layout toggle in Format menu)
 
-- [ ] in the open canvas mode i must be able to position the stacks anywhere on the board, not locked next to each other (or only if placed nearby). ITS an open board layout. where users can move stacks anywhere. like in miro! 
+- ~~in the open canvas mode i must be able to position the stacks anywhere on the board, not locked next to each other (or only if placed nearby). ITS an open board layout. where users can move stacks anywhere. like in miro!~~ (done: ea40f312 — canvas mode drag moves stacks freely, persists x/y as inline params)
 
 - [ ] i want the top menu bar have the following structure
   left aligned
@@ -72,7 +72,7 @@
 
 - ~~the clipboard should only show the current level within the search and not a hierarchical display. it lists the items and if i press left it goes higher, right it goes into the objects. it should show immediately if a new item is added by cmd+v~~ (already done: V4 quick-capture uses flat level-based navigation with Left=up, Right=drill, Cmd+V=paste+reload)
 
-- [ ] the clipboard should only be a vertical line with the title of the last copy-paste value. can we somehow detect/hide passwords? it should fold similar to the columns. when unfolded it displays the same way we have right now. the user can define a default workspace which is used as board search area, if he presses left it switches to workspace selection. we must have a hierarchy stored "workspaces > kanban boards" (with the subitems > rows > stacks > columns > cards shown when going right with the cursor). the backend must store the workspaces and boards, the frontend and the clipboard accesses these settings and uses the backend to navigate the contents of the boards. 
+- ~~the clipboard should only be a vertical line with the title of the last copy-paste value. can we somehow detect/hide passwords? it should fold similar to the columns. when unfolded it displays the same way we have right now. the user can define a default workspace which is used as board search area, if he presses left it switches to workspace selection. we must have a hierarchy stored "workspaces > kanban boards" (with the subitems > rows > stacks > columns > cards shown when going right with the cursor). the backend must store the workspaces and boards, the frontend and the clipboard accesses these settings and uses the backend to navigate the contents of the boards.~~ (already done: strip-mode vertical line with clipboard summary, looksLikePassword() hides passwords, expandPanel/collapseToStrip fold/unfold, default_workspace in config, flat navigation with Workspaces→Boards→Rows→Stacks→Columns→Cards hierarchy via buildWorkspaceItems+drillInto)
 
 - ~~make sure the clipboard and the backend also use light / dark styles. templates that should be applied to all parts of the application. for that the backend should have a separate "configuration" which doesnt do regular maintenence and sharing aspects. the server bind address and port, as well as the identity should be there as well as the theme selection. theme should be shared among front and backend. the settings should be stored.~~ (done: ccdb7ce3 — themes.js shared via lexera-shared, kanban syncs theme with backend via GET/PUT /config/theme, all UIs use same theme)
 
