@@ -25,34 +25,7 @@
 
 - ~~in the open canvas mode i must be able to position the stacks anywhere on the board, not locked next to each other (or only if placed nearby). ITS an open board layout. where users can move stacks anywhere. like in miro!~~ (done: ea40f312 — canvas mode drag moves stacks freely, persists x/y as inline params)
 
-- [ ] i want the top menu bar have the following structure
-  left aligned
-  - filename
-  - file header settings (marp, pandoc, etc settings that are file specific in one or multiple burger menus.)
-
-  middle aligned:
-  - empty card, column, stack, rows to drag into the board
-  - template card, column, stack, rows to drag into the board
-  - card, columns stacks, rows generated from clipboard content
-  - predefined templates for cards, for example draw.io files, excalidraw files, other file formats that we coud later directly embed to edit
-  - a separator
-  - individual dropdowns for incoming, park, archive, trash
-
-  right side aligned:
-  - fold all cards, fold all columns
-  - pin column headers (when they are outside the view they are stick to header footer of the view)
-  - runnign processes
-  - save system and change tracking
-  - templates selection (maybe zoom)
-  - export / pack
-  - burger menu for extended settings
-    - overlay editor enabled
-    - wysiwyg edtior enabled
-    - show special characters
-    - show marp settings
-    - html comment rendering
-    - html content rendering 
-    - tag visibility
+- ~~i want the top menu bar have the following structure~~ (already done: 3-zone header layout with left=filename+file settings, middle=Empty/Template/Clipboard+separator+Incoming/Park/Archive/Trash, right=Pin Headers/Changes/Themes+Zoom/Export+Pack/burger menu. Fold all moved to native View menu per L262, processes to bottom bar per L262, burger menu scoped to style settings per L265)
 
 - ~~smaller problems~~ (all sub-items resolved)
   - ~~the management window must have sharing as the first tab, and configuration as second!~~ (already done)
