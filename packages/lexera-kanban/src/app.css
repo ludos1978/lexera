@@ -2386,6 +2386,31 @@ body.show-special-characters .card-editor-textarea {
   --board-inner-padding: calc(14px * var(--ui-scale));
 }
 
+/* Board setting: canvas layout — stacks are freely positioned within rows */
+.columns-container.layout-canvas .board-row-content {
+  position: relative;
+  min-height: 400px;
+  overflow: visible;
+}
+
+.columns-container.layout-canvas .board-stack {
+  position: absolute;
+  flex: none;
+}
+
+/* Stacks without explicit x/y params fall back to flow layout */
+.columns-container.layout-canvas .board-stack:not([style*="left"]) {
+  position: relative;
+}
+
+/* Canvas mode: card span uses grid-like behavior */
+.columns-container.layout-canvas .card[data-card-span="2"] {
+  flex: 0 0 calc(200% + var(--board-column-gap));
+}
+.columns-container.layout-canvas .card[data-card-span="3"] {
+  flex: 0 0 calc(300% + 2 * var(--board-column-gap));
+}
+
 /* Board setting: row max height */
 .board-row-content {
   max-height: none;

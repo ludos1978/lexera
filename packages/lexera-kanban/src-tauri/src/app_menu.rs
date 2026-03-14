@@ -203,6 +203,11 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&MenuItemBuilder::with_id("fmt-row-height-fullscreen", "Full Screen").build(app)?)
         .build()?;
 
+    let board_layout_sub = SubmenuBuilder::new(app, "Board Layout")
+        .item(&MenuItemBuilder::with_id("fmt-layout-structured", "Structured").build(app)?)
+        .item(&MenuItemBuilder::with_id("fmt-layout-canvas", "Open Canvas").build(app)?)
+        .build()?;
+
     let layout_preset_sub = SubmenuBuilder::new(app, "Layout Preset")
         .item(&MenuItemBuilder::with_id("fmt-preset-normal", "Normal").build(app)?)
         .item(&MenuItemBuilder::with_id("fmt-preset-spacious", "Spacious").build(app)?)
@@ -222,6 +227,7 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&layout_rows_sub)
         .item(&row_height_sub)
         .item(&layout_preset_sub)
+        .item(&board_layout_sub)
         .build()?;
 
     // ── Go menu ──
@@ -411,6 +417,9 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("fmt-row-height-half", "set-row-height:48vh"),
     ("fmt-row-height-twothird", "set-row-height:63vh"),
     ("fmt-row-height-fullscreen", "set-row-height:95vh"),
+    // Format – board layout
+    ("fmt-layout-structured", "set-board-layout:structured"),
+    ("fmt-layout-canvas", "set-board-layout:canvas"),
     // Format – layout preset
     ("fmt-preset-normal", "set-layout-preset:normal"),
     ("fmt-preset-spacious", "set-layout-preset:spacious"),

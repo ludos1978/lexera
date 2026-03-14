@@ -11714,7 +11714,7 @@ const LexeraDashboard = (function () {
     // Reset class-based settings
     getElColumnsContainer().classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     getElColumnsContainer().classList.remove('html-comments-hide', 'html-comments-dim');
-    getElColumnsContainer().classList.remove('layout-spacious', 'layout-rows-fixed');
+    getElColumnsContainer().classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
     getElColumnsContainer().removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
@@ -11758,6 +11758,7 @@ const LexeraDashboard = (function () {
     if (currentArrowKeyFocusScrollMode !== 'disabled') getElColumnsContainer().classList.add('focus-scroll-mode');
     if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') getElColumnsContainer().classList.add('layout-spacious');
     if (s.layoutPreset) getElColumnsContainer().setAttribute('data-layout-preset', s.layoutPreset);
+    if (s.boardLayout === 'canvas') getElColumnsContainer().classList.add('layout-canvas');
 
     var boardColor = resolveActiveBoardColor(s);
     if (boardColor) getElColumnsContainer().style.setProperty('--board-color', boardColor);
@@ -11786,6 +11787,9 @@ const LexeraDashboard = (function () {
     if (colLayout.wipLimit > 0 && col.cards.length > colLayout.wipLimit) {
       colEl.classList.add('wip-exceeded');
     }
+    // Canvas layout: apply column weight param
+    var colParams = col.params || {};
+    if (colParams.w) colEl.style.flex = '0 0 ' + colParams.w + 'px';
 
     // Check if column has include source
     var fullCol = getFullColumn(col.index);
@@ -11864,6 +11868,9 @@ const LexeraDashboard = (function () {
       if (card.kid) cardEl.setAttribute('data-card-kid', card.kid);
       var isCollapsed = collapsedCards.indexOf(cardId) !== -1;
       if (isCollapsed) cardEl.classList.add('collapsed');
+      // Canvas layout: apply card span param
+      var cardParams = card.params || {};
+      if (cardParams.span) cardEl.setAttribute('data-card-span', cardParams.span);
 
       // --- Card Header Row ---
       var headerRow = document.createElement('div');
@@ -12094,6 +12101,9 @@ const LexeraDashboard = (function () {
       }
       var rowHeightTag = getElementSizeTag(row.title, 'height');
       if (rowHeightTag > 0) rowEl.style.setProperty('--board-row-height', rowHeightTag + 'px');
+      // Canvas layout: apply inline params for row height
+      var rowParams = row.params || {};
+      if (rowParams.h) rowEl.style.setProperty('--board-row-height', rowParams.h + 'px');
 
       // Row header
       var rowHeader = document.createElement('div');
@@ -12175,6 +12185,14 @@ const LexeraDashboard = (function () {
         }
         var stackWidthTag = getElementSizeTag(stack.title, 'width');
         if (stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
+
+        // Canvas layout: apply inline params for positioning
+        var stackParams = stack.params || {};
+        if (stackParams.x) stackEl.style.left = stackParams.x + 'px';
+        if (stackParams.y) stackEl.style.top = stackParams.y + 'px';
+        if (stackParams.w) stackEl.style.width = stackParams.w + 'px';
+        if (stackParams.h) stackEl.style.height = stackParams.h + 'px';
+        if (stackParams.dir) stackEl.setAttribute('data-stack-dir', stackParams.dir);
 
         // Stack header
         var stackHeader = document.createElement('div');
@@ -26506,6 +26524,18 @@ const LexeraDashboard = (function () {
       }
     }
 
+    BoardSettingRegistry.register({
+      id: 'boardLayout', label: 'Board Layout', category: 'format',
+      settingsKey: 'boardLayout', actionPrefix: 'set-board-layout', defaultValue: 'structured',
+      normalize: function (v) { return v === 'canvas' ? 'canvas' : 'structured'; },
+      options: [
+        { value: 'structured', label: 'Structured' }, { value: 'canvas', label: 'Open Canvas' }
+      ],
+      handler: function (raw) {
+        var v = raw === 'canvas' ? 'canvas' : null;
+        setBoardSettingValue('boardLayout', v);
+      }
+    });
     BoardSettingRegistry.register({
       id: 'layoutPreset', label: 'Layout Preset', category: 'format',
       settingsKey: 'layoutPreset', actionPrefix: 'set-layout-preset', defaultValue: 'normal',
