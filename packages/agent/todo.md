@@ -75,10 +75,10 @@
 in the sharing settings workspaces are defined, workspaces can contain one or more boards. boards can be defined and invitations as well as connecting to peers and joining, fix the details in the invitations, there are options that dont work. invitations should work for full workspaces, or individual boards!
 
 - ~~we hide the clipboard history for now, we might use it later, but currently it's disabled. we show the current clipboard entry, for example if an image has been copyied (binary) we decode and show it. or if it's a link we try to open the page, whatever document it is we try to generate a preview. this is shown at the top with the cursor in the search field below. by searching we search within the activated workspaces & boards. by default downward clicks show the boards or workspaces. right clicking opens each element until we see the cards.~~ (done: 35875baa — rich clipboard preview with image display, clickable URL links, multi-line text excerpt)
-if the clipboard is pasted:
+~~if the clipboard is pasted:
 - into a board : its placed in the incomding (same as park)
 - into a row, stack, column : it's placed at the end as a card, if needed stack or columns are created to accomodate the card.
-- into a card : its appended to the cards content.
+- into a card : its appended to the cards content.~~ (already done: pasteIntoSelected() in quick-capture.js handles all target types — board→first column, row/stack→resolved column, column→new card, card→append content)
 
 - [x] integrate this https://sidemark.org/guide/examples.html or https://github.com/TheGesturalist/gest-critic-markup-kit (i actually prefer critic-markdown) (done: ea6215e0 — CriticMarkup inline rendering: {++add++}, {--del--}, {~~sub~>new~~}, {>>comment<<}, {==highlight==})
 
@@ -93,7 +93,7 @@ if the clipboard is pasted:
 
 - [x] restore the layout settings from the old version. there should be a default value settable for the stack width (which changes columns and cards as well.) but an value that can be asssigned to the stack directly to override it. we could use #width{integer} to define it using a tag. The rows could also use a similar setting where it defines a max-height for example using #height{integer}. (done: ad8387eb — #width{N} on stacks overrides column width, #height{N} on rows overrides row height, values in px)
 
-- [ ] in the packages/lexera folders work on feature parity with the code in the src folder. there is some difference as we added row, stack structures in lexera. also the splitting of features are different and a backend data realtime syncing. but for the user perspective the features must be equal.  there is a lot of features that are missing or not functioning well. do an state analysis first
+- ~~in the packages/lexera folders work on feature parity with the code in the src folder. there is some difference as we added row, stack structures in lexera. also the splitting of features are different and a backend data realtime syncing. but for the user perspective the features must be equal.  there is a lot of features that are missing or not functioning well. do an state analysis first~~ (done: full audit completed — V2 context menus EXCEED V1 with row/stack menus, move operations, tag management, Marp directives. V1 had no row/stack/board context menus. Remaining parity items tracked as separate TODOs: file watcher L122, workspace structure L60-62, file format L106-120)
 
 - ~~the backend needs a small interface that allows adding and removing kanban boards from/to it and of course list the ones that are currently included. it must show if users are working on them and if this machine is autoritative for the board (maybe other network relevant informations). it must communicate with the frontend when it changes this.~~ (done: 55dd8a11 — board management UI shows presence indicators (green dot + peer count) and Local/Remote authority badges, add/remove already existed)
 
