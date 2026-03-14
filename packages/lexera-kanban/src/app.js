@@ -4925,8 +4925,6 @@ const LexeraDashboard = (function () {
     var orderedBoards = getOrderedItems(filteredBoards, 'lexera-board-order', function (b) { return b.id; });
     var expandedIds = getSidebarExpandedBoards();
 
-    if (getElBtnSidebarSync()) getElBtnSidebarSync().classList.toggle('active', sidebarSyncEnabled);
-
     for (var i = 0; i < orderedBoards.length; i++) {
       var board = orderedBoards[i];
       var isExpanded = expandedIds.indexOf(board.id) !== -1;
@@ -5260,41 +5258,64 @@ const LexeraDashboard = (function () {
   }
 
   // Sidebar sync button handler
-  (function () {
-    if (getElBtnSidebarSync()) {
-      getElBtnSidebarSync().addEventListener('click', function (e) {
-        e.stopPropagation();
-        sidebarSyncEnabled = !sidebarSyncEnabled;
-        localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
-        getElBtnSidebarSync().classList.toggle('active', sidebarSyncEnabled);
-        if (sidebarSyncEnabled) syncSidebarToView();
-        else {
-          var prev = getElBoardList().querySelector('.sync-highlight');
-          if (prev) prev.classList.remove('sync-highlight');
-        }
-      });
+  // Sidebar hierarchy burger menu — replaces individual sync/lock buttons
+  function toggleSidebarSync() {
+    sidebarSyncEnabled = !sidebarSyncEnabled;
+    localStorage.setItem('lexera-sidebar-sync', sidebarSyncEnabled ? 'true' : 'false');
+    if (sidebarSyncEnabled) syncSidebarToView();
+    else {
+      var prev = getElBoardList().querySelector('.sync-highlight');
+      if (prev) prev.classList.remove('sync-highlight');
     }
-  })();
+  }
 
-  // Lock button: controls add/remove board capability
-  function updateLockButton(btn) {
-    if (!btn) return;
-    btn.innerHTML = hierarchyLocked ? '&#128274;&#65038;' : '&#128275;&#65038;';
-    btn.title = hierarchyLocked ? 'Unlock hierarchy (allow add/remove)' : 'Lock hierarchy (prevent add/remove)';
-    btn.classList.toggle('active', !hierarchyLocked);
+  function toggleSidebarLock() {
+    hierarchyLocked = !hierarchyLocked;
+    localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
+    renderBoardList();
   }
 
   (function () {
-    updateLockButton(getElSidebarLockBtn());
-    if (getElSidebarLockBtn()) {
-      getElSidebarLockBtn().addEventListener('click', function (e) {
-        e.stopPropagation();
-        hierarchyLocked = !hierarchyLocked;
-        localStorage.setItem('lexera-hierarchy-locked', hierarchyLocked ? 'true' : 'false');
-        updateLockButton(getElSidebarLockBtn());
-        renderBoardList();
+    var menuBtn = document.getElementById('btn-sidebar-menu');
+    if (!menuBtn) return;
+    menuBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var rect = menuBtn.getBoundingClientRect();
+      var displayItems = buildSidebarHierarchyDisplayMenuItems();
+      var items = [
+        { id: 'toggle-sidebar-sync', label: formatMenuToggleLabel(sidebarSyncEnabled, 'Sync with View') },
+        { id: 'toggle-sidebar-lock', label: formatMenuToggleLabel(!hierarchyLocked, 'Editable') },
+        { separator: true },
+        { id: 'toggle-sidebar-counts', label: displayItems[0].label },
+        { id: 'toggle-sidebar-presence', label: displayItems[1].label },
+        { id: 'toggle-sidebar-grips', label: displayItems[2].label },
+        { separator: true },
+        { id: 'sidebar-fold-all', label: 'Fold All' },
+        { id: 'sidebar-unfold-all', label: 'Unfold All' }
+      ];
+      showNativeMenu(items, rect.right, rect.bottom, 'menu.sidebar').then(function (action) {
+        if (!action) return;
+        if (action === 'toggle-sidebar-sync') { toggleSidebarSync(); return; }
+        if (action === 'toggle-sidebar-lock') { toggleSidebarLock(); return; }
+        if (action === 'sidebar-fold-all' || action === 'sidebar-unfold-all') {
+          var expand = action === 'sidebar-unfold-all';
+          var boardList = getElBoardList();
+          if (boardList) {
+            var allChildren = boardList.querySelectorAll('.tree-children');
+            var allToggles = boardList.querySelectorAll('.tree-toggle');
+            for (var i = 0; i < allChildren.length; i++) {
+              allChildren[i].classList.toggle('expanded', expand);
+            }
+            for (var j = 0; j < allToggles.length; j++) {
+              allToggles[j].classList.toggle('expanded', expand);
+            }
+          }
+          return;
+        }
+        // Dispatch to ActionRegistry for display toggles
+        if (ActionRegistry) ActionRegistry.dispatch('board', action, {});
       });
-    }
+    });
   })();
 
   // Debounced scroll sync
