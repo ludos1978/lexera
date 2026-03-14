@@ -7580,10 +7580,7 @@ const LexeraDashboard = (function () {
     html += '<button class="board-action-btn" id="btn-theme-zoom" title="Visual style and zoom controls">Themes / Zoom</button>';
     html += '<button class="board-action-btn" id="btn-export" title="Export or pack board">Export / Pack</button>';
     html += '<button class="burger-menu-btn board-menu-btn" id="btn-board-menu" title="Extended board settings">' + BURGER_MENU_ICON_HTML + '</button>';
-    if (!embeddedMode) {
-      html += '<button class="btn-icon board-header-split-btn" id="btn-split-orientation" title="Switch split orientation" type="button">\u2194</button>';
-      html += '<button class="btn-icon board-header-split-btn" id="btn-split-toggle" title="Toggle split view" type="button">\u29C9</button>';
-    }
+    // Split view buttons removed from the header — available via native menu bar only
     html += '</div>';
     html += '</div>';
     getElBoardHeader().innerHTML = html;
