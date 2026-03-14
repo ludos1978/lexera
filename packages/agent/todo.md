@@ -2,19 +2,20 @@
 
 ## Open
 
-- [ ] paths of embeds within included files are relative to the include file, not the main file. so if main file is in /main/file.md and include is in /include.md then images are relative to / when within the include file. if the embeds are in the main file, they would be relative to /main/ . of course this only is relevant for relative paths!
+- ~~paths of embeds within included files are relative to the include file, not the main file.~~ (done: 922d995e — adjustPathForIncludeContext converts board-relative paths to include-relative)
 
-- [ ] automatic path fix doesnt work. it doesnt seem to replace the path or re-render the board after the modification. it 
+- ~~automatic path fix doesnt work. it doesnt seem to replace the path or re-render the board after the modification.~~ (done: 922d995e — find-file API now returns board-relative paths instead of absolute)
 
+- ~~retry render in a drawio file doesnt render the image, and it doesnt show any logs apart from that the button is pressed!~~ (done: c1b6c0ef — forceRerender flag bypasses disk cache, added diagnostic logging)
 - [ ] 
 
-- ~~we need shortcuts to be defineable. for example meta+1 should do \n\n---:\n\n where the cursor is placed. i'd like a system as vscode has it, which is configurable.~~ (done: keybindingRegistry.js + ~/.config/lexera/keybindings.json)
+- [x] ~~we need shortcuts to be defineable. for example meta+1 should do \n\n---:\n\n where the cursor is placed. i'd like a system as vscode has it, which is configurable.~~ (done: keybindingRegistry.js + ~/.config/lexera/keybindings.json)
 
-- ~~the options what shows in the hierarchy should be in a burger menu on the top right of the hierarchy display. move the lock and the fold icons there as well!~~ (done: a7b9fe40)
+- [x]~~the options what shows in the hierarchy should be in a burger menu on the top right of the hierarchy display. move the lock and the fold icons there as well!~~ (done: a7b9fe40)
 
 - [x] if i alt click on a fold icon in the hierarchy, it should fold all children, but not the item itself (the same as in the view)! (done: ea066a8d)
 
-- ~~when i disable elements that show in the sidebar (cound, users, darg icon) it should free up space for the titles!~~ (done: d898ec74)
+- [x] ~~when i disable elements that show in the sidebar (cound, users, darg icon) it should free up space for the titles!~~ (done: d898ec74)
 
 - [ ] we want an open canvas board styling option. there is a ordered and a canvas board structure. for the canvas board option we add these functions:
   - Context — we are extending a VS Code extension that renders markdown files as Kanban boards. Currently the layout is flat: rows contain columns contain cards. We are adding a parameter system so users can define spatial layouts using {key:value} syntax in markdown headings. The hierarchy is: # rows → ## stacks (positioned containers) → ### columns (sequential lists) → * [ ] cards. Stacks can be freely positioned within a row, columns flow sequentially inside stacks, cards flow sequentially inside columns.
