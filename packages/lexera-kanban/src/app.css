@@ -6673,7 +6673,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .layout {
-  gap: calc(10px * var(--ui-scale));
+  gap: calc(4px * var(--ui-scale));
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
 }
 
@@ -6747,6 +6747,7 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .board-list {
   padding: 4px 0 12px;
+  padding-right: 4px;
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar-dashboard-controls {
@@ -7171,7 +7172,7 @@ select.export-input {
   --sidebar-tree-presence-col: calc(18px * var(--ui-scale));
   --sidebar-tree-count-col: calc(20px * var(--ui-scale));
   --sidebar-tree-action-col: var(--hierarchy-btn-size);
-  --sidebar-tree-grip-col: var(--btn-square-size);
+  --sidebar-tree-grip-col: calc(12px * var(--ui-scale));
   --sidebar-board-font-size: 11px;
   --sidebar-board-font-weight: 600;
   --sidebar-board-padding-inline: var(--sidebar-tree-root-offset);
@@ -7276,7 +7277,14 @@ select.export-input {
   grid-column: 4;
   width: var(--sidebar-tree-grip-col);
   min-width: var(--sidebar-tree-grip-col);
+  height: var(--sidebar-tree-grip-col);
   justify-self: end;
+}
+
+:root[data-visual-theme="sleek"] .board-item-meta > .tree-grip.entity-drag-icon svg,
+:root[data-visual-theme="sleek"] .tree-meta > .tree-grip.entity-drag-icon svg {
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
 }
 
 :root[data-visual-theme="sleek"] .board-item:hover .board-item-remove,
