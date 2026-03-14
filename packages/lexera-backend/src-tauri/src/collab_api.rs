@@ -253,6 +253,7 @@ async fn create_invite(
                     expires_in_hours: body.expires_in_hours,
                     max_uses: body.max_uses,
                     email: None,
+                    scope: "board".to_string(),
                 },
                 room_title,
             )
@@ -315,10 +316,32 @@ async fn accept_invite(
         })?
     };
 
-    // Add user to room
+    // Add user to room(s)
     let role = parse_role_or_bad_request(&join.role)?;
 
-    {
+    if join.scope == "workspace" {
+        // Workspace invite: add user to all boards in this workspace
+        let board_ids: Vec<String> = {
+            let cfg = lock_arc(&state.config, "config")?;
+            cfg.boards
+                .iter()
+                .filter(|b| b.workspace_ids.iter().any(|id| id == &join.room_id))
+                .map(|b| b.file.clone())
+                .collect()
+        };
+
+        let mut auth_service = lock_arc(&state.auth_service, "auth")?;
+        for board_id in &board_ids {
+            let _ = auth_service.add_to_room(board_id, &user_id, role, "workspace-invite");
+        }
+        log::info!(
+            "[collab.accept] Workspace invite for {} — added user {} to {} boards",
+            join.room_id,
+            user_id,
+            board_ids.len()
+        );
+    } else {
+        // Board invite: add user to the single board
         let mut auth_service = lock_arc(&state.auth_service, "auth")?;
         auth_service
             .add_to_room(&join.room_id, &user_id, role, "invite")
@@ -349,6 +372,102 @@ async fn revoke_invite(
     {
         lock_arc(&state.invite_service, "invite")?
             .revoke_invite(&token, &room_id)
+            .map_err(|_| (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())))?;
+    }
+
+    save_invites(&state);
+    Ok(Json(SuccessResponse { success: true }))
+}
+
+// ============================================================================
+// Workspace Invite Endpoints
+// ============================================================================
+
+/// POST /collab/workspaces/{workspace_id}/invites - Create a workspace invite
+async fn create_workspace_invite(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<String>,
+    Query(params): Query<AuthQuery>,
+    Json(body): Json<CreateInviteBody>,
+) -> Result<Json<InviteLink>> {
+    let _user_id = require_authenticated_user(&params)?;
+
+    // Verify workspace exists
+    let workspace_name = {
+        let cfg = lock_arc(&state.config, "config")?;
+        cfg.workspaces
+            .iter()
+            .find(|w| w.id == workspace_id)
+            .map(|w| w.name.clone())
+            .ok_or_else(|| {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse::new("Workspace not found")),
+                )
+            })?
+    };
+
+    let invite = {
+        let mut invite_service = lock_arc(&state.invite_service, "invite")?;
+        invite_service
+            .create_invite(
+                CreateInviteRequest {
+                    room_id: workspace_id.clone(),
+                    inviter_id: _user_id.clone(),
+                    role: body.role.clone(),
+                    expires_in_hours: body.expires_in_hours,
+                    max_uses: body.max_uses,
+                    email: None,
+                    scope: "workspace".to_string(),
+                },
+                Some(workspace_name),
+            )
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse::bad_request(&e.to_string())),
+                )
+            })?
+    };
+
+    save_invites(&state);
+    Ok(Json(invite))
+}
+
+/// GET /collab/workspaces/{workspace_id}/invites - List workspace invites
+async fn list_workspace_invites(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<String>,
+    Query(params): Query<AuthQuery>,
+) -> Result<Json<Vec<InviteLink>>> {
+    let _user_id = require_authenticated_user(&params)?;
+
+    // Verify workspace exists
+    {
+        let cfg = lock_arc(&state.config, "config")?;
+        if !cfg.workspaces.iter().any(|w| w.id == workspace_id) {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new("Workspace not found")),
+            ));
+        }
+    }
+
+    let invites = lock_arc(&state.invite_service, "invite")?.list_invites(&workspace_id);
+    Ok(Json(invites))
+}
+
+/// DELETE /collab/workspaces/{workspace_id}/invites/{token} - Revoke a workspace invite
+async fn revoke_workspace_invite(
+    State(state): State<AppState>,
+    Path((workspace_id, token)): Path<(String, String)>,
+    Query(params): Query<AuthQuery>,
+) -> Result<Json<SuccessResponse>> {
+    let _user_id = require_authenticated_user(&params)?;
+
+    {
+        lock_arc(&state.invite_service, "invite")?
+            .revoke_invite(&token, &workspace_id)
             .map_err(|_| (StatusCode::NOT_FOUND, Json(ErrorResponse::not_found())))?;
     }
 
@@ -498,6 +617,7 @@ async fn join_public(
         room_id,
         room_title,
         role: role.as_str().to_string(),
+        scope: "board".to_string(),
     }))
 }
 
@@ -1059,6 +1179,15 @@ pub fn collab_router() -> Router<AppState> {
         .route(
             "/collab/rooms/{room_id}/invites/{token}",
             delete(revoke_invite),
+        )
+        // Workspace invites
+        .route(
+            "/collab/workspaces/{workspace_id}/invites",
+            get(list_workspace_invites).post(create_workspace_invite),
+        )
+        .route(
+            "/collab/workspaces/{workspace_id}/invites/{token}",
+            delete(revoke_workspace_invite),
         )
         // Public rooms
         .route("/collab/public-rooms", get(list_public_rooms))

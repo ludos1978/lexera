@@ -15,6 +15,13 @@ pub struct InviteLink {
     pub expires_at: u64,
     pub max_uses: u32,
     pub uses: u32,
+    /// "board" (default) or "workspace"
+    #[serde(default = "default_invite_scope")]
+    pub scope: String,
+}
+
+fn default_invite_scope() -> String {
+    "board".to_string()
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +32,8 @@ pub struct CreateInviteRequest {
     pub expires_in_hours: Option<u32>,
     pub max_uses: Option<u32>,
     pub email: Option<String>,
+    /// "board" or "workspace"
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -32,6 +41,8 @@ pub struct RoomJoin {
     pub room_id: String,
     pub room_title: String,
     pub role: String,
+    /// "board" or "workspace"
+    pub scope: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +113,7 @@ impl InviteService {
             expires_at,
             max_uses,
             uses: 0,
+            scope: req.scope,
         };
 
         self.invites.insert(token, invite.clone());
@@ -130,6 +142,7 @@ impl InviteService {
 
         let room_id = invite.room_id.clone();
         let role = invite.role.clone();
+        let scope = invite.scope.clone();
         let room_title = invite
             .room_title
             .clone()
@@ -141,8 +154,9 @@ impl InviteService {
         }
 
         log::info!(
-            "[invite] Accepted invite {}... for room {}",
+            "[invite] Accepted invite {}... for {} {}",
             &token[..8.min(token.len())],
+            scope,
             room_id
         );
 
@@ -150,6 +164,7 @@ impl InviteService {
             room_id,
             room_title,
             role,
+            scope,
         })
     }
 
@@ -279,6 +294,7 @@ mod tests {
             expires_in_hours: None,
             max_uses: None,
             email: None,
+            scope: "board".to_string(),
         }
     }
 
@@ -356,6 +372,7 @@ mod tests {
                 expires_at: 1, // epoch + 1s, long in the past
                 max_uses: 10,
                 uses: 0,
+                scope: "board".into(),
             },
         );
 
@@ -431,6 +448,7 @@ mod tests {
                 expires_at: 1, // long expired
                 max_uses: 1,
                 uses: 0,
+                scope: "board".into(),
             },
         );
 
@@ -445,6 +463,7 @@ mod tests {
                 expires_at: now + 100_000,
                 max_uses: 1,
                 uses: 0,
+                scope: "board".into(),
             },
         );
 
@@ -459,6 +478,7 @@ mod tests {
                 expires_at: u64::MAX,
                 max_uses: 5,
                 uses: 0,
+                scope: "board".into(),
             },
         );
 

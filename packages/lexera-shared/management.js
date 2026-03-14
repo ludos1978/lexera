@@ -542,6 +542,8 @@ var ManagementUI = (function () {
       case 'delete-workspace': deleteWorkspace(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-ws-name')); break;
       case 'save-workspace-sync': saveWorkspaceSync(btn.getAttribute('data-mgmt-ws-id')); break;
       case 'save-workspace-appearance': saveWorkspaceAppearance(btn.getAttribute('data-mgmt-ws-id')); break;
+      case 'create-workspace-invite': createWorkspaceInvite(btn.getAttribute('data-mgmt-ws-id')); break;
+      case 'revoke-workspace-invite': revokeWorkspaceInvite(btn.getAttribute('data-mgmt-ws-id'), btn.getAttribute('data-mgmt-token')); break;
       case 'save-board-sync': saveBoardSync(boardId); break;
     }
   }
@@ -1103,9 +1105,21 @@ var ManagementUI = (function () {
       html += '<div class="mgmt-settings-actions">';
       html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="save-workspace-appearance" data-mgmt-ws-id="' + esc(ws.id) + '">Save Appearance</button>';
       html += '</div>';
+      html += '<div class="mgmt-subsection-title">Invitations</div>';
+      html += '<div class="mgmt-invite-controls">';
+      html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-ws-invite-role-' + esc(ws.id) + '">';
+      html += '<option value="editor">Editor</option><option value="viewer">Viewer</option>';
+      html += '</select>';
+      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-primary" data-mgmt-action="create-workspace-invite" data-mgmt-ws-id="' + esc(ws.id) + '">Invite</button>';
+      html += '</div>';
+      html += '<div data-mgmt-ws-invites-list="' + esc(ws.id) + '"><span class="mgmt-list-empty">Loading...</span></div>';
       html += '</div>';
     }
     el.innerHTML = html;
+    // Load workspace invites for each workspace
+    for (var wi = 0; wi < cachedWorkspaces.length; wi++) {
+      loadWorkspaceInvites(cachedWorkspaces[wi].id);
+    }
   }
 
   function populateDefaultWorkspaceSelect() {
@@ -1221,6 +1235,60 @@ var ManagementUI = (function () {
       notify('Workspace appearance saved');
     } catch (e) {
       notify('Failed to save workspace appearance: ' + (e.message || e));
+    }
+  }
+
+  async function loadWorkspaceInvites(wsId) {
+    if (!me) return;
+    var el = container.querySelector('[data-mgmt-ws-invites-list="' + wsId + '"]');
+    if (!el) return;
+    try {
+      var invites = await api.get('/collab/workspaces/' + wsId + '/invites?user=' + encodeURIComponent(me.id));
+      if (!invites || !invites.length) {
+        el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < invites.length; i++) {
+        var inv = invites[i];
+        html += '<div class="mgmt-detail-item">';
+        html += '<div class="mgmt-invite-info">';
+        html += '<span>' + esc(inv.role) + ' &middot; ' + inv.uses + '/' + (inv.max_uses || '&infin;') + ' uses</span>';
+        html += '<div class="mgmt-token-field">';
+        html += '<input type="text" readonly value="' + esc(inv.token) + '">';
+        html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="copy-token" data-mgmt-token="' + esc(inv.token) + '">Copy</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-danger" data-mgmt-action="revoke-workspace-invite" data-mgmt-ws-id="' + esc(wsId) + '" data-mgmt-token="' + esc(inv.token) + '">Revoke</button>';
+        html += '</div>';
+      }
+      el.innerHTML = html;
+    } catch (e) {
+      el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
+    }
+  }
+
+  async function createWorkspaceInvite(wsId) {
+    if (!me) return;
+    var roleSelect = container.querySelector('#mgmt-ws-invite-role-' + wsId);
+    var role = roleSelect ? roleSelect.value : 'editor';
+    try {
+      await api.post('/collab/workspaces/' + wsId + '/invites?user=' + encodeURIComponent(me.id), { role: role });
+      await loadWorkspaceInvites(wsId);
+      notify('Workspace invite created');
+    } catch (e) {
+      notify('Failed to create workspace invite: ' + (e.message || e));
+    }
+  }
+
+  async function revokeWorkspaceInvite(wsId, token) {
+    if (!me) return;
+    try {
+      await api.delete('/collab/workspaces/' + wsId + '/invites/' + token + '?user=' + encodeURIComponent(me.id));
+      await loadWorkspaceInvites(wsId);
+      notify('Workspace invite revoked');
+    } catch (e) {
+      notify('Failed to revoke workspace invite: ' + (e.message || e));
     }
   }
 
