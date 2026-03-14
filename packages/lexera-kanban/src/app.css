@@ -2389,13 +2389,19 @@ body.show-special-characters .card-editor-textarea {
 /* Board setting: canvas layout — stacks are freely positioned within rows */
 .columns-container.layout-canvas .board-row-content {
   position: relative;
-  min-height: 400px;
+  min-height: 600px;
   overflow: visible;
 }
 
 .columns-container.layout-canvas .board-stack {
   position: absolute;
   flex: none;
+  cursor: grab;
+}
+
+.columns-container.layout-canvas .board-stack.dragging {
+  opacity: 0.85;
+  cursor: grabbing;
 }
 
 /* Stacks without explicit x/y params fall back to flow layout */

@@ -14985,7 +14985,8 @@ const LexeraDashboard = (function () {
       var stackEl = stackHeader.closest('.board-stack');
       var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
       var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
-      ptrDrag = { type: 'board-stack', source: { type: 'board-stack', boardId: activeBoardId, rowIndex: rowIdx, stackIndex: stackIdx, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: stackEl };
+      var stackRect = stackEl.getBoundingClientRect();
+      ptrDrag = { type: 'board-stack', source: { type: 'board-stack', boardId: activeBoardId, rowIndex: rowIdx, stackIndex: stackIdx, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: stackEl, grabOffsetX: e.clientX - stackRect.left, grabOffsetY: e.clientY - stackRect.top };
       var stackStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (stackStartTop) {
         ptrDrag.startTopX = stackStartTop.x;
@@ -15048,6 +15049,15 @@ const LexeraDashboard = (function () {
       var dy = e.clientY - ptrDrag.startY;
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
+      // Canvas mode: free-position stack drag (no ghost, no drop targets)
+      if (ptrDrag.type === 'board-stack' && getBoardSettingValue('boardLayout') === 'canvas') {
+        ptrDrag.canvasMove = true;
+        ptrDrag.el.classList.add('dragging');
+        ptrDrag.el.style.zIndex = '100';
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+        return;
+      }
       vsMaterialiseAll();
       ptrDrag.el.classList.add('dragging');
       var lockableDragType =
@@ -15078,6 +15088,19 @@ const LexeraDashboard = (function () {
 
       var sel = window.getSelection();
       if (sel) sel.removeAllRanges();
+    }
+
+    // Canvas mode: move stack element directly instead of ghost + drop targets
+    if (ptrDrag.canvasMove) {
+      var canvasRowContent = ptrDrag.el.closest('.board-row-content');
+      if (canvasRowContent) {
+        var canvasRect = canvasRowContent.getBoundingClientRect();
+        var canvasX = Math.max(0, Math.round(e.clientX - canvasRect.left - ptrDrag.grabOffsetX));
+        var canvasY = Math.max(0, Math.round(e.clientY - canvasRect.top - ptrDrag.grabOffsetY));
+        ptrDrag.el.style.left = canvasX + 'px';
+        ptrDrag.el.style.top = canvasY + 'px';
+      }
+      return;
     }
 
     if (ptrDrag.ghost) {
@@ -15456,6 +15479,23 @@ const LexeraDashboard = (function () {
     return false;
   }
 
+  function applyCanvasStackDrop(source) {
+    if (!source || !ptrDrag || !ptrDrag.el) return;
+    var stackEl = ptrDrag.el;
+    var rowContent = stackEl.closest('.board-row-content');
+    if (!rowContent) return;
+    var newX = parseInt(stackEl.style.left, 10) || 0;
+    var newY = parseInt(stackEl.style.top, 10) || 0;
+    var stack = findFullDataStack(source.rowIndex, source.stackIndex);
+    if (!stack) return;
+    pushUndo();
+    if (!stack.params) stack.params = {};
+    stack.params.x = String(newX);
+    stack.params.y = String(newY);
+    stackEl.style.zIndex = '';
+    persistBoardMutation();
+  }
+
   function getTreeColumnDropTarget(mx, my) {
     var treeTarget = resolveDropTargetStrict(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-column"]'), mx, my, true);
     if (!treeTarget) return null;
@@ -15675,7 +15715,11 @@ const LexeraDashboard = (function () {
     if (type === 'tree-row' || type === 'board-row') {
       applyRowDropByPoint(src, mx, my);
     } else if (type === 'tree-stack' || type === 'board-stack') {
-      applyStackDropByPoint(src, mx, my);
+      if (ptrDrag.canvasMove) {
+        applyCanvasStackDrop(src);
+      } else {
+        applyStackDropByPoint(src, mx, my);
+      }
     } else if (type === 'board') {
       var t = ptrFindDropTarget(getElBoardList().querySelectorAll('.board-item'), mx, my, true);
       if (t) {
@@ -16499,7 +16543,10 @@ const LexeraDashboard = (function () {
     stopCrossViewBridge();
     unlockBoardLayoutForDrag();
     if (ptrDrag) {
-      if (ptrDrag.el) ptrDrag.el.classList.remove('dragging');
+      if (ptrDrag.el) {
+        ptrDrag.el.classList.remove('dragging');
+        if (ptrDrag.canvasMove) ptrDrag.el.style.zIndex = '';
+      }
       if (ptrDrag.ghost) ptrDrag.ghost.remove();
       ptrDrag = null;
     }
