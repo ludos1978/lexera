@@ -1221,9 +1221,20 @@ var ManagementUI = (function () {
         wsIds = [b.workspace_id || b.workspaceId];
       }
 
+      var peerCount = typeof b.peerCount === 'number' ? b.peerCount : 0;
+      var isLocal = b.isLocal !== false;
+
       html += '<div class="mgmt-board-row">';
       html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-fold" data-mgmt-action="toggle-details" data-mgmt-board="' + esc(b.id) + '">' + (isExpanded ? '&#9660;' : '&#9654;') + '</button>';
+      // Presence indicator
+      if (peerCount > 0) {
+        html += '<span class="mgmt-board-presence active" title="' + peerCount + ' user' + (peerCount > 1 ? 's' : '') + ' connected">' + peerCount + '</span>';
+      } else {
+        html += '<span class="mgmt-board-presence" title="No active connections"></span>';
+      }
       html += '<span class="mgmt-board-name" data-mgmt-expand="' + esc(b.id) + '">' + esc(boardName) + '</span>';
+      // Authority badge
+      html += '<span class="mgmt-board-authority ' + (isLocal ? 'local' : 'remote') + '">' + (isLocal ? 'Local' : 'Remote') + '</span>';
       // Workspace chips (read-only display)
       html += '<div class="mgmt-board-ws-chips">';
       for (var wi = 0; wi < wsIds.length; wi++) {

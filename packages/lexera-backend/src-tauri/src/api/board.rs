@@ -61,6 +61,9 @@ pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Valu
         })
         .unwrap_or_default();
 
+    // Collect peer counts from the sync hub
+    let hub = state.sync_hub.lock().await;
+
     let enriched: Vec<serde_json::Value> = boards
         .into_iter()
         .map(|b| {
@@ -73,10 +76,14 @@ pub async fn list_boards(State(state): State<AppState>) -> Json<serde_json::Valu
                 val["calendarSlug"] = serde_json::json!(entry.calendar_slug);
                 val["calendarName"] = serde_json::json!(entry.calendar_name);
             }
+            let peer_count = hub.online_users(&b.id).len();
+            val["peerCount"] = serde_json::json!(peer_count);
+            val["isLocal"] = serde_json::json!(!state.storage.is_remote_board(&b.id));
             val
         })
         .collect();
 
+    drop(hub);
     Json(serde_json::json!({ "boards": enriched }))
 }
 
