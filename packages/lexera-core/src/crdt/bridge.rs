@@ -426,6 +426,7 @@ fn read_card(card_map: &LoroMap) -> KanbanCard {
         content,
         checked,
         kid: if kid.is_empty() { None } else { Some(kid) },
+        params: HashMap::new(),
     }
 }
 
@@ -446,6 +447,7 @@ fn read_columns(columns_list: &LoroMovableList) -> Vec<KanbanColumn> {
                 title: get_string(&col_map, "title"),
                 cards,
                 include_source: None,
+                params: HashMap::new(),
             });
         }
     }
@@ -555,6 +557,7 @@ impl CrdtStore {
                                         id: get_string(&stack_map, "id"),
                                         title: get_string(&stack_map, "title"),
                                         columns,
+                                        params: HashMap::new(),
                                     });
                                 }
                             }
@@ -566,6 +569,7 @@ impl CrdtStore {
                             id: get_string(&row_map, "id"),
                             title: get_string(&row_map, "title"),
                             stacks,
+                            params: HashMap::new(),
                         });
                     }
                 }
@@ -1818,6 +1822,7 @@ mod tests {
             content: content.to_string(),
             checked,
             kid: Some(kid.to_string()),
+            params: HashMap::new(),
         }
     }
 
@@ -1832,6 +1837,7 @@ mod tests {
                     title: title.to_string(),
                     cards,
                     include_source: None,
+                    params: HashMap::new(),
                 })
                 .collect(),
             rows: Vec::new(),
@@ -1867,10 +1873,13 @@ mod tests {
                                     title: col_title.to_string(),
                                     cards,
                                     include_source: None,
+                                    params: HashMap::new(),
                                 })
                                 .collect(),
+                            params: HashMap::new(),
                         })
                         .collect(),
+                    params: HashMap::new(),
                 })
                 .collect(),
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
@@ -2404,14 +2413,17 @@ mod tests {
                         content: "Task A".to_string(),
                         checked: false,
                         kid: Some("aaaa0001".to_string()),
+                        params: HashMap::new(),
                     }],
                     include_source: None,
+                    params: HashMap::new(),
                 },
                 KanbanColumn {
                     id: "col-2".to_string(),
                     title: "Done".to_string(),
                     cards: vec![],
                     include_source: None,
+                    params: HashMap::new(),
                 },
             ],
             rows: vec![], // legacy: no rows
@@ -2451,17 +2463,22 @@ mod tests {
                                     content: "Task A".to_string(),
                                     checked: false,
                                     kid: Some("aaaa0001".to_string()),
+                                    params: HashMap::new(),
                                 }],
                                 include_source: None,
+                                params: HashMap::new(),
                             },
                             KanbanColumn {
                                 id: "col-2".to_string(),
                                 title: "Done".to_string(),
                                 cards: vec![],
                                 include_source: None,
+                                params: HashMap::new(),
                             },
                         ],
+                        params: HashMap::new(),
                     }],
+                    params: HashMap::new(),
                 },
                 // User added a new row:
                 KanbanRow {
@@ -2475,8 +2492,11 @@ mod tests {
                             title: "New Column".to_string(),
                             cards: vec![],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     }],
+                    params: HashMap::new(),
                 },
             ],
             yaml_header: None,
@@ -2683,6 +2703,7 @@ mod tests {
                 title: "Todo".to_string(),
                 cards: vec![make_card("aaaa0001", "Task", false)],
                 include_source: None,
+                params: HashMap::new(),
             }],
             rows: vec![],
             yaml_header: None,
@@ -2709,6 +2730,7 @@ mod tests {
                 title: "Todo".to_string(),
                 cards: vec![make_card("aaaa0001", "Task", false)],
                 include_source: None,
+                params: HashMap::new(),
             }],
             rows: vec![],
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
@@ -3517,7 +3539,9 @@ mod tests {
                             title: "C1".to_string(),
                             cards: vec![make_card("k001", "A", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-2".to_string(),
@@ -3527,7 +3551,9 @@ mod tests {
                             title: "C2".to_string(),
                             cards: vec![make_card("k002", "B", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-3".to_string(),
@@ -3537,9 +3563,12 @@ mod tests {
                             title: "C3".to_string(),
                             cards: vec![make_card("k003", "C", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                 ],
+                params: HashMap::new(),
             }],
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
@@ -3590,7 +3619,9 @@ mod tests {
                             title: "C1".to_string(),
                             cards: vec![make_card("k001", "A", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-2".to_string(),
@@ -3600,7 +3631,9 @@ mod tests {
                             title: "C2".to_string(),
                             cards: vec![make_card("k002", "B", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-3".to_string(),
@@ -3610,9 +3643,12 @@ mod tests {
                             title: "C3".to_string(),
                             cards: vec![make_card("k003", "C", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                 ],
+                params: HashMap::new(),
             }],
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
@@ -3663,7 +3699,9 @@ mod tests {
                             title: "C1".to_string(),
                             cards: vec![make_card("k001", "A", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-2".to_string(),
@@ -3673,7 +3711,9 @@ mod tests {
                             title: "C2".to_string(),
                             cards: vec![make_card("k002", "B", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-3".to_string(),
@@ -3683,9 +3723,12 @@ mod tests {
                             title: "C3".to_string(),
                             cards: vec![make_card("k003", "C", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                 ],
+                params: HashMap::new(),
             }],
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
@@ -3705,7 +3748,9 @@ mod tests {
                 title: "C4".to_string(),
                 cards: vec![make_card("k004", "D", false)],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
         store.apply_board(&with_sd, &initial).unwrap();
         let after_add = store.to_board();
@@ -3752,7 +3797,9 @@ mod tests {
                             title: "C1".to_string(),
                             cards: vec![make_card("k001", "A", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-2".to_string(),
@@ -3762,7 +3809,9 @@ mod tests {
                             title: "C2".to_string(),
                             cards: vec![make_card("k002", "B", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-3".to_string(),
@@ -3772,9 +3821,12 @@ mod tests {
                             title: "C3".to_string(),
                             cards: vec![make_card("k003", "C", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                 ],
+                params: HashMap::new(),
             }],
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
@@ -3834,6 +3886,7 @@ mod tests {
             title: "ColB".to_string(),
             cards: vec![make_card("k002", "Task 2", false)],
             include_source: None,
+            params: HashMap::new(),
         });
 
         store.apply_board(&updated, &original).unwrap();
@@ -3939,7 +3992,9 @@ mod tests {
                 title: "ColB".to_string(),
                 cards: vec![make_card("k002", "New", false)],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         store.apply_board(&updated, &original).unwrap();
@@ -4045,8 +4100,11 @@ mod tests {
                     title: "Col2".to_string(),
                     cards: vec![make_card("k002", "T2", false)],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         store.apply_board(&updated, &original).unwrap();
@@ -4148,6 +4206,7 @@ mod tests {
             title: "ColA Copy".to_string(),
             cards: vec![make_card("k001-dup", "Task", false)],
             include_source: None,
+            params: HashMap::new(),
         });
 
         store.apply_board(&updated, &original).unwrap();
@@ -4189,7 +4248,9 @@ mod tests {
                 title: "ColA Copy".to_string(),
                 cards: vec![make_card("k002", "Task copy", false)],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         store.apply_board(&updated, &original).unwrap();
@@ -4228,8 +4289,11 @@ mod tests {
                     title: "Col1 Copy".to_string(),
                     cards: vec![make_card("k002", "Task copy", false)],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         store.apply_board(&updated, &original).unwrap();
@@ -4399,6 +4463,7 @@ mod tests {
             title: "ColB".to_string(),
             cards: vec![],
             include_source: None,
+            params: HashMap::new(),
         });
         store.apply_board(&step1, &original).unwrap();
         let after_step1 = store.to_board();
@@ -4634,7 +4699,9 @@ mod tests {
                             title: "Todo".to_string(),
                             cards: vec![make_card("k001", "Card 1", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-b".to_string(),
@@ -4644,9 +4711,12 @@ mod tests {
                             title: "Todo".to_string(),
                             cards: vec![make_card("k002", "Card 2", false)],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                 ],
+                params: HashMap::new(),
             }],
             yaml_header: Some("---\nkanban-plugin: board\n---".to_string()),
             kanban_footer: None,
@@ -5034,8 +5104,11 @@ mod tests {
                     title: ct.to_string(),
                     cards,
                     include_source: None,
+                    params: HashMap::new(),
                 }).collect(),
+                params: HashMap::new(),
             }).collect(),
+            params: HashMap::new(),
         });
         store.apply_board(&peer_board, base).unwrap();
     }
@@ -5146,7 +5219,9 @@ mod tests {
                 title: "ColC".to_string(),
                 cards: vec![make_card("k003", "peer stack card", false)],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
         store.apply_board(&peer_board, &base).unwrap();
 
@@ -5176,6 +5251,7 @@ mod tests {
             title: "ColB".to_string(),
             cards: vec![make_card("k002", "peer column card", false)],
             include_source: None,
+            params: HashMap::new(),
         });
         store.apply_board(&peer_board, &base).unwrap();
 
@@ -5257,8 +5333,11 @@ mod tests {
                     title: "ColU".to_string(),
                     cards: vec![make_card("ku01", "user row", false)],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
         store.apply_board(&incoming, &base).unwrap();
 
@@ -5413,8 +5492,11 @@ mod tests {
                     title: "Col3".to_string(),
                     cards: vec![make_card("k004", "row3 card", false)],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
         store.apply_board(&edit2, &after_edit1).unwrap();
         let after_edit2 = store.to_board();

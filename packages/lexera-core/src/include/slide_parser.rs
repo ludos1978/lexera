@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::merge::card_identity;
 /// Slide-format parser for include files.
 ///
@@ -42,6 +44,7 @@ pub fn parse_slides(content: &str) -> Vec<KanbanCard> {
                 content: card_identity::strip_kid(&trimmed),
                 checked: false,
                 kid: card_identity::extract_kid(&trimmed),
+                params: HashMap::new(),
             }
         })
         .collect()
@@ -168,12 +171,14 @@ mod tests {
                 content: "# Slide 1\n\ncontent 1".to_string(),
                 checked: false,
                 kid: None,
+                params: HashMap::new(),
             },
             KanbanCard {
                 id: "2".to_string(),
                 content: "# Slide 2\n\ncontent 2".to_string(),
                 checked: false,
                 kid: None,
+                params: HashMap::new(),
             },
         ];
         let output = generate_slides(&cards);
@@ -215,6 +220,7 @@ mod tests {
             content: "<!-- kid:a1b2c3d4 -->\n# Slide 1".to_string(),
             checked: false,
             kid: Some("a1b2c3d4".to_string()),
+            params: HashMap::new(),
         }];
         assert_eq!(generate_slides(&cards), "# Slide 1\n");
     }

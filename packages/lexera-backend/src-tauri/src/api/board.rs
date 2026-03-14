@@ -995,6 +995,7 @@ mod tests {
     use axum::Router;
     use http_body_util::BodyExt;
     use lexera_core::storage::local::LocalStorage;
+    use std::collections::HashMap;
     use std::sync::Arc;
     use tower::ServiceExt;
 
@@ -1325,6 +1326,7 @@ kanban-plugin: board
                 content: "new-card".into(),
                 checked: false,
                 kid: Some("kid-new".into()),
+                params: HashMap::new(),
             },
         );
 
@@ -1376,8 +1378,10 @@ kanban-plugin: board
                     content: "new-col-card".into(),
                     checked: false,
                     kid: Some("kid-nc".into()),
+                    params: HashMap::new(),
                 }],
                 include_source: None,
+                params: HashMap::new(),
             },
         );
 
@@ -1428,7 +1432,9 @@ kanban-plugin: board
                 title: "NSCol".into(),
                 cards: vec![],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         let app = test_router(state.clone());
@@ -1481,8 +1487,11 @@ kanban-plugin: board
                     title: "R2Col".into(),
                     cards: vec![],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         let app = test_router(state.clone());
@@ -1594,6 +1603,7 @@ kanban-plugin: board
                 content: "edit1-card".into(),
                 checked: false,
                 kid: Some("kid-e1".into()),
+                params: HashMap::new(),
             },
         );
 
@@ -1610,6 +1620,7 @@ kanban-plugin: board
                 content: "edit2-card".into(),
                 checked: false,
                 kid: Some("kid-e2".into()),
+                params: HashMap::new(),
             },
         );
 

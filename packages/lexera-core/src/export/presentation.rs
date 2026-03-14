@@ -652,6 +652,7 @@ enum YamlValue {
 mod tests {
     use super::*;
     use crate::types::{KanbanBoard, KanbanCard, KanbanColumn};
+    use std::collections::HashMap;
 
     // -- Helpers --
 
@@ -661,6 +662,7 @@ mod tests {
             content: content.to_string(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         }
     }
 
@@ -670,6 +672,7 @@ mod tests {
             title: title.to_string(),
             cards,
             include_source: None,
+            params: HashMap::new(),
         }
     }
 
@@ -1303,6 +1306,7 @@ mod tests {
             title: "Slides".to_string(),
             cards: vec![card("![img](./photo.jpg)")],
             include_source: Some(include_source("./sub/slides.md")),
+            params: HashMap::new(),
         };
         let b = board_with(vec![col]);
         let output = from_board(&b, &default_opts());
@@ -1317,6 +1321,7 @@ mod tests {
             title: "Chapter".to_string(),
             cards: vec![card("![img](./image.png)")],
             include_source: Some(include_source("./deep/notes.md")),
+            params: HashMap::new(),
         };
         let b = board_with(vec![col]);
         let output = to_document(&b, PageBreaks::Continuous, &default_opts());

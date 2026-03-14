@@ -130,6 +130,78 @@ fn finalize_task(
     *current_task = None;
 }
 
+/// Extract inline `{key:value, key:value}` parameters from the end of a heading or task line.
+/// Returns `(cleaned_text, params)` where `cleaned_text` has the param block stripped.
+/// Handles missing, empty, and malformed params gracefully — returns empty map on failure.
+pub fn parse_params(text: &str) -> (String, HashMap<String, String>) {
+    let trimmed = text.trim_end();
+    if !trimmed.ends_with('}') {
+        return (text.to_string(), HashMap::new());
+    }
+
+    // Find the matching opening brace — scan backwards from the closing brace.
+    // We skip nested braces (e.g. markdown content that might contain {}).
+    let bytes = trimmed.as_bytes();
+    let mut depth = 0i32;
+    let mut open_pos = None;
+    for i in (0..bytes.len()).rev() {
+        if bytes[i] == b'}' {
+            depth += 1;
+        } else if bytes[i] == b'{' {
+            depth -= 1;
+            if depth == 0 {
+                open_pos = Some(i);
+                break;
+            }
+        }
+    }
+
+    let open = match open_pos {
+        Some(p) => p,
+        None => return (text.to_string(), HashMap::new()),
+    };
+
+    let inner = &trimmed[open + 1..trimmed.len() - 1];
+    let mut params = HashMap::new();
+
+    for pair in inner.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        if let Some(colon) = pair.find(':') {
+            let key = pair[..colon].trim();
+            let value = pair[colon + 1..].trim();
+            if !key.is_empty() {
+                params.insert(key.to_string(), value.to_string());
+            }
+        }
+    }
+
+    if params.is_empty() {
+        // Malformed or empty braces — preserve original text
+        return (text.to_string(), HashMap::new());
+    }
+
+    let before = trimmed[..open].trim_end();
+    (before.to_string(), params)
+}
+
+/// Format params back into `{key:value, key:value}` string for markdown output.
+pub fn format_params(params: &HashMap<String, String>) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    // Sort keys for deterministic output
+    let mut keys: Vec<&String> = params.keys().collect();
+    keys.sort();
+    let pairs: Vec<String> = keys
+        .iter()
+        .map(|k| format!("{}:{}", k, params[*k]))
+        .collect();
+    format!(" {{{}}}", pairs.join(", "))
+}
+
 /// Parse a task line (- [ ] or - [x]) and return the card and whether we're collecting description.
 fn parse_task_line(line: &str) -> Option<KanbanCard> {
     if !line.starts_with("- ") {
@@ -137,12 +209,14 @@ fn parse_task_line(line: &str) -> Option<KanbanCard> {
     }
     let checked = line.starts_with("- [x] ") || line.starts_with("- [X] ");
     let task_summary = if line.len() >= 6 { &line[6..] } else { "" };
-    let kid = card_identity::extract_kid(task_summary);
+    let (summary_clean, card_params) = parse_params(task_summary);
+    let kid = card_identity::extract_kid(&summary_clean);
     Some(KanbanCard {
         id: generate_id("task"),
-        content: card_identity::strip_kid(task_summary),
+        content: card_identity::strip_kid(&summary_clean),
         checked,
         kid,
+        params: card_params,
     })
 }
 
@@ -238,6 +312,7 @@ fn convert_legacy_columns_to_rows(parsed_columns: Vec<KanbanColumn>) -> Vec<Kanb
                 id: generate_id("stack"),
                 title: "Default".to_string(),
                 columns: all_columns,
+                params: HashMap::new(),
             }]
         } else {
             // Has tags: group columns into stacks based on #stack tags
@@ -269,6 +344,7 @@ fn convert_legacy_columns_to_rows(parsed_columns: Vec<KanbanColumn>) -> Vec<Kanb
                             }
                         },
                         columns: group,
+                        params: HashMap::new(),
                     }
                 })
                 .collect()
@@ -282,6 +358,7 @@ fn convert_legacy_columns_to_rows(parsed_columns: Vec<KanbanColumn>) -> Vec<Kanb
                 "Default".to_string()
             },
             stacks,
+            params: HashMap::new(),
         });
     }
 
@@ -371,6 +448,7 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
                 title: column_title.to_string(),
                 cards: Vec::new(),
                 include_source: None,
+                params: HashMap::new(),
             });
             i += 1;
             continue;
@@ -469,12 +547,14 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
                         id: generate_id("row"),
                         title: "Default".to_string(),
                         stacks: Vec::new(),
+                        params: HashMap::new(),
                     });
                 }
                 *current_stack = Some(KanbanStack {
                     id: generate_id("stack"),
                     title: "Default".to_string(),
                     columns: Vec::new(),
+                    params: HashMap::new(),
                 });
             }
             if let Some(stack) = current_stack.as_mut() {
@@ -491,6 +571,7 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
                     id: generate_id("row"),
                     title: "Default".to_string(),
                     stacks: Vec::new(),
+                    params: HashMap::new(),
                 });
             }
             if let Some(row) = current_row.as_mut() {
@@ -565,11 +646,12 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
                 board.rows.push(row);
             }
 
-            let row_title = &line[2..];
+            let (row_title, row_params) = parse_params(&line[2..]);
             current_row = Some(KanbanRow {
                 id: generate_id("row"),
-                title: row_title.to_string(),
+                title: row_title,
                 stacks: Vec::new(),
+                params: row_params,
             });
             i += 1;
             continue;
@@ -585,11 +667,12 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
             push_column(&mut current_column, &mut current_stack, &mut current_row);
             push_stack(&mut current_stack, &mut current_row);
 
-            let stack_title = &line[3..];
+            let (stack_title, stack_params) = parse_params(&line[3..]);
             current_stack = Some(KanbanStack {
                 id: generate_id("stack"),
-                title: stack_title.to_string(),
+                title: stack_title,
                 columns: Vec::new(),
+                params: stack_params,
             });
             i += 1;
             continue;
@@ -604,12 +687,13 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
             );
             push_column(&mut current_column, &mut current_stack, &mut current_row);
 
-            let column_title = &line[4..];
+            let (column_title, col_params) = parse_params(&line[4..]);
             current_column = Some(KanbanColumn {
                 id: generate_id("col"),
-                title: column_title.to_string(),
+                title: column_title,
                 cards: Vec::new(),
                 include_source: None,
+                params: col_params,
             });
             i += 1;
             continue;
@@ -732,6 +816,7 @@ fn write_column_cards(markdown: &mut String, column: &KanbanColumn) {
         let checkbox = if task.checked { "- [x] " } else { "- [ ] " };
         markdown.push_str(checkbox);
         markdown.push_str(summary);
+        markdown.push_str(&format_params(&task.params));
         markdown.push('\n');
 
         if content_lines.len() > 1 {
@@ -768,13 +853,25 @@ pub fn generate_markdown(board: &KanbanBoard) -> String {
         true => {
             // New format: # row / ## stack / ### column
             for row in &board.rows {
-                markdown.push_str(&format!("# {}\n\n", row.title));
+                markdown.push_str(&format!(
+                    "# {}{}\n\n",
+                    row.title,
+                    format_params(&row.params)
+                ));
 
                 for stack in &row.stacks {
-                    markdown.push_str(&format!("## {}\n\n", stack.title));
+                    markdown.push_str(&format!(
+                        "## {}{}\n\n",
+                        stack.title,
+                        format_params(&stack.params)
+                    ));
 
                     for column in &stack.columns {
-                        markdown.push_str(&format!("### {}\n", column.title));
+                        markdown.push_str(&format!(
+                            "### {}{}\n",
+                            column.title,
+                            format_params(&column.params)
+                        ));
                         write_column_cards(&mut markdown, column);
                     }
                 }
@@ -913,6 +1010,7 @@ fn clear_setting(settings: &mut BoardSettings, key: &str) {
         "boardColor" => settings.board_color = None,
         "boardColorDark" => settings.board_color_dark = None,
         "boardColorLight" => settings.board_color_light = None,
+        "boardLayout" => settings.board_layout = None,
         _ => {}
     }
 }
@@ -1440,5 +1538,139 @@ kanban-plugin: board
         let board2 = parse_markdown(&md1);
         let md2 = generate_markdown(&board2);
         assert_eq!(md1, md2, "Cards with tags and links should be idempotent");
+    }
+
+    // -----------------------------------------------------------------------
+    // Inline params {key:value} tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_params_basic() {
+        let (text, params) = parse_params("My Title {x:100, y:200}");
+        assert_eq!(text, "My Title");
+        assert_eq!(params.get("x").unwrap(), "100");
+        assert_eq!(params.get("y").unwrap(), "200");
+    }
+
+    #[test]
+    fn test_parse_params_no_params() {
+        let (text, params) = parse_params("Plain Title");
+        assert_eq!(text, "Plain Title");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_parse_params_empty_braces() {
+        let (text, params) = parse_params("Title {}");
+        assert_eq!(text, "Title {}");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_parse_params_single_param() {
+        let (text, params) = parse_params("Stack {w:400}");
+        assert_eq!(text, "Stack");
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("w").unwrap(), "400");
+    }
+
+    #[test]
+    fn test_parse_params_all_stack_params() {
+        let (text, params) = parse_params("Stack A {x:50, y:100, w:400, h:300, dir:row}");
+        assert_eq!(text, "Stack A");
+        assert_eq!(params.get("x").unwrap(), "50");
+        assert_eq!(params.get("y").unwrap(), "100");
+        assert_eq!(params.get("w").unwrap(), "400");
+        assert_eq!(params.get("h").unwrap(), "300");
+        assert_eq!(params.get("dir").unwrap(), "row");
+    }
+
+    #[test]
+    fn test_parse_params_with_whitespace() {
+        let (text, params) = parse_params("Title {  key : value , other : stuff  }");
+        assert_eq!(text, "Title");
+        assert_eq!(params.get("key").unwrap(), "value");
+        assert_eq!(params.get("other").unwrap(), "stuff");
+    }
+
+    #[test]
+    fn test_format_params_roundtrip() {
+        let (_, params) = parse_params("Title {a:1, b:2}");
+        let formatted = format_params(&params);
+        assert!(formatted.contains("a:1"));
+        assert!(formatted.contains("b:2"));
+        assert!(formatted.starts_with(" {"));
+        assert!(formatted.ends_with('}'));
+    }
+
+    #[test]
+    fn test_format_params_empty() {
+        let params = HashMap::new();
+        assert_eq!(format_params(&params), "");
+    }
+
+    #[test]
+    fn test_parse_params_in_board_roundtrip() {
+        let md = "---\nkanban-plugin: board\n---\n\n# Row {h:500}\n\n## Stack {x:50, y:100, w:400, h:300}\n\n### Column {w:2}\n- [ ] Card {span:2}\n";
+        let board = parse_markdown(md);
+
+        // Verify params were parsed
+        assert_eq!(board.rows.len(), 1);
+        assert_eq!(board.rows[0].params.get("h").unwrap(), "500");
+
+        let stack = &board.rows[0].stacks[0];
+        assert_eq!(stack.params.get("x").unwrap(), "50");
+        assert_eq!(stack.params.get("y").unwrap(), "100");
+        assert_eq!(stack.params.get("w").unwrap(), "400");
+
+        let col = &stack.columns[0];
+        assert_eq!(col.params.get("w").unwrap(), "2");
+
+        let card = &col.cards[0];
+        assert_eq!(card.params.get("span").unwrap(), "2");
+        assert_eq!(card.content, "Card");
+
+        // Verify roundtrip
+        let md_out = generate_markdown(&board);
+        let board2 = parse_markdown(&md_out);
+        let md_out2 = generate_markdown(&board2);
+        assert_eq!(md_out, md_out2, "Params should survive roundtrip");
+    }
+
+    #[test]
+    fn test_params_title_stripped_from_display() {
+        let md = "---\nkanban-plugin: board\n---\n\n# My Row {h:300}\n\n## My Stack {x:10}\n\n### My Col {w:3}\n- [ ] My Task {span:1}\n";
+        let board = parse_markdown(md);
+
+        assert_eq!(board.rows[0].title, "My Row");
+        assert_eq!(board.rows[0].stacks[0].title, "My Stack");
+        assert_eq!(board.rows[0].stacks[0].columns[0].title, "My Col");
+        assert_eq!(board.rows[0].stacks[0].columns[0].cards[0].content, "My Task");
+    }
+
+    #[test]
+    fn test_no_params_board_unchanged() {
+        let md = "---\nkanban-plugin: board\n---\n\n# Row\n\n## Stack\n\n### Column\n- [ ] Task\n";
+        let board = parse_markdown(md);
+        assert!(board.rows[0].params.is_empty());
+        assert!(board.rows[0].stacks[0].params.is_empty());
+        assert!(board.rows[0].stacks[0].columns[0].params.is_empty());
+        assert!(board.rows[0].stacks[0].columns[0].cards[0].params.is_empty());
+
+        let md_out = generate_markdown(&board);
+        let board2 = parse_markdown(&md_out);
+        let md_out2 = generate_markdown(&board2);
+        assert_eq!(md_out, md_out2);
+    }
+
+    #[test]
+    fn test_board_layout_setting_roundtrip() {
+        let md = "---\nkanban-plugin: board\nboardLayout: canvas\n---\n\n## Col\n- [ ] task\n";
+        let board = parse_markdown(md);
+        let settings = board.board_settings.as_ref().unwrap();
+        assert_eq!(settings.board_layout.as_deref(), Some("canvas"));
+
+        let md_out = generate_markdown(&board);
+        assert!(md_out.contains("boardLayout: canvas"));
     }
 }

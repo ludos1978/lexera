@@ -345,6 +345,7 @@ mod tests {
     use lexera_core::types::{
         BoardFormat, KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack,
     };
+    use std::collections::HashMap;
 
     fn sample_card(id: &str) -> KanbanCard {
         KanbanCard {
@@ -352,6 +353,7 @@ mod tests {
             content: format!("Card {id}"),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         }
     }
 
@@ -361,6 +363,7 @@ mod tests {
             title: title.to_string(),
             cards: vec![sample_card(&(String::from(id) + "-card"))],
             include_source: None,
+            params: HashMap::new(),
         }
     }
 
@@ -381,13 +384,16 @@ mod tests {
                                 sample_column("col-1", "Inbox"),
                                 sample_column("col-2", "Next"),
                             ],
+                            params: HashMap::new(),
                         },
                         KanbanStack {
                             id: "stack-2".to_string(),
                             title: "Ready".to_string(),
                             columns: vec![sample_column("col-3", "Doing")],
+                            params: HashMap::new(),
                         },
                     ],
+                    params: HashMap::new(),
                 },
                 KanbanRow {
                     id: "row-2".to_string(),
@@ -396,7 +402,9 @@ mod tests {
                         id: "stack-3".to_string(),
                         title: "Ship".to_string(),
                         columns: vec![sample_column("col-4", "Done")],
+                        params: HashMap::new(),
                     }],
+                    params: HashMap::new(),
                 },
             ],
             yaml_header: None,

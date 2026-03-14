@@ -222,6 +222,7 @@ pub fn validate_wiki_links(board: &KanbanBoard, base_dir: &Path) -> Vec<BrokenLi
 mod tests {
     use super::*;
     use crate::types::{KanbanBoard, KanbanCard, KanbanColumn};
+    use std::collections::HashMap;
     use std::fs;
     use tempfile::tempdir;
 
@@ -477,15 +478,18 @@ mod tests {
                             content: "Task with [[link1]] inside".to_string(),
                             checked: false,
                             kid: None,
+                            params: HashMap::new(),
                         },
                         KanbanCard {
                             id: "card-1".to_string(),
                             content: "No links here".to_string(),
                             checked: false,
                             kid: None,
+                            params: HashMap::new(),
                         },
                     ],
                     include_source: None,
+                    params: HashMap::new(),
                 },
                 KanbanColumn {
                     id: "col-1".to_string(),
@@ -495,8 +499,10 @@ mod tests {
                         content: "Done with [[link2|Display]] and [[link3]]".to_string(),
                         checked: true,
                         kid: None,
+                        params: HashMap::new(),
                     }],
                     include_source: None,
+                    params: HashMap::new(),
                 },
             ],
             rows: vec![],
@@ -562,8 +568,10 @@ mod tests {
                     content: "Just a regular card".to_string(),
                     checked: false,
                     kid: None,
+                    params: HashMap::new(),
                 }],
                 include_source: None,
+                params: HashMap::new(),
             }],
             rows: vec![],
             yaml_header: None,
@@ -621,8 +629,10 @@ mod tests {
                     content: "See [[missing-file]]".to_string(),
                     checked: false,
                     kid: None,
+                    params: HashMap::new(),
                 }],
                 include_source: None,
+                params: HashMap::new(),
             }],
             rows: vec![],
             yaml_header: None,
@@ -706,10 +716,14 @@ mod tests {
                             content: "Has [[nested-link]]".to_string(),
                             checked: false,
                             kid: None,
+                            params: HashMap::new(),
                         }],
                         include_source: None,
+                        params: HashMap::new(),
                     }],
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
             yaml_header: None,
             kanban_footer: None,

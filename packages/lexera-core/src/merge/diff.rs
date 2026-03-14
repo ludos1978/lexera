@@ -131,6 +131,7 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
                     content: new_card.content.clone(),
                     checked: new_card.checked,
                     kid: Some(kid.clone()),
+                    params: HashMap::new(),
                 },
             });
         }
@@ -150,6 +151,7 @@ mod tests {
             content: content.to_string(),
             checked,
             kid: Some(kid.to_string()),
+            params: HashMap::new(),
         }
     }
 
@@ -165,6 +167,7 @@ mod tests {
                     title: title.to_string(),
                     cards,
                     include_source: None,
+                    params: HashMap::new(),
                 })
                 .collect(),
             rows: Vec::new(),
@@ -258,10 +261,13 @@ mod tests {
                                     title: col_title.to_string(),
                                     cards,
                                     include_source: None,
+                                    params: HashMap::new(),
                                 })
                                 .collect(),
+                            params: HashMap::new(),
                         })
                         .collect(),
+                    params: HashMap::new(),
                 })
                 .collect(),
             yaml_header: None,
@@ -375,7 +381,9 @@ mod tests {
                             title: "Todo".to_string(),
                             cards: vec![card.clone()],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                     KanbanStack {
                         id: "stack-b".to_string(),
@@ -385,9 +393,12 @@ mod tests {
                             title: "Todo".to_string(),
                             cards: vec![],
                             include_source: None,
+                            params: HashMap::new(),
                         }],
+                        params: HashMap::new(),
                     },
                 ],
+                params: HashMap::new(),
             }],
             yaml_header: None,
             kanban_footer: None,

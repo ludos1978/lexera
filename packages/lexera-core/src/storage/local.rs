@@ -383,7 +383,9 @@ impl LocalStorage {
                     id: "stack-default".to_string(),
                     title: "Default".to_string(),
                     columns: std::mem::take(&mut crdt_board.columns),
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }];
         }
 
@@ -2688,6 +2690,7 @@ impl BoardStorage for LocalStorage {
             content: card_identity::strip_kid(content),
             checked: false,
             kid: Some(kid),
+            params: HashMap::new(),
         };
 
         all_cols[col_index].cards.push(new_card);
@@ -2946,6 +2949,7 @@ kanban-plugin: board
             content: "Remote CRDT addition".to_string(),
             checked: false,
             kid: Some("remote-crdt-add".to_string()),
+            params: HashMap::new(),
         });
         remote_store
             .apply_board(&remote_board, &base_board)
@@ -2986,6 +2990,7 @@ kanban-plugin: board
             content: "Remote mirror card".to_string(),
             checked: false,
             kid: Some("remote-card-kid".to_string()),
+            params: HashMap::new(),
         });
         remote_store
             .apply_board(&remote_board, &base_board)
@@ -3173,6 +3178,7 @@ kanban-plugin: board
             content: "# Slide 2\n\nSecond slide".to_string(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         });
 
         storage.write_board(&id, &board).unwrap();
@@ -3293,6 +3299,7 @@ kanban-plugin: board
             content: "Remote addition".to_string(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         });
         storage.write_board(&id, &remote).unwrap();
 
@@ -4147,6 +4154,7 @@ kanban-plugin: board
             title: "Empty Column".to_string(),
             cards: vec![],
             include_source: None,
+            params: HashMap::new(),
         });
         board.rows[0].stacks.push(KanbanStack {
             id: "stack-empty".to_string(),
@@ -4156,7 +4164,9 @@ kanban-plugin: board
                 title: "Stack Column".to_string(),
                 cards: vec![],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
         board.rows.push(KanbanRow {
             id: "row-empty".to_string(),
@@ -4169,8 +4179,11 @@ kanban-plugin: board
                     title: "Row Column".to_string(),
                     cards: vec![],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         storage.write_board(&id, &board).unwrap();
@@ -4227,6 +4240,7 @@ kanban-plugin: board
             title: "Done".to_string(),
             cards: vec![],
             include_source: None,
+            params: HashMap::new(),
         });
         board.rows.push(KanbanRow {
             id: "row-new".to_string(),
@@ -4239,8 +4253,11 @@ kanban-plugin: board
                     title: "Backlog".to_string(),
                     cards: vec![],
                     include_source: None,
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         storage.write_board(&id, &board).unwrap();

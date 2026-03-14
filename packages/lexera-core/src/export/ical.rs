@@ -397,6 +397,7 @@ pub fn export_cards_to_ical(cards: &[&KanbanCard], board_id: &str) -> String {
 mod tests {
     use super::*;
     use crate::types::{BoardFormat, KanbanCard};
+    use std::collections::HashMap;
 
     /// Helper: build a simple card.
     fn make_card(content: &str, checked: bool, kid: Option<&str>) -> KanbanCard {
@@ -405,6 +406,7 @@ mod tests {
             content: content.to_string(),
             checked,
             kid: kid.map(|s| s.to_string()),
+            params: HashMap::new(),
         }
     }
 
@@ -633,6 +635,7 @@ mod tests {
                     make_card("- [x] Done task @2026-04-01 #done", true, Some("kid-c")),
                 ],
                 include_source: None,
+                params: HashMap::new(),
             }],
             rows: vec![],
             yaml_header: None,
@@ -869,8 +872,11 @@ mod tests {
                             Some("nest1"),
                         )],
                         include_source: None,
+                        params: HashMap::new(),
                     }],
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             }],
             yaml_header: None,
             kanban_footer: None,

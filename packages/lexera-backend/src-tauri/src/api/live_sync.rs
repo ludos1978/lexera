@@ -542,13 +542,17 @@ kanban-plugin: board
                                             content: content.into(),
                                             checked,
                                             kid: Some(format!("kid-{}", content)),
+                                            params: HashMap::new(),
                                         })
                                         .collect(),
                                     include_source: None,
+                                    params: HashMap::new(),
                                 })
                                 .collect(),
+                            params: HashMap::new(),
                         })
                         .collect(),
+                    params: HashMap::new(),
                 })
                 .collect(),
             yaml_header: Some("---\nkanban-plugin: board\n---".into()),
@@ -595,6 +599,7 @@ kanban-plugin: board
                 content: "gamma".into(),
                 checked: false,
                 kid: Some("kid-gamma".into()),
+                params: HashMap::new(),
             },
         );
 
@@ -648,7 +653,9 @@ kanban-plugin: board
                 title: "C2".into(),
                 cards: vec![],
                 include_source: None,
+                params: HashMap::new(),
             }],
+            params: HashMap::new(),
         });
 
         let result = apply_board(&session.session_id, incoming).unwrap();
@@ -680,6 +687,7 @@ kanban-plugin: board
                 content: "new-card".into(),
                 checked: false,
                 kid: Some("kid-new-card".into()),
+                params: HashMap::new(),
             },
         );
         let r1 = apply_board(&session.session_id, edit1).unwrap();

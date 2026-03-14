@@ -3,6 +3,8 @@
 /// Identifies completed/checked cards and moves them to a designated
 /// archive column. Supports archiving by completion status (checkbox or
 /// tags) and by temporal date threshold.
+use std::collections::HashMap;
+
 use chrono::{Local, NaiveDate};
 
 use crate::parser::generate_id;
@@ -330,7 +332,9 @@ fn ensure_archive_column<'a>(
                     id: generate_id("stack"),
                     title: "Default".to_string(),
                     columns: Vec::new(),
+                    params: HashMap::new(),
                 }],
+                params: HashMap::new(),
             });
         }
         let stack = &mut board.rows[0].stacks[0];
@@ -339,6 +343,7 @@ fn ensure_archive_column<'a>(
             title: title.to_string(),
             cards: Vec::new(),
             include_source: None,
+            params: HashMap::new(),
         });
         let last = stack.columns.len() - 1;
         &mut stack.columns[last]
@@ -352,6 +357,7 @@ fn ensure_archive_column<'a>(
             title: title.to_string(),
             cards: Vec::new(),
             include_source: None,
+            params: HashMap::new(),
         });
         let last = board.columns.len() - 1;
         &mut board.columns[last]
@@ -398,6 +404,7 @@ mod tests {
             content: "Buy milk".into(),
             checked: true,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(is_completed_card(&card));
     }
@@ -409,6 +416,7 @@ mod tests {
             content: "Finish report #done".into(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(is_completed_card(&card));
     }
@@ -420,6 +428,7 @@ mod tests {
             content: "Old task #archived".into(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(is_completed_card(&card));
     }
@@ -431,6 +440,7 @@ mod tests {
             content: "Task #Done".into(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(is_completed_card(&card));
     }
@@ -442,6 +452,7 @@ mod tests {
             content: "Pending task".into(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(!is_completed_card(&card));
     }
@@ -454,6 +465,7 @@ mod tests {
             content: "Open task".into(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(!is_completed_card(&card));
     }
@@ -466,6 +478,7 @@ mod tests {
             content: "Almost #done-ish".into(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         };
         assert!(!is_completed_card(&card));
     }

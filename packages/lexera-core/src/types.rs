@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Indicates whether the board was parsed from legacy (## columns) or new (# / ## / ### hierarchy) format.
@@ -37,6 +38,10 @@ pub struct KanbanCard {
     /// identifier is kept internal and no longer written into card content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kid: Option<String>,
+    /// Inline parameters from `{key:value, ...}` blocks in the task line.
+    /// Used for canvas layout (e.g. `span`).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub params: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +58,10 @@ pub struct KanbanColumn {
     pub cards: Vec<KanbanCard>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_source: Option<IncludeSource>,
+    /// Inline parameters from `{key:value, ...}` blocks in the column heading.
+    /// Used for canvas layout (e.g. `w` weight).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub params: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +70,10 @@ pub struct KanbanStack {
     pub id: String,
     pub title: String,
     pub columns: Vec<KanbanColumn>,
+    /// Inline parameters from `{key:value, ...}` blocks in the stack heading.
+    /// Used for canvas layout (e.g. `x`, `y`, `w`, `h`, `dir`).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub params: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +82,10 @@ pub struct KanbanRow {
     pub id: String,
     pub title: String,
     pub stacks: Vec<KanbanStack>,
+    /// Inline parameters from `{key:value, ...}` blocks in the row heading.
+    /// Used for canvas layout (e.g. `h` height).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub params: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -108,6 +125,9 @@ pub struct BoardSettings {
     pub board_color_dark: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_color_light: Option<String>,
+    /// Board layout mode: "structured" (default sequential flow) or "canvas" (free positioning).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub board_layout: Option<String>,
 }
 
 /// Generation metadata for staleness detection.
@@ -323,6 +343,7 @@ pub const BOARD_SETTING_KEYS: &[&str] = &[
     "boardColor",
     "boardColorDark",
     "boardColorLight",
+    "boardLayout",
 ];
 
 impl BoardSettings {
@@ -346,6 +367,7 @@ impl BoardSettings {
             "boardColor" => self.board_color.clone(),
             "boardColorDark" => self.board_color_dark.clone(),
             "boardColorLight" => self.board_color_light.clone(),
+            "boardLayout" => self.board_layout.clone(),
             _ => None,
         }
     }
@@ -382,6 +404,7 @@ impl BoardSettings {
             "boardColor" => self.board_color = Some(value.to_string()),
             "boardColorDark" => self.board_color_dark = Some(value.to_string()),
             "boardColorLight" => self.board_color_light = Some(value.to_string()),
+            "boardLayout" => self.board_layout = Some(value.to_string()),
             _ => {}
         }
     }
@@ -411,6 +434,7 @@ impl BoardSettings {
             board_color,
             board_color_dark,
             board_color_light,
+            board_layout,
         );
     }
 }

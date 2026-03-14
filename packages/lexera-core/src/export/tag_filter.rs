@@ -1,5 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::types::{KanbanBoard, KanbanCard, KanbanColumn, KanbanRow, KanbanStack};
@@ -372,6 +373,7 @@ fn filter_rows(rows: &[KanbanRow], exclude_tags: &[String]) -> Vec<KanbanRow> {
             id: row.id.clone(),
             title: row.title.clone(),
             stacks: filter_stacks(&row.stacks, exclude_tags),
+            params: HashMap::new(),
         })
         .collect()
 }
@@ -384,6 +386,7 @@ fn filter_stacks(stacks: &[KanbanStack], exclude_tags: &[String]) -> Vec<KanbanS
             id: stack.id.clone(),
             title: stack.title.clone(),
             columns: filter_columns(&stack.columns, exclude_tags),
+            params: HashMap::new(),
         })
         .collect()
 }
@@ -399,6 +402,7 @@ fn filter_columns(columns: &[KanbanColumn], exclude_tags: &[String]) -> Vec<Kanb
             title: col.title.clone(),
             cards: filter_cards(&col.cards, exclude_tags),
             include_source: col.include_source.clone(),
+            params: HashMap::new(),
         })
         .collect()
 }
@@ -421,6 +425,7 @@ fn filter_cards(cards: &[KanbanCard], exclude_tags: &[String]) -> Vec<KanbanCard
                 content: filtered_content,
                 checked: card.checked,
                 kid: card.kid.clone(),
+                params: HashMap::new(),
             }
         })
         .collect()
@@ -707,6 +712,7 @@ mod tests {
             content: content.to_string(),
             checked: false,
             kid: None,
+            params: HashMap::new(),
         }
     }
 
@@ -716,6 +722,7 @@ mod tests {
             title: title.to_string(),
             cards,
             include_source: None,
+            params: HashMap::new(),
         }
     }
 
@@ -825,11 +832,13 @@ mod tests {
             id: "s1".to_string(),
             title: "Stack 1".to_string(),
             columns: vec![col1, col2],
+            params: HashMap::new(),
         };
         let row = KanbanRow {
             id: "r1".to_string(),
             title: "Row 1".to_string(),
             stacks: vec![stack],
+            params: HashMap::new(),
         };
         let board = make_new_format_board(vec![row]);
         let result = filter_excluded_from_board(&board, &[s("#exclude")]);
@@ -849,11 +858,13 @@ mod tests {
             id: "s1".to_string(),
             title: "S".to_string(),
             columns: vec![col],
+            params: HashMap::new(),
         };
         let row = KanbanRow {
             id: "r1".to_string(),
             title: "R".to_string(),
             stacks: vec![stack],
+            params: HashMap::new(),
         };
         let board = make_new_format_board(vec![row]);
         let result = filter_excluded_from_board(&board, &[s("#skip")]);
@@ -916,6 +927,7 @@ mod tests {
                 raw_path: "./inc.md".to_string(),
                 resolved_path: std::path::PathBuf::from("/abs/inc.md"),
             }),
+            params: HashMap::new(),
         };
         let board = make_legacy_board(vec![col]);
         let result = filter_excluded_from_board(&board, &[s("#x")]);
@@ -1176,6 +1188,7 @@ mod tests {
             content: "task".to_string(),
             checked: true,
             kid: Some("abcd1234".to_string()),
+            params: HashMap::new(),
         };
         let board = make_legacy_board(vec![make_column("c1", "Col", vec![card_with_kid])]);
         let result = filter_excluded_from_board(&board, &[s("#x")]);

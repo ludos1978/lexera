@@ -479,6 +479,7 @@ impl BoardStorage for IosStorage {
                 content: content_with_kid,
                 checked: false,
                 kid: Some(kid),
+                params: std::collections::HashMap::new(),
             };
             columns[col_index].cards.push(card);
         }
