@@ -7838,6 +7838,33 @@ const LexeraDashboard = (function () {
     return BoardSettingRegistry.buildMenuItems(settingId, current);
   }
 
+  function buildLayoutPresetMenuItems() {
+    var current = getBoardSettingValue('layoutPreset', 'normal') || 'normal';
+    var items = [
+      { id: 'set-layout-preset:normal', label: (current === 'normal' ? '\u2713 ' : '') + 'Normal' },
+      { id: 'set-layout-preset:spacious', label: (current === 'spacious' ? '\u2713 ' : '') + 'Spacious' }
+    ];
+    var presets = typeof getSavedLayoutPresets === 'function' ? getSavedLayoutPresets() : {};
+    var presetNames = Object.keys(presets);
+    if (presetNames.length > 0) {
+      items.push({ separator: true });
+      for (var i = 0; i < presetNames.length; i++) {
+        var name = presetNames[i];
+        items.push({ id: 'set-layout-preset:' + name, label: (current === name ? '\u2713 ' : '') + name });
+      }
+    }
+    items.push({ separator: true });
+    items.push({ id: 'save-layout-preset', label: 'Save Current as Preset\u2026' });
+    if (presetNames.length > 0) {
+      var deleteItems = [];
+      for (var j = 0; j < presetNames.length; j++) {
+        deleteItems.push({ id: 'delete-layout-preset:' + presetNames[j], label: presetNames[j] });
+      }
+      items.push({ id: 'delete-layout-preset', label: 'Delete Preset', items: deleteItems });
+    }
+    return items;
+  }
+
   function buildTagStyleRoleItems(normalizedTag) {
     var TAG_STYLE_ROLES = [
       { value: 'header', label: 'Header Bar' },
@@ -9523,7 +9550,7 @@ const LexeraDashboard = (function () {
       { separator: true },
       { id: 'set-layout-rows', label: 'Layout Rows', items: buildSettingMenuItems('layoutRows') },
       { id: 'set-row-height', label: 'Row Height', items: buildSettingMenuItems('rowHeight') },
-      { id: 'set-layout-preset', label: 'Layout Preset', items: buildSettingMenuItems('layoutPreset') },
+      { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetMenuItems() },
       { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
       { id: allCardsCollapsed ? 'unfold-cards' : 'fold-cards', label: allCardsCollapsed ? 'Unfold All Cards' : 'Fold All Cards' },
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
@@ -16929,7 +16956,7 @@ const LexeraDashboard = (function () {
   function autoResizeInlineCardTextarea(textarea) {
     if (!textarea) return;
     textarea.style.height = 'auto';
-    textarea.style.height = Math.max(120, textarea.scrollHeight) + 'px';
+    textarea.style.height = textarea.scrollHeight + 'px';
   }
 
   function findVisibleCardElement(colIndex, cardIndex) {
@@ -17003,7 +17030,7 @@ const LexeraDashboard = (function () {
     cardEl.classList.remove('collapsed');
     contentEl.innerHTML =
       '<textarea class="card-edit-input card-inline-textarea" spellcheck="false" style="' +
-        escapeAttr('display:block;width:100%;min-height:120px;resize:vertical;overflow:auto') +
+        escapeAttr('display:block;width:100%;resize:vertical;overflow:auto') +
       '"></textarea>';
 
     var textarea = contentEl.querySelector('.card-inline-textarea');
@@ -17068,6 +17095,21 @@ const LexeraDashboard = (function () {
       } catch (err) {
         logFrontendIssue('error', 'editor.inline', 'Error in inline editor keydown handler', err);
       }
+    });
+    textarea.addEventListener('dragover', function (e) {
+      if (e.dataTransfer) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    });
+    textarea.addEventListener('drop', async function (e) {
+      if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+      e.preventDefault();
+      var markdown = await resolveDropContent(e.dataTransfer);
+      if (markdown) {
+        insertFormatting(textarea, { snippet: markdown });
+        textarea.focus();
+      }
+    });
+    textarea.addEventListener('paste', function (e) {
+      handleEditorPasteImage(e, textarea);
     });
 
     requestAnimationFrame(function () {
@@ -17292,6 +17334,9 @@ const LexeraDashboard = (function () {
     });
     textarea.addEventListener('mouseup', function () {
       if (card.kid) queueEditingPresenceBroadcast(card.kid, textarea.selectionStart, false);
+    });
+    textarea.addEventListener('paste', function (e) {
+      handleEditorPasteImage(e, textarea);
     });
     preview.addEventListener('change', function (e) {
       if (!e.target.classList.contains('card-checkbox')) return;
@@ -23417,6 +23462,72 @@ const LexeraDashboard = (function () {
       '" style="width:100%;min-height:320px;border:0;border-radius:6px;"></iframe>';
   };
 
+  var IMAGE_EMBED_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|avif|svg)$/i;
+
+  async function uploadFileAndBuildMarkdown(file) {
+    if (!activeBoardId) return '';
+    var result = await LexeraApi.uploadMedia(activeBoardId, file);
+    var target = getUploadedMediaEmbedTarget(result);
+    if (!target) return '';
+    var name = file.name || 'file';
+    if (IMAGE_EMBED_EXTENSIONS.test(name)) {
+      return '![' + name + '](' + target + ')';
+    }
+    return '[' + name + '](' + target + ')';
+  }
+
+  async function resolveDropContent(dataTransfer) {
+    if (!dataTransfer || !dataTransfer.files || dataTransfer.files.length === 0) return '';
+    if (!activeBoardId) return '';
+    var parts = [];
+    for (var i = 0; i < dataTransfer.files.length; i++) {
+      try {
+        var md = await uploadFileAndBuildMarkdown(dataTransfer.files[i]);
+        if (md) parts.push(md);
+      } catch (err) {
+        logFrontendIssue('error', 'editor.drop', 'Failed to upload dropped file', err);
+      }
+    }
+    return parts.join('\n');
+  }
+
+  async function handleEditorPasteImage(e, textarea) {
+    if (!e.clipboardData) return false;
+    var imageFile = null;
+    var items = e.clipboardData.items;
+    if (items) {
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image/') === 0) {
+          imageFile = items[i].getAsFile();
+          break;
+        }
+      }
+    }
+    if (!imageFile && e.clipboardData.files) {
+      for (var i = 0; i < e.clipboardData.files.length; i++) {
+        if (e.clipboardData.files[i].type.indexOf('image/') === 0) {
+          imageFile = e.clipboardData.files[i];
+          break;
+        }
+      }
+    }
+    if (!imageFile) return false;
+    if (!activeBoardId) return false;
+    e.preventDefault();
+    var fileName = buildPastedEmbedImageFileName(imageFile.name);
+    var namedFile = createBuiltInNamedFile(imageFile, fileName, imageFile.type || 'image/png');
+    try {
+      var md = await uploadFileAndBuildMarkdown(namedFile);
+      if (md) {
+        insertFormatting(textarea, { snippet: md });
+        textarea.focus();
+      }
+    } catch (err) {
+      logFrontendIssue('error', 'editor.paste', 'Failed to upload pasted image', err);
+    }
+    return true;
+  }
+
   async function handleFileDrop(files, targetEl) {
     if (!activeBoardId) return;
     // Find which column the drop target is in
@@ -26173,18 +26284,66 @@ const LexeraDashboard = (function () {
         { value: '63vh', label: '2/3 Screen' }, { value: '95vh', label: 'Full Screen' }
       ]
     });
+    // --- Named Layout Presets (save/load/delete) ---
+    var LAYOUT_PRESET_SETTINGS_KEYS = [
+      'columnWidth', 'whitespace', 'fontSize', 'fontFamily',
+      'layoutRows', 'rowHeight', 'cardMinHeight', 'stickyStackMode', 'layoutSpacing'
+    ];
+    var LAYOUT_PRESETS_STORAGE_KEY = 'lexera-layout-presets';
+
+    function getSavedLayoutPresets() {
+      try { return JSON.parse(localStorage.getItem(LAYOUT_PRESETS_STORAGE_KEY)) || {}; }
+      catch (_) { return {}; }
+    }
+
+    function saveLayoutPreset(name, settings) {
+      var presets = getSavedLayoutPresets();
+      presets[name] = settings;
+      localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    }
+
+    function deleteLayoutPreset(name) {
+      var presets = getSavedLayoutPresets();
+      delete presets[name];
+      localStorage.setItem(LAYOUT_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+    }
+
+    function captureCurrentLayoutSettings() {
+      var captured = {};
+      for (var i = 0; i < LAYOUT_PRESET_SETTINGS_KEYS.length; i++) {
+        var key = LAYOUT_PRESET_SETTINGS_KEYS[i];
+        captured[key] = getBoardSettingValue(key, null);
+      }
+      return captured;
+    }
+
+    function applyLayoutPresetSettings(settings) {
+      for (var i = 0; i < LAYOUT_PRESET_SETTINGS_KEYS.length; i++) {
+        var key = LAYOUT_PRESET_SETTINGS_KEYS[i];
+        setBoardSettingValue(key, settings[key] || null);
+      }
+    }
+
     BoardSettingRegistry.register({
       id: 'layoutPreset', label: 'Layout Preset', category: 'format',
       settingsKey: 'layoutPreset', actionPrefix: 'set-layout-preset', defaultValue: 'normal',
-      normalize: function (v) { var s = String(v || 'normal').toLowerCase(); return s === 'spacious' ? 'spacious' : 'normal'; },
+      normalize: function (v) { return String(v || 'normal').toLowerCase(); },
       handler: function (raw) {
         var v = String(raw || '').trim().toLowerCase();
         if (v === 'spacious') {
           setBoardSettingValue('layoutPreset', 'spacious');
           setBoardSettingValue('layoutSpacing', 'spacious');
-        } else {
+        } else if (v === 'normal' || !v) {
           setBoardSettingValue('layoutPreset', null);
           setBoardSettingValue('layoutSpacing', null);
+        } else {
+          // Custom saved preset
+          var presets = getSavedLayoutPresets();
+          if (presets[v]) {
+            applyLayoutPresetSettings(presets[v]);
+            setBoardSettingValue('layoutPreset', v);
+            showNotification('Layout preset: ' + v);
+          }
         }
       },
       options: [
@@ -26303,6 +26462,30 @@ const LexeraDashboard = (function () {
       var raw = action.substring('set-board-theme:'.length);
       var applied = applyVisualTheme(raw);
       showNotification('Visual theme: ' + ((applied && applied.name) || VISUAL_THEME_LABELS[raw] || raw));
+    });
+
+    // Layout preset save/delete actions
+    ActionRegistry.register('board', 'save-layout-preset', function () {
+      var name = window.prompt('Preset name');
+      if (!name) return;
+      name = name.trim();
+      if (!name || name === 'normal' || name === 'spacious') {
+        showNotification('Cannot use reserved preset name');
+        return;
+      }
+      saveLayoutPreset(name, captureCurrentLayoutSettings());
+      setBoardSettingValue('layoutPreset', name);
+      showNotification('Layout preset saved: ' + name);
+    });
+    ActionRegistry.register('board', 'delete-layout-preset:*', function (action) {
+      var name = action.substring('delete-layout-preset:'.length);
+      deleteLayoutPreset(name);
+      var current = getBoardSettingValue('layoutPreset', 'normal');
+      if (current === name) {
+        setBoardSettingValue('layoutPreset', null);
+        setBoardSettingValue('layoutSpacing', null);
+      }
+      showNotification('Layout preset deleted: ' + name);
     });
 
     // Feature toggles
@@ -26580,7 +26763,10 @@ const LexeraDashboard = (function () {
     MenuContributorRegistry.register({
       id: 'core-card-header', scopes: ['card'], priority: 5, section: 'header',
       build: function () {
-        return [{ id: 'add-card', label: 'Add card' }];
+        return [
+          { id: 'add-card', label: 'Add card' },
+          { id: 'insert-after', label: 'Add card after' }
+        ];
       }
     });
     // Card edit section
@@ -26609,10 +26795,17 @@ const LexeraDashboard = (function () {
         if (scope === 'column') return [
           { id: 'add-card', label: 'Add card' },
           { id: 'add-card-top', label: 'Add card at top' },
-          { id: 'paste-as-card', label: 'Paste as card' }
+          { id: 'paste-as-card', label: 'Paste as card' },
+          { id: 'add-after', label: 'Add column after' }
         ];
-        if (scope === 'row') return [{ id: 'add-stack', label: 'Add stack' }];
-        if (scope === 'stack') return [{ id: 'add-column', label: 'Add column' }];
+        if (scope === 'row') return [
+          { id: 'add-stack', label: 'Add stack' },
+          { id: 'add-row-after', label: 'Add row after' }
+        ];
+        if (scope === 'stack') return [
+          { id: 'add-column', label: 'Add column' },
+          { id: 'add-stack-after', label: 'Add stack after' }
+        ];
         return null;
       }
     });

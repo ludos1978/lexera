@@ -600,6 +600,7 @@ body.split-mode .layout > .main {
   width: 100%;
   min-width: 0;
   padding: 2px 4px;
+  font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -4068,7 +4069,7 @@ select.dialog-input option,
   background: transparent;
   border: none;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: inherit;
   font-family: inherit;
   line-height: 1.4;
   outline: none;
