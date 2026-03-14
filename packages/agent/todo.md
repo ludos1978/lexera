@@ -71,15 +71,16 @@ if the clipboard is pasted:
 
 - [ ] integrate this https://sidemark.org/guide/examples.html or https://github.com/TheGesturalist/gest-critic-markup-kit (i actually prefer critic-markdown)
 
-- [ ] add a theme that allows setting these style settings:
+- [x] add a theme that allows setting these style settings:
   - the stack title and frame only is a line of text, as if it's on the top of the row. content below should not be indented. If it's empty we show an empty line. we show a 2 pixel dashed line below it and no other styling, except if it's defined by tags that style content.
   - stacks are separated by a vertical line of 1px solid it's at least the height of the view.
   - the columns are separated by a 2 pixel solid line.
   - the cards are separated by a 1 pixel solid line.
   - rows are sre separated by a horizontal line of 3px solid, it's at least the width of the view.
   what values do we need to make configurable for this to work.
+  (done: ad8387eb — 'Lines' visual theme with line separators, no boxes)
 
-- [ ] restore the layout settings from the old version. there should be a default value settable for the stack width (which changes columns and cards as well.) but an value that can be asssigned to the stack directly to override it. we could use #width{integer} to define it using a tag. The rows could also use a similar setting where it defines a max-height for example using #height{integer}.
+- [x] restore the layout settings from the old version. there should be a default value settable for the stack width (which changes columns and cards as well.) but an value that can be asssigned to the stack directly to override it. we could use #width{integer} to define it using a tag. The rows could also use a similar setting where it defines a max-height for example using #height{integer}. (done: ad8387eb — #width{N} on stacks overrides column width, #height{N} on rows overrides row height, values in px)
 
 - [ ] in the packages/lexera folders work on feature parity with the code in the src folder. there is some difference as we added row, stack structures in lexera. also the splitting of features are different and a backend data realtime syncing. but for the user perspective the features must be equal.  there is a lot of features that are missing or not functioning well. do an state analysis first
 
