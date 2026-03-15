@@ -204,8 +204,8 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .build()?;
 
     let board_layout_sub = SubmenuBuilder::new(app, "Board Layout")
-        .item(&MenuItemBuilder::with_id("fmt-layout-structured", "Structured").build(app)?)
-        .item(&MenuItemBuilder::with_id("fmt-layout-canvas", "Open Canvas").build(app)?)
+        .item(&MenuItemBuilder::with_id("fmt-layout-kanban", "Kanban").build(app)?)
+        .item(&MenuItemBuilder::with_id("fmt-layout-canvas", "Canvas").build(app)?)
         .build()?;
 
     let layout_preset_sub = SubmenuBuilder::new(app, "Layout Preset")
@@ -418,7 +418,7 @@ const MENU_ACTION_MAP: &[(&str, &str)] = &[
     ("fmt-row-height-twothird", "set-row-height:63vh"),
     ("fmt-row-height-fullscreen", "set-row-height:95vh"),
     // Format – board layout
-    ("fmt-layout-structured", "set-board-layout:structured"),
+    ("fmt-layout-kanban", "set-board-layout:kanban"),
     ("fmt-layout-canvas", "set-board-layout:canvas"),
     // Format – layout preset
     ("fmt-preset-normal", "set-layout-preset:normal"),

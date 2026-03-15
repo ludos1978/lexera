@@ -177,6 +177,7 @@ function loadMutationHarness() {
     function lexeraLogWithTarget() {}
     function summarizeBoardHierarchy() { return ''; }
     function flushDeferredBoardRefresh() {}
+    function applyDefaultCanvasPlacementToStack(row, stack) { return stack; }
 
     // --- Pure helpers ---
     ${pureHelpers}

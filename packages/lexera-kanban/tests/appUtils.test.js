@@ -292,6 +292,10 @@ describe('stripLayoutTags', () => {
     expect(U.stripLayoutTags('Col #row2 #span3 #stack')).toBe('Col');
   });
 
+  it('removes canvas connection annotations from stack titles', () => {
+    expect(U.stripLayoutTags('System Map [#backend]{from:right, to:left} #planning')).toBe('System Map #planning');
+  });
+
   it('returns empty string for null/undefined input', () => {
     expect(U.stripLayoutTags(null)).toBe('');
     expect(U.stripLayoutTags(undefined)).toBe('');

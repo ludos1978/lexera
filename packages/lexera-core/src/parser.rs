@@ -1673,4 +1673,15 @@ kanban-plugin: board
         let md_out = generate_markdown(&board);
         assert!(md_out.contains("boardLayout: canvas"));
     }
+
+    #[test]
+    fn test_kanban_layout_setting_roundtrip() {
+        let md = "---\nkanban-plugin: board\nboardLayout: kanban\n---\n\n## Col\n- [ ] task\n";
+        let board = parse_markdown(md);
+        let settings = board.board_settings.as_ref().unwrap();
+        assert_eq!(settings.board_layout.as_deref(), Some("kanban"));
+
+        let md_out = generate_markdown(&board);
+        assert!(md_out.contains("boardLayout: kanban"));
+    }
 }

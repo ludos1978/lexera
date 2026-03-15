@@ -20,6 +20,7 @@ var elLogPanel = null;
 var elLogTabBackend = null;
 var elLogTabFrontend = null;
 var elLogRefreshBtn = null;
+var elLogCopyBtn = null;
 var elLogClearBtn = null;
 var elLogCloseBtn = null;
 
@@ -31,6 +32,7 @@ function getElLogPanel() { return elLogPanel || (elLogPanel = document.getElemen
 function getElLogTabBackend() { return elLogTabBackend || (elLogTabBackend = document.getElementById('log-tab-backend')); }
 function getElLogTabFrontend() { return elLogTabFrontend || (elLogTabFrontend = document.getElementById('log-tab-frontend')); }
 function getElLogRefreshBtn() { return elLogRefreshBtn || (elLogRefreshBtn = document.getElementById('log-refresh-btn')); }
+function getElLogCopyBtn() { return elLogCopyBtn || (elLogCopyBtn = document.getElementById('log-copy-btn')); }
 function getElLogClearBtn() { return elLogClearBtn || (elLogClearBtn = document.getElementById('log-clear-btn')); }
 function getElLogCloseBtn() { return elLogCloseBtn || (elLogCloseBtn = document.getElementById('log-close-btn')); }
 
@@ -488,6 +490,23 @@ document.addEventListener('DOMContentLoaded', function () {
     refreshBackendLogs();
   });
 
+  var copyBtn = getElLogCopyBtn();
+  if (copyBtn) copyBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var entries = getLogEntries(activeLogSource);
+    var text = entries.map(function (entry) {
+      var ts = formatLogTimestamp(entry);
+      var level = String(entry.level || '').toUpperCase();
+      var target = entry.target || activeLogSource;
+      return ts + ' ' + level + ' [' + target + '] ' + (entry.message || '');
+    }).join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(function () { copyBtn.textContent = 'Copy'; }, 1500);
+      });
+    }
+  });
   if (clearBtn) clearBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     replaceLogEntries(activeLogSource, []);
@@ -1120,8 +1139,30 @@ const LexeraDashboard = (function () {
     return ((cleanTitle ? cleanTitle + ' ' : '') + comments.join(' ')).trim();
   }
 
+  function normalizeBoardLayoutValue(value) {
+    var normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (normalized === 'canvas') return 'canvas';
+    return 'kanban';
+  }
+
+  function getCurrentBoardLayout() {
+    return normalizeBoardLayoutValue(getBoardSettingValue('boardLayout', 'kanban'));
+  }
+
+  function isCanvasBoardLayout() {
+    return getCurrentBoardLayout() === 'canvas';
+  }
+
+  function normalizeCanvasStackDirection(value) {
+    var normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (normalized === 'horizontal') normalized = 'row';
+    if (normalized === 'vertical') normalized = 'column';
+    return normalized === 'row' ? 'row' : 'column';
+  }
+
   function stripLayoutTags(title) {
     return stripHtmlComments(String(title || ''))
+      .replace(/\s*\[(#[^\]\s]+)\]\u007B[^\u007D]+\u007D/gi, '')
       .replace(/\s*#row\d*\b/gi, '')
       .replace(/\s*#span\d*\b/gi, '')
       .replace(/\s*#stack\b/gi, '')
@@ -1512,6 +1553,7 @@ const LexeraDashboard = (function () {
   }
 
   function setColumnChildrenFoldState(columnEl, folded) {
+    if (isCanvasBoardLayout()) return;
     if (!columnEl) return;
     var cards = columnEl.querySelectorAll('.card');
     for (var i = 0; i < cards.length; i++) {
@@ -1523,6 +1565,7 @@ const LexeraDashboard = (function () {
 
   function setRowChildrenFoldState(rowEl, folded) {
     if (!rowEl) return;
+    if (isCanvasBoardLayout()) return;
     var rowContent = rowEl.querySelector('.board-row-content');
     if (!rowContent) return;
     setDirectChildFoldState(rowContent, 'board-stack', folded);
@@ -1537,6 +1580,7 @@ const LexeraDashboard = (function () {
   }
 
   function setStackChildrenFoldState(stackEl, folded) {
+    if (isCanvasBoardLayout()) return;
     if (!stackEl) return;
     var stackContent = stackEl.querySelector('.board-stack-content');
     if (!stackContent) return;
@@ -1550,6 +1594,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleColumnFoldElement(columnEl, childrenOnly) {
+    if (isCanvasBoardLayout()) return false;
     if (!columnEl) return false;
     if (childrenOnly) {
       var anyCardExpanded = !!columnEl.querySelector('.card:not(.collapsed)');
@@ -1565,6 +1610,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleStackFoldElement(stackEl, childrenOnly) {
+    if (isCanvasBoardLayout()) return false;
     if (!stackEl) return false;
     if (childrenOnly) {
       var anyChildUnfolded = !!stackEl.querySelector('.column:not(.folded)');
@@ -1580,6 +1626,7 @@ const LexeraDashboard = (function () {
 
   function toggleRowFoldElement(rowEl, childrenOnly) {
     if (!rowEl) return false;
+    if (childrenOnly && isCanvasBoardLayout()) return false;
     if (childrenOnly) {
       var anyChildUnfolded = !!rowEl.querySelector('.board-stack:not(.folded)');
       setRowChildrenFoldState(rowEl, anyChildUnfolded);
@@ -5725,13 +5772,28 @@ const LexeraDashboard = (function () {
                   return !is_archived_or_deleted(c && c.content ? c.content : '');
                 });
                 var flatIdx = allCols.indexOf(col);
-                var visibleCol = { index: flatIdx, title: col.title, cards: cards };
+                var visibleCards = cards.map(function (card) {
+                  return {
+                    id: card.id,
+                    content: card.content,
+                    checked: !!card.checked,
+                    kid: card.kid,
+                    params: card.params || {}
+                  };
+                });
+                var visibleCol = {
+                  index: flatIdx,
+                  id: col.id,
+                  title: col.title,
+                  cards: visibleCards,
+                  params: col.params || {}
+                };
                 visibleColumns.push(visibleCol);
                 return visibleCol;
               });
             return { id: stack.id, title: stack.title, columns: cols, params: stack.params };
           });
-        return { id: row.id, title: row.title, stacks: stacks };
+        return { id: row.id, title: row.title, stacks: stacks, params: row.params || {} };
       });
 
     activeBoardData.columns = visibleColumns;
@@ -9229,6 +9291,7 @@ const LexeraDashboard = (function () {
   }
 
   function areAllCardsCollapsed() {
+    if (isCanvasBoardLayout()) return false;
     var cards = getElColumnsContainer().querySelectorAll('.card');
     if (cards.length === 0) return false;
     for (var i = 0; i < cards.length; i++) {
@@ -9238,6 +9301,7 @@ const LexeraDashboard = (function () {
   }
 
   function areAllColumnsFolded() {
+    if (isCanvasBoardLayout()) return false;
     var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key]');
     if (foldables.length === 0) return false;
     for (var i = 0; i < foldables.length; i++) {
@@ -9247,7 +9311,10 @@ const LexeraDashboard = (function () {
   }
 
   function areAllBoardItemsFolded() {
-    var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key], .board-row[data-fold-key], .board-stack[data-fold-key]');
+    var selector = isCanvasBoardLayout()
+      ? '.board-row[data-fold-key]'
+      : '.column[data-fold-key], .board-row[data-fold-key], .board-stack[data-fold-key]';
+    var foldables = getElColumnsContainer().querySelectorAll(selector);
     if (foldables.length === 0) return false;
     for (var i = 0; i < foldables.length; i++) {
       if (!foldables[i].classList.contains('folded')) return false;
@@ -9330,18 +9397,23 @@ const LexeraDashboard = (function () {
 
       var allColumnsFolded = areAllColumnsFolded();
       var allCardsCollapsed = areAllCardsCollapsed();
-      setHeaderActionLabel(
-        $foldAllBtn,
-        allColumnsFolded ? 'Unfold Columns' : 'Fold Columns',
-        allColumnsFolded ? BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsExpanded,
-        'Fold/unfold all columns'
-      );
-      setHeaderActionLabel(
-        $foldAllCardsBtn,
-        allCardsCollapsed ? 'Unfold Cards' : 'Fold Cards',
-        allCardsCollapsed ? BOARD_HEADER_V1_COMPACT_ICONS.foldCardsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldCardsExpanded,
-        'Collapse or expand all cards'
-      );
+      var isCanvasLayout = isCanvasBoardLayout();
+      if ($foldAllBtn) $foldAllBtn.style.display = isCanvasLayout ? 'none' : '';
+      if ($foldAllCardsBtn) $foldAllCardsBtn.style.display = isCanvasLayout ? 'none' : '';
+      if (!isCanvasLayout) {
+        setHeaderActionLabel(
+          $foldAllBtn,
+          allColumnsFolded ? 'Unfold Columns' : 'Fold Columns',
+          allColumnsFolded ? BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldColumnsExpanded,
+          'Fold/unfold all columns'
+        );
+        setHeaderActionLabel(
+          $foldAllCardsBtn,
+          allCardsCollapsed ? 'Unfold Cards' : 'Fold Cards',
+          allCardsCollapsed ? BOARD_HEADER_V1_COMPACT_ICONS.foldCardsCollapsed : BOARD_HEADER_V1_COMPACT_ICONS.foldCardsExpanded,
+          'Collapse or expand all cards'
+        );
+      }
 
       if ($pinHeadersBtn) {
         var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
@@ -9548,6 +9620,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleFoldAllColumns() {
+    if (isCanvasBoardLayout()) return;
     var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key]');
     if (foldables.length === 0) return;
     var allFolded = areAllColumnsFolded();
@@ -9560,6 +9633,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleFoldAllCards() {
+    if (isCanvasBoardLayout()) return;
     var cards = getElColumnsContainer().querySelectorAll('.card');
     if (cards.length === 0) return;
     var collapse = !areAllCardsCollapsed();
@@ -9616,6 +9690,7 @@ const LexeraDashboard = (function () {
     var stickyMode = normalizeStickyHeaderMode(getBoardSettingValue('stickyStackMode', ''));
     var allColumnsFolded = areAllColumnsFolded();
     var allCardsCollapsed = areAllCardsCollapsed();
+    var isCanvasLayout = isCanvasBoardLayout();
     var items = [
       { id: 'set-visual-theme', label: 'Visual Theme', items: buildSettingMenuItems('visualTheme') },
       { id: 'sidebar-hierarchy-display', label: 'Sidebar Hierarchy', items: buildSidebarHierarchyDisplayMenuItems() },
@@ -9627,15 +9702,20 @@ const LexeraDashboard = (function () {
       { id: 'set-font-size', label: 'Font Size', items: buildSettingMenuItems('fontSize') },
       { id: 'set-font-family', label: 'Font Family', items: buildSettingMenuItems('fontFamily') },
       { separator: true },
+      { id: 'set-board-layout', label: 'Board Layout', items: buildSettingMenuItems('boardLayout') },
       { id: 'set-layout-rows', label: 'Layout Rows', items: buildSettingMenuItems('layoutRows') },
       { id: 'set-row-height', label: 'Row Height', items: buildSettingMenuItems('rowHeight') },
       { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetMenuItems() },
-      { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
-      { id: allCardsCollapsed ? 'unfold-cards' : 'fold-cards', label: allCardsCollapsed ? 'Unfold All Cards' : 'Fold All Cards' },
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
       { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildSettingMenuItems('stickyHeaders') },
       { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildSettingMenuItems('arrowFocusScroll') },
     ];
+    if (!isCanvasLayout) {
+      items.splice(14, 0,
+        { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
+        { id: allCardsCollapsed ? 'unfold-cards' : 'fold-cards', label: allCardsCollapsed ? 'Unfold All Cards' : 'Fold All Cards' }
+      );
+    }
 
     showNativeMenu(items, x, y).then(function (action) {
       handleBoardAction(action);
@@ -9655,7 +9735,10 @@ const LexeraDashboard = (function () {
   }
 
   function toggleFoldAll() {
-    var foldables = getElColumnsContainer().querySelectorAll('.column[data-fold-key], .board-row[data-fold-key], .board-stack[data-fold-key]');
+    var selector = isCanvasBoardLayout()
+      ? '.board-row[data-fold-key]'
+      : '.column[data-fold-key], .board-row[data-fold-key], .board-stack[data-fold-key]';
+    var foldables = getElColumnsContainer().querySelectorAll(selector);
     var allFolded = areAllBoardItemsFolded();
     for (var i = 0; i < foldables.length; i++) {
       if (allFolded) {
@@ -11288,6 +11371,458 @@ const LexeraDashboard = (function () {
   });
 
   var $canvasZoom = 1;
+  var CANVAS_DEFAULT_STACK_X = 24;
+  var CANVAS_DEFAULT_STACK_Y = 24;
+  var CANVAS_DEFAULT_STACK_W = 300;
+  var CANVAS_DEFAULT_STACK_H = 220;
+  var CANVAS_STACK_SPACING = 28;
+  var CANVAS_ROW_PADDING = 40;
+  var CANVAS_MIN_ROW_WIDTH = 960;
+  var CANVAS_MIN_ROW_HEIGHT = 640;
+  var CANVAS_WRAP_WIDTH = 1600;
+
+  function parseCanvasLayoutNumber(value, fallback) {
+    var n = parseInt(value, 10);
+    return isFinite(n) ? n : fallback;
+  }
+
+  function parseCanvasParamMap(raw) {
+    var out = {};
+    var text = String(raw || '').trim();
+    if (!text) return out;
+    var parts = text.split(',');
+    for (var i = 0; i < parts.length; i++) {
+      var pair = String(parts[i] || '').trim();
+      if (!pair) continue;
+      var colon = pair.indexOf(':');
+      if (colon === -1) continue;
+      var key = pair.substring(0, colon).trim();
+      var value = pair.substring(colon + 1).trim();
+      if (!key) continue;
+      out[key] = value;
+    }
+    return out;
+  }
+
+  function extractCanvasConnectionSpecs(title) {
+    var out = [];
+    var text = stripHtmlComments(String(title || ''));
+    var connectionRe = /\[(#[^\]\s]+)\]\u007B([^\u007D]+)\u007D/gi;
+    var match;
+    while ((match = connectionRe.exec(text))) {
+      out.push({
+        targetTag: String(match[1] || '').toLowerCase(),
+        params: parseCanvasParamMap(match[2])
+      });
+    }
+    return out;
+  }
+
+  function extractCanvasStackTags(title) {
+    var cleanTitle = stripLayoutTags(title);
+    var tags = cleanTitle.match(/#[A-Za-z0-9._/-]+/g) || [];
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < tags.length; i++) {
+      var normalized = String(tags[i] || '').toLowerCase();
+      if (!normalized || seen[normalized]) continue;
+      seen[normalized] = true;
+      out.push(normalized);
+    }
+    return out;
+  }
+
+  function normalizeCanvasAnchorSide(value, fallback) {
+    var normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (normalized === 'l') normalized = 'left';
+    if (normalized === 'r') normalized = 'right';
+    if (normalized === 't') normalized = 'top';
+    if (normalized === 'b') normalized = 'bottom';
+    if (normalized === 'middle' || normalized === 'centre') normalized = 'center';
+    return normalized === 'left' || normalized === 'right' || normalized === 'top' || normalized === 'bottom' || normalized === 'center'
+      ? normalized
+      : fallback;
+  }
+
+  function parseCanvasAnchorOffset(value, size, start, center, end) {
+    if (value == null || value === '') return null;
+    var raw = String(value).trim().toLowerCase();
+    if (!raw) return null;
+    if (raw === 'start' || raw === 'left' || raw === 'top') return start;
+    if (raw === 'middle' || raw === 'center' || raw === 'centre') return center;
+    if (raw === 'end' || raw === 'right' || raw === 'bottom') return end;
+    if (/^-?\d+(\.\d+)?%$/.test(raw)) return (parseFloat(raw) / 100) * size;
+    var n = parseFloat(raw);
+    if (!isFinite(n)) return null;
+    if (n >= 0 && n <= 1) return n * size;
+    return n;
+  }
+
+  function getDefaultCanvasConnectionSide(sourceBox, targetBox, role) {
+    var sourceCenterX = sourceBox.x + sourceBox.w / 2;
+    var sourceCenterY = sourceBox.y + sourceBox.h / 2;
+    var targetCenterX = targetBox.x + targetBox.w / 2;
+    var targetCenterY = targetBox.y + targetBox.h / 2;
+    var dx = targetCenterX - sourceCenterX;
+    var dy = targetCenterY - sourceCenterY;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      if (role === 'source') return dx >= 0 ? 'right' : 'left';
+      return dx >= 0 ? 'left' : 'right';
+    }
+    if (role === 'source') return dy >= 0 ? 'bottom' : 'top';
+    return dy >= 0 ? 'top' : 'bottom';
+  }
+
+  function resolveCanvasConnectionAnchor(box, params, keys, fallbackSide) {
+    var side = normalizeCanvasAnchorSide(
+      params[keys.side] || params[keys.aliasSide] || params[keys.position],
+      fallbackSide || 'center'
+    );
+    var x = box.x + box.w / 2;
+    var y = box.y + box.h / 2;
+    if (side === 'left') x = box.x;
+    else if (side === 'right') x = box.x + box.w;
+    else if (side === 'top' || side === 'bottom') x = box.x + box.w / 2;
+    if (side === 'top') y = box.y;
+    else if (side === 'bottom') y = box.y + box.h;
+    else if (side === 'left' || side === 'right') y = box.y + box.h / 2;
+
+    var xOffset = parseCanvasAnchorOffset(params[keys.x], box.w, 0, box.w / 2, box.w);
+    var yOffset = parseCanvasAnchorOffset(params[keys.y], box.h, 0, box.h / 2, box.h);
+    if (xOffset != null) x = box.x + xOffset;
+    if (yOffset != null) y = box.y + yOffset;
+
+    return { x: x, y: y, side: side };
+  }
+
+  function getCanvasConnectionPath(sourceAnchor, targetAnchor) {
+    var sourceVector = sourceAnchor.side === 'left' ? { x: -1, y: 0 }
+      : sourceAnchor.side === 'right' ? { x: 1, y: 0 }
+      : sourceAnchor.side === 'top' ? { x: 0, y: -1 }
+      : sourceAnchor.side === 'bottom' ? { x: 0, y: 1 }
+      : { x: 0, y: 0 };
+    var targetVector = targetAnchor.side === 'left' ? { x: -1, y: 0 }
+      : targetAnchor.side === 'right' ? { x: 1, y: 0 }
+      : targetAnchor.side === 'top' ? { x: 0, y: -1 }
+      : targetAnchor.side === 'bottom' ? { x: 0, y: 1 }
+      : { x: 0, y: 0 };
+    var dx = targetAnchor.x - sourceAnchor.x;
+    var dy = targetAnchor.y - sourceAnchor.y;
+    var control = Math.max(40, Math.min(180, Math.max(Math.abs(dx), Math.abs(dy)) * 0.38));
+    var c1x = sourceAnchor.x + sourceVector.x * control;
+    var c1y = sourceAnchor.y + sourceVector.y * control;
+    var c2x = targetAnchor.x - targetVector.x * control;
+    var c2y = targetAnchor.y - targetVector.y * control;
+    return 'M ' + sourceAnchor.x + ' ' + sourceAnchor.y +
+      ' C ' + c1x + ' ' + c1y + ', ' + c2x + ' ' + c2y + ', ' + targetAnchor.x + ' ' + targetAnchor.y;
+  }
+
+  function getCanvasColumnWidthSpec(value) {
+    var raw = String(value == null ? '' : value).trim().toLowerCase();
+    if (!raw) return null;
+    if (/^-?\d+(\.\d+)?%$/.test(raw)) {
+      return { kind: 'percent', value: Math.max(0, parseFloat(raw)) };
+    }
+    var fractionMatch = raw.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+    if (fractionMatch) {
+      var numerator = parseFloat(fractionMatch[1]);
+      var denominator = parseFloat(fractionMatch[2]);
+      if (isFinite(numerator) && isFinite(denominator) && denominator > 0) {
+        return { kind: 'percent', value: Math.max(0, (numerator / denominator) * 100) };
+      }
+    }
+    var numeric = parseFloat(raw);
+    if (!isFinite(numeric) || numeric <= 0) return null;
+    if (numeric <= 1) return { kind: 'percent', value: numeric * 100 };
+    if (numeric <= 100) return { kind: 'percent', value: numeric };
+    return { kind: 'px', value: numeric };
+  }
+
+  function applyCanvasColumnLayout(colEl, col) {
+    if (!colEl) return;
+    var colParams = col && col.params ? col.params : {};
+    var widthSpec = getCanvasColumnWidthSpec(colParams.w);
+    colEl.style.flex = '1 1 100%';
+    colEl.style.maxWidth = '';
+    colEl.style.minWidth = '0';
+    colEl.removeAttribute('data-canvas-width-mode');
+    if (!widthSpec) return;
+    if (widthSpec.kind === 'percent') {
+      var widthValue = Math.max(0, Math.min(100, widthSpec.value));
+      var widthCss = widthValue.toFixed(4).replace(/\.?0+$/, '') + '%';
+      colEl.style.flex = '0 0 ' + widthCss;
+      colEl.style.maxWidth = widthCss;
+      colEl.setAttribute('data-canvas-width-mode', 'percent');
+      return;
+    }
+    colEl.style.flex = '0 0 ' + Math.round(widthSpec.value) + 'px';
+    colEl.style.maxWidth = Math.round(widthSpec.value) + 'px';
+    colEl.setAttribute('data-canvas-width-mode', 'fixed');
+  }
+
+  function isHorizontalCanvasStackElement(stackEl) {
+    return !!stackEl && isCanvasBoardLayout() && normalizeCanvasStackDirection(stackEl.getAttribute('data-stack-dir')) === 'row';
+  }
+
+  function getCanvasFallbackStackBox(stackIndex, width, height) {
+    width = Math.max(180, parseCanvasLayoutNumber(width, CANVAS_DEFAULT_STACK_W));
+    height = Math.max(120, parseCanvasLayoutNumber(height, CANVAS_DEFAULT_STACK_H));
+    return {
+      x: CANVAS_DEFAULT_STACK_X + (stackIndex % 4) * (width + CANVAS_STACK_SPACING),
+      y: CANVAS_DEFAULT_STACK_Y + Math.floor(stackIndex / 4) * (height + CANVAS_STACK_SPACING),
+      w: width,
+      h: height
+    };
+  }
+
+  function getCanvasStackLayoutBox(stack, stackIndex) {
+    var params = stack && stack.params ? stack.params : {};
+    var fallback = getCanvasFallbackStackBox(stackIndex, params.w, params.h);
+    return {
+      x: Math.max(0, parseCanvasLayoutNumber(params.x, fallback.x)),
+      y: Math.max(0, parseCanvasLayoutNumber(params.y, fallback.y)),
+      w: Math.max(180, parseCanvasLayoutNumber(params.w, fallback.w)),
+      h: Math.max(120, parseCanvasLayoutNumber(params.h, fallback.h))
+    };
+  }
+
+  function getNextCanvasStackPlacement(stacks) {
+    var items = Array.isArray(stacks) ? stacks : [];
+    if (items.length === 0) {
+      return { x: CANVAS_DEFAULT_STACK_X, y: CANVAS_DEFAULT_STACK_Y };
+    }
+    var maxRight = CANVAS_DEFAULT_STACK_X;
+    var maxBottom = CANVAS_DEFAULT_STACK_Y;
+    var anchorY = null;
+    for (var i = 0; i < items.length; i++) {
+      var box = getCanvasStackLayoutBox(items[i], i);
+      maxRight = Math.max(maxRight, box.x + box.w);
+      maxBottom = Math.max(maxBottom, box.y + box.h);
+      if (anchorY == null || box.y < anchorY) anchorY = box.y;
+    }
+    var next = {
+      x: maxRight + CANVAS_STACK_SPACING,
+      y: anchorY == null ? CANVAS_DEFAULT_STACK_Y : Math.max(0, anchorY)
+    };
+    if (next.x + CANVAS_DEFAULT_STACK_W > CANVAS_WRAP_WIDTH) {
+      next.x = CANVAS_DEFAULT_STACK_X;
+      next.y = maxBottom + CANVAS_STACK_SPACING;
+    }
+    return next;
+  }
+
+  function calculateCanvasBounds(stackMetrics, options) {
+    options = options || {};
+    var padding = Math.max(0, parseCanvasLayoutNumber(options.padding, CANVAS_ROW_PADDING));
+    var minWidth = Math.max(0, parseCanvasLayoutNumber(options.minWidth, CANVAS_MIN_ROW_WIDTH));
+    var minHeight = Math.max(0, parseCanvasLayoutNumber(options.minHeight, CANVAS_MIN_ROW_HEIGHT));
+    var metrics = Array.isArray(stackMetrics) ? stackMetrics : [];
+    var maxRight = padding;
+    var maxBottom = padding;
+    for (var i = 0; i < metrics.length; i++) {
+      var metric = metrics[i] || {};
+      var left = Math.max(0, parseCanvasLayoutNumber(metric.x, 0));
+      var top = Math.max(0, parseCanvasLayoutNumber(metric.y, 0));
+      var width = Math.max(0, parseCanvasLayoutNumber(metric.w, 0));
+      var height = Math.max(0, parseCanvasLayoutNumber(metric.h, 0));
+      maxRight = Math.max(maxRight, left + width + padding);
+      maxBottom = Math.max(maxBottom, top + height + padding);
+    }
+    return {
+      minWidth: Math.max(minWidth, maxRight),
+      minHeight: Math.max(minHeight, maxBottom)
+    };
+  }
+
+  function applyDefaultCanvasPlacementToStack(row, stack) {
+    if (!isCanvasBoardLayout() || !row || !stack) return stack;
+    if (!stack.params) stack.params = {};
+    if (stack.params.x != null || stack.params.y != null) return stack;
+    var placement = getNextCanvasStackPlacement(row.stacks || []);
+    stack.params.x = String(placement.x);
+    stack.params.y = String(placement.y);
+    return stack;
+  }
+
+  function syncCanvasRowConnections(rowContent) {
+    if (!rowContent || !rowContent.querySelectorAll) return;
+    var existingLayer = rowContent.querySelector(':scope > .canvas-connection-layer');
+    if (existingLayer) existingLayer.remove();
+
+    var stackEls = rowContent.querySelectorAll(':scope > .board-stack');
+    if (!stackEls.length) return;
+
+    var stackEntries = [];
+    var tagIndex = {};
+    for (var i = 0; i < stackEls.length; i++) {
+      var stackEl = stackEls[i];
+      var title = stackEl.getAttribute('data-stack-title') || '';
+      var box = {
+        x: parseCanvasLayoutNumber(stackEl.style.left, stackEl.offsetLeft || 0),
+        y: parseCanvasLayoutNumber(stackEl.style.top, stackEl.offsetTop || 0),
+        w: stackEl.offsetWidth || parseCanvasLayoutNumber(stackEl.style.width, CANVAS_DEFAULT_STACK_W),
+        h: stackEl.offsetHeight || parseCanvasLayoutNumber(stackEl.style.height, CANVAS_DEFAULT_STACK_H)
+      };
+      var entry = {
+        el: stackEl,
+        title: title,
+        box: box,
+        tags: extractCanvasStackTags(title)
+      };
+      stackEntries.push(entry);
+      for (var t = 0; t < entry.tags.length; t++) {
+        if (!tagIndex[entry.tags[t]]) tagIndex[entry.tags[t]] = entry;
+      }
+    }
+
+    var width = Math.max(
+      parseCanvasLayoutNumber(rowContent.style.minWidth, CANVAS_MIN_ROW_WIDTH),
+      rowContent.scrollWidth || 0,
+      rowContent.clientWidth || 0
+    );
+    var height = Math.max(
+      parseCanvasLayoutNumber(rowContent.style.minHeight, CANVAS_MIN_ROW_HEIGHT),
+      rowContent.scrollHeight || 0,
+      rowContent.clientHeight || 0
+    );
+    var svgNs = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNs, 'svg');
+    svg.setAttribute('class', 'canvas-connection-layer');
+    svg.setAttribute('width', String(width));
+    svg.setAttribute('height', String(height));
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    svg.setAttribute('aria-hidden', 'true');
+
+    var defs = document.createElementNS(svgNs, 'defs');
+    var marker = document.createElementNS(svgNs, 'marker');
+    marker.setAttribute('id', 'canvas-connection-arrow');
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '9');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '7');
+    marker.setAttribute('markerHeight', '7');
+    marker.setAttribute('orient', 'auto-start-reverse');
+    var markerPath = document.createElementNS(svgNs, 'path');
+    markerPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+    markerPath.setAttribute('fill', 'context-stroke');
+    marker.appendChild(markerPath);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    var hasPaths = false;
+    for (var s = 0; s < stackEntries.length; s++) {
+      var sourceEntry = stackEntries[s];
+      var specs = extractCanvasConnectionSpecs(sourceEntry.title);
+      for (var c = 0; c < specs.length; c++) {
+        var spec = specs[c];
+        var targetEntry = tagIndex[spec.targetTag];
+        if (!targetEntry || targetEntry === sourceEntry) continue;
+        var sourceFallbackSide = getDefaultCanvasConnectionSide(sourceEntry.box, targetEntry.box, 'source');
+        var targetFallbackSide = getDefaultCanvasConnectionSide(sourceEntry.box, targetEntry.box, 'target');
+        var sourceAnchor = resolveCanvasConnectionAnchor(sourceEntry.box, spec.params, {
+          side: 'source',
+          aliasSide: 'from',
+          position: 'sourcePosition',
+          x: spec.params.sourceX != null ? 'sourceX' : 'sx',
+          y: spec.params.sourceY != null ? 'sourceY' : 'sy'
+        }, sourceFallbackSide);
+        var targetAnchor = resolveCanvasConnectionAnchor(targetEntry.box, spec.params, {
+          side: 'target',
+          aliasSide: 'to',
+          position: 'targetPosition',
+          x: spec.params.targetX != null ? 'targetX' : 'tx',
+          y: spec.params.targetY != null ? 'targetY' : 'ty'
+        }, targetFallbackSide);
+        var path = document.createElementNS(svgNs, 'path');
+        path.setAttribute('class', 'canvas-connection-path');
+        path.setAttribute('d', getCanvasConnectionPath(sourceAnchor, targetAnchor));
+        path.setAttribute('marker-end', 'url(#canvas-connection-arrow)');
+        path.setAttribute('stroke', getTagColor(spec.targetTag));
+        svg.appendChild(path);
+        hasPaths = true;
+      }
+    }
+
+    if (!hasPaths) return;
+    rowContent.insertBefore(svg, rowContent.firstChild);
+  }
+
+  function syncCanvasRowBounds(root) {
+    if (!isCanvasBoardLayout()) return;
+    var container = root && typeof root.querySelectorAll === 'function' ? root : getElColumnsContainer();
+    if (!container || !container.querySelectorAll) return;
+    var rowContents = container.querySelectorAll('.board-row-content');
+    for (var i = 0; i < rowContents.length; i++) {
+      var rowContent = rowContents[i];
+      var stackEls = rowContent.querySelectorAll(':scope > .board-stack');
+      var metrics = [];
+      for (var s = 0; s < stackEls.length; s++) {
+        var stackEl = stackEls[s];
+        metrics.push({
+          x: parseCanvasLayoutNumber(stackEl.style.left, stackEl.offsetLeft || 0),
+          y: parseCanvasLayoutNumber(stackEl.style.top, stackEl.offsetTop || 0),
+          w: stackEl.offsetWidth || parseCanvasLayoutNumber(stackEl.style.width, CANVAS_DEFAULT_STACK_W),
+          h: stackEl.offsetHeight || parseCanvasLayoutNumber(stackEl.style.height, CANVAS_DEFAULT_STACK_H)
+        });
+      }
+      var bounds = calculateCanvasBounds(metrics);
+      rowContent.style.minWidth = bounds.minWidth + 'px';
+      rowContent.style.minHeight = bounds.minHeight + 'px';
+      syncCanvasRowConnections(rowContent);
+    }
+  }
+
+  function scheduleCanvasRowBoundsSync(root) {
+    var container = root && typeof root.querySelectorAll === 'function' ? root : getElColumnsContainer();
+    if (!container) return;
+    if (container.__canvasBoundsSyncScheduled) return;
+    container.__canvasBoundsSyncScheduled = true;
+    requestAnimationFrame(function () {
+      container.__canvasBoundsSyncScheduled = false;
+      if (!container.isConnected) return;
+      syncCanvasRowBounds(container);
+    });
+  }
+
+  function getCanvasRowContentMetrics(rowContent) {
+    var rect = rowContent.getBoundingClientRect();
+    var zoom = $canvasZoom || 1;
+    var styles = typeof getComputedStyle === 'function' ? getComputedStyle(rowContent) : null;
+    var borderLeft = styles ? parseFloat(styles.borderLeftWidth) || 0 : 0;
+    var borderTop = styles ? parseFloat(styles.borderTopWidth) || 0 : 0;
+    return {
+      rect: rect,
+      zoom: zoom,
+      originLeft: rect.left + (borderLeft * zoom),
+      originTop: rect.top + (borderTop * zoom)
+    };
+  }
+
+  function getCanvasPositionFromViewportPoint(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) {
+    if (!rowContent) return { x: 0, y: 0 };
+    var metrics = getCanvasRowContentMetrics(rowContent);
+    var result = {
+      x: Math.max(0, Math.round((clientX - metrics.originLeft - (grabOffsetX || 0)) / metrics.zoom)),
+      y: Math.max(0, Math.round((clientY - metrics.originTop - (grabOffsetY || 0)) / metrics.zoom))
+    };
+    console.log('[canvas-pos] viewportPoint→canvas:', {
+      clientX: clientX, clientY: clientY,
+      grabOffsetX: grabOffsetX, grabOffsetY: grabOffsetY,
+      zoom: metrics.zoom,
+      originLeft: metrics.originLeft, originTop: metrics.originTop,
+      resultX: result.x, resultY: result.y
+    });
+    return result;
+  }
+
+  function getCanvasPositionFromElementRect(rowContent, elementRect) {
+    if (!rowContent || !elementRect) return { x: 0, y: 0 };
+    var metrics = getCanvasRowContentMetrics(rowContent);
+    return {
+      x: Math.max(0, Math.round((elementRect.left - metrics.originLeft) / metrics.zoom)),
+      y: Math.max(0, Math.round((elementRect.top - metrics.originTop) / metrics.zoom))
+    };
+  }
 
   function applyCanvasZoom(zoom, localOriginX, localOriginY) {
     var container = getElColumnsContainer();
@@ -11322,7 +11857,7 @@ const LexeraDashboard = (function () {
     if (!target.closest('#board-header, #columns-container')) return;
     if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
     e.preventDefault();
-    if (getBoardSettingValue('boardLayout') === 'canvas') {
+    if (isCanvasBoardLayout()) {
       var container = getElColumnsContainer();
       var rect = container ? container.getBoundingClientRect() : null;
       // Convert screen-space mouse offset to local (unscaled) coordinates
@@ -11837,7 +12372,7 @@ const LexeraDashboard = (function () {
     if (currentArrowKeyFocusScrollMode !== 'disabled') getElColumnsContainer().classList.add('focus-scroll-mode');
     if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') getElColumnsContainer().classList.add('layout-spacious');
     if (s.layoutPreset) getElColumnsContainer().setAttribute('data-layout-preset', s.layoutPreset);
-    if (s.boardLayout === 'canvas') getElColumnsContainer().classList.add('layout-canvas');
+    if (normalizeBoardLayoutValue(s.boardLayout) === 'canvas') getElColumnsContainer().classList.add('layout-canvas');
 
     var boardColor = resolveActiveBoardColor(s);
     if (boardColor) getElColumnsContainer().style.setProperty('--board-color', boardColor);
@@ -11849,6 +12384,7 @@ const LexeraDashboard = (function () {
    * Build a single column element (header, cards, footer) — shared by both formats.
    */
   function buildColumnElement(col, foldedCols, collapsedCards, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
+    var isCanvasLayout = isCanvasBoardLayout();
     var displayTitle = stripLayoutTags(col.title);
     var colFoldKey = getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx);
 
@@ -11859,16 +12395,13 @@ const LexeraDashboard = (function () {
     if (typeof rowIdx === 'number') colEl.setAttribute('data-row-index', rowIdx.toString());
     if (typeof stackIdx === 'number') colEl.setAttribute('data-stack-index', stackIdx.toString());
     if (typeof colLocalIdx === 'number') colEl.setAttribute('data-col-local-index', colLocalIdx.toString());
-    if (hasSavedFoldMatch(foldedCols, colFoldKey, col.title)) {
+    if (!isCanvasLayout && hasSavedFoldMatch(foldedCols, colFoldKey, col.title)) {
       colEl.classList.add('folded');
     }
     var colLayout = getColumnLayoutTags(col.title);
     if (colLayout.wipLimit > 0 && col.cards.length > colLayout.wipLimit) {
       colEl.classList.add('wip-exceeded');
     }
-    // Canvas layout: apply column weight param
-    var colParams = col.params || {};
-    if (colParams.w) colEl.style.flex = '0 0 ' + colParams.w + 'px';
 
     // Check if column has include source
     var fullCol = getFullColumn(col.index);
@@ -11882,7 +12415,7 @@ const LexeraDashboard = (function () {
     var header = document.createElement('div');
     header.className = 'column-header';
     header.innerHTML =
-      '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>' +
+      (isCanvasLayout ? '' : '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>') +
       buildCreationEntityDragIconHtml('column', ['title="Drag to move column"']) +
       '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
       includeIndicator +
@@ -11908,10 +12441,13 @@ const LexeraDashboard = (function () {
         e.stopPropagation();
         toggleColumnFoldElement(columnEl, true);
       });
-      header.querySelector('.column-fold-btn').addEventListener('click', function (e) {
-        e.stopPropagation();
-        toggleColumnFoldElement(columnEl, !!e.altKey);
-      });
+      var foldBtn = header.querySelector('.column-fold-btn');
+      if (foldBtn) {
+        foldBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          toggleColumnFoldElement(columnEl, !!e.altKey);
+        });
+      }
       header.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -11945,7 +12481,7 @@ const LexeraDashboard = (function () {
       cardEl.setAttribute('data-card-index', j.toString());
       cardEl.setAttribute('data-card-id', cardId);
       if (card.kid) cardEl.setAttribute('data-card-kid', card.kid);
-      var isCollapsed = collapsedCards.indexOf(cardId) !== -1;
+      var isCollapsed = !isCanvasLayout && collapsedCards.indexOf(cardId) !== -1;
       if (isCollapsed) cardEl.classList.add('collapsed');
       // Canvas layout: apply card span param
       var cardParams = card.params || {};
@@ -11955,11 +12491,14 @@ const LexeraDashboard = (function () {
       var headerRow = document.createElement('div');
       headerRow.className = 'card-header';
 
-      var toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
-      toggle.textContent = '\u25B6';
-      headerRow.appendChild(toggle);
+      var toggle = null;
+      if (!isCanvasLayout) {
+        toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'card-collapse-toggle fold-btn' + (isCollapsed ? '' : ' expanded');
+        toggle.textContent = '\u25B6';
+        headerRow.appendChild(toggle);
+      }
 
       var dragHandle = document.createElement('div');
       dragHandle.className = 'card-drag-handle entity-drag-icon entity-drag-icon-card';
@@ -11974,33 +12513,35 @@ const LexeraDashboard = (function () {
       titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)));
       titleContainer.appendChild(titleDisplay);
       headerRow.appendChild(titleContainer);
-      (function (toggleEl, el) {
-        toggleEl.addEventListener('click', function (e) {
-          e.stopPropagation();
-          if (e.altKey) {
-            // Alt+click: fold/unfold all OTHER cards in the same column (not the clicked one)
-            var column = el.closest('.column');
-            if (column) {
-              var anyOtherExpanded = false;
-              var allCards = column.querySelectorAll('.card');
-              for (var ai = 0; ai < allCards.length; ai++) {
-                if (allCards[ai] === el) continue;
-                if (!allCards[ai].classList.contains('collapsed')) { anyOtherExpanded = true; break; }
+      if (toggle) {
+        (function (toggleEl, el) {
+          toggleEl.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (e.altKey) {
+              // Alt+click: fold/unfold all OTHER cards in the same column (not the clicked one)
+              var column = el.closest('.column');
+              if (column) {
+                var anyOtherExpanded = false;
+                var allCards = column.querySelectorAll('.card');
+                for (var ai = 0; ai < allCards.length; ai++) {
+                  if (allCards[ai] === el) continue;
+                  if (!allCards[ai].classList.contains('collapsed')) { anyOtherExpanded = true; break; }
+                }
+                for (var ai = 0; ai < allCards.length; ai++) {
+                  if (allCards[ai] === el) continue;
+                  allCards[ai].classList.toggle('collapsed', anyOtherExpanded);
+                  var t = allCards[ai].querySelector('.card-collapse-toggle');
+                  if (t) t.classList.toggle('expanded', !anyOtherExpanded);
+                }
               }
-              for (var ai = 0; ai < allCards.length; ai++) {
-                if (allCards[ai] === el) continue;
-                allCards[ai].classList.toggle('collapsed', anyOtherExpanded);
-                var t = allCards[ai].querySelector('.card-collapse-toggle');
-                if (t) t.classList.toggle('expanded', !anyOtherExpanded);
-              }
+            } else {
+              el.classList.toggle('collapsed');
+              toggleEl.classList.toggle('expanded');
             }
-          } else {
-            el.classList.toggle('collapsed');
-            toggleEl.classList.toggle('expanded');
-          }
-          saveCardCollapseState(activeBoardId);
-        });
-      })(toggle, cardEl);
+            saveCardCollapseState(activeBoardId);
+          });
+        })(toggle, cardEl);
+      }
 
       var cardDueDate = extractFirstTemporalDateValue(card.content || '');
       if (cardDueDate) {
@@ -12129,9 +12670,17 @@ const LexeraDashboard = (function () {
 
     getElColumnsContainer().classList.add('new-format');
     renderNewFormatBoard();
-    clearLayoutLockStyles();
-    syncRenderedRowWidths();
-    requestAnimationFrame(syncRenderedRowWidths);
+    var isCanvas = isCanvasBoardLayout();
+    if (isCanvas) {
+      syncCanvasRowBounds(getElColumnsContainer());
+      requestAnimationFrame(function () {
+        syncCanvasRowBounds(getElColumnsContainer());
+      });
+    } else {
+      clearLayoutLockStyles();
+      syncRenderedRowWidths();
+      requestAnimationFrame(syncRenderedRowWidths);
+    }
 
     enhanceEmbeddedContent(getElColumnsContainer());
     applyRenderedHtmlCommentVisibility(getElColumnsContainer(), currentHtmlCommentRenderMode);
@@ -12153,11 +12702,11 @@ const LexeraDashboard = (function () {
    */
   function renderNewFormatBoard() {
     var rows = activeBoardData.rows;
-    var isCanvasLayout = getBoardSettingValue('boardLayout') === 'canvas';
+    var isCanvasLayout = isCanvasBoardLayout();
     var foldedCols = getFoldedColumns(activeBoardId);
     var foldedRows = getFoldedItems(activeBoardId, 'row');
     var foldedStacks = getFoldedItems(activeBoardId, 'stack');
-    var collapsedCards = getCollapsedCards(activeBoardId, rows);
+    var collapsedCards = isCanvasLayout ? [] : getCollapsedCards(activeBoardId, rows);
 
     if (!rows || rows.length === 0) {
       var emptyRows = document.createElement('div');
@@ -12260,30 +12809,23 @@ const LexeraDashboard = (function () {
         stackEl.setAttribute('data-stack-index', s.toString());
         var stackColumnEntries = getDisplayOrderedColumnEntries(stack.columns || []);
         var isEmptyStack = stackColumnEntries.length === 0;
-        if (hasSavedFoldMatch(foldedStacks, stackFoldKey, stack.title)) {
+        if (!isCanvasLayout && hasSavedFoldMatch(foldedStacks, stackFoldKey, stack.title)) {
           stackEl.classList.add('folded');
         }
         var stackWidthTag = getElementSizeTag(stack.title, 'width');
-        if (stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
+        if (!isCanvasLayout && stackWidthTag > 0) stackEl.style.setProperty('--board-column-width', stackWidthTag + 'px');
 
         // Canvas layout: apply position/size params (canvas-only)
         var stackParams = stack.params || {};
         if (isCanvasLayout) {
-          if (stackParams.x) {
-            stackEl.style.left = stackParams.x + 'px';
-          } else {
-            stackEl.style.left = (20 + (s % 4) * 320) + 'px';
-          }
-          if (stackParams.y) {
-            stackEl.style.top = stackParams.y + 'px';
-          } else {
-            stackEl.style.top = (20 + Math.floor(s / 4) * 300) + 'px';
-          }
-          if (stackParams.w) stackEl.style.width = stackParams.w + 'px';
-          if (stackParams.h) stackEl.style.height = stackParams.h + 'px';
+          var canvasBox = getCanvasStackLayoutBox(stack, s);
+          stackEl.style.left = canvasBox.x + 'px';
+          stackEl.style.top = canvasBox.y + 'px';
+          stackEl.style.width = canvasBox.w + 'px';
+          stackEl.style.height = canvasBox.h + 'px';
+          stackEl.style.zIndex = String(10 + s);
+          stackEl.setAttribute('data-stack-dir', normalizeCanvasStackDirection(stackParams.dir));
         }
-        // dir param applies in all layout modes
-        if (stackParams.dir) stackEl.setAttribute('data-stack-dir', stackParams.dir);
 
         // Canvas mode: persist resize when user drags the CSS resize handle
         if (isCanvasLayout) {
@@ -12295,6 +12837,7 @@ const LexeraDashboard = (function () {
               if (!entry) return;
               var newW = Math.round(entry.contentRect.width);
               var newH = Math.round(entry.contentRect.height);
+              scheduleCanvasRowBoundsSync(getElColumnsContainer());
               clearTimeout(resizeTimer);
               resizeTimer = setTimeout(function () {
                 var fullStack = findFullDataStack(rIdx, sIdx);
@@ -12319,7 +12862,7 @@ const LexeraDashboard = (function () {
         var stackColCount = stackColumnEntries.length;
         var stackDisplayTitle = stripLayoutTags(stack.title || '');
         stackHeader.innerHTML =
-          '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>' +
+          (isCanvasLayout ? '' : '<button class="stack-fold-btn fold-btn" title="Fold stack">\u25B6</button>') +
           buildCreationEntityDragIconHtml('stack', ['title="Drag to move stack"']) +
           '<span class="board-stack-title">' + (stackDisplayTitle ? escapeHtml(stackDisplayTitle.length > 40 ? stackDisplayTitle.slice(0, 40) + '\u2026' : stackDisplayTitle) : '&nbsp;') + '</span>' +
           '<span class="board-stack-count">' + stackColCount + '</span>' +
@@ -12342,10 +12885,13 @@ const LexeraDashboard = (function () {
             e.stopPropagation();
             toggleStackFoldElement(el, true);
           });
-          stackHeader.querySelector('.stack-fold-btn').addEventListener('click', function (e) {
-            e.stopPropagation();
-            toggleStackFoldElement(el, !!e.altKey);
-          });
+          var foldBtn = stackHeader.querySelector('.stack-fold-btn');
+          if (foldBtn) {
+            foldBtn.addEventListener('click', function (e) {
+              e.stopPropagation();
+              toggleStackFoldElement(el, !!e.altKey);
+            });
+          }
           stackHeader.querySelector('.stack-menu-btn').addEventListener('click', function (e) {
             e.stopPropagation();
             var rect = this.getBoundingClientRect();
@@ -12378,6 +12924,7 @@ const LexeraDashboard = (function () {
         for (var c = 0; c < stackColumnEntries.length; c++) {
           var col = stackColumnEntries[c].col;
           var colEl = buildColumnElement(col, foldedCols, collapsedCards, r, s, c, stackColumnEntries[c].fullIndex);
+          if (isCanvasLayout) applyCanvasColumnLayout(colEl, col);
           // Column drag via grip is handled by the pointer-based drag system
           // Column DnD handled by the pointer-based drag system
           stackContent.appendChild(colEl);
@@ -12470,6 +13017,7 @@ const LexeraDashboard = (function () {
       title: '',
       columns: [moved]
     };
+    applyDefaultCanvasPlacementToStack(toRow, newStack);
     if (insertAtStackIdx != null) {
       // insertAtStackIdx is a display index — convert to fullBoardData index
       var fullInsertAt = findInsertStackIndexInRow(toRow, toRowIdx, insertAtStackIdx);
@@ -12775,6 +13323,7 @@ const LexeraDashboard = (function () {
 
     if (!rowInfo.row.stacks) rowInfo.row.stacks = [];
     var stack = createUnnamedStackForMutation([]);
+    applyDefaultCanvasPlacementToStack(rowInfo.row, stack);
     var insertAt = rowInfo.row.stacks.length;
     if (typeof target.insertAtStackIdx === 'number') {
       if ((target.indexMode || (boardId === activeBoardId ? 'display' : 'full')) === 'display' && boardId === activeBoardId) {
@@ -13348,6 +13897,7 @@ const LexeraDashboard = (function () {
       title: 'New Row',
       stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [card] }] }]
     };
+    applyDefaultCanvasPlacementToStack(newRow, newRow.stacks[0]);
     var insertAt = (typeof atIndex === 'number' && !isNaN(atIndex)) ? findInsertRowIndex(atIndex) : fullBoardData.rows.length;
     if (insertAt < 0) insertAt = 0;
     if (insertAt > fullBoardData.rows.length) insertAt = fullBoardData.rows.length;
@@ -13369,11 +13919,13 @@ const LexeraDashboard = (function () {
     }
     if (insertAt < 0) insertAt = 0;
     if (insertAt > row.stacks.length) insertAt = row.stacks.length;
-    row.stacks.splice(insertAt, 0, {
+    var newStack = {
       id: 'stack-' + ts,
       title: 'New Stack',
       columns: [{ id: 'col-' + ts, title: 'New Column', cards: [card] }]
-    });
+    };
+    applyDefaultCanvasPlacementToStack(row, newStack);
+    row.stacks.splice(insertAt, 0, newStack);
     await persistBoardMutation({ refreshSidebar: true });
   }
 
@@ -13419,6 +13971,7 @@ const LexeraDashboard = (function () {
     }
     if (insertAt < 0) insertAt = 0;
     if (insertAt > row.stacks.length) insertAt = row.stacks.length;
+    applyDefaultCanvasPlacementToStack(row, stack);
     row.stacks.splice(insertAt, 0, stack);
     await persistBoardMutation({ refreshSidebar: true });
   }
@@ -13451,6 +14004,7 @@ const LexeraDashboard = (function () {
       title: 'New Row',
       stacks: [{ id: 'stack-' + ts, title: 'Default', columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }] }]
     };
+    applyDefaultCanvasPlacementToStack(newRow, newRow.stacks[0]);
     var insertAt;
     if (typeof atIndex !== 'number' || isNaN(atIndex)) {
       insertAt = fullBoardData.rows.length;
@@ -13554,6 +14108,7 @@ const LexeraDashboard = (function () {
       title: 'New Stack',
       columns: [{ id: 'col-' + ts, title: 'New Column', cards: [] }]
     };
+    applyDefaultCanvasPlacementToStack(row, newStack);
     var insertAt = row.stacks.length;
     if (typeof atStackIdx === 'number' && !isNaN(atStackIdx)) {
       // atStackIdx is a display index — convert to fullBoardData index
@@ -15078,6 +15633,18 @@ const LexeraDashboard = (function () {
       var rowIdx = parseInt(stackEl.getAttribute('data-row-index'), 10);
       var stackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       var stackRect = stackEl.getBoundingClientRect();
+      var rowContentEl = stackEl.closest('.board-row-content');
+      var rowContentRect = rowContentEl ? rowContentEl.getBoundingClientRect() : null;
+      console.log('[canvas-drag] GRAB start:', { clientX: e.clientX, clientY: e.clientY,
+        stackRect: { left: stackRect.left, top: stackRect.top, width: stackRect.width, height: stackRect.height },
+        grabOffsetX: e.clientX - stackRect.left, grabOffsetY: e.clientY - stackRect.top, zoom: $canvasZoom,
+        styleLeft: stackEl.style.left, styleTop: stackEl.style.top,
+        offsetLeft: stackEl.offsetLeft, offsetTop: stackEl.offsetTop,
+        rowContentTop: rowContentRect ? rowContentRect.top : null,
+        rowContentScrollTop: rowContentEl ? rowContentEl.scrollTop : null,
+        parentScrollTop: rowContentEl && rowContentEl.parentElement ? rowContentEl.parentElement.scrollTop : null,
+        containerScrollTop: getElColumnsContainer() ? getElColumnsContainer().scrollTop : null
+      });
       ptrDrag = { type: 'board-stack', source: { type: 'board-stack', boardId: activeBoardId, rowIndex: rowIdx, stackIndex: stackIdx, indexMode: 'display' }, startX: e.clientX, startY: e.clientY, startTopX: null, startTopY: null, started: false, ghost: null, el: stackEl, grabOffsetX: e.clientX - stackRect.left, grabOffsetY: e.clientY - stackRect.top };
       var stackStartTop = toTopFramePoint(window, e.clientX, e.clientY);
       if (stackStartTop) {
@@ -15142,22 +15709,19 @@ const LexeraDashboard = (function () {
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       ptrDrag.started = true;
       // Canvas mode: free-position stack drag (no ghost, no drop targets)
-      if (ptrDrag.type === 'board-stack' && getBoardSettingValue('boardLayout') === 'canvas') {
+      if (ptrDrag.type === 'board-stack' && isCanvasBoardLayout()) {
         ptrDrag.canvasMove = true;
         ptrDrag.el.classList.add('dragging');
-        // Convert from relative flow to absolute positioning before moving
-        var canvasParent = ptrDrag.el.closest('.board-row-content');
-        if (canvasParent) {
-          var parentRect = canvasParent.getBoundingClientRect();
-          var elRect = ptrDrag.el.getBoundingClientRect();
-          // getBoundingClientRect returns screen-space coords (scaled by transform),
-          // but style.left/top are in the element's local (unscaled) space
-          var z = $canvasZoom || 1;
-          ptrDrag.el.style.position = 'absolute';
-          ptrDrag.el.style.left = Math.round((elRect.left - parentRect.left) / z) + 'px';
-          ptrDrag.el.style.top = Math.round((elRect.top - parentRect.top) / z) + 'px';
-          ptrDrag.el.style.width = Math.round(elRect.width / z) + 'px';
-        }
+        // Derive the correct canvas origin from the stack's known CSS position vs its
+        // viewport rect. This avoids the broken rowContent.getBoundingClientRect() origin
+        // which is offset by scroll/layout in the Y axis.
+        var initRect = ptrDrag.el.getBoundingClientRect();
+        var initCanvasLeft = parseFloat(ptrDrag.el.style.left) || 0;
+        var initCanvasTop = parseFloat(ptrDrag.el.style.top) || 0;
+        var initZoom = $canvasZoom || 1;
+        ptrDrag.canvasOriginX = initRect.left - initCanvasLeft * initZoom;
+        ptrDrag.canvasOriginY = initRect.top - initCanvasTop * initZoom;
+        ptrDrag.el.style.pointerEvents = 'none';
         ptrDrag.el.style.zIndex = '100';
         var sel = window.getSelection();
         if (sel) sel.removeAllRanges();
@@ -15195,18 +15759,53 @@ const LexeraDashboard = (function () {
       if (sel) sel.removeAllRanges();
     }
 
-    // Canvas mode: move stack element directly instead of ghost + drop targets
+    // Canvas mode: move stack element directly
     if (ptrDrag.canvasMove) {
-      var canvasRowContent = ptrDrag.el.closest('.board-row-content');
-      if (canvasRowContent) {
-        var canvasRect = canvasRowContent.getBoundingClientRect();
-        // Screen-space offset divided by zoom to get local coordinates
-        var z = $canvasZoom || 1;
-        var canvasX = Math.max(0, Math.round((e.clientX - canvasRect.left - ptrDrag.grabOffsetX) / z));
-        var canvasY = Math.max(0, Math.round((e.clientY - canvasRect.top - ptrDrag.grabOffsetY) / z));
-        ptrDrag.el.style.left = canvasX + 'px';
-        ptrDrag.el.style.top = canvasY + 'px';
+      clearPtrDropIndicators();
+      var canvasHeaderTag = resolveHeaderDropTag(e.clientX, e.clientY);
+      if (canvasHeaderTag) {
+        var canvasHeaderBtnId = canvasHeaderTag === '#hidden-internal-incoming' ? 'btn-incoming'
+          : canvasHeaderTag === '#hidden-internal-parked' ? 'btn-parked'
+          : canvasHeaderTag === '#hidden-internal-archived' ? 'btn-archived' : 'btn-trash';
+        var canvasHeaderBtn = document.getElementById(canvasHeaderBtnId);
+      if (canvasHeaderBtn) canvasHeaderBtn.classList.add('drop-target');
+      } else {
+        var canvasRowTarget = resolveCanvasRowContentDropTarget(e.clientX, e.clientY);
+        if (canvasRowTarget && canvasRowTarget.node) canvasRowTarget.node.classList.add('drop-target');
       }
+
+      // Auto-scroll when mouse is near the edge of the scroll container
+      var scrollContainer = getElColumnsContainer();
+      if (scrollContainer) {
+        var scrollRect = scrollContainer.getBoundingClientRect();
+        var edgeZone = 40;
+        var scrollSpeed = 12;
+        var prevScrollTop = scrollContainer.scrollTop;
+        var prevScrollLeft = scrollContainer.scrollLeft;
+        if (e.clientY < scrollRect.top + edgeZone) {
+          scrollContainer.scrollTop -= scrollSpeed;
+        } else if (e.clientY > scrollRect.bottom - edgeZone) {
+          scrollContainer.scrollTop += scrollSpeed;
+        }
+        if (e.clientX < scrollRect.left + edgeZone) {
+          scrollContainer.scrollLeft -= scrollSpeed;
+        } else if (e.clientX > scrollRect.right - edgeZone) {
+          scrollContainer.scrollLeft += scrollSpeed;
+        }
+        // Adjust origin by actual scroll delta (handles edge clamping + correct direction)
+        var actualScrollDY = scrollContainer.scrollTop - prevScrollTop;
+        var actualScrollDX = scrollContainer.scrollLeft - prevScrollLeft;
+        ptrDrag.canvasOriginY -= actualScrollDY;
+        ptrDrag.canvasOriginX -= actualScrollDX;
+      }
+
+      // Position from correct canvas origin (derived from stack's own rect at drag start)
+      var zoom = $canvasZoom || 1;
+      var newCanvasX = Math.max(0, Math.round((e.clientX - ptrDrag.canvasOriginX - ptrDrag.grabOffsetX) / zoom));
+      var newCanvasY = Math.max(0, Math.round((e.clientY - ptrDrag.canvasOriginY - ptrDrag.grabOffsetY) / zoom));
+      ptrDrag.el.style.left = newCanvasX + 'px';
+      ptrDrag.el.style.top = newCanvasY + 'px';
+      scheduleCanvasRowBoundsSync(getElColumnsContainer());
       return;
     }
 
@@ -15447,6 +16046,27 @@ const LexeraDashboard = (function () {
     return null;
   }
 
+  function resolveCanvasRowContentDropTarget(mx, my) {
+    if (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function') {
+      var hit = document.elementFromPoint(mx, my);
+      var rowContent = hit && typeof hit.closest === 'function' ? hit.closest('.board-row-content') : null;
+      if (rowContent) {
+        var rowNode = rowContent.closest('.board-row');
+        var rowIndex = rowNode ? parseInt(rowNode.getAttribute('data-row-index'), 10) : NaN;
+        if (!isNaN(rowIndex)) {
+          return {
+            node: rowNode,
+            contentNode: rowContent,
+            boardId: activeBoardId,
+            rowIndex: rowIndex,
+            indexMode: 'display'
+          };
+        }
+      }
+    }
+    return resolveRowBodyDropTarget(mx, my);
+  }
+
   function getStackDropTarget(mx, my) {
     var boardTarget = ptrFindDropTarget(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, false);
     if (boardTarget) {
@@ -15592,24 +16212,74 @@ const LexeraDashboard = (function () {
     return false;
   }
 
-  function applyCanvasStackDrop(source) {
-    if (!source || !ptrDrag || !ptrDrag.el) return;
-    var stackEl = ptrDrag.el;
-    var rowContent = stackEl.closest('.board-row-content');
-    if (!rowContent) return;
-    var newX = parseInt(stackEl.style.left, 10) || 0;
-    var newY = parseInt(stackEl.style.top, 10) || 0;
-    var stack = findFullDataStack(source.rowIndex, source.stackIndex);
-    if (!stack) return;
-    pushUndo();
-    if (!stack.params) stack.params = {};
-    stack.params.x = String(newX);
-    stack.params.y = String(newY);
-    // Clean up temporary drag styles; persistBoardMutation re-renders with params
+  function getCanvasDropPositionInRowContent(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) {
+    return getCanvasPositionFromViewportPoint(rowContent, clientX, clientY, grabOffsetX, grabOffsetY);
+  }
+
+  function clearCanvasDragStyles(stackEl) {
+    if (!stackEl) return;
     stackEl.style.zIndex = '';
     stackEl.style.width = '';
     stackEl.style.position = '';
-    persistBoardMutation();
+    stackEl.style.pointerEvents = '';
+  }
+
+  function applyCanvasStackDrop(source, mx, my) {
+    if (!source || !ptrDrag || !ptrDrag.el) return false;
+    var stackEl = ptrDrag.el;
+    var sourceRow = findFullDataRow(source.rowIndex);
+    var sourceStack = findFullDataStack(source.rowIndex, source.stackIndex);
+    if (!sourceRow || !sourceStack) return false;
+
+    // Compute final canvas position from correct origin (same formula as mousemove)
+    var zoom = $canvasZoom || 1;
+    var newX = Math.max(0, Math.round((mx - ptrDrag.canvasOriginX - ptrDrag.grabOffsetX) / zoom));
+    var newY = Math.max(0, Math.round((my - ptrDrag.canvasOriginY - ptrDrag.grabOffsetY) / zoom));
+
+    // Check if dropped on a different row
+    var targetRow = sourceRow;
+    var targetRowTarget = resolveCanvasRowContentDropTarget(mx, my);
+    if (
+      targetRowTarget &&
+      targetRowTarget.boardId === activeBoardId &&
+      targetRowTarget.indexMode === 'display'
+    ) {
+      var resolvedTargetRow = findFullDataRow(targetRowTarget.rowIndex);
+      if (resolvedTargetRow) {
+        targetRow = resolvedTargetRow;
+      }
+    }
+
+    pushUndo();
+    if (targetRow !== sourceRow) {
+      var sourceFullStackIdx = findFullDataStackIndex(sourceRow, source.rowIndex, source.stackIndex);
+      if (sourceFullStackIdx === -1) {
+        clearCanvasDragStyles(stackEl);
+        return false;
+      }
+      var movedStack = sourceRow.stacks.splice(sourceFullStackIdx, 1)[0];
+      if (!movedStack) {
+        clearCanvasDragStyles(stackEl);
+        return false;
+      }
+      if (!movedStack.params) movedStack.params = {};
+      movedStack.params.x = String(newX);
+      movedStack.params.y = String(newY);
+      if (!Array.isArray(targetRow.stacks)) targetRow.stacks = [];
+      targetRow.stacks.push(movedStack);
+      removeEmptyStacksAndRows();
+      clearCanvasDragStyles(stackEl);
+      persistBoardMutation({ refreshSidebar: true });
+      return true;
+    }
+    if (!sourceStack.params) sourceStack.params = {};
+    console.log('[canvas-drop] PLACED at canvas coords:', { newX: newX, newY: newY,
+      stackTitle: sourceStack.title, prevX: sourceStack.params.x, prevY: sourceStack.params.y });
+    sourceStack.params.x = String(newX);
+    sourceStack.params.y = String(newY);
+    clearCanvasDragStyles(stackEl);
+    persistBoardMutation({ refreshSidebar: true });
+    return true;
   }
 
   function getTreeColumnDropTarget(mx, my) {
@@ -15747,10 +16417,19 @@ const LexeraDashboard = (function () {
     var column = findDraggableColumnAt(mx, my);
     if (column) {
       var colRect = column.getBoundingClientRect();
-      if (my < colRect.top + colRect.height / 2) {
-        column.classList.add('drag-over-top');
+      var stackEl = column.closest('.board-stack');
+      if (isHorizontalCanvasStackElement(stackEl)) {
+        if (mx < colRect.left + colRect.width / 2) {
+          column.classList.add('drag-over-left');
+        } else {
+          column.classList.add('drag-over-right');
+        }
       } else {
-        column.classList.add('drag-over-bottom');
+        if (my < colRect.top + colRect.height / 2) {
+          column.classList.add('drag-over-top');
+        } else {
+          column.classList.add('drag-over-bottom');
+        }
       }
       return true;
     }
@@ -15767,7 +16446,7 @@ const LexeraDashboard = (function () {
     removeClassesFromNodeList(getElBoardList().querySelectorAll('.board-item'), ['drag-over-top', 'drag-over-bottom']);
     removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-row'), ['drag-over-top', 'drag-over-bottom', 'drop-target']);
     removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.board-stack'), ['drag-over-left', 'drag-over-right', 'column-drop-target']);
-    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom']);
+    removeClassesFromNodeList(getElColumnsContainer().querySelectorAll('.column'), ['drag-over-top', 'drag-over-bottom', 'drag-over-left', 'drag-over-right']);
     removeClassFromNodeList(getElColumnsContainer().querySelectorAll('.stack-drop-zone'), 'active');
     removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-children.tree-stack-drop-zone.tree-drop-stack-target'), 'tree-drop-stack-target');
     removeClassFromNodeList(getElBoardList().querySelectorAll('.tree-node.drop-target'), 'drop-target');
@@ -15832,7 +16511,7 @@ const LexeraDashboard = (function () {
       applyRowDropByPoint(src, mx, my);
     } else if (type === 'tree-stack' || type === 'board-stack') {
       if (ptrDrag.canvasMove) {
-        applyCanvasStackDrop(src);
+        applyCanvasStackDrop(src, mx, my);
       } else {
         applyStackDropByPoint(src, mx, my);
       }
@@ -15902,7 +16581,9 @@ const LexeraDashboard = (function () {
       var targetStackIdx = parseInt(stackEl.getAttribute('data-stack-index'), 10);
       var columns = stackEl.querySelectorAll('.board-stack-content > .column');
       var targetColIdx = Array.prototype.indexOf.call(columns, column);
-      var insertBefore = my < colRect.top + colRect.height / 2;
+      var insertBefore = isHorizontalCanvasStackElement(stackEl)
+        ? (mx < colRect.left + colRect.width / 2)
+        : (my < colRect.top + colRect.height / 2);
       var colTarget = {
         kind: 'column',
         boardId: activeBoardId,
@@ -16533,7 +17214,7 @@ const LexeraDashboard = (function () {
         }
       }
     } else if (dragType === 'column' || dragType === 'tree-column') {
-      // Horizontal indicators between columns within each stack (columns stack vertically)
+      // Indicators between columns follow the stack's canvas direction.
       var stackContents = container.querySelectorAll('.board-stack-content');
       for (var s = 0; s < stackContents.length; s++) {
         var stackContent = stackContents[s];
@@ -16542,18 +17223,30 @@ const LexeraDashboard = (function () {
         if (getComputedStyle(stackContent).position === 'static') {
           stackContent.style.position = 'relative';
         }
+        var horizontal = isHorizontalCanvasStackElement(stackContent.closest('.board-stack'));
         for (var c = 0; c <= cols.length; c++) {
           var ind = document.createElement('div');
-          ind.className = 'drop-zone-indicator horizontal';
+          ind.className = 'drop-zone-indicator ' + (horizontal ? 'vertical' : 'horizontal');
           ind.setAttribute('data-drop-zone-type', 'column');
-          if (c === 0) {
-            ind.style.top = cols[0].offsetTop + 'px';
-          } else if (c === cols.length) {
-            ind.style.top = (cols[c - 1].offsetTop + cols[c - 1].offsetHeight) + 'px';
+          if (horizontal) {
+            if (c === 0) {
+              ind.style.left = cols[0].offsetLeft + 'px';
+            } else if (c === cols.length) {
+              ind.style.left = (cols[c - 1].offsetLeft + cols[c - 1].offsetWidth) + 'px';
+            } else {
+              ind.style.left = cols[c].offsetLeft + 'px';
+            }
+            ind.style.transform = 'translateX(-50%)';
           } else {
-            ind.style.top = cols[c].offsetTop + 'px';
+            if (c === 0) {
+              ind.style.top = cols[0].offsetTop + 'px';
+            } else if (c === cols.length) {
+              ind.style.top = (cols[c - 1].offsetTop + cols[c - 1].offsetHeight) + 'px';
+            } else {
+              ind.style.top = cols[c].offsetTop + 'px';
+            }
+            ind.style.transform = 'translateY(-50%)';
           }
-          ind.style.transform = 'translateY(-50%)';
           stackContent.appendChild(ind);
         }
       }
@@ -16629,10 +17322,28 @@ const LexeraDashboard = (function () {
         }
       }
     } else if (dragType === 'column' || dragType === 'tree-column') {
-      // Find the column with drag-over-top or drag-over-bottom
+      // Find the column with drag-over indicators that match stack direction.
+      var leftCol = container.querySelector('.column.drag-over-left');
+      var rightCol = container.querySelector('.column.drag-over-right');
       var topCol = container.querySelector('.column.drag-over-top');
       var bottomCol = container.querySelector('.column.drag-over-bottom');
-      if (topCol) {
+      if (leftCol) {
+        var leftStackContent = leftCol.closest('.board-stack-content');
+        if (leftStackContent) {
+          var leftCols = leftStackContent.querySelectorAll(':scope > .column:not(.dragging)');
+          var leftIndicators = leftStackContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="column"]');
+          var leftIdx = Array.prototype.indexOf.call(leftCols, leftCol);
+          if (leftIdx >= 0 && leftIdx < leftIndicators.length) leftIndicators[leftIdx].classList.add('active');
+        }
+      } else if (rightCol) {
+        var rightStackContent = rightCol.closest('.board-stack-content');
+        if (rightStackContent) {
+          var rightCols = rightStackContent.querySelectorAll(':scope > .column:not(.dragging)');
+          var rightIndicators = rightStackContent.querySelectorAll('.drop-zone-indicator[data-drop-zone-type="column"]');
+          var rightIdx = Array.prototype.indexOf.call(rightCols, rightCol);
+          if (rightIdx >= 0 && rightIdx + 1 < rightIndicators.length) rightIndicators[rightIdx + 1].classList.add('active');
+        }
+      } else if (topCol) {
         var stackContent = topCol.closest('.board-stack-content');
         if (stackContent) {
           var cols = stackContent.querySelectorAll(':scope > .column:not(.dragging)');
@@ -16665,6 +17376,7 @@ const LexeraDashboard = (function () {
           ptrDrag.el.style.zIndex = '';
           ptrDrag.el.style.width = '';
           ptrDrag.el.style.position = '';
+          ptrDrag.el.style.pointerEvents = '';
         }
       }
       if (ptrDrag.ghost) ptrDrag.ghost.remove();
@@ -19749,6 +20461,7 @@ const LexeraDashboard = (function () {
   }
 
   function toggleColCards(colIndex, collapse) {
+    if (isCanvasBoardLayout()) return;
     var cards = getElColumnsContainer().querySelectorAll('.card[data-col-index="' + colIndex + '"]');
     for (var i = 0; i < cards.length; i++) {
       if (collapse) {
@@ -26867,13 +27580,13 @@ const LexeraDashboard = (function () {
 
     BoardSettingRegistry.register({
       id: 'boardLayout', label: 'Board Layout', category: 'format',
-      settingsKey: 'boardLayout', actionPrefix: 'set-board-layout', defaultValue: 'structured',
-      normalize: function (v) { return v === 'canvas' ? 'canvas' : 'structured'; },
+      settingsKey: 'boardLayout', actionPrefix: 'set-board-layout', defaultValue: 'kanban',
+      normalize: normalizeBoardLayoutValue,
       options: [
-        { value: 'structured', label: 'Structured' }, { value: 'canvas', label: 'Open Canvas' }
+        { value: 'kanban', label: 'Kanban' }, { value: 'canvas', label: 'Canvas' }
       ],
       handler: function (raw) {
-        var v = raw === 'canvas' ? 'canvas' : null;
+        var v = normalizeBoardLayoutValue(raw);
         setBoardSettingValue('boardLayout', v);
       }
     });
@@ -27153,13 +27866,13 @@ const LexeraDashboard = (function () {
 
     // Zoom
     ActionRegistry.register('board', 'zoom-in', function () {
-      if (getBoardSettingValue('boardLayout') === 'canvas') { nudgeCanvasZoom(0.1); } else { nudgeUiScale(0.05); }
+      if (isCanvasBoardLayout()) { nudgeCanvasZoom(0.1); } else { nudgeUiScale(0.05); }
     });
     ActionRegistry.register('board', 'zoom-out', function () {
-      if (getBoardSettingValue('boardLayout') === 'canvas') { nudgeCanvasZoom(-0.1); } else { nudgeUiScale(-0.05); }
+      if (isCanvasBoardLayout()) { nudgeCanvasZoom(-0.1); } else { nudgeUiScale(-0.05); }
     });
     ActionRegistry.register('board', 'zoom-reset', function () {
-      if (getBoardSettingValue('boardLayout') === 'canvas') { applyCanvasZoom(1); } else { applyUiScale(1); showNotification('Zoom 100%'); }
+      if (isCanvasBoardLayout()) { applyCanvasZoom(1); } else { applyUiScale(1); showNotification('Zoom 100%'); }
     });
 
     // Navigation
@@ -27402,6 +28115,7 @@ const LexeraDashboard = (function () {
     MenuContributorRegistry.register({
       id: 'core-fold', scopes: ['column'], priority: 25, section: 'fold',
       build: function () {
+        if (isCanvasBoardLayout()) return [];
         return [
           { id: 'fold-all', label: 'Fold all cards' },
           { id: 'unfold-all', label: 'Unfold all cards' }

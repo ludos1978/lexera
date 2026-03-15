@@ -52,6 +52,7 @@ function loadFoldStateUtils() {
     function setColumnChildrenFoldState() {}
     function saveCardCollapseState() {}
     function refreshBoardHeaderActionStates() {}
+    function isCanvasBoardLayout() { return false; }
     var localStorage = {
       _data: {},
       getItem: function (key) {

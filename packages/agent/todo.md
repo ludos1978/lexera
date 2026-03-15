@@ -2,6 +2,49 @@
 
 ## Open
 
+- [ ] combine the "Empty", "Template" and "Clipboard" into a "New". It's ordered by Row, Stack, Column, Card groups:
+  - Row
+    - Empty Row
+    - Row templates the user has defined
+  - Stack 
+    - Empty Stack
+    - Stack templates the user has defined
+  - Column
+    - Empty Column
+    - Column templates the user has defined
+    - Clipboard layouted as Column (handled as if it's a presentation format)
+  - Card 
+    - Empty Card
+    - Empty Drawio Diagram
+    - Empty Excalidraw Diagram
+    - Clipboard layouted as Card (just the markdown content in it)
+
+  Also Incoming should only list the contents as cards!
+  The Park should be listed in a group with Incoming!
+  
+  Park and Archive can be combined if the space is small! It groups the contents as the two groups "Park" and "Archive"
+
+  Rename the "Export All" to "Move to Archive".
+
+- [ ] Before closing a board or when closing the application, it should check if it has contents in the trash or the archive. If any board has that, it should ask individually for each board wether the user wants to clean up (Empty Trash, Move to Archive). It should give the option to repeat the action for all boards! 
+
+
+- [ ] repeat the analysis and improve the functionality! make sure the original kanban layout stays functional as it is. We call the layout types "Kanban" and "Canvas" . We mostly change the styling of the stacks, columns, cards.
+  in canvas mode:
+  - stacks cannot be folded
+  - columns in stacks can be ordered horizontal and vertical
+  - columns and cards cannot be folded
+  - stacks have a defined width
+  - columns behave like cards that fill up the space, they can have parts of the width (100%, 33%/66%, etc.)
+  - stacks can be placed anywhere (also above behind each other). they are in order of the stacks in the source file.
+  - stacks can have connections using the markdown format [#tag]{parameters like source position and target position}
+  - boards have this setting individually set and it's stored in the header
+  in kanban mode:
+  - rows, stacks/columns, cards are placed as the version 1 structure (as the original plan)
+  
+  both modes:
+  - are data compatible, but ignore the parameters of the other structure
+
 - ~~incoming is allways only a card. it lists all elemtns that have been added to the board by the quick clipboard tool. if elements arent added to a specific location they are only added to the incoming (using a tag)~~ (done: ca6bc56d — quick-capture board-level paste applies #hidden-internal-incoming tag, incoming dropdown with Place/Trash actions, drag-drop target support)
 
 - ~~remove the split view icon from the view. we just keep it in the menu bar.~~ (done: 2d3d9b42 — removed split view buttons from board header, available via native View menu)

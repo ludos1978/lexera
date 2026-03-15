@@ -28,6 +28,8 @@ pub enum CardChange {
         new_content: String,
         old_checked: bool,
         new_checked: bool,
+        old_params: HashMap<String, String>,
+        new_params: HashMap<String, String>,
     },
     Moved {
         kid: String,
@@ -46,6 +48,7 @@ pub struct CardSnapshot {
     pub column_title: String,
     pub content: String,
     pub checked: bool,
+    pub params: HashMap<String, String>,
     pub position: usize,
 }
 
@@ -69,6 +72,7 @@ pub fn snapshot_board(board: &KanbanBoard) -> HashMap<String, CardSnapshot> {
                     column_title: col.title.clone(),
                     content: card_identity::strip_kid(&card.content),
                     checked: card.checked,
+                    params: card.params.clone(),
                     position: pos,
                 },
             );
@@ -103,7 +107,10 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
                         new_column: new_card.column_title.clone(),
                     });
                 }
-                if old_card.content != new_card.content || old_card.checked != new_card.checked {
+                if old_card.content != new_card.content
+                    || old_card.checked != new_card.checked
+                    || old_card.params != new_card.params
+                {
                     changes.push(CardChange::Modified {
                         kid: kid.clone(),
                         column_id: new_card.column_id.clone(),
@@ -112,6 +119,8 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
                         new_content: new_card.content.clone(),
                         old_checked: old_card.checked,
                         new_checked: new_card.checked,
+                        old_params: old_card.params.clone(),
+                        new_params: new_card.params.clone(),
                     });
                 }
             }
@@ -131,7 +140,7 @@ pub fn diff_boards(old_board: &KanbanBoard, new_board: &KanbanBoard) -> Vec<Card
                     content: new_card.content.clone(),
                     checked: new_card.checked,
                     kid: Some(kid.clone()),
-                    params: HashMap::new(),
+                    params: new_card.params.clone(),
                 },
             });
         }

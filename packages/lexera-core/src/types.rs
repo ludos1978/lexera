@@ -126,7 +126,7 @@ pub struct BoardSettings {
     pub board_color_dark: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_color_light: Option<String>,
-    /// Board layout mode: "structured" (default sequential flow) or "canvas" (free positioning).
+    /// Board layout mode: "kanban" (default sequential flow) or "canvas" (free positioning).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_layout: Option<String>,
 }

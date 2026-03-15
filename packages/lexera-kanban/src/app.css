@@ -2390,8 +2390,31 @@ body.show-special-characters .card-editor-textarea {
 .columns-container.layout-canvas .board-row-content {
   display: block;
   position: relative;
-  min-height: 600px;
+  min-height: 640px;
   overflow: visible;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 34%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 34%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: 0 0;
+}
+
+.columns-container.layout-canvas .canvas-connection-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.columns-container.layout-canvas .canvas-connection-path {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
 }
 
 .columns-container.layout-canvas .board-stack {
@@ -2399,11 +2422,46 @@ body.show-special-characters .card-editor-textarea {
   cursor: grab;
   resize: both;
   overflow: auto;
+  min-width: 220px;
+  min-height: 160px;
+  z-index: 2;
 }
 
 .columns-container.layout-canvas .board-stack.dragging {
   opacity: 0.85;
   cursor: grabbing;
+}
+
+.columns-container.layout-canvas .board-stack-content {
+  flex-direction: column;
+  align-items: stretch;
+  align-content: flex-start;
+}
+
+.columns-container.layout-canvas .board-stack[data-stack-dir="row"] .board-stack-content {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.columns-container.layout-canvas .column {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.columns-container.layout-canvas .column-header {
+  cursor: grab;
+}
+
+.columns-container.layout-canvas .card.collapsed .card-content {
+  display: block;
+}
+
+.columns-container.layout-canvas .card.collapsed .card-header {
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.columns-container.layout-canvas .board-row.drop-target > .board-row-content {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 /* Canvas mode: card span uses grid-like behavior */
@@ -4052,6 +4110,8 @@ select.dialog-input option,
 .column.dragging { opacity: 0.4; cursor: grabbing; }
 .column.drag-over-top { box-shadow: 0 -3px 0 0 var(--accent); }
 .column.drag-over-bottom { box-shadow: 0 3px 0 0 var(--accent); }
+.column.drag-over-left { box-shadow: -3px 0 0 0 var(--accent); }
+.column.drag-over-right { box-shadow: 3px 0 0 0 var(--accent); }
 .board-stack.column-drop-target {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -6752,6 +6812,32 @@ select.export-input {
   letter-spacing: 0.04em;
 }
 
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding-right: 0;
+  padding-left: 0;
+  box-sizing: border-box;
+}
+
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .workspace-select-wrap {
+  width: 100%;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .workspace-select {
+  padding-right: 38px;
+}
+
+:root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .sidebar-header-actions {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+}
+
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .workspace-select,
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-select,
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .dashboard-search-input,
@@ -7719,6 +7805,10 @@ select.export-input {
   background: transparent;
   box-shadow: none;
   align-self: stretch;
+}
+
+:root[data-visual-theme="sleek"] .columns-container.layout-canvas .board-stack {
+  position: absolute;
 }
 
 :root[data-visual-theme="sleek"] .board-stack + .board-stack {
