@@ -6803,12 +6803,13 @@ const LexeraDashboard = (function () {
     }
   }
 
-  function showHiddenItemsDropdown(btnElement, tag, title, emptyMessage, actions, footerActions) {
+  function showHiddenItemsDropdown(btnElement, tag, title, emptyMessage, actions, footerActions, kindFilter) {
     closeHeaderSourceDropdown();
     closeHiddenItemsDropdown();
     actions = Array.isArray(actions) ? actions : [];
     footerActions = Array.isArray(footerActions) ? footerActions : [];
     var items = collectHiddenItems(tag);
+    if (kindFilter) items = items.filter(function (it) { return it.kind === kindFilter; });
     var hasItems = !!(items && items.length > 0);
 
     var panel = document.createElement('div');
@@ -7142,6 +7143,7 @@ const LexeraDashboard = (function () {
   }
 
   function getHeaderSourceDropdownTitle(mode) {
+    if (mode === 'new') return 'New';
     if (mode === 'template') return 'Templates';
     if (mode === 'clipboard') return 'Clipboard';
     if (mode === 'incoming') return 'Incoming';
@@ -7215,6 +7217,48 @@ const LexeraDashboard = (function () {
   }
 
   async function buildHeaderSourceDescriptors(mode) {
+    if (mode === 'new') {
+      try {
+        await LexeraTemplates.loadTemplates();
+      } catch (err) {
+        logFrontendIssue('warn', 'header.source.new', 'Failed to load templates for combined New list', err);
+      }
+      // Pre-read clipboard so drop/click won't trigger browser paste prompt
+      var clipboardText = await readClipboardCreationText();
+      var newDescriptors = [];
+      var groupOrder = ['row', 'stack', 'column', 'card'];
+      for (var g = 0; g < groupOrder.length; g++) {
+        var et = groupOrder[g];
+        // Group header
+        newDescriptors.push({ isGroupHeader: true, entityType: et, title: getCreationEntityLabel(et) });
+        // Empty item
+        newDescriptors.push({ mode: 'empty', entityType: et, title: 'Empty ' + getCreationEntityLabel(et), subtitle: '' });
+        // Templates (with drawio/excalidraw prioritized for card type)
+        var templates = prioritizeDrawioAndExcalidrawTemplates(et, LexeraTemplates.getTemplatesForType(et));
+        for (var t = 0; t < templates.length; t++) {
+          newDescriptors.push({
+            mode: 'template',
+            entityType: et,
+            templateId: templates[t].id,
+            title: templates[t].name || templates[t].id || 'Unnamed Template',
+            subtitle: templates[t].description || ''
+          });
+        }
+        // Clipboard (only for column and card)
+        if (et === 'column' || et === 'card') {
+          var clipSummary = clipboardText ? buildSourceSummaryLabel(clipboardText, '') : '';
+          newDescriptors.push({
+            mode: 'clipboard',
+            entityType: et,
+            text: clipboardText,
+            title: getCreationEntityLabel(et) + ' from Clipboard',
+            subtitle: clipSummary
+          });
+        }
+      }
+      return newDescriptors;
+    }
+
     if (mode === 'empty') {
       return HEADER_SOURCE_ENTITY_TYPES.map(function (entityType) {
         return {
@@ -7527,18 +7571,23 @@ const LexeraDashboard = (function () {
       panel.className = 'hidden-items-dropdown header-source-dropdown';
 
       var title = getHeaderSourceDropdownTitle(mode);
-      var html = '<div class="hidden-items-dropdown-header">' + escapeHtml(title) + ' (' + list.length + ')</div>';
+      var actionableCount = 0;
+      for (var ci = 0; ci < list.length; ci++) { if (!list[ci].isGroupHeader) actionableCount++; }
+      var html = '<div class="hidden-items-dropdown-header">' + escapeHtml(title) + ' (' + actionableCount + ')</div>';
       html += '<div class="hidden-items-dropdown-list">';
       if (list.length > 0) {
         for (var i = 0; i < list.length; i++) {
           var item = list[i];
+          if (item.isGroupHeader) {
+            html += '<div class="header-source-group-header">' + escapeHtml(item.title || '') + '</div>';
+            continue;
+          }
           html += '<div class="hidden-items-dropdown-item header-source-dropdown-item' + (item.disabled ? ' disabled' : '') + '" data-source-index="' + i + '">';
           html += item.disabled
             ? buildCreationEntityDragIconHtml(item.entityType)
             : buildCreationEntityDragIconHtml(item.entityType, ['data-source-grip="' + i + '"', 'title="Drag ' + getCreationEntityLabel(item.entityType).toLowerCase() + '"']);
-          html += '<span class="hidden-item-kind">' + escapeHtml(getCreationEntityLabel(item.entityType)) + '</span>';
           html += '<span class="hidden-item-title">' + escapeHtml(item.title || '') + '</span>';
-          html += '<span class="hidden-item-loc">' + escapeHtml(item.subtitle || '') + '</span>';
+          if (item.subtitle) html += '<span class="hidden-item-loc">' + escapeHtml(item.subtitle) + '</span>';
           html += '</div>';
         }
       } else {
@@ -7630,7 +7679,7 @@ const LexeraDashboard = (function () {
   }
 
   function renderBoardHeader() {
-    var incomingCount = getIncomingCount() + getIncomingCaptureCount();
+    var incomingCount = getIncomingCount();
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
@@ -7652,12 +7701,11 @@ const LexeraDashboard = (function () {
 
     html += '<div class="board-header-zone board-header-zone-middle">';
     html += '<div class="board-header-actions board-header-actions-middle">';
-    html += '<button class="board-action-btn" id="btn-create-empty" title="Create empty card, column, stack or row">Empty</button>';
-    html += '<button class="board-action-btn" id="btn-create-template" title="Create from reusable templates">Template</button>';
-    html += '<button class="board-action-btn" id="btn-create-clipboard" title="Create from clipboard content">Clipboard</button>';
+    html += '<button class="board-action-btn" id="btn-create-new" title="Create new row, stack, column or card">New</button>';
     html += '<span class="board-header-separator" aria-hidden="true"></span>';
     html += '<button class="board-action-btn header-drop-target' + (incomingCount > 0 ? ' has-items' : '') + '" id="btn-incoming" title="Incoming — drop cards here to mark as incoming">Incoming' + (incomingCount > 0 ? ' (' + incomingCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target' + (parkedCount > 0 ? ' has-items' : '') + '" id="btn-parked" title="Show parked items — drop cards here to park">Park' + (parkedCount > 0 ? ' (' + parkedCount + ')' : '') + '</button>';
+    html += '<span class="board-header-separator" aria-hidden="true"></span>';
     html += '<button class="board-action-btn header-drop-target' + (archivedCount > 0 ? ' has-items' : '') + '" id="btn-archived" title="Show archived items — drop cards here to archive">Archive' + (archivedCount > 0 ? ' (' + archivedCount + ')' : '') + '</button>';
     html += '<button class="board-action-btn header-drop-target danger' + (deletedCount > 0 ? ' has-items' : '') + '" id="btn-trash" title="Show deleted items — drop cards here to delete">Trash' + (deletedCount > 0 ? ' (' + deletedCount + ')' : '') + '</button>';
     html += '</div>';
@@ -7752,28 +7800,12 @@ const LexeraDashboard = (function () {
         showThemeZoomMenu(themeZoomBtn);
       });
     }
-    var createEmptyBtn = document.getElementById('btn-create-empty');
-    if (createEmptyBtn) {
-      createEmptyBtn.addEventListener('click', function (e) {
+    var createNewBtn = document.getElementById('btn-create-new');
+    if (createNewBtn) {
+      createNewBtn.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        showHeaderSourceDropdown('empty', createEmptyBtn);
-      });
-    }
-    var createTemplateBtn = document.getElementById('btn-create-template');
-    if (createTemplateBtn) {
-      createTemplateBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        showHeaderSourceDropdown('template', createTemplateBtn);
-      });
-    }
-    var createClipboardBtn = document.getElementById('btn-create-clipboard');
-    if (createClipboardBtn) {
-      createClipboardBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        showHeaderSourceDropdown('clipboard', createClipboardBtn);
+        showHeaderSourceDropdown('new', createNewBtn);
       });
     }
     var incomingBtn = document.getElementById('btn-incoming');
@@ -7827,9 +7859,6 @@ const LexeraDashboard = (function () {
       window.addEventListener('resize', refreshBoardHeaderActionStates);
     }
     refreshBoardHeaderActionStates();
-    refreshIncomingCaptureCache(false).then(function () {
-      refreshBoardHeaderActionStates();
-    });
   }
 
   function getParkedCount() {
@@ -7845,7 +7874,7 @@ const LexeraDashboard = (function () {
   }
 
   function getIncomingCount() {
-    return getHiddenItemCount('#hidden-internal-incoming');
+    return collectHiddenItems('#hidden-internal-incoming').filter(function (it) { return it.kind === 'card'; }).length;
   }
 
   function getIncomingCaptureCount() {
@@ -8690,8 +8719,8 @@ const LexeraDashboard = (function () {
     }).then(function (action) {
       if (!action) return;
       if (action === 'incoming-open-clipboard') {
-        var createClipboardBtn = document.getElementById('btn-create-clipboard');
-        if (createClipboardBtn) showHeaderCreationMenu('clipboard', createClipboardBtn);
+        var createNewBtn = document.getElementById('btn-create-new');
+        if (createNewBtn) showHeaderSourceDropdown('new', createNewBtn);
         else showHeaderCreationMenu('clipboard', btnElement);
         return;
       }
@@ -9335,9 +9364,7 @@ const LexeraDashboard = (function () {
         (headerWidth > 0 && headerWidth <= BOARD_HEADER_COMPACT_HEADER_WIDTH))
     );
 
-    var createEmptyBtn = document.getElementById('btn-create-empty');
-    var createTemplateBtn = document.getElementById('btn-create-template');
-    var createClipboardBtn = document.getElementById('btn-create-clipboard');
+    var createNewBtn = document.getElementById('btn-create-new');
     var incomingBtn = document.getElementById('btn-incoming');
     var parkedBtn = document.getElementById('btn-parked');
     var archivedBtn = document.getElementById('btn-archived');
@@ -9349,7 +9376,7 @@ const LexeraDashboard = (function () {
     var parkedCount = getParkedCount();
     var archivedCount = getArchivedCount();
     var deletedCount = getDeletedCount();
-    var incomingCount = getIncomingCount() + getIncomingCaptureCount();
+    var incomingCount = getIncomingCount();
 
     function setHeaderActionLabel(btn, fullLabel, compactLabel, title) {
       if (!btn) return;
@@ -9362,9 +9389,7 @@ const LexeraDashboard = (function () {
     function applyHeaderLabelsForMode() {
       if (boardHeaderEl) boardHeaderEl.classList.toggle('board-header-compact', compactMode);
 
-      setHeaderActionLabel(createEmptyBtn, 'Empty', BOARD_HEADER_V1_COMPACT_ICONS.createEmpty, 'Create empty card, column, stack or row');
-      setHeaderActionLabel(createTemplateBtn, 'Template', BOARD_HEADER_V1_COMPACT_ICONS.createTemplate, 'Create from reusable templates');
-      setHeaderActionLabel(createClipboardBtn, 'Clipboard', BOARD_HEADER_V1_COMPACT_ICONS.createClipboard, 'Create from clipboard content');
+      setHeaderActionLabel(createNewBtn, 'New', BOARD_HEADER_V1_COMPACT_ICONS.createEmpty, 'Create new row, stack, column or card');
 
       setHeaderActionLabel(
         incomingBtn,
@@ -9757,7 +9782,9 @@ const LexeraDashboard = (function () {
       [
         { id: 'restore', label: 'Place', handler: function (item) { return updateHiddenItemTag(item, null); } },
         { id: 'trash', label: 'Trash', danger: true, handler: function (item) { return updateHiddenItemTag(item, '#hidden-internal-deleted'); } }
-      ]
+      ],
+      [],
+      'card'
     );
   }
 
@@ -9791,7 +9818,7 @@ const LexeraDashboard = (function () {
       ],
       [
         {
-          id: 'export-all', label: 'Export All',
+          id: 'export-all', label: 'Move to Archive',
           handler: function (items) { return exportArchivedHiddenItemsToArchiveFile(items); }
         },
         {
@@ -12417,7 +12444,7 @@ const LexeraDashboard = (function () {
     header.innerHTML =
       (isCanvasLayout ? '' : '<button class="column-fold-btn fold-btn" title="Fold column">\u25B6</button>') +
       buildCreationEntityDragIconHtml('column', ['title="Drag to move column"']) +
-      '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId) + '</span>' +
+      '<span class="column-title">' + renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true }) + '</span>' +
       includeIndicator +
       '<span class="column-count">' + col.cards.length + (colLayout.wipLimit > 0 ? '/' + colLayout.wipLimit : '') + '</span>' +
       '<span class="column-header-actions">' +
@@ -12510,7 +12537,7 @@ const LexeraDashboard = (function () {
       titleContainer.className = 'card-title-container';
       var titleDisplay = document.createElement('div');
       titleDisplay.className = 'card-title-display';
-      titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)));
+      titleDisplay.innerHTML = renderTitleInline(getCardTitle(getIncludeResolvedContent(card.content, col.index)), activeBoardId);
       titleContainer.appendChild(titleDisplay);
       headerRow.appendChild(titleContainer);
       if (toggle) {
@@ -18095,7 +18122,7 @@ const LexeraDashboard = (function () {
     var colIndex = parseInt(cardEl.getAttribute('data-col-index') || '-1', 10);
     var resolved = getIncludeResolvedContent(content, colIndex);
     var titleEl = cardEl.querySelector('.card-title-display');
-    if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(resolved));
+    if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(resolved), activeBoardId);
     var contentEl = cardEl.querySelector('.card-content');
     if (contentEl) {
       contentEl.innerHTML = renderCardContent(resolved, activeBoardId);
@@ -18752,7 +18779,7 @@ const LexeraDashboard = (function () {
       var contentEl = cardEl ? cardEl.querySelector('.card-content') : null;
       if (contentEl) contentEl.innerHTML = renderCardContent(oldContent, activeBoardId);
       var titleEl = cardEl ? cardEl.querySelector('.card-title-display') : null;
-      if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(oldContent));
+      if (titleEl) titleEl.innerHTML = renderTitleInline(getCardTitle(oldContent), activeBoardId);
       await flushDeferredBoardRefresh({ refreshSidebar: true });
       return;
     }
@@ -20309,7 +20336,7 @@ const LexeraDashboard = (function () {
         col.title = reconstructColumnTitle(newTitle, col.title);
         persistBoardMutation();
       } else {
-        titleEl.innerHTML = renderTitleInline(currentTitle, activeBoardId);
+        titleEl.innerHTML = renderTitleInline(currentTitle, activeBoardId, { allowIncludeDirectives: true });
       }
     }
     input.addEventListener('blur', save);
@@ -25310,6 +25337,53 @@ const LexeraDashboard = (function () {
     '#idea': '#d4c24e',
     '#review': '#5cc9c9',
     '#wip': '#d49b4e',
+    '#red': '#DC3545',
+    '#orange': '#FD7E14',
+    '#yellow': '#FFC107',
+    '#green': '#198754',
+    '#cyan': '#0DCAF0',
+    '#blue': '#0056B3',
+    '#purple': '#6F42C1',
+    '#pink': '#E83E8C',
+    '#brown': '#795548',
+    '#gray': '#ADB5BD',
+    '#grey': '#ADB5BD',
+    '#teal': '#20C997',
+    '#indigo': '#6610F2',
+    '#dark-red': '#8B0000',
+    '#dark-orange': '#CC5500',
+    '#dark-yellow': '#B8860B',
+    '#dark-green': '#006400',
+    '#dark-cyan': '#008B8B',
+    '#dark-blue': '#00008B',
+    '#dark-purple': '#4B0082',
+    '#dark-pink': '#C71585',
+    '#dark-brown': '#654321',
+    '#dark-gray': '#404040',
+    '#dark-grey': '#404040',
+    '#black': '#000000',
+    '#dark-charcoal': '#1C1C1C',
+    '#light-red': '#FFB3BA',
+    '#light-orange': '#FFCC99',
+    '#light-yellow': '#FFEB99',
+    '#light-green': '#B8FFB8',
+    '#light-cyan': '#99F2F2',
+    '#light-blue': '#A3D3FF',
+    '#light-purple': '#E0CCFF',
+    '#light-pink': '#FFD6EB',
+    '#light-brown': '#DCC7B8',
+    '#light-gray': '#E8E8E8',
+    '#light-grey': '#E8E8E8',
+    '#white': '#FFFFFF',
+    '#light-beige': '#F5F5DC',
+    '#accessible-indigo': '#332288',
+    '#accessible-green': '#117733',
+    '#accessible-teal': '#44AA99',
+    '#accessible-cyan': '#88CCEE',
+    '#accessible-yellow': '#DDCC77',
+    '#accessible-rose': '#CC6677',
+    '#accessible-purple': '#AA4499',
+    '#accessible-magenta': '#882255',
   };
 
   var TAG_PALETTE = [
@@ -26312,22 +26386,28 @@ const LexeraDashboard = (function () {
     return '<a href="' + safeHref + '"' + targetAttr + '>' + escapeHtml(normalizedHref) + '</a>';
   }
 
-  function renderTitleInline(text, boardId) {
+  function renderTitleInline(text, boardId, options) {
     boardId = boardId || activeBoardId || '';
+    options = options || {};
+    var allowIncludeDirectives = !!options.allowIncludeDirectives;
     var htmlTokens = [];
     var autolinkData = extractAngleBracketAutolinks(stripHtmlComments(text));
     var safe = escapeHtml(autolinkData.text);
     var titleIncludeIndex = 0;
     var titleLinkIndex = 0;
-    // Strip image/embed markdown
-    safe = safe.replace(/!\[[^\]]*\]\([^)]+\)(\{[^}]+\})?/g, '');
-    // Include directives: !!!include(path)!!!
-    safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
-      return stashRenderedHtmlToken(htmlTokens, renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', {
-        includeIndex: titleIncludeIndex++,
-        allowActions: false
-      }));
+    // Titles never render card embeds; keep the markdown literal instead.
+    safe = safe.replace(/!\[[^\]]*\]\([^)]+\)(\{[^}]+\})?/g, function (match) {
+      return stashRenderedHtmlToken(htmlTokens, match);
     });
+    // Include directives are only active in column headers.
+    if (allowIncludeDirectives) {
+      safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
+        return stashRenderedHtmlToken(htmlTokens, renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', {
+          includeIndex: titleIncludeIndex++,
+          allowActions: false
+        }));
+      });
+    }
     // Links: [text](url)
     safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_, label, rawHref) {
       var parsed = parseMarkdownTarget(rawHref);
@@ -26899,18 +26979,6 @@ const LexeraDashboard = (function () {
           '</figure>');
       }
       return stashRenderedHtmlToken(htmlTokens, embedHtml);
-    });
-
-    // Include directives: !!!include(path)!!!
-    safe = safe.replace(/!!!include\(([^)]+)\)!!!/g, function (_, rawPath) {
-      var includeIndex = renderState.includeCounter || 0;
-      renderState.includeCounter = includeIndex + 1;
-      return stashRenderedHtmlToken(htmlTokens, renderIncludeDirectiveHtml(rawPath, boardId, 'include-filename-link', {
-        expandPreview: true,
-        depth: 0,
-        includeIndex: includeIndex,
-        allowActions: !(renderState.nestedDepth > 0)
-      }));
     });
 
     // Links: [text](url)

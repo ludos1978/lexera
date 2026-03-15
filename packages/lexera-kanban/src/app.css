@@ -5048,6 +5048,19 @@ select.dialog-input option,
 .hidden-items-dropdown-item:hover {
   background: var(--menu-item-bg-hover, rgba(255,255,255,0.05));
 }
+.header-source-group-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  padding: 8px 10px 3px;
+  user-select: none;
+}
+.header-source-group-header:not(:first-child) {
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
 .header-source-dropdown-item {
   cursor: pointer;
 }

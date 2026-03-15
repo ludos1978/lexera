@@ -2,7 +2,7 @@
 
 ## Open
 
-- [ ] combine the "Empty", "Template" and "Clipboard" into a "New". It's ordered by Row, Stack, Column, Card groups:
+- [x] combine the "Empty", "Template" and "Clipboard" into a "New". It's ordered by Row, Stack, Column, Card groups:
   - Row
     - Empty Row
     - Row templates the user has defined
@@ -19,12 +19,16 @@
     - Empty Excalidraw Diagram
     - Clipboard layouted as Card (just the markdown content in it)
 
+
+- [x] Rename the "Export All" to "Move to Archive" in the "Archive" Source
   Also Incoming should only list the contents as cards!
   The Park should be listed in a group with Incoming!
-  
-  Park and Archive can be combined if the space is small! It groups the contents as the two groups "Park" and "Archive"
 
-  Rename the "Export All" to "Move to Archive".
+- [ ] Add a tag that adds a theme based color (usualy dark more black, light mode white) (non transparent) background to a card (we need that in canvas mode)
+
+- [ ] A Row, Stack or Card should not allow !!!include(filename.md)!!! within it or it must not parse that in any way. That is only supposted to have an effect in the Column Header! Embeds ![]() only works in the Cards. 
+
+- [ ] Tags can be in all Elements and is even differently handled in the Card Title (first line) versus being on the normal content lines (all except the first line). If 
 
 - [ ] Before closing a board or when closing the application, it should check if it has contents in the trash or the archive. If any board has that, it should ask individually for each board wether the user wants to clean up (Empty Trash, Move to Archive). It should give the option to repeat the action for all boards! 
 

@@ -11,6 +11,20 @@ function readSource(name) {
 }
 
 describe('tag style rendering parity', () => {
+  it('keeps explicit named color tag mappings instead of hashing them', () => {
+    const appSource = readSource('app.js');
+    const tagColorsMatch = appSource.match(/var TAG_COLORS = \{[\s\S]*?\n  \};/);
+    expect(tagColorsMatch).not.toBeNull();
+    const tagColors = new Function(`${tagColorsMatch[0]}; return TAG_COLORS;`)();
+
+    expect(tagColors['#red']).toBe('#DC3545');
+    expect(tagColors['#blue']).toBe('#0056B3');
+    expect(tagColors['#green']).toBe('#198754');
+    expect(tagColors['#dark-red']).toBe('#8B0000');
+    expect(tagColors['#light-blue']).toBe('#A3D3FF');
+    expect(tagColors['#accessible-indigo']).toBe('#332288');
+  });
+
   it('does not re-render tag labels or badge rails into headers/footers', () => {
     const appSource = readSource('app.js');
     expect(appSource.includes('renderTagStyleBadgeRail(')).toBe(false);
