@@ -2463,16 +2463,35 @@ li.tag-line-styled {
   --canvas-grid-size: 32px;
 }
 
+.columns-container.layout-canvas .board-row {
+  align-self: flex-start;
+  width: max-content;
+  min-width: 100%;
+}
+
 .columns-container.layout-canvas .board-row-content {
+  --canvas-grid-size: 32px;
+  --canvas-grid-offset-x: 0px;
+  --canvas-grid-offset-y: 0px;
+  --canvas-grid-color: color-mix(in srgb, var(--border) 34%, transparent);
   display: block;
+  flex: 0 0 auto;
   position: relative;
   min-height: 640px;
   overflow: visible;
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--border) 34%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--border) 34%, transparent) 1px, transparent 1px);
-  background-size: var(--canvas-grid-size) var(--canvas-grid-size);
-  background-position: 0 0;
+    linear-gradient(to right, var(--canvas-grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--canvas-grid-color) 1px, transparent 1px);
+  background-size:
+    var(--canvas-grid-size) var(--canvas-grid-size),
+    var(--canvas-grid-size) var(--canvas-grid-size);
+  background-position:
+    var(--canvas-grid-offset-x) var(--canvas-grid-offset-y),
+    var(--canvas-grid-offset-x) var(--canvas-grid-offset-y);
+}
+
+.columns-container.layout-canvas .board-row-content[data-canvas-grid="off"] {
+  background-image: none;
 }
 
 .columns-container.layout-canvas .canvas-scene {
@@ -7892,6 +7911,10 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] .columns-container.new-format .board-row {
   align-self: stretch;
+}
+
+:root[data-visual-theme="sleek"] .columns-container.layout-canvas .board-row {
+  align-self: flex-start;
 }
 
 :root[data-visual-theme="sleek"] .board-row + .board-row {

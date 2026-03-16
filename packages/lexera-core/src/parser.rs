@@ -1011,6 +1011,9 @@ fn clear_setting(settings: &mut BoardSettings, key: &str) {
         "boardColorDark" => settings.board_color_dark = None,
         "boardColorLight" => settings.board_color_light = None,
         "boardLayout" => settings.board_layout = None,
+        "canvasSurface" => settings.canvas_surface = None,
+        "canvasGrid" => settings.canvas_grid = None,
+        "canvasPageSize" => settings.canvas_page_size = None,
         _ => {}
     }
 }
@@ -1683,5 +1686,21 @@ kanban-plugin: board
 
         let md_out = generate_markdown(&board);
         assert!(md_out.contains("boardLayout: kanban"));
+    }
+
+    #[test]
+    fn test_canvas_surface_settings_roundtrip() {
+        let md = "---\nkanban-plugin: board\nboardLayout: canvas\ncanvasSurface: pages\ncanvasGrid: largest\ncanvasPageSize: 1280\n---\n\n## Stack {x:-120, y:-40, w:420, h:280}\n\n### Column\n- [ ] task\n";
+        let board = parse_markdown(md);
+        let settings = board.board_settings.as_ref().unwrap();
+        assert_eq!(settings.board_layout.as_deref(), Some("canvas"));
+        assert_eq!(settings.canvas_surface.as_deref(), Some("pages"));
+        assert_eq!(settings.canvas_grid.as_deref(), Some("largest"));
+        assert_eq!(settings.canvas_page_size.as_deref(), Some("1280"));
+
+        let md_out = generate_markdown(&board);
+        assert!(md_out.contains("canvasSurface: pages"));
+        assert!(md_out.contains("canvasGrid: largest"));
+        assert!(md_out.contains("canvasPageSize: 1280"));
     }
 }

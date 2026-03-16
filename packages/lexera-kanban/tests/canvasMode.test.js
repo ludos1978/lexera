@@ -35,6 +35,7 @@ function loadCanvasModeHelpers() {
 
   const wrappedSource = `
     ${extractFunction(findLine('function normalizeBoardLayoutValue('))}
+    ${extractFunction(findLine('function normalizeCanvasGridValue('))}
     ${extractFunction(findLine('function stripHtmlComments('))}
     ${extractFunction(findLine('function parseCanvasParamMap('))}
     ${extractFunction(findLine('function extractCanvasConnectionSpecs('))}
@@ -42,6 +43,7 @@ function loadCanvasModeHelpers() {
 
     return {
       normalizeBoardLayoutValue,
+      normalizeCanvasGridValue,
       extractCanvasConnectionSpecs,
       getCanvasColumnWidthSpec
     };
@@ -66,6 +68,14 @@ describe('normalizeBoardLayoutValue', () => {
   it('preserves canvas and kanban values', () => {
     expect(CanvasModeHelpers.normalizeBoardLayoutValue('canvas')).toBe('canvas');
     expect(CanvasModeHelpers.normalizeBoardLayoutValue('kanban')).toBe('kanban');
+  });
+});
+
+describe('canvas grid setting normalization', () => {
+  it('normalizes canvas grid values', () => {
+    expect(CanvasModeHelpers.normalizeCanvasGridValue('off')).toBe('off');
+    expect(CanvasModeHelpers.normalizeCanvasGridValue('largest-element')).toBe('largest');
+    expect(CanvasModeHelpers.normalizeCanvasGridValue('64')).toBe('64');
   });
 });
 

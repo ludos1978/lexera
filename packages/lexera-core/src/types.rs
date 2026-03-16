@@ -129,6 +129,12 @@ pub struct BoardSettings {
     /// Board layout mode: "kanban" (default sequential flow) or "canvas" (free positioning).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub board_layout: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canvas_surface: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canvas_grid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub canvas_page_size: Option<String>,
 }
 
 /// Generation metadata for staleness detection.
@@ -345,6 +351,9 @@ pub const BOARD_SETTING_KEYS: &[&str] = &[
     "boardColorDark",
     "boardColorLight",
     "boardLayout",
+    "canvasSurface",
+    "canvasGrid",
+    "canvasPageSize",
 ];
 
 impl BoardSettings {
@@ -369,6 +378,9 @@ impl BoardSettings {
             "boardColorDark" => self.board_color_dark.clone(),
             "boardColorLight" => self.board_color_light.clone(),
             "boardLayout" => self.board_layout.clone(),
+            "canvasSurface" => self.canvas_surface.clone(),
+            "canvasGrid" => self.canvas_grid.clone(),
+            "canvasPageSize" => self.canvas_page_size.clone(),
             _ => None,
         }
     }
@@ -406,6 +418,9 @@ impl BoardSettings {
             "boardColorDark" => self.board_color_dark = Some(value.to_string()),
             "boardColorLight" => self.board_color_light = Some(value.to_string()),
             "boardLayout" => self.board_layout = Some(value.to_string()),
+            "canvasSurface" => self.canvas_surface = Some(value.to_string()),
+            "canvasGrid" => self.canvas_grid = Some(value.to_string()),
+            "canvasPageSize" => self.canvas_page_size = Some(value.to_string()),
             _ => {}
         }
     }
@@ -436,6 +451,9 @@ impl BoardSettings {
             board_color_dark,
             board_color_light,
             board_layout,
+            canvas_surface,
+            canvas_grid,
+            canvas_page_size,
         );
     }
 }

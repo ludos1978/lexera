@@ -275,11 +275,19 @@ function isLogPanelVisible() {
   return !!(panel && !panel.classList.contains('hidden'));
 }
 
+function runInitManagementUI() {
+  if (typeof initManagementUI === 'function') return initManagementUI();
+  if (typeof window !== 'undefined' && typeof window.initManagementUI === 'function') {
+    return window.initManagementUI();
+  }
+  return false;
+}
+
 function setLogPanelVisibility(visible) {
   var panel = getElLogPanel();
   if (!panel) return;
   if (visible) {
-    initManagementUI();
+    runInitManagementUI();
     panel.classList.remove('hidden');
   } else {
     panel.classList.add('hidden');
@@ -1184,6 +1192,18 @@ const LexeraDashboard = (function () {
     var normalized = String(value == null ? '' : value).trim().toLowerCase();
     if (normalized === 'canvas') return 'canvas';
     return 'kanban';
+  }
+
+  function normalizeCanvasGridValue(value) {
+    var normalized = String(value == null ? '' : value).trim().toLowerCase();
+    if (!normalized || normalized === 'default' || normalized === 'medium') return '32';
+    if (normalized === 'off' || normalized === 'none' || normalized === 'hidden') return 'off';
+    if (normalized === 'fine' || normalized === 'small') return '16';
+    if (normalized === 'large') return '64';
+    if (normalized === 'largest' || normalized === 'largest-element' || normalized === 'auto') return 'largest';
+    var parsed = parseFloat(normalized);
+    if (!isFinite(parsed) || parsed <= 0) return '32';
+    return String(Math.round(parsed));
   }
 
   function getCurrentBoardLayout() {
@@ -9847,15 +9867,22 @@ const LexeraDashboard = (function () {
       { id: 'set-font-size', label: 'Font Size', items: buildSettingMenuItems('fontSize') },
       { id: 'set-font-family', label: 'Font Family', items: buildSettingMenuItems('fontFamily') },
       { separator: true },
-      { id: 'set-board-layout', label: 'Board Layout', items: buildSettingMenuItems('boardLayout') },
+      { id: 'set-board-layout', label: 'Board Layout', items: buildSettingMenuItems('boardLayout') }
+    ];
+    if (isCanvasLayout) {
+      items.push(
+        { id: 'set-canvas-grid', label: 'Canvas Grid', items: buildSettingMenuItems('canvasGrid') }
+      );
+    }
+    items.push(
       { id: 'set-layout-rows', label: 'Layout Rows', items: buildSettingMenuItems('layoutRows') },
       { id: 'set-row-height', label: 'Row Height', items: buildSettingMenuItems('rowHeight') },
       { id: 'set-layout-preset', label: 'Layout Preset', items: buildLayoutPresetMenuItems() },
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
       { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildSettingMenuItems('stickyHeaders') },
       { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildSettingMenuItems('arrowFocusScroll') },
-      { id: 'set-scroll-speed', label: 'Scroll Speed', items: buildSettingMenuItems('scrollSpeed') },
-    ];
+      { id: 'set-scroll-speed', label: 'Scroll Speed', items: buildSettingMenuItems('scrollSpeed') }
+    );
     if (!isCanvasLayout) {
       items.splice(14, 0,
         { id: allColumnsFolded ? 'unfold-columns' : 'fold-columns', label: allColumnsFolded ? 'Unfold All Columns' : 'Fold All Columns' },
@@ -11107,12 +11134,17 @@ const LexeraDashboard = (function () {
     syncEmbeddedManagementUiState('config');
   }
 
+  if (typeof window !== 'undefined') {
+    window.initManagementUI = initManagementUI;
+    if (isLogPanelVisible()) initManagementUI();
+  }
+
   function openManagementPanel(options) {
     options = options || {};
     mgmtPanelOpen = true;
     if (getElMgmtPanel()) getElMgmtPanel().classList.remove('open');
     if (activeLogSource === 'stats') setActiveLogSource('backend');
-    initManagementUI();
+    runInitManagementUI();
     syncEmbeddedManagementUiState(options.section === 'boards' || options.section === 'sharing' ? 'sharing' : 'config');
     setLogPanelVisibility(true);
   }
@@ -11874,7 +11906,8 @@ const LexeraDashboard = (function () {
   var CANVAS_ROW_PADDING = 40;
   var CANVAS_MIN_ROW_WIDTH = 960;
   var CANVAS_MIN_ROW_HEIGHT = 640;
-  var CANVAS_WRAP_WIDTH = 1600;
+  var CANVAS_SURFACE_OVERSCAN_X = Math.floor(CANVAS_MIN_ROW_WIDTH / 2);
+  var CANVAS_SURFACE_OVERSCAN_Y = Math.floor(CANVAS_MIN_ROW_HEIGHT / 2);
 
   function parseCanvasLayoutNumber(value, fallback) {
     var n = parseInt(value, 10);
@@ -12074,8 +12107,8 @@ const LexeraDashboard = (function () {
     var params = stack && stack.params ? stack.params : {};
     var fallback = getCanvasFallbackStackBox(stackIndex, params.w, params.h);
     return {
-      x: Math.max(0, parseCanvasLayoutNumber(params.x, fallback.x)),
-      y: Math.max(0, parseCanvasLayoutNumber(params.y, fallback.y)),
+      x: parseCanvasLayoutNumber(params.x, fallback.x),
+      y: parseCanvasLayoutNumber(params.y, fallback.y),
       w: Math.max(180, parseCanvasLayoutNumber(params.w, fallback.w)),
       h: Math.max(120, parseCanvasLayoutNumber(params.h, fallback.h))
     };
@@ -12117,29 +12150,115 @@ const LexeraDashboard = (function () {
     };
   }
 
+  function roundUpCanvasUnit(value, step) {
+    var numericValue = parseCanvasLayoutNumber(value, 0);
+    var numericStep = Math.max(1, parseCanvasLayoutNumber(step, 1));
+    return Math.ceil(numericValue / numericStep) * numericStep;
+  }
+
+  function resolveCanvasLargestElementSize(stackMetrics) {
+    var metrics = Array.isArray(stackMetrics) ? stackMetrics : [];
+    var largest = Math.max(CANVAS_DEFAULT_STACK_W, CANVAS_DEFAULT_STACK_H);
+    for (var i = 0; i < metrics.length; i++) {
+      var metric = metrics[i] || {};
+      largest = Math.max(
+        largest,
+        Math.max(0, parseCanvasLayoutNumber(metric.w, 0)),
+        Math.max(0, parseCanvasLayoutNumber(metric.h, 0))
+      );
+    }
+    return largest;
+  }
+
+  function resolveCanvasGridStep(stackMetrics, rawValue) {
+    var normalized = normalizeCanvasGridValue(rawValue);
+    if (normalized === 'off') return 0;
+    if (normalized === 'largest') {
+      return Math.max(64, roundUpCanvasUnit(resolveCanvasLargestElementSize(stackMetrics), 16));
+    }
+    return Math.max(8, parseCanvasLayoutNumber(normalized, 32));
+  }
+
+  function calculateCanvasSurface(stackMetrics, options) {
+    options = options || {};
+    var padding = Math.max(0, parseCanvasLayoutNumber(options.padding, CANVAS_ROW_PADDING));
+    var emptyWidth = Math.max(0, parseCanvasLayoutNumber(options.emptyWidth, CANVAS_MIN_ROW_WIDTH));
+    var emptyHeight = Math.max(0, parseCanvasLayoutNumber(options.emptyHeight, CANVAS_MIN_ROW_HEIGHT));
+    var overscanX = Math.max(0, parseCanvasLayoutNumber(options.overscanX, CANVAS_SURFACE_OVERSCAN_X));
+    var overscanY = Math.max(0, parseCanvasLayoutNumber(options.overscanY, CANVAS_SURFACE_OVERSCAN_Y));
+    var metrics = Array.isArray(stackMetrics) ? stackMetrics : [];
+    var minLeft = 0;
+    var minTop = 0;
+    var maxRight = 0;
+    var maxBottom = 0;
+    var hasMetrics = false;
+
+    for (var i = 0; i < metrics.length; i++) {
+      var metric = metrics[i] || {};
+      var left = parseCanvasLayoutNumber(metric.x, 0);
+      var top = parseCanvasLayoutNumber(metric.y, 0);
+      var width = Math.max(0, parseCanvasLayoutNumber(metric.w, 0));
+      var height = Math.max(0, parseCanvasLayoutNumber(metric.h, 0));
+      if (!hasMetrics) {
+        minLeft = left;
+        minTop = top;
+        maxRight = left + width;
+        maxBottom = top + height;
+        hasMetrics = true;
+      } else {
+        minLeft = Math.min(minLeft, left);
+        minTop = Math.min(minTop, top);
+        maxRight = Math.max(maxRight, left + width);
+        maxBottom = Math.max(maxBottom, top + height);
+      }
+    }
+
+    if (!hasMetrics) {
+      var emptyLeft = -Math.max(Math.floor(emptyWidth / 2), overscanX);
+      var emptyTop = -Math.max(Math.floor(emptyHeight / 2), overscanY);
+      return {
+        left: emptyLeft,
+        top: emptyTop,
+        width: Math.max(emptyWidth, Math.abs(emptyLeft) * 2),
+        height: Math.max(emptyHeight, Math.abs(emptyTop) * 2),
+        offsetX: Math.abs(emptyLeft),
+        offsetY: Math.abs(emptyTop)
+      };
+    }
+
+    var surfaceLeft = minLeft - padding - overscanX;
+    var surfaceTop = minTop - padding - overscanY;
+    var surfaceRight = maxRight + padding + overscanX;
+    var surfaceBottom = maxBottom + padding + overscanY;
+    var width = Math.max(emptyWidth, surfaceRight - surfaceLeft);
+    var height = Math.max(emptyHeight, surfaceBottom - surfaceTop);
+
+    return {
+      left: surfaceLeft,
+      top: surfaceTop,
+      width: width,
+      height: height,
+      offsetX: -surfaceLeft,
+      offsetY: -surfaceTop
+    };
+  }
+
   function getNextCanvasStackPlacement(stacks) {
     var items = Array.isArray(stacks) ? stacks : [];
     if (items.length === 0) {
       return { x: CANVAS_DEFAULT_STACK_X, y: CANVAS_DEFAULT_STACK_Y };
     }
-    var maxRight = CANVAS_DEFAULT_STACK_X;
-    var maxBottom = CANVAS_DEFAULT_STACK_Y;
+    var maxRight = null;
     var anchorY = null;
     for (var i = 0; i < items.length; i++) {
       var box = getCanvasStackLayoutBox(items[i], i);
-      maxRight = Math.max(maxRight, box.x + box.w);
-      maxBottom = Math.max(maxBottom, box.y + box.h);
+      if (maxRight == null || (box.x + box.w) > maxRight) maxRight = box.x + box.w;
       if (anchorY == null || box.y < anchorY) anchorY = box.y;
     }
-    var next = {
-      x: maxRight + CANVAS_STACK_SPACING,
-      y: anchorY == null ? CANVAS_DEFAULT_STACK_Y : Math.max(0, anchorY)
+    return {
+      x: (maxRight == null ? CANVAS_DEFAULT_STACK_X : maxRight + CANVAS_STACK_SPACING),
+      y: anchorY == null ? CANVAS_DEFAULT_STACK_Y : anchorY
     };
-    if (next.x + CANVAS_DEFAULT_STACK_W > CANVAS_WRAP_WIDTH) {
-      next.x = CANVAS_DEFAULT_STACK_X;
-      next.y = maxBottom + CANVAS_STACK_SPACING;
-    }
-    return next;
   }
 
   function calculateCanvasBounds(stackMetrics, options) {
@@ -12290,14 +12409,38 @@ const LexeraDashboard = (function () {
       for (var s = 0; s < stackEls.length; s++) {
         metrics.push(getCanvasRenderedStackMetrics(stackEls[s]));
       }
-      var bounds = calculateCanvasBounds(metrics);
+      var gridMode = normalizeCanvasGridValue(getBoardSettingValue('canvasGrid', '32'));
+      var surface = calculateCanvasSurface(metrics);
+      var gridStep = resolveCanvasGridStep(metrics, gridMode);
       var zoom = $canvasZoom || 1;
+      var surfaceWidthPx = Math.ceil((surface.offsetX * zoom) + (surface.width * zoom));
+      var surfaceHeightPx = Math.ceil((surface.offsetY * zoom) + (surface.height * zoom));
       if (scene) {
-        scene.style.width = bounds.minWidth + 'px';
-        scene.style.height = bounds.minHeight + 'px';
+        scene.style.left = Math.round(surface.offsetX * zoom) + 'px';
+        scene.style.top = Math.round(surface.offsetY * zoom) + 'px';
+        scene.style.width = surface.width + 'px';
+        scene.style.height = surface.height + 'px';
       }
-      rowContent.style.minWidth = Math.ceil(bounds.minWidth * zoom) + 'px';
-      rowContent.style.minHeight = Math.ceil(bounds.minHeight * zoom) + 'px';
+      rowContent.style.width = surfaceWidthPx + 'px';
+      rowContent.style.minWidth = surfaceWidthPx + 'px';
+      rowContent.style.height = surfaceHeightPx + 'px';
+      rowContent.style.minHeight = surfaceHeightPx + 'px';
+      rowContent.style.setProperty('--canvas-grid-size', Math.max(1, gridStep * zoom) + 'px');
+      rowContent.style.setProperty('--canvas-grid-offset-x', Math.round(surface.offsetX * zoom) + 'px');
+      rowContent.style.setProperty('--canvas-grid-offset-y', Math.round(surface.offsetY * zoom) + 'px');
+      rowContent.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
+      rowContent.setAttribute('data-canvas-grid', gridMode);
+      var rowEl = rowContent.parentElement;
+      if (rowEl) {
+        var headerWidth = 0;
+        var firstChild = rowEl.firstElementChild;
+        if (firstChild && firstChild.classList && firstChild.classList.contains('board-row-header')) {
+          headerWidth = Math.ceil(firstChild.getBoundingClientRect().width || firstChild.offsetWidth || 0);
+        }
+        var totalRowWidth = Math.max(surfaceWidthPx + headerWidth, container.clientWidth || 0);
+        rowEl.style.width = totalRowWidth + 'px';
+        rowEl.style.minWidth = totalRowWidth + 'px';
+      }
       syncCanvasRowConnections(rowContent);
     }
   }
@@ -12320,11 +12463,14 @@ const LexeraDashboard = (function () {
     var styles = typeof getComputedStyle === 'function' ? getComputedStyle(rowContent) : null;
     var borderLeft = styles ? parseFloat(styles.borderLeftWidth) || 0 : 0;
     var borderTop = styles ? parseFloat(styles.borderTopWidth) || 0 : 0;
+    var scene = getCanvasSceneElement(rowContent, false);
+    var sceneLeft = scene ? parseCanvasLayoutNumber(scene.style.left, 0) : 0;
+    var sceneTop = scene ? parseCanvasLayoutNumber(scene.style.top, 0) : 0;
     return {
       rect: rect,
       zoom: zoom,
-      originLeft: rect.left + borderLeft,
-      originTop: rect.top + borderTop
+      originLeft: rect.left + borderLeft + sceneLeft,
+      originTop: rect.top + borderTop + sceneTop
     };
   }
 
@@ -12332,8 +12478,8 @@ const LexeraDashboard = (function () {
     if (!rowContent) return { x: 0, y: 0 };
     var metrics = getCanvasRowContentMetrics(rowContent);
     return {
-      x: Math.max(0, Math.round((clientX - metrics.originLeft - (grabOffsetX || 0)) / metrics.zoom)),
-      y: Math.max(0, Math.round((clientY - metrics.originTop - (grabOffsetY || 0)) / metrics.zoom))
+      x: Math.round((clientX - metrics.originLeft - (grabOffsetX || 0)) / metrics.zoom),
+      y: Math.round((clientY - metrics.originTop - (grabOffsetY || 0)) / metrics.zoom)
     };
   }
 
@@ -12341,8 +12487,8 @@ const LexeraDashboard = (function () {
     if (!rowContent || !elementRect) return { x: 0, y: 0 };
     var metrics = getCanvasRowContentMetrics(rowContent);
     return {
-      x: Math.max(0, Math.round((elementRect.left - metrics.originLeft) / metrics.zoom)),
-      y: Math.max(0, Math.round((elementRect.top - metrics.originTop) / metrics.zoom))
+      x: Math.round((elementRect.left - metrics.originLeft) / metrics.zoom),
+      y: Math.round((elementRect.top - metrics.originTop) / metrics.zoom)
     };
   }
 
@@ -12353,7 +12499,6 @@ const LexeraDashboard = (function () {
     $canvasZoom = zoom;
     container.style.zoom = '';
     container.style.setProperty('--canvas-zoom', String(zoom));
-    container.style.setProperty('--canvas-grid-size', (32 * zoom) + 'px');
     // Adjust scroll to keep the point under the cursor stationary
     if (localOriginX != null && localOriginY != null && oldZoom !== zoom) {
       var ratio = zoom / oldZoom;
@@ -12405,6 +12550,12 @@ const LexeraDashboard = (function () {
     if (targetClosest(target, 'input, textarea, select, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor')) {
       return;
     }
+    if (isCanvasBoardLayout()) {
+      e.preventDefault();
+      var rect = container.getBoundingClientRect();
+      nudgeCanvasZoom(e.deltaY < 0 ? 0.1 : -0.1, e.clientX - rect.left, e.clientY - rect.top);
+      return;
+    }
     var multiplier = getBoardScrollSpeedMultiplier();
     if (multiplier === 1) return;
     var deltaX = normalizeWheelDeltaToPixels(e.deltaX, e.deltaMode);
@@ -12418,6 +12569,55 @@ const LexeraDashboard = (function () {
     container.scrollLeft += deltaX * multiplier;
     container.scrollTop += deltaY * multiplier;
   }, { passive: false });
+
+  // --- Canvas pan: middle-mouse or alt+left-mouse drag ---
+  var _canvasPan = null;
+
+  document.addEventListener('mousedown', function (e) {
+    if (!activeBoardData || !isCanvasBoardLayout()) return;
+    var isMiddle = e.button === 1;
+    var isAltLeft = e.button === 0 && e.altKey;
+    if (!isMiddle && !isAltLeft) return;
+    var target = e.target;
+    if (!target || typeof target.closest !== 'function') return;
+    if (!target.closest('#columns-container')) return;
+    if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
+    var container = getElColumnsContainer();
+    if (!container) return;
+    e.preventDefault();
+    _canvasPan = {
+      container: container,
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollLeft: container.scrollLeft,
+      scrollTop: container.scrollTop
+    };
+    container.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('mousemove', function (e) {
+    if (!_canvasPan) return;
+    var dx = e.clientX - _canvasPan.startX;
+    var dy = e.clientY - _canvasPan.startY;
+    _canvasPan.container.scrollLeft = _canvasPan.scrollLeft - dx;
+    _canvasPan.container.scrollTop = _canvasPan.scrollTop - dy;
+  });
+
+  document.addEventListener('mouseup', function (e) {
+    if (!_canvasPan) return;
+    _canvasPan.container.style.cursor = '';
+    _canvasPan = null;
+  });
+
+  // Prevent default middle-click auto-scroll behavior in canvas mode
+  document.addEventListener('auxclick', function (e) {
+    if (e.button === 1 && activeBoardData && isCanvasBoardLayout()) {
+      var target = e.target;
+      if (target && typeof target.closest === 'function' && target.closest('#columns-container')) {
+        e.preventDefault();
+      }
+    }
+  });
 
   function normalizeStickyHeaderMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
@@ -28461,6 +28661,18 @@ const LexeraDashboard = (function () {
         var v = normalizeBoardLayoutValue(raw);
         setBoardSettingValue('boardLayout', v);
       }
+    });
+    BoardSettingRegistry.register({
+      id: 'canvasGrid', label: 'Canvas Grid', category: 'format',
+      settingsKey: 'canvasGrid', actionPrefix: 'set-canvas-grid', defaultValue: '32',
+      normalize: normalizeCanvasGridValue,
+      options: [
+        { value: 'off', label: 'Off' },
+        { value: '16', label: 'Fine 16px' },
+        { value: '32', label: 'Medium 32px' },
+        { value: '64', label: 'Large 64px' },
+        { value: 'largest', label: 'Largest Element' }
+      ]
     });
     BoardSettingRegistry.register({
       id: 'layoutPreset', label: 'Layout Preset', category: 'format',
