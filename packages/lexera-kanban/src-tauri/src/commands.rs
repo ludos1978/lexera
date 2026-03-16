@@ -275,6 +275,12 @@ pub fn set_menu_check_state(app: AppHandle, id: String, checked: bool) -> Result
     Ok(())
 }
 
+#[tauri::command]
+pub fn quit_app(app: AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+
 #[derive(Deserialize, Clone)]
 pub struct NativeMenuItem {
     pub id: Option<String>,

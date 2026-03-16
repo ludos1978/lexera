@@ -45,6 +45,7 @@ function loadCanvasHelpers() {
     ${extractFunction(findLine('function parseCanvasLayoutNumber('))}
     ${extractFunction(findLine('function getCanvasFallbackStackBox('))}
     ${extractFunction(findLine('function getCanvasStackLayoutBox('))}
+    ${extractFunction(findLine('function getCanvasRenderedStackMetrics('))}
     ${extractFunction(findLine('function getNextCanvasStackPlacement('))}
     ${extractFunction(findLine('function calculateCanvasBounds('))}
     ${extractFunction(findLine('function getCanvasRowContentMetrics('))}
@@ -54,6 +55,7 @@ function loadCanvasHelpers() {
     return {
       setCanvasZoom: function (zoom) { $canvasZoom = zoom; },
       getCanvasStackLayoutBox,
+      getCanvasRenderedStackMetrics,
       getNextCanvasStackPlacement,
       calculateCanvasBounds,
       getCanvasPositionFromViewportPoint,
@@ -138,6 +140,30 @@ describe('calculateCanvasBounds', () => {
   });
 });
 
+describe('getCanvasRenderedStackMetrics', () => {
+  it('keeps stack metrics in unscaled canvas units so scene zoom handles both size and distance', () => {
+    CanvasHelpers.setCanvasZoom(0.5);
+    expect(CanvasHelpers.getCanvasRenderedStackMetrics({
+      style: {
+        left: '240px',
+        top: '120px',
+        width: '300px',
+        height: '220px'
+      },
+      offsetLeft: 240,
+      offsetTop: 120,
+      offsetWidth: 300,
+      offsetHeight: 220
+    })).toEqual({
+      x: 240,
+      y: 120,
+      w: 300,
+      h: 220
+    });
+    CanvasHelpers.setCanvasZoom(1);
+  });
+});
+
 describe('canvas coordinate helpers', () => {
   it('uses the row padding box as the canvas origin instead of subtracting padding', () => {
     const originalGetComputedStyle = globalThis.getComputedStyle;
@@ -187,8 +213,8 @@ describe('canvas coordinate helpers', () => {
       20,
       20
     )).toEqual({
-      x: 24,
-      y: 32
+      x: 25,
+      y: 33
     });
 
     globalThis.getComputedStyle = originalGetComputedStyle;

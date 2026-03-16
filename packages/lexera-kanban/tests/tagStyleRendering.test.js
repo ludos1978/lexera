@@ -25,6 +25,19 @@ describe('tag style rendering parity', () => {
     expect(tagColors['#accessible-indigo']).toBe('#332288');
   });
 
+  it('allows surface-style tags on all styled entities and the board header', () => {
+    const appSource = readSource('app.js');
+    const cssSource = readSource('app.css');
+
+    expect(appSource.includes("descriptor.normalizedTag === 'surface' && entityType !== 'card'")).toBe(false);
+    expect(appSource.includes("applyTagStyleToEntity(getElBoardHeader(), activeBoardData && activeBoardData.title ? activeBoardData.title : '')")).toBe(true);
+    expect(appSource.includes("applyTagStyleToEntity(cardEl, getCardContainerStyleSource(card.content || ''))")).toBe(true);
+    expect(appSource.includes('skipFirstLineTagStyle: true')).toBe(true);
+    expect(appSource.includes('buildCombinedTagStyleDescriptor(styleTags)')).toBe(true);
+    expect(cssSource.includes('.board-header.tag-styled')).toBe(true);
+    expect(cssSource.includes('.tag-line-styled')).toBe(true);
+  });
+
   it('does not re-render tag labels or badge rails into headers/footers', () => {
     const appSource = readSource('app.js');
     expect(appSource.includes('renderTagStyleBadgeRail(')).toBe(false);

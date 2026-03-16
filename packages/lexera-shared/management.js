@@ -44,6 +44,7 @@ var ManagementUI = (function () {
   var container = null;
   var api = null;
   var callbacks = null;
+  var uiOptions = null;
   var me = null;
   var cachedWorkspaces = [];
   var cachedDefaultWorkspaceId = null;
@@ -65,6 +66,26 @@ var ManagementUI = (function () {
   var logViewerPaused = false;
   var logFilter = 'all';
   var MAX_RENDERED_LOG_ENTRIES = 500;
+
+  function buildUiOptions(options) {
+    options = options || {};
+    var topTabs = Array.isArray(options.topTabs) && options.topTabs.length
+      ? options.topTabs.filter(function (tab) {
+          return tab === 'sharing' || tab === 'config' || tab === 'logs';
+        })
+      : ['sharing', 'config', 'logs'];
+    if (topTabs.length === 0) topTabs = ['sharing', 'config', 'logs'];
+    var defaultTopTab = topTabs.indexOf(options.defaultTopTab) !== -1 ? options.defaultTopTab : topTabs[0];
+    return {
+      topTabs: topTabs,
+      defaultTopTab: defaultTopTab,
+      logsEnabled: topTabs.indexOf('logs') !== -1
+    };
+  }
+
+  function isTopTabEnabled(tabName) {
+    return !!(uiOptions && uiOptions.topTabs && uiOptions.topTabs.indexOf(tabName) !== -1);
+  }
 
   // ── Helpers ──
 
@@ -133,6 +154,7 @@ var ManagementUI = (function () {
     container = options.container;
     api = wrapMutatingApi(options.api);
     callbacks = options.callbacks || {};
+    uiOptions = buildUiOptions(options.ui);
     if (!container || !api) throw new Error('ManagementUI.init requires container and api');
     initialized = true;
     renderShell();
@@ -156,6 +178,7 @@ var ManagementUI = (function () {
     container = null;
     api = null;
     callbacks = null;
+    uiOptions = null;
     me = null;
     cachedWorkspaces = [];
     cachedDefaultWorkspaceId = null;
@@ -181,20 +204,21 @@ var ManagementUI = (function () {
     if (section === 'connections') { loadConnections(); return; }
     if (section === 'peers') { loadDiscoveredPeers(); return; }
     if (section === 'workspaces') { loadWorkspaces(); return; }
-    if (section === 'logs') { loadLogs(); return; }
+    if (section === 'logs') { if (uiOptions && uiOptions.logsEnabled) loadLogs(); return; }
     loadAll();
   }
 
   async function loadAll() {
     await loadIdentity();
-    await Promise.all([
+    var initialLoads = [
       loadServerInfo(),
       loadNetworkInterfaces(),
       loadTheme(),
       loadWorkspaces(),
-      loadLudosSyncConfig(),
-      loadLogs(),
-    ]);
+      loadLudosSyncConfig()
+    ];
+    if (uiOptions && uiOptions.logsEnabled) initialLoads.push(loadLogs());
+    await Promise.all(initialLoads);
     await loadMyBoards();
     await loadConnections();
     await loadDiscoveredPeers();
@@ -204,16 +228,24 @@ var ManagementUI = (function () {
 
   function renderShell() {
     var html = '';
+    var defaultTopTab = uiOptions && uiOptions.defaultTopTab ? uiOptions.defaultTopTab : 'sharing';
 
     // Top-level tabs
     html += '<div class="mgmt-top-tab-bar">';
-    html += '<button class="mgmt-top-tab active" data-mgmt-top-tab="sharing">Sharing</button>';
-    html += '<button class="mgmt-top-tab" data-mgmt-top-tab="config">Configuration</button>';
-    html += '<button class="mgmt-top-tab" data-mgmt-top-tab="logs">Logs</button>';
+    if (isTopTabEnabled('sharing')) {
+      html += '<button class="mgmt-top-tab' + (defaultTopTab === 'sharing' ? ' active' : '') + '" data-mgmt-top-tab="sharing">Sharing</button>';
+    }
+    if (isTopTabEnabled('config')) {
+      html += '<button class="mgmt-top-tab' + (defaultTopTab === 'config' ? ' active' : '') + '" data-mgmt-top-tab="config">Configuration</button>';
+    }
+    if (isTopTabEnabled('logs')) {
+      html += '<button class="mgmt-top-tab' + (defaultTopTab === 'logs' ? ' active' : '') + '" data-mgmt-top-tab="logs">Logs</button>';
+    }
     html += '</div>';
 
     // ── Sharing tab ──
-    html += '<div class="mgmt-top-tab-content active" data-mgmt-top-panel="sharing">';
+    if (isTopTabEnabled('sharing')) {
+      html += '<div class="mgmt-top-tab-content' + (defaultTopTab === 'sharing' ? ' active' : '') + '" data-mgmt-top-panel="sharing">';
 
     // Workspaces
     html += '<div class="mgmt-section" data-mgmt-section="workspaces">';
@@ -264,10 +296,12 @@ var ManagementUI = (function () {
     html += '<div id="mgmt-join-status" class="mgmt-status"></div>';
     html += '</div>';
 
-    html += '</div>'; // end sharing tab
+      html += '</div>'; // end sharing tab
+    }
 
     // ── Configuration tab ──
-    html += '<div class="mgmt-top-tab-content" data-mgmt-top-panel="config">';
+    if (isTopTabEnabled('config')) {
+      html += '<div class="mgmt-top-tab-content' + (defaultTopTab === 'config' ? ' active' : '') + '" data-mgmt-top-panel="config">';
 
     // Identity
     html += '<div class="mgmt-section" data-mgmt-section="identity">';
@@ -355,28 +389,31 @@ var ManagementUI = (function () {
     html += '</div>';
     html += '</div>';
 
-    html += '</div>'; // end config tab
+      html += '</div>'; // end config tab
+    }
 
     // ── Logs tab ──
-    html += '<div class="mgmt-top-tab-content" data-mgmt-top-panel="logs">';
-    html += '<div class="mgmt-section" data-mgmt-section="logs">';
-    html += '<div class="mgmt-section-title">Logs</div>';
-    html += '<div class="mgmt-field-row mgmt-log-toolbar">';
-    html += '<label class="mgmt-field-label" for="mgmt-log-filter">Source</label>';
-    html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-log-filter">';
-    html += '<option value="all">All</option>';
-    html += '<option value="backend">Backend</option>';
-    html += '<option value="ludos-sync">WebDAV / CalDAV</option>';
-    html += '<option value="errors">Warnings / Errors</option>';
-    html += '</select>';
-    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="toggle-log-pause">Pause</button>';
-    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="refresh-logs">Refresh</button>';
-    html += '</div>';
-    html += '<div id="mgmt-log-meta" class="mgmt-info-stack"></div>';
-    html += '<div id="mgmt-log-file" class="mgmt-info-text"></div>';
-    html += '<div id="mgmt-logs-view" class="mgmt-log-view"><div class="mgmt-list-empty">Loading logs...</div></div>';
-    html += '</div>';
-    html += '</div>'; // end logs tab
+    if (isTopTabEnabled('logs')) {
+      html += '<div class="mgmt-top-tab-content' + (defaultTopTab === 'logs' ? ' active' : '') + '" data-mgmt-top-panel="logs">';
+      html += '<div class="mgmt-section" data-mgmt-section="logs">';
+      html += '<div class="mgmt-section-title">Logs</div>';
+      html += '<div class="mgmt-field-row mgmt-log-toolbar">';
+      html += '<label class="mgmt-field-label" for="mgmt-log-filter">Source</label>';
+      html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-log-filter">';
+      html += '<option value="all">All</option>';
+      html += '<option value="backend">Backend</option>';
+      html += '<option value="ludos-sync">WebDAV / CalDAV</option>';
+      html += '<option value="errors">Warnings / Errors</option>';
+      html += '</select>';
+      html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="toggle-log-pause">Pause</button>';
+      html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="refresh-logs">Refresh</button>';
+      html += '</div>';
+      html += '<div id="mgmt-log-meta" class="mgmt-info-stack"></div>';
+      html += '<div id="mgmt-log-file" class="mgmt-info-text"></div>';
+      html += '<div id="mgmt-logs-view" class="mgmt-log-view"><div class="mgmt-list-empty">Loading logs...</div></div>';
+      html += '</div>';
+      html += '</div>'; // end logs tab
+    }
 
     container.innerHTML = html;
 

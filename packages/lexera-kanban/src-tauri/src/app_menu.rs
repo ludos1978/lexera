@@ -12,7 +12,7 @@ pub fn create_app_menu(app: &App) -> Result<tauri::menu::Menu<tauri::Wry>, Box<d
         .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
         .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
         .separator()
-        .item(&PredefinedMenuItem::quit(app, Some("Quit Lexera Kanban"))?)
+        .item(&MenuItemBuilder::with_id("app-quit", "Quit Lexera Kanban").accelerator("CmdOrCtrl+Q").build(app)?)
         .build()?;
 
     // ── File menu ──
@@ -297,6 +297,8 @@ pub fn set_check_menu_state(app: &tauri::AppHandle, id: &str, checked: bool) {
 /// Menu ID → frontend action string mapping table.
 /// Each entry is (menu_id, action_string). Add new entries here to wire native menu items.
 const MENU_ACTION_MAP: &[(&str, &str)] = &[
+    // App
+    ("app-quit", "quit-app"),
     // File
     ("file-new-window", "new-window"),
     ("file-save", "save-now"),

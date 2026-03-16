@@ -203,6 +203,7 @@ fn main() {
             commands::show_context_menu,
             commands::toggle_devtools,
             commands::set_menu_check_state,
+            commands::quit_app,
             // Export commands
             export_commands::marp_export,
             export_commands::marp_watch,

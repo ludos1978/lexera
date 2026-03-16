@@ -159,13 +159,23 @@ function loadMutationFunctions() {
     extractFunction(findLine('function parseColorChannels(')),
     extractFunction(findLine('function getContrastingTextColor(')),
     extractFunction(findLine('function getTagColor(')),
+    extractFunction(findLine('function escapeAttr(')),
     extractFunction(findLine('function getResolvedCategoryRole(')),
     extractFunction(findLine('function getTagStyleOverride(')),
     extractFunction(findLine('function applyTagBorderSpecialRules(')),
     extractFunction(findLine('function buildTagStyleDescriptor(')),
+    extractFunction(findLine('function cloneTagStyleValue(')),
+    extractFunction(findLine('function buildCombinedTagStyleDescriptor(')),
+    extractFunction(findLine('function toTagAccentRgba(')),
+    extractFunction(findLine('function resolveTagSurfaceColor(')),
+    extractFunction(findLine('function buildTagStyleRenderState(')),
+    extractFunction(findLine('function buildTagStyleInlineCssText(')),
+    extractFunction(findLine('function buildTagStyledLineHtml(')),
+    extractFunction(findLine('function wrapRenderedLineBlockHtml(')),
     extractFunction(findLine('function isLayoutTagName(')),
     extractFunction(findLine('function isTagStyleEligible(')),
     extractFunction(findLine('function getFirstStyleTag(')),
+    extractFunction(findLine('function getCardContainerStyleSource(')),
     extractFunction(findLine('function buildTagSubmenu(')),
     extractFunction(findLine('function buildCustomTagsSubmenu(')),
     extractFunction(findLine('function getColumnLayoutTags(')),
@@ -230,9 +240,15 @@ function loadMutationFunctions() {
       getContrastingTextColor,
       getTagColor,
       buildTagStyleDescriptor,
+      buildCombinedTagStyleDescriptor,
+      buildTagStyleRenderState,
+      buildTagStyleInlineCssText,
+      buildTagStyledLineHtml,
+      wrapRenderedLineBlockHtml,
       isLayoutTagName,
       isTagStyleEligible,
       getFirstStyleTag,
+      getCardContainerStyleSource,
       buildTagSubmenu,
       buildCustomTagsSubmenu,
       getColumnLayoutTags,
@@ -461,6 +477,7 @@ describe('getTagCategoryKey', () => {
     expect(F.getTagCategoryKey('#must')).toBe('moscow');
     expect(F.getTagCategoryKey('#backend')).toBe('category');
     expect(F.getTagCategoryKey('#online')).toBe('teaching-platform');
+    expect(F.getTagCategoryKey('#surface')).toBe('special');
   });
 });
 
@@ -492,6 +509,84 @@ describe('buildTagStyleDescriptor', () => {
     expect(result.category).toBe('positivity');
     expect(result.badge).toBeTruthy();
     expect(result.badge.label).toBe('++');
+  });
+
+  it('maps #surface to a solid theme surface card background', () => {
+    const result = F.buildTagStyleDescriptor('#surface');
+    expect(result.category).toBe('special');
+    expect(result.color).toBe('var(--text-primary)');
+    expect(result.background).toMatchObject({
+      color: 'var(--bg-primary)',
+      headerColor: 'var(--bg-primary)',
+      contentColor: 'var(--bg-primary)',
+      footerColor: 'var(--bg-primary)'
+    });
+    expect(result.border).toMatchObject({
+      style: 'solid',
+      width: '1px',
+      position: 'full',
+      color: 'var(--border)'
+    });
+  });
+});
+
+describe('buildCombinedTagStyleDescriptor', () => {
+  it('combines background and border features from different tags', () => {
+    const result = F.buildCombinedTagStyleDescriptor(['#blue', '#urgent']);
+    expect(result.background).toBeTruthy();
+    expect(result.background.color).toBe('#0056B3');
+    expect(result.border).toMatchObject({
+      style: 'dashed',
+      width: '3px',
+      position: 'left'
+    });
+    expect(result.border.color).toBe(F.getTagColor('#urgent'));
+    expect(result.color).toBe(F.getTagColor('#urgent'));
+  });
+
+  it('keeps a background tag even when it is not the first styled tag', () => {
+    const result = F.buildCombinedTagStyleDescriptor(['#urgent', '#surface']);
+    expect(result.background).toMatchObject({
+      color: 'var(--bg-primary)',
+      headerColor: 'var(--bg-primary)',
+      contentColor: 'var(--bg-primary)',
+      footerColor: 'var(--bg-primary)'
+    });
+    expect(result.border).toMatchObject({
+      style: 'dashed',
+      width: '3px',
+      position: 'left'
+    });
+    expect(result.color).toBe(F.getTagColor('#urgent'));
+  });
+
+  it('preserves effect fields alongside structural styling', () => {
+    const result = F.buildCombinedTagStyleDescriptor(['#blue', '#exclude']);
+    expect(result.background).toBeTruthy();
+    expect(result.opacity).toBe('0.55');
+    expect(result.pattern).toBe('stripes');
+  });
+});
+
+describe('card tag style scopes', () => {
+  it('uses only the first physical card line for whole-card styling', () => {
+    expect(F.getCardContainerStyleSource('Title #todo\nBody #urgent\nTail #blue')).toBe('Title #todo');
+    expect(F.getCardContainerStyleSource('')).toBe('');
+  });
+
+  it('renders line-scoped styling markup for tagged body lines', () => {
+    const html = F.buildTagStyledLineHtml('div', 'Body', 'Body #surface #urgent', {
+      className: 'card-line-scope'
+    });
+    expect(html).toContain('class="card-line-scope tag-line-styled"');
+    expect(html).toContain('data-tag-border-position="left"');
+    expect(html).toContain('--tag-surface-bg:var(--bg-primary)');
+    expect(html).toContain('--tag-border-style:dashed');
+    expect(html).toContain('--tag-border-width:3px');
+  });
+
+  it('leaves untagged lines untouched when wrapping block html', () => {
+    expect(F.wrapRenderedLineBlockHtml('<div>Plain</div>', 'Plain line')).toBe('<div>Plain</div>');
   });
 });
 
@@ -876,6 +971,12 @@ describe('buildTagSubmenu', () => {
   it('creates items for all tags', () => {
     var sub = F.buildTagSubmenu('Colors', ['red', 'blue', 'green'], '', 'tag-color-');
     expect(sub.items).toHaveLength(3);
+  });
+
+  it('includes special surface tags in category submenus', () => {
+    var sub = F.buildTagSubmenu('Special', ['surface', 'draft'], '', 'tag-special-');
+    var ids = sub.items.map(function (i) { return i.id; });
+    expect(ids).toContain('tag-special-surface');
   });
 });
 
