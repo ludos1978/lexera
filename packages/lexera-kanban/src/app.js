@@ -5867,10 +5867,7 @@ const LexeraDashboard = (function () {
   }
 
   function is_archived_or_deleted(text) {
-    text = text || '';
-    if (/#hidden-internal-(?:deleted|archived|parked|incoming)\b/.test(text)) return true;
-    if (/(^|\s)#hidden(\s|$)/.test(text)) return true;
-    return false;
+    return /#hidden-internal-(?:deleted|archived|parked|incoming)\b|(^|\s)#hidden(\s|$)/.test(text || '');
   }
 
   function hasInternalHiddenTag(text, tag) {
@@ -5921,26 +5918,19 @@ const LexeraDashboard = (function () {
   }
 
   function getRowByLocationInBoard(boardData, rowIndex) {
-    if (!boardData || !boardData.rows) return null;
-    return boardData.rows[rowIndex] || null;
+    return getBoardCleanupApi().getRowByLocationInBoard(boardData, rowIndex);
   }
 
   function getStackByLocationInBoard(boardData, rowIndex, stackIndex) {
-    var row = getRowByLocationInBoard(boardData, rowIndex);
-    if (!row || !row.stacks) return null;
-    return row.stacks[stackIndex] || null;
+    return getBoardCleanupApi().getStackByLocationInBoard(boardData, rowIndex, stackIndex);
   }
 
   function getColumnByLocationInBoard(boardData, rowIndex, stackIndex, colIndex) {
-    var stack = getStackByLocationInBoard(boardData, rowIndex, stackIndex);
-    if (!stack || !stack.columns) return null;
-    return stack.columns[colIndex] || null;
+    return getBoardCleanupApi().getColumnByLocationInBoard(boardData, rowIndex, stackIndex, colIndex);
   }
 
   function getCardByLocationInBoard(boardData, rowIndex, stackIndex, colIndex, cardIndex) {
-    var col = getColumnByLocationInBoard(boardData, rowIndex, stackIndex, colIndex);
-    if (!col || !col.cards) return null;
-    return col.cards[cardIndex] || null;
+    return getBoardCleanupApi().getCardByLocationInBoard(boardData, rowIndex, stackIndex, colIndex, cardIndex);
   }
 
   function getBoardDisplayTitle(boardId, boardData) {
@@ -5953,75 +5943,7 @@ const LexeraDashboard = (function () {
   }
 
   function collectHiddenItemsFromBoardData(boardData, tag) {
-    if (!boardData || !boardData.rows) return [];
-    var items = [];
-    for (var r = 0; r < boardData.rows.length; r++) {
-      var row = boardData.rows[r];
-      var rowTitle = row.title || ('Row ' + (r + 1));
-      var cleanRowTitle = stripInternalHiddenTags(rowTitle) || ('Row ' + (r + 1));
-      if (hasInternalHiddenTag(rowTitle, tag)) {
-        items.push({
-          kind: 'row',
-          rowIndex: r,
-          rowTitle: cleanRowTitle,
-          title: cleanRowTitle
-        });
-        continue;
-      }
-      if (!row.stacks) continue;
-      for (var s = 0; s < row.stacks.length; s++) {
-        var stack = row.stacks[s];
-        var stackTitle = stack.title || ('Stack ' + (s + 1));
-        var cleanStackTitle = stripInternalHiddenTags(stackTitle) || ('Stack ' + (s + 1));
-        if (hasInternalHiddenTag(stackTitle, tag)) {
-          items.push({
-            kind: 'stack',
-            rowIndex: r,
-            stackIndex: s,
-            rowTitle: cleanRowTitle,
-            stackTitle: cleanStackTitle,
-            title: cleanStackTitle
-          });
-          continue;
-        }
-        if (!stack.columns) continue;
-        for (var c = 0; c < stack.columns.length; c++) {
-          var col = stack.columns[c];
-          var cleanColTitle = stripLayoutTags(stripInternalHiddenTags(col.title || '')) || ('Column ' + (c + 1));
-          if (hasInternalHiddenTag(col.title || '', tag)) {
-            items.push({
-              kind: 'column',
-              rowIndex: r,
-              stackIndex: s,
-              colIndex: c,
-              rowTitle: cleanRowTitle,
-              stackTitle: cleanStackTitle,
-              colTitle: cleanColTitle,
-              title: cleanColTitle
-            });
-            continue;
-          }
-          if (!col.cards) continue;
-          for (var i = 0; i < col.cards.length; i++) {
-            var card = col.cards[i];
-            var content = card && card.content ? card.content : '';
-            if (!hasInternalHiddenTag(content, tag)) continue;
-            items.push({
-              kind: 'card',
-              rowIndex: r,
-              stackIndex: s,
-              colIndex: c,
-              cardIndex: i,
-              rowTitle: cleanRowTitle,
-              stackTitle: cleanStackTitle,
-              colTitle: cleanColTitle,
-              title: getCardTitle(stripInternalHiddenTags(content)) || '(untitled card)'
-            });
-          }
-        }
-      }
-    }
-    return items;
+    return getBoardCleanupApi().collectHiddenItemsFromBoardData(boardData, tag, getBoardCleanupDeps());
   }
 
   function collectHiddenItems(tag) {
@@ -6724,30 +6646,7 @@ const LexeraDashboard = (function () {
   }
 
   function removeHiddenItemFromBoardData(boardData, item) {
-    if (!item || !boardData || !boardData.rows) return false;
-    if (item.kind === 'row') {
-      if (item.rowIndex < 0 || item.rowIndex >= boardData.rows.length) return false;
-      boardData.rows.splice(item.rowIndex, 1);
-      return true;
-    }
-    if (item.kind === 'stack') {
-      var row = getRowByLocationInBoard(boardData, item.rowIndex);
-      if (!row || !row.stacks || item.stackIndex < 0 || item.stackIndex >= row.stacks.length) return false;
-      row.stacks.splice(item.stackIndex, 1);
-      removeEmptyStacksAndRowsInBoard(boardData);
-      return true;
-    }
-    if (item.kind === 'column') {
-      var stack = getStackByLocationInBoard(boardData, item.rowIndex, item.stackIndex);
-      if (!stack || !stack.columns || item.colIndex < 0 || item.colIndex >= stack.columns.length) return false;
-      stack.columns.splice(item.colIndex, 1);
-      removeEmptyStacksAndRowsInBoard(boardData);
-      return true;
-    }
-    var col = getColumnByLocationInBoard(boardData, item.rowIndex, item.stackIndex, item.colIndex);
-    if (!col || !col.cards || item.cardIndex < 0 || item.cardIndex >= col.cards.length) return false;
-    col.cards.splice(item.cardIndex, 1);
-    return true;
+    return getBoardCleanupApi().removeHiddenItemFromBoardData(boardData, item, getBoardCleanupDeps());
   }
 
   function removeHiddenItemFromBoard(item) {
@@ -6755,45 +6654,11 @@ const LexeraDashboard = (function () {
   }
 
   function sortHiddenItemsForRemoval(items) {
-    return items.slice().sort(function (a, b) {
-      if (a.rowIndex !== b.rowIndex) return b.rowIndex - a.rowIndex;
-      if (a.stackIndex !== b.stackIndex) return b.stackIndex - a.stackIndex;
-      if (a.colIndex !== b.colIndex) return b.colIndex - a.colIndex;
-      if (a.kind !== b.kind) return a.kind === 'card' ? 1 : -1;
-      var aCardIndex = typeof a.cardIndex === 'number' ? a.cardIndex : -1;
-      var bCardIndex = typeof b.cardIndex === 'number' ? b.cardIndex : -1;
-      return bCardIndex - aCardIndex;
-    });
+    return getBoardCleanupApi().sortHiddenItemsForRemoval(items);
   }
 
   function removeHiddenItemsFromBoardData(boardData, items) {
-    if (!items || items.length === 0 || !boardData || !boardData.rows) return false;
-    var sorted = sortHiddenItemsForRemoval(items);
-    for (var i = 0; i < sorted.length; i++) {
-      var item = sorted[i];
-      if (item.kind === 'row') {
-        if (item.rowIndex >= 0 && item.rowIndex < boardData.rows.length) {
-          boardData.rows.splice(item.rowIndex, 1);
-        }
-      } else if (item.kind === 'stack') {
-        var row = getRowByLocationInBoard(boardData, item.rowIndex);
-        if (row && row.stacks && item.stackIndex >= 0 && item.stackIndex < row.stacks.length) {
-          row.stacks.splice(item.stackIndex, 1);
-        }
-      } else if (item.kind === 'column') {
-        var stack = getStackByLocationInBoard(boardData, item.rowIndex, item.stackIndex);
-        if (stack && stack.columns && item.colIndex >= 0 && item.colIndex < stack.columns.length) {
-          stack.columns.splice(item.colIndex, 1);
-        }
-      } else {
-        var col = getColumnByLocationInBoard(boardData, item.rowIndex, item.stackIndex, item.colIndex);
-        if (col && col.cards && item.cardIndex >= 0 && item.cardIndex < col.cards.length) {
-          col.cards.splice(item.cardIndex, 1);
-        }
-      }
-    }
-    removeEmptyStacksAndRowsInBoard(boardData);
-    return true;
+    return getBoardCleanupApi().removeHiddenItemsFromBoardData(boardData, items, getBoardCleanupDeps());
   }
 
   function removeHiddenItemsFromBoard(items) {
@@ -10722,41 +10587,15 @@ const LexeraDashboard = (function () {
   var _quitAppInProgress = false;
 
   function normalizeBoardCleanupAction(action) {
-    var normalized = String(action || '').trim().toLowerCase();
-    if (normalized === 'empty-trash') return 'trash';
-    if (normalized === 'move-to-archive') return 'archive';
-    if (normalized === 'clean-both') return 'both';
-    if (normalized === 'keep' || normalized === 'skip-cleanup') return 'skip';
-    return normalized || 'skip';
+    return getBoardCleanupApi().normalizeBoardCleanupAction(action);
   }
 
   function getBoardCleanupState(boardId, boardData) {
-    var archivedItems = collectHiddenItemsFromBoardData(boardData, '#hidden-internal-archived');
-    var deletedItems = collectHiddenItemsFromBoardData(boardData, '#hidden-internal-deleted');
-    var archiveContext = getArchiveFileContextForBoard(boardId);
-    return {
-      boardId: boardId,
-      boardTitle: getBoardDisplayTitle(boardId, boardData),
-      archivedItems: archivedItems,
-      archivedCount: archivedItems.length,
-      deletedItems: deletedItems,
-      deletedCount: deletedItems.length,
-      archiveContext: archiveContext,
-      archiveAvailable: !!archiveContext,
-      needsCleanup: archivedItems.length > 0 || deletedItems.length > 0
-    };
+    return getBoardCleanupApi().getBoardCleanupState(boardId, boardData, getBoardCleanupDeps());
   }
 
   function isBoardCleanupActionApplicable(cleanupState, action) {
-    var normalized = normalizeBoardCleanupAction(action);
-    if (!cleanupState || !cleanupState.needsCleanup) return normalized === 'skip';
-    if (normalized === 'skip') return true;
-    if (normalized === 'trash') return cleanupState.deletedCount > 0;
-    if (normalized === 'archive') return cleanupState.archivedCount > 0 && cleanupState.archiveAvailable;
-    if (normalized === 'both') {
-      return cleanupState.deletedCount > 0 && cleanupState.archivedCount > 0 && cleanupState.archiveAvailable;
-    }
-    return false;
+    return getBoardCleanupApi().isBoardCleanupActionApplicable(cleanupState, action);
   }
 
   function buildBoardCleanupDialogActions(cleanupState) {
@@ -11197,27 +11036,7 @@ const LexeraDashboard = (function () {
    * Arrays of objects with 'id' fields are diffed by id matching.
    */
   function computeBoardDelta(oldBoard, newBoard) {
-    var delta = {};
-    // Compare top-level scalar fields
-    var scalarKeys = ['valid', 'title', 'yamlHeader', 'kanbanFooter'];
-    for (var k = 0; k < scalarKeys.length; k++) {
-      var key = scalarKeys[k];
-      if (oldBoard[key] !== newBoard[key]) {
-        delta[key] = { o: oldBoard[key], n: newBoard[key] };
-      }
-    }
-    // Compare boardSettings as a flat object
-    var oldSettings = oldBoard.boardSettings || null;
-    var newSettings = newBoard.boardSettings || null;
-    var settingsDelta = diffFlatObject(oldSettings, newSettings);
-    if (settingsDelta) delta.boardSettings = settingsDelta;
-    // Compare rows array (rows > stacks > columns > cards)
-    var rowsDelta = diffIdArray(oldBoard.rows || [], newBoard.rows || [], diffRow);
-    if (rowsDelta) delta.rows = rowsDelta;
-    // Compare legacy columns array
-    var colsDelta = diffIdArray(oldBoard.columns || [], newBoard.columns || [], diffColumn);
-    if (colsDelta) delta.columns = colsDelta;
-    return delta;
+    return getBoardDeltaApi().computeBoardDelta(oldBoard, newBoard);
   }
 
   /**
@@ -11365,26 +11184,7 @@ const LexeraDashboard = (function () {
    * If reverse is true, apply the delta in reverse (undo direction).
    */
   function applyBoardDelta(board, delta, reverse) {
-    // Apply top-level scalar changes
-    var scalarKeys = ['valid', 'title', 'yamlHeader', 'kanbanFooter'];
-    for (var k = 0; k < scalarKeys.length; k++) {
-      var key = scalarKeys[k];
-      if (delta[key]) {
-        board[key] = reverse ? delta[key].o : delta[key].n;
-      }
-    }
-    // Apply boardSettings changes
-    if (delta.boardSettings) {
-      applyFlatObjectDelta(board, 'boardSettings', delta.boardSettings, reverse);
-    }
-    // Apply rows delta
-    if (delta.rows) {
-      board.rows = applyIdArrayDelta(board.rows || [], delta.rows, reverse, applyRowDelta);
-    }
-    // Apply legacy columns delta
-    if (delta.columns) {
-      board.columns = applyIdArrayDelta(board.columns || [], delta.columns, reverse, applyColumnDelta);
-    }
+    return getBoardDeltaApi().applyBoardDelta(board, delta, reverse);
   }
 
   /** Apply a flat-object delta (for boardSettings). */
@@ -11479,7 +11279,7 @@ const LexeraDashboard = (function () {
 
   /** Estimate the byte size of a delta object for memory tracking. */
   function estimateDeltaSize(delta) {
-    return JSON.stringify(delta).length;
+    return getBoardDeltaApi().estimateDeltaSize(delta);
   }
 
   /**
@@ -11899,6 +11699,33 @@ const LexeraDashboard = (function () {
   function getCanvasMathApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasMath) return globalThis.LexeraCanvasMath;
     throw new Error('LexeraCanvasMath is unavailable');
+  }
+
+  function getCanvasDomApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasDom) return globalThis.LexeraCanvasDom;
+    throw new Error('LexeraCanvasDom is unavailable');
+  }
+
+  function getBoardDeltaApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) return globalThis.LexeraBoardDelta;
+    throw new Error('LexeraBoardDelta is unavailable');
+  }
+
+  function getBoardCleanupApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraBoardCleanup) return globalThis.LexeraBoardCleanup;
+    throw new Error('LexeraBoardCleanup is unavailable');
+  }
+
+  function getBoardCleanupDeps() {
+    return {
+      stripInternalHiddenTags: stripInternalHiddenTags,
+      hasInternalHiddenTag: hasInternalHiddenTag,
+      stripLayoutTags: stripLayoutTags,
+      getCardTitle: getCardTitle,
+      removeEmptyStacksAndRowsInBoard: removeEmptyStacksAndRowsInBoard,
+      getArchiveFileContextForBoard: getArchiveFileContextForBoard,
+      getBoardDisplayTitle: getBoardDisplayTitle
+    };
   }
 
   function parseCanvasLayoutNumber(value, fallback) {
@@ -12503,10 +12330,10 @@ const LexeraDashboard = (function () {
       if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
       if (!deltaX && !deltaY) return;
       e.preventDefault();
-      applyCanvasPan(
-        $canvasPanX - deltaX * multiplier,
-        $canvasPanY - deltaY * multiplier
-      );
+      var rect = container.getBoundingClientRect();
+      var ox = e.clientX - rect.left;
+      var oy = e.clientY - rect.top;
+      nudgeCanvasZoom(deltaY < 0 ? 0.1 : -0.1, ox, oy);
       return;
     }
     if (multiplier === 1) return;
@@ -16819,16 +16646,7 @@ const LexeraDashboard = (function () {
   }
 
   function getCanvasRowContentNodeFromDropTarget(target, fallbackNode) {
-    if (target && target.contentNode) return target.contentNode;
-    var targetNode = target && target.node ? target.node : null;
-    if (targetNode) {
-      if (targetNode.classList && targetNode.classList.contains('board-row-content')) return targetNode;
-      if (typeof targetNode.querySelector === 'function') {
-        var nestedContent = targetNode.querySelector(':scope > .board-row-content');
-        if (nestedContent) return nestedContent;
-      }
-    }
-    return fallbackNode || null;
+    return getCanvasDomApi().getCanvasRowContentNodeFromDropTarget(target, fallbackNode);
   }
 
   function getStackDropTarget(mx, my) {

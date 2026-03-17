@@ -155,6 +155,10 @@ const LexeraFileFormatRegistry = (function () {
     };
   }
 
+  function pageSuffix(prefix) {
+    return function (pageNumber) { return prefix + normalizePageNumber(pageNumber); };
+  }
+
   register({
     id: 'drawio',
     label: 'Draw.io file',
@@ -186,12 +190,8 @@ const LexeraFileFormatRegistry = (function () {
     label: 'Spreadsheet file',
     emoji: '&#128200;',
     previewPlaceholder: 'Spreadsheet preview is rendered through LibreOffice into a sheet image.',
-    preview: buildPreviewConfig('spreadsheet', 'xlsx-cache', 'png', 'png', function (pageNumber) {
-      return '-s' + normalizePageNumber(pageNumber);
-    }),
-    export: buildExportConfig('png', 'png', function (pageNumber) {
-      return '-s' + normalizePageNumber(pageNumber);
-    }),
+    preview: buildPreviewConfig('spreadsheet', 'xlsx-cache', 'png', 'png', pageSuffix('-s')),
+    export: buildExportConfig('png', 'png', pageSuffix('-s')),
     matches: function (normalized) {
       return /\.(xlsx|xls|ods)$/.test(normalized);
     },
@@ -202,12 +202,8 @@ const LexeraFileFormatRegistry = (function () {
     label: 'CSV table',
     emoji: '&#128451;',
     previewPlaceholder: 'CSV preview is rendered into an SVG table for board view and export compatibility.',
-    preview: buildPreviewConfig('table', 'csv-cache', 'svg', 'svg', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
-    export: buildExportConfig('svg', 'svg', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
+    preview: buildPreviewConfig('table', 'csv-cache', 'svg', 'svg', pageSuffix('-p')),
+    export: buildExportConfig('svg', 'svg', pageSuffix('-p')),
     matches: function (normalized) {
       return normalized.endsWith('.csv');
     },
@@ -218,12 +214,8 @@ const LexeraFileFormatRegistry = (function () {
     label: 'TSV table',
     emoji: '&#128451;',
     previewPlaceholder: 'TSV preview is rendered into an SVG table for board view and export compatibility.',
-    preview: buildPreviewConfig('table', 'tsv-cache', 'svg', 'svg', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
-    export: buildExportConfig('svg', 'svg', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
+    preview: buildPreviewConfig('table', 'tsv-cache', 'svg', 'svg', pageSuffix('-p')),
+    export: buildExportConfig('svg', 'svg', pageSuffix('-p')),
     matches: function (normalized) {
       return /\.(tsv|tab)$/.test(normalized);
     },
@@ -238,9 +230,7 @@ const LexeraFileFormatRegistry = (function () {
       kind: 'pdf',
       supportsRuntimeRender: false,
     },
-    export: buildExportConfig('png', 'png', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
+    export: buildExportConfig('png', 'png', pageSuffix('-p')),
     matches: function (normalized) {
       return normalized.slice(-4) === '.pdf';
     },
@@ -251,12 +241,8 @@ const LexeraFileFormatRegistry = (function () {
     label: 'Document file',
     emoji: '&#128196;',
     previewPlaceholder: 'Document preview is rendered through LibreOffice and Poppler into page images.',
-    preview: buildPreviewConfig('document', 'document-cache', 'png', 'png', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
-    export: buildExportConfig('png', 'png', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
+    preview: buildPreviewConfig('document', 'document-cache', 'png', 'png', pageSuffix('-p')),
+    export: buildExportConfig('png', 'png', pageSuffix('-p')),
     matches: function (normalized) {
       return /\.(doc|docx|odt|rtf|ppt|pptx|odp)$/.test(normalized);
     },
@@ -267,12 +253,8 @@ const LexeraFileFormatRegistry = (function () {
     label: 'EPUB file',
     emoji: '&#128218;',
     previewPlaceholder: 'EPUB preview is rendered through MuPDF into page images.',
-    preview: buildPreviewConfig('epub', 'epub-cache', 'png', 'png', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
-    export: buildExportConfig('png', 'png', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
+    preview: buildPreviewConfig('epub', 'epub-cache', 'png', 'png', pageSuffix('-p')),
+    export: buildExportConfig('png', 'png', pageSuffix('-p')),
     matches: function (normalized) {
       return normalized.slice(-5) === '.epub';
     },
@@ -283,12 +265,8 @@ const LexeraFileFormatRegistry = (function () {
     label: 'Text file',
     emoji: '&#128196;',
     previewPlaceholder: 'Text file preview is rendered into an SVG page for board view and export compatibility.',
-    preview: buildPreviewConfig('text', 'text-cache', 'svg', 'svg', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
-    export: buildExportConfig('svg', 'svg', function (pageNumber) {
-      return '-p' + normalizePageNumber(pageNumber);
-    }),
+    preview: buildPreviewConfig('text', 'text-cache', 'svg', 'svg', pageSuffix('-p')),
+    export: buildExportConfig('svg', 'svg', pageSuffix('-p')),
     matches: function (normalized) {
       return /\.(txt|text|log|cfg|ini|conf)$/.test(normalized);
     },

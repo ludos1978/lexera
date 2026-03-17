@@ -100,22 +100,16 @@ class ExportTreeUI {
     }
 
     renderColumn(node) {
-        var el = document.createElement('div');
-        el.className = this.getNodeClassName('export-selector-column', node);
-        el.dataset.nodeId = ExportTreeBuilder.generateNodeId(node);
-        el.textContent = node.label;
-        if (!node.excluded) {
-            el.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.toggleNode(el.dataset.nodeId);
-            });
-        }
-        return el;
+        return this._renderClickableNode('export-selector-column', node);
     }
 
     renderStackedColumn(node) {
+        return this._renderClickableNode('export-selector-stacked-column', node);
+    }
+
+    _renderClickableNode(baseClass, node) {
         var el = document.createElement('div');
-        el.className = this.getNodeClassName('export-selector-stacked-column', node);
+        el.className = this.getNodeClassName(baseClass, node);
         el.dataset.nodeId = ExportTreeBuilder.generateNodeId(node);
         el.textContent = node.label;
         if (!node.excluded) {

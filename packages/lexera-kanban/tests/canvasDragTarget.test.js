@@ -1,54 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
-
-function loadCanvasDragHelpers() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  const wrappedSource = `
-    ${extractFunction(findLine('function getCanvasRowContentNodeFromDropTarget('))}
-
-    return {
-      getCanvasRowContentNodeFromDropTarget
-    };
-  `;
-
-  return new Function(wrappedSource)();
-}
-
-let CanvasDragHelpers;
-
-beforeAll(() => {
-  CanvasDragHelpers = loadCanvasDragHelpers();
-});
+const require = createRequire(import.meta.url);
+const CanvasDragHelpers = require('../src/canvas/canvasDom.js');
 
 describe('getCanvasRowContentNodeFromDropTarget', () => {
   it('prefers the explicit row content node when the drop target provides one', () => {

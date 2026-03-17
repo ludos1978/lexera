@@ -156,10 +156,7 @@ const LexeraTemplates = (function () {
     if (type === 'card') {
       return { cardContent: body.trim() };
     }
-    if (type === 'column') {
-      return { columns: parseColumns(body) };
-    }
-    if (type === 'stack') {
+    if (type === 'column' || type === 'stack') {
       return { columns: parseColumns(body) };
     }
     if (type === 'row') {
@@ -172,51 +169,14 @@ const LexeraTemplates = (function () {
    * Parse ## headers + - [ ] tasks into column array.
    */
   function parseColumns(body) {
+    var result = parseRowBody(body);
     var columns = [];
-    var currentCol = null;
-    var currentTask = null;
-    var descLines = [];
-
-    function flushDesc() {
-      if (currentTask && descLines.length > 0) {
-        var desc = descLines.join('\n').trim();
-        if (desc) currentTask.content = currentTask.content + '\n' + desc;
-        descLines = [];
+    for (var i = 0; i < result.stacks.length; i++) {
+      var stack = result.stacks[i];
+      for (var j = 0; j < stack.columns.length; j++) {
+        columns.push(stack.columns[j]);
       }
     }
-
-    var lines = body.split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-
-      var colMatch = line.match(/^##\s+(.+)$/);
-      if (colMatch) {
-        flushDesc();
-        currentTask = null;
-        if (currentCol) columns.push(currentCol);
-        currentCol = { title: colMatch[1].trim(), cards: [] };
-        continue;
-      }
-
-      var taskMatch = line.match(/^-\s+\[([ x])\]\s+(.+)$/);
-      if (taskMatch && currentCol) {
-        flushDesc();
-        currentTask = { content: taskMatch[2].trim(), checked: taskMatch[1] === 'x' };
-        currentCol.cards.push(currentTask);
-        continue;
-      }
-
-      if (currentTask && line.match(/^\s{2,}/)) {
-        descLines.push(line.trim());
-        continue;
-      }
-
-      if (currentTask && line.trim() && !line.match(/^\s/)) {
-        flushDesc();
-      }
-    }
-    flushDesc();
-    if (currentCol) columns.push(currentCol);
     return columns;
   }
 

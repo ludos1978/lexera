@@ -1,108 +1,49 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
+const require = createRequire(import.meta.url);
+const BoardCleanup = require('../src/cleanup/boardCleanup.js');
 
-function loadBoardCleanupFunctions() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  const fnDefs = [
-    extractFunction(findLine('function getRowByLocationInBoard(')),
-    extractFunction(findLine('function getStackByLocationInBoard(')),
-    extractFunction(findLine('function getColumnByLocationInBoard(')),
-    extractFunction(findLine('function getCardByLocationInBoard(')),
-    extractFunction(findLine('function collectHiddenItemsFromBoardData(')),
-    extractFunction(findLine('function getBoardCleanupState(')),
-    extractFunction(findLine('function normalizeBoardCleanupAction(')),
-    extractFunction(findLine('function isBoardCleanupActionApplicable(')),
-    extractFunction(findLine('function sortHiddenItemsForRemoval(')),
-    extractFunction(findLine('function removeHiddenItemsFromBoardData(')),
-  ];
-
-  const wrappedSource = `
-    ${fnDefs.join('\n\n')}
-    return {
-      collectHiddenItemsFromBoardData,
-      getBoardCleanupState,
-      normalizeBoardCleanupAction,
-      isBoardCleanupActionApplicable,
-      sortHiddenItemsForRemoval,
-      removeHiddenItemsFromBoardData,
-    };
-  `;
-
-  const stripInternalHiddenTags = (text) => String(text || '')
+const cleanupDeps = {
+  stripInternalHiddenTags: (text) => String(text || '')
     .replace(/\s*#hidden-internal-(?:incoming|parked|archived|deleted)\b/g, '')
     .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n');
-  const hasInternalHiddenTag = (text, tag) => !!(text && tag && String(text).includes(tag));
-  const stripLayoutTags = (text) => String(text || '').replace(/\s+#(?:stack|wide|full|half|third|twothird)\b/g, '');
-  const getCardTitle = (content) => String(content || '')
+    .replace(/\n{3,}/g, '\n\n'),
+  hasInternalHiddenTag: (text, tag) => !!(text && tag && String(text).includes(tag)),
+  stripLayoutTags: (text) => String(text || '').replace(/\s+#(?:stack|wide|full|half|third|twothird)\b/g, ''),
+  getCardTitle: (content) => String(content || '')
     .replace(/^\s*-\s*\[[ xX]\]\s*/, '')
     .split('\n')[0]
-    .trim();
-  const removeEmptyStacksAndRowsInBoard = () => {};
-  const getArchiveFileContextForBoard = (boardId) => (
+    .trim(),
+  removeEmptyStacksAndRowsInBoard: () => {},
+  getArchiveFileContextForBoard: (boardId) => (
     boardId === 'local-board'
       ? { filename: 'local-board-archive.md' }
       : null
-  );
-  const getBoardDisplayTitle = (boardId) => boardId === 'local-board' ? 'Local Board' : 'Remote Board';
+  ),
+  getBoardDisplayTitle: (boardId) => boardId === 'local-board' ? 'Local Board' : 'Remote Board'
+};
 
-  const factory = new Function(
-    'stripInternalHiddenTags',
-    'hasInternalHiddenTag',
-    'stripLayoutTags',
-    'getCardTitle',
-    'removeEmptyStacksAndRowsInBoard',
-    'getArchiveFileContextForBoard',
-    'getBoardDisplayTitle',
-    wrappedSource
-  );
-
-  return factory(
-    stripInternalHiddenTags,
-    hasInternalHiddenTag,
-    stripLayoutTags,
-    getCardTitle,
-    removeEmptyStacksAndRowsInBoard,
-    getArchiveFileContextForBoard,
-    getBoardDisplayTitle
-  );
-}
-
-let C;
-
-beforeAll(() => {
-  C = loadBoardCleanupFunctions();
-});
+const C = {
+  collectHiddenItemsFromBoardData(boardData, tag) {
+    return BoardCleanup.collectHiddenItemsFromBoardData(boardData, tag, cleanupDeps);
+  },
+  getBoardCleanupState(boardId, boardData) {
+    return BoardCleanup.getBoardCleanupState(boardId, boardData, cleanupDeps);
+  },
+  normalizeBoardCleanupAction(action) {
+    return BoardCleanup.normalizeBoardCleanupAction(action);
+  },
+  isBoardCleanupActionApplicable(cleanupState, action) {
+    return BoardCleanup.isBoardCleanupActionApplicable(cleanupState, action);
+  },
+  sortHiddenItemsForRemoval(items) {
+    return BoardCleanup.sortHiddenItemsForRemoval(items);
+  },
+  removeHiddenItemsFromBoardData(boardData, items) {
+    return BoardCleanup.removeHiddenItemsFromBoardData(boardData, items, cleanupDeps);
+  }
+};
 
 describe('collectHiddenItemsFromBoardData', () => {
   it('collects archived rows, stacks, columns, and cards from board data', () => {
