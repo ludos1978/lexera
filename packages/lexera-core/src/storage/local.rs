@@ -252,15 +252,29 @@ impl LocalStorage {
 
     fn restore_include_sources(target: &mut KanbanBoard, source: &KanbanBoard) {
         let mut include_by_column_id: HashMap<String, IncludeSource> = HashMap::new();
+        let mut include_by_raw_path: HashMap<String, IncludeSource> = HashMap::new();
         for source_col in source.all_columns() {
             if let Some(include_source) = source_col.include_source.clone() {
+                include_by_raw_path.insert(include_source.raw_path.clone(), include_source.clone());
                 include_by_column_id.insert(source_col.id.clone(), include_source);
             }
         }
 
         for target_col in target.all_columns_mut() {
+            if target_col.include_source.is_some() {
+                continue; // already has include source
+            }
+            // Primary: match by column ID (stable across normal saves)
             if let Some(include_source) = include_by_column_id.get(&target_col.id) {
                 target_col.include_source = Some(include_source.clone());
+                continue;
+            }
+            // Fallback: match by include syntax in column title (survives CRDT
+            // rebuilds where column IDs change)
+            if let Some(raw_path) = crate::include::syntax::extract_include_path(&target_col.title) {
+                if let Some(include_source) = include_by_raw_path.get(&raw_path) {
+                    target_col.include_source = Some(include_source.clone());
+                }
             }
         }
     }
@@ -775,7 +789,12 @@ impl LocalStorage {
         mut crdt: Option<CrdtStore>,
         create_backup: bool,
     ) -> Result<(), StorageError> {
-        board_to_write.generation_meta = Some(self.next_generation_meta(board_id, &board_to_write));
+        // Compute generation meta before write but DON'T commit to in-memory
+        // state until after the disk write succeeds.  This prevents the
+        // generation counter from advancing on failed writes.
+        let next_gen_meta = self.next_generation_meta(board_id, &board_to_write);
+        board_to_write.generation_meta = Some(next_gen_meta);
+
         if let Some(ref mut c) = crdt {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 c.set_metadata(
@@ -796,6 +815,9 @@ impl LocalStorage {
                     board_id,
                     msg
                 );
+                // Drop the corrupted CRDT — it will be rebuilt from markdown
+                // on next reload rather than persisting unknown state.
+                crdt = None;
             }
         }
 
@@ -810,6 +832,9 @@ impl LocalStorage {
             }
         }
 
+        // Disk write: includes first, main board last (see persist_board_files).
+        // If this fails, generation counter was NOT yet committed to in-memory
+        // state, so staleness checks remain valid.
         let markdown = self.persist_board_files(board_id, file_path, &board_to_write)?;
 
         if create_backup && file_path.exists() {
@@ -823,6 +848,8 @@ impl LocalStorage {
             }
         }
 
+        // CRDT save: best-effort after successful disk write.
+        // If it fails, the CRDT will be rebuilt from markdown on next reload.
         if let Some(ref c) = crdt {
             let crdt_path = file_path.with_extension("md.crdt");
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -852,6 +879,7 @@ impl LocalStorage {
             }
         }
 
+        // NOW commit to in-memory state — only after disk write succeeded.
         let metadata = fs::metadata(file_path)?;
         let last_modified = metadata.modified().unwrap_or_else(|_| SystemTime::now());
         let generation = board_to_write
@@ -2000,9 +2028,10 @@ impl LocalStorage {
                         include_contents.insert(raw_path, file_content);
                     }
                     Err(e) => {
-                        log::warn!(
-                            "[lexera.storage.include] Failed to read include file {:?}: {}",
+                        log::error!(
+                            "[lexera.storage.include] Failed to read include file {:?} for board {}: {} — column will appear empty",
                             resolved,
+                            board_id,
                             e
                         );
                     }
@@ -2084,6 +2113,15 @@ impl LocalStorage {
     ) -> Result<String, StorageError> {
         let markdown = parser::generate_markdown(board);
 
+        // Write include files FIRST so that if any include write fails,
+        // the main board file is still consistent with the previous state.
+        for column in board.all_columns() {
+            if column.include_source.is_some() {
+                self.write_include_column(column)?;
+            }
+        }
+
+        // Write main board file last — only after all includes succeeded.
         Self::atomic_write(file_path, &markdown)?;
 
         // Register self-write fingerprint AFTER successful write so that a
@@ -2094,12 +2132,6 @@ impl LocalStorage {
                 "[lexera.storage.write] Self-write tracker lock poisoned: {}",
                 e
             ),
-        }
-
-        for column in board.all_columns() {
-            if column.include_source.is_some() {
-                self.write_include_column(column)?;
-            }
         }
 
         let board_dir = file_path.parent().unwrap_or(Path::new("."));

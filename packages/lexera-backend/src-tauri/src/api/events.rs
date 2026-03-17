@@ -21,7 +21,12 @@ pub async fn sse_events(
             let json = serde_json::to_string(&event).unwrap_or_default();
             Some(Ok(Event::default().data(json)))
         }
-        Err(_) => None,
+        Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+            log::warn!("[lexera.sse] Client lagged by {} events, sending resync hint", n);
+            Some(Ok(Event::default().event("resync").data(
+                format!("{{\"lagged\":{}}}", n),
+            )))
+        }
     });
 
     // Keep-alive every 30 seconds

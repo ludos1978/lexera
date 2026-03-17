@@ -35,7 +35,7 @@ use tauri::Manager;
 use uuid::Uuid;
 
 /// Capacity of the board-change event broadcast channel.
-const EVENT_CHANNEL_CAPACITY: usize = 256;
+const EVENT_CHANNEL_CAPACITY: usize = 4096;
 /// Seconds between expired-invite cleanup runs.
 const INVITE_CLEANUP_INTERVAL_SECS: u64 = 3600;
 /// Seconds between periodic saves of collaboration state and config.

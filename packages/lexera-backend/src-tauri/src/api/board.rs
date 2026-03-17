@@ -552,7 +552,7 @@ pub async fn add_board_endpoint(
         }
     }
 
-    // Update config and persist
+    // Update config and persist — must succeed for the board to survive restart
     if let Ok(mut cfg) = state.config.lock() {
         let mut cfg_changed = crate::config::normalize_workspace_setup(&mut cfg);
         let file_str = canonical.to_string_lossy().to_string();
@@ -575,7 +575,10 @@ pub async fn add_board_endpoint(
         }
         if cfg_changed {
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
-                log::warn!("[lexera.api.add_board] Failed to save config: {}", e);
+                log::error!("[lexera.api.add_board] Failed to save config after adding board {}: {}", board_id, e);
+                // Roll back: remove board from in-memory storage so state stays consistent
+                let _ = state.storage.remove_board(&board_id);
+                return Err(err_internal(format!("Board added but config save failed: {}", e)));
             }
             crate::ludos_sync::spawn_ludos_sync_reconcile(state.clone());
         }

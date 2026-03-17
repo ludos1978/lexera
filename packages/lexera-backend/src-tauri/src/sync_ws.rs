@@ -33,7 +33,7 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 
 /// Per-client channel capacity. If a client falls behind by this many messages,
 /// new messages are dropped (safe for CRDT — the client will catch up via VV).
-const CLIENT_CHANNEL_CAPACITY: usize = 256;
+const CLIENT_CHANNEL_CAPACITY: usize = 1024;
 
 struct BoardRoom {
     clients: HashMap<u64, mpsc::Sender<String>>,

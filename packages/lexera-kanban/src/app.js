@@ -9708,6 +9708,10 @@ const LexeraDashboard = (function () {
         }
       } catch (err) {
         logFrontendIssue('error', 'save.auto', 'Auto-save failed', err);
+        // Retry auto-save after a delay so data isn't stranded in memory
+        if (isBoardDirty()) {
+          scheduleAutoSave(5000, 'retry-after-failure');
+        }
       }
     }, waitMs);
     return true;
