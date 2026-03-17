@@ -1331,29 +1331,29 @@ impl LocalStorage {
             let state = boards
                 .get(board_id)
                 .ok_or_else(|| StorageError::BoardNotFound(board_id.to_string()))?;
-            if disk_diverged || state.crdt.is_none() {
-                drop(boards);
-                Self::normalize_board_for_write(
-                    &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
-                    &board_dir,
-                )
-            } else {
-                Self::normalize_board_for_write(
-                    &state
-                        .crdt
-                        .as_ref()
-                        .unwrap()
-                        .to_board_result()
-                        .unwrap_or_else(|error| {
-                            log::warn!(
-                                "[lexera.storage.rebase] Failed to materialize CRDT board for {}: {}. Falling back to in-memory board state.",
-                                board_id,
-                                error
-                            );
-                            state.board.clone()
-                        }),
-                    &board_dir,
-                )
+            match (disk_diverged, state.crdt.as_ref()) {
+                (false, Some(crdt)) => {
+                    Self::normalize_board_for_write(
+                        &crdt
+                            .to_board_result()
+                            .unwrap_or_else(|error| {
+                                log::warn!(
+                                    "[lexera.storage.rebase] Failed to materialize CRDT board for {}: {}. Falling back to in-memory board state.",
+                                    board_id,
+                                    error
+                                );
+                                state.board.clone()
+                            }),
+                        &board_dir,
+                    )
+                }
+                _ => {
+                    drop(boards);
+                    Self::normalize_board_for_write(
+                        &self.parse_with_includes(&disk_content, board_id, &board_dir, &file_path)?,
+                        &board_dir,
+                    )
+                }
             }
         };
 

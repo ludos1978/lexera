@@ -148,7 +148,7 @@ impl PublicRoomService {
         };
 
         let json = serde_json::to_string_pretty(&data)
-            .map_err(|e| io::Error::other(e))?;
+            .map_err(io::Error::other)?;
 
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;

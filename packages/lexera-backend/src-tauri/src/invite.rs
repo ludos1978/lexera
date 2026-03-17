@@ -220,7 +220,7 @@ impl InviteService {
     /// Save all invite state to a JSON file. Uses atomic write (tmp + rename).
     pub fn save_to_file(&self, path: &Path) -> io::Result<()> {
         let json = serde_json::to_string_pretty(&self.invites)
-            .map_err(|e| io::Error::other(e))?;
+            .map_err(io::Error::other)?;
 
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;

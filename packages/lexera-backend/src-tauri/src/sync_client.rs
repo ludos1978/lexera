@@ -819,7 +819,7 @@ async fn run_sync_client(
                         })
                         .map_err(|e| format!("Failed to serialize ClientUpdate: {}", e))?;
                         ws_tx
-                            .send(Message::Text(msg.into()))
+                            .send(Message::Text(msg))
                         .await
                         .map_err(|e| format!("Failed to send ClientUpdate: {}", e))?;
                         if let Some(vv_after_send) = storage.get_crdt_vv(&local_board_id) {
