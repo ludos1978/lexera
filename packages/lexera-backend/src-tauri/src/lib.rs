@@ -1,6 +1,8 @@
 pub mod api;
 mod calendar_tasks;
 mod capture;
+#[cfg(test)]
+pub mod test_helpers;
 mod clipboard_watcher;
 /// Lexera Backend: Tauri setup, config loading, storage init, tray, HTTP server.
 mod config;

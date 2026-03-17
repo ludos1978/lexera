@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use super::ErrorResponse;
+use super::{err_bad_request, err_internal, err_not_found, ErrorResponse};
 use crate::state::AppState;
 
 #[derive(Serialize)]
@@ -188,26 +188,16 @@ pub async fn get_template(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     // Prevent path traversal
     if template_id.contains("..") || template_id.contains('/') || template_id.contains('\\') {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid template ID".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Invalid template ID"));
     }
 
     let templates_dir = get_templates_dir(&state);
     let template_dir = templates_dir.join(&template_id);
     let template_md = template_dir.join("template.md");
 
-    let content = tokio::fs::read_to_string(&template_md).await.map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Template not found".to_string(),
-            }),
-        )
-    })?;
+    let content = tokio::fs::read_to_string(&template_md)
+        .await
+        .map_err(|_| err_not_found("Template not found"))?;
 
     // List extra files (everything except template.md)
     let mut files: Vec<String> = Vec::new();
@@ -234,12 +224,7 @@ pub async fn copy_template_files(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     // Prevent path traversal
     if template_id.contains("..") || template_id.contains('/') || template_id.contains('\\') {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid template ID".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Invalid template ID"));
     }
 
     let templates_dir = get_templates_dir(&state);
@@ -249,26 +234,14 @@ pub async fn copy_template_files(
         .map(|m| !m.is_dir())
         .unwrap_or(true)
     {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Template not found".to_string(),
-            }),
-        ));
+        return Err(err_not_found("Template not found"));
     }
 
     // Resolve board directory
     let board_path = state
         .storage
         .get_board_path(&body.board_id)
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Board not found".to_string(),
-                }),
-            )
-        })?;
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_dir = board_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
@@ -336,12 +309,7 @@ pub async fn copy_template_files(
     })
     .await
     .unwrap_or_else(|_| Ok(Vec::new()))
-    .map_err(|e: String| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e }),
-        )
-    })?;
+    .map_err(|e: String| err_internal(e))?;
 
     Ok(Json(serde_json::json!({
         "copied": copied,
@@ -352,60 +320,9 @@ pub async fn copy_template_files(
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use axum::Router;
-    use http_body_util::BodyExt;
-    use lexera_core::storage::local::LocalStorage;
-    use std::sync::Arc;
     use tower::ServiceExt;
 
-    use crate::state::AppState;
-
-    fn test_state(tmp: &std::path::Path) -> AppState {
-        let storage = Arc::new(LocalStorage::new());
-        let (event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-        AppState {
-            storage,
-            event_tx,
-            port: 0,
-            bind_address: "127.0.0.1".into(),
-            live_port: Arc::new(std::sync::Mutex::new(0)),
-            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
-            incoming: None,
-            local_user_id: "test-user".into(),
-            config_path: tmp.join("config.json"),
-            identity_path: tmp.join("identity.json"),
-            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
-            watcher: Arc::new(std::sync::Mutex::new(None)),
-            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
-            public_service: Arc::new(std::sync::Mutex::new(
-                crate::public::PublicRoomService::new(),
-            )),
-            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
-            sync_client: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_client::SyncClientManager::new(),
-            )),
-            discovery: Arc::new(std::sync::Mutex::new(
-                crate::discovery::DiscoveryService::new(),
-            )),
-            app_handle: None,
-            collab_dir: tmp.join("collab"),
-            ludos_sync: Arc::new(tokio::sync::Mutex::new(
-                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
-            )),
-            shutdown_tx,
-        }
-    }
-
-    fn test_router(state: AppState) -> Router {
-        crate::api::api_router().with_state(state)
-    }
-
-    async fn body_json(body: Body) -> serde_json::Value {
-        let bytes = body.collect().await.unwrap().to_bytes();
-        serde_json::from_slice(&bytes).unwrap()
-    }
+    use crate::test_helpers::{body_json, test_router, test_state};
 
     #[tokio::test]
     async fn list_templates_returns_empty_without_templates_dir() {

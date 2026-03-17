@@ -6,7 +6,7 @@ use axum::{
 use lexera_core::media::{content_type_for_ext, is_previewable, media_category};
 use serde::Deserialize;
 
-use super::{insert_header_safe, resolve_board_file, ErrorResponse};
+use super::{err_bad_request, err_internal, err_not_found, insert_header_safe, resolve_board_file, ErrorResponse};
 use crate::state::AppState;
 
 /// Maximum directory depth for recursive file search.
@@ -48,14 +48,9 @@ pub async fn serve_file(
     Query(params): Query<FileQuery>,
 ) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
     let file_path = resolve_board_file(&state, &board_id, &params.path)?;
-    let data = tokio::fs::read(&file_path).await.map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "File not found".to_string(),
-            }),
-        )
-    })?;
+    let data = tokio::fs::read(&file_path)
+        .await
+        .map_err(|_| err_not_found("File not found"))?;
     let ext = file_path.extension().and_then(|e| e.to_str());
     let ct = content_type_for_ext(ext);
     let mut headers = HeaderMap::new();
@@ -129,14 +124,10 @@ pub async fn find_file(
     Path(board_id): Path<String>,
     Json(body): Json<FindFileBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_dir = board_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
@@ -209,24 +200,15 @@ pub async fn search_files(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let query = body.query.trim().to_string();
     if query.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Search query must not be empty".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Search query must not be empty"));
     }
 
     // Collect board IDs and their paths, filtered by workspace if specified.
     let board_dirs: Vec<(String, String, std::path::PathBuf)> = {
-        let cfg = state.config.lock().map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to lock config".to_string(),
-                }),
-            )
-        })?;
+        let cfg = state
+            .config
+            .lock()
+            .map_err(|_| err_internal("Failed to lock config"))?;
 
         let boards_in_scope: Vec<&crate::config::BoardEntry> = if let Some(ref ws_id) = body.workspace_id {
             cfg.boards
@@ -370,14 +352,10 @@ pub async fn convert_path(
     Path(board_id): Path<String>,
     Json(body): Json<ConvertPathBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_dir = board_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
@@ -391,14 +369,7 @@ pub async fn convert_path(
         }
         let abs = tokio::fs::canonicalize(board_dir.join(&body.path))
             .await
-            .map_err(|_| {
-                (
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Cannot resolve path".to_string(),
-                    }),
-                )
-            })?;
+            .map_err(|_| err_not_found("Cannot resolve path"))?;
         abs.to_string_lossy().to_string()
     } else {
         // to relative
@@ -411,23 +382,13 @@ pub async fn convert_path(
         let canonical_board_dir = tokio::fs::canonicalize(&board_dir)
             .await
             .unwrap_or_else(|_| board_dir.to_path_buf());
-        let canonical_file = tokio::fs::canonicalize(p).await.map_err(|_| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Cannot resolve path".to_string(),
-                }),
-            )
-        })?;
+        let canonical_file = tokio::fs::canonicalize(p)
+            .await
+            .map_err(|_| err_not_found("Cannot resolve path"))?;
         match canonical_file.strip_prefix(&canonical_board_dir) {
             Ok(rel) => rel.to_string_lossy().to_string(),
             Err(_) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse {
-                        error: "File is outside board directory".to_string(),
-                    }),
-                ));
+                return Err(err_bad_request("File is outside board directory"));
             }
         }
     };
@@ -442,60 +403,10 @@ pub async fn convert_path(
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use axum::Router;
     use http_body_util::BodyExt;
-    use lexera_core::storage::local::LocalStorage;
-    use std::sync::Arc;
     use tower::ServiceExt;
 
-    use crate::state::AppState;
-
-    fn test_state(tmp: &std::path::Path) -> AppState {
-        let storage = Arc::new(LocalStorage::new());
-        let (event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-        AppState {
-            storage,
-            event_tx,
-            port: 0,
-            bind_address: "127.0.0.1".into(),
-            live_port: Arc::new(std::sync::Mutex::new(0)),
-            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
-            incoming: None,
-            local_user_id: "test-user".into(),
-            config_path: tmp.join("config.json"),
-            identity_path: tmp.join("identity.json"),
-            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
-            watcher: Arc::new(std::sync::Mutex::new(None)),
-            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
-            public_service: Arc::new(std::sync::Mutex::new(
-                crate::public::PublicRoomService::new(),
-            )),
-            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
-            sync_client: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_client::SyncClientManager::new(),
-            )),
-            discovery: Arc::new(std::sync::Mutex::new(
-                crate::discovery::DiscoveryService::new(),
-            )),
-            app_handle: None,
-            collab_dir: tmp.join("collab"),
-            ludos_sync: Arc::new(tokio::sync::Mutex::new(
-                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
-            )),
-            shutdown_tx,
-        }
-    }
-
-    fn test_router(state: AppState) -> Router {
-        crate::api::api_router().with_state(state)
-    }
-
-    async fn body_json(body: Body) -> serde_json::Value {
-        let bytes = body.collect().await.unwrap().to_bytes();
-        serde_json::from_slice(&bytes).unwrap()
-    }
+    use crate::test_helpers::{body_json, test_router, test_state};
 
     const MINIMAL_BOARD: &str = "\
 ---

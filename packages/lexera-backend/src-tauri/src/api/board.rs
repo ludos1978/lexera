@@ -3,14 +3,35 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Json,
 };
-use lexera_core::storage::BoardStorage;
+use lexera_core::storage::{BoardStorage, StorageError};
 use lexera_core::types::is_archived_or_deleted;
 use serde::Deserialize;
 use std::path::PathBuf;
 
 use super::live_sync;
-use super::{insert_header_safe, log_api_issue, validate_board_id, ErrorResponse};
+use super::{
+    err_bad_request, err_internal, err_not_found, insert_header_safe, log_api_issue,
+    validate_board_id, ErrorResponse,
+};
 use crate::state::AppState;
+
+/// Map a `StorageError` to an HTTP status code + JSON error response, logging the issue.
+fn storage_error_response(
+    error: StorageError,
+    target: &'static str,
+    context: impl std::fmt::Display,
+) -> (StatusCode, Json<ErrorResponse>) {
+    let status = match &error {
+        StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
+        StorageError::CardNotFound(_) => StatusCode::NOT_FOUND,
+        StorageError::ColumnOutOfRange { .. } => StatusCode::BAD_REQUEST,
+        StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
+        StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    log_api_issue(status, target, format!("{}: {}", context, error));
+    (status, Json(ErrorResponse { error: error.to_string() }))
+}
 
 #[derive(Deserialize)]
 pub struct AddCardBody {
@@ -110,10 +131,9 @@ pub async fn get_board_columns(
 ) -> Result<(StatusCode, HeaderMap, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     let board = state.storage.read_board(&board_id).ok_or_else(|| {
-        let status = StatusCode::NOT_FOUND;
         let error = format!("Board not found: {}", board_id);
-        log_api_issue(status, "lexera.api.get_board", &error);
-        (status, Json(ErrorResponse { error }))
+        log_api_issue(StatusCode::NOT_FOUND, "lexera.api.get_board", &error);
+        err_not_found(error)
     })?;
 
     let version = state.storage.get_board_version(&board_id).unwrap_or(0);
@@ -191,70 +211,41 @@ pub async fn add_card(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     if body.content.trim().is_empty() {
-        let status = StatusCode::BAD_REQUEST;
         let error = format!(
             "Missing or empty content for add_card on board {} column {}",
             board_id, col_index
         );
-        log_api_issue(status, "lexera.api.add_card", &error);
-        return Err((
-            status,
-            Json(ErrorResponse {
-                error: "Missing or empty content".to_string(),
-            }),
-        ));
+        log_api_issue(StatusCode::BAD_REQUEST, "lexera.api.add_card", &error);
+        return Err(err_bad_request("Missing or empty content"));
     }
 
     let board = state.storage.read_board(&board_id).ok_or_else(|| {
-        let status = StatusCode::NOT_FOUND;
         let error = format!("Board not found: {}", board_id);
-        log_api_issue(status, "lexera.api.add_card", &error);
-        (status, Json(ErrorResponse { error }))
+        log_api_issue(StatusCode::NOT_FOUND, "lexera.api.add_card", &error);
+        err_not_found(error)
     })?;
     let num_columns = board.all_columns().len();
     if col_index >= num_columns {
-        let status = StatusCode::BAD_REQUEST;
         let error = format!(
             "Column index {} out of range for board {} (has {} columns)",
             col_index, board_id, num_columns
         );
-        log_api_issue(status, "lexera.api.add_card", &error);
-        return Err((
-            status,
-            Json(ErrorResponse {
-                error: format!(
-                    "Column index {} out of range (max {})",
-                    col_index,
-                    num_columns.saturating_sub(1)
-                ),
-            }),
-        ));
+        log_api_issue(StatusCode::BAD_REQUEST, "lexera.api.add_card", &error);
+        return Err(err_bad_request(format!(
+            "Column index {} out of range (max {})",
+            col_index,
+            num_columns.saturating_sub(1)
+        )));
     }
 
     state
         .storage
         .add_card(&board_id, col_index, &body.content)
         .map_err(|e| {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                lexera_core::storage::StorageError::ColumnOutOfRange { .. } => {
-                    StatusCode::BAD_REQUEST
-                }
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            log_api_issue(
-                status,
+            storage_error_response(
+                e,
                 "lexera.api.add_card",
-                format!(
-                    "Failed to add card to board {} column {}: {}",
-                    board_id, col_index, e
-                ),
-            );
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
+                format!("Failed to add card to board {} column {}", board_id, col_index),
             )
         })?;
 
@@ -272,34 +263,18 @@ pub async fn append_to_card(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     if body.content.trim().is_empty() {
-        let status = StatusCode::BAD_REQUEST;
-        let error = "Missing or empty content".to_string();
-        log_api_issue(status, "lexera.api.append_to_card", &error);
-        return Err((status, Json(ErrorResponse { error })));
+        log_api_issue(StatusCode::BAD_REQUEST, "lexera.api.append_to_card", "Missing or empty content");
+        return Err(err_bad_request("Missing or empty content"));
     }
 
     state
         .storage
         .append_to_card(&board_id, &card_id, &body.content)
         .map_err(|e| {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                lexera_core::storage::StorageError::CardNotFound(_) => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            log_api_issue(
-                status,
+            storage_error_response(
+                e,
                 "lexera.api.append_to_card",
-                format!(
-                    "Failed to append to card {} on board {}: {}",
-                    card_id, board_id, e
-                ),
-            );
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
+                format!("Failed to append to card {} on board {}", card_id, board_id),
             )
         })?;
 
@@ -314,23 +289,7 @@ pub async fn write_board(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
     let write_result = state.storage.write_board(&board_id, &board).map_err(|e| {
-        let status = match &e {
-            lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-            lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
-            lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        log_api_issue(
-            status,
-            "lexera.api.write_board",
-            format!("Failed to write board {}: {}", board_id, e),
-        );
-        (
-            status,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
+        storage_error_response(e, "lexera.api.write_board", format!("Failed to write board {}", board_id))
     })?;
     emit_main_file_changed(&state, &board_id);
     broadcast_crdt_to_sync_hub(&state, &board_id).await;
@@ -357,24 +316,10 @@ pub async fn create_board_crashsave(
         .storage
         .create_crashsave(&board_id, &body.board, &reason)
         .map_err(|e| {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            log_api_issue(
-                status,
+            storage_error_response(
+                e,
                 "lexera.api.create_board_crashsave",
-                format!(
-                    "Failed to create crashsave for board {} (reason={}): {}",
-                    board_id, reason, e
-                ),
-            );
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
+                format!("Failed to create crashsave for board {} (reason={})", board_id, reason),
             )
         })?;
 
@@ -401,25 +346,10 @@ pub async fn write_board_with_base(
         .storage
         .write_board_from_base(&board_id, &body.base_board, &body.board)
         .map_err(|e| {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                lexera_core::storage::StorageError::ConflictDetected { .. } => StatusCode::CONFLICT,
-                lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            log_api_issue(
-                status,
+            storage_error_response(
+                e,
                 "lexera.api.write_board_with_base",
-                format!(
-                    "Failed to write board {} from base snapshot: {}",
-                    board_id, e
-                ),
-            );
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
+                format!("Failed to write board {} from base snapshot", board_id),
             )
         })?;
     emit_main_file_changed(&state, &board_id);
@@ -449,24 +379,10 @@ pub async fn rebase_board_with_base(
         .storage
         .rebase_board_from_base(&board_id, &body.base_board, &body.board)
         .map_err(|e| {
-            let status = match &e {
-                lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-                lexera_core::storage::StorageError::InvalidBoard(_) => StatusCode::BAD_REQUEST,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            log_api_issue(
-                status,
+            storage_error_response(
+                e,
                 "lexera.api.rebase_board_with_base",
-                format!(
-                    "Failed to rebase board {} from base snapshot: {}",
-                    board_id, e
-                ),
-            );
-            (
-                status,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
+                format!("Failed to rebase board {} from base snapshot", board_id),
             )
         })?;
     Ok(Json(build_rebase_board_response(
@@ -483,10 +399,9 @@ pub async fn open_live_sync_session(
     Path(board_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let board = state.storage.read_board(&board_id).ok_or_else(|| {
-        let status = StatusCode::NOT_FOUND;
         let error = format!("Board not found for live sync open: {}", board_id);
-        log_api_issue(status, "lexera.api.live_sync.open", &error);
-        (status, Json(ErrorResponse { error }))
+        log_api_issue(StatusCode::NOT_FOUND, "lexera.api.live_sync.open", &error);
+        err_not_found(error)
     })?;
 
     let board_dir = state
@@ -498,16 +413,15 @@ pub async fn open_live_sync_session(
 
     let snapshot =
         live_sync::open_session(&board_id, board, board_dir, snapshot).map_err(|error| {
-            let status = StatusCode::INTERNAL_SERVER_ERROR;
             log_api_issue(
-                status,
+                StatusCode::INTERNAL_SERVER_ERROR,
                 "lexera.api.live_sync.open",
                 format!(
                     "Failed to open live sync session for board {}: {}",
                     board_id, error
                 ),
             );
-            (status, Json(ErrorResponse { error }))
+            err_internal(error)
         })?;
 
     Ok(Json(serde_json::json!({
@@ -522,16 +436,15 @@ pub async fn apply_live_sync_board(
     Json(body): Json<LiveSyncApplyBody>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let result = live_sync::apply_board(&session_id, body.board).map_err(|error| {
-        let status = StatusCode::BAD_REQUEST;
         log_api_issue(
-            status,
+            StatusCode::BAD_REQUEST,
             "lexera.api.live_sync.apply",
             format!(
                 "Failed to apply live sync board for session {}: {}",
                 session_id, error
             ),
         );
-        (status, Json(ErrorResponse { error }))
+        err_bad_request(error)
     })?;
 
     Ok(Json(serde_json::json!({
@@ -551,24 +464,17 @@ pub async fn import_live_sync_updates(
         body.updates.as_bytes(),
     )
     .map_err(|error| {
-        let status = StatusCode::BAD_REQUEST;
         let message = format!(
             "Failed to decode live sync update payload for session {}: {}",
             session_id, error
         );
-        log_api_issue(status, "lexera.api.live_sync.import", &message);
-        (
-            status,
-            Json(ErrorResponse {
-                error: error.to_string(),
-            }),
-        )
+        log_api_issue(StatusCode::BAD_REQUEST, "lexera.api.live_sync.import", &message);
+        err_bad_request(error.to_string())
     })?;
 
     let result = live_sync::import_updates(&session_id, &bytes).map_err(|error| {
-        let status = StatusCode::BAD_REQUEST;
         log_api_issue(
-            status,
+            StatusCode::BAD_REQUEST,
             "lexera.api.live_sync.import",
             format!(
                 "Failed to import live sync update for session {} ({} bytes): {}",
@@ -577,7 +483,7 @@ pub async fn import_live_sync_updates(
                 error
             ),
         );
-        (status, Json(ErrorResponse { error }))
+        err_bad_request(error)
     })?;
 
     Ok(Json(serde_json::json!({
@@ -591,13 +497,12 @@ pub async fn close_live_sync_session(
     Path(session_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let closed = live_sync::close_session(&session_id).map_err(|error| {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
         log_api_issue(
-            status,
+            StatusCode::INTERNAL_SERVER_ERROR,
             "lexera.api.live_sync.close",
             format!("Failed to close session {}: {}", session_id, error),
         );
-        (status, Json(ErrorResponse { error }))
+        err_internal(error)
     })?;
     Ok(Json(serde_json::json!({ "closed": closed })))
 }
@@ -609,35 +514,26 @@ pub async fn add_board_endpoint(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     let path = PathBuf::from(&body.file);
     if tokio::fs::metadata(&path).await.is_err() {
-        let status = StatusCode::NOT_FOUND;
         let error = format!("File not found: {}", body.file);
-        log_api_issue(status, "lexera.api.add_board", &error);
-        return Err((status, Json(ErrorResponse { error })));
+        log_api_issue(StatusCode::NOT_FOUND, "lexera.api.add_board", &error);
+        return Err(err_not_found(error));
     }
     if path.extension().and_then(|e| e.to_str()) != Some("md") {
-        let status = StatusCode::BAD_REQUEST;
-        let error = "Only .md files are supported".to_string();
         log_api_issue(
-            status,
+            StatusCode::BAD_REQUEST,
             "lexera.api.add_board",
-            format!("Rejected board add for {}: {}", body.file, error),
+            format!("Rejected board add for {}: Only .md files are supported", body.file),
         );
-        return Err((status, Json(ErrorResponse { error })));
+        return Err(err_bad_request("Only .md files are supported"));
     }
 
     let board_id = state.storage.add_board(&path).map_err(|e| {
-        let status = StatusCode::INTERNAL_SERVER_ERROR;
         log_api_issue(
-            status,
+            StatusCode::INTERNAL_SERVER_ERROR,
             "lexera.api.add_board",
             format!("Failed to add board {}: {}", body.file, e),
         );
-        (
-            status,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
+        err_internal(e.to_string())
     })?;
 
     // Watch the new board file
@@ -716,16 +612,7 @@ pub async fn remove_board_endpoint(
     let file_path = state.storage.get_board_path(&board_id);
 
     state.storage.remove_board(&board_id).map_err(|e| {
-        let status = match &e {
-            lexera_core::storage::StorageError::BoardNotFound(_) => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (
-            status,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
+        storage_error_response(e, "lexera.api.remove_board", format!("Failed to remove board {}", board_id))
     })?;
 
     // Unwatch the board file
@@ -787,14 +674,10 @@ pub async fn get_board_settings(
     Path(board_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
-    let board = state.storage.read_board(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: format!("Board not found: {}", board_id),
-            }),
-        )
-    })?;
+    let board = state
+        .storage
+        .read_board(&board_id)
+        .ok_or_else(|| err_not_found(format!("Board not found: {}", board_id)))?;
 
     let settings = board.board_settings.unwrap_or_default();
 
@@ -811,14 +694,10 @@ pub async fn update_board_settings(
     Json(incoming): Json<lexera_core::types::BoardSettings>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     validate_board_id(&board_id)?;
-    let mut board = state.storage.read_board(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: format!("Board not found: {}", board_id),
-            }),
-        )
-    })?;
+    let mut board = state
+        .storage
+        .read_board(&board_id)
+        .ok_or_else(|| err_not_found(format!("Board not found: {}", board_id)))?;
 
     // Merge incoming settings into existing (only overwrite non-None fields)
     let mut current = board.board_settings.unwrap_or_default();
@@ -826,16 +705,10 @@ pub async fn update_board_settings(
     board.board_settings = Some(current.clone());
 
     state.storage.write_board(&board_id, &board).map_err(|e| {
-        log_api_issue(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        storage_error_response(
+            e,
             "lexera.api.update_board_settings",
-            format!("Failed to write board settings for {}: {}", board_id, e),
-        );
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
+            format!("Failed to write board settings for {}", board_id),
         )
     })?;
 
@@ -1000,58 +873,10 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::Router;
-    use http_body_util::BodyExt;
-    use lexera_core::storage::local::LocalStorage;
     use std::collections::HashMap;
-    use std::sync::Arc;
     use tower::ServiceExt;
 
-    fn test_state(tmp: &std::path::Path) -> AppState {
-        let storage = Arc::new(LocalStorage::new());
-        let (event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-        AppState {
-            storage,
-            event_tx,
-            port: 0,
-            bind_address: "127.0.0.1".into(),
-            live_port: Arc::new(std::sync::Mutex::new(0)),
-            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
-            incoming: None,
-            local_user_id: "test-user".into(),
-            config_path: tmp.join("config.json"),
-            identity_path: tmp.join("identity.json"),
-            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
-            watcher: Arc::new(std::sync::Mutex::new(None)),
-            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
-            public_service: Arc::new(std::sync::Mutex::new(
-                crate::public::PublicRoomService::new(),
-            )),
-            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
-            sync_client: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_client::SyncClientManager::new(),
-            )),
-            discovery: Arc::new(std::sync::Mutex::new(
-                crate::discovery::DiscoveryService::new(),
-            )),
-            app_handle: None,
-            collab_dir: tmp.join("collab"),
-            ludos_sync: Arc::new(tokio::sync::Mutex::new(
-                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
-            )),
-            shutdown_tx,
-        }
-    }
-
-    fn test_router(state: AppState) -> Router {
-        crate::api::api_router().with_state(state)
-    }
-
-    async fn body_json(body: Body) -> serde_json::Value {
-        let bytes = body.collect().await.unwrap().to_bytes();
-        serde_json::from_slice(&bytes).unwrap()
-    }
+    use crate::test_helpers::{body_json, test_router, test_state};
 
     fn write_board_file(dir: &std::path::Path, name: &str, content: &str) -> std::path::PathBuf {
         let path = dir.join(name);

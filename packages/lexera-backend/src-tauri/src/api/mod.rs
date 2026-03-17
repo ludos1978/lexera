@@ -232,30 +232,15 @@ pub struct ErrorResponse {
 fn validate_board_id(id: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if id.is_empty() {
         log::warn!(target: "lexera.api.validate", "Rejected empty board ID");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Board ID must not be empty".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Board ID must not be empty"));
     }
     if id.len() > MAX_BOARD_ID_LENGTH {
         log::warn!(target: "lexera.api.validate", "Rejected board ID exceeding {} chars (len={})", MAX_BOARD_ID_LENGTH, id.len());
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Board ID too long (max {} characters)", MAX_BOARD_ID_LENGTH),
-            }),
-        ));
+        return Err(err_bad_request(format!("Board ID too long (max {} characters)", MAX_BOARD_ID_LENGTH)));
     }
     if has_path_traversal(id) {
         log::warn!(target: "lexera.api.validate", "Rejected board ID with path traversal characters: {}", id);
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Board ID contains invalid characters".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Board ID contains invalid characters"));
     }
     Ok(())
 }
@@ -293,6 +278,26 @@ fn log_api_issue(status: StatusCode, target: &'static str, message: impl AsRef<s
     }
 }
 
+/// Convenience constructor for a NOT_FOUND error response.
+pub(crate) fn err_not_found(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (StatusCode::NOT_FOUND, Json(ErrorResponse { error: msg.into() }))
+}
+
+/// Convenience constructor for a BAD_REQUEST error response.
+pub(crate) fn err_bad_request(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: msg.into() }))
+}
+
+/// Convenience constructor for an INTERNAL_SERVER_ERROR error response.
+pub(crate) fn err_internal(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: msg.into() }))
+}
+
+/// Convenience constructor for a FORBIDDEN error response.
+pub(crate) fn err_forbidden(msg: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (StatusCode::FORBIDDEN, Json(ErrorResponse { error: msg.into() }))
+}
+
 /// Resolve a file path relative to the board's directory, or as absolute if it starts with /.
 /// For absolute paths, verifies the resolved path is within the board directory.
 /// Returns the canonicalized path on success, or a NOT_FOUND/FORBIDDEN error response.
@@ -302,12 +307,7 @@ fn resolve_board_file(
     file_path: &str,
 ) -> Result<std::path::PathBuf, (StatusCode, Json<ErrorResponse>)> {
     let board_path = state.storage.get_board_path(board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
+        err_not_found("Board not found")
     })?;
     let board_dir = board_path
         .parent()
@@ -321,22 +321,12 @@ fn resolve_board_file(
     };
 
     let canonical = resolved.canonicalize().map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "File not found".to_string(),
-            }),
-        )
+        err_not_found("File not found")
     })?;
 
     // Verify the resolved path is within the board directory to prevent path traversal.
     let canonical_board_dir = board_dir.canonicalize().map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board directory not found".to_string(),
-            }),
-        )
+        err_not_found("Board directory not found")
     })?;
     if !canonical.starts_with(&canonical_board_dir) {
         log::warn!(
@@ -346,12 +336,7 @@ fn resolve_board_file(
             canonical.display(),
             canonical_board_dir.display()
         );
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Access denied: path is outside the board directory".to_string(),
-            }),
-        ));
+        return Err(err_forbidden("Access denied: path is outside the board directory"));
     }
 
     Ok(canonical)

@@ -13,7 +13,7 @@ use crate::config::{normalize_workspace_setup, save_config, LudosSyncModuleConfi
 use crate::ludos_sync::spawn_ludos_sync_reconcile;
 use crate::state::AppState;
 
-use super::ErrorResponse;
+use super::{err_bad_request, err_internal, err_not_found, ErrorResponse};
 
 // ── Theme ──────────────────────────────────────────────────────────────
 
@@ -43,16 +43,11 @@ pub async fn set_theme(
     Json(body): Json<SetThemeRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if !VALID_THEMES.contains(&body.theme.as_str()) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!(
-                    "Invalid theme '{}'. Valid themes: {}",
-                    body.theme,
-                    VALID_THEMES.join(", ")
-                ),
-            }),
-        ));
+        return Err(err_bad_request(format!(
+            "Invalid theme '{}'. Valid themes: {}",
+            body.theme,
+            VALID_THEMES.join(", ")
+        )));
     }
 
     let config_path = state.config_path.clone();
@@ -108,12 +103,7 @@ pub async fn update_ludos_sync_config(
     Json(body): Json<UpdateLudosSyncRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     if body.port == 0 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "ludos-sync port must be greater than 0".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("ludos-sync port must be greater than 0"));
     }
 
     let config_path = state.config_path.clone();
@@ -140,10 +130,7 @@ pub async fn update_ludos_sync_config(
         let mut manager = state.ludos_sync.lock().await;
         if let Err(e) = manager.reconcile(&cfg_snapshot).await {
             log::error!("Failed to reconcile ludos-sync after config update: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: e }),
-            ));
+            return Err(err_internal(e));
         }
         manager.status(&cfg_snapshot)
     };
@@ -161,12 +148,7 @@ pub async fn restart_ludos_sync(
     let cfg = state.config.lock().map_err(|_| lock_error())?.clone();
     let status = {
         let mut manager = state.ludos_sync.lock().await;
-        manager.restart(&cfg).await.map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: e }),
-            )
-        })?;
+        manager.restart(&cfg).await.map_err(err_internal)?;
         manager.status(&cfg)
     };
 
@@ -285,12 +267,7 @@ pub async fn create_workspace(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     let name = body.name.trim().to_string();
     if name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Workspace name must not be empty".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Workspace name must not be empty"));
     }
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -336,12 +313,7 @@ pub async fn update_workspace(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let name = body.name.trim().to_string();
     if name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Workspace name must not be empty".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Workspace name must not be empty"));
     }
 
     let config_path = state.config_path.clone();
@@ -363,12 +335,7 @@ pub async fn update_workspace(
         match ws {
             Some(w) => w.name = name.clone(),
             None => {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Workspace not found".to_string(),
-                    }),
-                ));
+                return Err(err_not_found("Workspace not found"));
             }
         }
         normalize_workspace_setup(&mut cfg);
@@ -405,12 +372,7 @@ pub async fn update_workspace_sync(
                 workspace.calendar_name = calendar_name.clone();
             }
             None => {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Workspace not found".to_string(),
-                    }),
-                ));
+                return Err(err_not_found("Workspace not found"));
             }
         }
         normalize_workspace_setup(&mut cfg);
@@ -449,12 +411,7 @@ pub async fn update_workspace_appearance(
                 workspace.layout_preset = layout_preset.clone();
             }
             None => {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Workspace not found".to_string(),
-                    }),
-                ));
+                return Err(err_not_found("Workspace not found"));
             }
         }
         if let Err(e) = save_config(&config_path, &cfg) {
@@ -480,23 +437,13 @@ pub async fn delete_workspace(
     {
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
         if cfg.workspaces.len() <= 1 {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "At least one workspace is required".to_string(),
-                }),
-            ));
+            return Err(err_bad_request("At least one workspace is required"));
         }
 
         let before = cfg.workspaces.len();
         cfg.workspaces.retain(|w| w.id != workspace_id);
         if cfg.workspaces.len() == before {
-            return Err((
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Workspace not found".to_string(),
-                }),
-            ));
+            return Err(err_not_found("Workspace not found"));
         }
 
         let fallback_workspace = cfg
@@ -540,12 +487,7 @@ pub async fn set_default_workspace(
         let mut cfg = state.config.lock().map_err(|_| lock_error())?;
         if let Some(ref ws_id) = body.workspace_id {
             if !cfg.workspaces.iter().any(|w| w.id == *ws_id) {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse {
-                        error: "Workspace not found".to_string(),
-                    }),
-                ));
+                return Err(err_bad_request("Workspace not found"));
             }
             cfg.default_workspace = Some(ws_id.clone());
         } else {
@@ -587,25 +529,16 @@ pub async fn assign_board_workspaces(
     }
 
     if workspace_ids.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Board must belong to at least one workspace".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Board must belong to at least one workspace"));
     }
 
     let config_path = state.config_path.clone();
 
     // Resolve board_id to file path via storage
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_file = canonicalize_path(board_path.to_string_lossy().as_ref());
 
     {
@@ -614,12 +547,7 @@ pub async fn assign_board_workspaces(
         // Validate all workspace IDs exist
         for ws_id in &workspace_ids {
             if !cfg.workspaces.iter().any(|w| w.id == *ws_id) {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse {
-                        error: format!("Workspace '{}' not found", ws_id),
-                    }),
-                ));
+                return Err(err_bad_request(format!("Workspace '{}' not found", ws_id)));
             }
         }
 
@@ -636,12 +564,7 @@ pub async fn assign_board_workspaces(
         match board_index {
             Some(index) => cfg.boards[index].workspace_ids = workspace_ids.clone(),
             None => {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Board not found in config".to_string(),
-                    }),
-                ));
+                return Err(err_not_found("Board not found in config"));
             }
         }
         normalize_workspace_setup(&mut cfg);
@@ -672,14 +595,10 @@ pub async fn update_board_sync(
     Json(body): Json<UpdateBoardSyncRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let config_path = state.config_path.clone();
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_file = canonicalize_path(board_path.to_string_lossy().as_ref());
     let xbel_name = normalize_optional_text(body.xbel_name);
     let calendar_slug = normalize_optional_text(body.calendar_slug);
@@ -700,12 +619,7 @@ pub async fn update_board_sync(
                 entry.calendar_name = calendar_name.clone();
             }
             None => {
-                return Err((
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse {
-                        error: "Board not found in config".to_string(),
-                    }),
-                ));
+                return Err(err_not_found("Board not found in config"));
             }
         }
         normalize_workspace_setup(&mut cfg);
@@ -753,12 +667,7 @@ fn notify_config_changed(state: &AppState) {
 }
 
 fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Failed to lock config".to_string(),
-        }),
-    )
+    err_internal("Failed to lock config")
 }
 
 #[cfg(test)]
@@ -766,60 +675,9 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use axum::Router;
-    use http_body_util::BodyExt;
-    use lexera_core::storage::local::LocalStorage;
-    use std::sync::Arc;
     use tower::ServiceExt;
 
-    use crate::state::AppState;
-
-    fn test_state(tmp: &std::path::Path) -> AppState {
-        let storage = Arc::new(LocalStorage::new());
-        let (event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-        AppState {
-            storage,
-            event_tx,
-            port: 0,
-            bind_address: "127.0.0.1".into(),
-            live_port: Arc::new(std::sync::Mutex::new(0)),
-            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
-            incoming: None,
-            local_user_id: "test-user".into(),
-            config_path: tmp.join("config.json"),
-            identity_path: tmp.join("identity.json"),
-            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
-            watcher: Arc::new(std::sync::Mutex::new(None)),
-            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
-            public_service: Arc::new(std::sync::Mutex::new(
-                crate::public::PublicRoomService::new(),
-            )),
-            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
-            sync_client: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_client::SyncClientManager::new(),
-            )),
-            discovery: Arc::new(std::sync::Mutex::new(
-                crate::discovery::DiscoveryService::new(),
-            )),
-            app_handle: None,
-            collab_dir: tmp.join("collab"),
-            ludos_sync: Arc::new(tokio::sync::Mutex::new(
-                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
-            )),
-            shutdown_tx,
-        }
-    }
-
-    fn test_router(state: AppState) -> Router {
-        crate::api::api_router().with_state(state)
-    }
-
-    async fn body_json(body: Body) -> serde_json::Value {
-        let bytes = body.collect().await.unwrap().to_bytes();
-        serde_json::from_slice(&bytes).unwrap()
-    }
+    use crate::test_helpers::{body_json, test_router, test_state};
 
     fn write_board_file(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
         let path = dir.join(name);

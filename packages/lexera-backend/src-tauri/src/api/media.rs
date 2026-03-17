@@ -5,7 +5,10 @@ use axum::{
 };
 use lexera_core::media::{content_type_for_ext, dedup_filename};
 
-use super::{has_path_traversal, insert_header_safe, resolve_board_file, ErrorResponse};
+use super::{
+    err_bad_request, err_internal, err_not_found, has_path_traversal, insert_header_safe,
+    resolve_board_file, ErrorResponse,
+};
 use crate::state::AppState;
 
 /// Cache-Control header value for served media files (1 hour).
@@ -20,14 +23,10 @@ pub async fn upload_media(
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     // Get board file path
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
 
     // Compute media folder: {basename}-Media/ next to the board file
     let board_dir = board_path
@@ -40,63 +39,33 @@ pub async fn upload_media(
     let media_dir = board_dir.join(format!("{}-Media", board_stem));
 
     // Process the first file field from multipart
-    let field = multipart.next_field().await.map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Failed to read multipart: {}", e),
-            }),
-        )
-    })?;
+    let field = multipart
+        .next_field()
+        .await
+        .map_err(|e| err_bad_request(format!("Failed to read multipart: {}", e)))?;
 
-    let field = field.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "No file provided".to_string(),
-            }),
-        )
-    })?;
+    let field = field.ok_or_else(|| err_bad_request("No file provided"))?;
 
     let filename = field.file_name().unwrap_or("capture").to_string();
 
     // Prevent path traversal in uploaded filename
     if has_path_traversal(&filename) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid filename".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Invalid filename"));
     }
 
-    let data = field.bytes().await.map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Failed to read file data: {}", e),
-            }),
-        )
-    })?;
+    let data = field
+        .bytes()
+        .await
+        .map_err(|e| err_bad_request(format!("Failed to read file data: {}", e)))?;
 
     if data.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Empty file".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Empty file"));
     }
 
     // Create media directory if needed
-    tokio::fs::create_dir_all(&media_dir).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to create media dir: {}", e),
-            }),
-        )
-    })?;
+    tokio::fs::create_dir_all(&media_dir)
+        .await
+        .map_err(|e| err_internal(format!("Failed to create media dir: {}", e)))?;
 
     // Deduplicate filename if it already exists
     let final_path = dedup_filename(&media_dir, &filename);
@@ -107,14 +76,9 @@ pub async fn upload_media(
         .to_string();
 
     // Write file
-    tokio::fs::write(&final_path, &data).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to write file: {}", e),
-            }),
-        )
-    })?;
+    tokio::fs::write(&final_path, &data)
+        .await
+        .map_err(|e| err_internal(format!("Failed to write file: {}", e)))?;
 
     // Return relative path from board directory
     let media_folder_name = format!("{}-Media", board_stem);
@@ -136,22 +100,13 @@ pub async fn serve_media(
 ) -> Result<(HeaderMap, Vec<u8>), (StatusCode, Json<ErrorResponse>)> {
     // Prevent path traversal (check before constructing file path)
     if has_path_traversal(&filename) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Invalid filename".to_string(),
-            }),
-        ));
+        return Err(err_bad_request("Invalid filename"));
     }
 
-    let board_path = state.storage.get_board_path(&board_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Board not found".to_string(),
-            }),
-        )
-    })?;
+    let board_path = state
+        .storage
+        .get_board_path(&board_id)
+        .ok_or_else(|| err_not_found("Board not found"))?;
     let board_stem = board_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -159,14 +114,9 @@ pub async fn serve_media(
     let media_rel_path = format!("{}-Media/{}", board_stem, filename);
     let file_path = resolve_board_file(&state, &board_id, &media_rel_path)?;
 
-    let data = tokio::fs::read(&file_path).await.map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "File not found".to_string(),
-            }),
-        )
-    })?;
+    let data = tokio::fs::read(&file_path)
+        .await
+        .map_err(|_| err_not_found("File not found"))?;
 
     let ext = file_path
         .extension()
@@ -185,55 +135,10 @@ pub async fn serve_media(
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use axum::Router;
     use http_body_util::BodyExt;
-    use lexera_core::storage::local::LocalStorage;
-    use std::sync::Arc;
     use tower::ServiceExt;
 
-    use crate::state::AppState;
-
-    fn test_state(tmp: &std::path::Path) -> AppState {
-        let storage = Arc::new(LocalStorage::new());
-        let (event_tx, _) = tokio::sync::broadcast::channel(16);
-        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
-        AppState {
-            storage,
-            event_tx,
-            port: 0,
-            bind_address: "127.0.0.1".into(),
-            live_port: Arc::new(std::sync::Mutex::new(0)),
-            server_shutdown: Arc::new(std::sync::Mutex::new(None)),
-            incoming: None,
-            local_user_id: "test-user".into(),
-            config_path: tmp.join("config.json"),
-            identity_path: tmp.join("identity.json"),
-            config: Arc::new(std::sync::Mutex::new(crate::config::SyncConfig::default())),
-            watcher: Arc::new(std::sync::Mutex::new(None)),
-            invite_service: Arc::new(std::sync::Mutex::new(crate::invite::InviteService::new())),
-            public_service: Arc::new(std::sync::Mutex::new(
-                crate::public::PublicRoomService::new(),
-            )),
-            auth_service: Arc::new(std::sync::Mutex::new(crate::auth::AuthService::new())),
-            sync_hub: Arc::new(tokio::sync::Mutex::new(crate::sync_ws::BoardSyncHub::new())),
-            sync_client: Arc::new(tokio::sync::Mutex::new(
-                crate::sync_client::SyncClientManager::new(),
-            )),
-            discovery: Arc::new(std::sync::Mutex::new(
-                crate::discovery::DiscoveryService::new(),
-            )),
-            app_handle: None,
-            collab_dir: tmp.join("collab"),
-            ludos_sync: Arc::new(tokio::sync::Mutex::new(
-                crate::ludos_sync::LudosSyncManager::new(tmp.join("ludos-sync.generated.json")),
-            )),
-            shutdown_tx,
-        }
-    }
-
-    fn test_router(state: AppState) -> Router {
-        crate::api::api_router().with_state(state)
-    }
+    use crate::test_helpers::{test_router, test_state};
 
     const MINIMAL_BOARD: &str = "\
 ---

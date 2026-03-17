@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::ErrorResponse;
+use super::{err_bad_request, err_internal, ErrorResponse};
 
 const EXTERNAL_EMBED_CACHE_FILENAME: &str = "external-embed-cache.json";
 const EXTERNAL_EMBED_CACHE_TTL_SECS: u64 = 24 * 60 * 60;
@@ -92,14 +92,9 @@ pub async fn probe_external_embed(
     let now = unix_timestamp_secs();
 
     {
-        let _guard = EXTERNAL_EMBED_CACHE_LOCK.lock().map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "External embed cache lock poisoned".to_string(),
-                }),
-            )
-        })?;
+        let _guard = EXTERNAL_EMBED_CACHE_LOCK
+            .lock()
+            .map_err(|_| err_internal("External embed cache lock poisoned"))?;
         let mut cache = load_external_embed_cache();
         if !query.force_refresh {
             prune_expired_cache_entries(&mut cache, now);
@@ -154,14 +149,9 @@ pub async fn probe_external_embed(
     };
 
     {
-        let _guard = EXTERNAL_EMBED_CACHE_LOCK.lock().map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "External embed cache lock poisoned".to_string(),
-                }),
-            )
-        })?;
+        let _guard = EXTERNAL_EMBED_CACHE_LOCK
+            .lock()
+            .map_err(|_| err_internal("External embed cache lock poisoned"))?;
         let mut cache = load_external_embed_cache();
         prune_expired_cache_entries(&mut cache, checked_at);
         cache.entries.insert(cache_key, entry.clone());
@@ -203,14 +193,14 @@ pub async fn probe_external_embed(
 fn normalize_external_embed_url(raw: &str) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err(bad_request("URL must not be empty"));
+        return Err(err_bad_request("URL must not be empty"));
     }
     if trimmed.len() > MAX_URL_LENGTH {
-        return Err(bad_request("URL is too long"));
+        return Err(err_bad_request("URL is too long"));
     }
-    let mut url = Url::parse(trimmed).map_err(|_| bad_request("Invalid external embed URL"))?;
+    let mut url = Url::parse(trimmed).map_err(|_| err_bad_request("Invalid external embed URL"))?;
     if !matches!(url.scheme(), "http" | "https") {
-        return Err(bad_request(
+        return Err(err_bad_request(
             "Only http:// and https:// embeds are supported",
         ));
     }
@@ -586,15 +576,6 @@ fn unix_timestamp_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
-}
-
-fn bad_request(message: &str) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
 }
 
 #[cfg(test)]
