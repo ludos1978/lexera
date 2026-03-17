@@ -22,6 +22,7 @@
 
   // Clipboard state
   let clipboardData = { type: 'empty', summary: '', isPassword: false };
+  let revealSensitiveClipboard = false;
 
   let isSearchMode = false;
   let searchResults = [];
@@ -162,6 +163,13 @@
 
   function renderClipboardSummary() {
     els.clipboardPreview.innerHTML = '';
+    const sensitiveClipboardRevealed = Boolean(clipboardData.isPassword && revealSensitiveClipboard);
+    const revealedSummary = clipboardData.fullText
+      ? clipboardData.fullText.split('\n')[0].trim()
+      : '';
+    const visibleSummary = sensitiveClipboardRevealed
+      ? (revealedSummary.length > 60 ? revealedSummary.substring(0, 60) + '...' : revealedSummary)
+      : clipboardData.summary;
 
     // Update strip label with short clipboard text
     if (els.stripClipLabel) {
@@ -200,9 +208,20 @@
     badge.textContent = clipboardData.type === 'image' ? 'IMG' : clipboardData.type === 'url' ? 'URL' : 'TXT';
     header.appendChild(badge);
     const label = document.createElement('span');
-    label.className = 'clipboard-summary-text' + (clipboardData.isPassword ? ' clipboard-password-warning' : '');
-    label.textContent = clipboardData.summary;
+    label.className = 'clipboard-summary-text' + (clipboardData.isPassword && !sensitiveClipboardRevealed ? ' clipboard-password-warning' : '');
+    label.textContent = visibleSummary;
     header.appendChild(label);
+    if (clipboardData.isPassword && clipboardData.fullText && !sensitiveClipboardRevealed) {
+      const revealButton = document.createElement('button');
+      revealButton.type = 'button';
+      revealButton.className = 'clipboard-reveal-button';
+      revealButton.textContent = 'Reveal';
+      revealButton.addEventListener('click', function () {
+        revealSensitiveClipboard = true;
+        renderClipboardSummary();
+      });
+      header.appendChild(revealButton);
+    }
     preview.appendChild(header);
 
     // Rich content area
@@ -226,7 +245,7 @@
       });
       urlBox.appendChild(link);
       preview.appendChild(urlBox);
-    } else if (clipboardData.type === 'text' && clipboardData.fullText && !clipboardData.isPassword) {
+    } else if (clipboardData.type === 'text' && clipboardData.fullText && (!clipboardData.isPassword || sensitiveClipboardRevealed)) {
       const textBox = document.createElement('div');
       textBox.className = 'clipboard-text-preview';
       // Show first 6 lines
@@ -246,6 +265,7 @@
   }
 
   async function loadClipboardSummary() {
+    revealSensitiveClipboard = false;
     clipboardData = { type: 'empty', summary: '', isPassword: false, fullText: '', imageData: null };
     const failures = [];
 
@@ -269,7 +289,7 @@
       if (summary && summary.kind === 'text' && typeof summary.text === 'string' && summary.text.trim()) {
         const trimmed = summary.text.trim();
         if (looksLikePassword(trimmed)) {
-          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true, fullText: '', imageData: null };
+          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true, fullText: trimmed, imageData: null };
         } else if (isUrl(trimmed)) {
           let hostname = 'link';
           try { hostname = new URL(trimmed).hostname; } catch (e) { /* ignore */ }
@@ -313,7 +333,7 @@
       if (text && text.trim()) {
         const trimmed = text.trim();
         if (looksLikePassword(trimmed)) {
-          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true, fullText: '', imageData: null };
+          clipboardData = { type: 'text', summary: 'Sensitive content (hidden)', isPassword: true, fullText: trimmed, imageData: null };
         } else if (isUrl(trimmed)) {
           let hostname = 'link';
           try { hostname = new URL(trimmed).hostname; } catch (e) { /* ignore */ }

@@ -1,0 +1,10 @@
+{
+  "name": "lexera-web-clipper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-browser web clipper for Lexera kanban boards",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "clean": "node scripts/build.mjs --clean"
+  }
+}

@@ -231,6 +231,24 @@ body.snap-left .capture-container {
   font-style: italic;
 }
 
+.clipboard-reveal-button {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 10px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.clipboard-reveal-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
 /* Rich preview content */
 .clipboard-rich-preview {
   display: flex;

@@ -36,11 +36,13 @@
   }
 
   function normalizeBoardScrollSpeedValue(rawValue) {
-    return normalizeSpeedMultiplierValue(rawValue, 0.1, 3);
+    var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
+    if (!text || text === 'default' || text === 'normal') return '0.06';
+    return normalizeSpeedMultiplierValue(text, 0.01, 3);
   }
 
   function getBoardScrollSpeedMultiplier(source, fallback) {
-    return getSpeedMultiplier(source, 'scrollSpeed', fallback, normalizeBoardScrollSpeedValue);
+    return getSpeedMultiplier(source, 'scrollSpeed', fallback == null ? '0.06' : fallback, normalizeBoardScrollSpeedValue);
   }
 
   function normalizeBoardZoomSpeedValue(rawValue) {

@@ -1,0 +1,141 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1b2430;
+  background: linear-gradient(180deg, #f4f1e8 0%, #eef3f0 100%);
+}
+
+.popup-shell {
+  width: 380px;
+  padding: 14px;
+}
+
+.popup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.popup-header h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.backend-status {
+  margin: 4px 0 0;
+  color: #55606d;
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(34, 53, 71, 0.1);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(22, 37, 49, 0.08);
+}
+
+.panel + .panel {
+  margin-top: 12px;
+}
+
+.field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+input,
+select,
+button {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(34, 53, 71, 0.16);
+  font: inherit;
+}
+
+input,
+select {
+  padding: 8px 10px;
+  background: #fff;
+}
+
+input:disabled,
+select:disabled,
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button {
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: #174c5a;
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.secondary-button {
+  width: auto;
+  background: transparent;
+  padding: 8px 10px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.checkbox-row input {
+  margin: 0;
+}
+
+.preview-panel h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.preview-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.preview-url {
+  margin: 0 0 10px;
+  color: #38586f;
+  word-break: break-word;
+}
+
+.preview-body {
+  margin: 0;
+  padding: 10px;
+  min-height: 140px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: rgba(239, 244, 247, 0.9);
+  border-radius: 10px;
+  border: 1px solid rgba(34, 53, 71, 0.08);
+}
+
+.result-status {
+  min-height: 18px;
+  margin: 10px 0 0;
+  color: #174c5a;
+}

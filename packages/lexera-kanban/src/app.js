@@ -11421,6 +11421,11 @@ const LexeraDashboard = (function () {
     throw new Error('LexeraCanvasMath is unavailable');
   }
 
+  function getCanvasViewportApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasViewport) return globalThis.LexeraCanvasViewport;
+    throw new Error('LexeraCanvasViewport is unavailable');
+  }
+
   function getCanvasDomApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasDom) return globalThis.LexeraCanvasDom;
     throw new Error('LexeraCanvasDom is unavailable');
@@ -11873,6 +11878,7 @@ const LexeraDashboard = (function () {
       syncCanvasRowConnections(rowContent);
     }
     updateCanvasScrollIndicators(container);
+    scheduleCanvasFocusStacksControlSync(container);
   }
 
   function scheduleCanvasRowBoundsSync(root) {
@@ -11972,6 +11978,127 @@ const LexeraDashboard = (function () {
     );
   }
 
+  function getPrimaryCanvasRowContent(container) {
+    if (!container || typeof container.querySelector !== 'function') return null;
+    return container.querySelector('.board-row-content');
+  }
+
+  function collectCanvasStackMetrics(rowContent) {
+    var stackEls = getCanvasStackElements(rowContent);
+    var metrics = [];
+    for (var i = 0; i < stackEls.length; i++) {
+      metrics.push(getCanvasRenderedStackMetrics(stackEls[i]));
+    }
+    return metrics;
+  }
+
+  function collectRenderedCanvasStackRects(rowContent) {
+    var stackEls = getCanvasStackElements(rowContent);
+    var rects = [];
+    for (var i = 0; i < stackEls.length; i++) {
+      var rect = stackEls[i].getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+      rects.push({
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom
+      });
+    }
+    return rects;
+  }
+
+  function ensureCanvasFocusStacksControl(container) {
+    if (!container || typeof document === 'undefined' || !document.createElement) return null;
+    var control = container.querySelector('.canvas-focus-stacks-control');
+    if (control) return control;
+    control = document.createElement('div');
+    control.className = 'canvas-focus-stacks-control';
+    control.hidden = true;
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'board-action-btn canvas-focus-stacks-btn';
+    button.textContent = 'Focus stacks';
+    button.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      focusCanvasStacks();
+    });
+    control.appendChild(button);
+    container.appendChild(control);
+    return control;
+  }
+
+  function removeCanvasFocusStacksControl() {
+    var container = getElColumnsContainer();
+    if (!container) return;
+    var control = container.querySelector('.canvas-focus-stacks-control');
+    if (control) control.remove();
+  }
+
+  function updateCanvasFocusStacksControl(container) {
+    if (!container) container = getElColumnsContainer();
+    if (!container) return;
+    if (!isCanvasBoardLayout()) {
+      removeCanvasFocusStacksControl();
+      return;
+    }
+    var rowContent = getPrimaryCanvasRowContent(container);
+    if (!rowContent) {
+      removeCanvasFocusStacksControl();
+      return;
+    }
+    var stackRects = collectRenderedCanvasStackRects(rowContent);
+    if (!stackRects.length) {
+      removeCanvasFocusStacksControl();
+      return;
+    }
+    var control = ensureCanvasFocusStacksControl(container);
+    if (!control) return;
+    var viewportRect = container.getBoundingClientRect();
+    var hasVisibleStack = getCanvasViewportApi().hasAnyVisibleCanvasStack(stackRects, viewportRect);
+    control.hidden = hasVisibleStack;
+  }
+
+  function scheduleCanvasFocusStacksControlSync(container) {
+    if (!container) container = getElColumnsContainer();
+    if (!container || container.__canvasFocusStacksControlScheduled) return;
+    container.__canvasFocusStacksControlScheduled = true;
+    requestAnimationFrame(function () {
+      container.__canvasFocusStacksControlScheduled = false;
+      if (!container.isConnected) return;
+      updateCanvasFocusStacksControl(container);
+    });
+  }
+
+  function focusCanvasStacks() {
+    var container = getElColumnsContainer();
+    if (!container || !isCanvasBoardLayout()) return;
+    var rowContent = getPrimaryCanvasRowContent(container);
+    if (!rowContent) return;
+    var stackMetrics = collectCanvasStackMetrics(rowContent);
+    if (!stackMetrics.length) return;
+    var surface = rowContent.__canvasSurface || calculateCanvasSurface(stackMetrics);
+    var focusViewport = getCanvasViewportApi().calculateCanvasFocusViewport(
+      stackMetrics,
+      {
+        width: container.clientWidth || 0,
+        height: container.clientHeight || 0
+      },
+      {
+        padding: 36,
+        minZoom: 0.25,
+        maxZoom: 3,
+        surfaceOffsetX: container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : (surface ? surface.offsetX : 0),
+        surfaceOffsetY: container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : (surface ? surface.offsetY : 0)
+      }
+    );
+    if (!focusViewport) return;
+    applyCanvasZoom(focusViewport.zoom);
+    applyCanvasPan(focusViewport.panX, focusViewport.panY);
+    scheduleCanvasFocusStacksControlSync(container);
+  }
+
   function applyCanvasPan(panX, panY) {
     $canvasPanX = panX;
     $canvasPanY = panY;
@@ -11980,6 +12107,7 @@ const LexeraDashboard = (function () {
     container.style.setProperty('--canvas-pan-x', panX + 'px');
     container.style.setProperty('--canvas-pan-y', panY + 'px');
     updateCanvasScrollIndicators(container);
+    scheduleCanvasFocusStacksControlSync(container);
   }
 
   function resetCanvasPan() {
@@ -12013,6 +12141,7 @@ const LexeraDashboard = (function () {
       applyCanvasPan(newPanX, newPanY);
     }
     scheduleCanvasRowBoundsSync(container);
+    scheduleCanvasFocusStacksControlSync(container);
     showNotification('Canvas Zoom ' + Math.round(zoom * 100) + '%');
   }
 
@@ -12184,7 +12313,7 @@ const LexeraDashboard = (function () {
   }
 
   function getBoardScrollSpeedMultiplier() {
-    return getScrollBehaviorApi().getBoardScrollSpeedMultiplier(getBoardSettingValue, '1');
+    return getScrollBehaviorApi().getBoardScrollSpeedMultiplier(getBoardSettingValue, '0.06');
   }
 
   function normalizeBoardZoomSpeedValue(rawValue) {
@@ -12640,6 +12769,7 @@ const LexeraDashboard = (function () {
       if ($canvasZoom !== 1) applyCanvasZoom(1);
       resetCanvasPan();
       removeCanvasScrollIndicators();
+      removeCanvasFocusStacksControl();
     }
     container.removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
@@ -16147,6 +16277,14 @@ const LexeraDashboard = (function () {
       cleanupPtrDrag();
       if (wasCanvas) renderColumns();
     }
+  });
+
+  window.addEventListener('resize', function () {
+    if (!isCanvasBoardLayout()) return;
+    var container = getElColumnsContainer();
+    if (!container) return;
+    scheduleCanvasRowBoundsSync(container);
+    scheduleCanvasFocusStacksControlSync(container);
   });
 
   function getPtrDragLabel() {
@@ -28110,13 +28248,16 @@ const LexeraDashboard = (function () {
     });
     BoardSettingRegistry.register({
       id: 'scrollSpeed', label: 'Scroll Speed', category: 'format',
-      settingsKey: 'scrollSpeed', actionPrefix: 'set-scroll-speed', defaultValue: '1',
+      settingsKey: 'scrollSpeed', actionPrefix: 'set-scroll-speed', defaultValue: '0.06',
       normalize: normalizeBoardScrollSpeedValue,
       options: [
-        { value: '0.25', label: '25%' }, { value: '0.5', label: '50%' },
-        { value: '0.75', label: '75%' }, { value: '1', label: '100%' },
-        { value: '1.25', label: '125%' }, { value: '1.5', label: '150%' },
-        { value: '2', label: '200%' }
+        { value: '0.01', label: '1%' }, { value: '0.02', label: '2%' },
+        { value: '0.03', label: '3%' }, { value: '0.06', label: '6%' },
+        { value: '0.1', label: '10%' }, { value: '0.18', label: '18%' },
+        { value: '0.32', label: '32%' }, { value: '0.56', label: '56%' },
+        { value: '1', label: '100%' }, { value: '1.33', label: '133%' },
+        { value: '1.67', label: '167%' }, { value: '2', label: '200%' },
+        { value: '3', label: '300%' }
       ]
     });
     BoardSettingRegistry.register({

@@ -2464,6 +2464,7 @@ li.tag-line-styled {
   --canvas-pan-y: 0px;
   --canvas-grid-size: 32px;
   overflow: hidden;
+  position: relative;
 }
 
 .columns-container.layout-canvas .board-row {
@@ -2572,6 +2573,23 @@ li.tag-line-styled {
 
 .columns-container.layout-canvas .board-row.drop-target > .board-row-content {
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.canvas-focus-stacks-control {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1001;
+  pointer-events: auto;
+}
+
+.canvas-focus-stacks-control[hidden] {
+  display: none;
+}
+
+.canvas-focus-stacks-btn {
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  backdrop-filter: blur(6px);
 }
 
 /* Canvas scroll indicators */

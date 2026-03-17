@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lexera Web Clipper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="popup-shell">
+    <header class="popup-header">
+      <div>
+        <h1>Lexera Clipper</h1>
+        <p id="backend-status" class="backend-status">Connecting to backend…</p>
+      </div>
+      <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
+    </header>
+
+    <section class="panel">
+      <label class="field">
+        <span>Backend URL</span>
+        <input id="backend-url-input" type="text" placeholder="http://127.0.0.1:13080" spellcheck="false" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Board</span>
+        <select id="board-select"></select>
+      </label>
+      <label class="field">
+        <span>Column</span>
+        <select id="column-select"></select>
+      </label>
+      <label class="field">
+        <span>Clip Mode</span>
+        <select id="mode-select">
+          <option value="article">Article</option>
+          <option value="page">Page</option>
+          <option value="selection">Selection</option>
+          <option value="link">Link</option>
+          <option value="image">Image</option>
+        </select>
+      </label>
+      <label class="checkbox-row">
+        <input id="remember-target" type="checkbox" checked>
+        <span>Remember this target</span>
+      </label>
+      <button id="capture-button" class="primary-button" type="button">Capture To Board</button>
+      <p id="result-status" class="result-status"></p>
+    </section>
+
+    <section class="panel preview-panel">
+      <h2>Preview</h2>
+      <p id="preview-title" class="preview-title"></p>
+      <p id="preview-url" class="preview-url"></p>
+      <pre id="preview-body" class="preview-body"></pre>
+    </section>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -43,13 +43,13 @@ afterEach(() => {
 
 describe('normalizeBoardScrollSpeedValue', () => {
   it('normalizes menu-style values and keeps sane defaults', () => {
-    expect(ScrollHelpers.normalizeBoardScrollSpeedValue('')).toBe('1');
+    expect(ScrollHelpers.normalizeBoardScrollSpeedValue('')).toBe('0.06');
     expect(ScrollHelpers.normalizeBoardScrollSpeedValue('0.75x')).toBe('0.75');
     expect(ScrollHelpers.normalizeBoardScrollSpeedValue('1.5')).toBe('1.5');
   });
 
   it('clamps extreme values into the supported range', () => {
-    expect(ScrollHelpers.normalizeBoardScrollSpeedValue('0.01')).toBe('0.1');
+    expect(ScrollHelpers.normalizeBoardScrollSpeedValue('0.001')).toBe('0.01');
     expect(ScrollHelpers.normalizeBoardScrollSpeedValue('5')).toBe('3');
   });
 });
@@ -72,8 +72,8 @@ describe('getBoardScrollSpeedMultiplier', () => {
     expect(ScrollHelpers.getBoardScrollSpeedMultiplier({ scrollSpeed: '0.5' })).toBe(0.5);
   });
 
-  it('falls back to 1 when the board has no custom speed', () => {
-    expect(ScrollHelpers.getBoardScrollSpeedMultiplier({})).toBe(1);
+  it('falls back to 6% when the board has no custom speed', () => {
+    expect(ScrollHelpers.getBoardScrollSpeedMultiplier({})).toBe(0.06);
   });
 });
 

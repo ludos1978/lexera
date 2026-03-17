@@ -11,6 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR/packages/lexera-backend"
 KANBAN_DIR="$SCRIPT_DIR/packages/lexera-kanban"
+WEB_CLIPPER_DIR="$SCRIPT_DIR/packages/lexera-web-clipper"
 TARGET_DIR="$SCRIPT_DIR/packages/target"
 PATH_MARKER="$TARGET_DIR/.project-path"
 
@@ -43,6 +44,12 @@ sleep 1
 if [[ "${1:-}" == "--kill" ]]; then
   echo "Done."
   exit 0
+fi
+
+# ── Build browser clipper assets ────────────────────────────────
+if [[ -d "$WEB_CLIPPER_DIR" ]]; then
+  echo "Building lexera-web-clipper..."
+  (cd "$WEB_CLIPPER_DIR" && npm run build) 2>&1 | sed 's/^/[clipper] /'
 fi
 
 # ── Cleanup on exit ─────────────────────────────────────────────

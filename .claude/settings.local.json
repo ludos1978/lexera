@@ -251,7 +251,8 @@
 			"Bash(npx vitest run tests/mutations.test.js)",
 			"Bash(TMPDIR=/tmp grep -n \"method.*PUT\\\\|method.*POST\\\\|columns\\\\|\\\\.boards\\\\|moveCard\\\\|updateCard\" packages/lexera-kanban/src/api.js)",
 			"Bash(TMPDIR=/tmp cargo test)",
-			"Bash(TMPDIR=/tmp npx vitest run)"
+			"Bash(TMPDIR=/tmp npx vitest run)",
+			"Bash(sed:*)"
 		],
 		"deny": [],
 		"ask": []

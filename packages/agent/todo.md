@@ -6,9 +6,11 @@
 
 - [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
 
-- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
+- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board as cards. It's should be using the same method as the quick capture. But it would also be good if it could access the browser data (cache, reader mode) (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? 
 
+- [ ] I am planning on adding other sources that could be used to directly integrate date into the kanban baords. Ideas that pop up are: RSS, EMail, Filesystem. 
 
+- [ ] An mobile web clipper (something that can run on an ios and or android) would be best as well.
 
 - [x] combine the "Empty", "Template" and "Clipboard" into a "New". It's ordered by Row, Stack, Column, Card groups:
   - Row
