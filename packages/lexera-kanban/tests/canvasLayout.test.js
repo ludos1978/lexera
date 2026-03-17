@@ -1,83 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
-
-function loadCanvasHelpers() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  function extractLineRange(startPattern, endPattern) {
-    const startLine = findLine(startPattern);
-    const endLine = findLine(endPattern);
-    return lines.slice(startLine - 1, endLine).join('\n');
-  }
-
-  const wrappedSource = `
-    var $canvasZoom = 1;
-    var $canvasPanX = 0;
-    var $canvasPanY = 0;
-    function getElColumnsContainer() { return null; }
-    ${extractLineRange('var CANVAS_DEFAULT_STACK_X = 24;', 'var CANVAS_SURFACE_OVERSCAN_Y = Math.floor(CANVAS_MIN_ROW_HEIGHT / 2);')}
-    ${extractFunction(findLine('function normalizeCanvasGridValue('))}
-    ${extractFunction(findLine('function parseCanvasLayoutNumber('))}
-    ${extractFunction(findLine('function getCanvasFallbackStackBox('))}
-    ${extractFunction(findLine('function getCanvasStackLayoutBox('))}
-    ${extractFunction(findLine('function getCanvasSceneElement('))}
-    ${extractFunction(findLine('function getCanvasRenderedStackMetrics('))}
-    ${extractFunction(findLine('function roundUpCanvasUnit('))}
-    ${extractFunction(findLine('function resolveCanvasLargestElementSize('))}
-    ${extractFunction(findLine('function resolveCanvasGridStep('))}
-    ${extractFunction(findLine('function getNextCanvasStackPlacement('))}
-    ${extractFunction(findLine('function calculateCanvasSurface('))}
-    ${extractFunction(findLine('function getCanvasRowContentMetrics('))}
-    ${extractFunction(findLine('function getCanvasPositionFromViewportPoint('))}
-
-    return {
-      setCanvasZoom: function (zoom) { $canvasZoom = zoom; },
-      getCanvasStackLayoutBox,
-      getCanvasRenderedStackMetrics,
-      resolveCanvasGridStep,
-      getNextCanvasStackPlacement,
-      calculateCanvasSurface,
-      getCanvasPositionFromViewportPoint
-    };
-  `;
-
-  return new Function(wrappedSource)();
-}
-
-let CanvasHelpers;
-
-beforeAll(() => {
-  CanvasHelpers = loadCanvasHelpers();
-});
+const require = createRequire(import.meta.url);
+const CanvasHelpers = require('../src/canvas/canvasMath.js');
 
 describe('getCanvasStackLayoutBox', () => {
   it('uses a stable fallback grid when stack params are missing', () => {
@@ -198,7 +123,6 @@ describe('canvas surface helpers', () => {
 
 describe('getCanvasRenderedStackMetrics', () => {
   it('keeps stack metrics in unscaled canvas units so scene zoom handles both size and distance', () => {
-    CanvasHelpers.setCanvasZoom(0.5);
     expect(CanvasHelpers.getCanvasRenderedStackMetrics({
       style: {
         left: '240px',
@@ -216,20 +140,17 @@ describe('getCanvasRenderedStackMetrics', () => {
       w: 300,
       h: 220
     });
-    CanvasHelpers.setCanvasZoom(1);
   });
 });
 
 describe('canvas coordinate helpers', () => {
   it('keeps viewport-to-canvas translation stable under zoom with borders', () => {
-    const originalGetComputedStyle = globalThis.getComputedStyle;
-    globalThis.getComputedStyle = () => ({
+    const getComputedStyle = () => ({
       borderLeftWidth: '1px',
       borderTopWidth: '2px',
       paddingLeft: '8px',
       paddingTop: '10px'
     });
-    CanvasHelpers.setCanvasZoom(2);
     const rowContent = {
       getBoundingClientRect() {
         return { left: 50, top: 60 };
@@ -241,13 +162,11 @@ describe('canvas coordinate helpers', () => {
       120,
       148,
       20,
-      20
+      20,
+      { zoom: 2, getComputedStyle }
     )).toEqual({
       x: 25,
       y: 33
     });
-
-    globalThis.getComputedStyle = originalGetComputedStyle;
-    CanvasHelpers.setCanvasZoom(1);
   });
 });

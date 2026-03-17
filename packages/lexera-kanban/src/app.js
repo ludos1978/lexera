@@ -5551,13 +5551,17 @@ const LexeraDashboard = (function () {
 
   async function loadBoard(boardId) {
     var seq = ++boardLoadSeq;
+    var isBoardSwitch = boardId !== activeBoardId;
     boardTagFilter = [];
     columnSortState = {};
     boardStatsBarVisible = false;
     closeSearchReplacePanel();
-    // Reset canvas zoom and pan on board load
-    if ($canvasZoom !== 1) applyCanvasZoom(1);
-    resetCanvasPan();
+    // Reset canvas zoom and pan only when switching to a different board.
+    // Reloading the same board (e.g. poll, save-then-poll) must preserve viewport.
+    if (isBoardSwitch) {
+      if ($canvasZoom !== 1) applyCanvasZoom(1);
+      resetCanvasPan();
+    }
     var loadStage = 'start';
     try {
       loadStage = 'clear-caches';
@@ -11892,6 +11896,11 @@ const LexeraDashboard = (function () {
   var CANVAS_SURFACE_OVERSCAN_X = Math.floor(CANVAS_MIN_ROW_WIDTH / 2);
   var CANVAS_SURFACE_OVERSCAN_Y = Math.floor(CANVAS_MIN_ROW_HEIGHT / 2);
 
+  function getCanvasMathApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasMath) return globalThis.LexeraCanvasMath;
+    throw new Error('LexeraCanvasMath is unavailable');
+  }
+
   function parseCanvasLayoutNumber(value, fallback) {
     var n = parseInt(value, 10);
     return isFinite(n) ? n : fallback;
@@ -12075,26 +12084,8 @@ const LexeraDashboard = (function () {
     return !!stackEl && isCanvasBoardLayout() && normalizeCanvasStackDirection(stackEl.getAttribute('data-stack-dir')) === 'row';
   }
 
-  function getCanvasFallbackStackBox(stackIndex, width, height) {
-    width = Math.max(180, parseCanvasLayoutNumber(width, CANVAS_DEFAULT_STACK_W));
-    height = Math.max(120, parseCanvasLayoutNumber(height, CANVAS_DEFAULT_STACK_H));
-    return {
-      x: CANVAS_DEFAULT_STACK_X + (stackIndex % 4) * (width + CANVAS_STACK_SPACING),
-      y: CANVAS_DEFAULT_STACK_Y + Math.floor(stackIndex / 4) * (height + CANVAS_STACK_SPACING),
-      w: width,
-      h: height
-    };
-  }
-
   function getCanvasStackLayoutBox(stack, stackIndex) {
-    var params = stack && stack.params ? stack.params : {};
-    var fallback = getCanvasFallbackStackBox(stackIndex, params.w, params.h);
-    return {
-      x: parseCanvasLayoutNumber(params.x, fallback.x),
-      y: parseCanvasLayoutNumber(params.y, fallback.y),
-      w: Math.max(180, parseCanvasLayoutNumber(params.w, fallback.w)),
-      h: Math.max(120, parseCanvasLayoutNumber(params.h, fallback.h))
-    };
+    return getCanvasMathApi().getCanvasStackLayoutBox(stack, stackIndex);
   }
 
   function getCanvasSceneElement(rowContent, createIfMissing) {
@@ -12125,12 +12116,7 @@ const LexeraDashboard = (function () {
   }
 
   function getCanvasRenderedStackMetrics(stackEl) {
-    return {
-      x: parseCanvasLayoutNumber(stackEl.style.left, stackEl.offsetLeft || 0),
-      y: parseCanvasLayoutNumber(stackEl.style.top, stackEl.offsetTop || 0),
-      w: stackEl.offsetWidth || parseCanvasLayoutNumber(stackEl.style.width, CANVAS_DEFAULT_STACK_W),
-      h: stackEl.offsetHeight || parseCanvasLayoutNumber(stackEl.style.height, CANVAS_DEFAULT_STACK_H)
-    };
+    return getCanvasMathApi().getCanvasRenderedStackMetrics(stackEl);
   }
 
   function roundUpCanvasUnit(value, step) {
@@ -12154,94 +12140,15 @@ const LexeraDashboard = (function () {
   }
 
   function resolveCanvasGridStep(stackMetrics, rawValue) {
-    var normalized = normalizeCanvasGridValue(rawValue);
-    if (normalized === 'off') return 0;
-    if (normalized === 'largest') {
-      return Math.max(64, roundUpCanvasUnit(resolveCanvasLargestElementSize(stackMetrics), 16));
-    }
-    return Math.max(8, parseCanvasLayoutNumber(normalized, 32));
+    return getCanvasMathApi().resolveCanvasGridStep(stackMetrics, rawValue);
   }
 
   function calculateCanvasSurface(stackMetrics, options) {
-    options = options || {};
-    var padding = Math.max(0, parseCanvasLayoutNumber(options.padding, CANVAS_ROW_PADDING));
-    var emptyWidth = Math.max(0, parseCanvasLayoutNumber(options.emptyWidth, CANVAS_MIN_ROW_WIDTH));
-    var emptyHeight = Math.max(0, parseCanvasLayoutNumber(options.emptyHeight, CANVAS_MIN_ROW_HEIGHT));
-    var overscanX = Math.max(0, parseCanvasLayoutNumber(options.overscanX, CANVAS_SURFACE_OVERSCAN_X));
-    var overscanY = Math.max(0, parseCanvasLayoutNumber(options.overscanY, CANVAS_SURFACE_OVERSCAN_Y));
-    var metrics = Array.isArray(stackMetrics) ? stackMetrics : [];
-    var minLeft = 0;
-    var minTop = 0;
-    var maxRight = 0;
-    var maxBottom = 0;
-    var hasMetrics = false;
-
-    for (var i = 0; i < metrics.length; i++) {
-      var metric = metrics[i] || {};
-      var left = parseCanvasLayoutNumber(metric.x, 0);
-      var top = parseCanvasLayoutNumber(metric.y, 0);
-      var width = Math.max(0, parseCanvasLayoutNumber(metric.w, 0));
-      var height = Math.max(0, parseCanvasLayoutNumber(metric.h, 0));
-      if (!hasMetrics) {
-        minLeft = left;
-        minTop = top;
-        maxRight = left + width;
-        maxBottom = top + height;
-        hasMetrics = true;
-      } else {
-        minLeft = Math.min(minLeft, left);
-        minTop = Math.min(minTop, top);
-        maxRight = Math.max(maxRight, left + width);
-        maxBottom = Math.max(maxBottom, top + height);
-      }
-    }
-
-    if (!hasMetrics) {
-      var emptyLeft = -Math.max(Math.floor(emptyWidth / 2), overscanX);
-      var emptyTop = -Math.max(Math.floor(emptyHeight / 2), overscanY);
-      return {
-        left: emptyLeft,
-        top: emptyTop,
-        width: Math.max(emptyWidth, Math.abs(emptyLeft) * 2),
-        height: Math.max(emptyHeight, Math.abs(emptyTop) * 2),
-        offsetX: Math.abs(emptyLeft),
-        offsetY: Math.abs(emptyTop)
-      };
-    }
-
-    var surfaceLeft = minLeft - padding - overscanX;
-    var surfaceTop = minTop - padding - overscanY;
-    var surfaceRight = maxRight + padding + overscanX;
-    var surfaceBottom = maxBottom + padding + overscanY;
-    var width = Math.max(emptyWidth, surfaceRight - surfaceLeft);
-    var height = Math.max(emptyHeight, surfaceBottom - surfaceTop);
-
-    return {
-      left: surfaceLeft,
-      top: surfaceTop,
-      width: width,
-      height: height,
-      offsetX: -surfaceLeft,
-      offsetY: -surfaceTop
-    };
+    return getCanvasMathApi().calculateCanvasSurface(stackMetrics, options);
   }
 
   function getNextCanvasStackPlacement(stacks) {
-    var items = Array.isArray(stacks) ? stacks : [];
-    if (items.length === 0) {
-      return { x: CANVAS_DEFAULT_STACK_X, y: CANVAS_DEFAULT_STACK_Y };
-    }
-    var maxRight = null;
-    var anchorY = null;
-    for (var i = 0; i < items.length; i++) {
-      var box = getCanvasStackLayoutBox(items[i], i);
-      if (maxRight == null || (box.x + box.w) > maxRight) maxRight = box.x + box.w;
-      if (anchorY == null || box.y < anchorY) anchorY = box.y;
-    }
-    return {
-      x: (maxRight == null ? CANVAS_DEFAULT_STACK_X : maxRight + CANVAS_STACK_SPACING),
-      y: anchorY == null ? CANVAS_DEFAULT_STACK_Y : anchorY
-    };
+    return getCanvasMathApi().getNextCanvasStackPlacement(stacks);
   }
 
   function applyDefaultCanvasPlacementToStack(row, stack) {
@@ -12464,30 +12371,28 @@ const LexeraDashboard = (function () {
   }
 
   function getCanvasRowContentMetrics(rowContent) {
-    var rect = rowContent.getBoundingClientRect();
-    var zoom = $canvasZoom || 1;
-    var styles = typeof getComputedStyle === 'function' ? getComputedStyle(rowContent) : null;
-    var borderLeft = styles ? parseFloat(styles.borderLeftWidth) || 0 : 0;
-    var borderTop = styles ? parseFloat(styles.borderTopWidth) || 0 : 0;
-    // Use stable offset from container (survives DOM rebuilds) instead of scene.style.left
-    var container = getElColumnsContainer();
-    var sceneLeft = container && container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : 0;
-    var sceneTop = container && container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : 0;
-    return {
-      rect: rect,
-      zoom: zoom,
-      originLeft: rect.left + borderLeft + sceneLeft + $canvasPanX,
-      originTop: rect.top + borderTop + sceneTop + $canvasPanY
-    };
+    return getCanvasMathApi().getCanvasRowContentMetrics(rowContent, {
+      zoom: $canvasZoom || 1,
+      panX: $canvasPanX,
+      panY: $canvasPanY,
+      container: getElColumnsContainer()
+    });
   }
 
   function getCanvasPositionFromViewportPoint(rowContent, clientX, clientY, grabOffsetX, grabOffsetY) {
-    if (!rowContent) return { x: 0, y: 0 };
-    var metrics = getCanvasRowContentMetrics(rowContent);
-    return {
-      x: Math.round((clientX - metrics.originLeft - (grabOffsetX || 0)) / metrics.zoom),
-      y: Math.round((clientY - metrics.originTop - (grabOffsetY || 0)) / metrics.zoom)
-    };
+    return getCanvasMathApi().getCanvasPositionFromViewportPoint(
+      rowContent,
+      clientX,
+      clientY,
+      grabOffsetX,
+      grabOffsetY,
+      {
+        zoom: $canvasZoom || 1,
+        panX: $canvasPanX,
+        panY: $canvasPanY,
+        container: getElColumnsContainer()
+      }
+    );
   }
 
   function applyCanvasPan(panX, panY) {
@@ -13182,11 +13087,16 @@ const LexeraDashboard = (function () {
     // Reset class-based settings
     container.classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     container.classList.remove('html-comments-hide', 'html-comments-dim');
+    var wasCanvas = container.classList.contains('layout-canvas');
     container.classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
-    // Reset canvas zoom and pan when leaving canvas mode
-    if ($canvasZoom !== 1) applyCanvasZoom(1);
-    resetCanvasPan();
-    removeCanvasScrollIndicators();
+    var willBeCanvas = fullBoardData && fullBoardData.boardSettings &&
+      normalizeBoardLayoutValue(fullBoardData.boardSettings.boardLayout) === 'canvas';
+    // Reset canvas zoom and pan only when actually leaving canvas mode
+    if (wasCanvas && !willBeCanvas) {
+      if ($canvasZoom !== 1) applyCanvasZoom(1);
+      resetCanvasPan();
+      removeCanvasScrollIndicators();
+    }
     container.removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
