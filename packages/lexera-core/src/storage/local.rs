@@ -414,8 +414,16 @@ impl LocalStorage {
             "[lexera.storage.crdt] Snapshot diverged from markdown for board {}, rebuilding CRDT from markdown",
             board_id
         );
-        let rebuilt = CrdtStore::from_board(board)?;
-        Ok((board.clone(), rebuilt))
+        match CrdtStore::from_board(board) {
+            Ok(rebuilt) => Ok((board.clone(), rebuilt)),
+            Err(e) => {
+                log::error!(
+                    "[lexera.storage.crdt] Failed to rebuild CRDT for board {}, keeping old CRDT to avoid data loss: {}",
+                    board_id, e
+                );
+                Ok((board.clone(), crdt))
+            }
+        }
     }
 
     fn finalize_merge_result(

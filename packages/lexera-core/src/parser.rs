@@ -1696,4 +1696,47 @@ kanban-plugin: board
         assert!(md_out.contains("canvasGrid: largest"));
         assert!(md_out.contains("canvasPageSize: 1280"));
     }
+
+    #[test]
+    fn test_canvas_params_preserved_after_kanban_mode_switch() {
+        // A board in new format (has # row) with canvas position/size params on stacks
+        let md = "---\nkanban-plugin: board\nboardLayout: canvas\n---\n\n# Row\n\n## Stack A {x:100, y:200, w:400, h:300}\n\n### Column 1\n- [ ] Task 1\n\n## Stack B {x:600, y:50, w:350, h:250, dir:vertical}\n\n### Column 2\n- [ ] Task 2\n";
+        let mut board = parse_markdown(md);
+
+        // Verify canvas params parsed correctly
+        let stack_a = &board.rows[0].stacks[0];
+        assert_eq!(stack_a.params.get("x").map(|s| s.as_str()), Some("100"));
+        assert_eq!(stack_a.params.get("y").map(|s| s.as_str()), Some("200"));
+        assert_eq!(stack_a.params.get("w").map(|s| s.as_str()), Some("400"));
+        assert_eq!(stack_a.params.get("h").map(|s| s.as_str()), Some("300"));
+
+        // Simulate switching to kanban mode (only changes header setting)
+        if let Some(ref mut settings) = board.board_settings {
+            settings.board_layout = Some("kanban".to_string());
+        }
+
+        // Roundtrip through markdown
+        let md_out = generate_markdown(&board);
+        let board2 = parse_markdown(&md_out);
+
+        // Canvas params must survive the mode switch and roundtrip
+        let stack_a2 = &board2.rows[0].stacks[0];
+        assert_eq!(stack_a2.params.get("x").map(|s| s.as_str()), Some("100"));
+        assert_eq!(stack_a2.params.get("y").map(|s| s.as_str()), Some("200"));
+        assert_eq!(stack_a2.params.get("w").map(|s| s.as_str()), Some("400"));
+        assert_eq!(stack_a2.params.get("h").map(|s| s.as_str()), Some("300"));
+
+        let stack_b2 = &board2.rows[0].stacks[1];
+        assert_eq!(stack_b2.params.get("x").map(|s| s.as_str()), Some("600"));
+        assert_eq!(stack_b2.params.get("dir").map(|s| s.as_str()), Some("vertical"));
+
+        // Board should now be in kanban mode
+        let settings2 = board2.board_settings.as_ref().unwrap();
+        assert_eq!(settings2.board_layout.as_deref(), Some("kanban"));
+
+        // Output should contain all canvas params despite kanban mode
+        assert!(md_out.contains("boardLayout: kanban"));
+        assert!(md_out.contains("{h:300, w:400, x:100, y:200}"));
+        assert!(md_out.contains("{dir:vertical,"));
+    }
 }

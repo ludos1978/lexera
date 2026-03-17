@@ -4,14 +4,14 @@
 /// On watcher event: read file, compute SHA-256, check against pending fingerprints.
 /// Match found → consume fingerprint, suppress event (our own write).
 /// No match → external change, propagate event.
-/// TTL (10s) is cleanup only — fingerprints consumed on match regardless.
+/// TTL (30s) is cleanup only — fingerprints consumed on match regardless.
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use super::types::ContentFingerprint;
 
-const FINGERPRINT_TTL: Duration = Duration::from_secs(10);
+const FINGERPRINT_TTL: Duration = Duration::from_secs(30);
 
 struct PendingFingerprint {
     fingerprint: ContentFingerprint,
@@ -143,7 +143,7 @@ mod tests {
         tracker.register(path, "content");
         // Manually expire by replacing the entry
         if let Some(entries) = tracker.pending.get_mut(path) {
-            entries[0].registered_at = Instant::now() - Duration::from_secs(15);
+            entries[0].registered_at = Instant::now() - Duration::from_secs(35);
         }
 
         tracker.cleanup_expired();
