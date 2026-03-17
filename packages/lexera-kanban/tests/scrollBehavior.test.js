@@ -39,7 +39,6 @@ function loadScrollHelpers() {
     ${extractFunction(findLine('function normalizeBoardScrollSpeedValue('))}
     ${extractFunction(findLine('function getBoardScrollSpeedMultiplier('))}
     ${extractFunction(findLine('function normalizeWheelDeltaToPixels('))}
-    ${extractFunction(findLine('function getCanvasWheelPanDelta('))}
     ${extractFunction(findLine('function canStartCanvasPointerPan('))}
     ${extractFunction(findLine('function canScrollableElementConsumeWheelDelta('))}
     ${extractFunction(findLine('function shouldHandleBoardViewportWheelEvent('))}
@@ -54,7 +53,6 @@ function loadScrollHelpers() {
       normalizeBoardScrollSpeedValue,
       getBoardScrollSpeedMultiplier,
       normalizeWheelDeltaToPixels,
-      getCanvasWheelPanDelta,
       canStartCanvasPointerPan,
       canScrollableElementConsumeWheelDelta,
       shouldHandleBoardViewportWheelEvent
@@ -141,22 +139,6 @@ describe('normalizeWheelDeltaToPixels', () => {
   it('uses viewport-relative page deltas', () => {
     globalThis.window = { innerHeight: 1000 };
     expect(ScrollHelpers.normalizeWheelDeltaToPixels(1, 2)).toBe(850);
-  });
-});
-
-describe('getCanvasWheelPanDelta', () => {
-  it('converts wheel deltas into opposite-direction canvas pan values', () => {
-    expect(ScrollHelpers.getCanvasWheelPanDelta(40, 80, 0, false, 1)).toEqual({
-      x: -40,
-      y: -80
-    });
-  });
-
-  it('supports shift-wheel horizontal panning and scroll-speed scaling', () => {
-    expect(ScrollHelpers.getCanvasWheelPanDelta(0, 3, 1, true, 0.5)).toEqual({
-      x: -24,
-      y: 0
-    });
   });
 });
 

@@ -55,11 +55,9 @@ function loadCanvasHelpers() {
     ${extractFunction(findLine('function resolveCanvasLargestElementSize('))}
     ${extractFunction(findLine('function resolveCanvasGridStep('))}
     ${extractFunction(findLine('function getNextCanvasStackPlacement('))}
-    ${extractFunction(findLine('function calculateCanvasBounds('))}
     ${extractFunction(findLine('function calculateCanvasSurface('))}
     ${extractFunction(findLine('function getCanvasRowContentMetrics('))}
     ${extractFunction(findLine('function getCanvasPositionFromViewportPoint('))}
-    ${extractFunction(findLine('function getCanvasPositionFromElementRect('))}
 
     return {
       setCanvasZoom: function (zoom) { $canvasZoom = zoom; },
@@ -67,10 +65,8 @@ function loadCanvasHelpers() {
       getCanvasRenderedStackMetrics,
       resolveCanvasGridStep,
       getNextCanvasStackPlacement,
-      calculateCanvasBounds,
       calculateCanvasSurface,
-      getCanvasPositionFromViewportPoint,
-      getCanvasPositionFromElementRect
+      getCanvasPositionFromViewportPoint
     };
   `;
 
@@ -150,26 +146,6 @@ describe('getNextCanvasStackPlacement', () => {
   });
 });
 
-describe('calculateCanvasBounds', () => {
-  it('preserves the minimum canvas footprint for small layouts', () => {
-    expect(CanvasHelpers.calculateCanvasBounds([
-      { x: 24, y: 24, w: 300, h: 220 }
-    ])).toEqual({
-      minWidth: 960,
-      minHeight: 640
-    });
-  });
-
-  it('expands the canvas footprint to include stacks placed near the bottom-right edge', () => {
-    expect(CanvasHelpers.calculateCanvasBounds([
-      { x: 820, y: 560, w: 320, h: 240 }
-    ])).toEqual({
-      minWidth: 1180,
-      minHeight: 840
-    });
-  });
-});
-
 describe('canvas surface helpers', () => {
   it('uses the largest element size for auto grid sizing', () => {
     const metrics = [
@@ -245,32 +221,6 @@ describe('getCanvasRenderedStackMetrics', () => {
 });
 
 describe('canvas coordinate helpers', () => {
-  it('uses the row padding box as the canvas origin instead of subtracting padding', () => {
-    const originalGetComputedStyle = globalThis.getComputedStyle;
-    globalThis.getComputedStyle = () => ({
-      borderLeftWidth: '0px',
-      borderTopWidth: '0px',
-      paddingLeft: '12px',
-      paddingTop: '18px'
-    });
-    CanvasHelpers.setCanvasZoom(1);
-    const rowContent = {
-      getBoundingClientRect() {
-        return { left: 100, top: 200 };
-      }
-    };
-
-    expect(CanvasHelpers.getCanvasPositionFromElementRect(rowContent, {
-      left: 124,
-      top: 236
-    })).toEqual({
-      x: 24,
-      y: 36
-    });
-
-    globalThis.getComputedStyle = originalGetComputedStyle;
-  });
-
   it('keeps viewport-to-canvas translation stable under zoom with borders', () => {
     const originalGetComputedStyle = globalThis.getComputedStyle;
     globalThis.getComputedStyle = () => ({

@@ -7174,15 +7174,8 @@ const LexeraDashboard = (function () {
     html += '<div class="hidden-items-list">';
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
-      var kindLabel = item.kind === 'row'
-        ? 'Row'
-        : item.kind === 'stack'
-          ? 'Stack'
-          : item.kind === 'column'
-            ? 'Column'
-            : 'Card';
       html += '<div class="parked-item hidden-item" data-idx="' + i + '">';
-      html += '<span class="hidden-item-kind">' + kindLabel + '</span>';
+      html += '<span class="hidden-item-kind">' + getCreationEntityLabel(item.kind) + '</span>';
       html += '<div class="parked-item-content">' + escapeHtml(item.title) + '</div>';
       html += '<div class="parked-item-col">' + escapeHtml(buildHiddenItemLocation(item)) + '</div>';
       for (var a = 0; a < actions.length; a++) {
@@ -12014,10 +12007,8 @@ const LexeraDashboard = (function () {
     var y = box.y + box.h / 2;
     if (side === 'left') x = box.x;
     else if (side === 'right') x = box.x + box.w;
-    else if (side === 'top' || side === 'bottom') x = box.x + box.w / 2;
     if (side === 'top') y = box.y;
     else if (side === 'bottom') y = box.y + box.h;
-    else if (side === 'left' || side === 'right') y = box.y + box.h / 2;
 
     var xOffset = parseCanvasAnchorOffset(params[keys.x], box.w, 0, box.w / 2, box.w);
     var yOffset = parseCanvasAnchorOffset(params[keys.y], box.h, 0, box.h / 2, box.h);
@@ -12027,17 +12018,19 @@ const LexeraDashboard = (function () {
     return { x: x, y: y, side: side };
   }
 
+  function canvasSideToVector(side) {
+    switch (side) {
+      case 'left':   return { x: -1, y:  0 };
+      case 'right':  return { x:  1, y:  0 };
+      case 'top':    return { x:  0, y: -1 };
+      case 'bottom': return { x:  0, y:  1 };
+      default:       return { x:  0, y:  0 };
+    }
+  }
+
   function getCanvasConnectionPath(sourceAnchor, targetAnchor) {
-    var sourceVector = sourceAnchor.side === 'left' ? { x: -1, y: 0 }
-      : sourceAnchor.side === 'right' ? { x: 1, y: 0 }
-      : sourceAnchor.side === 'top' ? { x: 0, y: -1 }
-      : sourceAnchor.side === 'bottom' ? { x: 0, y: 1 }
-      : { x: 0, y: 0 };
-    var targetVector = targetAnchor.side === 'left' ? { x: -1, y: 0 }
-      : targetAnchor.side === 'right' ? { x: 1, y: 0 }
-      : targetAnchor.side === 'top' ? { x: 0, y: -1 }
-      : targetAnchor.side === 'bottom' ? { x: 0, y: 1 }
-      : { x: 0, y: 0 };
+    var sourceVector = canvasSideToVector(sourceAnchor.side);
+    var targetVector = canvasSideToVector(targetAnchor.side);
     var dx = targetAnchor.x - sourceAnchor.x;
     var dy = targetAnchor.y - sourceAnchor.y;
     var control = Math.max(40, Math.min(180, Math.max(Math.abs(dx), Math.abs(dy)) * 0.38));
@@ -12265,29 +12258,6 @@ const LexeraDashboard = (function () {
     };
   }
 
-  function calculateCanvasBounds(stackMetrics, options) {
-    options = options || {};
-    var padding = Math.max(0, parseCanvasLayoutNumber(options.padding, CANVAS_ROW_PADDING));
-    var minWidth = Math.max(0, parseCanvasLayoutNumber(options.minWidth, CANVAS_MIN_ROW_WIDTH));
-    var minHeight = Math.max(0, parseCanvasLayoutNumber(options.minHeight, CANVAS_MIN_ROW_HEIGHT));
-    var metrics = Array.isArray(stackMetrics) ? stackMetrics : [];
-    var maxRight = padding;
-    var maxBottom = padding;
-    for (var i = 0; i < metrics.length; i++) {
-      var metric = metrics[i] || {};
-      var left = Math.max(0, parseCanvasLayoutNumber(metric.x, 0));
-      var top = Math.max(0, parseCanvasLayoutNumber(metric.y, 0));
-      var width = Math.max(0, parseCanvasLayoutNumber(metric.w, 0));
-      var height = Math.max(0, parseCanvasLayoutNumber(metric.h, 0));
-      maxRight = Math.max(maxRight, left + width + padding);
-      maxBottom = Math.max(maxBottom, top + height + padding);
-    }
-    return {
-      minWidth: Math.max(minWidth, maxRight),
-      minHeight: Math.max(minHeight, maxBottom)
-    };
-  }
-
   function applyDefaultCanvasPlacementToStack(row, stack) {
     if (!isCanvasBoardLayout() || !row || !stack) return stack;
     if (!stack.params) stack.params = {};
@@ -12417,8 +12387,6 @@ const LexeraDashboard = (function () {
       var surface = calculateCanvasSurface(metrics);
       var gridStep = resolveCanvasGridStep(metrics, gridMode);
       if (scene) {
-        // Keep scene offset stable to prevent viewport jumps.
-        // Store it on the container so it survives DOM rebuilds.
         var stableOffsetX = container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : surface.offsetX;
         var stableOffsetY = container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : surface.offsetY;
         container.__canvasSceneOffsetX = stableOffsetX;
@@ -12431,7 +12399,6 @@ const LexeraDashboard = (function () {
         scene.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
         scene.setAttribute('data-canvas-grid', gridMode);
       }
-      // Store last computed surface for scroll indicators
       rowContent.__canvasSurface = surface;
       syncCanvasRowConnections(rowContent);
     }
@@ -12456,50 +12423,36 @@ const LexeraDashboard = (function () {
     var hBar = container.querySelector('.canvas-scroll-indicator-h');
     var vBar = container.querySelector('.canvas-scroll-indicator-v');
     if (!hBar || !vBar) return;
-    // Find the first row content with cached surface data
     var rowContent = container.querySelector('.board-row-content');
     var surface = rowContent && rowContent.__canvasSurface;
     if (!surface) { hBar.style.opacity = '0'; vBar.style.opacity = '0'; return; }
     var zoom = $canvasZoom || 1;
     var viewW = container.clientWidth || 1;
     var viewH = container.clientHeight || 1;
-    // Content bounds in screen pixels
-    var contentW = surface.width * zoom;
-    var contentH = surface.height * zoom;
-    // Visible viewport in canvas-content screen coords
-    // panX/panY translate the scene; scene.left=offsetX positions content origin
-    // The viewport sees from -panX-offsetX*1 to -panX-offsetX*1+viewW/zoom ... actually simpler:
-    // The visible canvas region's left edge in screen-content coords:
-    //   screenX = offsetX + panX + canvasX * zoom
-    //   At viewport left (screenX=0 relative to container): canvasX = (-offsetX - panX) / zoom
-    //   At viewport right: canvasX = (-offsetX - panX + viewW) / zoom
+    var visW = viewW / zoom;
+    var visH = viewH / zoom;
     var visLeft = (-surface.offsetX - $canvasPanX) / zoom;
     var visTop = (-surface.offsetY - $canvasPanY) / zoom;
-    var visRight = visLeft + viewW / zoom;
-    var visBottom = visTop + viewH / zoom;
-    // Total extent = union of content bounds and visible area
     var totalLeft = Math.min(surface.left, visLeft);
     var totalTop = Math.min(surface.top, visTop);
-    var totalRight = Math.max(surface.left + surface.width, visRight);
-    var totalBottom = Math.max(surface.top + surface.height, visBottom);
-    var totalW = totalRight - totalLeft || 1;
-    var totalH = totalBottom - totalTop || 1;
-    // Scrollbar thumb position and size as fractions
+    var totalW = (Math.max(surface.left + surface.width, visLeft + visW) - totalLeft) || 1;
+    var totalH = (Math.max(surface.top + surface.height, visTop + visH) - totalTop) || 1;
     var thumbLeft = (visLeft - totalLeft) / totalW;
-    var thumbWidth = (visRight - visLeft) / totalW;
+    var thumbWidth = visW / totalW;
     var thumbTop = (visTop - totalTop) / totalH;
-    var thumbHeight = (visBottom - visTop) / totalH;
-    // If viewport covers entire content, hide indicators
+    var thumbHeight = visH / totalH;
     if (thumbWidth >= 0.98 && thumbHeight >= 0.98) {
       hBar.style.opacity = '0';
       vBar.style.opacity = '0';
       return;
     }
     var barMargin = 8;
-    hBar.style.left = Math.round(barMargin + thumbLeft * (viewW - barMargin * 2)) + 'px';
-    hBar.style.width = Math.max(24, Math.round(thumbWidth * (viewW - barMargin * 2))) + 'px';
-    vBar.style.top = Math.round(barMargin + thumbTop * (viewH - barMargin * 2)) + 'px';
-    vBar.style.height = Math.max(24, Math.round(thumbHeight * (viewH - barMargin * 2))) + 'px';
+    var trackW = viewW - barMargin * 2;
+    var trackH = viewH - barMargin * 2;
+    hBar.style.left = Math.round(barMargin + thumbLeft * trackW) + 'px';
+    hBar.style.width = Math.max(24, Math.round(thumbWidth * trackW)) + 'px';
+    vBar.style.top = Math.round(barMargin + thumbTop * trackH) + 'px';
+    vBar.style.height = Math.max(24, Math.round(thumbHeight * trackH)) + 'px';
     hBar.style.removeProperty('opacity');
     vBar.style.removeProperty('opacity');
   }
@@ -12520,7 +12473,7 @@ const LexeraDashboard = (function () {
     if (!container) return;
     var indicators = container.querySelectorAll('.canvas-scroll-indicator');
     for (var i = 0; i < indicators.length; i++) {
-      indicators[i].parentNode.removeChild(indicators[i]);
+      indicators[i].remove();
     }
   }
 
@@ -12548,15 +12501,6 @@ const LexeraDashboard = (function () {
     return {
       x: Math.round((clientX - metrics.originLeft - (grabOffsetX || 0)) / metrics.zoom),
       y: Math.round((clientY - metrics.originTop - (grabOffsetY || 0)) / metrics.zoom)
-    };
-  }
-
-  function getCanvasPositionFromElementRect(rowContent, elementRect) {
-    if (!rowContent || !elementRect) return { x: 0, y: 0 };
-    var metrics = getCanvasRowContentMetrics(rowContent);
-    return {
-      x: Math.round((elementRect.left - metrics.originLeft) / metrics.zoom),
-      y: Math.round((elementRect.top - metrics.originTop) / metrics.zoom)
     };
   }
 
@@ -12610,25 +12554,6 @@ const LexeraDashboard = (function () {
     if (next > 3) next = 3;
     if (next === $canvasZoom) return;
     applyCanvasZoom(next, localOriginX, localOriginY);
-  }
-
-  function getCanvasWheelPanDelta(deltaX, deltaY, deltaMode, shiftKey, speedMultiplier) {
-    var nextDeltaX = normalizeWheelDeltaToPixels(deltaX, deltaMode);
-    var nextDeltaY = normalizeWheelDeltaToPixels(deltaY, deltaMode);
-    if (shiftKey && !nextDeltaX && nextDeltaY) {
-      nextDeltaX = nextDeltaY;
-      nextDeltaY = 0;
-    }
-    var multiplier = parseFloat(speedMultiplier);
-    if (!isFinite(multiplier) || multiplier <= 0) multiplier = 1;
-    var panX = -(nextDeltaX * multiplier);
-    var panY = -(nextDeltaY * multiplier);
-    if (Object.is(panX, -0)) panX = 0;
-    if (Object.is(panY, -0)) panY = 0;
-    return {
-      x: panX,
-      y: panY
-    };
   }
 
   function canStartCanvasPointerPan(target, button, altKey) {
@@ -12687,8 +12612,10 @@ const LexeraDashboard = (function () {
       if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
       if (!deltaX && !deltaY) return;
       e.preventDefault();
-      var panDelta = getCanvasWheelPanDelta(e.deltaX, e.deltaY, e.deltaMode, e.shiftKey, multiplier);
-      applyCanvasPan($canvasPanX + panDelta.x, $canvasPanY + panDelta.y);
+      applyCanvasPan(
+        $canvasPanX - deltaX * multiplier,
+        $canvasPanY - deltaY * multiplier
+      );
       return;
     }
     if (multiplier === 1) return;
@@ -13255,6 +13182,7 @@ const LexeraDashboard = (function () {
   }
 
   function applyBoardSettings() {
+    var container = getElColumnsContainer();
     var cssProps = [
       '--board-column-width', '--board-font-size', '--board-font-family',
       '--board-bg', '--board-color', '--board-color-dark', '--board-color-light',
@@ -13263,68 +13191,67 @@ const LexeraDashboard = (function () {
       '--board-column-gap', '--board-inner-padding'
     ];
     for (var i = 0; i < cssProps.length; i++) {
-      getElColumnsContainer().style.removeProperty(cssProps[i]);
+      container.style.removeProperty(cssProps[i]);
     }
     // Reset class-based settings
-    getElColumnsContainer().classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
-    getElColumnsContainer().classList.remove('html-comments-hide', 'html-comments-dim');
-    getElColumnsContainer().classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
+    container.classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
+    container.classList.remove('html-comments-hide', 'html-comments-dim');
+    container.classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
     // Reset canvas zoom and pan when leaving canvas mode
     if ($canvasZoom !== 1) applyCanvasZoom(1);
     resetCanvasPan();
     removeCanvasScrollIndicators();
-    getElColumnsContainer().removeAttribute('data-layout-preset');
+    container.removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
     currentHtmlCommentRenderMode = 'hidden';
-    getElColumnsContainer().classList.add('html-comments-hide');
+    container.classList.add('html-comments-hide');
 
     if (!fullBoardData || !fullBoardData.boardSettings) return;
     var s = fullBoardData.boardSettings;
     var normalizedColWidth = normalizeColumnWidth(s.columnWidth);
-    if (normalizedColWidth) getElColumnsContainer().style.setProperty('--board-column-width', normalizedColWidth);
-    if (s.fontSize) getElColumnsContainer().style.setProperty('--board-font-size', s.fontSize);
-    if (s.fontFamily) getElColumnsContainer().style.setProperty('--board-font-family', s.fontFamily);
-    if (s.rowHeight) getElColumnsContainer().style.setProperty('--board-row-height', s.rowHeight);
-    if (s.maxRowHeight) getElColumnsContainer().style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
-    if (s.cardMinHeight) getElColumnsContainer().style.setProperty('--board-card-min-height', s.cardMinHeight);
+    if (normalizedColWidth) container.style.setProperty('--board-column-width', normalizedColWidth);
+    if (s.fontSize) container.style.setProperty('--board-font-size', s.fontSize);
+    if (s.fontFamily) container.style.setProperty('--board-font-family', s.fontFamily);
+    if (s.rowHeight) container.style.setProperty('--board-row-height', s.rowHeight);
+    if (s.maxRowHeight) container.style.setProperty('--board-max-row-height', s.maxRowHeight + 'px');
+    if (s.cardMinHeight) container.style.setProperty('--board-card-min-height', s.cardMinHeight);
     var normalizedWhitespace = normalizeWhitespaceValue(s.whitespace);
     if (normalizedWhitespace) {
       var whitespacePx = parseFloat(normalizedWhitespace);
       if (isFinite(whitespacePx) && whitespacePx > 0) {
-        var whitespaceScale = whitespacePx / 16;
-        var roundedWhitespaceScale = Math.round(whitespaceScale * 1000) / 1000;
-        getElColumnsContainer().style.setProperty('--board-row-gap', 'calc(12px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
-        getElColumnsContainer().style.setProperty('--board-stack-gap', 'calc(10px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
-        getElColumnsContainer().style.setProperty('--board-column-gap', 'calc(6px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
-        getElColumnsContainer().style.setProperty('--board-inner-padding', 'calc(8px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        var roundedWhitespaceScale = Math.round((whitespacePx / 16) * 1000) / 1000;
+        container.style.setProperty('--board-row-gap', 'calc(12px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        container.style.setProperty('--board-stack-gap', 'calc(10px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        container.style.setProperty('--board-column-gap', 'calc(6px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
+        container.style.setProperty('--board-inner-padding', 'calc(8px * var(--ui-scale) * ' + roundedWhitespaceScale + ')');
       }
     }
     var layoutRows = parseInt(s.layoutRows, 10);
     if (!isFinite(layoutRows) || layoutRows < 1) layoutRows = 1;
     if (layoutRows > 6) layoutRows = 6;
-    getElColumnsContainer().style.setProperty('--board-layout-rows', String(layoutRows));
-    if (layoutRows > 1) getElColumnsContainer().classList.add('layout-rows-fixed');
+    container.style.setProperty('--board-layout-rows', String(layoutRows));
+    if (layoutRows > 1) container.classList.add('layout-rows-fixed');
     currentTagVisibilityMode = normalizeTagVisibilityMode(s.tagVisibility);
     var stickyMode = normalizeStickyHeaderMode(s.stickyStackMode);
-    if (stickyMode) getElColumnsContainer().classList.add('sticky-headers-' + stickyMode);
-    if (stickyMode === 'top') getElColumnsContainer().classList.add('sticky-headers'); // legacy alias
+    if (stickyMode) container.classList.add('sticky-headers-' + stickyMode);
+    if (stickyMode === 'top') container.classList.add('sticky-headers'); // legacy alias
     currentHtmlCommentRenderMode = normalizeHtmlCommentRenderMode(s.htmlCommentRenderMode);
-    if (currentHtmlCommentRenderMode === 'hidden') getElColumnsContainer().classList.add('html-comments-hide');
-    if (currentHtmlCommentRenderMode === 'dim') getElColumnsContainer().classList.add('html-comments-dim');
+    if (currentHtmlCommentRenderMode === 'hidden') container.classList.add('html-comments-hide');
+    if (currentHtmlCommentRenderMode === 'dim') container.classList.add('html-comments-dim');
     currentArrowKeyFocusScrollMode = normalizeArrowKeyFocusScrollMode(s.arrowKeyFocusScroll);
-    if (currentArrowKeyFocusScrollMode !== 'disabled') getElColumnsContainer().classList.add('focus-scroll-mode');
-    if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') getElColumnsContainer().classList.add('layout-spacious');
-    if (s.layoutPreset) getElColumnsContainer().setAttribute('data-layout-preset', s.layoutPreset);
+    if (currentArrowKeyFocusScrollMode !== 'disabled') container.classList.add('focus-scroll-mode');
+    if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') container.classList.add('layout-spacious');
+    if (s.layoutPreset) container.setAttribute('data-layout-preset', s.layoutPreset);
     if (normalizeBoardLayoutValue(s.boardLayout) === 'canvas') {
-      getElColumnsContainer().classList.add('layout-canvas');
-      ensureCanvasScrollIndicators(getElColumnsContainer());
+      container.classList.add('layout-canvas');
+      ensureCanvasScrollIndicators(container);
     }
 
     var boardColor = resolveActiveBoardColor(s);
-    if (boardColor) getElColumnsContainer().style.setProperty('--board-color', boardColor);
-    if (s.boardColorDark || s.boardColor) getElColumnsContainer().style.setProperty('--board-color-dark', s.boardColorDark || s.boardColor);
-    if (s.boardColorLight || s.boardColor) getElColumnsContainer().style.setProperty('--board-color-light', s.boardColorLight || s.boardColor);
+    if (boardColor) container.style.setProperty('--board-color', boardColor);
+    if (s.boardColorDark || s.boardColor) container.style.setProperty('--board-color-dark', s.boardColorDark || s.boardColor);
+    if (s.boardColorLight || s.boardColor) container.style.setProperty('--board-color-light', s.boardColorLight || s.boardColor);
   }
 
   /**
