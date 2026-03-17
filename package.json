@@ -6191,6 +6191,7 @@
     "lint": "eslint",
     "test": "vscode-test",
     "test:unit": "jest --config jest.config.js",
+    "test:unit:coverage": "jest --config jest.config.js --coverage --coverageReporters=text-summary",
     "sync-marp-engine": "cp -r packages/marp-engine/engine/* tests/marp-engine-test/",
     "vsix": "vsce package",
     "postinstall": "npx playwright install chromium"

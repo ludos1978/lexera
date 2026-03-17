@@ -732,10 +732,10 @@ export class KanbanFileService {
             candidates.set(key, candidate);
         };
 
-        // Process each include file only once (first column wins).
-        // Shared includes (same file in multiple columns) have independent card copies
-        // that may diverge; the first column in board order is the authoritative source.
-        const processedIncludeFiles = new Set<string>();
+        // Shared include files must be validated against every distinct source column.
+        // A duplicate reference from the same column can be ignored, but later columns
+        // must still contribute candidate content so ambiguity is detected before write.
+        const processedSourceKeys = new Set<string>();
 
         for (const column of board.columns) {
             if (!column.includeFiles || column.includeFiles.length === 0) {
@@ -748,11 +748,12 @@ export class KanbanFileService {
                     continue;
                 }
 
-                const fileKey = includeFile.getPath();
-                if (processedIncludeFiles.has(fileKey)) {
+                const source = `column:${column.id}`;
+                const sourceKey = `${includeFile.getPath()}::${source}`;
+                if (processedSourceKeys.has(sourceKey)) {
                     continue;
                 }
-                processedIncludeFiles.add(fileKey);
+                processedSourceKeys.add(sourceKey);
 
                 let content: string;
                 try {
@@ -762,7 +763,7 @@ export class KanbanFileService {
                         + `Reason: ${getErrorMessage(error)}`;
                 }
 
-                recordCandidate(includeFile, `column:${column.id}`, content);
+                recordCandidate(includeFile, source, content);
             }
         }
 

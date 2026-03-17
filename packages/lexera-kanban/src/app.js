@@ -1224,14 +1224,7 @@ const LexeraDashboard = (function () {
   function stripLayoutTags(title) {
     return stripHtmlComments(String(title || ''))
       .replace(/\s*\[(#[^\]\s]+)\]\u007B[^\u007D]+\u007D/gi, '')
-      .replace(/\s*#row\d*\b/gi, '')
-      .replace(/\s*#span\d*\b/gi, '')
-      .replace(/\s*#stack\b/gi, '')
-      .replace(/\s*#header\b/gi, '')
-      .replace(/\s*#footer\b/gi, '')
-      .replace(/\s*#wip-\d+\b/gi, '')
-      .replace(/\s*#width\{\d+\}/gi, '')
-      .replace(/\s*#height\{\d+\}/gi, '')
+      .replace(/\s*#(?:row\d*|span\d*|stack|header|footer|wip-\d+|width\{\d+\}|height\{\d+\})\b/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -1298,9 +1291,6 @@ const LexeraDashboard = (function () {
     return ((cleanTitle ? cleanTitle + ' ' : '') + '!!!include(' + cleanPath + ')!!!').trim();
   }
 
-  function updateIncludePathInTitle(title, filePath) {
-    return addIncludeSyntaxToTitle(title, filePath);
-  }
 
   function suggestIncludePathForColumn(title) {
     var base = removeIncludeSyntaxFromTitle(stripLayoutTags(stripInternalHiddenTags(title || '')))
@@ -5874,11 +5864,7 @@ const LexeraDashboard = (function () {
 
   function is_archived_or_deleted(text) {
     text = text || '';
-    if (text.indexOf('#hidden-internal-deleted') !== -1 ||
-        text.indexOf('#hidden-internal-archived') !== -1 ||
-        text.indexOf('#hidden-internal-parked') !== -1 ||
-        text.indexOf('#hidden-internal-incoming') !== -1) return true;
-    // Plain #hidden tag also hides from display (but not #hidden-internal-*)
+    if (/#hidden-internal-(?:deleted|archived|parked|incoming)\b/.test(text)) return true;
     if (/(^|\s)#hidden(\s|$)/.test(text)) return true;
     return false;
   }
@@ -12690,18 +12676,18 @@ const LexeraDashboard = (function () {
     return '';
   }
 
+  var TAG_VISIBILITY_MODE_MAP = {
+    '': 'allexcludinglayout',
+    'show': 'all', 'hide': 'none', 'standard': 'allexcludinglayout',
+    'custom': 'customonly', 'mentions': 'mentionsonly',
+    'all': 'all', 'allexcludinglayout': 'allexcludinglayout',
+    'customonly': 'customonly', 'mentionsonly': 'mentionsonly',
+    'none': 'none', 'dim': 'dim'
+  };
+
   function normalizeTagVisibilityMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
-    if (!mode) return 'allexcludinglayout';
-    if (mode === 'show') return 'all';
-    if (mode === 'hide') return 'none';
-    if (mode === 'standard') return 'allexcludinglayout';
-    if (mode === 'custom') return 'customonly';
-    if (mode === 'mentions') return 'mentionsonly';
-    if (mode === 'all' || mode === 'allexcludinglayout' || mode === 'customonly' || mode === 'mentionsonly' || mode === 'none' || mode === 'dim') {
-      return mode;
-    }
-    return 'all';
+    return TAG_VISIBILITY_MODE_MAP[mode] || 'all';
   }
 
   function normalizeHtmlCommentRenderMode(rawMode) {
@@ -20837,7 +20823,7 @@ const LexeraDashboard = (function () {
     var cleanPath = String(nextPath || '').trim();
     if (!cleanPath) return false;
     var nextTitle = reconstructColumnTitle(
-      updateIncludePathInTitle(col.title || '', cleanPath),
+      addIncludeSyntaxToTitle(col.title || '', cleanPath),
       col.title || ''
     );
     if (nextTitle === col.title && col.includeSource && col.includeSource.rawPath === cleanPath) {
@@ -26452,57 +26438,44 @@ const LexeraDashboard = (function () {
     return _activeTagStylePreset;
   }
 
-  function getResolvedCategoryRole(categoryKey) {
-    // 1. User override for this category
-    if (_tagStyleUserOverrides.categoryRoles && _tagStyleUserOverrides.categoryRoles[categoryKey]) {
-      return _tagStyleUserOverrides.categoryRoles[categoryKey];
+  function resolveTagStyleProperty(mapKey, entryKey, fallback) {
+    if (_tagStyleUserOverrides[mapKey] && _tagStyleUserOverrides[mapKey][entryKey]) {
+      return _tagStyleUserOverrides[mapKey][entryKey];
     }
-    // 2. Active preset
     var preset = TAG_STYLE_PRESETS[_activeTagStylePreset];
-    if (preset && preset.categoryRoles && preset.categoryRoles[categoryKey]) {
-      return preset.categoryRoles[categoryKey];
+    if (preset && preset[mapKey] && preset[mapKey][entryKey]) {
+      return preset[mapKey][entryKey];
     }
-    // 3. Default
-    return TAG_STYLE_ROLE_BY_CATEGORY[categoryKey] || '';
+    return fallback;
+  }
+
+  function getResolvedCategoryRole(categoryKey) {
+    return resolveTagStyleProperty('categoryRoles', categoryKey, TAG_STYLE_ROLE_BY_CATEGORY[categoryKey] || '');
   }
 
   function getTagStyleOverride(tagNormalized) {
-    // 1. User per-tag overrides
-    if (_tagStyleUserOverrides.tagOverrides && _tagStyleUserOverrides.tagOverrides[tagNormalized]) {
-      return _tagStyleUserOverrides.tagOverrides[tagNormalized];
+    return resolveTagStyleProperty('tagOverrides', tagNormalized, null);
+  }
+
+  function setUserOverrideEntry(mapKey, entryKey, value) {
+    if (!_tagStyleUserOverrides[mapKey]) _tagStyleUserOverrides[mapKey] = {};
+    if (value) {
+      _tagStyleUserOverrides[mapKey][entryKey] = value;
+    } else {
+      delete _tagStyleUserOverrides[mapKey][entryKey];
+      if (Object.keys(_tagStyleUserOverrides[mapKey]).length === 0) {
+        delete _tagStyleUserOverrides[mapKey];
+      }
     }
-    // 2. Active preset per-tag overrides
-    var preset = TAG_STYLE_PRESETS[_activeTagStylePreset];
-    if (preset && preset.tagOverrides && preset.tagOverrides[tagNormalized]) {
-      return preset.tagOverrides[tagNormalized];
-    }
-    return null;
+    saveTagStyleConfig();
   }
 
   function setUserCategoryRole(categoryKey, role) {
-    if (!_tagStyleUserOverrides.categoryRoles) _tagStyleUserOverrides.categoryRoles = {};
-    if (role) {
-      _tagStyleUserOverrides.categoryRoles[categoryKey] = role;
-    } else {
-      delete _tagStyleUserOverrides.categoryRoles[categoryKey];
-      if (Object.keys(_tagStyleUserOverrides.categoryRoles).length === 0) {
-        delete _tagStyleUserOverrides.categoryRoles;
-      }
-    }
-    saveTagStyleConfig();
+    setUserOverrideEntry('categoryRoles', categoryKey, role);
   }
 
   function setUserTagStyleOverride(tagNormalized, overrideObj) {
-    if (!_tagStyleUserOverrides.tagOverrides) _tagStyleUserOverrides.tagOverrides = {};
-    if (overrideObj) {
-      _tagStyleUserOverrides.tagOverrides[tagNormalized] = overrideObj;
-    } else {
-      delete _tagStyleUserOverrides.tagOverrides[tagNormalized];
-      if (Object.keys(_tagStyleUserOverrides.tagOverrides).length === 0) {
-        delete _tagStyleUserOverrides.tagOverrides;
-      }
-    }
-    saveTagStyleConfig();
+    setUserOverrideEntry('tagOverrides', tagNormalized, overrideObj);
   }
 
   // Load tag style config on startup
@@ -26584,20 +26557,14 @@ const LexeraDashboard = (function () {
 
   function parseColorChannels(color) {
     var source = String(color || '').trim();
-    var shortHexMatch = source.match(/^#([0-9a-f]{3})$/i);
-    if (shortHexMatch) {
+    var hexMatch = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hexMatch) {
+      var hex = hexMatch[1];
+      var isShort = hex.length === 3;
       return {
-        r: parseInt(shortHexMatch[1].charAt(0) + shortHexMatch[1].charAt(0), 16),
-        g: parseInt(shortHexMatch[1].charAt(1) + shortHexMatch[1].charAt(1), 16),
-        b: parseInt(shortHexMatch[1].charAt(2) + shortHexMatch[1].charAt(2), 16)
-      };
-    }
-    var longHexMatch = source.match(/^#([0-9a-f]{6})$/i);
-    if (longHexMatch) {
-      return {
-        r: parseInt(longHexMatch[1].slice(0, 2), 16),
-        g: parseInt(longHexMatch[1].slice(2, 4), 16),
-        b: parseInt(longHexMatch[1].slice(4, 6), 16)
+        r: parseInt(isShort ? hex.charAt(0) + hex.charAt(0) : hex.slice(0, 2), 16),
+        g: parseInt(isShort ? hex.charAt(1) + hex.charAt(1) : hex.slice(2, 4), 16),
+        b: parseInt(isShort ? hex.charAt(2) + hex.charAt(2) : hex.slice(4, 6), 16)
       };
     }
     var rgbMatch = source.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
@@ -26858,6 +26825,32 @@ const LexeraDashboard = (function () {
     };
   }
 
+  function resolveBackgroundSurfaceColors(background, fallbackColor) {
+    var bgColor = background.color || fallbackColor;
+    var bgAlpha = typeof background.alpha === 'number' ? background.alpha : null;
+    return {
+      bg: { color: bgColor, alpha: bgAlpha },
+      header: {
+        color: background.headerColor || bgColor,
+        alpha: typeof background.headerAlpha === 'number'
+          ? background.headerAlpha
+          : (bgAlpha == null ? null : Math.min(bgAlpha + 0.08, 0.28))
+      },
+      footer: {
+        color: background.footerColor || bgColor,
+        alpha: typeof background.footerAlpha === 'number'
+          ? background.footerAlpha
+          : (bgAlpha == null ? null : Math.min(bgAlpha + 0.04, 0.24))
+      },
+      content: {
+        color: background.contentColor || bgColor,
+        alpha: typeof background.contentAlpha === 'number'
+          ? background.contentAlpha
+          : (bgAlpha == null ? null : Math.max(bgAlpha - 0.04, 0.08))
+      }
+    };
+  }
+
   function buildTagStyleInlineCssText(styleState) {
     if (!styleState || !styleState.descriptor) return '';
     var descriptor = styleState.descriptor;
@@ -26874,24 +26867,11 @@ const LexeraDashboard = (function () {
       declarations.push('--tag-border-style:' + (descriptor.border.style || 'solid'));
     }
     if (descriptor.background) {
-      var bgColor = descriptor.background.color || color;
-      var bgAlpha = typeof descriptor.background.alpha === 'number' ? descriptor.background.alpha : null;
-      var headerColor = descriptor.background.headerColor || bgColor;
-      var footerColor = descriptor.background.footerColor || bgColor;
-      var contentColor = descriptor.background.contentColor || bgColor;
-      var headerAlpha = typeof descriptor.background.headerAlpha === 'number'
-        ? descriptor.background.headerAlpha
-        : (bgAlpha == null ? null : Math.min(bgAlpha + 0.08, 0.28));
-      var footerAlpha = typeof descriptor.background.footerAlpha === 'number'
-        ? descriptor.background.footerAlpha
-        : (bgAlpha == null ? null : Math.min(bgAlpha + 0.04, 0.24));
-      var contentAlpha = typeof descriptor.background.contentAlpha === 'number'
-        ? descriptor.background.contentAlpha
-        : (bgAlpha == null ? null : Math.max(bgAlpha - 0.04, 0.08));
-      declarations.push('--tag-surface-bg:' + resolveTagSurfaceColor(bgColor, bgAlpha));
-      declarations.push('--tag-surface-header-bg:' + resolveTagSurfaceColor(headerColor, headerAlpha));
-      declarations.push('--tag-surface-footer-bg:' + resolveTagSurfaceColor(footerColor, footerAlpha));
-      declarations.push('--tag-surface-content-bg:' + resolveTagSurfaceColor(contentColor, contentAlpha));
+      var surfaces = resolveBackgroundSurfaceColors(descriptor.background, color);
+      declarations.push('--tag-surface-bg:' + resolveTagSurfaceColor(surfaces.bg.color, surfaces.bg.alpha));
+      declarations.push('--tag-surface-header-bg:' + resolveTagSurfaceColor(surfaces.header.color, surfaces.header.alpha));
+      declarations.push('--tag-surface-footer-bg:' + resolveTagSurfaceColor(surfaces.footer.color, surfaces.footer.alpha));
+      declarations.push('--tag-surface-content-bg:' + resolveTagSurfaceColor(surfaces.content.color, surfaces.content.alpha));
     }
     if (descriptor.opacity) declarations.push('--tag-effect-opacity:' + descriptor.opacity);
     if (descriptor.filter) declarations.push('--tag-effect-filter:' + descriptor.filter);
@@ -26956,7 +26936,7 @@ const LexeraDashboard = (function () {
   }
 
   function isTagExpressionBoundaryChar(ch) {
-    return !ch || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '&' || ch === '|' || ch === '!' || ch === '(' || ch === ')';
+    return isTagTokenBoundaryChar(ch) || ch === '(' || ch === ')';
   }
 
   function collectHeaderTagTokens(text, options) {
@@ -27140,15 +27120,6 @@ const LexeraDashboard = (function () {
     return false;
   }
 
-  function getFirstTag(content) {
-    var tags = extractAllTags(content);
-    return tags.length > 0 ? tags[0] : null;
-  }
-
-  function escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
   function extractAllTags(text) {
     // Header tags are scoped to the pre-body block (until first blank line).
     var tokens = collectHeaderTagTokens(text, { includeHash: true, includeAt: false, includeTemporalBang: false });
@@ -27191,28 +27162,9 @@ const LexeraDashboard = (function () {
   }
 
   function toTagAccentRgba(color, alpha) {
-    var source = String(color || '').trim();
-    var shortHexMatch = source.match(/^#([0-9a-f]{3})$/i);
-    if (shortHexMatch) {
-      var shortHex = shortHexMatch[1];
-      var sr = parseInt(shortHex.charAt(0) + shortHex.charAt(0), 16);
-      var sg = parseInt(shortHex.charAt(1) + shortHex.charAt(1), 16);
-      var sb = parseInt(shortHex.charAt(2) + shortHex.charAt(2), 16);
-      return 'rgba(' + sr + ', ' + sg + ', ' + sb + ', ' + alpha + ')';
-    }
-    var longHexMatch = source.match(/^#([0-9a-f]{6})$/i);
-    if (longHexMatch) {
-      var longHex = longHexMatch[1];
-      var lr = parseInt(longHex.slice(0, 2), 16);
-      var lg = parseInt(longHex.slice(2, 4), 16);
-      var lb = parseInt(longHex.slice(4, 6), 16);
-      return 'rgba(' + lr + ', ' + lg + ', ' + lb + ', ' + alpha + ')';
-    }
-    var rgbMatch = source.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
-    if (rgbMatch) {
-      return 'rgba(' + rgbMatch[1] + ', ' + rgbMatch[2] + ', ' + rgbMatch[3] + ', ' + alpha + ')';
-    }
-    return source;
+    var channels = parseColorChannels(color);
+    if (!channels) return String(color || '').trim();
+    return 'rgba(' + channels.r + ', ' + channels.g + ', ' + channels.b + ', ' + alpha + ')';
   }
 
   function resolveTagSurfaceColor(color, alpha) {
@@ -27305,48 +27257,33 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    if (styleState && styleState.descriptor) {
-      var descriptor = styleState.descriptor;
-      var color = styleState.color || getTagColor('#tag');
-      containerEl.classList.add('tag-styled');
-      containerEl.style.setProperty('--tag-accent', color);
-      containerEl.style.setProperty('--tag-accent-soft', descriptor.accentSoft || toTagAccentRgba(color, 0.14));
-      containerEl.style.setProperty('--tag-accent-soft-strong', descriptor.accentSoftStrong || toTagAccentRgba(color, 0.24));
-      containerEl.style.setProperty('--tag-accent-muted', descriptor.accentMuted || toTagAccentRgba(color, 0.42));
+    var descriptor = styleState.descriptor;
+    var color = styleState.color || getTagColor('#tag');
+    containerEl.classList.add('tag-styled');
+    containerEl.style.setProperty('--tag-accent', color);
+    containerEl.style.setProperty('--tag-accent-soft', descriptor.accentSoft || toTagAccentRgba(color, 0.14));
+    containerEl.style.setProperty('--tag-accent-soft-strong', descriptor.accentSoftStrong || toTagAccentRgba(color, 0.24));
+    containerEl.style.setProperty('--tag-accent-muted', descriptor.accentMuted || toTagAccentRgba(color, 0.42));
 
-      if (descriptor.border) {
-        containerEl.style.setProperty('--tag-border-color', descriptor.border.color || color);
-        containerEl.style.setProperty('--tag-border-width', descriptor.border.width || '2px');
-        containerEl.style.setProperty('--tag-border-style', descriptor.border.style || 'solid');
-        containerEl.setAttribute('data-tag-border-position', descriptor.border.position || 'left');
-      }
-
-      if (descriptor.background) {
-        var bgColor = descriptor.background.color || color;
-        var bgAlpha = typeof descriptor.background.alpha === 'number' ? descriptor.background.alpha : null;
-        var headerColor = descriptor.background.headerColor || bgColor;
-        var footerColor = descriptor.background.footerColor || bgColor;
-        var contentColor = descriptor.background.contentColor || bgColor;
-        var headerAlpha = typeof descriptor.background.headerAlpha === 'number'
-          ? descriptor.background.headerAlpha
-          : (bgAlpha == null ? null : Math.min(bgAlpha + 0.08, 0.28));
-        var footerAlpha = typeof descriptor.background.footerAlpha === 'number'
-          ? descriptor.background.footerAlpha
-          : (bgAlpha == null ? null : Math.min(bgAlpha + 0.04, 0.24));
-        var contentAlpha = typeof descriptor.background.contentAlpha === 'number'
-          ? descriptor.background.contentAlpha
-          : (bgAlpha == null ? null : Math.max(bgAlpha - 0.04, 0.08));
-        containerEl.style.setProperty('--tag-surface-bg', resolveTagSurfaceColor(bgColor, bgAlpha));
-        containerEl.style.setProperty('--tag-surface-header-bg', resolveTagSurfaceColor(headerColor, headerAlpha));
-        containerEl.style.setProperty('--tag-surface-footer-bg', resolveTagSurfaceColor(footerColor, footerAlpha));
-        containerEl.style.setProperty('--tag-surface-content-bg', resolveTagSurfaceColor(contentColor, contentAlpha));
-      }
-
-      if (descriptor.opacity) containerEl.style.setProperty('--tag-effect-opacity', descriptor.opacity);
-      if (descriptor.filter) containerEl.style.setProperty('--tag-effect-filter', descriptor.filter);
-      if (descriptor.pattern === 'stripes') containerEl.classList.add('tag-style-pattern-stripes');
-      if (descriptor.pattern === 'stripes-h') containerEl.classList.add('tag-style-pattern-stripes-h');
+    if (descriptor.border) {
+      containerEl.style.setProperty('--tag-border-color', descriptor.border.color || color);
+      containerEl.style.setProperty('--tag-border-width', descriptor.border.width || '2px');
+      containerEl.style.setProperty('--tag-border-style', descriptor.border.style || 'solid');
+      containerEl.setAttribute('data-tag-border-position', descriptor.border.position || 'left');
     }
+
+    if (descriptor.background) {
+      var surfaces = resolveBackgroundSurfaceColors(descriptor.background, color);
+      containerEl.style.setProperty('--tag-surface-bg', resolveTagSurfaceColor(surfaces.bg.color, surfaces.bg.alpha));
+      containerEl.style.setProperty('--tag-surface-header-bg', resolveTagSurfaceColor(surfaces.header.color, surfaces.header.alpha));
+      containerEl.style.setProperty('--tag-surface-footer-bg', resolveTagSurfaceColor(surfaces.footer.color, surfaces.footer.alpha));
+      containerEl.style.setProperty('--tag-surface-content-bg', resolveTagSurfaceColor(surfaces.content.color, surfaces.content.alpha));
+    }
+
+    if (descriptor.opacity) containerEl.style.setProperty('--tag-effect-opacity', descriptor.opacity);
+    if (descriptor.filter) containerEl.style.setProperty('--tag-effect-filter', descriptor.filter);
+    if (descriptor.pattern === 'stripes') containerEl.classList.add('tag-style-pattern-stripes');
+    if (descriptor.pattern === 'stripes-h') containerEl.classList.add('tag-style-pattern-stripes-h');
     if (entityType === 'card' && footerEl && footerEl.parentNode) footerEl.parentNode.removeChild(footerEl);
   }
 
