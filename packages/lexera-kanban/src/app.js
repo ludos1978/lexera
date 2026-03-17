@@ -5565,8 +5565,9 @@ const LexeraDashboard = (function () {
     columnSortState = {};
     boardStatsBarVisible = false;
     closeSearchReplacePanel();
-    // Reset canvas zoom on board load
+    // Reset canvas zoom and pan on board load
     if ($canvasZoom !== 1) applyCanvasZoom(1);
+    resetCanvasPan();
     var loadStage = 'start';
     try {
       loadStage = 'clear-caches';
@@ -11562,6 +11563,7 @@ const LexeraDashboard = (function () {
       { keys: mod + '+Shift+V', desc: 'Smart Paste (auto-format)' },
       { keys: mod + '+= / ' + mod + '+-', desc: 'Zoom in / out' },
       { keys: mod + '+0', desc: 'Reset zoom' },
+      { keys: 'Drag empty canvas / Middle-drag / Alt+Drag', desc: 'Pan canvas board' },
       { keys: 'Alt+Enter', desc: 'Close panels' },
       { keys: mod + '+Shift+L', desc: 'Toggle logger' },
       { section: 'Card Editor' },
@@ -11898,6 +11900,8 @@ const LexeraDashboard = (function () {
   });
 
   var $canvasZoom = 1;
+  var $canvasPanX = 0;
+  var $canvasPanY = 0;
   var CANVAS_DEFAULT_STACK_X = 24;
   var CANVAS_DEFAULT_STACK_Y = 24;
   var CANVAS_DEFAULT_STACK_W = 300;
@@ -12412,37 +12416,26 @@ const LexeraDashboard = (function () {
       var gridMode = normalizeCanvasGridValue(getBoardSettingValue('canvasGrid', '32'));
       var surface = calculateCanvasSurface(metrics);
       var gridStep = resolveCanvasGridStep(metrics, gridMode);
-      var zoom = $canvasZoom || 1;
-      var surfaceWidthPx = Math.ceil((surface.offsetX * zoom) + (surface.width * zoom));
-      var surfaceHeightPx = Math.ceil((surface.offsetY * zoom) + (surface.height * zoom));
       if (scene) {
-        scene.style.left = Math.round(surface.offsetX * zoom) + 'px';
-        scene.style.top = Math.round(surface.offsetY * zoom) + 'px';
+        // Keep scene offset stable to prevent viewport jumps.
+        // Store it on the container so it survives DOM rebuilds.
+        var stableOffsetX = container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : surface.offsetX;
+        var stableOffsetY = container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : surface.offsetY;
+        container.__canvasSceneOffsetX = stableOffsetX;
+        container.__canvasSceneOffsetY = stableOffsetY;
+        scene.style.left = stableOffsetX + 'px';
+        scene.style.top = stableOffsetY + 'px';
         scene.style.width = surface.width + 'px';
         scene.style.height = surface.height + 'px';
+        scene.style.setProperty('--canvas-grid-size', Math.max(1, gridStep) + 'px');
+        scene.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
+        scene.setAttribute('data-canvas-grid', gridMode);
       }
-      rowContent.style.width = surfaceWidthPx + 'px';
-      rowContent.style.minWidth = surfaceWidthPx + 'px';
-      rowContent.style.height = surfaceHeightPx + 'px';
-      rowContent.style.minHeight = surfaceHeightPx + 'px';
-      rowContent.style.setProperty('--canvas-grid-size', Math.max(1, gridStep * zoom) + 'px');
-      rowContent.style.setProperty('--canvas-grid-offset-x', Math.round(surface.offsetX * zoom) + 'px');
-      rowContent.style.setProperty('--canvas-grid-offset-y', Math.round(surface.offsetY * zoom) + 'px');
-      rowContent.style.setProperty('--canvas-grid-color', gridStep > 0 ? 'color-mix(in srgb, var(--border) 34%, transparent)' : 'transparent');
-      rowContent.setAttribute('data-canvas-grid', gridMode);
-      var rowEl = rowContent.parentElement;
-      if (rowEl) {
-        var headerWidth = 0;
-        var firstChild = rowEl.firstElementChild;
-        if (firstChild && firstChild.classList && firstChild.classList.contains('board-row-header')) {
-          headerWidth = Math.ceil(firstChild.getBoundingClientRect().width || firstChild.offsetWidth || 0);
-        }
-        var totalRowWidth = Math.max(surfaceWidthPx + headerWidth, container.clientWidth || 0);
-        rowEl.style.width = totalRowWidth + 'px';
-        rowEl.style.minWidth = totalRowWidth + 'px';
-      }
+      // Store last computed surface for scroll indicators
+      rowContent.__canvasSurface = surface;
       syncCanvasRowConnections(rowContent);
     }
+    updateCanvasScrollIndicators(container);
   }
 
   function scheduleCanvasRowBoundsSync(root) {
@@ -12457,20 +12450,95 @@ const LexeraDashboard = (function () {
     });
   }
 
+  function updateCanvasScrollIndicators(container) {
+    if (!container) container = getElColumnsContainer();
+    if (!container) return;
+    var hBar = container.querySelector('.canvas-scroll-indicator-h');
+    var vBar = container.querySelector('.canvas-scroll-indicator-v');
+    if (!hBar || !vBar) return;
+    // Find the first row content with cached surface data
+    var rowContent = container.querySelector('.board-row-content');
+    var surface = rowContent && rowContent.__canvasSurface;
+    if (!surface) { hBar.style.opacity = '0'; vBar.style.opacity = '0'; return; }
+    var zoom = $canvasZoom || 1;
+    var viewW = container.clientWidth || 1;
+    var viewH = container.clientHeight || 1;
+    // Content bounds in screen pixels
+    var contentW = surface.width * zoom;
+    var contentH = surface.height * zoom;
+    // Visible viewport in canvas-content screen coords
+    // panX/panY translate the scene; scene.left=offsetX positions content origin
+    // The viewport sees from -panX-offsetX*1 to -panX-offsetX*1+viewW/zoom ... actually simpler:
+    // The visible canvas region's left edge in screen-content coords:
+    //   screenX = offsetX + panX + canvasX * zoom
+    //   At viewport left (screenX=0 relative to container): canvasX = (-offsetX - panX) / zoom
+    //   At viewport right: canvasX = (-offsetX - panX + viewW) / zoom
+    var visLeft = (-surface.offsetX - $canvasPanX) / zoom;
+    var visTop = (-surface.offsetY - $canvasPanY) / zoom;
+    var visRight = visLeft + viewW / zoom;
+    var visBottom = visTop + viewH / zoom;
+    // Total extent = union of content bounds and visible area
+    var totalLeft = Math.min(surface.left, visLeft);
+    var totalTop = Math.min(surface.top, visTop);
+    var totalRight = Math.max(surface.left + surface.width, visRight);
+    var totalBottom = Math.max(surface.top + surface.height, visBottom);
+    var totalW = totalRight - totalLeft || 1;
+    var totalH = totalBottom - totalTop || 1;
+    // Scrollbar thumb position and size as fractions
+    var thumbLeft = (visLeft - totalLeft) / totalW;
+    var thumbWidth = (visRight - visLeft) / totalW;
+    var thumbTop = (visTop - totalTop) / totalH;
+    var thumbHeight = (visBottom - visTop) / totalH;
+    // If viewport covers entire content, hide indicators
+    if (thumbWidth >= 0.98 && thumbHeight >= 0.98) {
+      hBar.style.opacity = '0';
+      vBar.style.opacity = '0';
+      return;
+    }
+    var barMargin = 8;
+    hBar.style.left = Math.round(barMargin + thumbLeft * (viewW - barMargin * 2)) + 'px';
+    hBar.style.width = Math.max(24, Math.round(thumbWidth * (viewW - barMargin * 2))) + 'px';
+    vBar.style.top = Math.round(barMargin + thumbTop * (viewH - barMargin * 2)) + 'px';
+    vBar.style.height = Math.max(24, Math.round(thumbHeight * (viewH - barMargin * 2))) + 'px';
+    hBar.style.removeProperty('opacity');
+    vBar.style.removeProperty('opacity');
+  }
+
+  function ensureCanvasScrollIndicators(container) {
+    if (!container) return;
+    if (container.querySelector('.canvas-scroll-indicator-h')) return;
+    var hBar = document.createElement('div');
+    hBar.className = 'canvas-scroll-indicator canvas-scroll-indicator-h';
+    var vBar = document.createElement('div');
+    vBar.className = 'canvas-scroll-indicator canvas-scroll-indicator-v';
+    container.appendChild(hBar);
+    container.appendChild(vBar);
+  }
+
+  function removeCanvasScrollIndicators() {
+    var container = getElColumnsContainer();
+    if (!container) return;
+    var indicators = container.querySelectorAll('.canvas-scroll-indicator');
+    for (var i = 0; i < indicators.length; i++) {
+      indicators[i].parentNode.removeChild(indicators[i]);
+    }
+  }
+
   function getCanvasRowContentMetrics(rowContent) {
     var rect = rowContent.getBoundingClientRect();
     var zoom = $canvasZoom || 1;
     var styles = typeof getComputedStyle === 'function' ? getComputedStyle(rowContent) : null;
     var borderLeft = styles ? parseFloat(styles.borderLeftWidth) || 0 : 0;
     var borderTop = styles ? parseFloat(styles.borderTopWidth) || 0 : 0;
-    var scene = getCanvasSceneElement(rowContent, false);
-    var sceneLeft = scene ? parseCanvasLayoutNumber(scene.style.left, 0) : 0;
-    var sceneTop = scene ? parseCanvasLayoutNumber(scene.style.top, 0) : 0;
+    // Use stable offset from container (survives DOM rebuilds) instead of scene.style.left
+    var container = getElColumnsContainer();
+    var sceneLeft = container && container.__canvasSceneOffsetX != null ? container.__canvasSceneOffsetX : 0;
+    var sceneTop = container && container.__canvasSceneOffsetY != null ? container.__canvasSceneOffsetY : 0;
     return {
       rect: rect,
       zoom: zoom,
-      originLeft: rect.left + borderLeft + sceneLeft,
-      originTop: rect.top + borderTop + sceneTop
+      originLeft: rect.left + borderLeft + sceneLeft + $canvasPanX,
+      originTop: rect.top + borderTop + sceneTop + $canvasPanY
     };
   }
 
@@ -12492,6 +12560,28 @@ const LexeraDashboard = (function () {
     };
   }
 
+  function applyCanvasPan(panX, panY) {
+    $canvasPanX = panX;
+    $canvasPanY = panY;
+    var container = getElColumnsContainer();
+    if (!container) return;
+    container.style.setProperty('--canvas-pan-x', panX + 'px');
+    container.style.setProperty('--canvas-pan-y', panY + 'px');
+    updateCanvasScrollIndicators(container);
+  }
+
+  function resetCanvasPan() {
+    $canvasPanX = 0;
+    $canvasPanY = 0;
+    var container = getElColumnsContainer();
+    if (container) {
+      container.style.setProperty('--canvas-pan-x', '0px');
+      container.style.setProperty('--canvas-pan-y', '0px');
+      delete container.__canvasSceneOffsetX;
+      delete container.__canvasSceneOffsetY;
+    }
+  }
+
   function applyCanvasZoom(zoom, localOriginX, localOriginY) {
     var container = getElColumnsContainer();
     if (!container) return;
@@ -12499,13 +12589,16 @@ const LexeraDashboard = (function () {
     $canvasZoom = zoom;
     container.style.zoom = '';
     container.style.setProperty('--canvas-zoom', String(zoom));
-    // Adjust scroll to keep the point under the cursor stationary
+    // Adjust pan to keep the point under the cursor stationary
+    // Screen position of canvas point cx: containerLeft + offsetX + panX + cx * zoom
+    // So origin relative to transform base: localOriginX - offsetX
     if (localOriginX != null && localOriginY != null && oldZoom !== zoom) {
       var ratio = zoom / oldZoom;
-      var oldScrollLeft = container.scrollLeft;
-      var oldScrollTop = container.scrollTop;
-      container.scrollLeft = oldScrollLeft * ratio + localOriginX * (ratio - 1);
-      container.scrollTop = oldScrollTop * ratio + localOriginY * (ratio - 1);
+      var offsetX = container.__canvasSceneOffsetX || 0;
+      var offsetY = container.__canvasSceneOffsetY || 0;
+      var newPanX = $canvasPanX * ratio + (localOriginX - offsetX) * (1 - ratio);
+      var newPanY = $canvasPanY * ratio + (localOriginY - offsetY) * (1 - ratio);
+      applyCanvasPan(newPanX, newPanY);
     }
     scheduleCanvasRowBoundsSync(container);
     showNotification('Canvas Zoom ' + Math.round(zoom * 100) + '%');
@@ -12517,6 +12610,39 @@ const LexeraDashboard = (function () {
     if (next > 3) next = 3;
     if (next === $canvasZoom) return;
     applyCanvasZoom(next, localOriginX, localOriginY);
+  }
+
+  function getCanvasWheelPanDelta(deltaX, deltaY, deltaMode, shiftKey, speedMultiplier) {
+    var nextDeltaX = normalizeWheelDeltaToPixels(deltaX, deltaMode);
+    var nextDeltaY = normalizeWheelDeltaToPixels(deltaY, deltaMode);
+    if (shiftKey && !nextDeltaX && nextDeltaY) {
+      nextDeltaX = nextDeltaY;
+      nextDeltaY = 0;
+    }
+    var multiplier = parseFloat(speedMultiplier);
+    if (!isFinite(multiplier) || multiplier <= 0) multiplier = 1;
+    var panX = -(nextDeltaX * multiplier);
+    var panY = -(nextDeltaY * multiplier);
+    if (Object.is(panX, -0)) panX = 0;
+    if (Object.is(panY, -0)) panY = 0;
+    return {
+      x: panX,
+      y: panY
+    };
+  }
+
+  function canStartCanvasPointerPan(target, button, altKey) {
+    if (!target || typeof target.closest !== 'function') return false;
+    if (!target.closest('#columns-container')) return false;
+    if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return false;
+    if (button === 1) return true;
+    if (button === 0 && altKey) return true;
+    if (button !== 0) return false;
+    if (!target.closest('.board-row-content, .canvas-scene')) return false;
+    if (target.closest('.board-stack, .column, .card, .board-row-header, button, input, textarea, select, a, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor')) {
+      return false;
+    }
+    return true;
   }
 
   document.addEventListener('wheel', function (e) {
@@ -12550,20 +12676,22 @@ const LexeraDashboard = (function () {
     if (targetClosest(target, 'input, textarea, select, [contenteditable="true"], .cm-editor, .cm-scroller, .monaco-editor')) {
       return;
     }
-    if (isCanvasBoardLayout()) {
-      e.preventDefault();
-      var rect = container.getBoundingClientRect();
-      nudgeCanvasZoom(e.deltaY < 0 ? 0.1 : -0.1, e.clientX - rect.left, e.clientY - rect.top);
-      return;
-    }
     var multiplier = getBoardScrollSpeedMultiplier();
-    if (multiplier === 1) return;
     var deltaX = normalizeWheelDeltaToPixels(e.deltaX, e.deltaMode);
     var deltaY = normalizeWheelDeltaToPixels(e.deltaY, e.deltaMode);
     if (e.shiftKey && !deltaX && deltaY) {
       deltaX = deltaY;
       deltaY = 0;
     }
+    if (isCanvasBoardLayout()) {
+      if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
+      if (!deltaX && !deltaY) return;
+      e.preventDefault();
+      var panDelta = getCanvasWheelPanDelta(e.deltaX, e.deltaY, e.deltaMode, e.shiftKey, multiplier);
+      applyCanvasPan($canvasPanX + panDelta.x, $canvasPanY + panDelta.y);
+      return;
+    }
+    if (multiplier === 1) return;
     if (!shouldHandleBoardViewportWheelEvent(target, container, deltaX, deltaY)) return;
     e.preventDefault();
     container.scrollLeft += deltaX * multiplier;
@@ -12575,13 +12703,8 @@ const LexeraDashboard = (function () {
 
   document.addEventListener('mousedown', function (e) {
     if (!activeBoardData || !isCanvasBoardLayout()) return;
-    var isMiddle = e.button === 1;
-    var isAltLeft = e.button === 0 && e.altKey;
-    if (!isMiddle && !isAltLeft) return;
     var target = e.target;
-    if (!target || typeof target.closest !== 'function') return;
-    if (!target.closest('#columns-container')) return;
-    if (target.closest('.card-editor-dialog, .export-dialog, .mgmt-panel')) return;
+    if (!canStartCanvasPointerPan(target, e.button, !!e.altKey)) return;
     var container = getElColumnsContainer();
     if (!container) return;
     e.preventDefault();
@@ -12589,9 +12712,10 @@ const LexeraDashboard = (function () {
       container: container,
       startX: e.clientX,
       startY: e.clientY,
-      scrollLeft: container.scrollLeft,
-      scrollTop: container.scrollTop
+      startPanX: $canvasPanX,
+      startPanY: $canvasPanY
     };
+    container.classList.add('canvas-panning');
     container.style.cursor = 'grabbing';
   });
 
@@ -12599,12 +12723,12 @@ const LexeraDashboard = (function () {
     if (!_canvasPan) return;
     var dx = e.clientX - _canvasPan.startX;
     var dy = e.clientY - _canvasPan.startY;
-    _canvasPan.container.scrollLeft = _canvasPan.scrollLeft - dx;
-    _canvasPan.container.scrollTop = _canvasPan.scrollTop - dy;
+    applyCanvasPan(_canvasPan.startPanX + dx, _canvasPan.startPanY + dy);
   });
 
   document.addEventListener('mouseup', function (e) {
     if (!_canvasPan) return;
+    _canvasPan.container.classList.remove('canvas-panning');
     _canvasPan.container.style.cursor = '';
     _canvasPan = null;
   });
@@ -12618,6 +12742,18 @@ const LexeraDashboard = (function () {
       }
     }
   });
+
+  // In canvas mode, prevent any programmatic scrolling (e.g. scrollIntoView, focus)
+  // from shifting the viewport — all navigation uses CSS transform pan instead.
+  document.addEventListener('scroll', function () {
+    if (!isCanvasBoardLayout()) return;
+    var container = getElColumnsContainer();
+    if (!container) return;
+    if (container.scrollLeft !== 0 || container.scrollTop !== 0) {
+      container.scrollLeft = 0;
+      container.scrollTop = 0;
+    }
+  }, true);
 
   function normalizeStickyHeaderMode(rawMode) {
     var mode = String(rawMode || '').trim().toLowerCase();
@@ -13133,8 +13269,10 @@ const LexeraDashboard = (function () {
     getElColumnsContainer().classList.remove('sticky-headers', 'sticky-headers-top', 'sticky-headers-bottom');
     getElColumnsContainer().classList.remove('html-comments-hide', 'html-comments-dim');
     getElColumnsContainer().classList.remove('layout-spacious', 'layout-rows-fixed', 'layout-canvas');
-    // Reset canvas zoom when leaving canvas mode
+    // Reset canvas zoom and pan when leaving canvas mode
     if ($canvasZoom !== 1) applyCanvasZoom(1);
+    resetCanvasPan();
+    removeCanvasScrollIndicators();
     getElColumnsContainer().removeAttribute('data-layout-preset');
     currentTagVisibilityMode = 'allexcludinglayout';
     currentArrowKeyFocusScrollMode = 'nearest';
@@ -13178,7 +13316,10 @@ const LexeraDashboard = (function () {
     if (currentArrowKeyFocusScrollMode !== 'disabled') getElColumnsContainer().classList.add('focus-scroll-mode');
     if (s.layoutSpacing === 'spacious' || s.layoutPreset === 'spacious') getElColumnsContainer().classList.add('layout-spacious');
     if (s.layoutPreset) getElColumnsContainer().setAttribute('data-layout-preset', s.layoutPreset);
-    if (normalizeBoardLayoutValue(s.boardLayout) === 'canvas') getElColumnsContainer().classList.add('layout-canvas');
+    if (normalizeBoardLayoutValue(s.boardLayout) === 'canvas') {
+      getElColumnsContainer().classList.add('layout-canvas');
+      ensureCanvasScrollIndicators(getElColumnsContainer());
+    }
 
     var boardColor = resolveActiveBoardColor(s);
     if (boardColor) getElColumnsContainer().style.setProperty('--board-color', boardColor);
@@ -16579,26 +16720,6 @@ const LexeraDashboard = (function () {
         if (canvasRowTarget && canvasRowTarget.node) canvasRowTarget.node.classList.add('drop-target');
       }
 
-      // Auto-scroll when mouse is near the edge of the scroll container
-      var scrollContainer = getElColumnsContainer();
-      if (scrollContainer) {
-        var scrollRect = scrollContainer.getBoundingClientRect();
-        var edgeZone = 40;
-        var scrollSpeed = Math.max(2, Math.round(12 * getBoardScrollSpeedMultiplier()));
-        var prevScrollTop = scrollContainer.scrollTop;
-        var prevScrollLeft = scrollContainer.scrollLeft;
-        if (e.clientY < scrollRect.top + edgeZone) {
-          scrollContainer.scrollTop -= scrollSpeed;
-        } else if (e.clientY > scrollRect.bottom - edgeZone) {
-          scrollContainer.scrollTop += scrollSpeed;
-        }
-        if (e.clientX < scrollRect.left + edgeZone) {
-          scrollContainer.scrollLeft -= scrollSpeed;
-        } else if (e.clientX > scrollRect.right - edgeZone) {
-          scrollContainer.scrollLeft += scrollSpeed;
-        }
-      }
-
       var activeCanvasRowContent = getCanvasRowContentNodeFromDropTarget(
         canvasRowTarget,
         ptrDrag.canvasSourceRowContent || ptrDrag.el.closest('.board-row-content')
@@ -16613,7 +16734,6 @@ const LexeraDashboard = (function () {
       );
       ptrDrag.el.style.left = Math.round(nextCanvasPos.x) + 'px';
       ptrDrag.el.style.top = Math.round(nextCanvasPos.y) + 'px';
-      scheduleCanvasRowBoundsSync(getElColumnsContainer());
       return;
     }
 
@@ -28971,7 +29091,7 @@ const LexeraDashboard = (function () {
       if (isCanvasBoardLayout()) { nudgeCanvasZoom(-0.1); } else { nudgeUiScale(-0.05); }
     });
     ActionRegistry.register('board', 'zoom-reset', function () {
-      if (isCanvasBoardLayout()) { applyCanvasZoom(1); } else { applyUiScale(1); showNotification('Zoom 100%'); }
+      if (isCanvasBoardLayout()) { applyCanvasZoom(1); resetCanvasPan(); } else { applyUiScale(1); showNotification('Zoom 100%'); }
     });
 
     // Navigation

@@ -41,6 +41,9 @@ function loadCanvasHelpers() {
 
   const wrappedSource = `
     var $canvasZoom = 1;
+    var $canvasPanX = 0;
+    var $canvasPanY = 0;
+    function getElColumnsContainer() { return null; }
     ${extractLineRange('var CANVAS_DEFAULT_STACK_X = 24;', 'var CANVAS_SURFACE_OVERSCAN_Y = Math.floor(CANVAS_MIN_ROW_HEIGHT / 2);')}
     ${extractFunction(findLine('function normalizeCanvasGridValue('))}
     ${extractFunction(findLine('function parseCanvasLayoutNumber('))}

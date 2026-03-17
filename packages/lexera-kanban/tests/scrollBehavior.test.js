@@ -39,6 +39,8 @@ function loadScrollHelpers() {
     ${extractFunction(findLine('function normalizeBoardScrollSpeedValue('))}
     ${extractFunction(findLine('function getBoardScrollSpeedMultiplier('))}
     ${extractFunction(findLine('function normalizeWheelDeltaToPixels('))}
+    ${extractFunction(findLine('function getCanvasWheelPanDelta('))}
+    ${extractFunction(findLine('function canStartCanvasPointerPan('))}
     ${extractFunction(findLine('function canScrollableElementConsumeWheelDelta('))}
     ${extractFunction(findLine('function shouldHandleBoardViewportWheelEvent('))}
 
@@ -52,6 +54,8 @@ function loadScrollHelpers() {
       normalizeBoardScrollSpeedValue,
       getBoardScrollSpeedMultiplier,
       normalizeWheelDeltaToPixels,
+      getCanvasWheelPanDelta,
+      canStartCanvasPointerPan,
       canScrollableElementConsumeWheelDelta,
       shouldHandleBoardViewportWheelEvent
     };
@@ -71,6 +75,19 @@ function createScrollableNode(options = {}) {
     clientWidth: options.clientWidth || 0,
     scrollLeft: options.scrollLeft || 0,
     __styles: options.styles || {}
+  };
+}
+
+function createClosestTarget(matches = []) {
+  const set = new Set(matches);
+  return {
+    closest(selector) {
+      const selectors = String(selector || '').split(',').map((part) => part.trim()).filter(Boolean);
+      for (const candidate of selectors) {
+        if (set.has(candidate)) return { selector: candidate };
+      }
+      return null;
+    }
   };
 }
 
@@ -124,6 +141,61 @@ describe('normalizeWheelDeltaToPixels', () => {
   it('uses viewport-relative page deltas', () => {
     globalThis.window = { innerHeight: 1000 };
     expect(ScrollHelpers.normalizeWheelDeltaToPixels(1, 2)).toBe(850);
+  });
+});
+
+describe('getCanvasWheelPanDelta', () => {
+  it('converts wheel deltas into opposite-direction canvas pan values', () => {
+    expect(ScrollHelpers.getCanvasWheelPanDelta(40, 80, 0, false, 1)).toEqual({
+      x: -40,
+      y: -80
+    });
+  });
+
+  it('supports shift-wheel horizontal panning and scroll-speed scaling', () => {
+    expect(ScrollHelpers.getCanvasWheelPanDelta(0, 3, 1, true, 0.5)).toEqual({
+      x: -24,
+      y: 0
+    });
+  });
+});
+
+describe('canStartCanvasPointerPan', () => {
+  it('allows plain left-drag on empty canvas space', () => {
+    expect(
+      ScrollHelpers.canStartCanvasPointerPan(
+        createClosestTarget(['#columns-container', '.board-row-content']),
+        0,
+        false
+      )
+    ).toBe(true);
+  });
+
+  it('blocks plain left-drag on stacks and other interactive elements', () => {
+    expect(
+      ScrollHelpers.canStartCanvasPointerPan(
+        createClosestTarget(['#columns-container', '.board-row-content', '.board-stack']),
+        0,
+        false
+      )
+    ).toBe(false);
+  });
+
+  it('keeps the existing modifier pan gestures available', () => {
+    expect(
+      ScrollHelpers.canStartCanvasPointerPan(
+        createClosestTarget(['#columns-container', '.board-stack']),
+        1,
+        false
+      )
+    ).toBe(true);
+    expect(
+      ScrollHelpers.canStartCanvasPointerPan(
+        createClosestTarget(['#columns-container', '.board-stack']),
+        0,
+        true
+      )
+    ).toBe(true);
   });
 });
 

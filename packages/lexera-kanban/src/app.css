@@ -2460,45 +2460,55 @@ li.tag-line-styled {
 /* Board setting: canvas layout — stacks are freely positioned within rows */
 .columns-container.layout-canvas {
   --canvas-zoom: 1;
+  --canvas-pan-x: 0px;
+  --canvas-pan-y: 0px;
   --canvas-grid-size: 32px;
+  overflow: hidden;
 }
 
 .columns-container.layout-canvas .board-row {
-  align-self: flex-start;
-  width: max-content;
+  width: 100%;
   min-width: 100%;
+  min-height: 100%;
+  height: 100%;
+  flex: 0 0 100%;
+  border: none;
+}
+
+.columns-container.layout-canvas .board-row-header {
+  display: none;
 }
 
 .columns-container.layout-canvas .board-row-content {
   --canvas-grid-size: 32px;
-  --canvas-grid-offset-x: 0px;
-  --canvas-grid-offset-y: 0px;
   --canvas-grid-color: color-mix(in srgb, var(--border) 34%, transparent);
   display: block;
-  flex: 0 0 auto;
   position: relative;
-  min-height: 640px;
-  overflow: visible;
-  background-image:
-    linear-gradient(to right, var(--canvas-grid-color) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--canvas-grid-color) 1px, transparent 1px);
-  background-size:
-    var(--canvas-grid-size) var(--canvas-grid-size),
-    var(--canvas-grid-size) var(--canvas-grid-size);
-  background-position:
-    var(--canvas-grid-offset-x) var(--canvas-grid-offset-y),
-    var(--canvas-grid-offset-x) var(--canvas-grid-offset-y);
-}
-
-.columns-container.layout-canvas .board-row-content[data-canvas-grid="off"] {
-  background-image: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
 }
 
 .columns-container.layout-canvas .canvas-scene {
   position: absolute;
-  inset: 0 auto auto 0;
-  transform-origin: top left;
-  transform: scale(var(--canvas-zoom));
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  transform: translate(var(--canvas-pan-x, 0px), var(--canvas-pan-y, 0px)) scale(var(--canvas-zoom));
+  cursor: inherit;
+  background-image:
+    linear-gradient(to right, var(--canvas-grid-color, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--canvas-grid-color, transparent) 1px, transparent 1px);
+  background-size:
+    var(--canvas-grid-size) var(--canvas-grid-size),
+    var(--canvas-grid-size) var(--canvas-grid-size);
+  background-position: 0 0, 0 0;
+}
+
+.columns-container.layout-canvas .canvas-scene[data-canvas-grid="off"] {
+  background-image: none;
 }
 
 .columns-container.layout-canvas .canvas-connection-layer {
@@ -2564,6 +2574,35 @@ li.tag-line-styled {
 
 .columns-container.layout-canvas .board-row.drop-target > .board-row-content {
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Canvas scroll indicators */
+.canvas-scroll-indicator {
+  position: absolute;
+  background: var(--scrollbar-thumb, rgba(128, 128, 128, 0.4));
+  border-radius: 3px;
+  opacity: 0;
+  z-index: 1000;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.columns-container.layout-canvas:hover .canvas-scroll-indicator,
+.columns-container.layout-canvas.canvas-panning .canvas-scroll-indicator {
+  opacity: 0.5;
+}
+.columns-container.layout-canvas.canvas-panning .board-row-content,
+.columns-container.layout-canvas.canvas-panning .canvas-scene {
+  cursor: grabbing;
+}
+.canvas-scroll-indicator-h {
+  bottom: 4px;
+  height: 6px;
+  min-width: 24px;
+}
+.canvas-scroll-indicator-v {
+  right: 4px;
+  width: 6px;
+  min-height: 24px;
 }
 
 /* Canvas mode: card span uses grid-like behavior */
@@ -7914,7 +7953,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] .columns-container.layout-canvas .board-row {
-  align-self: flex-start;
+  align-self: stretch;
 }
 
 :root[data-visual-theme="sleek"] .board-row + .board-row {
