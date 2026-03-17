@@ -2053,6 +2053,10 @@ impl LocalStorage {
         let resolved_path = include_source.resolved_path.clone();
         let slide_content = slide_parser::generate_slides(&column.cards);
 
+        Self::atomic_write(&resolved_path, &slide_content)?;
+
+        // Register self-write fingerprint AFTER successful write so that a
+        // failed write doesn't suppress legitimate external file-watcher events.
         match self.self_write_tracker.lock() {
             Ok(mut tracker) => tracker.register(&resolved_path, &slide_content),
             Err(e) => log::error!(
@@ -2061,7 +2065,6 @@ impl LocalStorage {
             ),
         }
 
-        Self::atomic_write(&resolved_path, &slide_content)?;
         Ok(())
     }
 
@@ -2073,6 +2076,10 @@ impl LocalStorage {
     ) -> Result<String, StorageError> {
         let markdown = parser::generate_markdown(board);
 
+        Self::atomic_write(file_path, &markdown)?;
+
+        // Register self-write fingerprint AFTER successful write so that a
+        // failed write doesn't suppress legitimate external file-watcher events.
         match self.self_write_tracker.lock() {
             Ok(mut tracker) => tracker.register(file_path, &markdown),
             Err(e) => log::error!(
@@ -2080,8 +2087,6 @@ impl LocalStorage {
                 e
             ),
         }
-
-        Self::atomic_write(file_path, &markdown)?;
 
         for column in board.all_columns() {
             if column.include_source.is_some() {

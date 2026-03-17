@@ -4079,9 +4079,9 @@ const LexeraDashboard = (function () {
       if (activeBoardId && !searchMode) {
         const stillExists = !!findBoardMeta(activeBoardId);
         if (stillExists) {
-          // Never reload the board if there are unsaved changes — that would
-          // discard the user's work.  Only reload when the board is clean.
-          if (!isBoardDirty()) {
+          // Never reload the board if there are unsaved changes or the user
+          // is actively editing a card — that would discard work.
+          if (!isBoardDirty() && !isEditing) {
             traceFrontendAction('info', 'poll.reload', 'Polling reload for active board (clean)', {
               boardId: activeBoardId,
               revision: _lastLoadedRevision || null,
@@ -4089,15 +4089,23 @@ const LexeraDashboard = (function () {
             });
             await loadBoard(activeBoardId);
           } else {
-            traceFrontendAction('warn', 'poll.reload.skipDirty', 'Skipped polling reload because active board is marked dirty', {
+            traceFrontendAction('warn', 'poll.reload.skipDirty', 'Skipped polling reload because active board is dirty or being edited', {
               boardId: activeBoardId,
               isRemoteBoard: isActiveRemoteBoard(),
+              dirty: isBoardDirty(),
+              editing: isEditing,
               revision: _lastLoadedRevision || null,
               generation: _lastLoadedGeneration,
               summary: summarizeBoardHierarchy(fullBoardData)
             });
           }
         } else {
+          // Board was removed while we had it open.  If the user is editing
+          // or has unsaved changes, write a crashsave so work is not lost.
+          if (isBoardDirty() || isEditing) {
+            logFrontendIssue('warn', 'poll.boardRemoved', 'Active board removed while dirty/editing — creating crashsave', { boardId: activeBoardId });
+            try { await LexeraApi.writeBoardCrashsave(activeBoardId, fullBoardData); } catch (_) { /* best-effort */ }
+          }
           await closeLiveSyncSession(activeBoardId);
           LexeraApi.disconnectSync();
           activeBoardId = null;
@@ -12313,7 +12321,7 @@ const LexeraDashboard = (function () {
   }
 
   function getBoardScrollSpeedMultiplier() {
-    return getScrollBehaviorApi().getBoardScrollSpeedMultiplier(getBoardSettingValue, '0.06');
+    return getScrollBehaviorApi().getBoardScrollSpeedMultiplier(getBoardSettingValue, '1');
   }
 
   function normalizeBoardZoomSpeedValue(rawValue) {
@@ -12321,7 +12329,7 @@ const LexeraDashboard = (function () {
   }
 
   function getBoardZoomSpeedMultiplier() {
-    return getScrollBehaviorApi().getBoardZoomSpeedMultiplier(getBoardSettingValue, '1');
+    return getScrollBehaviorApi().getBoardZoomSpeedMultiplier(getBoardSettingValue, '0.06');
   }
 
   function getUiZoomStep(delta) {
@@ -28248,7 +28256,7 @@ const LexeraDashboard = (function () {
     });
     BoardSettingRegistry.register({
       id: 'scrollSpeed', label: 'Scroll Speed', category: 'format',
-      settingsKey: 'scrollSpeed', actionPrefix: 'set-scroll-speed', defaultValue: '0.06',
+      settingsKey: 'scrollSpeed', actionPrefix: 'set-scroll-speed', defaultValue: '1',
       normalize: normalizeBoardScrollSpeedValue,
       options: [
         { value: '0.01', label: '1%' }, { value: '0.02', label: '2%' },
@@ -28262,7 +28270,7 @@ const LexeraDashboard = (function () {
     });
     BoardSettingRegistry.register({
       id: 'zoomSpeed', label: 'Zoom Speed', category: 'format',
-      settingsKey: 'zoomSpeed', actionPrefix: 'set-zoom-speed', defaultValue: '1',
+      settingsKey: 'zoomSpeed', actionPrefix: 'set-zoom-speed', defaultValue: '0.06',
       normalize: normalizeBoardZoomSpeedValue,
       options: [
         { value: '0.01', label: '1%' }, { value: '0.02', label: '2%' },
