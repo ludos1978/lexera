@@ -2,6 +2,14 @@
 
 ## Open
 
+- [ ] if a board is switched to kanban mode, the canvas mode values must not be deleted. they can stay in the values and be ignored. also when saving!
+
+- [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
+
+- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
+
+
+
 - [x] combine the "Empty", "Template" and "Clipboard" into a "New". It's ordered by Row, Stack, Column, Card groups:
   - Row
     - Empty Row
@@ -32,7 +40,7 @@
 
 - [x] Before closing a board or when closing the application, it should check if it has contents in the trash or the archive. If any board has that, it should ask individually for each board wether the user wants to clean up (Empty Trash, Move to Archive). It should give the option to repeat the action for all boards!
 
-- [ ] repeat the analysis and improve the functionality! make sure the original kanban layout stays functional as it is. We call the layout types "Kanban" and "Canvas" . We mostly change the styling of the stacks, columns, cards.
+- [x] repeat the analysis and improve the functionality! make sure the original kanban layout stays functional as it is. We call the layout types "Kanban" and "Canvas" . We mostly change the styling of the stacks, columns, cards.
   in canvas mode:
   - stacks cannot be folded
   - columns in stacks can be ordered horizontal and vertical
@@ -140,10 +148,6 @@
   be folded and columns as well and cards. they can be dragged around and placed as needed. we will     
   think about layout options for the groups later. currently rows are horizontally listed items,        
   stacks are vertically listed items, column contain verticall listed items (the cards).
-
-- [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
-
-- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board. For that we define an Inbox. I would like it to be a separate application that can be used as drop source. But it would also be good if it could access the browser data (if the ushttps://www.heise.de/news/Klage-wegen-Social-Media-Sucht-Mark-Zuckerberg-wollte-mit-Apple-kooperieren-11185998.htmler is logged in somewhere or we cant access the data from playwright). What system would you suggest? I am planning on adding other sources that could be used to integrate into the system directly. Ideas that pop up are RSS, EMail, Filesystem. An mobile web clipper (something that can run on an ios and or android) would be best as well. It should sync using a kanban board that is shared using icloud or dropbox. the external tool could also be used to search the boards and display results we have within the kanban boards.
 
 - [x] when searching allow to limit seaches for l: links
 

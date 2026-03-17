@@ -1,66 +1,8 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect, afterEach } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
-
-function loadScrollHelpers() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  const wrappedSource = `
-    var fullBoardData = null;
-    ${extractFunction(findLine('function getBoardSettingValue('))}
-    ${extractFunction(findLine('function normalizeBoardScrollSpeedValue('))}
-    ${extractFunction(findLine('function getBoardScrollSpeedMultiplier('))}
-    ${extractFunction(findLine('function normalizeWheelDeltaToPixels('))}
-    ${extractFunction(findLine('function canStartCanvasPointerPan('))}
-    ${extractFunction(findLine('function canScrollableElementConsumeWheelDelta('))}
-    ${extractFunction(findLine('function shouldHandleBoardViewportWheelEvent('))}
-
-    return {
-      setBoardSettings: function (settings) {
-        fullBoardData = { boardSettings: settings || {} };
-      },
-      clearBoardSettings: function () {
-        fullBoardData = null;
-      },
-      normalizeBoardScrollSpeedValue,
-      getBoardScrollSpeedMultiplier,
-      normalizeWheelDeltaToPixels,
-      canStartCanvasPointerPan,
-      canScrollableElementConsumeWheelDelta,
-      shouldHandleBoardViewportWheelEvent
-    };
-  `;
-
-  return new Function(wrappedSource)();
-}
+const require = createRequire(import.meta.url);
+const ScrollHelpers = require('../src/interaction/scrollBehavior.js');
 
 function createScrollableNode(options = {}) {
   return {
@@ -89,17 +31,11 @@ function createClosestTarget(matches = []) {
   };
 }
 
-let ScrollHelpers;
 const originalGetComputedStyle = globalThis.getComputedStyle;
 const originalDocument = globalThis.document;
 const originalWindow = globalThis.window;
 
-beforeAll(() => {
-  ScrollHelpers = loadScrollHelpers();
-});
-
 afterEach(() => {
-  ScrollHelpers.clearBoardSettings();
   globalThis.getComputedStyle = originalGetComputedStyle;
   globalThis.document = originalDocument;
   globalThis.window = originalWindow;
@@ -120,13 +56,11 @@ describe('normalizeBoardScrollSpeedValue', () => {
 
 describe('getBoardScrollSpeedMultiplier', () => {
   it('uses the board setting when present', () => {
-    ScrollHelpers.setBoardSettings({ scrollSpeed: '0.5' });
-    expect(ScrollHelpers.getBoardScrollSpeedMultiplier()).toBe(0.5);
+    expect(ScrollHelpers.getBoardScrollSpeedMultiplier({ scrollSpeed: '0.5' })).toBe(0.5);
   });
 
   it('falls back to 1 when the board has no custom speed', () => {
-    ScrollHelpers.setBoardSettings({});
-    expect(ScrollHelpers.getBoardScrollSpeedMultiplier()).toBe(1);
+    expect(ScrollHelpers.getBoardScrollSpeedMultiplier({})).toBe(1);
   });
 });
 
@@ -138,7 +72,7 @@ describe('normalizeWheelDeltaToPixels', () => {
 
   it('uses viewport-relative page deltas', () => {
     globalThis.window = { innerHeight: 1000 };
-    expect(ScrollHelpers.normalizeWheelDeltaToPixels(1, 2)).toBe(850);
+    expect(ScrollHelpers.normalizeWheelDeltaToPixels(1, 2, { window: globalThis.window })).toBe(850);
   });
 });
 
@@ -194,8 +128,8 @@ describe('canScrollableElementConsumeWheelDelta', () => {
       overflowX: el.__styles.overflowX || 'visible'
     });
 
-    expect(ScrollHelpers.canScrollableElementConsumeWheelDelta(node, 'y', 40)).toBe(true);
-    expect(ScrollHelpers.canScrollableElementConsumeWheelDelta(node, 'y', -40)).toBe(true);
+    expect(ScrollHelpers.canScrollableElementConsumeWheelDelta(node, 'y', 40, { getComputedStyle: globalThis.getComputedStyle })).toBe(true);
+    expect(ScrollHelpers.canScrollableElementConsumeWheelDelta(node, 'y', -40, { getComputedStyle: globalThis.getComputedStyle })).toBe(true);
   });
 
   it('returns false when the element is already at the relevant edge', () => {
@@ -210,7 +144,7 @@ describe('canScrollableElementConsumeWheelDelta', () => {
       overflowX: el.__styles.overflowX || 'visible'
     });
 
-    expect(ScrollHelpers.canScrollableElementConsumeWheelDelta(node, 'y', 40)).toBe(false);
+    expect(ScrollHelpers.canScrollableElementConsumeWheelDelta(node, 'y', 40, { getComputedStyle: globalThis.getComputedStyle })).toBe(false);
   });
 });
 
@@ -230,7 +164,10 @@ describe('shouldHandleBoardViewportWheelEvent', () => {
     });
     globalThis.document = { body: { nodeType: 1 } };
 
-    expect(ScrollHelpers.shouldHandleBoardViewportWheelEvent(nested, container, 0, 60)).toBe(false);
+    expect(ScrollHelpers.shouldHandleBoardViewportWheelEvent(nested, container, 0, 60, {
+      getComputedStyle: globalThis.getComputedStyle,
+      document: globalThis.document
+    })).toBe(false);
   });
 
   it('falls back to the board viewport when nested content cannot scroll further', () => {
@@ -248,6 +185,9 @@ describe('shouldHandleBoardViewportWheelEvent', () => {
     });
     globalThis.document = { body: { nodeType: 1 } };
 
-    expect(ScrollHelpers.shouldHandleBoardViewportWheelEvent(nested, container, 0, 60)).toBe(true);
+    expect(ScrollHelpers.shouldHandleBoardViewportWheelEvent(nested, container, 0, 60, {
+      getComputedStyle: globalThis.getComputedStyle,
+      document: globalThis.document
+    })).toBe(true);
   });
 });

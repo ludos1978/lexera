@@ -1,0 +1,154 @@
+(function (root, factory) {
+  var api = factory();
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+  }
+  root.LexeraFoldState = api;
+}(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  function normalizeFoldStorageList(values) {
+    var list = Array.isArray(values) ? values : [];
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] == null) continue;
+      var value = String(list[i] || '').trim();
+      if (!value || seen[value]) continue;
+      seen[value] = true;
+      out.push(value);
+    }
+    return out;
+  }
+
+  function getRowFoldKey(row, rowIdx) {
+    var rowId = row && row.id != null ? String(row.id || '').trim() : '';
+    if (rowId) return 'row:id:' + rowId;
+    return 'row:path:' + (typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1);
+  }
+
+  function getStackFoldKey(stack, rowIdx, stackIdx) {
+    var stackId = stack && stack.id != null ? String(stack.id || '').trim() : '';
+    if (stackId) return 'stack:id:' + stackId;
+    var safeRowIdx = typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1;
+    var safeStackIdx = typeof stackIdx === 'number' && isFinite(stackIdx) ? stackIdx : -1;
+    return 'stack:path:' + safeRowIdx + ':' + safeStackIdx;
+  }
+
+  function getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
+    var colId = col && col.id != null ? String(col.id || '').trim() : '';
+    if (colId) return 'column:id:' + colId;
+    if (col && typeof col.index === 'number' && isFinite(col.index)) {
+      return 'column:index:' + col.index;
+    }
+    var safeRowIdx = typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1;
+    var safeStackIdx = typeof stackIdx === 'number' && isFinite(stackIdx) ? stackIdx : -1;
+    if (typeof colFullIdx === 'number' && isFinite(colFullIdx)) {
+      return 'column:path:' + safeRowIdx + ':' + safeStackIdx + ':' + colFullIdx;
+    }
+    var safeColLocalIdx = typeof colLocalIdx === 'number' && isFinite(colLocalIdx) ? colLocalIdx : -1;
+    return 'column:display:' + safeRowIdx + ':' + safeStackIdx + ':' + safeColLocalIdx;
+  }
+
+  function hasSavedFoldMatch(savedValues, foldKey, legacyValue) {
+    var saved = Array.isArray(savedValues) ? savedValues : [];
+    var normalizedKey = String(foldKey || '').trim();
+    var normalizedLegacy = String(legacyValue || '').trim();
+    for (var i = 0; i < saved.length; i++) {
+      var current = String(saved[i] || '').trim();
+      if (!current) continue;
+      if (normalizedKey && current === normalizedKey) return true;
+      if (normalizedLegacy && current === normalizedLegacy) return true;
+    }
+    return false;
+  }
+
+  function resolveStorage(storage) {
+    return storage && typeof storage.getItem === 'function' && typeof storage.setItem === 'function'
+      ? storage
+      : null;
+  }
+
+  function getFoldedColumns(boardId, storage) {
+    var resolvedStorage = resolveStorage(storage);
+    if (!resolvedStorage) return [];
+    var saved = resolvedStorage.getItem('lexera-col-fold:' + boardId);
+    if (!saved) return [];
+    try { return normalizeFoldStorageList(JSON.parse(saved)); } catch (e) { return []; }
+  }
+
+  function getFoldedItems(boardId, kind, storage) {
+    var resolvedStorage = resolveStorage(storage);
+    if (!resolvedStorage) return [];
+    var saved = resolvedStorage.getItem('lexera-' + kind + '-fold:' + boardId);
+    if (!saved) return [];
+    try { return normalizeFoldStorageList(JSON.parse(saved)); } catch (e) { return []; }
+  }
+
+  function collectFoldedKeys(container, selector) {
+    if (!container || typeof container.querySelectorAll !== 'function') return [];
+    var folded = [];
+    var items = container.querySelectorAll(selector);
+    for (var i = 0; i < items.length; i++) {
+      if (!items[i] || !items[i].classList || !items[i].classList.contains('folded')) continue;
+      var foldKey = items[i].getAttribute ? items[i].getAttribute('data-fold-key') : null;
+      if (foldKey != null) folded.push(foldKey);
+    }
+    return normalizeFoldStorageList(folded);
+  }
+
+  function saveFoldState(boardId, options) {
+    options = options || {};
+    var resolvedStorage = resolveStorage(options.storage);
+    if (!resolvedStorage) return;
+    var container = options.container || null;
+    resolvedStorage.setItem('lexera-col-fold:' + boardId, JSON.stringify(collectFoldedKeys(container, '.column[data-fold-key]')));
+    resolvedStorage.setItem('lexera-row-fold:' + boardId, JSON.stringify(collectFoldedKeys(container, '.board-row[data-fold-key]')));
+    resolvedStorage.setItem('lexera-stack-fold:' + boardId, JSON.stringify(collectFoldedKeys(container, '.board-stack[data-fold-key]')));
+  }
+
+  function resolveCanvasLayoutFlag(value) {
+    return typeof value === 'function' ? !!value() : !!value;
+  }
+
+  function toggleColumnFoldElement(columnEl, childrenOnly, options) {
+    options = options || {};
+    if (resolveCanvasLayoutFlag(options.isCanvasBoardLayout)) return false;
+    if (!columnEl) return false;
+    if (childrenOnly) {
+      var anyCardExpanded = !!(columnEl.querySelector && columnEl.querySelector('.card:not(.collapsed)'));
+      if (typeof options.setColumnChildrenFoldState === 'function') {
+        options.setColumnChildrenFoldState(columnEl, anyCardExpanded);
+      }
+      if (typeof options.saveCardCollapseState === 'function') {
+        options.saveCardCollapseState(options.boardId);
+      }
+    } else {
+      var nowFolded = !(columnEl.classList && columnEl.classList.contains('folded'));
+      if (columnEl.classList && typeof columnEl.classList.toggle === 'function') {
+        columnEl.classList.toggle('folded', nowFolded);
+      }
+      if (typeof options.saveFoldState === 'function') {
+        options.saveFoldState(options.boardId);
+      } else {
+        saveFoldState(options.boardId, options);
+      }
+    }
+    if (typeof options.refreshBoardHeaderActionStates === 'function') {
+      options.refreshBoardHeaderActionStates();
+    }
+    return true;
+  }
+
+  return {
+    normalizeFoldStorageList: normalizeFoldStorageList,
+    getRowFoldKey: getRowFoldKey,
+    getStackFoldKey: getStackFoldKey,
+    getColumnFoldKey: getColumnFoldKey,
+    hasSavedFoldMatch: hasSavedFoldMatch,
+    getFoldedColumns: getFoldedColumns,
+    getFoldedItems: getFoldedItems,
+    saveFoldState: saveFoldState,
+    toggleColumnFoldElement: toggleColumnFoldElement
+  };
+}));

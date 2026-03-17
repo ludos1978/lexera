@@ -1,113 +1,78 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
+const require = createRequire(import.meta.url);
+const BoardNavigation = require('../src/navigation/boardNavigation.js');
 
-function loadSearchNavigationHarness() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
+let searchInput;
+let state;
 
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  const navigateToSearchResultDef = extractFunction(findLine('async function navigateToSearchResult('));
-
-  const wrappedSource = `
-    var $searchInput = null;
-    var embeddedMode = false;
-    var splitViewMode = 'single';
-    var activeBoardId = null;
-    var activeBoardData = null;
-    var exitCount = 0;
-    var selectCalls = [];
-    var loadCalls = [];
-    var unfoldCalls = [];
-    var notifications = [];
-    var focusResult = true;
-
-    function exitSearchMode() { exitCount++; }
-    async function selectBoard(boardId) {
-      selectCalls.push(boardId);
-      activeBoardId = boardId;
-    }
-    async function loadBoard(boardId) {
-      loadCalls.push(boardId);
-      activeBoardId = boardId;
-      activeBoardData = { id: boardId };
-    }
-    function unfoldSearchTarget(result) { unfoldCalls.push(result); }
-    function focusSearchResultCard() { return focusResult; }
-    function showNotification(message) { notifications.push(message); }
-    function lexeraLog() {}
-
-    ${navigateToSearchResultDef}
-
-    return {
-      setSearchInput: function (input) { $searchInput = input; },
-      setActiveBoardState: function (boardId, boardData) {
-        activeBoardId = boardId;
-        activeBoardData = boardData;
-      },
-      setFocusResult: function (value) { focusResult = value; },
-      getState: function () {
-        return {
-          exitCount: exitCount,
-          selectCalls: selectCalls.slice(),
-          loadCalls: loadCalls.slice(),
-          unfoldCalls: unfoldCalls.slice(),
-          notifications: notifications.slice(),
-          activeBoardId: activeBoardId,
-          activeBoardData: activeBoardData,
-        };
-      },
-      navigateToSearchResult: navigateToSearchResult,
-    };
-  `;
-
-  return new Function(wrappedSource)();
+function resetState() {
+  searchInput = null;
+  state = {
+    embeddedMode: false,
+    splitViewMode: 'single',
+    activeBoardId: null,
+    activeBoardData: null,
+    exitCount: 0,
+    selectCalls: [],
+    loadCalls: [],
+    unfoldCalls: [],
+    notifications: [],
+    focusResult: true,
+  };
 }
 
-let H;
+function buildOptions() {
+  return {
+    searchInput,
+    exitSearchMode() {
+      state.exitCount += 1;
+    },
+    async selectBoard(boardId) {
+      state.selectCalls.push(boardId);
+      state.activeBoardId = boardId;
+    },
+    embeddedMode: state.embeddedMode,
+    splitViewMode: state.splitViewMode,
+    getActiveBoardId() {
+      return state.activeBoardId;
+    },
+    getActiveBoardData() {
+      return state.activeBoardData;
+    },
+    async loadBoard(boardId) {
+      state.loadCalls.push(boardId);
+      state.activeBoardId = boardId;
+      state.activeBoardData = { id: boardId };
+    },
+    unfoldSearchTarget(result) {
+      state.unfoldCalls.push(result);
+    },
+    focusSearchResultCard() {
+      return state.focusResult;
+    },
+    showNotification(message) {
+      state.notifications.push(message);
+    },
+    lexeraLog() {}
+  };
+}
 
-beforeAll(() => {
-  H = loadSearchNavigationHarness();
+beforeEach(() => {
+  resetState();
 });
 
 describe('navigateToSearchResult', () => {
   it('does not crash when the global search input is missing', async () => {
-    H.setSearchInput(null);
-    H.setActiveBoardState(null, null);
+    searchInput = null;
 
-    await expect(H.navigateToSearchResult({
+    await expect(BoardNavigation.navigateToSearchResult({
       boardId: 'board-1',
       columnIndex: 0,
       cardId: 'card-1',
-    })).resolves.toBeUndefined();
+    }, buildOptions())).resolves.toBeUndefined();
 
-    const state = H.getState();
     expect(state.exitCount).toBe(1);
     expect(state.selectCalls).toEqual(['board-1']);
     expect(state.loadCalls).toEqual(['board-1']);
@@ -116,16 +81,14 @@ describe('navigateToSearchResult', () => {
   });
 
   it('clears the global search input when present', async () => {
-    const input = { value: 'todo' };
-    H.setSearchInput(input);
-    H.setActiveBoardState(null, null);
+    searchInput = { value: 'todo' };
 
-    await H.navigateToSearchResult({
+    await BoardNavigation.navigateToSearchResult({
       boardId: 'board-2',
       columnIndex: 0,
       cardId: 'card-2',
-    });
+    }, buildOptions());
 
-    expect(input.value).toBe('');
+    expect(searchInput.value).toBe('');
   });
 });

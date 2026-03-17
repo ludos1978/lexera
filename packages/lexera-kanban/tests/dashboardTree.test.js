@@ -1,56 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
-
-function loadDashboardTreeHarness() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
-
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
-
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  const wrappedSource = `
-    ${extractFunction(findLine('function parseOptionalSearchIndex('))}
-    ${extractFunction(findLine('function buildSearchResultLocation('))}
-    ${extractFunction(findLine('function dashboardCardTitle('))}
-    ${extractFunction(findLine('function dashboardItemTitle('))}
-    ${extractFunction(findLine('function dashboardDueLabel('))}
-    ${extractFunction(findLine('function dashboardTreeNodeTooltip('))}
-    ${extractFunction(findLine('function buildDashboardResultTreeNodes('))}
-    ${extractFunction(findLine('function buildDashboardNavResultFromTreeNode('))}
-
-    return {
-      buildDashboardResultTreeNodes,
-      buildDashboardNavResultFromTreeNode
-    };
-  `;
-
-  return new Function(wrappedSource)();
-}
+const require = createRequire(import.meta.url);
+const H = require('../src/dashboard/dashboardTree.js');
 
 function makeTreeNode(attrs) {
   const attrMap = Object.assign({}, attrs);
@@ -60,12 +12,6 @@ function makeTreeNode(attrs) {
     }
   };
 }
-
-let H;
-
-beforeAll(() => {
-  H = loadDashboardTreeHarness();
-});
 
 describe('buildDashboardResultTreeNodes', () => {
   it('groups dashboard items by board and adds due labels as meta text', () => {

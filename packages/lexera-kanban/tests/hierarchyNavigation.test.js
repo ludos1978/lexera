@@ -1,113 +1,65 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { createRequire } from 'node:module';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const srcDir = resolve(__dirname, '..', 'src');
+const require = createRequire(import.meta.url);
+const BoardNavigation = require('../src/navigation/boardNavigation.js');
+const DashboardTree = require('../src/dashboard/dashboardTree.js');
 
-function loadHierarchyNavigationHarness() {
-  const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
-  const lines = source.split('\n');
+let state;
 
-  function extractFunction(startLine) {
-    let depth = 0;
-    let started = false;
-    const result = [];
-    for (let i = startLine - 1; i < lines.length; i++) {
-      const line = lines[i];
-      result.push(line);
-      for (let c = 0; c < line.length; c++) {
-        if (line[c] === '{') { depth++; started = true; }
-        if (line[c] === '}') depth--;
-      }
-      if (started && depth === 0) break;
-    }
-    return result.join('\n');
-  }
+function resetState() {
+  state = {
+    embeddedMode: false,
+    splitViewMode: 'single',
+    activeSplitPane: 'a',
+    activeBoardId: null,
+    activeBoardData: null,
+    selectCalls: [],
+    loadCalls: [],
+    unfoldCalls: [],
+    localFocusCalls: [],
+    paneFocusCalls: []
+  };
+}
 
-  function findLine(pattern) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(pattern)) return i + 1;
-    }
-    throw new Error('Could not find: ' + pattern);
-  }
-
-  const wrappedSource = `
-    var embeddedMode = false;
-    var splitViewMode = 'single';
-    var activeSplitPane = 'a';
-    var activeBoardId = null;
-    var activeBoardData = null;
-    var selectCalls = [];
-    var loadCalls = [];
-    var unfoldCalls = [];
-    var localFocusCalls = [];
-    var paneFocusCalls = [];
-
-    function normalizeSplitPane(value) { return value === 'b' ? 'b' : 'a'; }
-    async function selectBoard(boardId, options) {
-      selectCalls.push({ boardId: boardId, options: options || {} });
-      activeBoardId = boardId;
-    }
-    async function loadBoard(boardId) {
-      loadCalls.push(boardId);
-      activeBoardId = boardId;
-      activeBoardData = { id: boardId };
-    }
-    function unfoldSearchTarget(target) { unfoldCalls.push(target); }
-    function focusHierarchyTargetLocally(target) {
-      localFocusCalls.push(target);
+function buildOptions(extra) {
+  extra = extra || {};
+  return {
+    embeddedMode: state.embeddedMode,
+    splitViewMode: state.splitViewMode,
+    activeSplitPane: state.activeSplitPane,
+    skipSplitRouting: !!extra.skipSplitRouting,
+    pane: extra.pane,
+    normalizeSplitPane(value) {
+      return value === 'b' ? 'b' : 'a';
+    },
+    async selectBoard(boardId, options) {
+      state.selectCalls.push({ boardId, options: options || {} });
+      state.activeBoardId = boardId;
+    },
+    scheduleHierarchyFocusMessageToPane(pane, target) {
+      state.paneFocusCalls.push({ pane, target });
+      return true;
+    },
+    getActiveBoardId() {
+      return state.activeBoardId;
+    },
+    getActiveBoardData() {
+      return state.activeBoardData;
+    },
+    async loadBoard(boardId) {
+      state.loadCalls.push(boardId);
+      state.activeBoardId = boardId;
+      state.activeBoardData = { id: boardId };
+    },
+    unfoldSearchTarget(target) {
+      state.unfoldCalls.push(target);
+    },
+    focusHierarchyTargetLocally(target) {
+      state.localFocusCalls.push(target);
       return true;
     }
-    function scheduleHierarchyFocusMessageToPane(pane, target) {
-      paneFocusCalls.push({ pane: pane, target: target });
-      return true;
-    }
-    function logFrontendIssue() {}
-    function showNotification() {}
-
-    ${extractFunction(findLine('function parseOptionalSearchIndex('))}
-    ${extractFunction(findLine('function buildHierarchyFocusTargetFromTreeNode('))}
-    ${extractFunction(findLine('async function navigateToHierarchyTarget('))}
-
-    return {
-      buildHierarchyFocusTargetFromTreeNode: buildHierarchyFocusTargetFromTreeNode,
-      navigateToHierarchyTarget: navigateToHierarchyTarget,
-      reset: function () {
-        selectCalls = [];
-        loadCalls = [];
-        unfoldCalls = [];
-        localFocusCalls = [];
-        paneFocusCalls = [];
-        activeBoardId = null;
-        activeBoardData = null;
-        embeddedMode = false;
-        splitViewMode = 'single';
-        activeSplitPane = 'a';
-      },
-      setEmbeddedMode: function (value) { embeddedMode = !!value; },
-      setSplitViewMode: function (value) { splitViewMode = value; },
-      setActiveSplitPane: function (value) { activeSplitPane = value; },
-      setActiveBoardState: function (boardId, boardData) {
-        activeBoardId = boardId;
-        activeBoardData = boardData;
-      },
-      getState: function () {
-        return {
-          selectCalls: selectCalls.slice(),
-          loadCalls: loadCalls.slice(),
-          unfoldCalls: unfoldCalls.slice(),
-          localFocusCalls: localFocusCalls.slice(),
-          paneFocusCalls: paneFocusCalls.slice(),
-          activeBoardId: activeBoardId,
-          activeBoardData: activeBoardData
-        };
-      }
-    };
-  `;
-
-  return new Function(wrappedSource)();
+  };
 }
 
 function makeTreeNode(classes, attrs) {
@@ -124,10 +76,8 @@ function makeTreeNode(classes, attrs) {
   };
 }
 
-let H;
-
-beforeAll(() => {
-  H = loadHierarchyNavigationHarness();
+beforeEach(() => {
+  resetState();
 });
 
 describe('buildHierarchyFocusTargetFromTreeNode', () => {
@@ -135,7 +85,9 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
     const node = makeTreeNode(['tree-node', 'tree-row'], {
       'data-row-index': '2'
     });
-    expect(H.buildHierarchyFocusTargetFromTreeNode(node, 'board-1')).toEqual({
+    expect(BoardNavigation.buildHierarchyFocusTargetFromTreeNode(node, 'board-1', {
+      parseOptionalSearchIndex: DashboardTree.parseOptionalSearchIndex
+    })).toEqual({
       boardId: 'board-1',
       rowIndex: 2
     });
@@ -151,7 +103,9 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
       'data-card-index': '6',
       'data-card-id': 'card-99'
     });
-    expect(H.buildHierarchyFocusTargetFromTreeNode(node)).toEqual({
+    expect(BoardNavigation.buildHierarchyFocusTargetFromTreeNode(node, null, {
+      parseOptionalSearchIndex: DashboardTree.parseOptionalSearchIndex
+    })).toEqual({
       boardId: 'board-7',
       rowIndex: 1,
       stackIndex: 3,
@@ -165,19 +119,16 @@ describe('buildHierarchyFocusTargetFromTreeNode', () => {
 
 describe('navigateToHierarchyTarget', () => {
   it('loads and focuses locally in single view', async () => {
-    H.reset();
-    H.setEmbeddedMode(false);
-    H.setSplitViewMode('single');
-    H.setActiveBoardState(null, null);
+    state.embeddedMode = false;
+    state.splitViewMode = 'single';
 
-    await H.navigateToHierarchyTarget({
+    await BoardNavigation.navigateToHierarchyTarget({
       boardId: 'board-local',
       rowIndex: 0,
       stackIndex: 1,
       colLocalIndex: 2
-    });
+    }, buildOptions());
 
-    const state = H.getState();
     expect(state.selectCalls).toEqual([
       { boardId: 'board-local', options: { routeToPane: false } }
     ]);
@@ -188,18 +139,17 @@ describe('navigateToHierarchyTarget', () => {
   });
 
   it('routes focus into the active split pane instead of local view', async () => {
-    H.reset();
-    H.setEmbeddedMode(false);
-    H.setSplitViewMode('vertical');
-    H.setActiveSplitPane('b');
-    H.setActiveBoardState('board-old', { id: 'board-old' });
+    state.embeddedMode = false;
+    state.splitViewMode = 'vertical';
+    state.activeSplitPane = 'b';
+    state.activeBoardId = 'board-old';
+    state.activeBoardData = { id: 'board-old' };
 
-    await H.navigateToHierarchyTarget({
+    await BoardNavigation.navigateToHierarchyTarget({
       boardId: 'board-split',
       rowIndex: 1
-    });
+    }, buildOptions());
 
-    const state = H.getState();
     expect(state.selectCalls.at(-1)).toEqual({
       boardId: 'board-split',
       options: { pane: 'b' }
