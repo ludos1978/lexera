@@ -13,16 +13,6 @@
     return isNaN(parsed) ? null : parsed;
   }
 
-  function resolveParseOptionalSearchIndex(options) {
-    if (options && typeof options.parseOptionalSearchIndex === 'function') {
-      return options.parseOptionalSearchIndex;
-    }
-    if (typeof globalThis !== 'undefined' && globalThis.LexeraDashboardTree && typeof globalThis.LexeraDashboardTree.parseOptionalSearchIndex === 'function') {
-      return globalThis.LexeraDashboardTree.parseOptionalSearchIndex;
-    }
-    return defaultParseOptionalSearchIndex;
-  }
-
   function resolveColumnsContainer(options) {
     if (options && typeof options.getColumnsContainer === 'function') return options.getColumnsContainer();
     return options && options.columnsContainer ? options.columnsContainer : null;
@@ -40,36 +30,38 @@
 
   function buildHierarchyFocusTargetFromTreeNode(node, boardId, options) {
     if (!node || !node.getAttribute || !node.classList) return null;
-    var parseOptionalSearchIndex = resolveParseOptionalSearchIndex(options);
+    var parse = (options && typeof options.parseOptionalSearchIndex === 'function')
+      ? options.parseOptionalSearchIndex
+      : defaultParseOptionalSearchIndex;
     var resolvedBoardId = String(boardId || node.getAttribute('data-board-id') || '').trim();
     if (!resolvedBoardId) return null;
 
-    var target = {
-      boardId: resolvedBoardId
-    };
+    function attr(name) { return parse(node.getAttribute(name)); }
+
+    var target = { boardId: resolvedBoardId };
 
     if (node.classList.contains('tree-row')) {
-      target.rowIndex = parseOptionalSearchIndex(node.getAttribute('data-row-index'));
+      target.rowIndex = attr('data-row-index');
       return target;
     }
     if (node.classList.contains('tree-stack')) {
-      target.rowIndex = parseOptionalSearchIndex(node.getAttribute('data-row-index'));
-      target.stackIndex = parseOptionalSearchIndex(node.getAttribute('data-stack-index'));
+      target.rowIndex = attr('data-row-index');
+      target.stackIndex = attr('data-stack-index');
       return target;
     }
     if (node.classList.contains('tree-column')) {
-      target.rowIndex = parseOptionalSearchIndex(node.getAttribute('data-row-index'));
-      target.stackIndex = parseOptionalSearchIndex(node.getAttribute('data-stack-index'));
-      target.colLocalIndex = parseOptionalSearchIndex(node.getAttribute('data-col-local-index'));
-      target.columnIndex = parseOptionalSearchIndex(node.getAttribute('data-col-index'));
+      target.rowIndex = attr('data-row-index');
+      target.stackIndex = attr('data-stack-index');
+      target.colLocalIndex = attr('data-col-local-index');
+      target.columnIndex = attr('data-col-index');
       return target;
     }
     if (node.classList.contains('tree-card')) {
-      target.rowIndex = parseOptionalSearchIndex(node.getAttribute('data-row-index'));
-      target.stackIndex = parseOptionalSearchIndex(node.getAttribute('data-stack-index'));
-      target.colLocalIndex = parseOptionalSearchIndex(node.getAttribute('data-col-local-index'));
-      target.columnIndex = parseOptionalSearchIndex(node.getAttribute('data-col-index'));
-      target.cardIndex = parseOptionalSearchIndex(node.getAttribute('data-card-index'));
+      target.rowIndex = attr('data-row-index');
+      target.stackIndex = attr('data-stack-index');
+      target.colLocalIndex = attr('data-col-local-index');
+      target.columnIndex = attr('data-col-index');
+      target.cardIndex = attr('data-card-index');
       var cardId = String(node.getAttribute('data-card-id') || '').trim();
       if (cardId) target.cardId = cardId;
       return target;

@@ -30,23 +30,20 @@
       .trim();
   }
 
-  function countCardsInRow(row) {
-    var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
-    var n = 0;
-    for (var s = 0; s < stacks.length; s++) {
-      var columns = stacks[s] && Array.isArray(stacks[s].columns) ? stacks[s].columns : [];
-      for (var c = 0; c < columns.length; c++) {
-        n += columns[c].cards ? columns[c].cards.length : 0;
-      }
-    }
-    return n;
-  }
-
   function countCardsInStack(stack) {
     var columns = stack && Array.isArray(stack.columns) ? stack.columns : [];
     var n = 0;
     for (var c = 0; c < columns.length; c++) {
       n += columns[c].cards ? columns[c].cards.length : 0;
+    }
+    return n;
+  }
+
+  function countCardsInRow(row) {
+    var stacks = row && Array.isArray(row.stacks) ? row.stacks : [];
+    var n = 0;
+    for (var s = 0; s < stacks.length; s++) {
+      n += countCardsInStack(stacks[s]);
     }
     return n;
   }

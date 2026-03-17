@@ -7,6 +7,14 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  function safeIndex(value) {
+    return typeof value === 'number' && isFinite(value) ? value : -1;
+  }
+
+  function entityId(obj) {
+    return obj && obj.id != null ? String(obj.id || '').trim() : '';
+  }
+
   function normalizeFoldStorageList(values) {
     var list = Array.isArray(values) ? values : [];
     var out = [];
@@ -22,32 +30,29 @@
   }
 
   function getRowFoldKey(row, rowIdx) {
-    var rowId = row && row.id != null ? String(row.id || '').trim() : '';
-    if (rowId) return 'row:id:' + rowId;
-    return 'row:path:' + (typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1);
+    var id = entityId(row);
+    if (id) return 'row:id:' + id;
+    return 'row:path:' + safeIndex(rowIdx);
   }
 
   function getStackFoldKey(stack, rowIdx, stackIdx) {
-    var stackId = stack && stack.id != null ? String(stack.id || '').trim() : '';
-    if (stackId) return 'stack:id:' + stackId;
-    var safeRowIdx = typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1;
-    var safeStackIdx = typeof stackIdx === 'number' && isFinite(stackIdx) ? stackIdx : -1;
-    return 'stack:path:' + safeRowIdx + ':' + safeStackIdx;
+    var id = entityId(stack);
+    if (id) return 'stack:id:' + id;
+    return 'stack:path:' + safeIndex(rowIdx) + ':' + safeIndex(stackIdx);
   }
 
   function getColumnFoldKey(col, rowIdx, stackIdx, colLocalIdx, colFullIdx) {
-    var colId = col && col.id != null ? String(col.id || '').trim() : '';
-    if (colId) return 'column:id:' + colId;
+    var id = entityId(col);
+    if (id) return 'column:id:' + id;
     if (col && typeof col.index === 'number' && isFinite(col.index)) {
       return 'column:index:' + col.index;
     }
-    var safeRowIdx = typeof rowIdx === 'number' && isFinite(rowIdx) ? rowIdx : -1;
-    var safeStackIdx = typeof stackIdx === 'number' && isFinite(stackIdx) ? stackIdx : -1;
+    var sr = safeIndex(rowIdx);
+    var ss = safeIndex(stackIdx);
     if (typeof colFullIdx === 'number' && isFinite(colFullIdx)) {
-      return 'column:path:' + safeRowIdx + ':' + safeStackIdx + ':' + colFullIdx;
+      return 'column:path:' + sr + ':' + ss + ':' + colFullIdx;
     }
-    var safeColLocalIdx = typeof colLocalIdx === 'number' && isFinite(colLocalIdx) ? colLocalIdx : -1;
-    return 'column:display:' + safeRowIdx + ':' + safeStackIdx + ':' + safeColLocalIdx;
+    return 'column:display:' + sr + ':' + ss + ':' + safeIndex(colLocalIdx);
   }
 
   function hasSavedFoldMatch(savedValues, foldKey, legacyValue) {
@@ -70,11 +75,7 @@
   }
 
   function getFoldedColumns(boardId, storage) {
-    var resolvedStorage = resolveStorage(storage);
-    if (!resolvedStorage) return [];
-    var saved = resolvedStorage.getItem('lexera-col-fold:' + boardId);
-    if (!saved) return [];
-    try { return normalizeFoldStorageList(JSON.parse(saved)); } catch (e) { return []; }
+    return getFoldedItems(boardId, 'col', storage);
   }
 
   function getFoldedItems(boardId, kind, storage) {
