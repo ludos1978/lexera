@@ -54,6 +54,19 @@ describe('normalizeBoardScrollSpeedValue', () => {
   });
 });
 
+describe('normalizeBoardZoomSpeedValue', () => {
+  it('normalizes menu-style values and keeps sane defaults', () => {
+    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('')).toBe('1');
+    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('0.75x')).toBe('0.75');
+    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('1.5')).toBe('1.5');
+  });
+
+  it('clamps zoom speed into the supported fine-grained range', () => {
+    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('0.001')).toBe('0.01');
+    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('5')).toBe('2');
+  });
+});
+
 describe('getBoardScrollSpeedMultiplier', () => {
   it('uses the board setting when present', () => {
     expect(ScrollHelpers.getBoardScrollSpeedMultiplier({ scrollSpeed: '0.5' })).toBe(0.5);
@@ -61,6 +74,23 @@ describe('getBoardScrollSpeedMultiplier', () => {
 
   it('falls back to 1 when the board has no custom speed', () => {
     expect(ScrollHelpers.getBoardScrollSpeedMultiplier({})).toBe(1);
+  });
+});
+
+describe('getBoardZoomSpeedMultiplier', () => {
+  it('uses the board setting when present', () => {
+    expect(ScrollHelpers.getBoardZoomSpeedMultiplier({ zoomSpeed: '0.05' })).toBe(0.05);
+  });
+
+  it('falls back to 1 when the board has no custom zoom speed', () => {
+    expect(ScrollHelpers.getBoardZoomSpeedMultiplier({})).toBe(1);
+  });
+});
+
+describe('scaleZoomDelta', () => {
+  it('scales zoom deltas with fine-grained multipliers', () => {
+    expect(ScrollHelpers.scaleZoomDelta(0.05, { zoomSpeed: '0.01' })).toBe(0.0005);
+    expect(ScrollHelpers.scaleZoomDelta(-0.1, { zoomSpeed: '2' })).toBe(-0.2);
   });
 });
 

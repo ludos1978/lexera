@@ -7,32 +7,61 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  function normalizeBoardScrollSpeedValue(rawValue) {
+  function normalizeSpeedMultiplierValue(rawValue, minValue, maxValue) {
     var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
     if (!text || text === 'default' || text === 'normal') return '1';
     if (text.charAt(text.length - 1) === 'x') text = text.slice(0, -1).trim();
     var parsed = parseFloat(text);
     if (!isFinite(parsed)) return '1';
-    if (parsed < 0.1) parsed = 0.1;
-    if (parsed > 3) parsed = 3;
+    if (parsed < minValue) parsed = minValue;
+    if (parsed > maxValue) parsed = maxValue;
     return String(Math.round(parsed * 100) / 100);
   }
 
-  function getBoardScrollSpeedMultiplier(source, fallback) {
+  function getSpeedMultiplier(source, key, fallback, normalizer) {
     var rawValue = null;
     var resolvedFallback = fallback == null ? '1' : fallback;
     if (typeof source === 'function') {
-      rawValue = source('scrollSpeed', resolvedFallback);
+      rawValue = source(key, resolvedFallback);
     } else if (source && typeof source === 'object') {
       if (source.boardSettings && typeof source.boardSettings === 'object') {
-        rawValue = source.boardSettings.scrollSpeed;
+        rawValue = source.boardSettings[key];
       } else {
-        rawValue = source.scrollSpeed;
+        rawValue = source[key];
       }
     } else if (source != null) {
       rawValue = source;
     }
-    return parseFloat(normalizeBoardScrollSpeedValue(rawValue == null ? resolvedFallback : rawValue)) || 1;
+    return parseFloat(normalizer(rawValue == null ? resolvedFallback : rawValue)) || 1;
+  }
+
+  function normalizeBoardScrollSpeedValue(rawValue) {
+    return normalizeSpeedMultiplierValue(rawValue, 0.1, 3);
+  }
+
+  function getBoardScrollSpeedMultiplier(source, fallback) {
+    return getSpeedMultiplier(source, 'scrollSpeed', fallback, normalizeBoardScrollSpeedValue);
+  }
+
+  function normalizeBoardZoomSpeedValue(rawValue) {
+    return normalizeSpeedMultiplierValue(rawValue, 0.01, 2);
+  }
+
+  function getBoardZoomSpeedMultiplier(source, fallback) {
+    return getSpeedMultiplier(source, 'zoomSpeed', fallback, normalizeBoardZoomSpeedValue);
+  }
+
+  function scaleZoomDelta(baseDelta, source, options) {
+    options = options || {};
+    var delta = Number(baseDelta) || 0;
+    if (!delta) return 0;
+    var precision = typeof options.precision === 'number' && isFinite(options.precision)
+      ? Math.max(0, Math.floor(options.precision))
+      : 4;
+    var factor = Math.pow(10, precision);
+    var scaled = Math.round(Math.abs(delta) * getBoardZoomSpeedMultiplier(source, options.fallback) * factor) / factor;
+    if (!scaled) scaled = 1 / factor;
+    return delta < 0 ? -scaled : scaled;
   }
 
   function normalizeWheelDeltaToPixels(delta, deltaMode, options) {
@@ -102,6 +131,9 @@
   return {
     normalizeBoardScrollSpeedValue: normalizeBoardScrollSpeedValue,
     getBoardScrollSpeedMultiplier: getBoardScrollSpeedMultiplier,
+    normalizeBoardZoomSpeedValue: normalizeBoardZoomSpeedValue,
+    getBoardZoomSpeedMultiplier: getBoardZoomSpeedMultiplier,
+    scaleZoomDelta: scaleZoomDelta,
     normalizeWheelDeltaToPixels: normalizeWheelDeltaToPixels,
     canStartCanvasPointerPan: canStartCanvasPointerPan,
     canScrollableElementConsumeWheelDelta: canScrollableElementConsumeWheelDelta,

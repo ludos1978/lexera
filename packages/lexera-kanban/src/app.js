@@ -892,7 +892,7 @@ const LexeraDashboard = (function () {
     if (!isFinite(parsed)) return 1;
     if (parsed < 0.75) return 0.75;
     if (parsed > 1.5) return 1.5;
-    return Math.round(parsed * 100) / 100;
+    return Math.round(parsed * 10000) / 10000;
   }
 
   function applyUiScale(scale) {
@@ -8383,8 +8383,8 @@ const LexeraDashboard = (function () {
         }
         return;
       }
-      if (action === 'zoom-in') { nudgeUiScale(0.05); return; }
-      if (action === 'zoom-out') { nudgeUiScale(-0.05); return; }
+      if (action === 'zoom-in') { nudgeUiScale(getUiZoomStep(0.05)); return; }
+      if (action === 'zoom-out') { nudgeUiScale(getUiZoomStep(-0.05)); return; }
       if (action === 'zoom-reset') {
         applyUiScale(1);
         showNotification('Zoom 100%');
@@ -9449,7 +9449,8 @@ const LexeraDashboard = (function () {
       { id: stickyMode ? 'unpin-headers' : 'pin-headers', label: stickyMode ? 'Unpin Column Headers' : 'Pin Column Headers' },
       { id: 'set-sticky-headers', label: 'Pinned Header Mode', items: buildSettingMenuItems('stickyHeaders') },
       { id: 'set-arrow-focus-scroll', label: 'Arrow Key Focus Scroll', items: buildSettingMenuItems('arrowFocusScroll') },
-      { id: 'set-scroll-speed', label: 'Scroll Speed', items: buildSettingMenuItems('scrollSpeed') }
+      { id: 'set-scroll-speed', label: 'Scroll Speed', items: buildSettingMenuItems('scrollSpeed') },
+      { id: 'set-zoom-speed', label: 'Zoom Speed', items: buildSettingMenuItems('zoomSpeed') }
     );
     if (!isCanvasLayout) {
       items.splice(14, 0,
@@ -11327,12 +11328,12 @@ const LexeraDashboard = (function () {
 
     if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '=' || e.key === '+')) {
       e.preventDefault();
-      nudgeUiScale(0.05);
+      nudgeUiScale(getUiZoomStep(0.05));
       return;
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '-') {
       e.preventDefault();
-      nudgeUiScale(-0.05);
+      nudgeUiScale(getUiZoomStep(-0.05));
       return;
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '0') {
@@ -12011,7 +12012,7 @@ const LexeraDashboard = (function () {
   }
 
   function nudgeCanvasZoom(delta, localOriginX, localOriginY) {
-    var next = Math.round(($canvasZoom + delta) * 100) / 100;
+    var next = Math.round(($canvasZoom + delta) * 10000) / 10000;
     if (next < 0.25) next = 0.25;
     if (next > 3) next = 3;
     if (next === $canvasZoom) return;
@@ -12035,9 +12036,9 @@ const LexeraDashboard = (function () {
       var rect = container ? container.getBoundingClientRect() : null;
       var ox = rect ? (e.clientX - rect.left) : undefined;
       var oy = rect ? (e.clientY - rect.top) : undefined;
-      nudgeCanvasZoom(e.deltaY < 0 ? 0.1 : -0.1, ox, oy);
+      nudgeCanvasZoom(getCanvasZoomStep(e.deltaY < 0 ? 0.1 : -0.1), ox, oy);
     } else {
-      nudgeUiScale(e.deltaY < 0 ? 0.05 : -0.05);
+      nudgeUiScale(getUiZoomStep(e.deltaY < 0 ? 0.05 : -0.05));
     }
   }, { passive: false });
 
@@ -12067,7 +12068,7 @@ const LexeraDashboard = (function () {
       var rect = container.getBoundingClientRect();
       var ox = e.clientX - rect.left;
       var oy = e.clientY - rect.top;
-      nudgeCanvasZoom(deltaY < 0 ? 0.1 : -0.1, ox, oy);
+      nudgeCanvasZoom(getCanvasZoomStep(deltaY < 0 ? 0.1 : -0.1), ox, oy);
       return;
     }
     if (multiplier === 1) return;
@@ -12179,6 +12180,22 @@ const LexeraDashboard = (function () {
 
   function getBoardScrollSpeedMultiplier() {
     return getScrollBehaviorApi().getBoardScrollSpeedMultiplier(getBoardSettingValue, '1');
+  }
+
+  function normalizeBoardZoomSpeedValue(rawValue) {
+    return getScrollBehaviorApi().normalizeBoardZoomSpeedValue(rawValue);
+  }
+
+  function getBoardZoomSpeedMultiplier() {
+    return getScrollBehaviorApi().getBoardZoomSpeedMultiplier(getBoardSettingValue, '1');
+  }
+
+  function getUiZoomStep(delta) {
+    return getScrollBehaviorApi().scaleZoomDelta(delta, getBoardSettingValue, { fallback: '1', precision: 4 });
+  }
+
+  function getCanvasZoomStep(delta) {
+    return getScrollBehaviorApi().scaleZoomDelta(delta, getBoardSettingValue, { fallback: '1', precision: 4 });
   }
 
   function normalizeWheelDeltaToPixels(delta, deltaMode) {
@@ -28038,6 +28055,18 @@ const LexeraDashboard = (function () {
       ]
     });
     BoardSettingRegistry.register({
+      id: 'zoomSpeed', label: 'Zoom Speed', category: 'format',
+      settingsKey: 'zoomSpeed', actionPrefix: 'set-zoom-speed', defaultValue: '1',
+      normalize: normalizeBoardZoomSpeedValue,
+      options: [
+        { value: '0.01', label: '1%' }, { value: '0.05', label: '5%' },
+        { value: '0.1', label: '10%' }, { value: '0.25', label: '25%' },
+        { value: '0.5', label: '50%' }, { value: '0.75', label: '75%' },
+        { value: '1', label: '100%' }, { value: '1.25', label: '125%' },
+        { value: '1.5', label: '150%' }, { value: '2', label: '200%' }
+      ]
+    });
+    BoardSettingRegistry.register({
       id: 'htmlComments', label: 'HTML Comments', category: 'display',
       settingsKey: 'htmlCommentRenderMode', actionPrefix: 'set-html-comments', defaultValue: 'hidden',
       normalize: normalizeHtmlCommentRenderMode,
@@ -28269,10 +28298,10 @@ const LexeraDashboard = (function () {
 
     // Zoom
     ActionRegistry.register('board', 'zoom-in', function () {
-      if (isCanvasBoardLayout()) { nudgeCanvasZoom(0.1); } else { nudgeUiScale(0.05); }
+      if (isCanvasBoardLayout()) { nudgeCanvasZoom(getCanvasZoomStep(0.1)); } else { nudgeUiScale(getUiZoomStep(0.05)); }
     });
     ActionRegistry.register('board', 'zoom-out', function () {
-      if (isCanvasBoardLayout()) { nudgeCanvasZoom(-0.1); } else { nudgeUiScale(-0.05); }
+      if (isCanvasBoardLayout()) { nudgeCanvasZoom(getCanvasZoomStep(-0.1)); } else { nudgeUiScale(getUiZoomStep(-0.05)); }
     });
     ActionRegistry.register('board', 'zoom-reset', function () {
       if (isCanvasBoardLayout()) { applyCanvasZoom(1); resetCanvasPan(); } else { applyUiScale(1); showNotification('Zoom 100%'); }
