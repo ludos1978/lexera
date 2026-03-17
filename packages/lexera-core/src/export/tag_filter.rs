@@ -186,11 +186,11 @@ pub fn process_markdown_content(content: &str, visibility: TagVisibility) -> Str
     let mut out: Vec<String> = Vec::with_capacity(lines.len());
 
     for line in &lines {
-        if line.starts_with("## ") {
-            out.push(filter_tags_from_text(line, visibility));
-        } else if task_line_re().is_match(line) {
-            out.push(filter_tags_from_text(line, visibility));
-        } else if line.contains('#') || line.contains('@') {
+        if line.starts_with("## ")
+            || task_line_re().is_match(line)
+            || line.contains('#')
+            || line.contains('@')
+        {
             out.push(filter_tags_from_text(line, visibility));
         } else {
             out.push(line.to_string());

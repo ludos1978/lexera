@@ -66,14 +66,14 @@ fn parse_template_frontmatter(content: &str) -> (String, String, String, String,
 
     for line in yaml.lines() {
         let line = line.trim();
-        if line.starts_with("name:") {
-            name = unquote_yaml(line[5..].trim());
-        } else if line.starts_with("type:") {
-            template_type = unquote_yaml(line[5..].trim());
-        } else if line.starts_with("description:") {
-            description = unquote_yaml(line[12..].trim());
-        } else if line.starts_with("icon:") {
-            icon = unquote_yaml(line[5..].trim());
+        if let Some(rest) = line.strip_prefix("name:") {
+            name = unquote_yaml(rest.trim());
+        } else if let Some(rest) = line.strip_prefix("type:") {
+            template_type = unquote_yaml(rest.trim());
+        } else if let Some(rest) = line.strip_prefix("description:") {
+            description = unquote_yaml(rest.trim());
+        } else if let Some(rest) = line.strip_prefix("icon:") {
+            icon = unquote_yaml(rest.trim());
         } else if line.starts_with("variables:") {
             has_variables = true;
         }

@@ -5,7 +5,7 @@
 ///   ## Column Title
 ///   - [ ] Task summary
 ///     description line
-///   %% footer %%
+///     %% footer %%
 ///
 /// Line-by-line port of packages/shared/src/markdownParser.ts.
 use std::collections::{BTreeMap, HashMap};
@@ -432,7 +432,7 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
         }
 
         // Parse column header
-        if line.starts_with("## ") {
+        if let Some(column_title) = line.strip_prefix("## ") {
             finalize_task(
                 &mut current_task,
                 &mut current_column,
@@ -442,7 +442,6 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
                 parsed_columns.push(col);
             }
 
-            let column_title = &line[3..];
             current_column = Some(KanbanColumn {
                 id: generate_id("col"),
                 title: column_title.to_string(),
@@ -472,17 +471,14 @@ fn parse_legacy_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Collect description lines
         if current_task.is_some() && collecting_description {
-            if trimmed.is_empty() && !line.starts_with("  ") {
-                if is_description_boundary(lines, i, false) {
-                    i += 1;
-                    continue;
-                }
+            if trimmed.is_empty()
+                && !line.starts_with("  ")
+                && is_description_boundary(lines, i, false)
+            {
+                i += 1;
+                continue;
             }
-            let desc_line = if line.starts_with("  ") {
-                &line[2..]
-            } else {
-                line
-            };
+            let desc_line = line.strip_prefix("  ").unwrap_or(line);
             if let Some(task) = current_task.as_mut() {
                 task.content.push('\n');
                 task.content.push_str(desc_line);
@@ -679,7 +675,7 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
         }
 
         // h3 heading: column
-        if line.starts_with("### ") {
+        if let Some(stripped) = line.strip_prefix("### ") {
             finalize_task(
                 &mut current_task,
                 &mut current_column,
@@ -687,7 +683,7 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
             );
             push_column(&mut current_column, &mut current_stack, &mut current_row);
 
-            let (column_title, col_params) = parse_params(&line[4..]);
+            let (column_title, col_params) = parse_params(stripped);
             current_column = Some(KanbanColumn {
                 id: generate_id("col"),
                 title: column_title,
@@ -717,17 +713,14 @@ fn parse_new_format(lines: &[&str], board: &mut KanbanBoard) {
 
         // Collect description lines
         if current_task.is_some() && collecting_description {
-            if trimmed.is_empty() && !line.starts_with("  ") {
-                if is_description_boundary(lines, i, true) {
-                    i += 1;
-                    continue;
-                }
+            if trimmed.is_empty()
+                && !line.starts_with("  ")
+                && is_description_boundary(lines, i, true)
+            {
+                i += 1;
+                continue;
             }
-            let desc_line = if line.starts_with("  ") {
-                &line[2..]
-            } else {
-                line
-            };
+            let desc_line = line.strip_prefix("  ").unwrap_or(line);
             if let Some(task) = current_task.as_mut() {
                 task.content.push('\n');
                 task.content.push_str(desc_line);

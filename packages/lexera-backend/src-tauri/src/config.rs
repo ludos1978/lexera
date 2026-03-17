@@ -356,7 +356,7 @@ pub fn save_config(path: &PathBuf, config: &SyncConfig) -> Result<(), std::io::E
         fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_string_pretty(config)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(|e| std::io::Error::other(e))?;
     fs::write(path, json)
 }
 

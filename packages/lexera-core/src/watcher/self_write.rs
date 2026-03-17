@@ -24,6 +24,12 @@ pub struct SelfWriteTracker {
     pending: HashMap<PathBuf, Vec<PendingFingerprint>>,
 }
 
+impl Default for SelfWriteTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SelfWriteTracker {
     pub fn new() -> Self {
         Self {
@@ -70,7 +76,7 @@ impl SelfWriteTracker {
 
     /// Check if there are any pending fingerprints for a path.
     pub fn has_pending(&self, path: &Path) -> bool {
-        self.pending.get(path).map_or(false, |e| !e.is_empty())
+        self.pending.get(path).is_some_and(|e| !e.is_empty())
     }
 }
 

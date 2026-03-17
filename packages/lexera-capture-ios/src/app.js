@@ -295,17 +295,17 @@
     document.getElementById('board-delete').addEventListener('click', () => {
       const board = boards.find(b => b.id === currentBoardId);
       document.getElementById('delete-board-name').textContent = board ? board.title : currentBoardId;
-      document.getElementById('dialog-delete-board').classList.add('show');
+      showDialog('dialog-delete-board');
     });
 
     document.getElementById('dialog-delete-cancel').addEventListener('click', () => {
-      document.getElementById('dialog-delete-board').classList.remove('show');
+      hideDialog('dialog-delete-board');
     });
 
     document.getElementById('dialog-delete-confirm').addEventListener('click', async () => {
       try {
         await invoke('delete_board', { boardId: currentBoardId });
-        document.getElementById('dialog-delete-board').classList.remove('show');
+        hideDialog('dialog-delete-board');
         closeBoardDetail();
         showToast('Board deleted');
         loadBoardsList();
@@ -315,11 +315,7 @@
       }
     });
 
-    document.getElementById('dialog-delete-board').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        document.getElementById('dialog-delete-board').classList.remove('show');
-      }
-    });
+    setupDialogOverlayDismiss('dialog-delete-board');
 
     // ─── Edit card dialog ───
     function openEditCardDialog(colIndex, cardIndex) {
@@ -335,18 +331,14 @@
       const rawContent = cards[cardIndex].content;
       const displayContent = rawContent.replace(/<!--\s*kid:[a-f0-9]+\s*-->/g, '').trim();
       document.getElementById('edit-card-content').value = displayContent;
-      document.getElementById('dialog-edit-card').classList.add('show');
+      showDialog('dialog-edit-card');
     }
 
     document.getElementById('dialog-edit-cancel').addEventListener('click', () => {
-      document.getElementById('dialog-edit-card').classList.remove('show');
+      hideDialog('dialog-edit-card');
     });
 
-    document.getElementById('dialog-edit-card').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        document.getElementById('dialog-edit-card').classList.remove('show');
-      }
-    });
+    setupDialogOverlayDismiss('dialog-edit-card');
 
     document.getElementById('dialog-edit-save').addEventListener('click', async () => {
       const newContent = document.getElementById('edit-card-content').value.trim();
@@ -358,7 +350,7 @@
           cardIndex: editingCardIndex,
           newContent
         });
-        document.getElementById('dialog-edit-card').classList.remove('show');
+        hideDialog('dialog-edit-card');
         showToast('Card updated');
         openBoardDetail(currentBoardId);
         loadBoards();
@@ -368,19 +360,15 @@
     });
 
     document.getElementById('dialog-edit-delete').addEventListener('click', () => {
-      document.getElementById('dialog-edit-card').classList.remove('show');
-      document.getElementById('dialog-delete-card').classList.add('show');
+      hideDialog('dialog-edit-card');
+      showDialog('dialog-delete-card');
     });
 
     document.getElementById('dialog-delete-card-cancel').addEventListener('click', () => {
-      document.getElementById('dialog-delete-card').classList.remove('show');
+      hideDialog('dialog-delete-card');
     });
 
-    document.getElementById('dialog-delete-card').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        document.getElementById('dialog-delete-card').classList.remove('show');
-      }
-    });
+    setupDialogOverlayDismiss('dialog-delete-card');
 
     document.getElementById('dialog-delete-card-confirm').addEventListener('click', async () => {
       try {
@@ -389,7 +377,7 @@
           columnIndex: editingCardColIndex,
           cardIndex: editingCardIndex
         });
-        document.getElementById('dialog-delete-card').classList.remove('show');
+        hideDialog('dialog-delete-card');
         showToast('Card deleted');
         openBoardDetail(currentBoardId);
         loadBoards();
@@ -408,13 +396,13 @@
 
     // ─── New board dialog ───
     document.getElementById('btn-new-board').addEventListener('click', () => {
-      document.getElementById('dialog-new-board').classList.add('show');
+      showDialog('dialog-new-board');
       document.getElementById('new-board-title').value = '';
       setTimeout(() => document.getElementById('new-board-title').focus(), 100);
     });
 
     document.getElementById('dialog-cancel').addEventListener('click', () => {
-      document.getElementById('dialog-new-board').classList.remove('show');
+      hideDialog('dialog-new-board');
     });
 
     document.getElementById('dialog-create').addEventListener('click', async () => {
@@ -422,7 +410,7 @@
       if (!title) return;
       try {
         await invoke('create_board', { title });
-        document.getElementById('dialog-new-board').classList.remove('show');
+        hideDialog('dialog-new-board');
         showToast('Board created!');
         loadBoardsList();
         loadBoards();
@@ -431,12 +419,7 @@
       }
     });
 
-    // Close dialog on overlay click
-    document.getElementById('dialog-new-board').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        document.getElementById('dialog-new-board').classList.remove('show');
-      }
-    });
+    setupDialogOverlayDismiss('dialog-new-board');
 
     // ─── Process pending shares ───
     document.getElementById('btn-process-pending').addEventListener('click', async () => {
@@ -459,6 +442,20 @@
       const d = document.createElement('div');
       d.textContent = s;
       return d.innerHTML;
+    }
+
+    function showDialog(id) {
+      document.getElementById(id).classList.add('show');
+    }
+
+    function hideDialog(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    function setupDialogOverlayDismiss(id) {
+      document.getElementById(id).addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) hideDialog(id);
+      });
     }
 
     // ─── Init ───

@@ -124,6 +124,24 @@ var ManagementUI = (function () {
     return null;
   }
 
+  function renderInviteListHtml(invites, revokeAction, revokeIdAttr, revokeIdValue) {
+    var html = '';
+    for (var i = 0; i < invites.length; i++) {
+      var inv = invites[i];
+      html += '<div class="mgmt-detail-item">';
+      html += '<div class="mgmt-invite-info">';
+      html += '<span>' + esc(inv.role) + ' &middot; ' + inv.uses + '/' + (inv.max_uses || '&infin;') + ' uses</span>';
+      html += '<div class="mgmt-token-field">';
+      html += '<input type="text" readonly value="' + esc(inv.token) + '">';
+      html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="copy-token" data-mgmt-token="' + esc(inv.token) + '">Copy</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-danger" data-mgmt-action="' + revokeAction + '" ' + revokeIdAttr + '="' + esc(revokeIdValue) + '" data-mgmt-token="' + esc(inv.token) + '">Revoke</button>';
+      html += '</div>';
+    }
+    return html;
+  }
+
   function confirm(msg, onOk) {
     if (callbacks && typeof callbacks.onConfirm === 'function') {
       var result = callbacks.onConfirm(msg);
@@ -947,11 +965,12 @@ var ManagementUI = (function () {
   }
 
   function renderLogs(shouldStickToBottom) {
-    var viewEl = container && container.querySelector ? container.querySelector('#mgmt-logs-view') : null;
-    var metaEl = container && container.querySelector ? container.querySelector('#mgmt-log-meta') : null;
-    var fileEl = container && container.querySelector ? container.querySelector('#mgmt-log-file') : null;
-    var pauseBtn = container && container.querySelector ? container.querySelector('[data-mgmt-action="toggle-log-pause"]') : null;
-    var filterSelect = container && container.querySelector ? container.querySelector('#mgmt-log-filter') : null;
+    if (!container) return;
+    var viewEl = container.querySelector('#mgmt-logs-view');
+    var metaEl = container.querySelector('#mgmt-log-meta');
+    var fileEl = container.querySelector('#mgmt-log-file');
+    var pauseBtn = container.querySelector('[data-mgmt-action="toggle-log-pause"]');
+    var filterSelect = container.querySelector('#mgmt-log-filter');
     if (!viewEl || !metaEl || !fileEl) return;
 
     var nearBottom = typeof shouldStickToBottom === 'boolean'
@@ -984,9 +1003,8 @@ var ManagementUI = (function () {
 
     var totalCount = logEntries.length;
     var matchingCount = filtered.length;
-    var streamText = logStreamState === 'live'
-      ? 'Live'
-      : (logStreamState === 'retrying' ? 'Reconnecting' : (logStreamState === 'error' ? 'Stream error' : 'Snapshot'));
+    var streamLabels = { live: 'Live', retrying: 'Reconnecting', error: 'Stream error' };
+    var streamText = streamLabels[logStreamState] || 'Snapshot';
     var metaHtml = '';
     metaHtml += '<div><strong>Viewer:</strong> ' + (logViewerPaused ? 'Paused' : 'Streaming') + '</div>';
     metaHtml += '<div><strong>Stream:</strong> ' + streamText + '</div>';
@@ -1285,21 +1303,7 @@ var ManagementUI = (function () {
         el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
         return;
       }
-      var html = '';
-      for (var i = 0; i < invites.length; i++) {
-        var inv = invites[i];
-        html += '<div class="mgmt-detail-item">';
-        html += '<div class="mgmt-invite-info">';
-        html += '<span>' + esc(inv.role) + ' &middot; ' + inv.uses + '/' + (inv.max_uses || '&infin;') + ' uses</span>';
-        html += '<div class="mgmt-token-field">';
-        html += '<input type="text" readonly value="' + esc(inv.token) + '">';
-        html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="copy-token" data-mgmt-token="' + esc(inv.token) + '">Copy</button>';
-        html += '</div>';
-        html += '</div>';
-        html += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-danger" data-mgmt-action="revoke-workspace-invite" data-mgmt-ws-id="' + esc(wsId) + '" data-mgmt-token="' + esc(inv.token) + '">Revoke</button>';
-        html += '</div>';
-      }
-      el.innerHTML = html;
+      el.innerHTML = renderInviteListHtml(invites, 'revoke-workspace-invite', 'data-mgmt-ws-id', wsId);
     } catch (e) {
       el.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
     }
@@ -1551,21 +1555,7 @@ var ManagementUI = (function () {
         if (!invites.length) {
           invitesEl.innerHTML = '<span class="mgmt-list-empty">No active invites</span>';
         } else {
-          var ihtml = '';
-          for (var i = 0; i < invites.length; i++) {
-            var inv = invites[i];
-            ihtml += '<div class="mgmt-detail-item">';
-            ihtml += '<div class="mgmt-invite-info">';
-            ihtml += '<span>' + esc(inv.role) + ' &middot; ' + inv.uses + '/' + (inv.max_uses || '&infin;') + ' uses</span>';
-            ihtml += '<div class="mgmt-token-field">';
-            ihtml += '<input type="text" readonly value="' + esc(inv.token) + '">';
-            ihtml += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="copy-token" data-mgmt-token="' + esc(inv.token) + '">Copy</button>';
-            ihtml += '</div>';
-            ihtml += '</div>';
-            ihtml += '<button class="mgmt-btn mgmt-btn-small mgmt-btn-danger" data-mgmt-action="revoke-invite" data-mgmt-board="' + esc(boardId) + '" data-mgmt-token="' + esc(inv.token) + '">Revoke</button>';
-            ihtml += '</div>';
-          }
-          invitesEl.innerHTML = ihtml;
+          invitesEl.innerHTML = renderInviteListHtml(invites, 'revoke-invite', 'data-mgmt-board', boardId);
         }
       }
 

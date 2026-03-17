@@ -53,6 +53,12 @@ pub struct PublicRoomService {
     member_counts: HashMap<String, usize>,
 }
 
+impl Default for PublicRoomService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PublicRoomService {
     pub fn new() -> Self {
         Self {
@@ -142,7 +148,7 @@ impl PublicRoomService {
         };
 
         let json = serde_json::to_string_pretty(&data)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(|e| io::Error::other(e))?;
 
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;

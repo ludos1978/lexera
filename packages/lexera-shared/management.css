@@ -365,25 +365,14 @@
 }
 
 /* Settings grid */
-.mgmt-settings-grid {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 4px 8px;
-  align-items: center;
-}
+.mgmt-settings-grid,
 .mgmt-sync-grid {
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 4px 8px;
   align-items: center;
 }
-.mgmt-settings-grid label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.mgmt-settings-grid label,
 .mgmt-sync-grid label {
   font-size: 11px;
   color: var(--text-secondary);
@@ -392,21 +381,7 @@
   text-overflow: ellipsis;
 }
 .mgmt-settings-grid input,
-.mgmt-settings-grid select {
-  width: 100%;
-  padding: 3px 6px;
-  border: 1px solid var(--input-border, var(--border));
-  border-radius: 3px;
-  background: var(--input-bg, var(--bg-tertiary));
-  color: var(--text-primary);
-  font-size: 11px;
-  font-family: inherit;
-  outline: none;
-}
-.mgmt-settings-grid input:focus,
-.mgmt-settings-grid select:focus {
-  border-color: var(--accent);
-}
+.mgmt-settings-grid select,
 .mgmt-sync-grid input,
 .mgmt-sync-grid select {
   width: 100%;
@@ -419,6 +394,8 @@
   font-family: inherit;
   outline: none;
 }
+.mgmt-settings-grid input:focus,
+.mgmt-settings-grid select:focus,
 .mgmt-sync-grid input:focus,
 .mgmt-sync-grid select:focus {
   border-color: var(--accent);
@@ -476,17 +453,20 @@
   font-size: 11px;
 }
 
-/* Connection rows */
-.mgmt-connection-row {
+/* Connection and peer rows */
+.mgmt-connection-row,
+.mgmt-peer-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
 }
-.mgmt-connection-row:last-child { border-bottom: none; }
+.mgmt-connection-row:last-child,
+.mgmt-peer-row:last-child { border-bottom: none; }
 
-.mgmt-connection-info {
+.mgmt-connection-info,
+.mgmt-peer-info {
   flex: 1;
   min-width: 0;
 }
@@ -511,21 +491,6 @@
 }
 .mgmt-connection-status.ok { background: var(--success); }
 .mgmt-connection-status.err { background: var(--error); }
-
-/* Peer rows */
-.mgmt-peer-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
-}
-.mgmt-peer-row:last-child { border-bottom: none; }
-
-.mgmt-peer-info {
-  flex: 1;
-  min-width: 0;
-}
 .mgmt-peer-name {
   font-size: 12px;
   color: var(--text-primary);

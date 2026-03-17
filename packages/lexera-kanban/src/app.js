@@ -11426,6 +11426,11 @@ const LexeraDashboard = (function () {
     throw new Error('LexeraCanvasDom is unavailable');
   }
 
+  function getCanvasStackDropApi() {
+    if (typeof globalThis !== 'undefined' && globalThis.LexeraCanvasStackDrop) return globalThis.LexeraCanvasStackDrop;
+    throw new Error('LexeraCanvasStackDrop is unavailable');
+  }
+
   function getBoardDeltaApi() {
     if (typeof globalThis !== 'undefined' && globalThis.LexeraBoardDelta) return globalThis.LexeraBoardDelta;
     throw new Error('LexeraBoardDelta is unavailable');
@@ -16190,6 +16195,13 @@ const LexeraDashboard = (function () {
       if (rowBoardHit) highlightDropZoneIndicator(type, mx, my);
       return !!(rowBoardHit || rowTreeHit);
     } else if (type === 'tree-stack' || type === 'board-stack') {
+      if (isCanvasBoardLayout()) {
+        var canvasStackRowTarget = resolveCanvasRowContentDropTarget(mx, my);
+        if (canvasStackRowTarget && canvasStackRowTarget.node) {
+          canvasStackRowTarget.node.classList.add('drop-target');
+          return true;
+        }
+      }
       var stackBoardHit = ptrFindHitNode(getElColumnsContainer().querySelectorAll('.board-stack'), mx, my, 'drag-over-left', 'drag-over-right', false);
       var stackTreeHit = ptrFindHitNode(getElBoardList().querySelectorAll('.tree-node[data-tree-drag="tree-stack"]'), mx, my, 'tree-drop-above', 'tree-drop-below', true);
       if (stackBoardHit) {
@@ -16440,6 +16452,28 @@ const LexeraDashboard = (function () {
     if (!srcBoardId || isNaN(srcRowIdx) || isNaN(srcStackIdx) || srcRowIdx < 0 || srcStackIdx < 0) return false;
 
     var srcIndexMode = source.indexMode || (srcBoardId === activeBoardId ? 'display' : 'full');
+    var canvasStackTarget = getCanvasStackDropApi().resolveCanvasStackDropTarget({
+      isCanvasLayout: isCanvasBoardLayout(),
+      activeBoardId: activeBoardId,
+      clientX: mx,
+      clientY: my,
+      grabOffsetX: ptrDrag && typeof ptrDrag.grabOffsetX === 'number' ? ptrDrag.grabOffsetX : 0,
+      grabOffsetY: ptrDrag && typeof ptrDrag.grabOffsetY === 'number' ? ptrDrag.grabOffsetY : 0,
+      fallbackRowContent: ptrDrag && ptrDrag.canvasSourceRowContent ? ptrDrag.canvasSourceRowContent : null,
+      resolveCanvasRowContentDropTarget: resolveCanvasRowContentDropTarget,
+      getCanvasRowContentNodeFromDropTarget: getCanvasRowContentNodeFromDropTarget,
+      getCanvasDropPositionInRowContent: getCanvasDropPositionInRowContent
+    });
+    if (canvasStackTarget) {
+      moveStackAcrossBoards(
+        { boardId: srcBoardId, rowIndex: srcRowIdx, stackIndex: srcStackIdx, indexMode: srcIndexMode },
+        canvasStackTarget
+      ).catch(function (err) {
+        lexeraLog('error', '[moveStackAcrossBoards] Canvas drop failed: ' + err);
+      });
+      return true;
+    }
+
     var stackTarget = getStackDropTarget(mx, my);
     if (stackTarget && stackTarget.boardId && stackTarget.rowIndex >= 0 && stackTarget.stackIndex >= 0) {
       var targetIndexMode = stackTarget.indexMode || (stackTarget.boardId === activeBoardId ? 'display' : 'full');
@@ -17148,10 +17182,47 @@ const LexeraDashboard = (function () {
     if (!sourceStackInfo || !sourceStackInfo.stack || !sourceStackInfo.row) return;
 
     var activeTouched = sourceBoardId === activeBoardId || targetBoardId === activeBoardId;
+    var targetRowInfo = null;
+    if (target.kind !== 'new-row') {
+      targetRowInfo = resolveRowForMutation(
+        targetBoardId,
+        targetBoardData,
+        target.rowIndex,
+        target.indexMode || 'full'
+      );
+    }
+    if (
+      target.kind === 'row' &&
+      targetRowInfo &&
+      targetRowInfo.row &&
+      sourceBoardData === targetBoardData &&
+      sourceStackInfo.row === targetRowInfo.row &&
+      target.canvasPosition
+    ) {
+      if (activeTouched && fullBoardData) pushUndo();
+      getCanvasStackDropApi().applyCanvasDropPositionToStack(
+        targetBoardId,
+        activeBoardId,
+        isCanvasBoardLayout(),
+        target,
+        sourceStackInfo.stack
+      );
+      var changedCanvasPlacement = {};
+      changedCanvasPlacement[sourceBoardId] = sourceBoardData;
+      await commitBoardMutations(changedCanvasPlacement, { refreshSidebar: true });
+      return;
+    }
     if (activeTouched && fullBoardData) pushUndo();
 
     var movedStack = sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 1)[0];
     if (!movedStack) return;
+    getCanvasStackDropApi().applyCanvasDropPositionToStack(
+      targetBoardId,
+      activeBoardId,
+      isCanvasBoardLayout(),
+      target,
+      movedStack
+    );
 
     if (target.kind === 'new-row') {
       insertUnnamedRowForMutation(targetBoardId, targetBoardData, target, [movedStack]);
@@ -17164,12 +17235,6 @@ const LexeraDashboard = (function () {
       return;
     }
 
-    var targetRowInfo = resolveRowForMutation(
-      targetBoardId,
-      targetBoardData,
-      target.rowIndex,
-      target.indexMode || 'full'
-    );
     if (!targetRowInfo || !targetRowInfo.row || !targetRowInfo.row.stacks) {
       sourceStackInfo.row.stacks.splice(sourceStackInfo.stackIndex, 0, movedStack);
       return;
@@ -28059,11 +28124,12 @@ const LexeraDashboard = (function () {
       settingsKey: 'zoomSpeed', actionPrefix: 'set-zoom-speed', defaultValue: '1',
       normalize: normalizeBoardZoomSpeedValue,
       options: [
-        { value: '0.01', label: '1%' }, { value: '0.05', label: '5%' },
-        { value: '0.1', label: '10%' }, { value: '0.25', label: '25%' },
-        { value: '0.5', label: '50%' }, { value: '0.75', label: '75%' },
-        { value: '1', label: '100%' }, { value: '1.25', label: '125%' },
-        { value: '1.5', label: '150%' }, { value: '2', label: '200%' }
+        { value: '0.01', label: '1%' }, { value: '0.02', label: '2%' },
+        { value: '0.03', label: '3%' }, { value: '0.06', label: '6%' },
+        { value: '0.1', label: '10%' }, { value: '0.18', label: '18%' },
+        { value: '0.32', label: '32%' }, { value: '0.56', label: '56%' },
+        { value: '1', label: '100%' }, { value: '1.33', label: '133%' },
+        { value: '1.67', label: '167%' }, { value: '2', label: '200%' }
       ]
     });
     BoardSettingRegistry.register({

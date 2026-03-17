@@ -39,6 +39,12 @@ pub struct DiscoveryService {
     shutdown: Option<tokio::sync::watch::Sender<bool>>,
 }
 
+impl Default for DiscoveryService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiscoveryService {
     pub fn new() -> Self {
         Self {

@@ -154,9 +154,11 @@ function loadMutationHarness() {
     // --- Injectable closure state ---
     var fullBoardData, activeBoardData, activeBoardId;
     var boardStore = {};
+    var canvasBoardLayout = false;
     var mutationEntityIdSeed = 0;
     var undoCalls = 0;
     function pushUndo() { undoCalls++; }
+    function isCanvasBoardLayout() { return canvasBoardLayout; }
     async function persistBoardMutation(opts) { return true; }
     async function loadBoardDataForMutation(boardId) {
       if (!boardId) return null;
@@ -178,6 +180,18 @@ function loadMutationHarness() {
     function summarizeBoardHierarchy() { return ''; }
     function flushDeferredBoardRefresh() {}
     function applyDefaultCanvasPlacementToStack(row, stack) { return stack; }
+    function getCanvasStackDropApi() {
+      return {
+        applyCanvasDropPositionToStack: function (targetBoardId, currentActiveBoardId, isCanvasLayout, target, stack) {
+          if (!isCanvasLayout || !target || !stack || !target.canvasPosition) return stack;
+          if (targetBoardId !== currentActiveBoardId) return stack;
+          if (!stack.params || typeof stack.params !== 'object') stack.params = {};
+          stack.params.x = String(Math.round(Number(target.canvasPosition.x)));
+          stack.params.y = String(Math.round(Number(target.canvasPosition.y)));
+          return stack;
+        }
+      };
+    }
 
     // --- Pure helpers ---
     ${pureHelpers}
@@ -200,6 +214,9 @@ function loadMutationHarness() {
       },
       setBoardState: function(boardId, boardData) {
         boardStore[boardId] = boardData;
+      },
+      setCanvasBoardLayout: function(value) {
+        canvasBoardLayout = !!value;
       },
       getState: function() {
         return { fullBoardData: fullBoardData, activeBoardData: activeBoardData };
@@ -792,6 +809,80 @@ describe('Drag/drop structural parity', () => {
     expect(targetBoard.rows[1].title).toBe('');
     expect(targetBoard.rows[1].stacks.length).toBe(1);
     expect(targetBoard.rows[1].stacks[0].id).toBe('stack-source');
+  });
+
+  it('moveStackAcrossBoards preserves stack order when repositioning within the same canvas row', async () => {
+    var full = makeBoard([
+      makeRow('row-main', 'Row Main', [
+        makeStack('stack-a', 'Stack A', [
+          makeColumn('col-a', 'Column A', [])
+        ]),
+        makeStack('stack-b', 'Stack B', [
+          makeColumn('col-b', 'Column B', [])
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+    M.setCanvasBoardLayout(true);
+
+    await M.moveStackAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        indexMode: 'display',
+      },
+      {
+        kind: 'row',
+        boardId: 'test-board',
+        rowIndex: 0,
+        indexMode: 'display',
+        canvasPosition: { x: 321, y: 654 },
+      }
+    );
+
+    var row = M.getState().fullBoardData.rows[0];
+    expect(row.stacks.map(function (stack) { return stack.id; })).toEqual(['stack-a', 'stack-b']);
+    expect(row.stacks[0].params).toEqual({ x: '321', y: '654' });
+  });
+
+  it('moveStackAcrossBoards applies canvas placement when moving a stack into another row', async () => {
+    var full = makeBoard([
+      makeRow('row-main', 'Row Main', [
+        makeStack('stack-a', 'Stack A', [
+          makeColumn('col-a', 'Column A', [])
+        ]),
+      ]),
+      makeRow('row-target', 'Row Target', [
+        makeStack('stack-b', 'Stack B', [
+          makeColumn('col-b', 'Column B', [])
+        ]),
+      ]),
+    ]);
+    M.setState(full, buildActiveBoard(M, full), 'test-board');
+    M.setCanvasBoardLayout(true);
+
+    await M.moveStackAcrossBoards(
+      {
+        boardId: 'test-board',
+        rowIndex: 0,
+        stackIndex: 0,
+        indexMode: 'display',
+      },
+      {
+        kind: 'row',
+        boardId: 'test-board',
+        rowIndex: 1,
+        indexMode: 'display',
+        canvasPosition: { x: 777, y: 222 },
+      }
+    );
+
+    var rows = M.getState().fullBoardData.rows;
+    expect(rows.length).toBe(1);
+    expect(rows[0].id).toBe('row-target');
+    expect(rows[0].stacks.map(function (stack) { return stack.id; })).toEqual(['stack-b', 'stack-a']);
+    expect(rows[0].stacks[1].params).toEqual({ x: '777', y: '222' });
   });
 });
 

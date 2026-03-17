@@ -5,11 +5,12 @@ use std::path::PathBuf;
 /// Indicates whether the board was parsed from legacy (## columns) or new (# / ## / ### hierarchy) format.
 /// Used by `generate_markdown()` to preserve round-trip fidelity: legacy boards are written back
 /// with `## Column` headings, new-format boards with `# Row` / `## Stack` / `### Column`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BoardFormat {
     /// Legacy flat format: `## Column Title` at heading level 2.
     /// Internally stored as a single Default row / Default stack wrapping the columns.
+    #[default]
     Legacy,
     /// Hierarchical format: `# Row` / `## Stack` / `### Column`.
     New,
@@ -190,12 +191,6 @@ pub struct KanbanBoard {
 /// Default board format for serde deserialization.
 fn default_board_format() -> BoardFormat {
     BoardFormat::Legacy
-}
-
-impl Default for BoardFormat {
-    fn default() -> Self {
-        BoardFormat::Legacy
-    }
 }
 
 impl KanbanBoard {

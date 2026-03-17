@@ -199,6 +199,12 @@ fn has_structural_mismatch(a: &KanbanBoard, b: &KanbanBoard) -> bool {
     false
 }
 
+impl Default for LocalStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LocalStorage {
     fn board_has_missing_kids(board: &KanbanBoard) -> bool {
         board.all_columns().iter().any(|column| {
@@ -1124,11 +1130,11 @@ impl LocalStorage {
                 return Err(StorageError::ConflictDetected {
                     board_id: board_id.to_string(),
                     conflicts: conflicts.len(),
-                    merge_result: card_merge::MergeResult {
+                    merge_result: Box::new(card_merge::MergeResult {
                         board: normalized_board.clone(),
                         conflicts,
                         auto_merged: 0,
-                    },
+                    }),
                     crashsave,
                 });
             }
@@ -1923,7 +1929,7 @@ impl LocalStorage {
         let canonical =
             fs::canonicalize(board_file_path).unwrap_or_else(|_| board_file_path.to_path_buf());
         visited.insert(canonical);
-        self.parse_with_includes_inner(content, board_id, board_dir, &mut visited)
+        self.parse_with_includes_inner(content, board_id, board_dir, &visited)
     }
 
     /// Inner include parser with cycle detection via a visited-path set.
@@ -2030,14 +2036,12 @@ impl LocalStorage {
                     "[lexera.storage.include] Include map lock poisoned during sync register"
                 );
             }
+        } else if let Ok(mut map) = self.include_map.write() {
+            map.remove_board(board_id);
         } else {
-            if let Ok(mut map) = self.include_map.write() {
-                map.remove_board(board_id);
-            } else {
-                log::error!(
-                    "[lexera.storage.include] Include map lock poisoned during sync remove"
-                );
-            }
+            log::error!(
+                "[lexera.storage.include] Include map lock poisoned during sync remove"
+            );
         }
     }
 
@@ -2421,8 +2425,7 @@ impl LocalStorage {
                         state.crdt = replacement_crdt;
                     }
                 }
-                return Err(StorageError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                return Err(StorageError::Io(std::io::Error::other(
                     format!("CRDT to_board panic: {}", msg),
                 )));
             }

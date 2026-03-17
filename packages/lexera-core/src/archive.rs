@@ -57,7 +57,7 @@ pub fn find_completed_cards(board: &KanbanBoard) -> Vec<CompletedCardInfo> {
     if !board.rows.is_empty() {
         for (row_idx, row) in board.rows.iter().enumerate() {
             for (stack_idx, stack) in row.stacks.iter().enumerate() {
-                for (_, col) in stack.columns.iter().enumerate() {
+                for col in stack.columns.iter() {
                     for (card_idx, card) in col.cards.iter().enumerate() {
                         if is_completed_card(card) {
                             let title = card.content.lines().next().unwrap_or("").to_string();

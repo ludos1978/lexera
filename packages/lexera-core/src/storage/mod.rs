@@ -80,7 +80,7 @@ pub enum StorageError {
     ConflictDetected {
         board_id: String,
         conflicts: usize,
-        merge_result: MergeResult,
+        merge_result: Box<MergeResult>,
         crashsave: Option<CrashsaveEntry>,
     },
 

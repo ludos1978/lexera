@@ -57,6 +57,12 @@ pub struct AuthService {
     room_members: HashMap<String, Vec<String>>,
 }
 
+impl Default for AuthService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuthService {
     pub fn new() -> Self {
         Self {
@@ -101,7 +107,7 @@ impl AuthService {
         let members = self
             .room_members
             .entry(room_id.to_string())
-            .or_insert_with(Vec::new);
+            .or_default();
         if !members.iter().any(|id| id == user_id) {
             members.push(user_id.to_string());
         }
@@ -131,26 +137,17 @@ impl AuthService {
 
     /// Check if user can write (edit) a room
     pub fn can_write(&self, room_id: &str, user_id: &str) -> bool {
-        match self.get_role(room_id, user_id) {
-            Some(RoomRole::Owner) | Some(RoomRole::Editor) => true,
-            _ => false,
-        }
+        matches!(self.get_role(room_id, user_id), Some(RoomRole::Owner) | Some(RoomRole::Editor))
     }
 
     /// Check if user can invite others to a room
     pub fn can_invite(&self, room_id: &str, user_id: &str) -> bool {
-        match self.get_role(room_id, user_id) {
-            Some(RoomRole::Owner) => true,
-            _ => false,
-        }
+        matches!(self.get_role(room_id, user_id), Some(RoomRole::Owner))
     }
 
     /// Check if user can delete a room
     pub fn can_delete(&self, room_id: &str, user_id: &str) -> bool {
-        match self.get_role(room_id, user_id) {
-            Some(RoomRole::Owner) => true,
-            _ => false,
-        }
+        matches!(self.get_role(room_id, user_id), Some(RoomRole::Owner))
     }
 
     /// List all members of a room
@@ -212,7 +209,7 @@ impl AuthService {
         };
 
         let json = serde_json::to_string_pretty(&data)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(|e| io::Error::other(e))?;
 
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, &json)?;

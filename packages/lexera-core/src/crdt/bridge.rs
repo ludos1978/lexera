@@ -16,7 +16,7 @@ use crate::types::*;
 
 /// Convert any Display-able Loro error into an io::Error.
 fn loro_err(e: impl std::fmt::Display) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, e.to_string())
+    io::Error::other(e.to_string())
 }
 
 fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
@@ -31,10 +31,7 @@ fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
 
 fn crdt_panic_err(op: &str, payload: Box<dyn std::any::Any + Send>) -> io::Error {
     let msg = panic_payload_to_string(payload);
-    io::Error::new(
-        io::ErrorKind::Other,
-        format!("CRDT panic during {}: {}", op, msg),
-    )
+    io::Error::other(format!("CRDT panic during {}: {}", op, msg))
 }
 
 /// CRDT-backed board storage that wraps a Loro document.
@@ -329,13 +326,13 @@ fn write_settings_to_map(
 ) -> io::Result<()> {
     for key in BOARD_SETTING_KEYS {
         if let Some(val) = settings.get_by_key(key) {
-            map.insert(*key, val.as_str()).map_err(loro_err)?;
+            map.insert(key, val.as_str()).map_err(loro_err)?;
         } else if base_settings
             .and_then(|bs| bs.get_by_key(key))
             .is_some()
         {
             // Key was present in base but removed — delete from CRDT
-            let _ = map.delete(*key);
+            let _ = map.delete(key);
         }
     }
     Ok(())
@@ -403,13 +400,13 @@ fn read_settings_from_map(map: &LoroMap) -> BoardSettings {
 }
 
 fn read_generation_meta_from_map(map: &LoroMap) -> GenerationMeta {
-    let mut meta = GenerationMeta::default();
-    meta.generation = get_optional_string(map, "generation").and_then(|v| v.parse().ok());
-    meta.content_hash = get_optional_string(map, "content_hash").filter(|s| !s.is_empty());
-    meta.dependency_hash = get_optional_string(map, "dependency_hash").filter(|s| !s.is_empty());
-    meta.resolved_hash = get_optional_string(map, "resolved_hash").filter(|s| !s.is_empty());
-    meta.writer_id = get_optional_string(map, "writer_id").filter(|s| !s.is_empty());
-    meta
+    GenerationMeta {
+        generation: get_optional_string(map, "generation").and_then(|v| v.parse().ok()),
+        content_hash: get_optional_string(map, "content_hash").filter(|s| !s.is_empty()),
+        dependency_hash: get_optional_string(map, "dependency_hash").filter(|s| !s.is_empty()),
+        resolved_hash: get_optional_string(map, "resolved_hash").filter(|s| !s.is_empty()),
+        writer_id: get_optional_string(map, "writer_id").filter(|s| !s.is_empty()),
+    }
 }
 
 // ── Building CRDT from Board ─────────────────────────────────────────────────
@@ -1824,7 +1821,7 @@ impl CrdtStore {
     pub fn set_peer_id(&self, peer_id: u64) -> io::Result<()> {
         self.doc
             .set_peer_id(peer_id)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     // ── Undo / Redo ──────────────────────────────────────────────────────────
@@ -1857,7 +1854,7 @@ impl CrdtStore {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.doc
                 .export(ExportMode::updates(vv))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+                .map_err(|e| io::Error::other(e.to_string()))
         }));
         match result {
             Ok(inner) => inner,
@@ -4508,7 +4505,7 @@ mod tests {
                 )],
             )],
         )]);
-        let mut store = CrdtStore::from_board(&original).unwrap();
+        let store = CrdtStore::from_board(&original).unwrap();
         let result = store.to_board();
 
         assert_eq!(result.rows[0].stacks[0].columns[0].cards.len(), 3);
@@ -4541,7 +4538,7 @@ mod tests {
                 ],
             )],
         )]);
-        let mut store = CrdtStore::from_board(&original).unwrap();
+        let store = CrdtStore::from_board(&original).unwrap();
         let result = store.to_board();
 
         assert_eq!(result.rows[0].stacks[0].columns.len(), 3);
@@ -4569,7 +4566,7 @@ mod tests {
                 ),
             ],
         )]);
-        let mut store = CrdtStore::from_board(&original).unwrap();
+        let store = CrdtStore::from_board(&original).unwrap();
         let result = store.to_board();
 
         assert_eq!(result.rows[0].stacks.len(), 2);
@@ -4598,7 +4595,7 @@ mod tests {
                 vec![("S3", vec![("Col3", vec![make_card("k003", "T3", false)])])],
             ),
         ]);
-        let mut store = CrdtStore::from_board(&original).unwrap();
+        let store = CrdtStore::from_board(&original).unwrap();
         let result = store.to_board();
 
         assert_eq!(result.rows.len(), 3);

@@ -55,6 +55,12 @@ pub struct BoardSyncHub {
     rooms: HashMap<String, BoardRoom>,
 }
 
+impl Default for BoardSyncHub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BoardSyncHub {
     pub fn new() -> Self {
         Self {
@@ -134,7 +140,7 @@ impl BoardSyncHub {
     pub fn has_clients(&self, board_id: &str) -> bool {
         self.rooms
             .get(board_id)
-            .map_or(false, |r| !r.clients.is_empty())
+            .is_some_and(|r| !r.clients.is_empty())
     }
 }
 

@@ -64,7 +64,7 @@ fn split_slides(content: &str) -> Vec<String> {
             let prev_blank = if current_lines.is_empty() {
                 true
             } else {
-                current_lines.last().map_or(true, |l| l.trim().is_empty())
+                current_lines.last().is_none_or(|l| l.trim().is_empty())
             };
             let next_blank = if i + 1 >= lines.len() {
                 true
@@ -75,7 +75,7 @@ fn split_slides(content: &str) -> Vec<String> {
             if prev_blank || next_blank {
                 // This is a slide separator
                 // Remove trailing blank line from current slide
-                while current_lines.last().map_or(false, |l| l.trim().is_empty()) {
+                while current_lines.last().is_some_and(|l| l.trim().is_empty()) {
                     current_lines.pop();
                 }
                 slides.push(current_lines.join("\n"));
@@ -95,7 +95,7 @@ fn split_slides(content: &str) -> Vec<String> {
     }
 
     // Final slide
-    while current_lines.last().map_or(false, |l| l.trim().is_empty()) {
+    while current_lines.last().is_some_and(|l| l.trim().is_empty()) {
         current_lines.pop();
     }
     if !current_lines.is_empty() {

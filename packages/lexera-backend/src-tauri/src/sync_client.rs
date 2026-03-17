@@ -140,6 +140,12 @@ pub struct SyncClientManager {
     connections: HashMap<String, RemoteConnection>,
 }
 
+impl Default for SyncClientManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SyncClientManager {
     pub fn new() -> Self {
         Self {
@@ -467,7 +473,7 @@ async fn run_sync_client(
     })
     .map_err(|e| format!("Failed to serialize ClientHello: {}", e))?;
     ws_tx
-        .send(Message::Text(hello.into()))
+        .send(Message::Text(hello))
         .await
         .map_err(|e| format!("Send ClientHello failed: {}", e))?;
 
@@ -696,7 +702,7 @@ async fn run_sync_client(
                                         updates,
                                     });
                                     if let Ok(msg) = client_msg {
-                                        if let Err(e) = ws_tx.send(Message::Text(msg.into())).await {
+                                        if let Err(e) = ws_tx.send(Message::Text(msg)).await {
                                             log::warn!(
                                                 "[sync_client] Failed to forward local update upstream for {}: {}",
                                                 local_board_id,
@@ -728,7 +734,7 @@ async fn run_sync_client(
                                         is_typing,
                                     });
                                     if let Ok(msg) = client_msg {
-                                        if let Err(e) = ws_tx.send(Message::Text(msg.into())).await {
+                                        if let Err(e) = ws_tx.send(Message::Text(msg)).await {
                                             log::warn!(
                                                 "[sync_client] Failed to forward editing presence upstream for {}: {}",
                                                 local_board_id,
@@ -802,10 +808,7 @@ async fn run_sync_client(
                                 "[sync_client] Empty delta with changed VV for {}; falling back to full delta export",
                                 local_board_id
                             );
-                            updates = match storage.export_crdt_updates_since(&local_board_id, &[]) {
-                                Some(bytes) => bytes,
-                                None => Vec::new(),
-                            };
+                            updates = storage.export_crdt_updates_since(&local_board_id, &[]).unwrap_or_default();
                         }
                         if updates.is_empty() {
                             last_sent_vv = current_vv;

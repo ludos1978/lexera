@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 /// Event types emitted by the file watcher.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// SHA-256 fingerprint of file content, used for self-write detection.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -59,7 +59,7 @@ pub enum BoardChangeEvent {
     ConfigChanged,
 }
 
-fn serialize_path<S: serde::Serializer>(path: &PathBuf, s: S) -> Result<S::Ok, S::Error> {
+fn serialize_path<S: serde::Serializer>(path: &Path, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(&path.to_string_lossy())
 }
 
