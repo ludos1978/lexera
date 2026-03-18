@@ -7,6 +7,7 @@ pub mod include;
 pub mod links;
 pub mod media;
 pub mod merge;
+pub mod panic_util;
 pub mod parser;
 pub mod search;
 pub mod storage;

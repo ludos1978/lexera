@@ -1,6 +1,76 @@
-# Lexera Kanban V1 Parity Todo
+# Lexera Kanban Todo
 
-## Open
+## High Priority — Security & Reliability
+
+- [ ] **Auth model: replace query-param identity** — current `?user=someId` is self-declaration, not authentication. Any user can impersonate any other user. Design a proper auth token system (at minimum: server-generated session tokens on registration, verified on every request).
+  - POST /collab/users/register has no auth — anyone can register as any user_id (account takeover)
+  - WebSocket sync_ws.rs accepts user_id from query param — client claims any identity
+  - SSE /events has no auth — anyone can watch all board change events
+  - /collab/server-info leaks local user_id unauthenticated
+  - /collab/public-rooms discoverable without auth
+
+- [ ] **Workspace invite ownership check** — create_workspace_invite (collab_api.rs:393) authenticates user but never verifies they own the workspace. Any authenticated user can create workspace invites.
+
+- [ ] **Invite system cleanup** —
+  - Remove dead `email` field from CreateInviteRequest (invite.rs:34) — collected but never used
+  - Call `cleanup_expired()` at startup and periodically — function exists (invite.rs:204) but is never called, expired invites accumulate forever
+  - Add `max_uses` upper bound validation (currently accepts u32::MAX)
+
+- [ ] **Rate limiting on collab endpoints** — no throttling on register, invite accept, or connect endpoints. Brute-force attacks possible on all auth-related routes.
+
+- [ ] **Input validation on user names** — no length or charset checks on user registration/update (collab_api.rs:679). Risk of XSS if names rendered unescaped, DoS via extremely long names.
+
+## High Priority — Media Sync
+
+- [ ] **HTTP-based media file sync between LAN peers** — media files are currently NOT synced at all. Pragmatic approach using existing infrastructure:
+  - Add `GET /boards/{id}/media-manifest` endpoint returning [{name, blake3_hash, size}] per file
+  - Sync manifest via existing WebSocket as new `MediaManifestUpdate` message type
+  - Background task: diff manifests between peers, fetch missing files via HTTP GET
+  - Push new uploads to discovered peers via HTTP POST
+  - ~300-400 lines in sync_client.rs, no new dependencies needed (or just add blake3 for hashing)
+
+## High Priority — Code Quality
+
+- [ ] **Extract backend lib.rs setup function** — 542-line setup() closure in lib.rs needs splitting into named functions: setup_file_watcher, setup_collab_services, spawn_background_tasks, restore_persisted_connections, spawn_http_server, setup_clipboard_watcher.
+
+- [ ] **Frontend modularization** — app.js is 28K lines. Continue extraction pattern (foldState.js, boardNavigation.js, sidebarTree.js, tagSystem.js already done). Next: board rendering, dashboard, canvas, export, settings.
+
+## Open — Features
+
+- [ ] file watcher, but we need a strong change handling from either user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is safe to never lose any data. it uses the known system of main file, included file we have in the version 1 system.
+
+- [ ] I am planning on adding other sources that could be used to directly integrate data into the kanban boards. Ideas that pop up are: RSS, EMail, Filesystem.
+
+- [ ] A mobile web clipper (something that can run on an ios and or android) would be best as well.
+
+## Long Term — Sync & Collaboration Architecture
+
+- [ ] **CRDT + VCS requirements analysis** — current Loro CRDT works for real-time text sync but doesn't fulfill all requirements:
+  - users should collaborate on markdown files AND media files
+  - users can be offline and changes must integrate on reconnect
+  - changes from specific users must be excludable (per-user isolation / branching)
+  - history can be purged to save space (accepted baseline)
+  - the system runs on user device or company server
+  - current conclusion: something like git with automatic commit + merge (with exclusion) is closer to what we need than pure CRDT
+  - **Decision made (2026-03)**: iroh/P2P is premature — Lexera is LAN-first, existing WebSocket + HTTP infrastructure handles current needs. Revisit P2P only when WAN collaboration is requested.
+  - **Reference**: REALTIME_VCS_RESEARCH.md documents iroh, FastCDC, Pijul, Jujutsu, Zed DeltaDB research — keep as future reference, don't implement now.
+
+- [ ] **Per-user change isolation** — Loro v1.10.3 has no native fork/branch API. Would require manual snapshot + merge logic on top. No documented user need yet. Revisit when Loro adds branching or when users request it.
+
+- [ ] **Content-addressed binary storage** — current media is path-based filesystem (`{board}-Media/`). No dedup across boards, no version history. If large file sync becomes a need, evaluate BLAKE3 + FastCDC chunking. Not needed for typical kanban media (screenshots, logos, PDFs under 20MB).
+
+- [ ] **WAN/internet collaboration** — current architecture is LAN-only (UDP discovery, WebSocket over localhost/LAN). If WAN is needed, evaluate: iroh (P2P with NAT traversal, but pre-1.0), relay server, or simple VPN recommendation. Don't add P2P infrastructure until there's a proven need.
+
+## Long Term — Architecture
+
+- [ ] **Repository promotion** — move packages/ to top-level structure (see packages/todo.md for full plan)
+- [ ] **Frontend build pipeline** — replace script-tag loading with module bundler (blocked by app.js monolith split)
+- [ ] **Plugin architecture** — unify plugin registration across kanban, backend, shared (manifests, not hardcoded lists)
+- [ ] **Board schema centralization** — single canonical schema for rows, stacks, columns, cards, settings, metadata
+- [ ] **Storage abstraction** — replace broad BoardStorage trait with narrower capability-focused services
+
+
+
 
 - [x] i want you to make another test-round if all changes the user makes and applied, and that all changed data can be saved securely. it must not undo anything by mistake or ignore a change, nor must it ever loose any data! verify and give me a detailed analysis for every point that misses these requirements!
   yes fix all of them. but never implement and guards that prevent problems, allways solve the underlying problem. if you encounter guards we must remove them and solve the problam that cause them!

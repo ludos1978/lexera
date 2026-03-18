@@ -23,6 +23,7 @@ pub mod sync_ws;
 
 use crate::state::{AppState, ResolvedIncoming};
 use lexera_core::include::resolver::IncludeMap;
+use lexera_core::panic_util::panic_payload_to_string;
 use lexera_core::storage::local::LocalStorage;
 use lexera_core::watcher::file_watcher::FileWatcher;
 use lexera_core::watcher::types::BoardChangeEvent;
@@ -77,13 +78,7 @@ pub fn run() {
         let thread_id = format!("{:?}", thread.id());
         let process_id = std::process::id();
 
-        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
-            (*s).to_string()
-        } else if let Some(s) = info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "unknown panic payload".to_string()
-        };
+        let message = panic_payload_to_string(info.payload());
 
         let location = info
             .location()

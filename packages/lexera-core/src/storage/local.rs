@@ -5,7 +5,6 @@
 /// - Atomic writes (write to .tmp, rename)
 /// - Self-write suppression for file watcher
 /// - Mutex-guarded writes to prevent concurrent modification
-use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -23,6 +22,7 @@ use crate::include::syntax;
 use crate::merge::card_identity;
 use crate::merge::diff::snapshot_board;
 use crate::merge::merge as card_merge;
+use crate::panic_util::panic_payload_to_string;
 use crate::parser;
 use crate::search::{SearchCardMeta, SearchDocument, SearchEngine, SearchOptions};
 use crate::types::*;
@@ -84,15 +84,6 @@ fn board_kid_sample(board: &KanbanBoard, limit: usize) -> Vec<String> {
         .collect()
 }
 
-fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
-    if let Some(s) = payload.downcast_ref::<&str>() {
-        (*s).to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "unknown panic".to_string()
-    }
-}
 
 #[derive(Clone, Copy)]
 struct SearchColumnRef<'a> {
@@ -805,15 +796,10 @@ impl LocalStorage {
                 );
             }));
             if let Err(panic_payload) = result {
-                let msg = panic_payload
-                    .downcast_ref::<String>()
-                    .map(|s| s.as_str())
-                    .or_else(|| panic_payload.downcast_ref::<&str>().copied())
-                    .unwrap_or("unknown panic");
                 log::error!(
                     "[lexera.crdt] Loro panicked during set_metadata for board {}: {}",
                     board_id,
-                    msg
+                    panic_payload_to_string(panic_payload.as_ref())
                 );
                 // Drop the corrupted CRDT — it will be rebuilt from markdown
                 // on next reload rather than persisting unknown state.
@@ -864,15 +850,10 @@ impl LocalStorage {
                     );
                 }
                 Err(panic_payload) => {
-                    let msg = panic_payload
-                        .downcast_ref::<String>()
-                        .map(|s| s.as_str())
-                        .or_else(|| panic_payload.downcast_ref::<&str>().copied())
-                        .unwrap_or("unknown panic");
                     log::error!(
                         "[lexera.crdt] Loro panicked during save_to_file for board {}: {}",
                         board_id,
-                        msg
+                        panic_payload_to_string(panic_payload.as_ref())
                     );
                 }
                 Ok(Ok(())) => {}
@@ -2333,7 +2314,7 @@ impl LocalStorage {
                     log::error!(
                         "[lexera.storage.crdt] Loro panicked during oplog_vv for board {}: {}",
                         board_id,
-                        panic_payload_message(payload.as_ref())
+                        panic_payload_to_string(payload.as_ref())
                     );
                 }
             }
@@ -2365,7 +2346,7 @@ impl LocalStorage {
                     log::error!(
                         "[lexera.storage.crdt] Loro panicked again during oplog_vv after rebuild for board {}: {}",
                         board_id,
-                        panic_payload_message(payload.as_ref())
+                        panic_payload_to_string(payload.as_ref())
                     );
                     None
                 }
@@ -2461,13 +2442,7 @@ impl LocalStorage {
         let mut board = match board_result {
             Ok(board) => board,
             Err(panic_payload) => {
-                let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                    (*s).to_string()
-                } else if let Some(s) = panic_payload.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "unknown panic in Loro CRDT to_board".to_string()
-                };
+                let msg = panic_payload_to_string(panic_payload.as_ref());
                 log::error!(
                     "[lexera.crdt] Loro panicked during to_board for {}: {}",
                     board_id,

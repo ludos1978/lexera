@@ -12,6 +12,7 @@ use loro::{
 
 use crate::merge::card_identity;
 use crate::merge::diff::{self, CardChange};
+use crate::panic_util::panic_payload_to_string;
 use crate::types::*;
 
 /// Convert any Display-able Loro error into an io::Error.
@@ -19,18 +20,8 @@ fn loro_err(e: impl std::fmt::Display) -> io::Error {
     io::Error::other(e.to_string())
 }
 
-fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
-    if let Some(s) = payload.downcast_ref::<&str>() {
-        (*s).to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "unknown panic payload".to_string()
-    }
-}
-
 fn crdt_panic_err(op: &str, payload: Box<dyn std::any::Any + Send>) -> io::Error {
-    let msg = panic_payload_to_string(payload);
+    let msg = panic_payload_to_string(payload.as_ref());
     io::Error::other(format!("CRDT panic during {}: {}", op, msg))
 }
 
