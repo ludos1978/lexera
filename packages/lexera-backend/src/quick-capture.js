@@ -530,6 +530,45 @@
     return navStack.length > 0 ? navStack[navStack.length - 1] : null;
   }
 
+  function isSearchInputFocused() {
+    return document.activeElement === els.searchInput;
+  }
+
+  function focusSearchInput() {
+    if (!els.searchInput) return;
+    els.searchInput.focus();
+    const end = els.searchInput.value.length;
+    els.searchInput.setSelectionRange(end, end);
+  }
+
+  function insertIntoSearchInput(text) {
+    if (!els.searchInput) return;
+    focusSearchInput();
+    const input = els.searchInput;
+    const start = typeof input.selectionStart === 'number' ? input.selectionStart : input.value.length;
+    const end = typeof input.selectionEnd === 'number' ? input.selectionEnd : input.value.length;
+    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    const caret = start + text.length;
+    input.setSelectionRange(caret, caret);
+    onSearchInput();
+  }
+
+  function activateSearchSelection(direction) {
+    if (!isSearchMode || searchResults.length === 0) return false;
+    if (activeSearchIndex < 0) {
+      activeSearchIndex = direction === 'down' ? 0 : searchResults.length - 1;
+    } else if (direction === 'down') {
+      activeSearchIndex = Math.min(activeSearchIndex + 1, searchResults.length - 1);
+    } else {
+      activeSearchIndex = Math.max(activeSearchIndex - 1, 0);
+    }
+    if (isSearchInputFocused()) {
+      els.searchInput.blur();
+    }
+    renderLevel();
+    return true;
+  }
+
   function pushWorkspacesLevel() {
     const items = buildWorkspaceItems();
     navStack = [{ items: items, activeIndex: items.length > 0 ? 0 : -1, title: 'Workspaces' }];
@@ -852,6 +891,9 @@
       exitSearchMode();
       return;
     }
+    activeSearchIndex = -1;
+    enterSearchMode();
+    renderLevel();
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => performSearch(query), 300);
   }
@@ -942,7 +984,7 @@
     }
 
     searchResults = results;
-    activeSearchIndex = results.length > 0 ? 0 : -1;
+    activeSearchIndex = -1;
     enterSearchMode();
     renderLevel();
   }
@@ -1129,6 +1171,14 @@
 
     els.searchInput.addEventListener('input', onSearchInput);
 
+    document.addEventListener('paste', (e) => {
+      if (!isExpanded) return;
+      if (isSearchInputFocused()) return;
+      if (document.activeElement && document.activeElement !== document.body && document.activeElement !== els.searchInput) return;
+      e.preventDefault();
+      pasteIntoSelected();
+    });
+
     window.addEventListener('focus', () => {
       loadClipboardSummary().catch(log);
       if (isExpanded && els.searchInput) els.searchInput.focus();
@@ -1174,18 +1224,16 @@
 
       if (!isExpanded) return;
 
-      // Arrow navigation
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        if (document.activeElement === els.searchInput && !els.searchInput.value.trim()) {
-          els.searchInput.blur();
-        }
-        if (document.activeElement === els.searchInput && els.searchInput.value.trim()) {
-          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') return;
-        }
-      }
+      const searchFocused = isSearchInputFocused();
+      const query = els.searchInput ? els.searchInput.value.trim() : '';
 
+      // Arrow navigation
       if (e.key === 'ArrowDown') {
         e.preventDefault();
+        if (isSearchMode && query) {
+          activateSearchSelection('down');
+          return;
+        }
         if (!level || level.items.length === 0) return;
         const maxIdx = level.items.length - 1;
         const newIdx = Math.min((level.activeIndex < 0 ? -1 : level.activeIndex) + 1, maxIdx);
@@ -1200,6 +1248,10 @@
 
       if (e.key === 'ArrowUp') {
         e.preventDefault();
+        if (isSearchMode && query) {
+          activateSearchSelection('up');
+          return;
+        }
         if (!level || level.items.length === 0) return;
         const newIdx = Math.max((level.activeIndex < 0 ? 1 : level.activeIndex) - 1, 0);
         if (isSearchMode) {
@@ -1213,8 +1265,8 @@
 
       // Right arrow: drill into selected item
       if (e.key === 'ArrowRight') {
-        if (document.activeElement === els.searchInput && els.searchInput.value.trim()) return;
         e.preventDefault();
+        if (isSearchMode && activeSearchIndex < 0) return;
         if (!level || level.activeIndex < 0 || level.activeIndex >= level.items.length) return;
         const node = level.items[level.activeIndex];
         if (node.type === 'card') return;
@@ -1233,25 +1285,21 @@
         return;
       }
 
-      // Enter: drill into (non-card)
+      // Enter: paste clipboard into the selected target
       if (e.key === 'Enter') {
-        if (document.activeElement === els.searchInput && els.searchInput.value.trim()) {
-          return;
-        }
+        if (searchFocused && activeSearchIndex < 0) return;
         e.preventDefault();
-        if (!level || level.activeIndex < 0 || level.activeIndex >= level.items.length) return;
-        const node = level.items[level.activeIndex];
-        if (node.type === 'card') return;
-        if (isSearchMode) {
-          drillFromSearch(node);
-        } else {
-          drillInto(node);
+        if (level && level.activeIndex >= 0 && level.activeIndex < level.items.length) {
+          pasteIntoSelected();
         }
         return;
       }
 
       // Cmd+V / Ctrl+V: paste into selected
       if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+        if (searchFocused) {
+          return;
+        }
         if (level && level.activeIndex >= 0 && level.activeIndex < level.items.length) {
           e.preventDefault();
           pasteIntoSelected();
@@ -1260,8 +1308,9 @@
       }
 
       // Printable character: focus search input
-      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && document.activeElement !== els.searchInput) {
-        els.searchInput.focus();
+      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && document.activeElement !== els.searchInput) {
+        e.preventDefault();
+        insertIntoSearchInput(e.key);
       }
     });
   }

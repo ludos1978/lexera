@@ -2,13 +2,21 @@
 
 ## Open
 
-- [ ] i want you to make another test-round if all changes the user makes and applied, and that all changed data can be saved securely. it must not undo anything by mistake or ignore a change, nor must it ever loose any data! verify and give me a detailed analysis for every point that misses these requirements!
+- [x] i want you to make another test-round if all changes the user makes and applied, and that all changed data can be saved securely. it must not undo anything by mistake or ignore a change, nor must it ever loose any data! verify and give me a detailed analysis for every point that misses these requirements!
+  yes fix all of them. but never implement and guards that prevent problems, allways solve the underlying problem. if you encounter guards we must remove them and solve the problam that cause them!
+
 
 - [x] if a board is switched to kanban mode, the canvas mode values must not be deleted. they can stay in the values and be ignored. also when saving! (verified: parser roundtrips all params regardless of mode, test added in parser.rs — `test_canvas_params_preserved_after_kanban_mode_switch`)
 
 - [ ] file watcher, but we need a strong change handling from eigther user changes and file system (data storage backend) changes. plan with a multi-user system in mind and a system that is save to never loose any data. it uses the known system of main file, included file we have in the version 1 syste
 
-- [ ] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board as cards. It's should be using the same method as the quick capture. But it would also be good if it could access the browser data (cache, reader mode) (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? 
+- [x] I want a web clipper similar to markdowner / Marksnip or obsidian webclipper to archive links, websites, images etc. directly into a kanban board as cards. It's should be using the same method as the quick capture. But it would also be good if it could access the browser data (cache, reader mode) (if the user is logged in somewhere or we cant access the data from playwright). What system would you suggest? 
+  - ok, after searching the uer must move down with the arrows first to focus one of the results, only then does the movement within the results work. the same applies to pasting. pasting in the search will paste into the searcch field if that is selected. the currently selected content is pasted into the element on enter or on meta+v / ctrl+v . when opening the web clipper it depends on the user action. if it's an arrow movement we move within the boards, if it's pasting we paste the content into the search field as well as any letter or key other then arrow keys start the search
+  - make sure the web clipper also downloads all images and replaces links and media within the document with the downloaded media!
+  - reader mode content is preferred over a website content!
+  - if a link on a website provides a valid rss feed, give this as an option for the user to read the content from! for example the following feed provides a valid content for the link in the first rss element!
+    - https://www.reddit.com/r/IndieDev/comments/1rwey0e/the_part_nobody_sees_is_the_most_important_part/
+    - https://www.reddit.com/r/IndieDev/comments/1rwey0e/the_part_nobody_sees_is_the_most_important_part.rss
 
 - [ ] I am planning on adding other sources that could be used to directly integrate date into the kanban baords. Ideas that pop up are: RSS, EMail, Filesystem. 
 

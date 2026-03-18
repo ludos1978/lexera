@@ -43,7 +43,7 @@ afterEach(() => {
 
 describe('normalizeBoardScrollSpeedValue', () => {
   it('normalizes menu-style values and keeps sane defaults', () => {
-    expect(ScrollHelpers.normalizeBoardScrollSpeedValue('')).toBe('0.06');
+    expect(ScrollHelpers.normalizeBoardScrollSpeedValue('')).toBe('1');
     expect(ScrollHelpers.normalizeBoardScrollSpeedValue('0.75x')).toBe('0.75');
     expect(ScrollHelpers.normalizeBoardScrollSpeedValue('1.5')).toBe('1.5');
   });
@@ -56,7 +56,7 @@ describe('normalizeBoardScrollSpeedValue', () => {
 
 describe('normalizeBoardZoomSpeedValue', () => {
   it('normalizes menu-style values and keeps sane defaults', () => {
-    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('')).toBe('1');
+    expect(ScrollHelpers.normalizeBoardZoomSpeedValue('')).toBe('0.06');
     expect(ScrollHelpers.normalizeBoardZoomSpeedValue('0.75x')).toBe('0.75');
     expect(ScrollHelpers.normalizeBoardZoomSpeedValue('1.5')).toBe('1.5');
   });
@@ -72,8 +72,8 @@ describe('getBoardScrollSpeedMultiplier', () => {
     expect(ScrollHelpers.getBoardScrollSpeedMultiplier({ scrollSpeed: '0.5' })).toBe(0.5);
   });
 
-  it('falls back to 6% when the board has no custom speed', () => {
-    expect(ScrollHelpers.getBoardScrollSpeedMultiplier({})).toBe(0.06);
+  it('falls back to 100% when the board has no custom speed', () => {
+    expect(ScrollHelpers.getBoardScrollSpeedMultiplier({})).toBe(1);
   });
 });
 
@@ -82,8 +82,8 @@ describe('getBoardZoomSpeedMultiplier', () => {
     expect(ScrollHelpers.getBoardZoomSpeedMultiplier({ zoomSpeed: '0.05' })).toBe(0.05);
   });
 
-  it('falls back to 1 when the board has no custom zoom speed', () => {
-    expect(ScrollHelpers.getBoardZoomSpeedMultiplier({})).toBe(1);
+  it('falls back to 6% when the board has no custom zoom speed', () => {
+    expect(ScrollHelpers.getBoardZoomSpeedMultiplier({})).toBe(0.06);
   });
 });
 

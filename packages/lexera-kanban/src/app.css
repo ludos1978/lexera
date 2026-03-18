@@ -26,6 +26,7 @@
   --card-border: #d4d4d4;
   --card-checked: #f0f0f0;
   --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #a8a8a8;
   --scrollbar-track: transparent;
   --header-height: 44px;
   --app-bottom-inset: 22px;
@@ -123,7 +124,12 @@
 
 /* Dark theme vars are applied by JS via applyTheme() */
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
 
 body {
   font-family: var(--theme-font, 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
@@ -150,7 +156,7 @@ textarea {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--scrollbar-track); }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #555; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover, var(--scrollbar-thumb)); }
 
 /* Header */
 .header {
@@ -583,6 +589,8 @@ body.split-mode .layout > .main {
 }
 
 .sidebar-header {
+  --sidebar-header-action-width: 24px;
+  --sidebar-header-action-gap: 8px;
   padding: 10px 12px 8px;
   font-size: 11px;
   font-weight: 600;
@@ -599,7 +607,7 @@ body.split-mode .layout > .main {
 .workspace-select {
   width: 100%;
   min-width: 0;
-  padding: 2px 4px;
+  padding: 2px 18px 2px 4px;
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -645,6 +653,9 @@ body.split-mode .layout > .main {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
+  min-width: var(--sidebar-header-action-width);
+  justify-content: flex-end;
 }
 
 .sidebar-btn {
@@ -1718,6 +1729,7 @@ body.show-special-characters .card-editor-textarea {
   overflow: scroll;
   scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   width: 100%;
   max-width: 100%;
   padding: 0;
@@ -7061,12 +7073,12 @@ select.export-input {
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .workspace-select-wrap {
   width: 100%;
-  padding: 0 12px;
+  padding: 0 calc(12px + var(--sidebar-header-action-width) + var(--sidebar-header-action-gap)) 0 12px;
   box-sizing: border-box;
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .workspace-select {
-  padding-right: 38px;
+  padding-right: calc(24px + var(--sidebar-header-action-width) + var(--sidebar-header-action-gap));
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .sidebar > .sidebar-header .sidebar-header-actions {
@@ -7074,6 +7086,7 @@ select.export-input {
   top: 50%;
   right: 12px;
   transform: translateY(-50%);
+  width: var(--sidebar-header-action-width);
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .workspace-select,
@@ -7087,7 +7100,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .workspace-select {
-  padding: 5px 24px 5px 8px;
+  padding: 5px calc(24px + var(--sidebar-header-action-width) + var(--sidebar-header-action-gap)) 5px 8px;
   font-size: 11px;
   text-transform: none;
   letter-spacing: 0.02em;
@@ -7095,7 +7108,7 @@ select.export-input {
 }
 
 :root[data-visual-theme="sleek"] body:not(.embedded-mode) .workspace-select-wrap::after {
-  right: 10px;
+  right: calc(10px + var(--sidebar-header-action-width) + var(--sidebar-header-action-gap));
   color: var(--text-muted);
   opacity: 0.85;
 }

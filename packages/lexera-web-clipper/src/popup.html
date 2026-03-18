@@ -21,14 +21,16 @@
         <span>Backend URL</span>
         <input id="backend-url-input" type="text" placeholder="http://127.0.0.1:13080" spellcheck="false" autocomplete="off">
       </label>
-      <label class="field">
-        <span>Board</span>
-        <select id="board-select"></select>
-      </label>
-      <label class="field">
-        <span>Column</span>
-        <select id="column-select"></select>
-      </label>
+      <div class="field">
+        <div class="field-header">
+          <span>Target</span>
+          <span class="field-hint">Arrows, Enter, Cmd/Ctrl+Enter</span>
+        </div>
+        <div class="search-section">
+          <input id="search-input" class="search-input" type="text" placeholder="Search workspaces, boards and cards..." autocomplete="off" spellcheck="false">
+        </div>
+        <div id="browse-area" class="browse-area"></div>
+      </div>
       <label class="field">
         <span>Clip Mode</span>
         <select id="mode-select">
@@ -39,11 +41,15 @@
           <option value="image">Image</option>
         </select>
       </label>
+      <label class="field">
+        <span>Content Source</span>
+        <select id="source-select"></select>
+      </label>
       <label class="checkbox-row">
         <input id="remember-target" type="checkbox" checked>
         <span>Remember this target</span>
       </label>
-      <button id="capture-button" class="primary-button" type="button">Capture To Board</button>
+      <button id="capture-button" class="primary-button" type="button">Capture To Target</button>
       <p id="result-status" class="result-status"></p>
     </section>
 

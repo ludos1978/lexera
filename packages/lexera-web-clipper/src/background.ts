@@ -1,9 +1,11 @@
 import {
   DEFAULT_WEB_CLIPPER_MODE,
+  WebClipperCollectedPageContext,
   WebClipperContext,
   WebClipperMode,
   WebClipperTarget,
   extractUrlHostLabel,
+  getPreferredWebClipperContext,
   normalizeClipperMode,
   trimPreview,
 } from '../../shared/src/webClipper';
@@ -22,7 +24,8 @@ import {
 import {
   discoverBackend,
   listBoards,
-  listColumns,
+  listWorkspaces,
+  loadBoardTargetData,
   readClipperState,
   resolveCaptureTarget,
   writeClipperState,
@@ -56,12 +59,48 @@ async function ensureContentCapture(tabId: number): Promise<void> {
   });
 }
 
-async function collectTabContext(tab: any): Promise<WebClipperContext> {
+function fallbackCollectedContext(tab: any): WebClipperCollectedPageContext {
   const fallbackContext: WebClipperContext = {
     url: typeof tab?.url === 'string' ? tab.url : '',
     title: typeof tab?.title === 'string' ? tab.title : '',
+    sourceType: 'website',
+    sourceLabel: 'Website',
     capturedAt: new Date().toISOString(),
   };
+  return { website: fallbackContext, feedCandidates: [] };
+}
+
+function normalizeCollectedContext(
+  tab: any,
+  collection: any,
+  context: any,
+): WebClipperCollectedPageContext {
+  const fallback = fallbackCollectedContext(tab);
+  const website = collection?.website || context || {};
+  const normalizedWebsite: WebClipperContext = {
+    ...fallback.website,
+    ...website,
+    sourceType: website?.sourceType || 'website',
+    sourceLabel: website?.sourceLabel || 'Website',
+  };
+  const normalizedReader = collection?.reader
+    ? {
+        ...normalizedWebsite,
+        ...collection.reader,
+        sourceType: 'reader' as const,
+        sourceLabel: collection.reader?.sourceLabel || 'Reader',
+      }
+    : undefined;
+
+  return {
+    website: normalizedWebsite,
+    reader: normalizedReader,
+    feedCandidates: Array.isArray(collection?.feedCandidates) ? collection.feedCandidates : [],
+  };
+}
+
+async function collectTabContext(tab: any): Promise<WebClipperCollectedPageContext> {
+  const fallbackContext = fallbackCollectedContext(tab);
 
   if (!tabCanBeInspected(tab)) {
     return fallbackContext;
@@ -70,11 +109,8 @@ async function collectTabContext(tab: any): Promise<WebClipperContext> {
   try {
     await ensureContentCapture(tab.id);
     const response = await sendTabMessage(tab.id, { type: MESSAGE_TYPES.contentCollect });
-    if (response?.ok && response.context) {
-      return {
-        ...fallbackContext,
-        ...response.context,
-      };
+    if (response?.ok) {
+      return normalizeCollectedContext(tab, response.collection, response.context);
     }
   } catch (_error) {
     return fallbackContext;
@@ -102,13 +138,15 @@ async function loadPopupState(): Promise<any> {
     };
   }
 
-  const [boards, activeTab, target] = await Promise.all([
+  const [boards, workspacePayload, activeTab, target] = await Promise.all([
     listBoards(backendUrl),
+    listWorkspaces(backendUrl),
     getActiveTab(),
     resolveCaptureTarget(backendUrl, state.target),
   ]);
-  const context = await collectTabContext(activeTab);
-  const columns = target?.boardId ? await listColumns(backendUrl, target.boardId) : [];
+  const collectedContext = await collectTabContext(activeTab);
+  const context = getPreferredWebClipperContext(collectedContext);
+  const targetData = target?.boardId ? await loadBoardTargetData(backendUrl, target.boardId) : null;
 
   await writeClipperState({ backendUrl });
 
@@ -116,7 +154,11 @@ async function loadPopupState(): Promise<any> {
     ok: true,
     backendUrl,
     boards,
-    columns,
+    workspaces: workspacePayload.workspaces,
+    defaultWorkspace: workspacePayload.defaultWorkspace || null,
+    columns: targetData?.columns || [],
+    fullBoard: targetData?.fullBoard || null,
+    collectedContext,
     context,
     target,
     mode: normalizeClipperMode(state.mode || DEFAULT_WEB_CLIPPER_MODE),
@@ -153,7 +195,11 @@ function mergeContextMenuInfo(
   return nextContext;
 }
 
-async function performCapture(mode: WebClipperMode, explicitTarget?: WebClipperTarget | null): Promise<any> {
+async function performCapture(
+  mode: WebClipperMode,
+  explicitTarget?: WebClipperTarget | null,
+  explicitContext?: WebClipperContext | null,
+): Promise<any> {
   const state = await readClipperState();
   const backendUrl = await discoverBackend(state.backendUrl);
   if (!backendUrl) {
@@ -162,7 +208,8 @@ async function performCapture(mode: WebClipperMode, explicitTarget?: WebClipperT
 
   const target = await resolveCaptureTarget(backendUrl, explicitTarget || state.target);
   const activeTab = await getActiveTab();
-  const context = await collectTabContext(activeTab);
+  const collectedContext = await collectTabContext(activeTab);
+  const context = explicitContext || getPreferredWebClipperContext(collectedContext);
   const result = await captureContextToBoard(backendUrl, target, mode, context);
 
   await writeClipperState({
@@ -175,6 +222,7 @@ async function performCapture(mode: WebClipperMode, explicitTarget?: WebClipperT
     backendUrl,
     target,
     context,
+    collectedContext,
     markdownPreview: trimPreview(result.markdown, 400),
   };
 }
@@ -235,7 +283,8 @@ addContextMenuListener(async (info, tab) => {
 
     const mode = clipModeForMenuItem(info.menuItemId);
     const target = await resolveCaptureTarget(backendUrl, state.target);
-    const baseContext = await collectTabContext(tab);
+    const collectedContext = await collectTabContext(tab);
+    const baseContext = getPreferredWebClipperContext(collectedContext);
     const context = mergeContextMenuInfo(mode, baseContext, info, tab);
 
     await captureContextToBoard(backendUrl, target, mode, context);
@@ -272,8 +321,8 @@ addRuntimeMessageListener(async (message) => {
       if (!backendUrl) {
         return { ok: false, error: 'Lexera Backend is not reachable' };
       }
-      const columns = await listColumns(backendUrl, message.boardId);
-      return { ok: true, columns };
+      const targetData = await loadBoardTargetData(backendUrl, message.boardId);
+      return { ok: true, columns: targetData.columns, fullBoard: targetData.fullBoard || null };
     }
 
     case MESSAGE_TYPES.popupSetBackendUrl: {
@@ -285,11 +334,12 @@ addRuntimeMessageListener(async (message) => {
     case MESSAGE_TYPES.popupCapture: {
       const mode = normalizeClipperMode(message.mode || DEFAULT_WEB_CLIPPER_MODE);
       const explicitTarget = message.target || null;
+      const explicitContext = message.context || null;
       const preferredBackendUrl = typeof message.backendUrl === 'string' ? message.backendUrl.trim() : '';
       if (typeof message.backendUrl === 'string') {
         await writeClipperState({ backendUrl: preferredBackendUrl });
       }
-      const result = await performCapture(mode, explicitTarget);
+      const result = await performCapture(mode, explicitTarget, explicitContext);
       if (message.rememberTarget !== false && explicitTarget?.boardId) {
         await writeClipperState({
           target: {

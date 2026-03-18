@@ -9,13 +9,13 @@ Cross-browser WebExtension scaffold for clipping links, selections, articles, pa
   - creates context-menu capture actions
   - resolves the clip target from saved extension state or backend `incoming`
   - submits cards through the existing `/boards/{board_id}/columns/{col_index}/cards` API
-  - uploads local image payloads through `/boards/{board_id}/media`
+  - archives referenced page media into `/boards/{board_id}/media` and rewrites captured markdown to local board paths
 - `popup.ts`
-  - lets the user choose the board, column, and clip mode
-  - previews the active tab context before capture
+  - lets the user choose the board target, clip mode, and content source
+  - previews reader, website, and feed-backed capture sources before save
 - `content.ts`
-  - collects the current page title, selection, article-ish text, excerpt, and lead image
-  - acts as the portable replacement for browser-specific reader mode
+  - collects the current page title, selection, reader-cleaned content, website content, feed candidates, excerpt, lead image, and structured markdown for article/page/selection capture
+  - prefers a portable reader-style extraction over the noisier website DOM by default
 - `src/shared/`
   - code shared between popup and background
 - `../../shared/src/webClipper.ts`
@@ -26,8 +26,10 @@ Cross-browser WebExtension scaffold for clipping links, selections, articles, pa
 The right primary system is a browser extension talking directly to the local Lexera backend, not Playwright.
 
 - For logged-in pages, the content script can read the DOM after the user is already authenticated.
-- For article capture, use in-page extraction heuristics instead of browser reader mode. Firefox has reader-mode APIs, but they are not portable across Chrome and Safari.
+- Prefer the portable reader-style extraction over raw website capture when both are available.
+- Offer feed-backed capture when the current page exposes a valid RSS or Atom alternative.
 - For files and screenshots, upload into the board media folder and create the card from the resulting markdown path.
+- For page/article capture, archive embedded media and downloadable file links into the board media folder so the saved card keeps local references instead of hotlinking remote assets.
 - For private resources that only exist in the live page session, prefer content-script extraction first. Arbitrary browser cache access is not a portable WebExtension feature.
 
 ## Next Phase
@@ -43,6 +45,10 @@ If you want deeper authenticated capture later, keep the browser extension as th
 - Chrome / Chromium: load `dist/chrome`
 - Firefox: load `dist/firefox`
 - Safari: use Apple's Safari Web Extension converter against `dist/chrome`
+
+## Permissions
+
+The extension requests `<all_urls>` host access so it can archive referenced page assets and upload them into the target board's media folder. Local backend access still goes through `http://127.0.0.1/*` and `http://localhost/*`.
 
 Example:
 

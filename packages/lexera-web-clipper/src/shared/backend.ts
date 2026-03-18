@@ -17,11 +17,27 @@ export interface BackendBoardSummary {
   id: string;
   title: string;
   filePath?: string;
+  file_path?: string;
+  workspaceIds?: string[];
+  workspace_ids?: string[];
+  columns?: BackendColumnSummary[];
+}
+
+export interface BackendWorkspaceSummary {
+  id: string;
+  name: string;
+  board_count?: number;
 }
 
 export interface BackendColumnSummary {
   index: number;
   title: string;
+  id?: string;
+}
+
+export interface BackendBoardTargetData {
+  columns: BackendColumnSummary[];
+  fullBoard?: any;
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -99,9 +115,27 @@ export async function listBoards(baseUrl: string): Promise<BackendBoardSummary[]
   return Array.isArray(payload?.boards) ? payload.boards : [];
 }
 
+export async function listWorkspaces(
+  baseUrl: string,
+): Promise<{ workspaces: BackendWorkspaceSummary[]; defaultWorkspace?: string | null }> {
+  const payload = await fetchJson(baseUrl, '/config/workspaces');
+  return {
+    workspaces: Array.isArray(payload?.workspaces) ? payload.workspaces : [],
+    defaultWorkspace: typeof payload?.default_workspace === 'string' ? payload.default_workspace : null,
+  };
+}
+
 export async function listColumns(baseUrl: string, boardId: string): Promise<BackendColumnSummary[]> {
+  const payload = await loadBoardTargetData(baseUrl, boardId);
+  return payload.columns;
+}
+
+export async function loadBoardTargetData(baseUrl: string, boardId: string): Promise<BackendBoardTargetData> {
   const payload = await fetchJson(baseUrl, `/boards/${encodeURIComponent(boardId)}/columns`);
-  return Array.isArray(payload?.columns) ? payload.columns : [];
+  return {
+    columns: Array.isArray(payload?.columns) ? payload.columns : [],
+    fullBoard: payload?.fullBoard || null,
+  };
 }
 
 function targetFromIncoming(statusPayload: any): WebClipperTarget | null {
@@ -164,6 +198,23 @@ export async function submitMarkdownCard(
   target: WebClipperTarget,
   content: string,
 ): Promise<void> {
+  if (typeof target.cardId === 'string' && target.cardId.trim()) {
+    const response = await fetch(
+      `${normalizeBaseUrl(baseUrl)}/boards/${encodeURIComponent(target.boardId)}/cards/${encodeURIComponent(target.cardId)}/append`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to add card: ${response.status} ${response.statusText}`);
+    }
+    return;
+  }
+
   let colIndex = target.colIndex;
   if (typeof colIndex !== 'number') {
     const columns = await listColumns(baseUrl, target.boardId);

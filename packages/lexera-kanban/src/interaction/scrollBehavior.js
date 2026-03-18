@@ -37,20 +37,22 @@
 
   function normalizeBoardScrollSpeedValue(rawValue) {
     var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
-    if (!text || text === 'default' || text === 'normal') return '0.06';
+    if (!text || text === 'default' || text === 'normal') return '1';
     return normalizeSpeedMultiplierValue(text, 0.01, 3);
   }
 
   function getBoardScrollSpeedMultiplier(source, fallback) {
-    return getSpeedMultiplier(source, 'scrollSpeed', fallback == null ? '0.06' : fallback, normalizeBoardScrollSpeedValue);
+    return getSpeedMultiplier(source, 'scrollSpeed', fallback == null ? '1' : fallback, normalizeBoardScrollSpeedValue);
   }
 
   function normalizeBoardZoomSpeedValue(rawValue) {
-    return normalizeSpeedMultiplierValue(rawValue, 0.01, 2);
+    var text = String(rawValue == null ? '' : rawValue).trim().toLowerCase();
+    if (!text || text === 'default' || text === 'normal') return '0.06';
+    return normalizeSpeedMultiplierValue(text, 0.01, 2);
   }
 
   function getBoardZoomSpeedMultiplier(source, fallback) {
-    return getSpeedMultiplier(source, 'zoomSpeed', fallback, normalizeBoardZoomSpeedValue);
+    return getSpeedMultiplier(source, 'zoomSpeed', fallback == null ? '0.06' : fallback, normalizeBoardZoomSpeedValue);
   }
 
   function scaleZoomDelta(baseDelta, source, options) {

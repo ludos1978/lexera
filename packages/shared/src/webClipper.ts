@@ -3,12 +3,19 @@ export const LEXERA_BACKEND_PORT_CANDIDATES = [13080, 8083, 1431, 12080, 14080, 
 export const DEFAULT_WEB_CLIPPER_MODE = 'article';
 
 export type WebClipperMode = 'link' | 'selection' | 'page' | 'article' | 'image';
+export type WebClipperContentSourceType = 'website' | 'reader' | 'rss';
+export type WebClipperFeedKind = 'rss' | 'atom';
 
 export type WebClipperTargetSource = 'saved' | 'incoming' | 'fallback';
+
+export type WebClipperAssetKind = 'embed' | 'link';
+
+export type WebClipperAssetCategory = 'image' | 'video' | 'audio' | 'document' | 'file';
 
 export interface WebClipperTarget {
   boardId: string;
   colIndex?: number;
+  cardId?: string;
   boardTitle?: string;
   columnTitle?: string;
   source?: WebClipperTargetSource;
@@ -16,6 +23,10 @@ export interface WebClipperTarget {
 
 export interface WebClipperContext {
   url: string;
+  sourceType?: WebClipperContentSourceType;
+  sourceLabel?: string;
+  sourceUrl?: string;
+  feedUrl?: string;
   title?: string;
   linkUrl?: string;
   linkText?: string;
@@ -23,10 +34,40 @@ export interface WebClipperContext {
   selectionText?: string;
   pageText?: string;
   articleText?: string;
+  selectionMarkdown?: string;
+  pageMarkdown?: string;
+  articleMarkdown?: string;
   siteName?: string;
   imageUrl?: string;
   imageAlt?: string;
   capturedAt?: string;
+  assets?: WebClipperAsset[];
+}
+
+export interface WebClipperFeedCandidate {
+  id: string;
+  url: string;
+  label?: string;
+  kind?: WebClipperFeedKind;
+  sourceUrl?: string;
+}
+
+export interface WebClipperCollectedPageContext {
+  website: WebClipperContext;
+  reader?: WebClipperContext;
+  feedCandidates?: WebClipperFeedCandidate[];
+}
+
+export interface WebClipperAsset {
+  id: string;
+  url: string;
+  markdown: string;
+  kind: WebClipperAssetKind;
+  category: WebClipperAssetCategory;
+  alt?: string;
+  label?: string;
+  title?: string;
+  filename?: string;
 }
 
 export interface WebClipperBuildOptions {
@@ -41,6 +82,10 @@ function normalizeWhitespace(value: string): string {
 
 function escapeMarkdownLabel(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+function escapeMarkdownTitle(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 function firstNonEmpty(values: Array<string | undefined | null>): string {
@@ -71,20 +116,104 @@ export function extractUrlHostLabel(url: string): string {
   return match[2].replace(/^www\./i, '');
 }
 
+export function normalizeComparableUrl(url: string | undefined | null): string {
+  const raw = (url || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    parsed.hash = '';
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+    parsed.pathname = pathname || '/';
+    return parsed.toString().replace(/\/$/, '');
+  } catch (_error) {
+    return raw.replace(/#.*$/, '').replace(/\/+$/, '');
+  }
+}
+
 export function markdownLink(label: string, url: string): string {
   const display = escapeMarkdownLabel(firstNonEmpty([label, extractUrlHostLabel(url), url]));
   return `[${display}](${url.trim()})`;
 }
 
-export function markdownImage(altText: string, pathOrUrl: string): string {
+function markdownTarget(pathOrUrl: string, title?: string): string {
+  const normalizedPath = (pathOrUrl || '').trim();
+  const normalizedTitle = firstNonEmpty([title]);
+  if (!normalizedTitle) return normalizedPath;
+  return `${normalizedPath} "${escapeMarkdownTitle(normalizedTitle)}"`;
+}
+
+export function markdownFileLink(label: string, pathOrUrl: string, title?: string): string {
+  const display = escapeMarkdownLabel(firstNonEmpty([label, extractUrlHostLabel(pathOrUrl), pathOrUrl]));
+  return `[${display}](${markdownTarget(pathOrUrl, title)})`;
+}
+
+export function markdownImage(altText: string, pathOrUrl: string, title?: string): string {
   const alt = escapeMarkdownLabel(firstNonEmpty([altText, 'image']));
-  return `![${alt}](${pathOrUrl.trim()})`;
+  return `![${alt}](${markdownTarget(pathOrUrl, title)})`;
+}
+
+export function buildWebClipperAssetMarkdown(
+  asset: Pick<WebClipperAsset, 'kind' | 'category' | 'url' | 'alt' | 'label' | 'title' | 'filename'>,
+  pathOrUrl?: string,
+): string {
+  const target = firstNonEmpty([pathOrUrl, asset.url]);
+  if (!target) return '';
+
+  if (asset.kind === 'link') {
+    const label = firstNonEmpty([asset.label, asset.filename, extractUrlHostLabel(target), target]);
+    return markdownFileLink(label, target, asset.title);
+  }
+
+  const alt = firstNonEmpty([asset.alt, asset.label, asset.filename, asset.category, 'file']);
+  return markdownImage(alt, target, asset.title);
+}
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif', 'apng', 'tif', 'tiff', 'ico']);
+const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'ogv', 'mpg', 'mpeg']);
+const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'oga', 'flac', 'aac', 'm4a', 'opus']);
+const DOCUMENT_EXTENSIONS = new Set([
+  'pdf', 'txt', 'rtf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'tsv',
+  'zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'epub',
+]);
+
+export function inferWebClipperAssetCategory(url: string | undefined | null): WebClipperAssetCategory | null {
+  const raw = (url || '').trim();
+  if (!raw) return null;
+  const match = /\.([a-z0-9]+)(?:[?#].*)?$/i.exec(raw);
+  const extension = match ? match[1].toLowerCase() : '';
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image';
+  if (VIDEO_EXTENSIONS.has(extension)) return 'video';
+  if (AUDIO_EXTENSIONS.has(extension)) return 'audio';
+  if (DOCUMENT_EXTENSIONS.has(extension)) return 'document';
+  return null;
+}
+
+export function isDownloadableWebClipperUrl(url: string | undefined | null): boolean {
+  return inferWebClipperAssetCategory(url) !== null;
 }
 
 export function prependIncomingCaptureTag(markdown: string): string {
   const normalized = normalizeWhitespace(markdown);
   if (!normalized) return '#hidden-internal-incoming';
   return `#hidden-internal-incoming\n${normalized}`;
+}
+
+export function dedupeWebClipperFeedCandidates(
+  candidates: Array<WebClipperFeedCandidate | null | undefined>,
+): WebClipperFeedCandidate[] {
+  const seen = new Set<string>();
+  const next: WebClipperFeedCandidate[] = [];
+  for (const candidate of candidates) {
+    if (!candidate || !candidate.url) continue;
+    const comparableUrl = normalizeComparableUrl(candidate.url);
+    if (!comparableUrl || seen.has(comparableUrl)) continue;
+    seen.add(comparableUrl);
+    next.push({
+      ...candidate,
+      url: comparableUrl,
+    });
+  }
+  return next;
 }
 
 export function trimPreview(value: string | undefined | null, limit: number): string {
@@ -117,15 +246,36 @@ function buildMetadataLines(context: WebClipperContext): string[] {
 
 function buildArticleBody(context: WebClipperContext, mode: WebClipperMode): string {
   if (mode === 'selection') {
-    return normalizeWhitespace(context.selectionText || '');
+    return normalizeWhitespace(context.selectionMarkdown || context.selectionText || '');
   }
   if (mode === 'article') {
-    return normalizeWhitespace(context.articleText || context.pageText || '');
+    return normalizeWhitespace(context.articleMarkdown || context.articleText || context.pageText || '');
   }
   if (mode === 'page') {
-    return normalizeWhitespace(context.pageText || context.articleText || '');
+    return normalizeWhitespace(context.pageMarkdown || context.pageText || context.articleMarkdown || context.articleText || '');
   }
   return '';
+}
+
+export function hasUsefulWebClipperBody(context: WebClipperContext | null | undefined): boolean {
+  if (!context) return false;
+  return Boolean(firstNonEmpty([
+    context.selectionMarkdown,
+    context.articleMarkdown,
+    context.pageMarkdown,
+    context.selectionText,
+    context.articleText,
+    context.pageText,
+    context.linkUrl,
+    context.imageUrl,
+  ]));
+}
+
+export function getPreferredWebClipperContext(collected: WebClipperCollectedPageContext): WebClipperContext {
+  if (hasUsefulWebClipperBody(collected.reader)) {
+    return collected.reader as WebClipperContext;
+  }
+  return collected.website;
 }
 
 export function buildCaptureCardMarkdown(
@@ -143,11 +293,11 @@ export function buildCaptureCardMarkdown(
   ]);
   const excerpt = trimPreview(context.excerpt, 280);
   const metadata = includeMetadata ? buildMetadataLines(context) : [];
-  const body = trimPreview(buildArticleBody(context, mode), 20000);
+  const body = trimPreview(buildArticleBody(context, mode), 200000);
 
   if (mode === 'link') {
     const sourceUrl = firstNonEmpty([context.linkUrl, context.url]);
-    const parts = [markdownLink(heading || sourceUrl, sourceUrl)];
+    const parts = [markdownFileLink(heading || sourceUrl, sourceUrl)];
     if (excerpt) parts.push(`> ${excerpt}`);
     if (metadata.length > 0) parts.push(metadata.join('\n'));
     return normalizeWhitespace(parts.join('\n\n'));

@@ -1,4 +1,14 @@
 import { MESSAGE_TYPES } from './shared/messages';
+import {
+  captureNodeMarkdown,
+  captureHtmlMarkdown,
+  captureSelectionMarkdown,
+} from './shared/documentMarkdown';
+import {
+  dedupeWebClipperFeedCandidates,
+  type WebClipperCollectedPageContext,
+  type WebClipperFeedCandidate,
+} from '../../shared/src/webClipper';
 
 declare const browser: any;
 declare const chrome: any;
@@ -70,18 +80,132 @@ function pickArticleRoot(): HTMLElement | null {
   return candidates[0]?.node || document.body;
 }
 
-function collectPageContext(): Record<string, unknown> {
+const READER_STRIP_SELECTORS = [
+  'script',
+  'style',
+  'noscript',
+  'template',
+  'svg',
+  'canvas',
+  'iframe',
+  'form',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'nav',
+  'aside',
+  'footer',
+  '[role="navigation"]',
+  '[role="search"]',
+  '[aria-hidden="true"]',
+  '[hidden]',
+  '.advertisement',
+  '.advertising',
+  '.ads',
+  '.ad',
+  '.promo',
+  '.promoted',
+  '.share',
+  '.social',
+  '.sidebar',
+  '.related',
+  '.recommend',
+  '.comments',
+  '.comment',
+  '.cookie',
+  '.consent',
+] as const;
+
+function pruneReaderRoot(root: HTMLElement): void {
+  root.querySelectorAll(READER_STRIP_SELECTORS.join(', ')).forEach((node) => node.remove());
+
+  Array.from(root.querySelectorAll('*')).forEach((element) => {
+    const idAndClass = `${element.id || ''} ${element.className || ''}`.toLowerCase();
+    const suspicious = /(advert|promo|related|recommend|comment|share|cookie|consent|sidebar|footer|header)/.test(idAndClass);
+    const hasMedia = Boolean(element.querySelector('img, picture, video, audio, figure'));
+    const textLength = normalizeText(element.textContent || '').length;
+    if (suspicious && !hasMedia && textLength < 300) {
+      element.remove();
+      return;
+    }
+    if (
+      !hasMedia
+      && element.children.length > 0
+      && textLength === 0
+      && !/^h[1-6]$/i.test(element.tagName)
+    ) {
+      element.remove();
+    }
+  });
+}
+
+function buildReaderRoot(articleRoot: HTMLElement | null): HTMLElement | null {
+  if (!articleRoot) return null;
+  const clone = articleRoot.cloneNode(true) as HTMLElement;
+  pruneReaderRoot(clone);
+  const textLength = normalizeText(clone.textContent || '').length;
+  if (textLength < 120) {
+    return articleRoot;
+  }
+  return clone;
+}
+
+function detectFeedCandidates(): WebClipperFeedCandidate[] {
+  const candidates: WebClipperFeedCandidate[] = [];
+  const pageUrl = window.location.href.replace(/\/+$/, '');
+
+  document.querySelectorAll('link[rel~="alternate"]').forEach((node) => {
+    const element = node as HTMLLinkElement;
+    const type = (element.type || '').trim().toLowerCase();
+    if (!/(rss|atom|xml)/.test(type)) return;
+    const href = (element.href || '').trim();
+    if (!href) return;
+    candidates.push({
+      id: href,
+      url: href,
+      label: (element.title || '').trim() || 'Feed',
+      kind: type.includes('atom') ? 'atom' : 'rss',
+      sourceUrl: pageUrl,
+    });
+  });
+
+  if (/reddit\.com$/i.test(window.location.hostname) && !/\.rss(?:$|[?#])/i.test(pageUrl)) {
+    candidates.push({
+      id: `${pageUrl}.rss`,
+      url: `${pageUrl}.rss`,
+      label: 'Reddit RSS',
+      kind: 'rss',
+      sourceUrl: pageUrl,
+    });
+  }
+
+  return dedupeWebClipperFeedCandidates(candidates);
+}
+
+function collectPageContext(): WebClipperCollectedPageContext {
   const selectionText = normalizeText(window.getSelection?.()?.toString?.() || '');
+  const selectionCapture = captureSelectionMarkdown(window.getSelection?.() || null, {
+    baseUrl: window.location.href,
+  });
   const articleRoot = pickArticleRoot();
-  const leadImage = pickLeadImage(articleRoot || document);
+  const readerRoot = buildReaderRoot(articleRoot);
+  const articleCapture = captureNodeMarkdown(articleRoot, { baseUrl: window.location.href });
+  const pageCapture = captureNodeMarkdown(document.body, { baseUrl: window.location.href });
+  const readerCapture = readerRoot
+    ? captureNodeMarkdown(readerRoot, { baseUrl: window.location.href })
+    : captureHtmlMarkdown('', { baseUrl: window.location.href });
+  const leadImage = pickLeadImage(readerRoot || articleRoot || document);
   const excerpt = normalizeText(
     readMetaContent('meta[property="og:description"]')
     || readMetaContent('meta[name="description"]')
     || '',
   );
 
-  return {
+  const websiteContext = {
     url: window.location.href,
+    sourceType: 'website' as const,
+    sourceLabel: 'Website',
     title: normalizeText(
       readMetaContent('meta[property="og:title"]')
       || document.title
@@ -94,12 +218,50 @@ function collectPageContext(): Record<string, unknown> {
     ),
     excerpt,
     selectionText,
+    selectionMarkdown: selectionCapture.markdown,
     articleText: extractPrimaryText(articleRoot),
+    articleMarkdown: articleCapture.markdown,
     pageText: normalizeText(document.body?.innerText || ''),
+    pageMarkdown: pageCapture.markdown,
     imageUrl: leadImage?.src || '',
     imageAlt: leadImage?.alt || '',
     capturedAt: new Date().toISOString(),
+    assets: [
+      ...selectionCapture.assets,
+      ...articleCapture.assets,
+      ...pageCapture.assets,
+    ],
   };
+
+  const readerText = extractPrimaryText(readerRoot || articleRoot);
+  const readerContext = normalizeText(readerCapture.markdown || readerText)
+    ? {
+        ...websiteContext,
+        sourceType: 'reader' as const,
+        sourceLabel: 'Reader',
+        excerpt: excerpt || trimReaderExcerpt(readerText),
+        articleText: readerText || websiteContext.articleText,
+        articleMarkdown: readerCapture.markdown || websiteContext.articleMarkdown,
+        pageText: readerText || websiteContext.pageText,
+        pageMarkdown: readerCapture.markdown || websiteContext.articleMarkdown,
+        selectionText: selectionText || readerText,
+        selectionMarkdown: selectionCapture.markdown || readerCapture.markdown,
+        assets: [
+          ...selectionCapture.assets,
+          ...readerCapture.assets,
+        ],
+      }
+    : undefined;
+
+  return {
+    website: websiteContext,
+    reader: readerContext,
+    feedCandidates: detectFeedCandidates(),
+  };
+}
+
+function trimReaderExcerpt(value: string): string {
+  return normalizeText(value).slice(0, 280).trim();
 }
 
 extensionApi.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (value: any) => void) => {
@@ -108,7 +270,12 @@ extensionApi.runtime.onMessage.addListener((message: any, _sender: any, sendResp
   }
 
   try {
-    sendResponse({ ok: true, context: collectPageContext() });
+    const collection = collectPageContext();
+    sendResponse({
+      ok: true,
+      collection,
+      context: collection.reader || collection.website,
+    });
   } catch (error) {
     sendResponse({
       ok: false,
