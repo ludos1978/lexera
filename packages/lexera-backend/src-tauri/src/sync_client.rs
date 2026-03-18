@@ -232,41 +232,14 @@ impl SyncClientManager {
         }
         storage.add_remote_board(&local_board_id, initial_board);
 
-        // 4. Spawn WS sync task
-        let ws_url = format!(
-            "{}/sync/{}?user={}",
-            server_url
-                .replace("http://", "ws://")
-                .replace("https://", "wss://"),
+        self.spawn_sync_connection(
+            server_url,
             remote_board_id,
-            user_id
-        );
-
-        let local_bid = local_board_id.clone();
-        let storage_ws = storage.clone();
-        let event_tx_ws = event_tx.clone();
-        let sync_hub_ws = sync_hub.clone();
-
-        let ws_task = tokio::spawn(async move {
-            run_sync_client_with_reconnect(
-                ws_url,
-                user_id,
-                local_bid,
-                storage_ws,
-                event_tx_ws,
-                sync_hub_ws,
-            )
-            .await;
-        });
-
-        self.connections.insert(
             local_board_id.clone(),
-            RemoteConnection {
-                server_url,
-                remote_board_id,
-                local_board_id: local_board_id.clone(),
-                ws_task,
-            },
+            user_id,
+            storage,
+            event_tx,
+            sync_hub,
         );
 
         Ok(local_board_id)
@@ -299,39 +272,14 @@ impl SyncClientManager {
         }
         storage.add_remote_board(&local_board_id, initial_board);
 
-        let ws_url = format!(
-            "{}/sync/{}?user={}",
-            server_url
-                .replace("http://", "ws://")
-                .replace("https://", "wss://"),
+        self.spawn_sync_connection(
+            server_url,
             remote_board_id,
-            user_id
-        );
-
-        let local_bid = local_board_id.clone();
-        let storage_ws = storage.clone();
-        let event_tx_ws = event_tx.clone();
-        let sync_hub_ws = sync_hub.clone();
-        let ws_task = tokio::spawn(async move {
-            run_sync_client_with_reconnect(
-                ws_url,
-                user_id,
-                local_bid,
-                storage_ws,
-                event_tx_ws,
-                sync_hub_ws,
-            )
-            .await;
-        });
-
-        self.connections.insert(
             local_board_id.clone(),
-            RemoteConnection {
-                server_url,
-                remote_board_id,
-                local_board_id: local_board_id.clone(),
-                ws_task,
-            },
+            user_id,
+            storage,
+            event_tx,
+            sync_hub,
         );
         log::info!(
             "[sync_client] Reconnected existing remote board {} as local {}",
@@ -354,6 +302,42 @@ impl SyncClientManager {
                 conn.remote_board_id
             );
         }
+    }
+
+    fn spawn_sync_connection(
+        &mut self,
+        server_url: String,
+        remote_board_id: String,
+        local_board_id: String,
+        user_id: String,
+        storage: Arc<LocalStorage>,
+        event_tx: broadcast::Sender<BoardChangeEvent>,
+        sync_hub: Arc<tokio::sync::Mutex<crate::sync_ws::BoardSyncHub>>,
+    ) {
+        let ws_url = format!(
+            "{}/sync/{}?user={}",
+            server_url
+                .replace("http://", "ws://")
+                .replace("https://", "wss://"),
+            remote_board_id,
+            user_id
+        );
+
+        let local_bid = local_board_id.clone();
+        let ws_task = tokio::spawn(async move {
+            run_sync_client_with_reconnect(ws_url, user_id, local_bid, storage, event_tx, sync_hub)
+                .await;
+        });
+
+        self.connections.insert(
+            local_board_id.clone(),
+            RemoteConnection {
+                server_url,
+                remote_board_id,
+                local_board_id,
+                ws_task,
+            },
+        );
     }
 
     /// List all active remote connections.
@@ -581,10 +565,8 @@ async fn run_sync_client(
                                 if let Ok(fwd) = serde_json::to_string(&ServerMessage::ServerUpdate {
                                     updates: updates.clone(),
                                 }) {
-                                    {
-                                        let hub = sync_hub.lock().await;
-                                        hub.broadcast(&local_board_id, hub_peer_id, &fwd);
-                                    }
+                                    let hub = sync_hub.lock().await;
+                                    hub.broadcast(&local_board_id, hub_peer_id, &fwd);
                                 }
                             }
                         }
@@ -642,10 +624,8 @@ async fn run_sync_client(
                                 if let Ok(fwd) = serde_json::to_string(&ServerMessage::ServerUpdate {
                                     updates: updates.clone(),
                                 }) {
-                                    {
-                                        let hub = sync_hub.lock().await;
-                                        hub.broadcast(&local_board_id, hub_peer_id, &fwd);
-                                    }
+                                    let hub = sync_hub.lock().await;
+                                    hub.broadcast(&local_board_id, hub_peer_id, &fwd);
                                 }
                             }
                         }
@@ -670,19 +650,10 @@ async fn run_sync_client(
                         );
                         break;
                     }
-                    ServerMessage::ServerPresence { .. } => {
-                        // Forward presence to local hub peers so frontend shows remote users.
-                        {
-                            let hub = sync_hub.lock().await;
-                            hub.broadcast(&local_board_id, hub_peer_id, &text);
-                        }
-                    }
-                    ServerMessage::ServerEditingPresence { .. } => {
-                        // Forward editing presence to local hub peers so frontend shows cursors.
-                        {
-                            let hub = sync_hub.lock().await;
-                            hub.broadcast(&local_board_id, hub_peer_id, &text);
-                        }
+                    ServerMessage::ServerPresence { .. }
+                    | ServerMessage::ServerEditingPresence { .. } => {
+                        let hub = sync_hub.lock().await;
+                        hub.broadcast(&local_board_id, hub_peer_id, &text);
                     }
                 }
             }
@@ -720,7 +691,7 @@ async fn run_sync_client(
                                     }
                                 }
                                 ServerMessage::ServerEditingPresence {
-                                    user_id: edit_user_id,
+                                    user_id: _edit_user_id,
                                     user_name,
                                     card_kid,
                                     cursor_pos,
@@ -742,7 +713,6 @@ async fn run_sync_client(
                                             );
                                         }
                                     }
-                                    let _ = edit_user_id; // used for logging if needed
                                 }
                                 _ => {} // Ignore other server messages from hub
                             }
