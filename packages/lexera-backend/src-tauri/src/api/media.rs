@@ -138,34 +138,19 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{test_router, test_state};
-
-    const MINIMAL_BOARD: &str = "\
----
-kanban-plugin: board
----
-
-## Col
-- [ ] card
-";
+    use crate::test_helpers::{get_request, setup_board, test_router};
 
     #[tokio::test]
     async fn serve_media_nonexistent_returns_404() {
         let tmp = tempfile::tempdir().unwrap();
-        let board_path = tmp.path().join("board.md");
-        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
-
-        let state = test_state(tmp.path());
-        let board_id = state.storage.add_board(&board_path).unwrap();
+        let (state, board_id) = setup_board(tmp.path());
 
         let app = test_router(state);
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri(&format!("/boards/{}/media/nonexistent.png", board_id))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(get_request(&format!(
+                "/boards/{}/media/nonexistent.png",
+                board_id
+            )))
             .await
             .unwrap();
 
@@ -175,11 +160,7 @@ kanban-plugin: board
     #[tokio::test]
     async fn upload_media_creates_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let board_path = tmp.path().join("board.md");
-        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
-
-        let state = test_state(tmp.path());
-        let board_id = state.storage.add_board(&board_path).unwrap();
+        let (state, board_id) = setup_board(tmp.path());
 
         let boundary = "----TestBoundary";
         let body = format!(

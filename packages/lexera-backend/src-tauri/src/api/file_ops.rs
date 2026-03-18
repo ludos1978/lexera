@@ -401,40 +401,21 @@ pub async fn convert_path(
 
 #[cfg(test)]
 mod tests {
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
+    use axum::http::StatusCode;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, test_router, test_state};
-
-    const MINIMAL_BOARD: &str = "\
----
-kanban-plugin: board
----
-
-## Col
-- [ ] card
-";
+    use crate::test_helpers::{body_json, get_request, setup_board, test_router};
 
     #[tokio::test]
     async fn serve_file_returns_content() {
         let tmp = tempfile::tempdir().unwrap();
-        let board_path = tmp.path().join("board.md");
-        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
         std::fs::write(tmp.path().join("hello.txt"), "hello world").unwrap();
-
-        let state = test_state(tmp.path());
-        let board_id = state.storage.add_board(&board_path).unwrap();
+        let (state, board_id) = setup_board(tmp.path());
 
         let app = test_router(state);
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri(&format!("/boards/{}/file?path=hello.txt", board_id))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(get_request(&format!("/boards/{}/file?path=hello.txt", board_id)))
             .await
             .unwrap();
 
@@ -446,21 +427,12 @@ kanban-plugin: board
     #[tokio::test]
     async fn file_info_returns_metadata() {
         let tmp = tempfile::tempdir().unwrap();
-        let board_path = tmp.path().join("board.md");
-        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
         std::fs::write(tmp.path().join("data.txt"), "12345").unwrap();
-
-        let state = test_state(tmp.path());
-        let board_id = state.storage.add_board(&board_path).unwrap();
+        let (state, board_id) = setup_board(tmp.path());
 
         let app = test_router(state);
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri(&format!("/boards/{}/file-info?path=data.txt", board_id))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(get_request(&format!("/boards/{}/file-info?path=data.txt", board_id)))
             .await
             .unwrap();
 
@@ -474,27 +446,17 @@ kanban-plugin: board
     #[tokio::test]
     async fn serve_file_blocks_path_traversal() {
         let tmp = tempfile::tempdir().unwrap();
-        let board_path = tmp.path().join("board.md");
-        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
-
-        let state = test_state(tmp.path());
-        let board_id = state.storage.add_board(&board_path).unwrap();
+        let (state, board_id) = setup_board(tmp.path());
 
         let app = test_router(state);
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri(&format!(
-                        "/boards/{}/file?path=../../../etc/passwd",
-                        board_id
-                    ))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(get_request(&format!(
+                "/boards/{}/file?path=../../../etc/passwd",
+                board_id
+            )))
             .await
             .unwrap();
 
-        // Relative traversal outside the board dir: FORBIDDEN if the target exists, NOT_FOUND otherwise
         assert!(
             resp.status() == StatusCode::FORBIDDEN || resp.status() == StatusCode::NOT_FOUND,
             "Expected FORBIDDEN or NOT_FOUND for traversal, got {}",
@@ -505,27 +467,17 @@ kanban-plugin: board
     #[tokio::test]
     async fn serve_file_blocks_absolute_path_traversal() {
         let tmp = tempfile::tempdir().unwrap();
-        let board_path = tmp.path().join("board.md");
-        std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
-
-        let state = test_state(tmp.path());
-        let board_id = state.storage.add_board(&board_path).unwrap();
+        let (state, board_id) = setup_board(tmp.path());
 
         let app = test_router(state);
         let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri(&format!(
-                        "/boards/{}/file?path=/etc/passwd",
-                        board_id
-                    ))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(get_request(&format!(
+                "/boards/{}/file?path=/etc/passwd",
+                board_id
+            )))
             .await
             .unwrap();
 
-        // Absolute path outside the board directory must be rejected
         assert!(
             resp.status() == StatusCode::FORBIDDEN || resp.status() == StatusCode::NOT_FOUND,
             "Expected FORBIDDEN or NOT_FOUND for /etc/passwd, got {}",

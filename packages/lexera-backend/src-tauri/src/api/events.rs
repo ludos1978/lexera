@@ -116,11 +116,11 @@ pub async fn stream_logs() -> Sse<impl tokio_stream::Stream<Item = Result<Event,
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
-    use axum::http::{Request, StatusCode};
+    use axum::http::StatusCode;
     use lexera_core::watcher::types::BoardChangeEvent;
     use tower::ServiceExt;
 
-    use crate::test_helpers::{body_json, test_router, test_state};
+    use crate::test_helpers::{body_json, get_request, test_router, test_state};
 
     // -- /events SSE endpoint tests --
 
@@ -130,15 +130,7 @@ mod tests {
         let state = test_state(tmp.path());
         let app = test_router(state);
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/events")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = app.oneshot(get_request("/events")).await.unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
         let content_type = resp
@@ -162,15 +154,7 @@ mod tests {
         let app = test_router(state);
 
         // Send the request to get the SSE stream
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/events")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = app.oneshot(get_request("/events")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Broadcast an event after the SSE stream is established
@@ -217,15 +201,7 @@ mod tests {
         let event_tx = state.event_tx.clone();
         let app = test_router(state);
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/events")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = app.oneshot(get_request("/events")).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
         // Send two distinct events
@@ -282,15 +258,7 @@ mod tests {
         let state = test_state(tmp.path());
         let app = test_router(state);
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = app.oneshot(get_request("/status")).await.unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp.into_body()).await;
@@ -307,15 +275,7 @@ mod tests {
         *state.live_port.lock().unwrap() = 9876;
         let app = test_router(state);
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/status")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = app.oneshot(get_request("/status")).await.unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp.into_body()).await;
@@ -334,15 +294,7 @@ mod tests {
             "hello from logs test",
         );
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/logs")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = app.oneshot(get_request("/logs")).await.unwrap();
 
         assert_eq!(resp.status(), StatusCode::OK);
         let json = body_json(resp.into_body()).await;

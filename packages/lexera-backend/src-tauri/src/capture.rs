@@ -232,29 +232,43 @@ pub fn open_capture_popup(app: &AppHandle) {
     }
 }
 
-/// Snap the strip-mode window to a screen edge vertically centered.
-fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
+/// Get the quick-capture window and its display scale factor.
+fn capture_window(app: &AppHandle) -> Result<(tauri::WebviewWindow, f64), String> {
     let window = app
         .get_webview_window("quick-capture")
         .ok_or("Window not found")?;
-
     let scale = window.scale_factor().unwrap_or(1.0);
-    let phys_w = (CAPTURE_STRIP_WIDTH * scale) as i32;
-    let phys_h = (CAPTURE_STRIP_HEIGHT * scale) as i32;
+    Ok((window, scale))
+}
 
+/// Get current monitor position and size for a window.
+fn monitor_rect(
+    window: &tauri::WebviewWindow,
+) -> Result<(tauri::PhysicalPosition<i32>, tauri::PhysicalSize<u32>), String> {
     let monitor = window
         .current_monitor()
         .map_err(|e| e.to_string())?
         .ok_or("No monitor")?;
+    Ok((*monitor.position(), *monitor.size()))
+}
 
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
+/// Calculate X coordinate for snapping to a screen edge.
+fn side_x(side: &str, monitor_x: i32, monitor_width: u32, window_width: i32) -> i32 {
+    if side == "left" {
+        monitor_x
+    } else {
+        monitor_x + monitor_width as i32 - window_width
+    }
+}
 
-    let x = match side {
-        "left" => monitor_pos.x,
-        _ => monitor_pos.x + monitor_size.width as i32 - phys_w,
-    };
+/// Snap the strip-mode window to a screen edge vertically centered.
+fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
+    let (window, scale) = capture_window(app)?;
+    let phys_w = (CAPTURE_STRIP_WIDTH * scale) as i32;
+    let phys_h = (CAPTURE_STRIP_HEIGHT * scale) as i32;
+    let (monitor_pos, monitor_size) = monitor_rect(&window)?;
 
+    let x = side_x(side, monitor_pos.x, monitor_size.width, phys_w);
     let y = monitor_pos.y + (monitor_size.height as i32 - phys_h) / 2;
 
     window
@@ -267,12 +281,7 @@ fn snap_capture_strip(app: &AppHandle, side: &str) -> Result<(), String> {
 /// Determine which screen edge the window is closest to ("left" or "right").
 fn detect_side(window: &tauri::WebviewWindow) -> Result<String, String> {
     let pos = window.outer_position().map_err(|e| e.to_string())?;
-    let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or("No monitor")?;
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
+    let (monitor_pos, monitor_size) = monitor_rect(window)?;
     let mid_x = monitor_pos.x + monitor_size.width as i32 / 2;
     Ok(if pos.x < mid_x { "left" } else { "right" }.to_string())
 }
@@ -281,38 +290,24 @@ fn detect_side(window: &tauri::WebviewWindow) -> Result<String, String> {
 /// Preserves side and Y position from the strip.
 #[tauri::command]
 pub fn expand_capture(app: AppHandle) -> Result<String, String> {
-    let window = app
-        .get_webview_window("quick-capture")
-        .ok_or("Window not found")?;
-
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let phys_w = (CAPTURE_WINDOW_WIDTH * scale) as u32;
-    let phys_h = (CAPTURE_WINDOW_HEIGHT * scale) as u32;
+    let (window, scale) = capture_window(&app)?;
+    let phys_w = (CAPTURE_WINDOW_WIDTH * scale) as i32;
+    let phys_h = (CAPTURE_WINDOW_HEIGHT * scale) as i32;
 
     let current_pos = window.outer_position().map_err(|e| e.to_string())?;
     let side = detect_side(&window)?;
+    let (monitor_pos, monitor_size) = monitor_rect(&window)?;
 
-    let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or("No monitor")?;
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
-
-    let x = if side == "left" {
-        monitor_pos.x
-    } else {
-        monitor_pos.x + monitor_size.width as i32 - phys_w as i32
-    };
+    let x = side_x(&side, monitor_pos.x, monitor_size.width, phys_w);
     let y = current_pos
         .y
         .max(monitor_pos.y)
-        .min(monitor_pos.y + monitor_size.height as i32 - phys_h as i32);
+        .min(monitor_pos.y + monitor_size.height as i32 - phys_h);
 
     window
         .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-            width: phys_w,
-            height: phys_h,
+            width: phys_w as u32,
+            height: phys_h as u32,
         }))
         .map_err(|e| e.to_string())?;
 
@@ -329,40 +324,26 @@ pub fn expand_capture(app: AppHandle) -> Result<String, String> {
 /// Preserves side and Y position from the expanded panel.
 #[tauri::command]
 pub fn collapse_capture(app: AppHandle) -> Result<String, String> {
-    let window = app
-        .get_webview_window("quick-capture")
-        .ok_or("Window not found")?;
-
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let phys_w = (CAPTURE_STRIP_WIDTH * scale) as u32;
-    let phys_h = (CAPTURE_STRIP_HEIGHT * scale) as u32;
+    let (window, scale) = capture_window(&app)?;
+    let phys_w = (CAPTURE_STRIP_WIDTH * scale) as i32;
+    let phys_h = (CAPTURE_STRIP_HEIGHT * scale) as i32;
 
     let current_pos = window.outer_position().map_err(|e| e.to_string())?;
     let side = detect_side(&window)?;
+    let (monitor_pos, monitor_size) = monitor_rect(&window)?;
 
-    let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or("No monitor")?;
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
-
-    let x = if side == "left" {
-        monitor_pos.x
-    } else {
-        monitor_pos.x + monitor_size.width as i32 - phys_w as i32
-    };
+    let x = side_x(&side, monitor_pos.x, monitor_size.width, phys_w);
     let y = current_pos
         .y
         .max(monitor_pos.y)
-        .min(monitor_pos.y + monitor_size.height as i32 - phys_h as i32);
+        .min(monitor_pos.y + monitor_size.height as i32 - phys_h);
 
     window.set_resizable(false).map_err(|e| e.to_string())?;
 
     window
         .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-            width: phys_w,
-            height: phys_h,
+            width: phys_w as u32,
+            height: phys_h as u32,
         }))
         .map_err(|e| e.to_string())?;
 
@@ -377,29 +358,15 @@ pub fn collapse_capture(app: AppHandle) -> Result<String, String> {
 /// preserving the Y position. Returns the side ("left" or "right").
 #[tauri::command]
 pub fn snap_strip_after_drag(app: AppHandle) -> Result<String, String> {
-    let window = app
-        .get_webview_window("quick-capture")
-        .ok_or("Window not found")?;
-
-    let scale = window.scale_factor().unwrap_or(1.0);
+    let (window, scale) = capture_window(&app)?;
     let phys_w = (CAPTURE_STRIP_WIDTH * scale) as i32;
     let phys_h = (CAPTURE_STRIP_HEIGHT * scale) as i32;
 
     let pos = window.outer_position().map_err(|e| e.to_string())?;
     let side = detect_side(&window)?;
+    let (monitor_pos, monitor_size) = monitor_rect(&window)?;
 
-    let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or("No monitor")?;
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
-
-    let x = if side == "left" {
-        monitor_pos.x
-    } else {
-        monitor_pos.x + monitor_size.width as i32 - phys_w
-    };
+    let x = side_x(&side, monitor_pos.x, monitor_size.width, phys_w);
     let y = pos
         .y
         .max(monitor_pos.y)
@@ -546,28 +513,17 @@ pub fn remove_clipboard_entry(history: tauri::State<'_, ClipboardHistory>, id: u
 /// which can return stale values during resize transitions.
 #[tauri::command]
 pub fn snap_capture_window(app: AppHandle, side: String) -> Result<(), String> {
-    let window = app
-        .get_webview_window("quick-capture")
-        .ok_or("Window not found")?;
+    match side.as_str() {
+        "left" | "right" => {}
+        _ => return Err(format!("Invalid side: {}", side)),
+    }
 
-    let scale = window.scale_factor().unwrap_or(1.0);
+    let (window, scale) = capture_window(&app)?;
     let phys_w = (CAPTURE_WINDOW_WIDTH * scale) as i32;
     let phys_h = (CAPTURE_WINDOW_HEIGHT * scale) as i32;
+    let (monitor_pos, monitor_size) = monitor_rect(&window)?;
 
-    let monitor = window
-        .current_monitor()
-        .map_err(|e| e.to_string())?
-        .ok_or("No monitor")?;
-
-    let monitor_size = monitor.size();
-    let monitor_pos = monitor.position();
-
-    let x = match side.as_str() {
-        "left" => monitor_pos.x,
-        "right" => monitor_pos.x + monitor_size.width as i32 - phys_w,
-        _ => return Err(format!("Invalid side: {}", side)),
-    };
-
+    let x = side_x(&side, monitor_pos.x, monitor_size.width, phys_w);
     let y = monitor_pos.y + (monitor_size.height as i32 - phys_h) / 2;
 
     window

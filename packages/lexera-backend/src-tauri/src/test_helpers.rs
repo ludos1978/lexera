@@ -49,3 +49,27 @@ pub async fn body_json(body: axum::body::Body) -> serde_json::Value {
     let bytes = body.collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
 }
+
+pub const MINIMAL_BOARD: &str = "\
+---
+kanban-plugin: board
+---
+
+## Col
+- [ ] card
+";
+
+pub fn setup_board(tmp: &std::path::Path) -> (AppState, String) {
+    let board_path = tmp.join("board.md");
+    std::fs::write(&board_path, MINIMAL_BOARD).unwrap();
+    let state = test_state(tmp);
+    let board_id = state.storage.add_board(&board_path).unwrap();
+    (state, board_id)
+}
+
+pub fn get_request(uri: &str) -> axum::http::Request<axum::body::Body> {
+    axum::http::Request::builder()
+        .uri(uri)
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
