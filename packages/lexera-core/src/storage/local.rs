@@ -1582,6 +1582,10 @@ impl LocalStorage {
     /// Reload a board from disk (e.g. after file watcher event).
     /// Re-resolves includes and reloads include file contents.
     pub fn reload_board(&self, board_id: &str) -> Result<(), StorageError> {
+        // Acquire the per-board write lock to prevent races with write_board_internal
+        let lock = self.get_write_lock(board_id)?;
+        let _guard = Self::acquire_board_write_guard(board_id, lock.as_ref(), "reload_board");
+
         // Take the file_path and CRDT out of the existing state
         let (file_path, old_crdt) = {
             let mut boards = self
@@ -2225,9 +2229,14 @@ impl LocalStorage {
 
         let tmp_path = path.with_extension("lexera-sync.tmp");
         let mut file = fs::File::create(&tmp_path)?;
-        file.write_all(content.as_bytes())?;
-        file.sync_all()?;
-        fs::rename(&tmp_path, path)?;
+        if let Err(e) = file.write_all(content.as_bytes()).and_then(|_| file.sync_all()) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(e);
+        }
+        if let Err(e) = fs::rename(&tmp_path, path) {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(e);
+        }
 
         // fsync directory for rename durability
         if let Some(dir) = path.parent() {

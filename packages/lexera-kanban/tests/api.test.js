@@ -14,6 +14,10 @@ class MockEventSource {
     this.url = url;
     this.onmessage = null;
     this.onerror = null;
+    this._listeners = {};
+  }
+  addEventListener(event, handler) {
+    this._listeners[event] = handler;
   }
   close() {}
 }

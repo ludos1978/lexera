@@ -377,6 +377,11 @@ const LexeraApi = (function () {
         });
       }
     };
+    // Handle backend resync hints (sent when this client lagged behind)
+    es.addEventListener('resync', function (msg) {
+      logApiIssue('warn', 'api.sse.resync', 'SSE client lagged — triggering full board refresh', msg.data);
+      onEvent({ type: 'Resync' });
+    });
     es.onerror = function (event) {
       logApiIssue('warn', 'api.sse', 'EventSource /events reported an error', formatApiError(event), {
         dedupeKey: 'api.sse.error',

@@ -4016,6 +4016,18 @@ const LexeraDashboard = (function () {
           showNotification('Board file changed on disk. Rebase failed; your local draft was kept.');
         });
     }
+    if (kind === 'Resync') {
+      traceFrontendAction('warn', 'sse.resync', 'SSE client lagged — performing full board reload', {
+        boardId: activeBoardId
+      });
+      if (activeBoardId) {
+        Promise.resolve()
+          .then(function () { return loadBoard(activeBoardId); })
+          .catch(function (err) {
+            logFrontendIssue('warn', 'sse.resync', 'Failed to reload board after SSE resync', err);
+          });
+      }
+    }
     } catch (err) {
       logFrontendIssue('error', 'sse', 'Error in handleSSEEvent', err);
     }
@@ -5222,6 +5234,10 @@ const LexeraDashboard = (function () {
   async function selectBoard(boardId, options) {
     options = options || {};
     if (!boardId) return;
+    // Save unsaved changes before switching away from the current board
+    if (activeBoardId && activeBoardId !== boardId && isBoardDirty()) {
+      try { await saveFullBoard(); } catch (_) { /* auto-save retry will handle it */ }
+    }
     if (!embeddedMode && splitViewMode !== 'single' && options.routeToPane !== false) {
       var targetPane = normalizeSplitPane(options.pane || activeSplitPane);
       setActiveSplitPane(targetPane);
@@ -9605,8 +9621,11 @@ const LexeraDashboard = (function () {
   var _saveInFlight = false;
   var _savePending = false;
   var _autoSaveTimer = null;
+  var _autoSaveRetryCount = 0;
   var AUTO_SAVE_DELAY_MS = 1200;
   var AUTO_SAVE_REMOTE_DELAY_MS = 180;
+  var AUTO_SAVE_MAX_RETRIES = 5;
+  var AUTO_SAVE_RETRY_DELAYS = [2000, 5000, 10000, 30000, 60000];
 
   function clearScheduledAutoSave(reason) {
     if (_autoSaveTimer) {
@@ -9693,6 +9712,7 @@ const LexeraDashboard = (function () {
         var genAtSaveStart = getBoardDirtyGeneration();
         var saved = await saveFullBoard();
         if (saved) {
+          _autoSaveRetryCount = 0;
           clearBoardDirtyIfUnchanged(genAtSaveStart);
           traceFrontendAction('info', 'save.auto.success', 'Auto-save completed successfully', {
             boardId: boardId,
@@ -9707,10 +9727,16 @@ const LexeraDashboard = (function () {
           });
         }
       } catch (err) {
-        logFrontendIssue('error', 'save.auto', 'Auto-save failed', err);
-        // Retry auto-save after a delay so data isn't stranded in memory
+        logFrontendIssue('error', 'save.auto', 'Auto-save failed (retry ' + _autoSaveRetryCount + '/' + AUTO_SAVE_MAX_RETRIES + ')', err);
         if (isBoardDirty()) {
-          scheduleAutoSave(5000, 'retry-after-failure');
+          _autoSaveRetryCount++;
+          if (_autoSaveRetryCount <= AUTO_SAVE_MAX_RETRIES) {
+            var retryDelay = AUTO_SAVE_RETRY_DELAYS[Math.min(_autoSaveRetryCount - 1, AUTO_SAVE_RETRY_DELAYS.length - 1)];
+            scheduleAutoSave('retry-after-failure-' + _autoSaveRetryCount, retryDelay);
+          } else {
+            logFrontendIssue('error', 'save.auto', 'Auto-save retries exhausted, writing crashsave to prevent data loss');
+            writeBoardCrashsave('auto-save-retries-exhausted', fullBoardData);
+          }
         }
       }
     }, waitMs);
@@ -11269,7 +11295,7 @@ const LexeraDashboard = (function () {
       highlightCurrentMatch();
     });
 
-    panel.querySelector('.sr-replace-btn').addEventListener('click', function () {
+    panel.querySelector('.sr-replace-btn').addEventListener('click', async function () {
       if (matchIndex < 0 || matchIndex >= matches.length) return;
       var m = matches[matchIndex];
       var query = searchInput.value;
@@ -11277,11 +11303,11 @@ const LexeraDashboard = (function () {
       pushUndo();
       var content = m.card.content || '';
       m.card.content = content.substring(0, m.offset) + replacement + content.substring(m.offset + query.length);
-      persistBoardMutation();
+      await persistBoardMutation();
       onSearchChange();
     });
 
-    panel.querySelector('.sr-replace-all-btn').addEventListener('click', function () {
+    panel.querySelector('.sr-replace-all-btn').addEventListener('click', async function () {
       if (matches.length === 0) return;
       var query = searchInput.value;
       var replacement = replaceInput.value;
@@ -11298,7 +11324,7 @@ const LexeraDashboard = (function () {
           card.content = card.content.replace(new RegExp(escaped, 'gi'), replacement);
         }
       }
-      persistBoardMutation();
+      await persistBoardMutation();
       onSearchChange();
       showNotification('Replaced all matches');
     });
