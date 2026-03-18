@@ -156,8 +156,6 @@
     var parts = [];
     if (cleanTitle) parts.push(cleanTitle);
 
-    // Row: use new if present, else keep original. Skip default #row1.
-    var hasNegateRow = false; // row has no negation form
     var finalRow = next.rowRaw || original.rowRaw;
     if (finalRow && finalRow.toLowerCase() !== '#row1') parts.push(finalRow);
 

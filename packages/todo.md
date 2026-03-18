@@ -60,7 +60,6 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 - [ ] Decide whether `BoardStorage` remains a real app-facing abstraction or is replaced by narrower explicit services, because app code currently depends on `LocalStorage`-only capabilities.
 - [ ] Define package boundaries for secondary apps such as `lexera-capture-ios` so they consume shared domain modules instead of re-implementing feature slices ad hoc.
 - [ ] Keep export orchestration behind a dedicated subsystem boundary instead of letting it spread across frontend scripts, backend routes, and Tauri command modules.
-- [ ] Keep optional integrations such as `ludos-sync` behind explicit sidecar or integration boundaries so they do not shape the core backend state model by default.
 - [ ] Replace ad hoc cross-package conventions with explicit public APIs per package.
 - [ ] Add app and library README files that state responsibility, public API, and non-goals for each promoted module.
 - [ ] Mark experimental apps, libraries, and features explicitly so production paths stay clear.
@@ -198,10 +197,9 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 - [ ] Separate backend app bootstrap from server bootstrap so tray, capture UI, HTTP API, and collaboration runtime can evolve independently.
 - [ ] Consolidate backend frontend pages such as connection settings and quick capture around shared transport helpers instead of duplicating discovery logic.
 - [ ] Replace direct `Arc<LocalStorage>` dependencies with narrower traits or services where consumers need only board reads, writes, search, or sync capabilities.
-- [ ] Treat `ludos-sync` as a sidecar supervisor service with explicit process control, config generation, log bridging, and health checks instead of scattering reconcile triggers through unrelated handlers.
 - [ ] Decide whether backend UI assets belong in the backend app package or in a shared frontend module consumed by multiple apps.
 - [ ] Extract event-stream and WebSocket broadcasting concerns into dedicated runtime modules with explicit lifecycle ownership.
-- [ ] Define a single backend state composition root so config, storage, watchers, collaborators, and ludos-sync integration are wired in one place.
+- [ ] Define a single backend state composition root so config, storage, watchers, and collaborators are wired in one place.
 - [ ] Audit background task ownership in `lib.rs` so startup, restore, periodic save, and shutdown behavior live in named runtime supervisors instead of one growing setup flow.
 - [ ] Add API contract tests that cover the full board payload shape returned to the Kanban frontend and management UI.
 - [ ] Remove frontend-side port-scanning duplication once the backend location and discovery contract are centralized.
@@ -257,7 +255,6 @@ Scope: the active Lexera code currently lives under `packages/lexera-*`, but the
 - [ ] Add shared module tests for management UI and backend transport helpers once they are extracted from app-local bootstraps.
 - [ ] Add tests for shared backend discovery and transport adapters so port scanning, Tauri invoke fallback, SSE, and log streams are validated once.
 - [ ] Add smoke tests for secondary apps such as `lexera-capture-ios` if they remain active.
-- [ ] Add integration tests for sidecar lifecycle management so `ludos-sync` config changes, restart flows, and stale process cleanup are validated in one place.
 - [ ] Add checks for dead or orphaned modules so unused shared layers and abandoned abstractions are surfaced early.
 
 ## Developer Experience
