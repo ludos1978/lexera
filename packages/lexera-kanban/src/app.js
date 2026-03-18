@@ -1222,26 +1222,15 @@ const LexeraDashboard = (function () {
   }
 
   function stripLayoutTags(title) {
-    return stripHtmlComments(String(title || ''))
-      .replace(/\s*\[(#[^\]\s]+)\]\u007B[^\u007D]+\u007D/gi, '')
-      .replace(/\s*#(?:row\d*|span\d*|stack|header|footer|wip-\d+|width\{\d+\}|height\{\d+\})\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return LexeraTagSystem.stripLayoutTags(title);
   }
 
   function stripStackTag(title) {
-    return stripHtmlComments(String(title || ''))
-      .replace(/\s*#stack\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return LexeraTagSystem.stripLayoutTags(title);
   }
 
   function stripLegacyImportStructureTags(title) {
-    return stripHtmlComments(String(title || ''))
-      .replace(/\s*#row\d*\b/gi, '')
-      .replace(/\s*#stack\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return LexeraTagSystem.stripLegacyStructureTags(title);
   }
 
   function isColumnHeaderTagged(title) {
@@ -1302,28 +1291,19 @@ const LexeraDashboard = (function () {
   }
 
   function getColumnLayoutTags(title) {
-    title = String(title || '');
-    var rowMatch = title.match(/#row(\d+)\b/i);
-    var spanMatch = title.match(/#span(\d+)\b/i);
-    var stackMatch = title.match(/#stack\b/i);
-    var headerMatch = title.match(/#header\b/i);
-    var footerMatch = title.match(/#footer\b/i);
-    var wipMatch = title.match(/#wip-(\d+)\b/i);
+    var t = LexeraTagSystem.extractLayoutTags(title);
     return {
-      row: rowMatch ? rowMatch[0] : '',
-      span: spanMatch ? spanMatch[0] : '',
-      stack: !!stackMatch,
-      header: !!headerMatch,
-      footer: !!footerMatch,
-      wipLimit: wipMatch ? parseInt(wipMatch[1], 10) : 0
+      row: t.rowRaw || '',
+      span: t.spanRaw || '',
+      stack: t.stack,
+      header: t.header,
+      footer: t.footer,
+      wipLimit: t.wip || 0
     };
   }
 
   function getElementSizeTag(title, tagName) {
-    var match = String(title || '').match(new RegExp('#' + tagName + '\\{(\\d+)\\}', 'i'));
-    if (!match) return 0;
-    var val = parseInt(match[1], 10);
-    return isFinite(val) && val > 0 ? val : 0;
+    return LexeraTagSystem.getElementSizeTag(title, tagName);
   }
 
   function getLegacyImportRowNumber(title) {
@@ -1389,60 +1369,7 @@ const LexeraDashboard = (function () {
   }
 
   function reconstructColumnTitle(userInput, originalTitle) {
-    var source = String(userInput || '');
-    var original = getColumnLayoutTags(originalTitle);
-    var next = getColumnLayoutTags(source);
-    var preservedComments = extractHtmlComments(originalTitle);
-    var cleanTitle = source
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/#row\d+\b/gi, '')
-      .replace(/#span\d+\b/gi, '')
-      .replace(/#stack\b/gi, '')
-      .replace(/#header\b/gi, '')
-      .replace(/#footer\b/gi, '')
-      .replace(/#nospan\b/gi, '')
-      .replace(/#nostack\b/gi, '')
-      .replace(/#noheader\b/gi, '')
-      .replace(/#nofooter\b/gi, '')
-      .replace(/#wip-\d+\b/gi, '')
-      .replace(/#nowip\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    var parts = [];
-
-    if (cleanTitle) parts.push(cleanTitle);
-
-    var finalRow = next.row || original.row;
-    if (finalRow && finalRow.toLowerCase() !== '#row1') parts.push(finalRow);
-
-    if (!/#nospan\b/i.test(source)) {
-      var finalSpan = next.span || original.span;
-      if (finalSpan) parts.push(finalSpan);
-    }
-
-    if (!/#nostack\b/i.test(source) && (next.stack || (!next.stack && original.stack))) {
-      parts.push('#stack');
-    }
-
-    if (!/#noheader\b/i.test(source) && (next.header || (!next.header && original.header))) {
-      parts.push('#header');
-    }
-
-    if (!/#nofooter\b/i.test(source) && (next.footer || (!next.footer && original.footer))) {
-      parts.push('#footer');
-    }
-
-    if (!/#nowip\b/i.test(source)) {
-      var nextWipMatch = source.match(/#wip-(\d+)\b/i);
-      var finalWipLimit = nextWipMatch ? parseInt(nextWipMatch[1], 10) : original.wipLimit;
-      if (finalWipLimit > 0) parts.push('#wip-' + finalWipLimit);
-    }
-
-    if (preservedComments.length > 0) {
-      parts = parts.concat(preservedComments);
-    }
-
-    return parts.join(' ').trim();
+    return LexeraTagSystem.reconstructTitle(userInput, originalTitle);
   }
 
   async function toggleColumnWidth(colIndex) {
@@ -5610,28 +5537,19 @@ const LexeraDashboard = (function () {
   }
 
   function is_archived_or_deleted(text) {
-    return /#hidden-internal-(?:deleted|archived|parked|incoming)\b|(^|\s)#hidden(\s|$)/.test(text || '');
+    return LexeraTagSystem.isArchivedOrDeleted(text);
   }
 
   function hasInternalHiddenTag(text, tag) {
-    return !!(text && tag && text.indexOf(tag) !== -1);
+    return LexeraTagSystem.hasInternalHiddenTag(text, tag);
   }
 
   function stripInternalHiddenTags(text) {
-    return (text || '')
-      .replace(/\s*#hidden-internal-(?:incoming|parked|archived|deleted)\b/g, '')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n');
+    return LexeraTagSystem.stripInternalHiddenTags(text);
   }
 
   function applyInternalHiddenTag(text, tag) {
-    var cleaned = stripInternalHiddenTags(text);
-    if (!tag) return cleaned;
-    if (!cleaned || !cleaned.trim()) return tag;
-    var lines = cleaned.split('\n');
-    var firstLine = lines[0] ? lines[0].trim() : '';
-    lines[0] = firstLine ? (firstLine + ' ' + tag) : tag;
-    return lines.join('\n');
+    return LexeraTagSystem.applyInternalHiddenTag(text, tag);
   }
 
   function getColumnByLocation(rowIndex, stackIndex, colIndex) {
@@ -12383,8 +12301,7 @@ const LexeraDashboard = (function () {
   }
 
   function isLayoutTagName(tagName) {
-    var normalized = String(tagName || '').trim().replace(/^#/, '').toLowerCase();
-    return /^(row\d*|span\d*|stack|sticky|header|footer|width\{\d+\}|height\{\d+\})$/.test(normalized);
+    return LexeraTagSystem.isLayoutTag(tagName);
   }
 
   function applyRenderedTagVisibility(root, mode) {
@@ -12534,13 +12451,7 @@ const LexeraDashboard = (function () {
   }
 
   function replaceTagTokenInHeaderText(headerText, oldTag, newTag) {
-    var fromTag = normalizePromptTagToken(oldTag);
-    var toTag = normalizePromptTagToken(newTag);
-    if (!fromTag || !toTag || fromTag === toTag) return String(headerText || '');
-    var re = new RegExp('(^|[\\s&|!])' + escapeRegex(fromTag) + '(?=([\\s&|!]|$))', 'g');
-    return String(headerText || '').replace(re, function (_, prefix) {
-      return prefix + toTag;
-    });
+    return LexeraTagSystem.replaceTagInHeader(headerText, oldTag, newTag);
   }
 
   async function renameTagAcrossBoard(oldTag, newTag) {
@@ -20341,72 +20252,23 @@ const LexeraDashboard = (function () {
   }
 
   function normalizePromptTagToken(rawToken) {
-    var token = String(rawToken || '').trim();
-    if (!token) return '';
-    if (token.charAt(0) !== '#') {
-      if (token.charAt(0) === '@' || token.charAt(0) === '!') return '';
-      token = '#' + token;
-    }
-    if (!/^#[^\s&|!]+$/.test(token)) return '';
-    return token.toLowerCase();
+    return LexeraTagSystem.normalizePromptTagToken(rawToken);
   }
 
   function parsePromptTagList(rawInput) {
-    var source = String(rawInput || '');
-    if (!source) return [];
-    var parts = source.split(/[\s,;]+/);
-    var out = [];
-    var seen = {};
-    for (var i = 0; i < parts.length; i++) {
-      var tag = normalizePromptTagToken(parts[i]);
-      if (!tag || seen[tag]) continue;
-      seen[tag] = true;
-      out.push(tag);
-    }
-    return out;
+    return LexeraTagSystem.parsePromptTagList(rawInput);
   }
 
   function removeTagFromHeaderText(headerText, tagName) {
-    var normalized = normalizePromptTagToken(tagName);
-    if (!normalized) return headerText;
-    var re = new RegExp('(^|[\\s&|!])' + escapeRegex(normalized) + '(?=([\\s&|!]|$))', 'g');
-    var next = String(headerText || '').replace(re, '$1');
-    next = next
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/[ \t]+\n/g, '\n')
-      .replace(/\n[ \t]+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trimEnd();
-    return next;
+    return LexeraTagSystem.removeTagFromHeader(headerText, tagName);
   }
 
   function addTagToHeaderText(headerText, tagName) {
-    var normalized = normalizePromptTagToken(tagName);
-    if (!normalized) return headerText;
-    if (hasTag(headerText, normalized)) return headerText;
-    var lines = String(headerText || '').split('\n');
-    if (lines.length === 0) lines = [''];
-    var firstLine = String(lines[0] || '').trim();
-    if (!firstLine) lines[0] = normalized;
-    else lines[0] = firstLine + ' ' + normalized;
-    return lines.join('\n');
+    return LexeraTagSystem.addTagToHeader(headerText, tagName);
   }
 
   function clearRemovableTagsFromHeaderText(headerText) {
-    var tokens = collectHeaderTagTokens(headerText, {
-      includeHash: true,
-      includeAt: false,
-      includeTemporalBang: false
-    });
-    var next = String(headerText || '');
-    for (var i = 0; i < tokens.length; i++) {
-      var token = String(tokens[i] || '');
-      if (!token || token.charAt(0) !== '#') continue;
-      if (/^#hidden-internal-/i.test(token)) continue;
-      if (isLayoutTagName(token)) continue;
-      next = removeTagFromHeaderText(next, token);
-    }
-    return next;
+    return LexeraTagSystem.clearRemovableTags(headerText);
   }
 
   async function mutateEntityHeaderTags(elementType, indices, mutator) {
@@ -20828,7 +20690,8 @@ const LexeraDashboard = (function () {
     if (!col) return;
     var titleEl = colEl.querySelector('.column-title');
     if (!titleEl) return;
-    var currentTitle = stripLayoutTags(col.title);
+    var includePath = extractIncludePathFromTitle(col.title);
+    var currentTitle = removeIncludeSyntaxFromTitle(stripLayoutTags(col.title));
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'column-rename-input';
@@ -20845,10 +20708,15 @@ const LexeraDashboard = (function () {
       var newTitle = input.value.trim();
       if (newTitle && newTitle !== currentTitle) {
         pushUndo();
-        col.title = reconstructColumnTitle(newTitle, col.title);
+        var rebuilt = reconstructColumnTitle(newTitle, col.title);
+        if (includePath) {
+          rebuilt = addIncludeSyntaxToTitle(rebuilt, includePath);
+        }
+        col.title = rebuilt;
         persistBoardMutation();
       } else {
-        titleEl.innerHTML = renderTitleInline(currentTitle, activeBoardId, { allowIncludeDirectives: true });
+        var displayTitle = includePath ? addIncludeSyntaxToTitle(currentTitle, includePath) : currentTitle;
+        titleEl.innerHTML = renderTitleInline(displayTitle, activeBoardId, { allowIncludeDirectives: true });
       }
     }
     input.addEventListener('blur', save);
@@ -26506,237 +26374,47 @@ const LexeraDashboard = (function () {
   }
 
   function isTagTokenBoundaryChar(ch) {
-    return !ch || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '&' || ch === '|' || ch === '!';
+    return LexeraTagSystem.isTagTokenBoundaryChar(ch);
   }
 
   function normalizeTagTokenForMatch(token) {
-    return String(token || '').trim().toLowerCase();
+    return LexeraTagSystem.normalizeTagTokenForMatch(token);
   }
 
   function isTagExpressionBoundaryChar(ch) {
-    return isTagTokenBoundaryChar(ch) || ch === '(' || ch === ')';
+    return LexeraTagSystem.isTagTokenBoundaryChar(ch) || ch === '(' || ch === ')';
   }
 
   function collectHeaderTagTokens(text, options) {
-    options = options || {};
-    var includeHash = options.includeHash !== false;
-    var includeAt = options.includeAt !== false;
-    var includeTemporalBang = options.includeTemporalBang !== false;
-    var lines = String(text || '').split('\n');
-    var sourceLines = [];
-    for (var i = 0; i < lines.length; i++) {
-      var line = String(lines[i] || '');
-      if (line.trim() === '') break;
-      var headingMatch = line.match(/^(\s{0,3})#{1,6}(?:[ \t]+(.*))?[ \t]*$/);
-      if (headingMatch) {
-        var headingContent = String(headingMatch[2] || '').replace(/[ \t]+#{1,}[ \t]*$/, '');
-        line = (headingMatch[1] || '') + headingContent;
-      }
-      sourceLines.push(line);
-    }
-    var source = sourceLines.join('\n');
-    var tokens = [];
-    var idx = 0;
-
-    while (idx < source.length) {
-      var ch = source.charAt(idx);
-      var prev = idx === 0 ? '' : source.charAt(idx - 1);
-      if (!isTagTokenBoundaryChar(prev)) {
-        idx++;
-        continue;
-      }
-
-      var isHashTag = includeHash && ch === '#';
-      var isTemporalAt = includeAt && ch === '@';
-      var isTemporalBang = includeTemporalBang && ch === '!' && idx + 1 < source.length;
-
-      if (!isHashTag && !isTemporalAt && !isTemporalBang) {
-        idx++;
-        continue;
-      }
-
-      if (isTemporalBang) {
-        var next = source.charAt(idx + 1);
-        // '!' as boolean operator stays a separator; only collect bang-prefixed temporal tokens.
-        if (next === '#' || next === '@' || next === '&' || next === '|' || isTagTokenBoundaryChar(next)) {
-          idx++;
-          continue;
-        }
-      }
-
-      var start = idx;
-      idx++;
-      while (idx < source.length && !isTagTokenBoundaryChar(source.charAt(idx))) idx++;
-      if (idx - start > 1) tokens.push(source.slice(start, idx));
-    }
-
-    return tokens;
+    return LexeraTagSystem.collectHeaderTagTokens(text, options);
   }
 
   function tokenizeTagExpression(expression) {
-    var source = String(expression || '');
-    var tokens = [];
-    var i = 0;
-
-    while (i < source.length) {
-      var ch = source.charAt(i);
-      if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
-        i++;
-        continue;
-      }
-      if (ch === '&' || ch === '|' || ch === '(' || ch === ')') {
-        tokens.push({ type: 'op', value: ch });
-        i++;
-        continue;
-      }
-      if (ch === '!') {
-        var j = i + 1;
-        while (j < source.length) {
-          var next = source.charAt(j);
-          if (next !== ' ' && next !== '\t' && next !== '\n' && next !== '\r') break;
-          j++;
-        }
-        var nextSignificant = source.charAt(j);
-        if (nextSignificant === '#' || nextSignificant === '@' || nextSignificant === '!') {
-          tokens.push({ type: 'op', value: '!' });
-          i++;
-          continue;
-        }
-      }
-      if (ch === '#' || ch === '@' || ch === '!') {
-        var start = i;
-        i++;
-        while (i < source.length && !isTagExpressionBoundaryChar(source.charAt(i))) i++;
-        if (i - start > 1) tokens.push({ type: 'tag', value: source.slice(start, i) });
-        continue;
-      }
-      i++;
-    }
-
-    return tokens;
+    return LexeraTagSystem.tokenizeTagExpression(expression);
   }
 
   function evaluateTagExpression(expression, tagLookup) {
-    var tokens = tokenizeTagExpression(expression);
-    if (tokens.length === 0) return false;
-    var index = 0;
-
-    function peek() {
-      return index < tokens.length ? tokens[index] : null;
-    }
-
-    function consumeOp(op) {
-      if (index < tokens.length && tokens[index].type === 'op' && tokens[index].value === op) {
-        index++;
-        return true;
-      }
-      return false;
-    }
-
-    function beginsOperand(token) {
-      return !!(token && ((token.type === 'tag') || (token.type === 'op' && (token.value === '!' || token.value === '('))));
-    }
-
-    function parsePrimary() {
-      if (consumeOp('(')) {
-        var nested = parseOr();
-        consumeOp(')');
-        return nested;
-      }
-      var token = peek();
-      if (!token || token.type !== 'tag') return false;
-      index++;
-      return !!tagLookup[normalizeTagTokenForMatch(token.value)];
-    }
-
-    function parseNot() {
-      if (consumeOp('!')) return !parseNot();
-      return parsePrimary();
-    }
-
-    function parseAnd() {
-      var value = parseNot();
-      while (true) {
-        if (consumeOp('&')) {
-          var rhs = parseNot();
-          value = value && rhs;
-          continue;
-        }
-        // Adjacent operands imply AND: "#a #b" -> "#a & #b"
-        if (beginsOperand(peek())) {
-          var adjacent = parseNot();
-          value = value && adjacent;
-          continue;
-        }
-        break;
-      }
-      return value;
-    }
-
-    function parseOr() {
-      var value = parseAnd();
-      while (consumeOp('|')) {
-        var rhs = parseAnd();
-        value = value || rhs;
-      }
-      return value;
-    }
-
-    return !!parseOr();
+    return LexeraTagSystem.evaluateTagExpression(expression, tagLookup);
   }
 
   function isTagExpression(tagName) {
-    var expr = String(tagName || '').trim();
-    if (!expr) return false;
-    if (/[&|()]/.test(expr) || /!\s*[#@!(]/.test(expr)) return true;
-    var tokens = tokenizeTagExpression(expr);
-    var tagCount = 0;
-    for (var i = 0; i < tokens.length; i++) {
-      if (tokens[i].type === 'tag') tagCount++;
-      if (tagCount > 1) return true;
-    }
-    return false;
+    return LexeraTagSystem.isTagExpression(tagName);
   }
 
   function extractAllTags(text) {
-    // Header tags are scoped to the pre-body block (until first blank line).
-    var tokens = collectHeaderTagTokens(text, { includeHash: true, includeAt: false, includeTemporalBang: false });
-    var seen = {};
-    var tags = [];
-    for (var i = 0; i < tokens.length; i++) {
-      var token = tokens[i];
-      if (token.charAt(0) !== '#') continue;
-      var normalized = normalizeTagTokenForMatch(token);
-      if (seen[normalized]) continue;
-      seen[normalized] = true;
-      tags.push(token);
-    }
-    return tags;
+    return LexeraTagSystem.extractAllTags(text);
   }
 
   function hasTag(text, tagName) {
-    var target = String(tagName || '').trim();
-    if (!target) return false;
-    var tokens = collectHeaderTagTokens(text, { includeHash: true, includeAt: true, includeTemporalBang: true });
-    var lookup = {};
-    for (var i = 0; i < tokens.length; i++) {
-      lookup[normalizeTagTokenForMatch(tokens[i])] = true;
-    }
-    if (isTagExpression(target)) {
-      return evaluateTagExpression(target, lookup);
-    }
-    return !!lookup[normalizeTagTokenForMatch(target)];
+    return LexeraTagSystem.hasTag(text, tagName);
   }
 
   function isNumericIndexTag(tagName) {
-    return /^#\d+(?:\.\d+)*$/i.test(String(tagName || '').trim());
+    return LexeraTagSystem.isNumericIndexTag(tagName);
   }
 
   function isTagStyleEligible(tagName) {
-    if (!tagName || tagName.charAt(0) !== '#') return false;
-    if (isNumericIndexTag(tagName)) return false;
-    if (isLayoutTagName(tagName)) return false;
-    return !/^#hidden-internal-/i.test(tagName);
+    return LexeraTagSystem.isTagStyleEligible(tagName);
   }
 
   function toTagAccentRgba(color, alpha) {

@@ -17,6 +17,10 @@ const srcDir = resolve(__dirname, '..', 'src');
  * isExternalHttpUrl) are available. Returns an object with each function by name.
  */
 function loadAppUtils() {
+  // Load TagSystem first so delegating functions in app.js can reference it
+  const tagSystemSource = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
+  new Function(tagSystemSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 

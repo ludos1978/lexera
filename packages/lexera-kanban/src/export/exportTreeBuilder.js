@@ -166,6 +166,10 @@ class ExportTreeBuilder {
     }
 
     static getColumnRow(title) {
+        if (typeof LexeraTagSystem !== 'undefined') {
+            var t = LexeraTagSystem.extractLayoutTags(title);
+            return t.row || 1;
+        }
         var value = String(title || '');
         var matches = value.match(/#row(\d+)\b/gi);
         if (matches && matches.length > 0) {
@@ -176,6 +180,9 @@ class ExportTreeBuilder {
     }
 
     static isColumnStacked(title) {
+        if (typeof LexeraTagSystem !== 'undefined') {
+            return LexeraTagSystem.extractLayoutTags(title).stack;
+        }
         return /#stack\b/i.test(String(title || ''));
     }
 
@@ -195,11 +202,14 @@ class ExportTreeBuilder {
     }
 
     static cleanHierarchyTitle(title, fallback) {
-        var value = this.stripHtmlComments(String(title || ''))
-            .replace(/#row\d+\b/gi, '')
-            .replace(/#span\d+\b/gi, '')
-            .replace(/#stack\b/gi, '')
-            .replace(/#hidden-internal-(?:parked|archived|deleted)\b/gi, '')
+        var stripped = typeof LexeraTagSystem !== 'undefined'
+            ? LexeraTagSystem.stripInternalHiddenTags(LexeraTagSystem.stripLayoutTags(String(title || '')))
+            : this.stripHtmlComments(String(title || ''))
+                .replace(/#row\d+\b/gi, '')
+                .replace(/#span\d+\b/gi, '')
+                .replace(/#stack\b/gi, '')
+                .replace(/#hidden-internal-(?:parked|archived|deleted)\b/gi, '');
+        var value = stripped
             .replace(PLAIN_HIDDEN_TAG_PATTERN, ' ')
             .replace(EXCLUDE_TAG_PATTERN, '')
             .replace(/[ \t]+\n/g, '\n')

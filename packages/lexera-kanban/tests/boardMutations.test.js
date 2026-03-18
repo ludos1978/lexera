@@ -10,6 +10,10 @@ const srcDir = resolve(__dirname, '..', 'src');
  * Extract board mutation and tag functions from app.js for isolated testing.
  */
 function loadMutationFunctions() {
+  // Load TagSystem first so delegating functions in app.js can reference it
+  const tagSystemSource = readFileSync(resolve(srcDir, 'tagSystem.js'), 'utf-8');
+  new Function(tagSystemSource)();
+
   const source = readFileSync(resolve(srcDir, 'app.js'), 'utf-8');
   const lines = source.split('\n');
 
