@@ -9,7 +9,6 @@
  *   %% footer %%
  *
  * No VS Code dependencies, no plugin system, no include resolution.
- * Used by ludos-sync standalone server.
  */
 
 import { KanbanCard, KanbanColumn, KanbanBoard, BoardSettings } from './kanbanTypes';

@@ -2,7 +2,6 @@ use crate::auth::AuthService;
 use crate::config::SyncConfig;
 use crate::discovery::DiscoveryService;
 use crate::invite::InviteService;
-use crate::ludos_sync::LudosSyncManager;
 use crate::public::PublicRoomService;
 use crate::sync_client::SyncClientManager;
 use crate::sync_ws::BoardSyncHub;
@@ -93,8 +92,6 @@ pub struct AppState {
     pub app_handle: Option<tauri::AppHandle>,
     // Directory for collaboration service persistence files
     pub collab_dir: PathBuf,
-    // Managed ludos-sync sidecar for CalDAV/WebDAV parity
-    pub ludos_sync: Arc<tokio::sync::Mutex<LudosSyncManager>>,
     /// Global shutdown signal — send `true` to cancel all background tasks.
     pub shutdown_tx: tokio::sync::watch::Sender<bool>,
 }

@@ -1,5 +1,5 @@
 /**
- * Core Kanban data types shared between the VS Code extension and ludos-sync.
+ * Core Kanban data types shared across Lexera packages.
  *
  * These types mirror the canonical definitions in src/board/KanbanTypes.ts
  * but without any VS Code or plugin dependencies.

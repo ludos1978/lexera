@@ -42,20 +42,11 @@ pub async fn sse_events(
 
 pub async fn status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let actual_port = state.live_port.lock().map(|p| *p).unwrap_or(state.port);
-    let config_snapshot = state.config.lock().ok().map(|cfg| cfg.clone());
-    let ludos_sync = {
-        let mut manager = state.ludos_sync.lock().await;
-        config_snapshot
-            .as_ref()
-            .map(|cfg| manager.status(cfg))
-            .unwrap_or_else(|| manager.status(&crate::config::SyncConfig::default()))
-    };
     Json(serde_json::json!({
         "status": "running",
         "port": actual_port,
         "bind_address": state.bind_address,
         "incoming": state.incoming,
-        "ludosSync": ludos_sync,
     }))
 }
 
@@ -307,12 +298,6 @@ mod tests {
         assert_eq!(json["status"], "running");
         assert_eq!(json["bind_address"], "127.0.0.1");
         assert_eq!(json["port"], 0);
-        assert_eq!(json["ludosSync"]["enabled"], false);
-        assert_eq!(json["ludosSync"]["running"], false);
-        assert_eq!(json["ludosSync"]["configuredPort"], 13081);
-        assert_eq!(json["ludosSync"]["bookmarksUrl"], "http://localhost:13081/bookmarks/");
-        assert_eq!(json["ludosSync"]["caldavUrl"], "http://localhost:13081/caldav/");
-        assert_eq!(json["ludosSync"]["authEnabled"], false);
     }
 
     #[tokio::test]

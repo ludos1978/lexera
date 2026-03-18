@@ -9,8 +9,7 @@ use std::path::PathBuf;
 
 use lexera_core::watcher::types::BoardChangeEvent;
 
-use crate::config::{normalize_workspace_setup, save_config, LudosSyncModuleConfig, WorkspaceEntry};
-use crate::ludos_sync::spawn_ludos_sync_reconcile;
+use crate::config::{normalize_workspace_setup, save_config, WorkspaceEntry};
 use crate::state::AppState;
 
 use super::{err_bad_request, err_internal, err_not_found, ErrorResponse};
@@ -62,97 +61,6 @@ pub async fn set_theme(
     log::info!("[config] Theme changed to '{}'", body.theme);
     notify_config_changed(&state);
     Ok(Json(serde_json::json!({ "theme": body.theme })))
-}
-
-// ── Ludos Sync Module ────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateLudosSyncRequest {
-    pub enabled: bool,
-    pub port: u16,
-    pub bookmarks_enabled: bool,
-    pub calendar_enabled: bool,
-    #[serde(default)]
-    pub username: Option<String>,
-    #[serde(default)]
-    pub password: Option<String>,
-}
-
-pub async fn get_ludos_sync_config(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let cfg = state.config.lock().ok().map(|guard| guard.clone());
-    let config = cfg
-        .as_ref()
-        .map(|guard| guard.ludos_sync.clone())
-        .unwrap_or_default();
-    let status = {
-        let mut manager = state.ludos_sync.lock().await;
-        cfg.as_ref()
-            .map(|guard| manager.status(guard))
-            .unwrap_or_else(|| manager.status(&crate::config::SyncConfig::default()))
-    };
-
-    Json(serde_json::json!({
-        "config": config,
-        "status": status,
-    }))
-}
-
-pub async fn update_ludos_sync_config(
-    State(state): State<AppState>,
-    Json(body): Json<UpdateLudosSyncRequest>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    if body.port == 0 {
-        return Err(err_bad_request("ludos-sync port must be greater than 0"));
-    }
-
-    let config_path = state.config_path.clone();
-    let next = LudosSyncModuleConfig {
-        enabled: body.enabled,
-        port: body.port,
-        bookmarks_enabled: body.bookmarks_enabled,
-        calendar_enabled: body.calendar_enabled,
-        username: body.username.clone().filter(|value| !value.trim().is_empty()),
-        password: body.password.clone().filter(|value| !value.trim().is_empty()),
-    };
-    let cfg_snapshot;
-
-    {
-        let mut cfg = state.config.lock().map_err(|_| lock_error())?;
-        cfg.ludos_sync = next.clone();
-        cfg_snapshot = cfg.clone();
-        if let Err(e) = save_config(&config_path, &cfg) {
-            log::error!("Failed to save config after ludos-sync update: {}", e);
-        }
-    }
-
-    let status = {
-        let mut manager = state.ludos_sync.lock().await;
-        if let Err(e) = manager.reconcile(&cfg_snapshot).await {
-            log::error!("Failed to reconcile ludos-sync after config update: {}", e);
-            return Err(err_internal(e));
-        }
-        manager.status(&cfg_snapshot)
-    };
-    let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
-
-    Ok(Json(serde_json::json!({
-        "config": next,
-        "status": status,
-    })))
-}
-
-pub async fn restart_ludos_sync(
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let cfg = state.config.lock().map_err(|_| lock_error())?.clone();
-    let status = {
-        let mut manager = state.ludos_sync.lock().await;
-        manager.restart(&cfg).await.map_err(err_internal)?;
-        manager.status(&cfg)
-    };
-
-    Ok(Json(serde_json::json!({ "status": status })))
 }
 
 // ── Workspaces ─────────────────────────────────────────────────────────
@@ -351,7 +259,7 @@ pub async fn update_workspace(
     ))
 }
 
-/// PUT /config/workspaces/{id}/sync — update workspace-level ludos-sync defaults.
+/// PUT /config/workspaces/{id}/sync — update workspace-level sync defaults.
 pub async fn update_workspace_sync(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
@@ -588,7 +496,7 @@ pub async fn assign_board_workspaces(
     })))
 }
 
-/// PUT /config/boards/{board_id}/sync — update per-board ludos-sync overrides.
+/// PUT /config/boards/{board_id}/sync — update per-board sync overrides.
 pub async fn update_board_sync(
     State(state): State<AppState>,
     Path(board_id): Path<String>,
@@ -663,7 +571,6 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
 
 fn notify_config_changed(state: &AppState) {
     let _ = state.event_tx.send(BoardChangeEvent::ConfigChanged);
-    spawn_ludos_sync_reconcile(state.clone());
 }
 
 fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
@@ -687,77 +594,6 @@ mod tests {
         )
         .unwrap();
         path
-    }
-
-    #[tokio::test]
-    async fn get_ludos_sync_config_returns_defaults() {
-        let tmp = tempfile::tempdir().unwrap();
-        let app = test_router(test_state(tmp.path()));
-
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/config/ludos-sync")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let json = body_json(resp.into_body()).await;
-        assert_eq!(json["config"]["enabled"], false);
-        assert_eq!(json["config"]["port"], 13081);
-        assert_eq!(json["status"]["running"], false);
-        assert_eq!(json["status"]["bookmarksUrl"], "http://localhost:13081/bookmarks/");
-        assert_eq!(json["status"]["caldavUrl"], "http://localhost:13081/caldav/");
-        assert_eq!(
-            json["status"]["caldavDiscoveryUrl"],
-            "http://localhost:13081/.well-known/caldav"
-        );
-        assert_eq!(json["status"]["authEnabled"], false);
-    }
-
-    #[tokio::test]
-    async fn update_ludos_sync_config_persists_values() {
-        let tmp = tempfile::tempdir().unwrap();
-        let state = test_state(tmp.path());
-        let app = test_router(state.clone());
-
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("PUT")
-                    .uri("/config/ludos-sync")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "enabled": false,
-                            "port": 13123,
-                            "bookmarksEnabled": true,
-                            "calendarEnabled": true,
-                            "username": "sync-user",
-                            "password": "secret",
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(resp.status(), StatusCode::OK);
-        let json = body_json(resp.into_body()).await;
-        assert_eq!(json["config"]["port"], 13123);
-        assert_eq!(json["config"]["username"], "sync-user");
-        assert_eq!(json["status"]["configuredPort"], 13123);
-        assert_eq!(json["status"]["authEnabled"], true);
-        assert_eq!(json["status"]["authUsername"], "sync-user");
-
-        let cfg = state.config.lock().unwrap().clone();
-        assert_eq!(cfg.ludos_sync.port, 13123);
-        assert_eq!(cfg.ludos_sync.username.as_deref(), Some("sync-user"));
-        assert_eq!(cfg.ludos_sync.password.as_deref(), Some("secret"));
     }
 
     #[tokio::test]

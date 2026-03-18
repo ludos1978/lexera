@@ -50,7 +50,6 @@ var ManagementUI = (function () {
   var cachedDefaultWorkspaceId = null;
   var cachedBoards = [];
   var currentConfig = null;
-  var currentLudosSync = null;
   var expandedBoardId = null;
   var activeBoardTab = {};
   var initialized = false;
@@ -202,7 +201,6 @@ var ManagementUI = (function () {
     cachedDefaultWorkspaceId = null;
     cachedBoards = [];
     currentConfig = null;
-    currentLudosSync = null;
     expandedBoardId = null;
     activeBoardTab = {};
     initialized = false;
@@ -232,8 +230,7 @@ var ManagementUI = (function () {
       loadServerInfo(),
       loadNetworkInterfaces(),
       loadTheme(),
-      loadWorkspaces(),
-      loadLudosSyncConfig()
+      loadWorkspaces()
     ];
     if (uiOptions && uiOptions.logsEnabled) initialLoads.push(loadLogs());
     await Promise.all(initialLoads);
@@ -363,37 +360,6 @@ var ManagementUI = (function () {
     html += '<div id="mgmt-server-restart-note" class="mgmt-restart-note" style="display:none"></div>';
     html += '</div>';
 
-    // WebDAV / CalDAV
-    html += '<div class="mgmt-section" data-mgmt-section="ludos-sync">';
-    html += '<div class="mgmt-section-title">WebDAV / CalDAV</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-ludos-enabled"> Enable module</label>';
-    html += '</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label" for="mgmt-ludos-port">Port</label>';
-    html += '<input class="mgmt-field-input" type="number" id="mgmt-ludos-port" min="1" max="65535" placeholder="13081">';
-    html += '</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-ludos-bookmarks-enabled"> WebDAV bookmarks</label>';
-    html += '<label class="mgmt-check-label"><input type="checkbox" id="mgmt-ludos-calendar-enabled"> CalDAV calendar</label>';
-    html += '</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label" for="mgmt-ludos-username">Username</label>';
-    html += '<input class="mgmt-field-input" type="text" id="mgmt-ludos-username" placeholder="Optional">';
-    html += '</div>';
-    html += '<div class="mgmt-field-row">';
-    html += '<label class="mgmt-field-label" for="mgmt-ludos-password">Password</label>';
-    html += '<input class="mgmt-field-input" type="password" id="mgmt-ludos-password" placeholder="Optional">';
-    html += '</div>';
-    html += '<div class="mgmt-field-row" style="justify-content:flex-end">';
-    html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="restart-ludos-sync">Restart</button>';
-    html += '<button class="mgmt-btn mgmt-btn-primary mgmt-btn-small" data-mgmt-action="save-ludos-sync">Save</button>';
-    html += '</div>';
-    html += '<div id="mgmt-ludos-sync-status" class="mgmt-info-stack"></div>';
-    html += '<div id="mgmt-ludos-sync-endpoints" class="mgmt-info-stack"></div>';
-    html += '<div id="mgmt-ludos-sync-config-path" class="mgmt-info-text"></div>';
-    html += '</div>';
-
     // Theme
     html += '<div class="mgmt-section" data-mgmt-section="theme">';
     html += '<div class="mgmt-section-title">Theme</div>';
@@ -420,7 +386,6 @@ var ManagementUI = (function () {
       html += '<select class="mgmt-field-input mgmt-field-select-small" id="mgmt-log-filter">';
       html += '<option value="all">All</option>';
       html += '<option value="backend">Backend</option>';
-      html += '<option value="ludos-sync">WebDAV / CalDAV</option>';
       html += '<option value="errors">Warnings / Errors</option>';
       html += '</select>';
       html += '<button class="mgmt-btn mgmt-btn-small" data-mgmt-action="toggle-log-pause">Pause</button>';
@@ -580,8 +545,6 @@ var ManagementUI = (function () {
       case 'add-board': addBoard(); break;
       case 'save-name': saveName(); break;
       case 'save-server': saveServerConfig(); break;
-      case 'save-ludos-sync': saveLudosSyncConfig(); break;
-      case 'restart-ludos-sync': restartLudosSync(); break;
       case 'toggle-log-pause': toggleLogPause(); break;
       case 'refresh-logs': loadLogs(); break;
       case 'join-remote': joinRemote(); break;
@@ -829,105 +792,6 @@ var ManagementUI = (function () {
     } catch (e) { /* ignore */ }
   }
 
-  // ── Ludos Sync / WebDAV / CalDAV ──
-
-  function renderLudosSyncStatus(data) {
-    var statusEl = container.querySelector('#mgmt-ludos-sync-status');
-    var endpointsEl = container.querySelector('#mgmt-ludos-sync-endpoints');
-    var configPathEl = container.querySelector('#mgmt-ludos-sync-config-path');
-    if (!statusEl || !endpointsEl || !configPathEl) return;
-
-    var status = data && data.status ? data.status : {};
-    var statusText = status.running ? 'Running' : 'Stopped';
-    var html = '';
-    html += '<div><strong>Status:</strong> ' + statusText + '</div>';
-    html += '<div><strong>Enabled:</strong> ' + (status.enabled ? 'Yes' : 'No') + '</div>';
-    html += '<div><strong>WebDAV:</strong> ' + (status.bookmarksEnabled ? 'On' : 'Off') + '</div>';
-    html += '<div><strong>CalDAV:</strong> ' + (status.calendarEnabled ? 'On' : 'Off') + '</div>';
-    if (status.pid) html += '<div><strong>PID:</strong> ' + esc(status.pid) + '</div>';
-    html += '<div><strong>Auth:</strong> ' + (status.authEnabled ? ('Enabled' + (status.authUsername ? ' (' + esc(status.authUsername) + ')' : '')) : 'Disabled') + '</div>';
-    statusEl.innerHTML = html;
-
-    var endpoints = '';
-    if (status.bookmarksUrl) endpoints += '<div><strong>Bookmarks:</strong> ' + esc(status.bookmarksUrl) + '</div>';
-    if (status.caldavUrl) endpoints += '<div><strong>CalDAV:</strong> ' + esc(status.caldavUrl) + '</div>';
-    if (status.caldavDiscoveryUrl) endpoints += '<div><strong>Discovery:</strong> ' + esc(status.caldavDiscoveryUrl) + '</div>';
-    endpointsEl.innerHTML = endpoints;
-    configPathEl.textContent = status.generatedConfigPath ? ('Generated config: ' + status.generatedConfigPath) : '';
-  }
-
-  async function loadLudosSyncConfig() {
-    try {
-      currentLudosSync = await api.get('/config/ludos-sync');
-    } catch (e) {
-      currentLudosSync = null;
-    }
-
-    var config = currentLudosSync && currentLudosSync.config ? currentLudosSync.config : {};
-    var enabledInput = container.querySelector('#mgmt-ludos-enabled');
-    var portInput = container.querySelector('#mgmt-ludos-port');
-    var bookmarksInput = container.querySelector('#mgmt-ludos-bookmarks-enabled');
-    var calendarInput = container.querySelector('#mgmt-ludos-calendar-enabled');
-    var usernameInput = container.querySelector('#mgmt-ludos-username');
-    var passwordInput = container.querySelector('#mgmt-ludos-password');
-
-    if (enabledInput) enabledInput.checked = !!config.enabled;
-    if (portInput) portInput.value = config.port || 13081;
-    if (bookmarksInput) bookmarksInput.checked = config.bookmarksEnabled !== false;
-    if (calendarInput) calendarInput.checked = config.calendarEnabled !== false;
-    if (usernameInput) usernameInput.value = config.username || '';
-    if (passwordInput) passwordInput.value = config.password || '';
-
-    renderLudosSyncStatus(currentLudosSync);
-  }
-
-  async function saveLudosSyncConfig() {
-    var enabledInput = container.querySelector('#mgmt-ludos-enabled');
-    var portInput = container.querySelector('#mgmt-ludos-port');
-    var bookmarksInput = container.querySelector('#mgmt-ludos-bookmarks-enabled');
-    var calendarInput = container.querySelector('#mgmt-ludos-calendar-enabled');
-    var usernameInput = container.querySelector('#mgmt-ludos-username');
-    var passwordInput = container.querySelector('#mgmt-ludos-password');
-
-    var port = parseInt(portInput && portInput.value ? portInput.value : '13081', 10);
-    if (isNaN(port) || port <= 0 || port > 65535) {
-      notify('Port must be between 1 and 65535');
-      return;
-    }
-
-    var payload = {
-      enabled: !!(enabledInput && enabledInput.checked),
-      port: port,
-      bookmarksEnabled: !!(bookmarksInput && bookmarksInput.checked),
-      calendarEnabled: !!(calendarInput && calendarInput.checked),
-      username: normalizeOptionalText(usernameInput && usernameInput.value),
-      password: normalizeOptionalText(passwordInput && passwordInput.value),
-    };
-
-    if (payload.enabled && !payload.bookmarksEnabled && !payload.calendarEnabled) {
-      notify('Enable at least one of WebDAV bookmarks or CalDAV calendar');
-      return;
-    }
-
-    try {
-      currentLudosSync = await api.put('/config/ludos-sync', payload);
-      renderLudosSyncStatus(currentLudosSync);
-      notify('WebDAV / CalDAV config saved');
-    } catch (e) {
-      notify('Failed to save WebDAV / CalDAV config: ' + (e.message || e));
-    }
-  }
-
-  async function restartLudosSync() {
-    try {
-      currentLudosSync = await api.post('/config/ludos-sync/restart', {});
-      renderLudosSyncStatus({ status: currentLudosSync.status || currentLudosSync });
-      notify('WebDAV / CalDAV module restarted');
-    } catch (e) {
-      notify('Failed to restart WebDAV / CalDAV module: ' + (e.message || e));
-    }
-  }
-
   // ── Logs ──
 
   function normalizeLogEntry(entry) {
@@ -940,8 +804,8 @@ var ManagementUI = (function () {
     };
   }
 
-  function logSourceForEntry(entry) {
-    return entry && String(entry.target || '').indexOf('ludos-sync') === 0 ? 'ludos-sync' : 'backend';
+  function logSourceForEntry() {
+    return 'backend';
   }
 
   function formatLogTimestamp(timestampMs) {
@@ -959,7 +823,6 @@ var ManagementUI = (function () {
 
   function logMatchesFilter(entry) {
     if (logFilter === 'backend') return logSourceForEntry(entry) === 'backend';
-    if (logFilter === 'ludos-sync') return logSourceForEntry(entry) === 'ludos-sync';
     if (logFilter === 'errors') return entry.level === 'warn' || entry.level === 'error';
     return true;
   }
@@ -986,7 +849,7 @@ var ManagementUI = (function () {
       for (var i = 0; i < rendered.length; i++) {
         var entry = rendered[i];
         var source = logSourceForEntry(entry);
-        var sourceLabel = source === 'ludos-sync' ? 'WebDAV / CalDAV' : 'Backend';
+        var sourceLabel = 'Backend';
         html += '<div class="mgmt-log-line mgmt-log-level-' + esc(entry.level) + '">';
         html += '<span class="mgmt-log-ts">' + esc(formatLogTimestamp(entry.timestampMs)) + '</span>';
         html += '<span class="mgmt-log-source mgmt-log-source-' + esc(source) + '">' + esc(sourceLabel) + '</span>';

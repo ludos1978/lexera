@@ -2,7 +2,7 @@
  * Pure temporal parsing functions extracted from DashboardScanner.
  *
  * Parses @-prefixed temporal tags: dates, weeks (@w1/@kw1/@week1), weekdays, months (EN+DE), quarters, time ranges.
- * No VS Code dependencies — used by both the extension and ludos-sync.
+ * No VS Code dependencies — used by the backend and frontend.
  *
  * Multiple tags of the same type on a line are OR-connected (alternatives).
  * Tags of different types are AND-connected (combinatorial cross-product).

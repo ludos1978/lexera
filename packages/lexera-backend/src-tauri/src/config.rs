@@ -41,46 +41,8 @@ pub struct RemoteConnectionEntry {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct LudosSyncModuleConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default = "default_ludos_sync_port")]
-    pub port: u16,
-    #[serde(default = "default_module_feature_enabled")]
-    pub bookmarks_enabled: bool,
-    #[serde(default = "default_module_feature_enabled")]
-    pub calendar_enabled: bool,
-    #[serde(default)]
-    pub username: Option<String>,
-    #[serde(default)]
-    pub password: Option<String>,
-}
-
 fn default_remote_connection_enabled() -> bool {
     true
-}
-
-fn default_ludos_sync_port() -> u16 {
-    13081
-}
-
-fn default_module_feature_enabled() -> bool {
-    true
-}
-
-impl Default for LudosSyncModuleConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            port: default_ludos_sync_port(),
-            bookmarks_enabled: default_module_feature_enabled(),
-            calendar_enabled: default_module_feature_enabled(),
-            username: None,
-            password: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,8 +65,6 @@ pub struct SyncConfig {
     pub default_workspace: Option<String>,
     #[serde(default, alias = "remoteConnections")]
     pub remote_connections: Vec<RemoteConnectionEntry>,
-    #[serde(default, alias = "ludosSync")]
-    pub ludos_sync: LudosSyncModuleConfig,
 }
 
 fn default_port() -> u16 {
@@ -135,7 +95,6 @@ impl Default for SyncConfig {
             workspaces: Vec::new(),
             default_workspace: None,
             remote_connections: Vec::new(),
-            ludos_sync: LudosSyncModuleConfig::default(),
         }
     }
 }
@@ -671,7 +630,6 @@ mod tests {
             workspaces: Vec::new(),
             default_workspace: None,
             remote_connections: Vec::new(),
-            ludos_sync: LudosSyncModuleConfig::default(),
         };
 
         save_config(&path.to_path_buf(), &cfg).unwrap();
@@ -735,7 +693,6 @@ mod tests {
                 invite_token: Some("token-xyz".to_string()),
                 enabled: true,
             }],
-            ludos_sync: LudosSyncModuleConfig::default(),
         };
 
         save_config(&path.to_path_buf(), &original).unwrap();

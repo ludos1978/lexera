@@ -580,7 +580,6 @@ pub async fn add_board_endpoint(
                 let _ = state.storage.remove_board(&board_id);
                 return Err(err_internal(format!("Board added but config save failed: {}", e)));
             }
-            crate::ludos_sync::spawn_ludos_sync_reconcile(state.clone());
         }
     }
 
@@ -664,7 +663,6 @@ pub async fn remove_board_endpoint(
             if let Err(e) = crate::config::save_config(&state.config_path, &cfg) {
                 log::warn!("[lexera.api.remove_board] Failed to save config: {}", e);
             }
-            crate::ludos_sync::spawn_ludos_sync_reconcile(state.clone());
         }
     }
 
